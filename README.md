@@ -1,36 +1,27 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MO GALLERY Frontend
 
-## Getting Started
+这是一个使用 Next.js 16, React 19, Tailwind CSS 4 和 Framer Motion 构建的个人摄影网站纯前端（通过 `NEXT_PUBLIC_API_URL` 对接外部后端）。
 
-First, run the development server:
+## 功能
+
+- **首页**: 响应式英雄区，精选作品展示。
+- **相册**: 支持按类别过滤的照片网格。
+- **关于**: 摄影师个人介绍。
+- **管理后台**: 照片管理、上传和系统配置的界面原型。
+
+## 开发
 
 ```bash
+cd web
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 部署
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+此项目设计用于部署到 Cloudflare Pages。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build
+npx wrangler pages deploy out
+```
