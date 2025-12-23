@@ -157,7 +157,14 @@ export const dictionaries = {
       comment_moderation: '评论审核',
       blocked_keywords: '屏蔽关键词',
       comments_manage: '评论管理',
+      comments_tabs_manage: '评论管理',
+      comments_tabs_config: '参数配置',
+      comment_provider: 'AI 服务商',
+      comment_api_key: 'API 密钥',
+      comment_endpoint: '接口地址',
+      comment_model: '模型名称',
       notify_success: '操作成功',
+      save_changes: '保存更改',
     }
   },
   en: {
@@ -316,7 +323,14 @@ export const dictionaries = {
       comment_moderation: 'Comment Moderation',
       blocked_keywords: 'Blocked Keywords',
       comments_manage: 'Manage Comments',
+      comments_tabs_manage: 'Management',
+      comments_tabs_config: 'Configuration',
+      comment_provider: 'AI Provider',
+      comment_api_key: 'API Key',
+      comment_endpoint: 'API Endpoint',
+      comment_model: 'Model Name',
       notify_success: 'Operation successful',
+      save_changes: 'Save Changes',
     }
   }
 }

@@ -143,6 +143,10 @@ export interface AdminSettingsDto {
   // Comment Settings
   comment_moderation?: boolean
   blocked_keywords?: string
+  comment_provider?: string // 'local', 'openai', 'gemini', 'anthropic'
+  comment_api_key?: string
+  comment_api_endpoint?: string
+  comment_model?: string
 }
 
 export interface CommentDto {
