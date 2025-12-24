@@ -18,6 +18,8 @@ import {
 import { getPhotos, getCategories, resolveAssetUrl, type PhotoDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { formatFileSize } from '@/lib/utils'
+import ExifModal from '@/components/ExifModal'
 
 export default function GalleryPage() {
   const { t } = useLanguage()
@@ -82,9 +84,9 @@ export default function GalleryPage() {
   }, [selectedPhoto, settings?.cdn_domain])
 
   return (
-    <div className="min-h-screen bg-background text-foreground pt-32 pb-24 px-6 md:px-12 lg:px-20">
+    <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
       {/* Editorial Header */}
-      <header className="max-w-[1800px] mx-auto mb-20">
+      <header className="max-w-screen-2xl mx-auto mb-12">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
           <div className="space-y-4">
             <motion.div 
@@ -99,7 +101,7 @@ export default function GalleryPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-6xl md:text-8xl font-serif font-light tracking-tighter leading-none"
+              className="text-5xl md:text-7xl font-serif font-light tracking-tighter leading-none"
             >
               {activeCategory === '全部' ? t('gallery.title') : activeCategory}
             </motion.h1>
@@ -135,16 +137,16 @@ export default function GalleryPage() {
 
       {/* Photobook Masonry Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {[...Array(6)].map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
             <div key={i} className="aspect-[3/4] bg-muted animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="max-w-[1800px] mx-auto">
+        <div className="max-w-screen-2xl mx-auto">
           <motion.div 
             layout
-            className="columns-1 md:columns-2 lg:columns-3 gap-12 space-y-12"
+            className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6"
           >
             <AnimatePresence mode='popLayout'>
               {filteredPhotos.map((photo, index) => (
@@ -155,23 +157,23 @@ export default function GalleryPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.8, delay: index % 3 * 0.1 }}
-                  className="break-inside-avoid group cursor-none"
+                  className="break-inside-avoid group"
                   onClick={() => setSelectedPhoto(photo)}
                 >
                   <div className="relative overflow-hidden bg-muted">
                     <img
                       src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
                       alt={photo.title}
-                      className="w-full h-auto object-cover transition-transform duration-[1.5s] ease-out group-hover:scale-105"
+                      className="w-full h-auto object-cover transition-all duration-[1.5s] ease-out group-hover:scale-105 grayscale group-hover:grayscale-0"
                     />
                     
                     {/* Minimalist Overlay */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-8">
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-6">
                       <div className="translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                        <p className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-2">
+                        <p className="text-[9px] font-black text-primary uppercase tracking-[0.3em] mb-1.5">
                           {photo.category.split(',')[0]}
                         </p>
-                        <h3 className="text-2xl font-serif text-white leading-tight mb-4">
+                        <h3 className="text-lg font-serif text-white leading-tight mb-3">
                           {photo.title}
                         </h3>
                         <div className="flex items-center gap-2 text-white/60 text-[10px] font-bold uppercase tracking-widest">
@@ -188,7 +190,7 @@ export default function GalleryPage() {
                   </div>
                   
                   {/* Subtle Caption Below */}
-                  <div className="mt-4 flex justify-between items-start opacity-40 group-hover:opacity-100 transition-opacity duration-500">
+                  <div className="mt-2 flex justify-between items-start opacity-40 group-hover:opacity-100 transition-opacity duration-500">
                     <span className="text-[9px] font-mono uppercase tracking-tighter">{photo.cameraModel || 'Recorded Moment'}</span>
                     <span className="text-[9px] font-mono">{new Date(photo.createdAt).getFullYear()}</span>
                   </div>
@@ -208,148 +210,12 @@ export default function GalleryPage() {
       )}
 
       {/* Immersive Detail Modal */}
-      <AnimatePresence>
-        {selectedPhoto && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/95 backdrop-blur-sm overflow-hidden"
-          >
-            {/* Close Button */}
-            <button 
-              onClick={() => setSelectedPhoto(null)}
-              className="absolute top-8 right-8 z-[110] p-4 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="w-8 h-8" />
-            </button>
-
-            <div className="w-full h-full flex flex-col lg:flex-row">
-              {/* Photo Side */}
-              <div className="flex-1 relative flex items-center justify-center p-6 md:p-12 lg:p-20 bg-muted/30">
-                <motion.img
-                  initial={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
-                  animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                  transition={{ duration: 0.8 }}
-                  src={resolveAssetUrl(selectedPhoto.url, settings?.cdn_domain)}
-                  alt={selectedPhoto.title}
-                  className="max-w-full max-h-full object-contain shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)]"
-                />
-              </div>
-
-              {/* Info Side (拉页感) */}
-              <motion.div 
-                initial={{ x: 100, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                transition={{ delay: 0.2, duration: 0.6 }}
-                className="w-full lg:w-[450px] bg-background border-l border-border h-full overflow-y-auto custom-scrollbar flex flex-col shadow-2xl"
-              >
-                <div className="p-10 md:p-16 space-y-16 flex-1">
-                  {/* Title Section */}
-                  <div className="space-y-6">
-                    <div className="flex flex-wrap gap-2">
-                      {selectedPhoto.category.split(',').map(cat => (
-                        <span key={cat} className="text-[10px] font-black uppercase tracking-[0.2em] text-primary border border-primary/30 px-3 py-1">
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                    <h2 className="text-5xl md:text-6xl font-serif leading-[0.9] tracking-tighter">
-                      {selectedPhoto.title}
-                    </h2>
-                  </div>
-
-                  {/* Metadata Grid */}
-                  <div className="grid grid-cols-2 gap-y-10 gap-x-8 border-t border-border pt-10">
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{t('gallery.resolution')}</p>
-                      <p className="font-mono text-sm">{selectedPhoto.width} × {selectedPhoto.height}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{t('gallery.size')}</p>
-                      <p className="font-mono text-sm">{formatFileSize(selectedPhoto.size)}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{t('gallery.date')}</p>
-                      <p className="font-mono text-sm">{new Date(selectedPhoto.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{t('gallery.palette')}</p>
-                      <div className="flex gap-1.5 pt-1">
-                        {dominantColors.map((color, i) => (
-                          <div key={i} className="w-5 h-5 border border-white/10" style={{ backgroundColor: color }} />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Technical Specs */}
-                  {(selectedPhoto.cameraModel || selectedPhoto.aperture) ? (
-                    <div className="space-y-10">
-                      <div className="space-y-3">
-                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] flex items-center gap-2">
-                          <Camera className="w-3 h-3 text-primary" /> {t('gallery.equipment')}
-                        </p>
-                        <p className="font-serif text-2xl leading-tight">
-                          {selectedPhoto.cameraMake} {selectedPhoto.cameraModel}
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-5 border border-border bg-muted/10 space-y-1">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{t('gallery.aperture')}</p>
-                          <p className="font-mono text-xl">{selectedPhoto.aperture || '—'}</p>
-                        </div>
-                        <div className="p-5 border border-border bg-muted/10 space-y-1">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{t('gallery.shutter')}</p>
-                          <p className="font-mono text-xl">{selectedPhoto.shutterSpeed || '—'}</p>
-                        </div>
-                        <div className="p-5 border border-border bg-muted/10 space-y-1">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{t('gallery.iso')}</p>
-                          <p className="font-mono text-xl">{selectedPhoto.iso || '—'}</p>
-                        </div>
-                        <div className="p-5 border border-border bg-muted/10 space-y-1">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{t('gallery.focal')}</p>
-                          <p className="font-mono text-xl">{selectedPhoto.focalLength || '—'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="py-10 border-t border-border border-dashed opacity-30 text-center">
-                      <p className="text-[10px] tracking-[0.3em] uppercase">{t('gallery.no_exif')}</p>
-                    </div>
-                  )}
-
-                  {selectedPhoto.latitude && (
-                    <button className="w-full py-4 border border-border hover:border-primary text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-2">
-                      <MapPin className="w-3 h-3" /> Location Tagged
-                    </button>
-                  )}
-                </div>
-
-                {/* Footer Action */}
-                <div className="p-10 border-t border-border bg-muted/5">
-                  <a 
-                    href={resolveAssetUrl(selectedPhoto.url, settings?.cdn_domain)} 
-                    target="_blank"
-                    className="w-full py-5 bg-foreground text-background text-[10px] font-black uppercase tracking-[0.4em] hover:bg-primary hover:text-primary-foreground transition-all flex items-center justify-center gap-3"
-                  >
-                    <Download className="w-4 h-4" />
-                    {t('gallery.download')}
-                  </a>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ExifModal 
+        photo={selectedPhoto} 
+        isOpen={!!selectedPhoto} 
+        onClose={() => setSelectedPhoto(null)} 
+      />
     </div>
   )
 }
 
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return 'Unknown'; if (bytes === 0) return '0 Bytes'
-  const k = 1024; const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}

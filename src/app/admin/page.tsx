@@ -41,12 +41,16 @@ import {
   MoreVertical,
   History,
   AlertCircle,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import { Toast, type Notification } from '@/components/admin/Toast'
+import { UploadFileItem } from '@/components/admin/UploadFileItem'
+import { formatFileSize } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -79,120 +83,7 @@ interface PhotoLog {
   status: 'draft' | 'published'
 }
 
-interface Notification {
-  id: string
-  message: string
-  type: 'success' | 'error' | 'info'
-}
-
 // --- Helper Components ---
-
-const Toast = ({ notifications, remove }: { notifications: Notification[], remove: (id: string) => void }) => (
-  <div className="fixed bottom-8 right-8 z-[200] flex flex-col gap-3 pointer-events-none">
-    <AnimatePresence mode="popLayout">
-      {notifications.map((n) => (
-        <motion.div
-          key={n.id}
-          layout
-          initial={{ opacity: 0, x: 50, scale: 0.9 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-          className={`pointer-events-auto flex items-center gap-3 px-6 py-4 min-w-[300px] border shadow-2xl backdrop-blur-xl ${
-            n.type === 'success' ? 'bg-primary/90 border-primary text-primary-foreground' : 
-            n.type === 'error' ? 'bg-destructive/90 border-destructive text-destructive-foreground' : 
-            'bg-muted/90 border-border text-foreground'
-          }`}
-        >
-          {n.type === 'success' && <Check className="w-5 h-5" />}
-          {n.type === 'error' && <AlertCircle className="w-5 h-5" />}
-          {n.type === 'info' && <Info className="w-5 h-5" />}
-          <span className="text-[10px] font-bold uppercase tracking-widest flex-1 leading-relaxed">{n.message}</span>
-          <button onClick={() => remove(n.id)} className="p-1 hover:opacity-70 transition-opacity">
-            <X className="w-4 h-4" />
-          </button>
-        </motion.div>
-      ))}
-    </AnimatePresence>
-  </div>
-)
-
-const UploadFileItem = React.memo(function UploadFileItem({ 
-  file, 
-  id,
-  onRemove, 
-  uploading, 
-  isUploaded, 
-  isCurrent,
-  viewMode,
-  selected,
-  onSelect,
-  onPreview,
-  t
-}: { 
-  file: File, 
-  id: string,
-  onRemove: (id: string) => void,
-  uploading: boolean,
-  isUploaded: boolean,
-  isCurrent: boolean,
-  viewMode: 'list' | 'grid',
-  selected: boolean,
-  onSelect: (id: string) => void,
-  onPreview: (id: string) => void,
-  t: (key: string) => string
-}) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isVisible, setIsVisible] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (isVisible) return
-    const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setIsVisible(true); observer.disconnect(); } }, { rootMargin: '200px' })
-    if (containerRef.current) observer.observe(containerRef.current)
-    return () => observer.disconnect()
-  }, [viewMode, isVisible])
-
-  useEffect(() => {
-    if (!isVisible || previewUrl) return
-    const originalUrl = URL.createObjectURL(file); const img = new Image(); img.src = originalUrl
-    img.onload = () => {
-      const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const maxSize = 120
-      let width = img.width; let height = img.height
-      if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } } else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } }
-      canvas.width = width; canvas.height = height; ctx?.drawImage(img, 0, 0, width, height)
-      const thumbUrl = canvas.toDataURL('image/webp', 0.8); setPreviewUrl(thumbUrl); URL.revokeObjectURL(originalUrl)
-    }
-    img.onerror = () => URL.revokeObjectURL(originalUrl)
-  }, [isVisible, file, previewUrl])
-
-  if (viewMode === 'grid') {
-    return (
-      <div ref={containerRef} className={`relative aspect-square border border-border transition-all group overflow-hidden ${isCurrent ? 'ring-2 ring-primary' : ''} ${selected ? 'border-primary bg-primary/5' : 'bg-background'}`}>
-        {previewUrl ? <img src={previewUrl} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105 cursor-pointer" onClick={() => onPreview(id)} /> : <div className="w-full h-full flex items-center justify-center bg-muted"><ImageIcon className="w-6 h-6 text-muted-foreground/20" /></div>}
-        <button onClick={() => onPreview(id)} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-2 bg-background/50 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-10"><Maximize2 className="w-4 h-4 text-foreground" /></button>
-        <div className={`absolute top-2 left-2 z-20 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}><input type="checkbox" checked={selected} onChange={() => onSelect(id)} disabled={uploading} className="w-4 h-4 accent-primary cursor-pointer border-border bg-background" /></div>
-        {isUploaded && <div className="absolute inset-0 bg-primary/20 backdrop-blur-[1px] flex items-center justify-center z-20"><Check className="w-8 h-8 text-primary drop-shadow-md" /></div>}
-        {isCurrent && <div className="absolute inset-0 bg-background/40 backdrop-blur-[1px] flex items-center justify-center z-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}
-        {!uploading && !isUploaded && <button onClick={() => onRemove(id)} className="absolute top-2 right-2 p-1.5 bg-background/80 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all z-20"><X className="w-3 h-3" /></button>}
-        <div className="absolute bottom-0 left-0 w-full p-2 bg-background/90 text-[8px] font-mono truncate opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-tighter pointer-events-none">{formatFileSize(file.size)}</div>
-      </div>
-    )
-  }
-
-  return (
-    <div ref={containerRef} className={`flex items-center gap-4 p-3 border border-border mb-2 transition-colors ${isCurrent ? 'bg-primary/5 border-primary/30' : 'bg-background hover:bg-muted/30'} ${selected ? 'border-primary/50 bg-primary/5' : ''}`}>
-      <div className="flex items-center"><input type="checkbox" checked={selected} onChange={() => onSelect(id)} disabled={uploading} className="w-4 h-4 accent-primary cursor-pointer" /></div>
-      <div className="w-12 h-12 flex-shrink-0 bg-muted overflow-hidden border border-border relative group cursor-pointer" onClick={() => onPreview(id)}>
-        {previewUrl ? <img src={previewUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-4 h-4 text-muted-foreground/20" /></div>}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Maximize2 className="w-3 h-3 text-white" /></div>
-      </div>
-      <div className="flex-1 min-w-0"><p className="text-xs font-bold uppercase tracking-wider truncate mb-0.5 text-foreground">{file.name}</p><p className="text-[10px] font-mono text-muted-foreground">{formatFileSize(file.size)}</p></div>
-      <div className="flex items-center gap-3">
-        {isUploaded ? <div className="flex items-center gap-1 text-primary"><Check className="w-4 h-4" /><span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Done</span></div> : isCurrent ? <div className="flex items-center gap-2 text-primary"><Loader2 className="w-3 h-3 animate-spin" /><span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline animate-pulse">Processing</span></div> : uploading ? <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground opacity-50">Waiting</span> : <button onClick={() => onRemove(id)} className="p-2 text-muted-foreground hover:text-destructive transition-colors"><X className="w-4 h-4" /></button>}
-      </div>
-    </div>
-  )
-})
 
 function AdminDashboard() {
   const { logout, token, user } = useAuth()
@@ -664,7 +555,7 @@ function AdminDashboard() {
             <div className="max-w-[1920px]">
               <div className="flex flex-col md:flex-row gap-12">
                 <aside className="w-full md:w-48 space-y-1"><div className="mb-6 pb-2 border-b border-border"><h4 className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">{t('admin.config')}</h4></div>{[{ id: 'site', label: t('admin.general') }, { id: 'categories', label: t('admin.taxonomy') }, { id: 'storage', label: t('admin.engine') }, { id: 'comments', label: t('admin.comments') }].map(tab => (<button key={tab.id} onClick={() => setSettingsTab(tab.id)} className={`w-full flex items-center justify-between px-2 py-3 text-xs font-bold uppercase tracking-widest transition-all border-l-2 ${settingsTab === tab.id ? 'border-primary text-primary pl-4' : 'border-transparent text-muted-foreground hover:text-foreground pl-2'}`}><span>{tab.label}</span></button>))}</aside>
-                <div className="flex-1 min-h-[500px] flex flex-col">{settingsError && <div className="mb-8 p-4 border border-destructive text-destructive text-xs tracking-widest uppercase flex items-center space-x-2"><X className="w-4 h-4" /><span>{settingsError}</span></div>}{settingsLoading || !settings ? <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs font-mono uppercase">{t('common.loading')}</div> : (<div className="flex-1 space-y-12">{settingsTab === 'site' && (<div className="max-w-2xl space-y-8"><div className="pb-4 border-b border-border"><h3 className="font-serif text-2xl">{t('admin.general')}</h3></div><div className="space-y-6"><div className="space-y-2"><label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('admin.site_title')}</label><input type="text" value={settings.site_title} onChange={(e) => setSettings({ ...settings, site_title: e.target.value })} className="w-full p-4 bg-transparent border border-border focus:border-primary outline-none text-sm transition-colors rounded-none" /></div><div className="space-y-2"><label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('admin.cdn_host')}</label><input type="text" value={settings.cdn_domain} onChange={(e) => setSettings({ ...settings, cdn_domain: e.target.value })} placeholder="https://cdn.example.com" className="w-full p-4 bg-transparent border border-border focus:border-primary outline-none text-sm transition-colors rounded-none" /><p className="text-[10px] text-muted-foreground font-mono">Leave empty to use API host.</p></div></div></div>)}{settingsTab === 'categories' && (<div className="space-y-8"><div className="pb-4 border-b border-border"><h3 className="font-serif text-2xl">{t('admin.taxonomy')}</h3></div><div className="flex flex-wrap gap-3">{categories.map(cat => (<div key={cat} className="flex items-center space-x-2 px-4 py-2 bg-muted border border-border text-xs font-bold uppercase tracking-wider group"><span>{cat}</span>{cat !== '全部' && <button className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"><X className="w-3.5 h-3.5" /></button>}</div>))}<button className="flex items-center space-x-2 px-4 py-2 border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary transition-all text-xs font-bold uppercase tracking-wider"><Plus className="w-3 h-3" /><span>{t('admin.add_new')}</span></button></div></div>)}{settingsTab === 'storage' && (<div className="max-w-3xl space-y-8"><div className="pb-4 border-b border-border"><h3 className="font-serif text-2xl">{t('admin.engine')}</h3></div><div className="space-y-8"><div className="space-y-2"><label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('admin.active_provider')}</label><div className="flex gap-4">{['local', 'r2', 'github'].map(p => (<button key={p} onClick={() => setSettings({ ...settings, storage_provider: p })} className={`px-6 py-3 text-xs font-bold uppercase tracking-widest border transition-all ${settings.storage_provider === p ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'}`}>{p}</button>))}</div></div>{settings.storage_provider === 'r2' && (<div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-border bg-muted/20"><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Endpoint</label><input type="text" value={settings.r2_endpoint ?? ''} onChange={(e) => setSettings({ ...settings, r2_endpoint: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div><div className="space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Key ID</label><input type="text" value={settings.r2_access_key_id ?? ''} onChange={(e) => setSettings({ ...settings, r2_access_key_id: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div><div className="space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Secret Access Key</label><input type="password" value={settings.r2_secret_access_key ?? ''} onChange={(e) => setSettings({ ...settings, r2_secret_access_key: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Bucket</label><input type="text" value={settings.r2_bucket ?? ''} onChange={(e) => setSettings({ ...settings, r2_bucket: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div></div>)}{settings.storage_provider === 'github' && (<div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-border bg-muted/20"><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Personal Access Token</label><input type="password" value={settings.github_token ?? ''} onChange={(e) => setSettings({ ...settings, github_token: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder={t('admin.gh_placeholder_token')} /></div><div className="space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Repo (owner/repo)</label><input type="text" value={settings.github_repo ?? ''} onChange={(e) => setSettings({ ...settings, github_repo: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder={t('admin.gh_placeholder_repo')} /></div><div className="space-y-2"><div className="flex justify-between items-center mb-1"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.gh_branch')}</label><button onClick={async () => { if (!settings.github_token || !settings.github_repo) { notify("Token and Repo required", "info"); return; } try { const res = await fetch(`https://api.github.com/repos/${settings.github_repo}/branches`, { headers: { 'Authorization': `token ${settings.github_token}` } }); if (!res.ok) throw new Error("Failed to fetch branches"); const data = await res.json(); const branchNames = data.map((b: any) => b.name); notify(`${t('admin.notify_gh_branches')}: ${branchNames.join(', ')}`, 'info'); } catch (e) { notify("Error fetching branches", 'error'); } }} className="text-[8px] font-bold text-primary uppercase hover:underline">{t('admin.gh_test')}</button></div><input type="text" value={settings.github_branch ?? ''} onChange={(e) => setSettings({ ...settings, github_branch: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder="main" /></div><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.path_prefix')}</label><input type="text" value={settings.github_path ?? ''} onChange={(e) => setSettings({ ...settings, github_path: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder={t('admin.gh_placeholder_path')} /></div><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Method (访问方式)</label><select value={settings.github_access_method ?? 'jsdelivr'} onChange={(e) => setSettings({ ...settings, github_access_method: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"><option value="raw">raw.githubusercontent.com</option><option value="jsdelivr">jsDelivr CDN (推荐)</option><option value="pages">GitHub Pages</option></select></div>{settings.github_access_method === 'pages' && (<div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">GitHub Pages URL</label><input type="text" value={settings.github_pages_url ?? ''} onChange={(e) => setSettings({ ...settings, github_pages_url: e.target.value })} placeholder="https://username.github.io/repo" className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div>)}</div>)}</div></div>)}{settingsTab === 'comments' && (
+                <div className="flex-1 min-h-[500px] flex flex-col">{settingsError && <div className="mb-8 p-4 border border-destructive text-destructive text-xs tracking-widest uppercase flex items-center space-x-2"><X className="w-4 h-4" /><span>{settingsError}</span></div>}{settingsLoading || !settings ? <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs font-mono uppercase">{t('common.loading')}</div> : (<div className="flex-1 space-y-12">{settingsTab === 'site' && (<div className="max-w-2xl space-y-8"><div className="pb-4 border-b border-border"><h3 className="font-serif text-2xl">{t('admin.general')}</h3></div><div className="space-y-6"><div className="space-y-2"><label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('admin.site_title')}</label><input type="text" value={settings.site_title} onChange={(e) => setSettings({ ...settings, site_title: e.target.value })} className="w-full p-4 bg-transparent border border-border focus:border-primary outline-none text-sm transition-colors rounded-none" /></div><div className="space-y-2"><label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('admin.cdn_host')}</label><input type="text" value={settings.cdn_domain} onChange={(e) => setSettings({ ...settings, cdn_domain: e.target.value })} placeholder="https://cdn.example.com" className="w-full p-4 bg-transparent border border-border focus:border-primary outline-none text-sm transition-colors rounded-none" /><p className="text-[10px] text-muted-foreground font-mono">Leave empty to use API host.</p></div></div></div>)}{settingsTab === 'categories' && (<div className="space-y-8"><div className="pb-4 border-b border-border"><h3 className="font-serif text-2xl">{t('admin.taxonomy')}</h3></div><div className="flex flex-wrap gap-3">{categories.map(cat => (<div key={cat} className="flex items-center space-x-2 px-4 py-2 bg-muted border border-border text-xs font-bold uppercase tracking-wider group"><span>{cat}</span>{cat !== '全部' && <button className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"><X className="w-3.5 h-3.5" /></button>}</div>))}<button className="flex items-center space-x-2 px-4 py-2 border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary transition-all text-xs font-bold uppercase tracking-wider"><Plus className="w-3 h-3" /><span>{t('admin.add_new')}</span></button></div></div>)}{settingsTab === 'storage' && (<div className="max-w-3xl space-y-8"><div className="pb-4 border-b border-border"><h3 className="font-serif text-2xl">{t('admin.engine')}</h3></div><div className="space-y-8"><div className="space-y-2"><label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{t('admin.active_provider')}</label><div className="flex gap-4">{['local', 'r2', 'github'].map(p => (<button key={p} onClick={() => setSettings({ ...settings, storage_provider: p })} className={`px-6 py-3 text-xs font-bold uppercase tracking-widest border transition-all ${settings.storage_provider === p ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'}`}>{p}</button>))}</div></div>{settings.storage_provider === 'r2' && (<div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-border bg-muted/20"><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Endpoint</label><input type="text" value={settings.r2_endpoint ?? ''} onChange={(e) => setSettings({ ...settings, r2_endpoint: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div><div className="space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Key ID</label><input type="text" value={settings.r2_access_key_id ?? ''} onChange={(e) => setSettings({ ...settings, r2_access_key_id: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div><div className="space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Secret Access Key</label><input type="password" value={settings.r2_secret_access_key ?? ''} onChange={(e) => setSettings({ ...settings, r2_secret_access_key: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Bucket</label><input type="text" value={settings.r2_bucket ?? ''} onChange={(e) => setSettings({ ...settings, r2_bucket: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div></div>)}{settings.storage_provider === 'github' && (<div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-border bg-muted/20"><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Personal Access Token</label><input type="password" value={settings.github_token ?? ''} onChange={(e) => setSettings({ ...settings, github_token: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder={t('admin.gh_placeholder_token')} /></div><div className="space-y-2"><div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Repo (owner/repo)</label></div><input type="text" value={settings.github_repo ?? ''} onChange={(e) => setSettings({ ...settings, github_repo: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder={t('admin.gh_placeholder_repo')} /></div><div className="space-y-2"><div className="flex justify-between items-center"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.gh_branch')}</label><button onClick={async () => { if (!settings.github_token || !settings.github_repo) { notify("Token and Repo required", "info"); return; } try { const res = await fetch(`https://api.github.com/repos/${settings.github_repo}/branches`, { headers: { 'Authorization': `token ${settings.github_token}` } }); if (!res.ok) throw new Error("Failed to fetch branches"); const data = await res.json(); const branchNames = data.map((b: any) => b.name); notify(`${t('admin.notify_gh_branches')}: ${branchNames.join(', ')}`, 'info'); } catch (e) { notify("Error fetching branches", 'error'); } }} className="text-[8px] font-bold text-primary uppercase hover:underline">{t('admin.gh_test')}</button></div><input type="text" value={settings.github_branch ?? ''} onChange={(e) => setSettings({ ...settings, github_branch: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder="main" /></div><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.path_prefix')}</label><input type="text" value={settings.github_path ?? ''} onChange={(e) => setSettings({ ...settings, github_path: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" placeholder={t('admin.gh_placeholder_path')} /></div><div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Method (访问方式)</label><select value={settings.github_access_method ?? 'jsdelivr'} onChange={(e) => setSettings({ ...settings, github_access_method: e.target.value })} className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"><option value="raw">raw.githubusercontent.com</option><option value="jsdelivr">jsDelivr CDN (推荐)</option><option value="pages">GitHub Pages</option></select></div>{settings.github_access_method === 'pages' && (<div className="md:col-span-2 space-y-2"><label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">GitHub Pages URL</label><input type="text" value={settings.github_pages_url ?? ''} onChange={(e) => setSettings({ ...settings, github_pages_url: e.target.value })} placeholder="https://username.github.io/repo" className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono" /></div>)}</div>)}</div></div>)}{settingsTab === 'comments' && (
                     <div className="space-y-8">
                        <div className="flex space-x-1 border-b border-border">
                           {['manage', 'config'].map((tab) => (
@@ -969,6 +860,4 @@ function AdminDashboard() {
   )
 }
 
-function formatFileSize(bytes?: number): string { if (!bytes) return 'Unknown'; if (bytes === 0) return '0 Bytes'; const k = 1024; const sizes = ['Bytes', 'KB', 'MB', 'GB']; const i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i] }
-function Loader2({ className }: { className?: string }) { return (<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>) }
 export default function AdminPage() { return (<ProtectedRoute><AdminDashboard /></ProtectedRoute>) }
