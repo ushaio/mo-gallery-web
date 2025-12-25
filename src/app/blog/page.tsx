@@ -83,68 +83,56 @@ export default function BlogListPage() {
     <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <header className="mb-16">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3 text-primary mb-4"
-          >
-            <BookText className="w-6 h-6" />
-            <span className="text-[10px] font-black uppercase tracking-[0.4em]">Blog</span>
-            <div className="h-[1px] flex-1 bg-primary/30" />
-          </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-5xl md:text-7xl font-serif font-light tracking-tighter leading-none"
-          >
-            博客
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mt-4 text-muted-foreground"
-          >
-            摄影随笔与创作心得
-          </motion.p>
-        </header>
+        <header className="mb-12">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+            <div className="space-y-4">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3 text-primary"
+              >
+                <span className="text-[10px] font-black uppercase tracking-[0.4em]">Blog</span>
+                <div className="h-[1px] w-12 bg-primary/30" />
+              </motion.div>
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="text-5xl md:text-7xl font-serif font-light tracking-tighter leading-none"
+              >
+                {activeCategory === '全部' ? '博客' : activeCategory}
+              </motion.h1>
+            </div>
 
-        {/* Category Filter */}
-        {categories.length > 1 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mb-12"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <Tag className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                分类筛选
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setActiveCategory(category)}
-                  className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border ${
-                    activeCategory === category
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 text-xs text-muted-foreground">
-              共 {filteredBlogs.length} 篇文章
-            </div>
-          </motion.div>
-        )}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="flex flex-col items-start md:items-end gap-4"
+            >
+              <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                {filteredBlogs.length} 篇文章
+              </div>
+              {categories.length > 1 && (
+                <div className="flex flex-wrap gap-2 md:justify-end">
+                  {categories.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setActiveCategory(category)}
+                      className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                        activeCategory === category
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </div>
+        </header>
 
         {/* Timeline */}
         {filteredBlogs.length === 0 ? (
