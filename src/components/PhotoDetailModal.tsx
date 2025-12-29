@@ -236,19 +236,11 @@ export function PhotoDetailModal({
 
               {/* Left Side - Photo Display */}
               <div className="flex-none h-[40vh] md:h-auto md:flex-1 lg:flex-none lg:w-[70%] relative bg-muted/30 flex items-center justify-center overflow-hidden">
-                {/* Thumbnail / Placeholder */}
-                <img
-                  src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
-                  alt={photo.title}
-                  className="absolute w-full h-full object-contain p-2 md:p-8 blur-sm scale-105"
-                />
-
                 {/* Full Image */}
                 <img
                   src={resolveAssetUrl(photo.url, settings?.cdn_domain)}
                   alt={photo.title}
-                  className={`relative w-full h-full object-contain p-2 md:p-8 transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                  onLoad={() => setImageLoaded(true)}
+                  className="relative w-full h-full object-contain p-2 md:p-8"
                 />
               </div>
 

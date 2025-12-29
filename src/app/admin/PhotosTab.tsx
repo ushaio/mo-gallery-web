@@ -129,14 +129,14 @@ export function PhotosTab({
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 bg-muted/30 border border-border focus:border-primary outline-none text-[10px] font-bold uppercase tracking-widest cursor-pointer"
+                className="appearance-none pl-3 pr-8 py-2 bg-muted/30 border border-border focus:border-primary outline-none text-xs font-mono cursor-pointer transition-all hover:bg-muted/50"
               >
                 <option value="全部">分类: {t('gallery.all')}</option>
                 {categories.filter(c => c !== '全部').map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
             </div>
 
             {/* Channel Filter */}
@@ -144,14 +144,14 @@ export function PhotosTab({
               <select
                 value={channelFilter}
                 onChange={(e) => setChannelFilter(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 bg-muted/30 border border-border focus:border-primary outline-none text-[10px] font-bold uppercase tracking-widest cursor-pointer"
+                className="appearance-none pl-3 pr-8 py-2 bg-muted/30 border border-border focus:border-primary outline-none text-xs font-mono cursor-pointer transition-all hover:bg-muted/50"
               >
                 <option value="全部">渠道: 全部</option>
                 <option value="local">Local</option>
                 <option value="r2">Cloudflare R2</option>
                 <option value="github">GitHub</option>
               </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none group-hover:text-foreground transition-colors" />
             </div>
 
             {/* Featured Filter (Switch) */}
