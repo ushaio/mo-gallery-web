@@ -18,6 +18,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.958.0",
     "@google/gemini-cli": "^0.21.3",
     "@hono/node-server": "^1.19.7",
     "@hono/zod-validator": "^0.7.6",
