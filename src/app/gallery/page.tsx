@@ -7,6 +7,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { GalleryHeader } from '@/components/gallery/GalleryHeader'
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
+import { ViewMode } from '@/components/gallery/ViewModeToggle'
 
 export default function GalleryPage() {
   const { t } = useLanguage()
@@ -16,6 +17,7 @@ export default function GalleryPage() {
   const [activeCategory, setActiveCategory] = useState('全部')
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('masonry')
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,6 +50,8 @@ export default function GalleryPage() {
           categories={categories}
           onCategoryChange={setActiveCategory}
           photoCount={filteredPhotos.length}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
           t={t}
         />
 
@@ -55,6 +59,7 @@ export default function GalleryPage() {
           loading={loading}
           photos={filteredPhotos}
           settings={settings}
+          viewMode={viewMode}
           onPhotoClick={setSelectedPhoto}
           t={t}
         />

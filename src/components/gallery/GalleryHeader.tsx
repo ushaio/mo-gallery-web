@@ -1,12 +1,15 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
 interface GalleryHeaderProps {
   activeCategory: string
   categories: string[]
   onCategoryChange: (category: string) => void
   photoCount: number
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
   t: (key: string) => string
 }
 
@@ -15,6 +18,8 @@ export function GalleryHeader({
   categories,
   onCategoryChange,
   photoCount,
+  viewMode,
+  onViewModeChange,
   t,
 }: GalleryHeaderProps) {
   return (
@@ -49,6 +54,11 @@ export function GalleryHeader({
             <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
               {photoCount} {t('gallery.count_suffix')}
             </div>
+            <ViewModeToggle
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
+              t={t}
+            />
           </motion.div>
         </div>
 
