@@ -14,7 +14,9 @@ import {
   BookOpen,
   Edit3,
   ArrowRight,
+  Minimize2,
 } from 'lucide-react'
+import imageCompression from 'browser-image-compression'
 import { AdminSettingsDto, uploadPhoto, createStory, addPhotosToStory } from '@/lib/api'
 import { formatFileSize } from '@/lib/utils'
 
@@ -72,6 +74,12 @@ export function StoryUploadTab({
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
   const [uploadError, setUploadError] = useState('')
+
+  // Compression settings
+  const [compressionEnabled, setCompressionEnabled] = useState(false)
+  const [maxSizeMB, setMaxSizeMB] = useState(4)
+  const [compressing, setCompressing] = useState(false)
+  const [compressionProgress, setCompressionProgress] = useState({ current: 0, total: 0 })
 
   // Result state (for partial success)
   const [uploadResult, setUploadResult] = useState<{
@@ -218,11 +226,43 @@ export function StoryUploadTab({
     }
 
     setUploadError('')
-    setUploading(true)
     setUploadResult(null)
 
     // Filter only pending files (for retry scenario)
-    const pendingFiles = uploadFiles.filter(f => f.status === 'pending' || f.status === 'failed')
+    let pendingFiles = uploadFiles.filter(f => f.status === 'pending' || f.status === 'failed')
+
+    // Compress images if enabled
+    if (compressionEnabled) {
+      setCompressing(true)
+      setCompressionProgress({ current: 0, total: pendingFiles.length })
+
+      const compressedFiles: StoryUploadFile[] = []
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const item = pendingFiles[i]
+        try {
+          // Only compress if file is larger than target size
+          if (item.file.size > maxSizeMB * 1024 * 1024) {
+            const compressedFile = await imageCompression(item.file, {
+              maxSizeMB: maxSizeMB,
+              maxWidthOrHeight: 4096,
+              useWebWorker: true,
+              preserveExif: true,
+            })
+            compressedFiles.push({ ...item, file: compressedFile })
+          } else {
+            compressedFiles.push(item)
+          }
+        } catch (err) {
+          console.error(`Failed to compress ${item.file.name}:`, err)
+          compressedFiles.push(item) // Use original if compression fails
+        }
+        setCompressionProgress({ current: i + 1, total: pendingFiles.length })
+      }
+      pendingFiles = compressedFiles
+      setCompressing(false)
+    }
+
+    setUploading(true)
     setUploadProgress({ current: 0, total: pendingFiles.length })
 
     const CONCURRENCY = 4
@@ -549,6 +589,49 @@ export function StoryUploadTab({
                 />
               </div>
             </div>
+
+            {/* Image Compression */}
+            <div className="border-t border-border pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <label className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                  <Minimize2 className="w-3 h-3" />
+                  {t('admin.image_compression')}
+                </label>
+                <button
+                  onClick={() => setCompressionEnabled(!compressionEnabled)}
+                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    compressionEnabled ? 'bg-primary' : 'bg-muted'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
+                      compressionEnabled ? 'translate-x-5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              {compressionEnabled && (
+                <div className="space-y-3">
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('admin.compression_hint')}
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
+                      {t('admin.max_size_mb')}
+                    </label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="10"
+                      step="0.5"
+                      value={maxSizeMB}
+                      onChange={(e) => setMaxSizeMB(parseFloat(e.target.value) || 4)}
+                      className="w-20 p-2 bg-background border-b border-border focus:border-primary outline-none text-sm font-mono text-center"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Upload Button */}
@@ -582,10 +665,18 @@ export function StoryUploadTab({
             ) : (
               <button
                 onClick={handleUpload}
-                disabled={uploading || pendingCount === 0}
+                disabled={uploading || compressing || pendingCount === 0}
                 className="w-full py-4 bg-foreground text-background text-xs font-bold uppercase tracking-[0.2em] hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
               >
-                {uploading ? (
+                {compressing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>
+                      {t('admin.compressing')} ({compressionProgress.current}/
+                      {compressionProgress.total})
+                    </span>
+                  </>
+                ) : uploading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>

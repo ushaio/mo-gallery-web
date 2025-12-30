@@ -63,7 +63,6 @@ export default function UploadPage() {
           t={t}
           notify={notify}
           onUploadSuccess={() => {
-            router.push('/admin/photos')
             refreshPhotos()
           }}
           onPreview={(item) => {

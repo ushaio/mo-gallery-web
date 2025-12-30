@@ -25,6 +25,7 @@
     "@octokit/rest": "^22.0.1",
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^3.0.3",
+    "browser-image-compression": "^2.0.2",
     "exifreader": "^4.33.1",
     "framer-motion": "^12.23.26",
     "hono": "^4.11.1",

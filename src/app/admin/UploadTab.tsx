@@ -12,7 +12,9 @@ import {
   LayoutGrid,
   Plus,
   BookOpen,
+  Minimize2,
 } from 'lucide-react'
+import imageCompression from 'browser-image-compression'
 import { AdminSettingsDto, uploadPhoto, getAdminStories, addPhotosToStory, type StoryDto } from '@/lib/api'
 import { UploadFileItem } from '@/components/admin/UploadFileItem'
 
@@ -39,7 +41,7 @@ export function UploadTab({
   const [uploadViewMode, setUploadViewMode] = useState<'list' | 'grid'>('list')
   const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
-  
+
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
   const [categoryInput, setCategoryInput] = useState('')
@@ -53,10 +55,16 @@ export function UploadTab({
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
   const [uploadError, setUploadError] = useState('')
-  
+
   const [uploadSource, setUploadSource] = useState('local')
   const [isInitialized, setIsInitialized] = useState(false)
   const [uploadPath, setUploadPath] = useState('')
+
+  // Compression settings
+  const [compressionEnabled, setCompressionEnabled] = useState(false)
+  const [maxSizeMB, setMaxSizeMB] = useState(4)
+  const [compressing, setCompressing] = useState(false)
+  const [compressionProgress, setCompressionProgress] = useState({ current: 0, total: 0 })
 
   // Initialize defaults from settings
   useEffect(() => {
@@ -144,26 +152,59 @@ export function UploadTab({
       return
     }
     setUploadError('')
+
+    // Compress images if enabled
+    let filesToUpload = uploadFiles
+    if (compressionEnabled) {
+      setCompressing(true)
+      setCompressionProgress({ current: 0, total: uploadFiles.length })
+
+      const compressedFiles: { id: string; file: File }[] = []
+      for (let i = 0; i < uploadFiles.length; i++) {
+        const item = uploadFiles[i]
+        try {
+          // Only compress if file is larger than target size
+          if (item.file.size > maxSizeMB * 1024 * 1024) {
+            const compressedFile = await imageCompression(item.file, {
+              maxSizeMB: maxSizeMB,
+              maxWidthOrHeight: 4096,
+              useWebWorker: true,
+              preserveExif: true,
+            })
+            compressedFiles.push({ id: item.id, file: compressedFile })
+          } else {
+            compressedFiles.push(item)
+          }
+        } catch (err) {
+          console.error(`Failed to compress ${item.file.name}:`, err)
+          compressedFiles.push(item) // Use original if compression fails
+        }
+        setCompressionProgress({ current: i + 1, total: uploadFiles.length })
+      }
+      filesToUpload = compressedFiles
+      setCompressing(false)
+    }
+
     setUploading(true)
-    setUploadProgress({ current: 0, total: uploadFiles.length })
+    setUploadProgress({ current: 0, total: filesToUpload.length })
 
     try {
       const uploadedPhotoIds: string[] = []
       const CONCURRENCY = 4 // Number of parallel uploads
 
       // Create upload tasks
-      const uploadTasks = uploadFiles.map((item, index) => ({
+      const uploadTasks = filesToUpload.map((item, index) => ({
         index,
         file: item.file,
         title:
-          uploadFiles.length === 1
+          filesToUpload.length === 1
             ? uploadTitle.trim()
             : item.file.name.replace(/\.[^/.]+$/, ''),
       }))
 
       // Process in batches with concurrency limit
       let completed = 0
-      const results: (string | null)[] = new Array(uploadFiles.length).fill(null)
+      const results: (string | null)[] = new Array(filesToUpload.length).fill(null)
 
       const processTask = async (task: typeof uploadTasks[0]) => {
         try {
@@ -177,12 +218,12 @@ export function UploadTab({
           })
           results[task.index] = photo.id
           completed++
-          setUploadProgress({ current: completed, total: uploadFiles.length })
+          setUploadProgress({ current: completed, total: filesToUpload.length })
           return photo.id
         } catch (err) {
           console.error(`Failed to upload ${task.title}:`, err)
           completed++
-          setUploadProgress({ current: completed, total: uploadFiles.length })
+          setUploadProgress({ current: completed, total: filesToUpload.length })
           throw err
         }
       }
@@ -226,7 +267,7 @@ export function UploadTab({
       }
 
       const count = uploadedPhotoIds.length
-      const failed = uploadFiles.length - count
+      const failed = filesToUpload.length - count
 
       setUploadFiles([])
       setSelectedUploadIds(new Set())
@@ -448,14 +489,65 @@ export function UploadTab({
                 />
               </div>
             </div>
+
+            {/* Image Compression */}
+            <div className="border-t border-border pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <label className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                  <Minimize2 className="w-3 h-3" />
+                  {t('admin.image_compression')}
+                </label>
+                <button
+                  onClick={() => setCompressionEnabled(!compressionEnabled)}
+                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    compressionEnabled ? 'bg-primary' : 'bg-muted'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
+                      compressionEnabled ? 'translate-x-5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              {compressionEnabled && (
+                <div className="space-y-3">
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('admin.compression_hint')}
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
+                      {t('admin.max_size_mb')}
+                    </label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="10"
+                      step="0.5"
+                      value={maxSizeMB}
+                      onChange={(e) => setMaxSizeMB(parseFloat(e.target.value) || 4)}
+                      className="w-20 p-2 bg-background border-b border-border focus:border-primary outline-none text-sm font-mono text-center"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="pt-4">
             <button
               onClick={handleUpload}
-              disabled={uploading || uploadFiles.length === 0}
+              disabled={uploading || compressing || uploadFiles.length === 0}
               className="w-full py-4 bg-foreground text-background text-xs font-bold uppercase tracking-[0.2em] hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
             >
-              {uploading ? (
+              {compressing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>
+                    {t('admin.compressing')} ({compressionProgress.current}/
+                    {compressionProgress.total})
+                  </span>
+                </>
+              ) : uploading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>
