@@ -393,6 +393,25 @@ export function resolveAssetUrl(assetPath: string, cdnDomain?: string): string {
   return base ? `${base}${normalizedPath}` : normalizedPath
 }
 
+// Batch update photo URLs when storage configuration changes
+export async function batchUpdatePhotoUrls(
+  token: string,
+  params: {
+    storageProvider?: string
+    oldPublicUrl?: string
+    newPublicUrl?: string
+  }
+): Promise<{ updated: number; failed: number }> {
+  return apiRequestData<{ updated: number; failed: number }>(
+    '/api/admin/photos/batch-update-urls',
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+    token,
+  )
+}
+
 // --- Comment APIs ---
 
 export async function getComments(token: string, params?: { status?: string; photoId?: string }): Promise<CommentDto[]> {

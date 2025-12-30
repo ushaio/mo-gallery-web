@@ -25,6 +25,7 @@ import Link from 'next/link'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
+  batchUpdatePhotoUrls,
   deletePhoto,
   getAdminSettings,
   getCategories,
@@ -36,6 +37,7 @@ import {
 } from '@/lib/api'
 import { Toast, type Notification } from '@/components/Toast'
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
+import { UrlUpdateConfirmDialog } from '@/components/admin/UrlUpdateConfirmDialog'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
@@ -138,9 +140,16 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   // Settings State
   const [settings, setSettings] = useState<AdminSettingsDto | null>(null)
+  const [originalSettings, setOriginalSettings] = useState<AdminSettingsDto | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState('')
+  const [showUrlUpdateDialog, setShowUrlUpdateDialog] = useState(false)
+  const [urlUpdateParams, setUrlUpdateParams] = useState<{
+    storageProvider?: string
+    oldPublicUrl?: string
+    newPublicUrl?: string
+  } | null>(null)
 
   const siteTitle = globalSettings?.site_title || 'MO GALLERY'
 
@@ -181,6 +190,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     try {
       const data = await getAdminSettings(token)
       setSettings(data)
+      setOriginalSettings(data) // Save original settings for comparison
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
         handleUnauthorized()
@@ -290,12 +300,36 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   // --- Settings Handlers ---
   const handleSaveSettings = useCallback(async () => {
+    if (!token || !settings || !originalSettings) return
+
+    // Check if R2 Public URL has changed
+    const r2UrlChanged = settings.storage_provider === 'r2' &&
+      settings.r2_public_url !== originalSettings.r2_public_url &&
+      originalSettings.r2_public_url?.trim()
+
+    // If URL changed, show confirmation dialog
+    if (r2UrlChanged) {
+      setUrlUpdateParams({
+        storageProvider: 'r2',
+        oldPublicUrl: originalSettings.r2_public_url,
+        newPublicUrl: settings.r2_public_url,
+      })
+      setShowUrlUpdateDialog(true)
+      return
+    }
+
+    // Save settings normally
+    await saveSettingsWithoutUrlUpdate()
+  }, [token, settings, originalSettings])
+
+  const saveSettingsWithoutUrlUpdate = useCallback(async () => {
     if (!token || !settings) return
     setSettingsError('')
     setSettingsSaving(true)
     try {
       const updated = await updateAdminSettings(token, settings)
       setSettings(updated)
+      setOriginalSettings(updated)
       await refreshGlobalSettings()
       notify(t('admin.notify_config_saved'))
     } catch (err) {
@@ -309,6 +343,45 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       setSettingsSaving(false)
     }
   }, [token, settings, refreshGlobalSettings, notify, t, handleUnauthorized])
+
+  const handleConfirmUrlUpdate = useCallback(async (updateUrls: boolean) => {
+    if (!token || !settings) return
+    setShowUrlUpdateDialog(false)
+    setSettingsError('')
+    setSettingsSaving(true)
+
+    try {
+      // Save settings first
+      const updated = await updateAdminSettings(token, settings)
+      setSettings(updated)
+      setOriginalSettings(updated)
+      await refreshGlobalSettings()
+
+      // If user confirmed, update photo URLs
+      if (updateUrls && urlUpdateParams) {
+        notify(t('admin.updating_photo_urls'), 'info')
+        const result = await batchUpdatePhotoUrls(token, urlUpdateParams)
+        notify(
+          `${t('admin.url_update_complete')}: ${result.updated} ${t('admin.updated')}, ${result.failed} ${t('admin.failed')}`,
+          result.failed > 0 ? 'info' : 'success'
+        )
+        // Refresh photos to show updated URLs
+        await refreshPhotos()
+      } else {
+        notify(t('admin.notify_config_saved'))
+      }
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) {
+        handleUnauthorized()
+        return
+      }
+      setSettingsError(err instanceof Error ? err.message : t('common.error'))
+      notify('Failed to save settings', 'error')
+    } finally {
+      setSettingsSaving(false)
+      setUrlUpdateParams(null)
+    }
+  }, [token, settings, urlUpdateParams, refreshGlobalSettings, refreshPhotos, notify, t, handleUnauthorized])
 
   // --- Sidebar Items ---
   const sidebarItems: SidebarItem[] = [
@@ -540,6 +613,18 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           onCancel={() => {
             setDeleteConfirmDialog(null)
             setDeleteFromStorage(true)
+          }}
+          t={t}
+        />
+
+        <UrlUpdateConfirmDialog
+          isOpen={showUrlUpdateDialog}
+          oldUrl={urlUpdateParams?.oldPublicUrl || ''}
+          newUrl={urlUpdateParams?.newPublicUrl || ''}
+          onConfirm={handleConfirmUrlUpdate}
+          onCancel={() => {
+            setShowUrlUpdateDialog(false)
+            setUrlUpdateParams(null)
           }}
           t={t}
         />

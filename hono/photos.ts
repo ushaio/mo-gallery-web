@@ -341,4 +341,57 @@ photos.patch('/admin/photos/:id', async (c) => {
   }
 })
 
+photos.post('/admin/photos/batch-update-urls', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { storageProvider, oldPublicUrl, newPublicUrl } = body
+
+    if (!storageProvider || !oldPublicUrl || !newPublicUrl) {
+      return c.json({ error: 'Missing required parameters' }, 400)
+    }
+
+    // Find all photos using this storage provider
+    const photos = await db.photo.findMany({
+      where: {
+        storageProvider: storageProvider as 'local' | 'github' | 'r2',
+      },
+    })
+
+    let updated = 0
+    let failed = 0
+
+    // Update URLs for each photo
+    for (const photo of photos) {
+      try {
+        // Replace old URL with new URL in both url and thumbnailUrl
+        const newUrl = photo.url.replace(oldPublicUrl, newPublicUrl)
+        const newThumbnailUrl = photo.thumbnailUrl
+          ? photo.thumbnailUrl.replace(oldPublicUrl, newPublicUrl)
+          : photo.thumbnailUrl
+
+        await db.photo.update({
+          where: { id: photo.id },
+          data: {
+            url: newUrl,
+            thumbnailUrl: newThumbnailUrl,
+          },
+        })
+
+        updated++
+      } catch (error) {
+        console.error(`Failed to update photo ${photo.id}:`, error)
+        failed++
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: { updated, failed },
+    })
+  } catch (error) {
+    console.error('Batch update URLs error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 export default photos
