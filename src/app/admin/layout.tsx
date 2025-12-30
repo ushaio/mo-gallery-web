@@ -10,11 +10,15 @@ import {
   ExternalLink,
   LogOut,
   LucideIcon,
+  Moon,
+  Sun,
+  Monitor,
 } from 'lucide-react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -86,12 +90,23 @@ interface SidebarItem {
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const { logout, token, user } = useAuth()
   const { settings: globalSettings, refresh: refreshGlobalSettings } = useSettings()
-  const { t } = useLanguage()
+  const { t, locale, setLocale } = useLanguage()
+  const { theme, setTheme, mounted } = useTheme()
   const router = useRouter()
   const pathname = usePathname()
 
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  const toggleTheme = () => {
+    if (theme === 'system') setTheme('light')
+    else if (theme === 'light') setTheme('dark')
+    else setTheme('system')
+  }
+
+  const toggleLanguage = () => {
+    setLocale(locale === 'zh' ? 'en' : 'zh')
+  }
 
   // Notification State
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -406,8 +421,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                 </Link>
               ))}
             </nav>
-            <div className="p-6 border-t border-border">
-              <div className="flex items-center space-x-3 mb-6 px-2">
+            <div className="p-6 border-t border-border space-y-4">
+              {/* User Info */}
+              <div className="flex items-center space-x-3 px-2">
                 <div className="w-8 h-8 bg-primary flex items-center justify-center text-xs text-primary-foreground font-bold">
                   {user?.username?.substring(0, 1).toUpperCase() || 'A'}
                 </div>
@@ -420,6 +436,41 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                   </p>
                 </div>
               </div>
+
+              {/* Settings Row */}
+              <div className="flex items-center gap-2 px-2">
+                {/* Theme Toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                  title={t('nav.toggle_theme')}
+                >
+                  {!mounted ? (
+                    <Monitor className="w-4 h-4" />
+                  ) : theme === 'system' ? (
+                    <Monitor className="w-4 h-4" />
+                  ) : theme === 'light' ? (
+                    <Sun className="w-4 h-4" />
+                  ) : (
+                    <Moon className="w-4 h-4" />
+                  )}
+                  <span className="text-[10px] font-bold uppercase tracking-widest">
+                    {theme === 'system' ? t('nav.system') : theme === 'light' ? t('nav.light') : t('nav.dark')}
+                  </span>
+                </button>
+
+                <div className="h-4 w-[1px] bg-border" />
+
+                {/* Language Toggle */}
+                <button
+                  onClick={toggleLanguage}
+                  className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {locale === 'zh' ? 'EN' : '中'}
+                </button>
+              </div>
+
+              {/* Logout Button */}
               <button
                 onClick={() => {
                   logout()
@@ -449,13 +500,15 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/gallery')}
+              <a
+                href="/gallery"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 px-3 py-1.5 border border-border hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all text-xs font-bold uppercase tracking-widest"
               >
                 <span>{t('admin.view_site')}</span>
                 <ExternalLink className="w-3 h-3" />
-              </button>
+              </a>
             </div>
           </header>
 
