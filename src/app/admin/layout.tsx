@@ -14,6 +14,7 @@ import {
   Moon,
   Sun,
   Monitor,
+  FolderOpen,
 } from 'lucide-react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
@@ -386,6 +387,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // --- Sidebar Items ---
   const sidebarItems: SidebarItem[] = [
     { id: 'photos', href: '/admin/photos', label: t('admin.library'), icon: ImageIcon },
+    { id: 'albums', href: '/admin/albums', label: t('admin.albums'), icon: FolderOpen },
     { id: 'upload', href: '/admin/upload', label: t('admin.upload'), icon: UploadIcon },
     { id: 'logs', href: '/admin/logs', label: t('admin.logs'), icon: BookText },
     { id: 'settings', href: '/admin/settings', label: t('admin.config'), icon: Settings },
@@ -394,6 +396,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // Get current active tab from pathname
   const getActiveTab = () => {
     if (pathname.startsWith('/admin/photos')) return 'photos'
+    if (pathname.startsWith('/admin/albums')) return 'albums'
     if (pathname.startsWith('/admin/upload')) return 'upload'
     if (pathname.startsWith('/admin/logs')) return 'logs'
     if (pathname.startsWith('/admin/settings')) return 'settings'
@@ -406,6 +409,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const getPageTitle = () => {
     switch (activeTab) {
       case 'photos': return t('admin.library')
+      case 'albums': return t('admin.albums')
       case 'upload': return t('admin.upload')
       case 'logs': return t('admin.logs')
       case 'settings': return t('admin.config')

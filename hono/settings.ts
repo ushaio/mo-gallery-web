@@ -6,33 +6,17 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 const settings = new Hono<{ Variables: AuthVariables }>()
 
 // Public endpoint for getting public settings (no auth required)
+// These settings are read from environment variables
 settings.get('/public', async (c) => {
-  try {
-    const settingsList = await db.setting.findMany({
-      where: {
-        key: {
-          in: ['site_title', 'cdn_domain'],
-        },
-      },
-    })
-
-    const config: Record<string, string> = {
-      site_title: 'MO GALLERY',
-      cdn_domain: '',
-    }
-
-    settingsList.forEach((s) => {
-      config[s.key] = s.value
-    })
-
-    return c.json({
-      success: true,
-      data: config,
-    })
-  } catch (error) {
-    console.error('Get public settings error:', error)
-    return c.json({ error: 'Internal server error' }, 500)
+  const config = {
+    site_title: process.env.SITE_TITLE || 'MO GALLERY',
+    cdn_domain: process.env.CDN_DOMAIN || '',
   }
+
+  return c.json({
+    success: true,
+    data: config,
+  })
 })
 
 // All other settings endpoints are protected
@@ -43,9 +27,11 @@ settings.get('/', async (c) => {
     const settingsList = await db.setting.findMany()
 
     const config: Record<string, string> = {
-      site_title: '',
+      // These are read from environment variables (read-only)
+      site_title: process.env.SITE_TITLE || 'MO GALLERY',
+      cdn_domain: process.env.CDN_DOMAIN || '',
+      // These are stored in database
       storage_provider: 'local',
-      cdn_domain: '',
       r2_access_key_id: '',
       r2_secret_access_key: '',
       r2_bucket: '',
@@ -60,8 +46,12 @@ settings.get('/', async (c) => {
       github_pages_url: '',
     }
 
+    // Only apply database values for non-env settings
+    const envSettings = ['site_title', 'cdn_domain']
     settingsList.forEach((s) => {
-      config[s.key] = s.value
+      if (!envSettings.includes(s.key)) {
+        config[s.key] = s.value
+      }
     })
 
     return c.json({
@@ -78,23 +68,37 @@ settings.patch('/', async (c) => {
   try {
     const data = await c.req.json()
 
-    // Use transaction to avoid prepared statement conflicts with connection poolers
-    await db.$transaction(
-      Object.keys(data).map((key) =>
-        db.setting.upsert({
-          where: { key },
-          update: { value: String(data[key]) },
-          create: { key, value: String(data[key]) },
-        }),
-      ),
+    // Filter out environment-based settings (they cannot be changed via API)
+    const envSettings = ['site_title', 'cdn_domain']
+    const filteredData = Object.fromEntries(
+      Object.entries(data).filter(([key]) => !envSettings.includes(key))
     )
 
-    // Return updated settings
+    // Use transaction to avoid prepared statement conflicts with connection poolers
+    if (Object.keys(filteredData).length > 0) {
+      await db.$transaction(
+        Object.keys(filteredData).map((key) =>
+          db.setting.upsert({
+            where: { key },
+            update: { value: String(filteredData[key]) },
+            create: { key, value: String(filteredData[key]) },
+          }),
+        ),
+      )
+    }
+
+    // Return updated settings (including env-based ones)
     const settingsList = await db.setting.findMany()
-    const config: Record<string, string> = {}
+    const config: Record<string, string> = {
+      // These are read from environment variables (read-only)
+      site_title: process.env.SITE_TITLE || 'MO GALLERY',
+      cdn_domain: process.env.CDN_DOMAIN || '',
+    }
 
     settingsList.forEach((s) => {
-      config[s.key] = s.value
+      if (!envSettings.includes(s.key)) {
+        config[s.key] = s.value
+      }
     })
 
     return c.json({

@@ -48,6 +48,24 @@ model Photo {
   categories Category[]
   stories    Story[]    @relation("PhotoStories")
   comments   Comment[]
+  albums     Album[]    @relation("AlbumPhotos")
+}
+
+model Album {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  coverUrl    String?
+  isPublished Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  photos Photo[] @relation("AlbumPhotos")
+
+  @@index([isPublished])
+  @@index([sortOrder])
+  @@index([createdAt])
 }
 
 model Category {

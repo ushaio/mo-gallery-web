@@ -163,10 +163,12 @@ export function SettingsTab({
                     <CustomInput
                       variant="config"
                       value={settings.site_title}
-                      onChange={(e) =>
-                        setSettings({ ...settings, site_title: e.target.value })
-                      }
+                      disabled
+                      className="opacity-60 cursor-not-allowed"
                     />
+                    <p className="text-[10px] text-muted-foreground font-mono">
+                      Configure via SITE_TITLE in .env file
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
@@ -175,13 +177,12 @@ export function SettingsTab({
                     <CustomInput
                       variant="config"
                       value={settings.cdn_domain}
-                      onChange={(e) =>
-                        setSettings({ ...settings, cdn_domain: e.target.value })
-                      }
+                      disabled
+                      className="opacity-60 cursor-not-allowed"
                       placeholder="https://cdn.example.com"
                     />
                     <p className="text-[10px] text-muted-foreground font-mono">
-                      Leave empty to use API host.
+                      Configure via CDN_DOMAIN in .env file
                     </p>
                   </div>
                 </div>
@@ -768,20 +769,22 @@ export function SettingsTab({
               </div>
             )}
 
-            <div className="pt-8 border-t border-border flex justify-end">
-              <button
-                onClick={onSave}
-                disabled={saving}
-                className="px-8 py-4 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-widest hover:opacity-90 disabled:opacity-50 transition-all flex items-center space-x-2"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span>{t('admin.save')}</span>
-              </button>
-            </div>
+            {settingsTab !== 'site' && (
+              <div className="pt-8 border-t border-border flex justify-end">
+                <button
+                  onClick={onSave}
+                  disabled={saving}
+                  className="px-8 py-4 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-widest hover:opacity-90 disabled:opacity-50 transition-all flex items-center space-x-2"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{t('admin.save')}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
