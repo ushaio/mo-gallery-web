@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { BookOpen, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
-import { getPhotoStory, type StoryDto, getPhotoComments, submitPhotoComment, type PublicCommentDto, type PhotoDto, resolveAssetUrl } from '@/lib/api'
+import { getPhotoStory, type StoryDto, getPhotoComments, getStoryComments, submitPhotoComment, type PublicCommentDto, type PhotoDto, resolveAssetUrl } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import ReactMarkdown from 'react-markdown'
@@ -25,6 +25,7 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
   const [comments, setComments] = useState<PublicCommentDto[]>([])
   const [commentsLoading, setCommentsLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [loadedStoryId, setLoadedStoryId] = useState<string | null>(null) // Track which story's comments are loaded
   const [formData, setFormData] = useState({
     author: '',
     email: '',
@@ -63,8 +64,45 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
     }
 
     fetchStory()
-    fetchComments()
   }, [photoId, currentPhoto.id])
+
+  // Fetch comments only when story changes or when there's no story
+  useEffect(() => {
+    async function loadComments() {
+      // If there's a story, load all comments for the story (only once per story)
+      if (story && story.id !== loadedStoryId) {
+        await fetchStoryComments(story)
+      }
+      // If there's no story, load comments for the current photo only
+      else if (!story && !loading) {
+        await fetchComments()
+      }
+    }
+
+    loadComments()
+  }, [story, loading])
+
+  // Fetch all comments for the story using the new API endpoint
+  async function fetchStoryComments(storyData: StoryDto) {
+    try {
+      setCommentsLoading(true)
+
+      // Use the new story comments endpoint - single API call
+      const allComments = await getStoryComments(storyData.id)
+
+      // Sort by creation date (newest first)
+      allComments.sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+
+      setComments(allComments)
+      setLoadedStoryId(storyData.id)
+    } catch (err) {
+      console.error('Failed to load story comments:', err)
+    } finally {
+      setCommentsLoading(false)
+    }
+  }
 
   // Update current photo index when currentPhoto changes
   useEffect(() => {
@@ -129,8 +167,12 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
           type: 'success',
           text: t('gallery.comment_success'),
         })
-        // Refresh comments to show the new one
-        await fetchComments()
+        // Refresh comments - if story exists, reload all story comments, otherwise just current photo
+        if (story) {
+          await fetchStoryComments(story)
+        } else {
+          await fetchComments()
+        }
       } else {
         setSubmitMessage({
           type: 'pending',

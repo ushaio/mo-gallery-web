@@ -92,6 +92,53 @@ stories.get('/stories/:id', async (c) => {
   }
 })
 
+// Get all comments for a story (all photos in the story)
+stories.get('/stories/:id/comments', async (c) => {
+  try {
+    const id = c.req.param('id')
+
+    // Find the story and get all its photo IDs
+    const story = await db.story.findUnique({
+      where: { id, isPublished: true },
+      select: {
+        photos: {
+          select: { id: true },
+        },
+      },
+    })
+
+    if (!story) {
+      return c.json({ error: 'Story not found' }, 404)
+    }
+
+    const photoIds = story.photos.map((p) => p.id)
+
+    // Get all approved comments for these photos
+    const commentsList = await db.comment.findMany({
+      where: {
+        photoId: { in: photoIds },
+        status: 'approved',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        author: true,
+        content: true,
+        createdAt: true,
+        photoId: true,
+      },
+    })
+
+    return c.json({
+      success: true,
+      data: commentsList,
+    })
+  } catch (error) {
+    console.error('Get story comments error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 // Get story for a specific photo
 stories.get('/photos/:photoId/story', async (c) => {
   try {

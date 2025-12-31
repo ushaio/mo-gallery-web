@@ -553,6 +553,11 @@ export async function getPhotoComments(photoId: string): Promise<PublicCommentDt
   return apiRequestData<PublicCommentDto[]>(`/api/photos/${encodeURIComponent(photoId)}/comments`)
 }
 
+// Get all comments for a story (all photos in the story)
+export async function getStoryComments(storyId: string): Promise<PublicCommentDto[]> {
+  return apiRequestData<PublicCommentDto[]>(`/api/stories/${encodeURIComponent(storyId)}/comments`)
+}
+
 export async function submitPhotoComment(
   photoId: string,
   data: { author: string; email?: string; content: string }
