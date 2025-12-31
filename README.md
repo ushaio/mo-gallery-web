@@ -4,11 +4,18 @@
 
 ## 功能特性
 
-- 图片上传与管理
-- EXIF 信息自动提取
-- 多种存储后端支持（本地、GitHub、R2）
+- 图片上传与管理（支持批量上传、进度显示）
+- EXIF 信息自动提取（相机、镜头、光圈、快门等）
+- 主色调自动提取
+- 相册管理
+- 故事/叙事（将多张照片组织成故事）
+- 博客系统（Markdown 支持）
+- 评论系统（支持审核）
+- 多种存储后端支持（本地、GitHub、Cloudflare R2）
+- 多视图模式（网格、瀑布流、时间线）
 - 响应式设计
-- 管理后台
+- 国际化支持
+- 深色/浅色主题
 
 ## 快速开始
 
@@ -28,16 +35,18 @@ pnpm run prisma:dev
 # 启动开发服务器
 pnpm run dev
 ```
-## env
-```bash
-# Database URL (SQLite)
+
+### 最小环境变量配置
+
+```env
+# 数据库（SQLite 本地开发）
 DATABASE_URL="file:./dev.db"
 DIRECT_URL="file:./dev.db"
 
-# JWT Secret
-JWT_SECRET="mo-gallery-secret-key"
+# JWT 密钥
+JWT_SECRET="your-secret-key"
 
-# Admin credentials for seed
+# 管理员账号（用于 seed）
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="admin123"
 ```
@@ -70,32 +79,16 @@ docker run -p 3000:3000 --env-file .env mo-gallery
 | `JWT_SECRET` | JWT 密钥 | - |
 | `ADMIN_USERNAME` | 管理员用户名 | `admin` |
 | `ADMIN_PASSWORD` | 管理员密码 | `admin123` |
-| `STORAGE_PROVIDER` | 存储方式 | `local` |
+| `SITE_TITLE` | 站点标题 | `MO GALLERY` |
+| `CDN_DOMAIN` | CDN 域名 | - |
 
 ### 存储配置
+
+存储方式可通过管理后台配置，也可通过环境变量预设：
 
 #### 本地存储
 ```env
 STORAGE_PROVIDER="local"
-```
-
-#### GitHub 存储
-```env
-STORAGE_PROVIDER="github"
-GITHUB_TOKEN="ghp_xxxx"
-GITHUB_REPO="username/repo"
-GITHUB_PATH="uploads"
-GITHUB_BRANCH="main"
-GITHUB_ACCESS_METHOD="jsdelivr"
-```
-
-#### Cloudflare R2
-```env
-STORAGE_PROVIDER="r2"
-R2_ACCESS_KEY_ID="xxx"
-R2_SECRET_ACCESS_KEY="xxx"
-R2_BUCKET="my-bucket"
-R2_ENDPOINT="https://xxx.r2.cloudflarestorage.com"
 ```
 
 ## 项目结构
@@ -103,57 +96,72 @@ R2_ENDPOINT="https://xxx.r2.cloudflarestorage.com"
 ```
 mo-gallery-web/
 ├── prisma/              # 数据库模型和迁移
-├── server/              # 服务端逻辑
-│   └── lib/
-│       ├── db.ts        # Prisma 客户端
-│       ├── jwt.ts       # JWT 工具
-│       ├── exif.ts      # EXIF 提取
-│       └── storage/     # 存储抽象层
-├── hono/                # API 路由
-│   ├── index.ts
-│   ├── auth.ts
-│   ├── photos.ts
-│   └── settings.ts
+│   └── schema.prisma    # Prisma 模型定义
+├── server/lib/          # 服务端工具库
+│   ├── db.ts            # Prisma 客户端
+│   ├── jwt.ts           # JWT 工具
+│   ├── exif.ts          # EXIF 提取
+│   ├── colors.ts        # 主色调提取
+│   └── storage/         # 存储抽象层
+│       ├── types.ts     # 接口定义
+│       ├── factory.ts   # 工厂函数
+│       ├── local.ts     # 本地存储
+│       ├── github.ts    # GitHub 存储
+│       └── r2.ts        # R2 存储
+├── hono/                # API 路由 (Hono.js)
+│   ├── index.ts         # 路由聚合
+│   ├── auth.ts          # 认证
+│   ├── photos.ts        # 照片管理
+│   ├── albums.ts        # 相册管理
+│   ├── stories.ts       # 故事/叙事
+│   ├── blogs.ts         # 博客
+│   ├── comments.ts      # 评论
+│   ├── settings.ts      # 设置
+│   └── middleware/      # 中间件
 ├── src/
-│   ├── app/             # Next.js 页面
-│   │   └── api/         # API 入口
+│   ├── app/             # Next.js App Router
+│   │   ├── api/         # API 入口点
+│   │   ├── admin/       # 管理后台
+│   │   ├── gallery/     # 画廊页面
+│   │   └── blog/        # 博客页面
 │   ├── components/      # React 组件
+│   │   ├── admin/       # 管理组件
+│   │   ├── gallery/     # 画廊组件
+│   │   └── ui/          # 通用 UI 组件
 │   ├── contexts/        # React Context
+│   │   ├── AuthContext.tsx
+│   │   ├── ThemeContext.tsx
+│   │   ├── LanguageContext.tsx
+│   │   └── SettingsContext.tsx
 │   └── lib/             # 前端工具
+│       ├── api.ts       # API 客户端
+│       ├── i18n.ts      # 国际化
+│       └── utils.ts
 └── public/              # 静态资源
 ```
 
 ## 技术栈
 
-- **前端**: Next.js 16, React 19, Tailwind CSS
-- **后端**: Hono.js, Prisma
+- **前端**: Next.js 16, React 19, Tailwind CSS 4, Framer Motion
+- **后端**: Hono.js, Prisma ORM
 - **数据库**: SQLite / PostgreSQL
 - **存储**: 本地 / GitHub / Cloudflare R2
+- **图像处理**: Sharp, ExifReader
 
-## 色彩分析（弃用，改为上传时获取）
-R2 存储桶中配置 CORS 规则：
-登录 Cloudflare Dashboard
-进入 R2 存储桶设置
-找到 CORS 配置，添加规则：
+## 开发命令
 
-[
-  {
-    "AllowedOrigins": ["*"],
-    "AllowedMethods": ["GET"],
-    "AllowedHeaders": ["*"],
-    "MaxAgeSeconds": 3600
-  }
-]
-或者更安全的方式，只允许你的域名：
+```bash
+pnpm run dev           # 启动开发服务器
+pnpm run build         # 构建生产版本
+pnpm run start         # 启动生产服务器
+pnpm run lint          # 代码检查
 
-[
-  {
-    "AllowedOrigins": ["https://your-domain.com", "http://localhost:3000"],
-    "AllowedMethods": ["GET"],
-    "AllowedHeaders": ["*"],
-    "MaxAgeSeconds": 3600
-  }
-]
+# 数据库
+pnpm run prisma:dev      # 创建并应用迁移（开发）
+pnpm run prisma:deploy   # 应用迁移（生产）
+pnpm run prisma:generate # 生成 Prisma 客户端
+pnpm run prisma:seed     # 初始化管理员账号
+```
 
 ## License
 
