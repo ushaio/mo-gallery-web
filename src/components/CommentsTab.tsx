@@ -131,7 +131,13 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
                   {comment.author}
                 </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                  {new Date(comment.createdAt).toLocaleDateString(locale)}
+                  {new Date(comment.createdAt).toLocaleString(locale, {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </span>
               </div>
               <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">

@@ -50,7 +50,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          故事
+          叙事
         </button>
       </div>
 

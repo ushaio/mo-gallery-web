@@ -104,6 +104,8 @@ export default function GalleryPage() {
         photo={selectedPhoto}
         isOpen={!!selectedPhoto}
         onClose={() => setSelectedPhoto(null)}
+        onPhotoChange={setSelectedPhoto}
+        allPhotos={filteredPhotos}
       />
     </div>
   )

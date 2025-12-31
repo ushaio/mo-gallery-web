@@ -63,7 +63,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
       setStories(data)
     } catch (err) {
       console.error('Failed to load stories:', err)
-      notify('加载故事失败', 'error')
+      notify('加载叙事失败', 'error')
     } finally {
       setLoading(false)
     }
@@ -95,7 +95,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
 
     try {
       await deleteStory(token, id)
-      notify('故事已删除', 'success')
+      notify('叙事已删除', 'success')
       await loadStories()
     } catch (err) {
       console.error('Failed to delete story:', err)
@@ -121,14 +121,14 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
           isPublished: currentStory.isPublished,
           photoIds: [],
         })
-        notify('故事已创建', 'success')
+        notify('叙事已创建', 'success')
       } else {
         await updateStory(token, currentStory.id, {
           title: currentStory.title,
           content: currentStory.content,
           isPublished: currentStory.isPublished,
         })
-        notify('故事已更新', 'success')
+        notify('叙事已更新', 'success')
       }
 
       setStoryEditMode('list')
@@ -176,7 +176,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
             <div className="flex items-center gap-4">
               <BookOpen className="w-6 h-6 text-primary" />
               <h3 className="font-serif text-2xl uppercase tracking-tight">
-                照片故事
+                照片叙事
               </h3>
             </div>
             <button
@@ -184,7 +184,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
               className="flex items-center px-6 py-2 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-all"
             >
               <Plus className="w-4 h-4 mr-2" />
-              创建故事
+              创建叙事
             </button>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -201,7 +201,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
                   >
                     <div className="flex items-center gap-3 mb-1">
                       <h4 className="font-serif text-xl group-hover:text-primary transition-colors">
-                        {story.title || '未命名故事'}
+                        {story.title || '未命名叙事'}
                       </h4>
                       <span
                         className={`text-[8px] font-black uppercase px-1.5 py-0.5 border ${
@@ -269,7 +269,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
                 <div className="py-24 text-center border border-dashed border-border">
                   <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-10" />
                   <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                    暂无故事
+                    暂无叙事
                   </p>
                 </div>
               )}
@@ -325,7 +325,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
             {storyPreviewActive ? (
               <div className="flex-1 overflow-y-auto custom-scrollbar border border-border bg-background p-12 prose prose-invert max-w-none prose-gold prose-serif">
                 <h1 className="font-serif text-5xl mb-12 border-b border-border pb-6">
-                  {currentStory?.title || '未命名故事'}
+                  {currentStory?.title || '未命名叙事'}
                 </h1>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {currentStory?.content || ''}
@@ -343,7 +343,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
                       title: e.target.value,
                     }))
                   }
-                  placeholder="故事标题"
+                  placeholder="叙事标题"
                   className="text-2xl font-serif p-6"
                 />
                 <div className="flex items-center gap-3 px-6">
@@ -375,7 +375,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
                         content: e.target.value,
                       }))
                     }
-                    placeholder="使用 Markdown 格式编写故事内容...
+                    placeholder="使用 Markdown 格式编写叙事内容...
 
 支持：
 # 标题

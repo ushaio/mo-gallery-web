@@ -10,7 +10,8 @@
       "Bash(npx tsc:*)",
       "Bash(sqlite3:*)",
       "Bash(curl:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(npm run build)"
     ]
   }
 }

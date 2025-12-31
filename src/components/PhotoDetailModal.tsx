@@ -16,7 +16,8 @@ import {
   Info,
   Star,
   BookOpen,
-  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { PhotoDto, resolveAssetUrl } from '@/lib/api'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -24,28 +25,68 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { formatFileSize } from '@/lib/utils'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
-import { CommentsTab } from '@/components/CommentsTab'
 
-type TabType = 'info' | 'story' | 'comments'
+type TabType = 'info' | 'story'
 
 interface PhotoDetailModalProps {
   photo: PhotoDto | null
   isOpen: boolean
   onClose: () => void
+  onPhotoChange?: (photo: PhotoDto) => void
+  allPhotos?: PhotoDto[]
 }
 
 export function PhotoDetailModal({
   photo,
   isOpen,
   onClose,
+  onPhotoChange,
+  allPhotos = [],
 }: PhotoDetailModalProps) {
   const { settings } = useSettings()
   const { t, locale } = useLanguage()
-  const [activeTab, setActiveTab] = useState<TabType>('info')
+  const [activeTab, setActiveTab] = useState<TabType>('story')
   const [dominantColors, setDominantColors] = useState<string[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [imageLoaded, setImageLoaded] = useState(false)
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+
+  // Calculate current photo index and navigation
+  const currentPhotoIndex = photo && allPhotos.length > 0
+    ? allPhotos.findIndex(p => p.id === photo.id)
+    : -1
+  const hasPrevious = currentPhotoIndex > 0
+  const hasNext = currentPhotoIndex >= 0 && currentPhotoIndex < allPhotos.length - 1
+
+  const handlePrevious = () => {
+    if (hasPrevious && onPhotoChange) {
+      onPhotoChange(allPhotos[currentPhotoIndex - 1])
+    }
+  }
+
+  const handleNext = () => {
+    if (hasNext && onPhotoChange) {
+      onPhotoChange(allPhotos[currentPhotoIndex + 1])
+    }
+  }
+
+  // Keyboard navigation for gallery photos
+  useEffect(() => {
+    if (!isOpen || allPhotos.length <= 1) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' && hasPrevious) {
+        e.preventDefault()
+        handlePrevious()
+      } else if (e.key === 'ArrowRight' && hasNext) {
+        e.preventDefault()
+        handleNext()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, allPhotos, currentPhotoIndex, hasPrevious, hasNext])
 
   useEffect(() => {
     setImageLoaded(false)
@@ -175,7 +216,13 @@ export function PhotoDetailModal({
       icon: Calendar,
       label: t('gallery.date'),
       value: photo.createdAt
-        ? new Date(photo.createdAt).toLocaleDateString(locale)
+        ? new Date(photo.createdAt).toLocaleString(locale, {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
         : undefined,
       show: !!photo.createdAt,
     },
@@ -235,30 +282,51 @@ export function PhotoDetailModal({
               </button>
 
               {/* Left Side - Photo Display */}
-              <div className="flex-none h-[40vh] md:h-auto md:flex-1 lg:flex-none lg:w-[70%] relative bg-muted/30 flex items-center justify-center overflow-hidden">
+              <div className="flex-none h-[60vh] md:h-auto md:flex-1 lg:flex-none lg:w-[60%] relative bg-muted/30 flex items-center justify-center overflow-hidden group">
                 {/* Full Image */}
                 <img
                   src={resolveAssetUrl(photo.url, settings?.cdn_domain)}
                   alt={photo.title}
                   className="relative w-full h-full object-contain p-2 md:p-8"
                 />
+
+                {/* Navigation Buttons - Show only if there are multiple photos */}
+                {allPhotos.length > 1 && (
+                  <>
+                    {/* Previous Button */}
+                    {hasPrevious && (
+                      <button
+                        onClick={handlePrevious}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-background/80 hover:bg-background border border-border hover:border-primary text-foreground/70 hover:text-primary backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 rounded-full z-10"
+                        title={locale === 'zh' ? '上一张' : 'Previous'}
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                    )}
+
+                    {/* Next Button */}
+                    {hasNext && (
+                      <button
+                        onClick={handleNext}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-background/80 hover:bg-background border border-border hover:border-primary text-foreground/70 hover:text-primary backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 rounded-full z-10"
+                        title={locale === 'zh' ? '下一张' : 'Next'}
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                    )}
+
+                    {/* Photo Counter */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-background/80 backdrop-blur-sm border border-border rounded-full text-xs font-mono text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                      {currentPhotoIndex + 1} / {allPhotos.length}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Right Side - Info Panel (Always visible, scrollable on mobile) */}
-              <div className="flex-1 md:flex-none w-full md:w-[350px] lg:w-[30%] border-t md:border-t-0 md:border-l border-border bg-card flex flex-col overflow-hidden">
+              <div className="flex-1 md:flex-none w-full md:w-[350px] lg:w-[40%] border-t md:border-t-0 md:border-l border-border bg-card flex flex-col overflow-hidden">
                 {/* Tab Navigation */}
                 <div className="flex border-b border-border shrink-0 overflow-x-auto">
-                  <button
-                    onClick={() => setActiveTab('info')}
-                    className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] border-b-2 transition-colors whitespace-nowrap ${
-                      activeTab === 'info'
-                        ? 'border-primary text-primary'
-                        : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Info className="w-4 h-4" />
-                    {t('gallery.info')}
-                  </button>
                   <button
                     onClick={() => setActiveTab('story')}
                     className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] border-b-2 transition-colors whitespace-nowrap ${
@@ -271,15 +339,15 @@ export function PhotoDetailModal({
                     {t('gallery.story')}
                   </button>
                   <button
-                    onClick={() => setActiveTab('comments')}
+                    onClick={() => setActiveTab('info')}
                     className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] border-b-2 transition-colors whitespace-nowrap ${
-                      activeTab === 'comments'
+                      activeTab === 'info'
                         ? 'border-primary text-primary'
                         : 'border-transparent text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    <MessageSquare className="w-4 h-4" />
-                    {t('gallery.comments')}
+                    <Info className="w-4 h-4" />
+                    {t('gallery.info')}
                   </button>
                 </div>
 
@@ -289,6 +357,12 @@ export function PhotoDetailModal({
                   {/* Header */}
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
+                      {photo.isFeatured && (
+                        <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-sm flex items-center gap-1">
+                          <Star className="w-3 h-3 fill-current" />
+                          {t('admin.feat')}
+                        </span>
+                      )}
                       {photo.category.split(',').map((cat) => (
                         <span
                           key={cat}
@@ -297,12 +371,6 @@ export function PhotoDetailModal({
                           {cat}
                         </span>
                       ))}
-                      {photo.isFeatured && (
-                        <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-sm flex items-center gap-1">
-                          <Star className="w-3 h-3 fill-current" />
-                          {t('admin.feat')}
-                        </span>
-                      )}
                     </div>
                     <h2 className="font-serif text-2xl md:text-3xl leading-tight text-foreground">
                       {photo.title}
@@ -403,10 +471,13 @@ export function PhotoDetailModal({
                 )}
 
                 {/* Story Tab */}
-                {activeTab === 'story' && photo && <StoryTab photoId={photo.id} />}
-
-                {/* Comments Tab */}
-                {activeTab === 'comments' && photo && <CommentsTab photoId={photo.id} />}
+                {activeTab === 'story' && photo && (
+                  <StoryTab
+                    photoId={photo.id}
+                    currentPhoto={photo}
+                    onPhotoChange={onPhotoChange}
+                  />
+                )}
 
                 {/* Footer Actions */}
                 <div className="p-4 md:p-6 border-t border-border bg-muted/5 shrink-0">
