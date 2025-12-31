@@ -9,6 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 interface TimelineViewProps {
   photos: PhotoDto[]
   settings: PublicSettingsDto | null
+  grayscale: boolean
   onPhotoClick: (photo: PhotoDto) => void
 }
 
@@ -30,7 +31,7 @@ interface YearGroup {
   }[]
 }
 
-export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewProps) {
+export function TimelineView({ photos, settings, grayscale, onPhotoClick }: TimelineViewProps) {
   const { t } = useLanguage()
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [expandedYear, setExpandedYear] = useState<number | null>(null)
@@ -386,7 +387,9 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                     <img
                       src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
                       alt={photo.title}
-                      className="w-full h-full object-cover transition-all duration-500 ease-out group-hover:scale-105 grayscale group-hover:grayscale-0"
+                      className={`w-full h-full object-cover transition-all duration-500 ease-out group-hover:scale-105 ${
+                        grayscale ? 'grayscale group-hover:grayscale-0' : ''
+                      }`}
                     />
 
                     {/* Hover Overlay */}

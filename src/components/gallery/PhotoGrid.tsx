@@ -11,11 +11,12 @@ interface PhotoGridProps {
   photos: PhotoDto[]
   settings: PublicSettingsDto | null
   viewMode: ViewMode
+  grayscale: boolean
   onPhotoClick: (photo: PhotoDto) => void
   t: (key: string) => string
 }
 
-export function PhotoGrid({ loading, photos, settings, viewMode, onPhotoClick, t }: PhotoGridProps) {
+export function PhotoGrid({ loading, photos, settings, viewMode, grayscale, onPhotoClick, t }: PhotoGridProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -42,6 +43,7 @@ export function PhotoGrid({ loading, photos, settings, viewMode, onPhotoClick, t
         <GridView
           photos={photos}
           settings={settings}
+          grayscale={grayscale}
           onPhotoClick={onPhotoClick}
         />
       )}
@@ -49,6 +51,7 @@ export function PhotoGrid({ loading, photos, settings, viewMode, onPhotoClick, t
         <MasonryView
           photos={photos}
           settings={settings}
+          grayscale={grayscale}
           onPhotoClick={onPhotoClick}
         />
       )}
@@ -56,6 +59,7 @@ export function PhotoGrid({ loading, photos, settings, viewMode, onPhotoClick, t
         <TimelineView
           photos={photos}
           settings={settings}
+          grayscale={grayscale}
           onPhotoClick={onPhotoClick}
         />
       )}

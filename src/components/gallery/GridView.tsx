@@ -7,10 +7,11 @@ import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
 interface GridViewProps {
   photos: PhotoDto[]
   settings: PublicSettingsDto | null
+  grayscale: boolean
   onPhotoClick: (photo: PhotoDto) => void
 }
 
-export function GridView({ photos, settings, onPhotoClick }: GridViewProps) {
+export function GridView({ photos, settings, grayscale, onPhotoClick }: GridViewProps) {
   return (
     <motion.div
       layout
@@ -31,7 +32,9 @@ export function GridView({ photos, settings, onPhotoClick }: GridViewProps) {
             <img
               src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
               alt={photo.title}
-              className="w-full h-full object-cover transition-all duration-700 ease-out group-hover:scale-110"
+              className={`w-full h-full object-cover transition-all duration-700 ease-out group-hover:scale-110 ${
+                grayscale ? 'grayscale group-hover:grayscale-0' : ''
+              }`}
             />
 
             {/* Hover Overlay */}

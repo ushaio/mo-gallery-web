@@ -22,10 +22,13 @@ const montserrat = Montserrat({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "MO GALLERY | 视界",
-  description: "Capturing the unspoken moments of existence.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const siteTitle = process.env.SITE_TITLE || 'MO GALLERY'
+  return {
+    title: `${siteTitle} | 视界`,
+    description: "Capturing the unspoken moments of existence.",
+  }
+}
 
 export default function RootLayout({
   children,

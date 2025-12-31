@@ -7,10 +7,11 @@ import { PhotoCard } from './PhotoCard'
 interface MasonryViewProps {
   photos: PhotoDto[]
   settings: PublicSettingsDto | null
+  grayscale: boolean
   onPhotoClick: (photo: PhotoDto) => void
 }
 
-export function MasonryView({ photos, settings, onPhotoClick }: MasonryViewProps) {
+export function MasonryView({ photos, settings, grayscale, onPhotoClick }: MasonryViewProps) {
   return (
     <motion.div
       layout
@@ -23,6 +24,7 @@ export function MasonryView({ photos, settings, onPhotoClick }: MasonryViewProps
             photo={photo}
             index={index}
             settings={settings}
+            grayscale={grayscale}
             onClick={() => onPhotoClick(photo)}
           />
         ))}

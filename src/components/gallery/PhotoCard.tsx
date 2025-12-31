@@ -9,10 +9,11 @@ interface PhotoCardProps {
   photo: PhotoDto
   index: number
   settings: PublicSettingsDto | null
+  grayscale: boolean
   onClick: () => void
 }
 
-export function PhotoCard({ photo, index, settings, onClick }: PhotoCardProps) {
+export function PhotoCard({ photo, index, settings, grayscale, onClick }: PhotoCardProps) {
   return (
     <motion.div
       layout
@@ -27,7 +28,9 @@ export function PhotoCard({ photo, index, settings, onClick }: PhotoCardProps) {
         <img
           src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
           alt={photo.title}
-          className="w-full h-auto object-cover transition-all duration-[1.5s] ease-out group-hover:scale-105 grayscale group-hover:grayscale-0"
+          className={`w-full h-auto object-cover transition-all duration-[1.5s] ease-out group-hover:scale-105 ${
+            grayscale ? 'grayscale group-hover:grayscale-0' : ''
+          }`}
         />
 
         {/* Minimalist Overlay */}

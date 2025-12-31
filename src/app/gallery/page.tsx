@@ -5,7 +5,7 @@ import { getPhotos, getCategories, type PhotoDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
-import { GalleryHeader } from '@/components/gallery/GalleryHeader'
+import { GalleryHeader, GalleryToolbar } from '@/components/gallery/GalleryHeader'
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
 import { ViewMode } from '@/components/gallery/ViewModeToggle'
 
@@ -19,6 +19,7 @@ export default function GalleryPage() {
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>('masonry')
+  const [grayscale, setGrayscale] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,28 +60,44 @@ export default function GalleryPage() {
   }, [photos, activeCategory, search])
 
   return (
-    <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
-      <div className="max-w-screen-2xl mx-auto">
-        <GalleryHeader
-          activeCategory={activeCategory}
-          categories={categories}
-          onCategoryChange={setActiveCategory}
-          search={search}
-          onSearchChange={setSearch}
-          photoCount={filteredPhotos.length}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          t={t}
-        />
+    <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
+      {/* Header Section */}
+      <div className="px-4 md:px-8 lg:px-12">
+        <div className="max-w-screen-2xl mx-auto">
+          <GalleryHeader
+            activeCategory={activeCategory}
+            categories={categories}
+            onCategoryChange={setActiveCategory}
+            photoCount={filteredPhotos.length}
+            t={t}
+          />
+        </div>
+      </div>
 
-        <PhotoGrid
-          loading={loading}
-          photos={filteredPhotos}
-          settings={settings}
-          viewMode={viewMode}
-          onPhotoClick={setSelectedPhoto}
-          t={t}
-        />
+      {/* Sticky Toolbar - outside container for proper sticky behavior */}
+      <GalleryToolbar
+        search={search}
+        onSearchChange={setSearch}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        grayscale={grayscale}
+        onGrayscaleChange={setGrayscale}
+        t={t}
+      />
+
+      {/* Photo Grid */}
+      <div className="px-4 md:px-8 lg:px-12">
+        <div className="max-w-screen-2xl mx-auto">
+          <PhotoGrid
+            loading={loading}
+            photos={filteredPhotos}
+            settings={settings}
+            viewMode={viewMode}
+            grayscale={grayscale}
+            onPhotoClick={setSelectedPhoto}
+            t={t}
+          />
+        </div>
       </div>
 
       <PhotoDetailModal
