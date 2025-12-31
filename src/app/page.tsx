@@ -61,7 +61,7 @@ export default function Home() {
           className="absolute bottom-12 left-6 md:left-12 max-w-xs md:max-w-md"
         >
           <p className="font-sans text-xs md:text-sm tracking-widest text-muted-foreground uppercase leading-relaxed">
-            {t('home.hero_desc')}
+            {t('home.hero_desc').replace('{siteTitle}', siteTitle)}
           </p>
         </motion.div>
 
@@ -206,7 +206,7 @@ export default function Home() {
           <div className="w-full md:w-2/3 flex flex-col justify-between">
              <div className="prose prose-invert max-w-none">
                 <p className="font-sans text-lg md:text-xl text-muted-foreground leading-relaxed">
-                  {t('home.about_text')}
+                  {t('home.about_text').replace('{siteTitle}', siteTitle)}
                 </p>
              </div>
              <div className="mt-12">

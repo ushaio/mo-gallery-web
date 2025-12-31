@@ -19,10 +19,8 @@ settings.get('/public', async (c) => {
   })
 })
 
-// All other settings endpoints are protected
-settings.use('/*', authMiddleware)
-
-settings.get('/', async (c) => {
+// Protected settings endpoints
+settings.get('/', authMiddleware, async (c) => {
   try {
     const settingsList = await db.setting.findMany()
 
@@ -64,7 +62,7 @@ settings.get('/', async (c) => {
   }
 })
 
-settings.patch('/', async (c) => {
+settings.patch('/', authMiddleware, async (c) => {
   try {
     const data = await c.req.json()
 

@@ -41,7 +41,7 @@ export const dictionaries = {
     home: {
       hero_vis: '视界',
       hero_real: '& 真实',
-      hero_desc: 'MO GALLERY 是一个探索瞬间与永恒边界的数字展览空间。',
+      hero_desc: '{siteTitle} 是一个探索瞬间与永恒边界的数字展览空间。',
       enter: '进入画廊',
       curated: '精选',
       works: '作品',
@@ -49,7 +49,7 @@ export const dictionaries = {
       latest_desc: '定义我们视觉叙事的精选瞬间。',
       artist: '艺术家',
       quote: '“摄影是在几分之一秒内同时认识到一个事件的重要性。”',
-      about_text: 'MO GALLERY 不仅仅是一个画廊；它是对光、影和介于两者之间空间的研习。每一张图像都是通往稍驻即逝瞬间的门户，不仅因为美学价值，更因其情感共鸣而被封存。',
+      about_text: '{siteTitle} 不仅仅是一个画廊；它是对光、影和介于两者之间空间的研习。每一张图像都是通往稍驻即逝瞬间的门户，不仅因为美学价值，更因其情感共鸣而被封存。',
       read_bio: '阅读简介',
     },
     gallery: {
@@ -332,7 +332,7 @@ export const dictionaries = {
     home: {
       hero_vis: 'VISION',
       hero_real: '& REALITY',
-      hero_desc: 'MO GALLERY is a digital exhibition space exploring the boundaries between captured moments and eternal silence.',
+      hero_desc: '{siteTitle} is a digital exhibition space exploring the boundaries between captured moments and eternal silence.',
       enter: 'ENTER GALLERY',
       curated: 'CURATED',
       works: 'WORKS',
@@ -340,7 +340,7 @@ export const dictionaries = {
       latest_desc: 'A selection of recent captures defining our visual narrative.',
       artist: 'THE ARTIST',
       quote: '"Photography is the simultaneous recognition, in a fraction of a second, of the significance of an event."',
-      about_text: 'MO GALLERY is more than a gallery; it is a study of light, shadow, and the spaces in between. Every image serves as a portal to a fleeting moment, preserved not just for its aesthetic value, but for the emotional resonance it carries.',
+      about_text: '{siteTitle} is more than a gallery; it is a study of light, shadow, and the spaces in between. Every image serves as a portal to a fleeting moment, preserved not just for its aesthetic value, but for the emotional resonance it carries.',
       read_bio: 'READ FULL BIO',
     },
     gallery: {
