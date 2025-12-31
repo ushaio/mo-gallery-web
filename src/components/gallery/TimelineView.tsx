@@ -4,6 +4,7 @@ import { useMemo, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Calendar, ChevronRight, X } from 'lucide-react'
 import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 interface TimelineViewProps {
   photos: PhotoDto[]
@@ -30,6 +31,7 @@ interface YearGroup {
 }
 
 export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewProps) {
+  const { t } = useLanguage()
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [expandedYear, setExpandedYear] = useState<number | null>(null)
   const dayRefs = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -128,12 +130,17 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
   }, [groupedByDay])
 
   const formatMonth = (month: number) => {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-    return months[month - 1] || ''
+    const monthKeys = [
+      'gallery.months_jan', 'gallery.months_feb', 'gallery.months_mar',
+      'gallery.months_apr', 'gallery.months_may', 'gallery.months_jun',
+      'gallery.months_jul', 'gallery.months_aug', 'gallery.months_sep',
+      'gallery.months_oct', 'gallery.months_nov', 'gallery.months_dec'
+    ]
+    return t(monthKeys[month - 1] || '')
   }
 
-  const formatMonthFull = (month: number) => {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const formatMonthShort = (month: number) => {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
     return months[month - 1] || ''
   }
 
@@ -142,8 +149,12 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
   }
 
   const getWeekday = (date: Date) => {
-    const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
-    return weekdays[date.getDay()]
+    const weekdayKeys = [
+      'gallery.weekday_sun', 'gallery.weekday_mon', 'gallery.weekday_tue',
+      'gallery.weekday_wed', 'gallery.weekday_thu', 'gallery.weekday_fri',
+      'gallery.weekday_sat'
+    ]
+    return t(weekdayKeys[date.getDay()])
   }
 
   const setDayRef = useCallback((dateKey: string, el: HTMLDivElement | null) => {
@@ -201,9 +212,9 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                 <div className="flex items-center gap-3">
                   <Calendar className="w-5 h-5 text-primary" />
                   <div>
-                    <h3 className="text-sm font-black uppercase tracking-[0.15em]">Timeline Navigator</h3>
+                    <h3 className="text-sm font-black uppercase tracking-[0.15em]">{t('gallery.timeline_navigator')}</h3>
                     <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      {totalPhotos} photos · {groupedByDay.length} days
+                      {totalPhotos} {t('gallery.timeline_photos')} · {groupedByDay.length} {t('gallery.timeline_days')}
                     </p>
                   </div>
                 </div>
@@ -233,13 +244,13 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                         </span>
                         {yearGroup.year === 0 && (
                           <span className="text-xs text-muted-foreground uppercase tracking-widest">
-                            Unknown Date
+                            {t('gallery.timeline_unknown_date')}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-[10px] text-muted-foreground font-mono">
-                          {yearGroup.months.reduce((sum, m) => sum + m.days.reduce((s, d) => s + d.photos.length, 0), 0)} photos
+                          {yearGroup.months.reduce((sum, m) => sum + m.days.reduce((s, d) => s + d.photos.length, 0), 0)} {t('gallery.timeline_photos')}
                         </span>
                         <motion.div
                           animate={{ rotate: expandedYear === yearGroup.year ? 90 : 0 }}
@@ -265,7 +276,7 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                               {/* Month Header */}
                               <div className="px-6 py-2 bg-muted/30">
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-                                  {yearGroup.year === 0 ? 'Uploaded' : formatMonthFull(monthGroup.month)}
+                                  {yearGroup.year === 0 ? t('gallery.timeline_uploaded') : formatMonth(monthGroup.month)}
                                 </span>
                               </div>
 
@@ -321,7 +332,7 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                 <button
                   onClick={() => setShowJumpDialog(true)}
                   className="absolute left-[17px] md:left-[33px] top-1/2 -translate-y-1/2 w-3 h-3 bg-primary border-2 border-background z-10 shadow-sm hover:scale-150 hover:bg-primary/80 transition-transform cursor-pointer"
-                  title="Jump to date"
+                  title={t('gallery.timeline_jump_hint')}
                 />
 
                 {/* Date Label - Also Clickable */}
@@ -334,7 +345,7 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                     {dayGroup.hasTakenAt ? (
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-black uppercase tracking-[0.2em]">
-                          {formatMonth(dayGroup.month)} {formatDay(dayGroup.day)}
+                          {formatMonthShort(dayGroup.month)} {formatDay(dayGroup.day)}
                         </span>
                         <span className="text-[10px] text-muted-foreground font-mono">
                           {dayGroup.year}
@@ -346,10 +357,10 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
                     ) : (
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">
-                          Uploaded
+                          {t('gallery.timeline_uploaded')}
                         </span>
                         <span className="text-[10px] text-muted-foreground font-mono">
-                          {formatMonth(dayGroup.month)} {formatDay(dayGroup.day)}, {dayGroup.year}
+                          {formatMonthShort(dayGroup.month)} {formatDay(dayGroup.day)}, {dayGroup.year}
                         </span>
                       </div>
                     )}
@@ -415,7 +426,7 @@ export function TimelineView({ photos, settings, onPhotoClick }: TimelineViewPro
       {groupedByDay.length === 0 && (
         <div className="ml-10 md:ml-16 py-20 text-center">
           <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
-          <p className="text-sm text-muted-foreground">No photos to display</p>
+          <p className="text-sm text-muted-foreground">{t('gallery.timeline_no_photos')}</p>
         </div>
       )}
     </div>
