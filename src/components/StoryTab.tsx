@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { BookOpen, MessageSquare, ChevronLeft, ChevronRight, CornerDownRight, Send, LogIn } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { getPhotoStory, type StoryDto, getPhotoComments, getStoryComments, submitPhotoComment, getCommentSettings, type PublicCommentDto, type PhotoDto, resolveAssetUrl } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -20,6 +20,7 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
   const { settings } = useSettings()
   const { user, token } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [story, setStory] = useState<StoryDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -282,7 +283,7 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
               <div className="flex items-center justify-between mb-6">
                 <div className="space-y-1">
                   <h4 className="text-[10px] font-bold tracking-[0.3em] uppercase text-primary">
-                    {locale === 'zh' ? '叙事相册' : 'STORY ALBUM'}
+                    {t('story.story_album')}
                   </h4>
                   <div className="text-[10px] font-mono text-muted-foreground/60 uppercase">
                     Record {currentPhotoIndex + 1} of {story.photos.length}
@@ -431,7 +432,10 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
               </p>
               <button
                 type="button"
-                onClick={() => router.push('/login')}
+                onClick={() => {
+                  const returnUrl = encodeURIComponent(pathname || '/')
+                  router.push(`/login?returnUrl=${returnUrl}`)
+                }}
                 className="inline-flex items-center gap-3 px-6 py-3 bg-[#f8d568] text-[#1a1a1a] font-bold tracking-[0.15em] text-xs uppercase hover:bg-[#f5c842] transition-all"
               >
                 <LogIn className="w-4 h-4" />

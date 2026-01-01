@@ -12,6 +12,7 @@ function OAuthCallbackContent() {
   const [error, setError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [isBindFlow, setIsBindFlow] = useState(false)
+  const [redirectUrl, setRedirectUrl] = useState('/')
   const hasProcessed = useRef(false)
   const { login, token, isReady } = useAuth()
   const { t } = useLanguage()
@@ -71,6 +72,7 @@ function OAuthCallbackContent() {
         try {
           await bindLinuxDoAccount(storedToken, code)
           setStatus('success')
+          setRedirectUrl(bindReturnUrl || '/admin/settings')
 
           // Return to admin settings page
           setTimeout(() => {
@@ -94,15 +96,23 @@ function OAuthCallbackContent() {
         setStatus('success')
         setIsAdmin(user.isAdmin || false)
 
-        // Redirect based on user role
+        // Determine redirect URL
+        // If there's a specific return URL (not just '/'), use it for all users
+        // Otherwise, admin users go to admin panel, regular users go to home
+        let finalRedirectUrl = '/'
+        if (returnUrl && returnUrl !== '/') {
+          // User came from a specific page, return them there
+          finalRedirectUrl = returnUrl
+        } else if (user.isAdmin) {
+          // Admin users with no specific return URL go to admin panel
+          finalRedirectUrl = '/admin'
+        }
+        
+        setRedirectUrl(finalRedirectUrl)
+
+        // Redirect
         setTimeout(() => {
-          if (user.isAdmin) {
-            // Admin users go to admin panel
-            router.push('/admin')
-          } else {
-            // Regular users return to where they came from or home
-            router.push(returnUrl)
-          }
+          router.push(finalRedirectUrl)
         }, 1500)
       } catch (err) {
         setStatus('error')
@@ -112,6 +122,16 @@ function OAuthCallbackContent() {
 
     handleCallback()
   }, [searchParams, login, router, t, token, isReady])
+
+  const getRedirectMessage = () => {
+    if (isBindFlow) {
+      return t('login.oauth_redirect_home')
+    }
+    if (redirectUrl === '/admin') {
+      return t('login.oauth_redirect')
+    }
+    return t('login.oauth_redirect_home')
+  }
 
   return (
     <div className="w-full max-w-sm text-center">
@@ -134,7 +154,7 @@ function OAuthCallbackContent() {
             {isBindFlow ? t('admin.linuxdo_bound') : t('login.oauth_success')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {isBindFlow ? t('login.oauth_redirect_home') : (isAdmin ? t('login.oauth_redirect') : t('login.oauth_redirect_home'))}
+            {getRedirectMessage()}
           </p>
         </>
       )}

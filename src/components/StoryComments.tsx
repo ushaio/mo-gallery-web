@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { MessageSquare, LogIn, Send, CornerDownRight } from 'lucide-react'
 import { getStoryComments, submitPhotoComment, getCommentSettings, type PublicCommentDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -16,6 +16,7 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
   const { t, locale } = useLanguage()
   const { user, token } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [comments, setComments] = useState<PublicCommentDto[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -109,6 +110,12 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
     }
   }
 
+  const handleLoginClick = () => {
+    // Pass current page URL as return URL parameter
+    const returnUrl = encodeURIComponent(pathname)
+    router.push(`/login?returnUrl=${returnUrl}`)
+  }
+
   if (!settingsLoaded && loading) return null
 
   return (
@@ -178,7 +185,7 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
               </p>
               <button
                 type="button"
-                onClick={() => router.push('/login')}
+                onClick={handleLoginClick}
                 className="inline-flex items-center gap-3 px-6 py-3 bg-[#f8d568] text-[#1a1a1a] font-bold tracking-[0.15em] text-xs uppercase hover:bg-[#f5c842] transition-all"
               >
                 <LogIn className="w-4 h-4" />

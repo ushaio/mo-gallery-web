@@ -706,7 +706,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                       onClick={() => {
                         setShowLogoutConfirm(false)
                         logout()
-                        router.push('/')
                       }}
                       className="flex-1 px-6 py-3 bg-destructive text-destructive-foreground text-xs font-bold uppercase tracking-widest hover:bg-destructive/90 active:bg-destructive/80 transition-all flex items-center justify-center gap-2"
                     >

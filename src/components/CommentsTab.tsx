@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { MessageSquare, LogIn } from 'lucide-react'
 import { getPhotoComments, submitPhotoComment, getCommentSettings, type PublicCommentDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -15,6 +15,7 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
   const { t, locale } = useLanguage()
   const { user, token } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [comments, setComments] = useState<PublicCommentDto[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -197,7 +198,10 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
             </p>
             <button
               type="button"
-              onClick={() => router.push('/login')}
+              onClick={() => {
+                const returnUrl = encodeURIComponent(pathname || '/')
+                router.push(`/login?returnUrl=${returnUrl}`)
+              }}
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#f8d568] text-[#1a1a1a] font-bold tracking-[0.15em] text-xs uppercase hover:bg-[#f5c842] transition-all"
             >
               <LogIn className="w-4 h-4" />

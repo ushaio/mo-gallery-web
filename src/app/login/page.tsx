@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api'
 import { Loader2 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoEnabled, setLinuxDoEnabled] = useState<boolean | null>(null)
   const { t } = useLanguage()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     isLinuxDoEnabled().then(setLinuxDoEnabled)
@@ -23,22 +25,32 @@ export default function LoginPage() {
       const { url, state } = await getLinuxDoAuthUrl()
       // Store state for CSRF verification
       sessionStorage.setItem('linuxdo_oauth_state', state)
-      // Store current URL to return to after login (for non-admin users)
-      // Use referrer if available, otherwise use current pathname
-      const referrer = document.referrer
-      const currentPath = window.location.pathname
-      if (referrer && !referrer.includes('/login')) {
-        try {
-          const referrerUrl = new URL(referrer)
-          sessionStorage.setItem('login_return_url', referrerUrl.pathname)
-        } catch {
-          sessionStorage.setItem('login_return_url', '/')
-        }
-      } else if (currentPath !== '/login') {
-        sessionStorage.setItem('login_return_url', currentPath)
+      
+      // Get return URL from query parameter, or use referrer, or default to '/'
+      const returnUrlParam = searchParams.get('returnUrl')
+      let returnUrl = '/'
+      
+      if (returnUrlParam) {
+        // Use the explicitly passed return URL
+        returnUrl = returnUrlParam
       } else {
-        sessionStorage.setItem('login_return_url', '/')
+        // Fallback to referrer if available and not the login page
+        const referrer = document.referrer
+        if (referrer && !referrer.includes('/login')) {
+          try {
+            const referrerUrl = new URL(referrer)
+            // Only use referrer if it's from the same origin
+            if (referrerUrl.origin === window.location.origin) {
+              returnUrl = referrerUrl.pathname + referrerUrl.search
+            }
+          } catch {
+            // Invalid referrer URL, use default
+          }
+        }
       }
+      
+      sessionStorage.setItem('login_return_url', returnUrl)
+      
       // Redirect to Linux DO authorization page
       window.location.href = url
     } catch (err) {

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { LogOut, Sun, Moon, Monitor, Menu, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
@@ -18,7 +17,6 @@ export default function Navbar() {
   const { settings } = useSettings()
   const { t, locale, setLocale } = useLanguage()
   const pathname = usePathname()
-  const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
@@ -58,7 +56,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout()
-    router.push('/')
+    // 无感退出：不跳转页面，只清除登录状态，UI 会自动更新为未登录状态
   }
 
   const toggleTheme = () => {
@@ -69,6 +67,15 @@ export default function Navbar() {
 
   const toggleLanguage = () => {
     setLocale(locale === 'zh' ? 'en' : 'zh')
+  }
+
+  // Generate login URL with return path
+  const getLoginUrl = () => {
+    // Don't include return URL if already on login page or home page
+    if (pathname === '/login' || pathname === '/') {
+      return '/login'
+    }
+    return `/login?returnUrl=${encodeURIComponent(pathname)}`
   }
 
   // Determine navbar styles based on state
@@ -207,7 +214,7 @@ export default function Navbar() {
                   </div>
                 ) : (
                   <Link
-                    href="/login"
+                    href={getLoginUrl()}
                     className={cn("font-sans text-xs font-medium tracking-[0.2em] uppercase transition-colors duration-300", hoverColorClass)}
                   >
                     {t('nav.login')}
@@ -315,7 +322,7 @@ export default function Navbar() {
                   </div>
                 ) : (
                   <Link
-                    href="/login"
+                    href={getLoginUrl()}
                     className="inline-flex items-center justify-center py-3 px-6 border border-primary text-primary font-sans text-xs font-bold tracking-[0.2em] uppercase hover:bg-primary hover:text-primary-foreground transition-all"
                   >
                     {t('nav.login')}
