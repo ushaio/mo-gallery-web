@@ -16,6 +16,7 @@ export const dictionaries = {
       back: '返回',
       success: '操作成功',
       copied: '复制成功',
+      optional: '可选',
     },
     nav: {
       home: '首页',
@@ -51,7 +52,7 @@ export const dictionaries = {
       latest_desc: '来自不同人的真实生活片段。',
       artist: '关于画廊',
       quote: '一张普通的照片，因为你的故事而变得独一无二。',
-      about_text: '这里记录的不是专业摄影作品，而是生活中那些有意义的瞬间。也许技术并不完美，但每一张照片背后都有属于它的故事。',
+      about_text: 'Meaningful moments from life. Every photo has its own story.',
       read_bio: '了解更多',
       stay_connected: '保持联系',
       newsletter_desc: '关注我们的旅程，发现更多故事',
@@ -216,7 +217,7 @@ export const dictionaries = {
       no_blog: '暂无文章',
       category_filter: '分类',
       channel_filter: '渠道',
-      no_association: '不关联叙事',
+      no_association: '不关联',
     },
     admin: {
       console: '管理控制台',
@@ -341,6 +342,7 @@ export const dictionaries = {
       url_update_complete: '地址更新完成',
       updated: '成功',
       albums: '相册管理',
+      album_select: '选择相册',
       new_album: '新建相册',
       edit_album: '编辑相册',
       album_name: '相册名称',
@@ -415,6 +417,10 @@ export const dictionaries = {
       friends_enable: '启用',
       friends_disable: '禁用',
       photos_reordered: '照片顺序已更新',
+      clear_filters: '清除筛选',
+      no_photos_match_filter: '没有匹配的照片',
+      active_filters: '当前筛选',
+      filter: '筛选',
     }
   },
   en: {
@@ -432,6 +438,7 @@ export const dictionaries = {
       back: 'Back',
       success: 'Success',
       copied: 'Copied',
+      optional: 'Optional',
     },
     nav: {
       home: 'HOME',
@@ -632,7 +639,7 @@ export const dictionaries = {
       no_blog: 'No articles',
       category_filter: 'Category',
       channel_filter: 'Channel',
-      no_association: 'No association',
+      no_association: 'None',
     },
     admin: {
       console: 'Admin Console',
@@ -831,6 +838,10 @@ export const dictionaries = {
       friends_enable: 'Enable',
       friends_disable: 'Disable',
       photos_reordered: 'Photos reordered',
+      clear_filters: 'Clear filters',
+      no_photos_match_filter: 'No photos match filter',
+      active_filters: 'Active filters',
+      filter: 'Filter',
     }
   }
 }

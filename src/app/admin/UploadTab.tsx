@@ -13,9 +13,10 @@ import {
   Plus,
   BookOpen,
   Minimize2,
+  FolderOpen,
 } from 'lucide-react'
 import imageCompression from 'browser-image-compression'
-import { AdminSettingsDto, getAdminStories, type StoryDto } from '@/lib/api'
+import { AdminSettingsDto, getAdminStories, getAdminAlbums, type StoryDto, type AlbumDto } from '@/lib/api'
 import { UploadFileItem } from '@/components/admin/UploadFileItem'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { CustomSelect } from '@/components/ui/CustomSelect'
@@ -56,6 +57,10 @@ export function UploadTab({
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loadingStories, setLoadingStories] = useState(false)
 
+  const [uploadAlbumId, setUploadAlbumId] = useState<string>('')
+  const [albums, setAlbums] = useState<AlbumDto[]>([])
+  const [loadingAlbums, setLoadingAlbums] = useState(false)
+
   const [uploadError, setUploadError] = useState('')
 
   const [uploadSource, setUploadSource] = useState('local')
@@ -91,6 +96,23 @@ export function UploadTab({
       }
     }
     loadStories()
+  }, [token])
+
+  // Load albums
+  useEffect(() => {
+    async function loadAlbums() {
+      if (!token) return
+      try {
+        setLoadingAlbums(true)
+        const data = await getAdminAlbums(token)
+        setAlbums(data)
+      } catch (err) {
+        console.error('Failed to load albums:', err)
+      } finally {
+        setLoadingAlbums(false)
+      }
+    }
+    loadAlbums()
   }, [token])
 
   const filteredCategories = useMemo(() => {
@@ -203,6 +225,7 @@ export function UploadTab({
       storageProvider: uploadSource || undefined,
       storagePath: uploadPath.trim() || undefined,
       storyId: uploadStoryId || undefined,
+      albumId: uploadAlbumId || undefined,
       token,
     })
 
@@ -211,6 +234,7 @@ export function UploadTab({
     setSelectedUploadIds(new Set())
     setUploadTitle('')
     setUploadStoryId('')
+    setUploadAlbumId('')
 
     notify(t('admin.upload_started'), 'info')
   }
@@ -350,7 +374,7 @@ export function UploadTab({
                       className="w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground text-primary flex items-center justify-between transition-colors"
                     >
                       <span>
-                        Create "{categoryInput}"
+                        Create &ldquo;{categoryInput}&rdquo;
                       </span>
                       <Plus className="w-3 h-3" />
                     </button>
@@ -362,10 +386,39 @@ export function UploadTab({
                 </div>
               )}
             </div>
+
+            {/* Album Selection */}
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-2">
+                <FolderOpen className="w-3 h-3" />
+                {t('admin.album_select')} ({t('common.optional')})
+              </label>
+              <CustomSelect
+                value={uploadAlbumId}
+                onChange={setUploadAlbumId}
+                disabled={loadingAlbums}
+                placeholder={t('ui.no_association')}
+                options={[
+                  { value: '', label: t('ui.no_association') },
+                  ...albums.map((album) => ({
+                    value: album.id,
+                    label: album.name,
+                    suffix: !album.isPublished ? `(${t('admin.draft')})` : undefined,
+                  })),
+                ]}
+              />
+              {loadingAlbums && (
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  {t('common.loading')}
+                </p>
+              )}
+            </div>
+
+            {/* Story Selection */}
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-2">
                 <BookOpen className="w-3 h-3" />
-                {t('ui.photo_story')} ({t('common.cancel')})
+                {t('ui.photo_story')} ({t('common.optional')})
               </label>
               <CustomSelect
                 value={uploadStoryId}
@@ -387,6 +440,7 @@ export function UploadTab({
                 </p>
               )}
             </div>
+
             <div className="space-y-6">
               <div>
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">

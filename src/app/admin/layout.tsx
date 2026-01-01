@@ -401,9 +401,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     { id: 'photos', href: '/admin/photos', label: t('admin.library'), icon: ImageIcon },
     { id: 'albums', href: '/admin/albums', label: t('admin.albums'), icon: FolderOpen },
     { id: 'upload', href: '/admin/upload', label: t('admin.upload'), icon: UploadIcon },
-    { id: 'friends', href: '/admin/friends', label: t('admin.friends'), icon: Users },
     { id: 'logs', href: '/admin/logs', label: t('admin.logs'), icon: BookText },
     { id: 'settings', href: '/admin/settings', label: t('admin.config'), icon: Settings },
+    { id: 'friends', href: '/admin/friends', label: t('admin.friends'), icon: Users },
   ]
 
   // Get current active tab from pathname

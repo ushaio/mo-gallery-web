@@ -438,19 +438,17 @@ export function PhotosTab({
                     />
                   </div>
 
-                  {/* Checkbox */}
+                  {/* Checkbox - Clean style without background */}
                   <div
                     className="absolute top-2 left-2 z-10"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <label className="flex items-center justify-center w-5 h-5 bg-black/50 backdrop-blur-sm rounded cursor-pointer hover:bg-black/70 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(photo.id)}
-                        onChange={() => onSelect(photo.id)}
-                        className="w-3.5 h-3.5 accent-primary cursor-pointer"
-                      />
-                    </label>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(photo.id)}
+                      onChange={() => onSelect(photo.id)}
+                      className="w-4 h-4 accent-primary cursor-pointer rounded border-2 border-white/80 shadow-sm"
+                    />
                   </div>
 
                   {/* Featured Badge */}
@@ -463,20 +461,22 @@ export function PhotosTab({
                   {/* Hover Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-                  {/* Action Buttons */}
+                  {/* Action Buttons - Fixed positions */}
                   <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    {!photo.isFeatured && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onToggleFeatured(photo)
-                        }}
-                        className="p-1.5 bg-black/60 backdrop-blur-sm text-white hover:text-amber-400 rounded transition-colors"
-                        title="Add to featured"
-                      >
-                        <Star className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    {/* Star button - always takes space, visible only when not featured */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleFeatured(photo)
+                      }}
+                      className={`p-1.5 bg-black/60 backdrop-blur-sm text-white hover:text-amber-400 rounded transition-colors ${
+                        photo.isFeatured ? 'invisible' : ''
+                      }`}
+                      title="Add to featured"
+                    >
+                      <Star className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Delete button - always in same position */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()

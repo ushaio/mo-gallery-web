@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { uploadPhotoWithProgress } from '@/lib/api'
+import { uploadPhotoWithProgress, addPhotosToAlbum } from '@/lib/api'
 
 export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
 
@@ -20,6 +20,7 @@ export interface UploadTask {
   storageProvider?: string
   storagePath?: string
   storyId?: string
+  albumId?: string
   batchId: string // Unique batch identifier
   // Result
   photoId?: string
@@ -36,6 +37,7 @@ interface UploadQueueContextType {
     storageProvider?: string
     storagePath?: string
     storyId?: string
+    albumId?: string
     token: string
   }) => void
   retryTask: (taskId: string, token: string) => void
@@ -61,7 +63,7 @@ export function UploadQueueProvider({
   onUploadComplete,
 }: {
   children: React.ReactNode
-  onUploadComplete?: (photoIds: string[], storyId?: string) => void
+  onUploadComplete?: (photoIds: string[], storyId?: string, albumId?: string) => void
 }) {
   const [tasks, setTasks] = useState<UploadTask[]>([])
   const [isMinimized, setIsMinimized] = useState(false)
@@ -93,15 +95,24 @@ export function UploadQueueProvider({
     )
   }, [])
 
-  const notifyBatchComplete = useCallback((batchId: string, storyId: string | undefined, photoIds: string[]) => {
+  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumId: string | undefined, photoIds: string[]) => {
     // Double-check we haven't already notified for this batch
     if (notifiedBatchesRef.current.has(batchId)) {
       return
     }
     notifiedBatchesRef.current.add(batchId)
 
+    // If albumId is provided, add photos to album
+    if (albumId && photoIds.length > 0 && tokenRef.current) {
+      try {
+        await addPhotosToAlbum(tokenRef.current, albumId, photoIds)
+      } catch (err) {
+        console.error('Failed to add photos to album:', err)
+      }
+    }
+
     if (photoIds.length > 0 && onUploadCompleteRef.current) {
-      onUploadCompleteRef.current(photoIds, storyId)
+      onUploadCompleteRef.current(photoIds, storyId, albumId)
     }
   }, [])
 
@@ -167,7 +178,7 @@ export function UploadQueueProvider({
 
           // Schedule notification outside of setState
           setTimeout(() => {
-            notifyBatchComplete(task.batchId, task.storyId, photoIds)
+            notifyBatchComplete(task.batchId, task.storyId, task.albumId, photoIds)
           }, 0)
         }
 
@@ -197,7 +208,7 @@ export function UploadQueueProvider({
 
           if (photoIds.length > 0) {
             setTimeout(() => {
-              notifyBatchComplete(task.batchId, task.storyId, photoIds)
+              notifyBatchComplete(task.batchId, task.storyId, task.albumId, photoIds)
             }, 0)
           }
         }
@@ -220,6 +231,7 @@ export function UploadQueueProvider({
       storageProvider?: string
       storagePath?: string
       storyId?: string
+      albumId?: string
       token: string
     }) => {
       tokenRef.current = params.token
@@ -247,6 +259,7 @@ export function UploadQueueProvider({
             storageProvider: params.storageProvider,
             storagePath: params.storagePath,
             storyId: params.storyId,
+            albumId: params.albumId,
             batchId,
           }
         })
