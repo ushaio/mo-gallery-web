@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { LogOut, Sun, Moon, Monitor, Menu, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -19,13 +19,21 @@ export default function Navbar() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const prevPathnameRef = useRef(pathname)
 
   const siteTitle = settings?.site_title || 'MO GALLERY'
   const isHome = pathname === '/'
 
   // Close mobile menu on route change
   useEffect(() => {
-    setMobileMenuOpen(false)
+    // Only close menu if pathname actually changed (not on initial render)
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname
+      // Use queueMicrotask to avoid synchronous setState warning
+      queueMicrotask(() => {
+        setMobileMenuOpen(false)
+      })
+    }
   }, [pathname])
 
   // Handle scroll effect

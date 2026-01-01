@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api'
 import { Loader2 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 
-export default function LoginPage() {
+function LoginContent() {
   const [error, setError] = useState('')
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoEnabled, setLinuxDoEnabled] = useState<boolean | null>(null)
@@ -130,5 +130,21 @@ export default function LoginPage() {
         </button>
       </div>
     </div>
+  )
+}
+
+function LoginLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+    </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginLoading />}>
+      <LoginContent />
+    </Suspense>
   )
 }
