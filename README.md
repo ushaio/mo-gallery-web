@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 # 📸 MO Gallery
 
@@ -346,4 +346,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 [Report Bug](https://github.com/yourusername/mo-gallery/issues) · [Request Feature](https://github.com/yourusername/mo-gallery/issues)
 
 </div>
-]]>
