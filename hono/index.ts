@@ -38,6 +38,7 @@ route.route('/', comments)
 route.route('/', blogs)
 route.route('/', albums)
 route.route('/', friends)
+route.route('/settings', settings)
 route.route('/admin/settings', settings)
 
 export default route

@@ -32,20 +32,23 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
 
   // Check if user is logged in via Linux DO
   const isLinuxDoUser = user?.oauthProvider === 'linuxdo'
+  // Check if user is admin
+  const isAdmin = user?.isAdmin === true
   // Determine if user can comment in Linux DO only mode
-  const canComment = !linuxdoOnly || isLinuxDoUser
+  // Admin users can always comment, even without Linux DO binding
+  const canComment = !linuxdoOnly || isLinuxDoUser || isAdmin
 
   useEffect(() => {
     fetchComments()
     fetchSettings()
   }, [photoId])
 
-  // Auto-fill author name for Linux DO users
+  // Auto-fill author name for Linux DO users and admin users
   useEffect(() => {
-    if (isLinuxDoUser && user?.username && !formData.author) {
+    if ((isLinuxDoUser || isAdmin) && user?.username && !formData.author) {
       setFormData(prev => ({ ...prev, author: user.username }))
     }
-  }, [isLinuxDoUser, user?.username])
+  }, [isLinuxDoUser, isAdmin, user?.username])
 
   async function fetchSettings() {
     try {
@@ -86,7 +89,7 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
     }
 
     // Double-check permission before submitting
-    if (linuxdoOnly && !isLinuxDoUser) {
+    if (linuxdoOnly && !isLinuxDoUser && !isAdmin) {
       notify(t('gallery.comment_linuxdo_only'), 'error')
       return
     }
@@ -98,7 +101,7 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
         author: formData.author.trim(),
         email: formData.email.trim() || undefined,
         content: formData.content.trim(),
-      }, linuxdoOnly && isLinuxDoUser ? token : undefined)
+      }, (linuxdoOnly && isLinuxDoUser) || isAdmin ? token : undefined)
 
       // Check if comment was approved or pending
       if (result.status === 'approved') {
@@ -109,9 +112,9 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
         notify(t('gallery.comment_pending'), 'info')
       }
 
-      // Clear form - keep author name for Linux DO users
+      // Clear form - keep author name for Linux DO users and admin users
       setFormData(prev => ({
-        author: isLinuxDoUser && user?.username ? user.username : '',
+        author: (isLinuxDoUser || isAdmin) && user?.username ? user.username : '',
         email: '',
         content: ''
       }))
@@ -237,14 +240,22 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
                 }
                 className="w-full px-3 py-2 bg-transparent border-b border-border focus:border-primary outline-none transition-colors text-sm text-foreground"
                 required
-                disabled={submitting || isLinuxDoUser}
+                disabled={submitting || isLinuxDoUser || isAdmin}
               />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                {linuxdoOnly && isLinuxDoUser ? t('gallery.comment_username') : t('gallery.comment_email')}
+                {(linuxdoOnly && isLinuxDoUser) || isAdmin ? t('gallery.comment_username') : t('gallery.comment_email')}
               </label>
-              {linuxdoOnly && isLinuxDoUser ? (
+              {isAdmin && !isLinuxDoUser ? (
+                /* Show Admin badge for admin users */
+                <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/30">
+                  <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                  </svg>
+                  <span className="text-sm text-primary font-medium">{t('admin.admin')}</span>
+                </div>
+              ) : linuxdoOnly && isLinuxDoUser ? (
                 /* Show Linux DO user badge instead of email input */
                 <div className="flex items-center gap-2 px-3 py-2 bg-[#f8d568]/10 border-b border-[#f8d568]/30">
                   <svg className="w-4 h-4 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">

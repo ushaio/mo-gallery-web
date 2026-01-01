@@ -67,7 +67,9 @@ comments.post('/photos/:photoId/comments', async (c) => {
 
     try {
       const payload = verifyToken(authHeader.substring(7))
-      if (payload.oauthProvider !== 'linuxdo') {
+      // Allow admin users to comment even without Linux DO binding
+      const isAdmin = payload.isAdmin === true
+      if (!isAdmin && payload.oauthProvider !== 'linuxdo') {
         return c.json({ error: 'Linux DO account required to comment' }, 403)
       }
       // Get avatar URL from token payload or fetch from user record

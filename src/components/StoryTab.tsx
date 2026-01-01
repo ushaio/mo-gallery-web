@@ -43,8 +43,10 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
 
   // Check if user is logged in via Linux DO
   const isLinuxDoUser = user?.oauthProvider === 'linuxdo'
-  // Determine if user can comment in Linux DO only mode
-  const canComment = !linuxdoOnly || isLinuxDoUser
+  // Check if user is admin
+  const isAdmin = user?.isAdmin === true
+  // Determine if user can comment in Linux DO only mode (admin can always comment)
+  const canComment = !linuxdoOnly || isLinuxDoUser || isAdmin
 
   // Use refs to track fetch state and prevent duplicate requests
   const fetchedForPhotoId = useRef<string | null>(null)
@@ -72,12 +74,12 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
     fetchSettings()
   }, [])
 
-  // Auto-fill author name for Linux DO users
+  // Auto-fill author name for Linux DO users and admin users
   useEffect(() => {
-    if (isLinuxDoUser && user?.username && !formData.author) {
+    if ((isLinuxDoUser || isAdmin) && user?.username && !formData.author) {
       setFormData(prev => ({ ...prev, author: user.username }))
     }
-  }, [isLinuxDoUser, user?.username])
+  }, [isLinuxDoUser, isAdmin, user?.username])
 
   useEffect(() => {
     if (isPhotoInCurrentStory(photoId)) {
@@ -211,7 +213,7 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
         author: formData.author.trim(),
         email: formData.email.trim() || undefined,
         content: formData.content.trim(),
-      }, linuxdoOnly && isLinuxDoUser ? token : undefined)
+      }, (linuxdoOnly && isLinuxDoUser) || isAdmin ? token : undefined)
 
       if (result.status === 'approved') {
         notify(t('gallery.comment_success'), 'success')
@@ -219,9 +221,9 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
       } else {
         notify(t('gallery.comment_pending'), 'info')
       }
-      // Keep author name for Linux DO users, only clear content
+      // Keep author name for Linux DO users and admin users, only clear content
       setFormData(prev => ({
-        author: isLinuxDoUser && user?.username ? user.username : '',
+        author: (isLinuxDoUser || isAdmin) && user?.username ? user.username : '',
         email: '',
         content: ''
       }))
@@ -413,14 +415,22 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
                   onChange={(e) => setFormData({ ...formData, author: e.target.value })}
                   className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-sm font-serif"
                   required
-                  disabled={submitting || isLinuxDoUser}
+                  disabled={submitting || isLinuxDoUser || isAdmin}
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
-                  {linuxdoOnly && isLinuxDoUser ? t('gallery.comment_username') : t('gallery.comment_email')}
+                  {isAdmin && !isLinuxDoUser ? t('admin.admin') : (linuxdoOnly && isLinuxDoUser ? t('gallery.comment_username') : t('gallery.comment_email'))}
                 </label>
-                {linuxdoOnly && isLinuxDoUser ? (
+                {isAdmin && !isLinuxDoUser ? (
+                  /* Show Admin badge instead of email input */
+                  <div className="flex items-center gap-2 py-3 bg-primary/10 border-b border-primary/30 px-2">
+                    <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                    </svg>
+                    <span className="text-sm text-primary font-medium">{t('admin.admin')}</span>
+                  </div>
+                ) : linuxdoOnly && isLinuxDoUser ? (
                   /* Show Linux DO user badge instead of email input */
                   <div className="flex items-center gap-2 py-3 bg-[#f8d568]/10 border-b border-[#f8d568]/30 px-2">
                     <svg className="w-4 h-4 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">

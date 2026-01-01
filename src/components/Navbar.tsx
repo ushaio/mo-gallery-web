@@ -14,14 +14,15 @@ import { cn } from '@/lib/utils'
 export default function Navbar() {
   const { isAuthenticated, logout, user } = useAuth()
   const { theme, setTheme, mounted } = useTheme()
-  const { settings } = useSettings()
+  const { settings, isLoading: settingsLoading } = useSettings()
   const { t, locale, setLocale } = useLanguage()
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const prevPathnameRef = useRef(pathname)
 
-  const siteTitle = settings?.site_title || 'MO GALLERY'
+  // Only show title after settings are loaded to prevent flash
+  const siteTitle = settings?.site_title || ''
   const isHome = pathname === '/'
 
   // Close mobile menu on route change
@@ -149,11 +150,12 @@ export default function Navbar() {
             {/* Logo Section */}
             <Link href="/" className="group relative">
               <span className={cn(
-                "font-serif text-xl md:text-3xl font-bold tracking-widest transition-colors duration-500",
+                "font-serif text-xl md:text-3xl font-bold tracking-widest transition-all duration-500",
                 textColorClass,
-                !isTransparent && "group-hover:text-primary"
+                !isTransparent && "group-hover:text-primary",
+                settingsLoading && "opacity-0"
               )}>
-                {siteTitle.toUpperCase()}
+                {siteTitle ? siteTitle.toUpperCase() : '\u00A0'}
               </span>
               <span className={cn(
                 "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-500 group-hover:w-full",

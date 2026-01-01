@@ -94,7 +94,7 @@ interface SidebarItem {
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const { logout, token, user } = useAuth()
-  const { settings: globalSettings, refresh: refreshGlobalSettings } = useSettings()
+  const { settings: globalSettings, isLoading: globalSettingsLoading, refresh: refreshGlobalSettings } = useSettings()
   const { t, locale, setLocale } = useLanguage()
   const { theme, setTheme, mounted } = useTheme()
   const router = useRouter()
@@ -153,7 +153,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     newPublicUrl?: string
   } | null>(null)
 
-  const siteTitle = globalSettings?.site_title || 'MO GALLERY'
+  // Only show title after settings are loaded to prevent flash
+  const siteTitle = globalSettings?.site_title || ''
 
   const handleUnauthorized = useCallback(() => {
     logout()
@@ -494,8 +495,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           <div className="flex flex-col h-full">
             {/* Header */}
             <div className="p-6 border-b border-border">
-              <h2 className="font-serif text-2xl font-bold tracking-tight">
-                {siteTitle}
+              <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${globalSettingsLoading ? 'opacity-0' : 'opacity-100'}`}>
+                {siteTitle || '\u00A0'}
               </h2>
               <p className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground mt-1">
                 {t('admin.console')}

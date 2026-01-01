@@ -494,14 +494,11 @@ export async function getAdminSettings(token: string): Promise<AdminSettingsDto>
 
 export async function getPublicSettings(): Promise<PublicSettingsDto> {
   try {
-    return {
-      site_title: process.env.SITE_TITLE || 'MO GALLERY',
-      cdn_domain: process.env.cdn_domain || '',
-    }
+    return await apiRequestData<PublicSettingsDto>('/api/settings/public')
   } catch {
     // If API fails, return defaults
     return {
-      site_title: 'MO GALLERY ERROR',
+      site_title: 'MO GALLERY',
       cdn_domain: '',
     }
   }

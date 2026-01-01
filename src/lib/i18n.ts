@@ -220,6 +220,7 @@ export const dictionaries = {
       no_association: '不关联',
     },
     admin: {
+      admin: '管理员',
       console: '管理控制台',
       super_user: '超级用户',
       library: '照片库',
@@ -643,6 +644,7 @@ export const dictionaries = {
       no_association: 'None',
     },
     admin: {
+      admin: 'Admin',
       console: 'Admin Console',
       super_user: 'Super User',
       library: 'Photo Library',
