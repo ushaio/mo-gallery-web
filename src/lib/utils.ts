@@ -1,3 +1,7 @@
+export function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(' ')
+}
+
 export function formatFileSize(bytes?: number): string {
   if (!bytes) return 'Unknown'
   if (bytes === 0) return '0 Bytes'

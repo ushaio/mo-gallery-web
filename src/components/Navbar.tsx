@@ -10,6 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 export default function Navbar() {
   const { isAuthenticated, logout, user } = useAuth()
@@ -19,13 +20,24 @@ export default function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
 
   const siteTitle = settings?.site_title || 'MO GALLERY'
+  const isHome = pathname === '/'
 
   // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [pathname])
+
+  // Handle scroll effect
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20)
+    }
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -58,6 +70,11 @@ export default function Navbar() {
   const toggleLanguage = () => {
     setLocale(locale === 'zh' ? 'en' : 'zh')
   }
+
+  // Determine navbar styles based on state
+  const isTransparent = isHome && !scrolled && !mobileMenuOpen
+  const textColorClass = isTransparent ? 'text-white' : 'text-foreground'
+  const hoverColorClass = isTransparent ? 'hover:text-white/70' : 'hover:text-primary'
 
   // Prevent hydration mismatch
   const themeIcon = !mounted ? (
@@ -97,16 +114,28 @@ export default function Navbar() {
   return (
     <>
       <nav
-        className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-border/50 transition-all duration-300"
+        className={cn(
+          "fixed top-0 w-full z-50 transition-all duration-500",
+          isTransparent 
+            ? "bg-transparent border-transparent py-4" 
+            : "bg-background/80 backdrop-blur-xl border-b border-border/50 py-0"
+        )}
       >
         <div className="max-w-[1920px] mx-auto px-4 md:px-12">
           <div className="flex justify-between items-center h-16 md:h-20">
             {/* Logo Section */}
             <Link href="/" className="group relative">
-              <span className="font-serif text-xl md:text-3xl font-bold tracking-widest text-foreground group-hover:text-primary transition-colors duration-500">
+              <span className={cn(
+                "font-serif text-xl md:text-3xl font-bold tracking-widest transition-colors duration-500",
+                textColorClass,
+                !isTransparent && "group-hover:text-primary"
+              )}>
                 {siteTitle.toUpperCase()}
               </span>
-              <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-primary transition-all duration-500 group-hover:w-full"></span>
+              <span className={cn(
+                "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-500 group-hover:w-full",
+                isTransparent ? "bg-white" : "bg-primary"
+              )}></span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -121,19 +150,27 @@ export default function Navbar() {
                   <Link
                     key={item.path}
                     href={item.path}
-                    className="font-sans text-xs font-medium tracking-[0.2em] hover:text-primary transition-colors duration-300 uppercase"
+                    className={cn(
+                      "font-sans text-xs font-medium tracking-[0.2em] transition-colors duration-300 uppercase relative group",
+                      textColorClass,
+                      hoverColorClass
+                    )}
                   >
                     {item.name}
+                    <span className={cn(
+                      "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-300 group-hover:w-full",
+                       isTransparent ? "bg-white" : "bg-primary"
+                    )} />
                   </Link>
                 ))}
               </div>
 
-              <div className="h-4 w-[1px] bg-border"></div>
+              <div className={cn("h-4 w-[1px]", isTransparent ? "bg-white/30" : "bg-border")}></div>
 
-              <div className="flex items-center space-x-6">
+              <div className={cn("flex items-center space-x-6", textColorClass)}>
                 <button
                   onClick={toggleLanguage}
-                  className="font-sans text-[10px] font-bold tracking-widest hover:text-primary transition-colors duration-300 flex items-center gap-1"
+                  className={cn("font-sans text-[10px] font-bold tracking-widest flex items-center gap-1 transition-colors duration-300", hoverColorClass)}
                   aria-label="Toggle Language"
                 >
                   {locale === 'zh' ? 'EN' : '中'}
@@ -141,7 +178,7 @@ export default function Navbar() {
 
                 <button
                   onClick={toggleTheme}
-                  className="hover:text-primary transition-colors duration-300"
+                  className={cn("transition-colors duration-300", hoverColorClass)}
                   aria-label="Toggle Theme"
                 >
                   <AnimatePresence mode="wait">
@@ -152,7 +189,7 @@ export default function Navbar() {
                 {isAuthenticated && user?.isAdmin && (
                   <Link
                     href="/admin"
-                    className="font-sans text-xs font-medium tracking-[0.2em] hover:text-primary transition-colors duration-300 uppercase"
+                    className={cn("font-sans text-xs font-medium tracking-[0.2em] uppercase transition-colors duration-300", hoverColorClass)}
                   >
                     {t('nav.admin')}
                   </Link>
@@ -162,7 +199,7 @@ export default function Navbar() {
                   <div className="flex items-center space-x-4">
                     <button
                       onClick={handleLogout}
-                      className="flex items-center space-x-2 font-sans text-xs font-medium tracking-[0.2em] hover:text-destructive transition-colors duration-300 uppercase"
+                      className={cn("flex items-center space-x-2 font-sans text-xs font-medium tracking-[0.2em] uppercase transition-colors duration-300", isTransparent ? "hover:text-white/70" : "hover:text-destructive")}
                     >
                       <span>{t('nav.logout')}</span>
                       <LogOut className="w-3 h-3" />
@@ -171,7 +208,7 @@ export default function Navbar() {
                 ) : (
                   <Link
                     href="/login"
-                    className="font-sans text-xs font-medium tracking-[0.2em] hover:text-primary transition-colors duration-300 uppercase"
+                    className={cn("font-sans text-xs font-medium tracking-[0.2em] uppercase transition-colors duration-300", hoverColorClass)}
                   >
                     {t('nav.login')}
                   </Link>
@@ -182,7 +219,7 @@ export default function Navbar() {
             {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-foreground hover:text-primary transition-colors"
+              className={cn("md:hidden p-2 transition-colors", textColorClass, hoverColorClass)}
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -199,8 +236,10 @@ export default function Navbar() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden fixed inset-0 top-16 z-40 bg-background border-t border-border overflow-y-auto"
+            className="md:hidden fixed inset-0 top-0 z-40 bg-background border-t border-border overflow-y-auto pt-20"
           >
+             {/* Close button inside mainly for safety if overlap issues occur */}
+             
             <div className="px-6 py-8 flex flex-col">
               {/* Navigation Links */}
               <nav className="flex flex-col space-y-1">
