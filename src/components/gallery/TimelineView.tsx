@@ -316,7 +316,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
       {/* Timeline Line - Left side */}
       <div className="absolute left-4 md:left-8 top-0 bottom-0 w-px bg-border" />
 
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence>
         {groupedByDay.map((dayGroup, dayIndex) => (
           <motion.div
             key={dayGroup.dateKey}
