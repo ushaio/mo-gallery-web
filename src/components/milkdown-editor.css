@@ -1,0 +1,12 @@
+/* Milkdown Editor Custom Styles */
+
+/* Add left padding to allow drag handle to be visible */
+.milkdown-crepe-editor {
+  width: 100%;
+  height: 100%;
+}
+
+.milkdown-crepe-editor .ProseMirror {
+  padding-left: 48px; /* Space for drag handle */
+  min-height: 350px;
+}

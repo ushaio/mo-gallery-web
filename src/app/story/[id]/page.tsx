@@ -5,12 +5,26 @@ import { useParams } from 'next/navigation'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { ArrowLeft, Calendar, ImageIcon, ChevronLeft, ChevronRight, X, MousePointer2, Clock } from 'lucide-react'
 import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import dynamic from 'next/dynamic'
 import { getStory, type StoryDto, type PhotoDto, resolveAssetUrl } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { StoryComments } from '@/components/StoryComments'
+
+// Dynamically import MilkdownViewer to avoid SSR issues
+const MilkdownViewer = dynamic(
+  () => import('@/components/MilkdownViewer'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse space-y-4">
+        <div className="h-4 bg-muted rounded w-full"></div>
+        <div className="h-4 bg-muted rounded w-5/6"></div>
+        <div className="h-4 bg-muted rounded w-4/6"></div>
+      </div>
+    )
+  }
+)
 
 export default function StoryDetailPage() {
   const params = useParams()
@@ -207,15 +221,9 @@ export default function StoryDetailPage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
-            className="prose prose-stone dark:prose-invert prose-lg md:prose-xl max-w-none 
-              prose-headings:font-serif prose-headings:font-light prose-headings:tracking-tight
-              prose-p:font-serif prose-p:leading-relaxed prose-p:text-foreground/80
-              prose-blockquote:border-primary prose-blockquote:bg-primary/5 prose-blockquote:py-2 prose-blockquote:px-6
-              prose-img:rounded-none"
+            className="milkdown-article"
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {story.content}
-            </ReactMarkdown>
+            <MilkdownViewer content={story.content} />
           </motion.article>
 
           {/* Large Featured Photo */}

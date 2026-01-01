@@ -34,11 +34,11 @@ import {
 import { CustomInput } from '@/components/ui/CustomInput'
 import { useSettings } from '@/contexts/SettingsContext'
 import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
-import type { MilkdownEditorHandle } from '@/components/admin/MilkdownEditor'
+import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
 
 // Dynamically import MilkdownEditor to avoid SSR issues
 const MilkdownEditor = dynamic(
-  () => import('@/components/admin/MilkdownEditor'),
+  () => import('@/components/MilkdownEditor'),
   { 
     ssr: false,
     loading: () => (

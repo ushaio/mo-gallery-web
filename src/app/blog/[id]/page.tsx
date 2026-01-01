@@ -5,10 +5,24 @@ import { motion } from 'framer-motion'
 import { Calendar, ArrowLeft, BookText } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import dynamic from 'next/dynamic'
 import { getBlog, type BlogDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
+
+// Dynamically import MilkdownViewer to avoid SSR issues
+const MilkdownViewer = dynamic(
+  () => import('@/components/MilkdownViewer'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse space-y-4">
+        <div className="h-4 bg-muted rounded w-full"></div>
+        <div className="h-4 bg-muted rounded w-5/6"></div>
+        <div className="h-4 bg-muted rounded w-4/6"></div>
+      </div>
+    )
+  }
+)
 
 export default function BlogDetailPage() {
   const params = useParams()
@@ -130,11 +144,9 @@ export default function BlogDetailPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="prose prose-lg prose-invert max-w-none prose-headings:font-serif prose-headings:font-light prose-headings:tracking-tight prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-img:rounded-none prose-img:border prose-img:border-border"
+          className="milkdown-article"
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {blog.content}
-          </ReactMarkdown>
+          <MilkdownViewer content={blog.content} />
         </motion.article>
 
         {/* Footer Navigation */}

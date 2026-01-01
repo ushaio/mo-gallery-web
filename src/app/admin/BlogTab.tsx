@@ -28,11 +28,11 @@ import {
 } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
-import type { MilkdownEditorHandle } from '@/components/admin/MilkdownEditor'
+import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
 
 // Dynamically import MilkdownEditor to avoid SSR issues
 const MilkdownEditor = dynamic(
-  () => import('@/components/admin/MilkdownEditor'),
+  () => import('@/components/MilkdownEditor'),
   { 
     ssr: false,
     loading: () => (
