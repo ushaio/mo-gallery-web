@@ -27,12 +27,12 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
   }, [initialTab])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Sub-tab Navigation */}
-      <div className="flex border-b border-border">
+      <div className="flex space-x-1 border-b border-border">
         <button
           onClick={() => setActiveSubTab('blog')}
-          className={`flex items-center gap-2 px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] border-b-2 transition-colors ${
+          className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em] border-b-2 transition-colors ${
             activeSubTab === 'blog'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -43,7 +43,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
         </button>
         <button
           onClick={() => setActiveSubTab('stories')}
-          className={`flex items-center gap-2 px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] border-b-2 transition-colors ${
+          className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em] border-b-2 transition-colors ${
             activeSubTab === 'stories'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'

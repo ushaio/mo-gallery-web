@@ -487,11 +487,37 @@ export async function batchUpdatePhotoUrls(
   )
 }
 
-// --- Comment APIs ---
+export interface PaginationMeta {
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
 
-export async function getComments(token: string, params?: { status?: string; photoId?: string }): Promise<CommentDto[]> {
+// ... Comment APIs ...
+
+export async function getComments(
+  token: string,
+  params?: { status?: string; photoId?: string; page?: number; limit?: number }
+): Promise<{ data: CommentDto[]; meta: PaginationMeta }> {
   const query = buildQuery(params || {})
-  return apiRequestData<CommentDto[]>(`/api/admin/comments${query}`, {}, token)
+  const envelope = await apiRequest(`/api/admin/comments${query}`, {}, token)
+  
+  if (!('data' in envelope) || !('meta' in envelope)) {
+     // Fallback for backward compatibility if meta is missing
+     if ('data' in envelope) {
+        return { 
+          data: envelope.data as CommentDto[], 
+          meta: { total: (envelope.data as CommentDto[]).length, page: 1, limit: 1000, totalPages: 1 } 
+        }
+     }
+     throw new Error('Unexpected API response')
+  }
+
+  return {
+    data: envelope.data as CommentDto[],
+    meta: envelope.meta as PaginationMeta
+  }
 }
 
 export async function updateCommentStatus(

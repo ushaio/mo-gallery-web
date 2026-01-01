@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { loginWithLinuxDo } from '@/lib/api'
+import { loginWithLinuxDo, bindLinuxDoAccount } from '@/lib/api'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 
@@ -11,12 +11,16 @@ function OAuthCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [error, setError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const { login } = useAuth()
+  const [isBindFlow, setIsBindFlow] = useState(false)
+  const { login, token, isReady } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
+    // Wait for auth context to be ready before processing
+    if (!isReady) return
+
     const handleCallback = async () => {
       const code = searchParams.get('code')
       const state = searchParams.get('state')
@@ -43,13 +47,45 @@ function OAuthCallbackContent() {
       }
       sessionStorage.removeItem('linuxdo_oauth_state')
 
+      // Check if this is an admin bind flow
+      const adminBindFlow = sessionStorage.getItem('linuxdo_admin_bind') === 'true'
+      const bindReturnUrl = sessionStorage.getItem('linuxdo_bind_return_url')
+      sessionStorage.removeItem('linuxdo_admin_bind')
+      sessionStorage.removeItem('linuxdo_bind_return_url')
+
+      if (adminBindFlow) {
+        // Admin binding flow - need existing token from localStorage (more reliable)
+        setIsBindFlow(true)
+        const storedToken = token || localStorage.getItem('token')
+        if (!storedToken) {
+          setStatus('error')
+          setError('Authentication required for binding')
+          return
+        }
+
+        try {
+          await bindLinuxDoAccount(storedToken, code)
+          setStatus('success')
+
+          // Return to admin settings page
+          setTimeout(() => {
+            router.push(bindReturnUrl || '/admin/settings')
+          }, 1500)
+        } catch (err) {
+          setStatus('error')
+          setError(err instanceof Error ? err.message : t('login.oauth_failed'))
+        }
+        return
+      }
+
+      // Normal login flow
       // Get the return URL (where user came from before login)
       const returnUrl = sessionStorage.getItem('login_return_url') || '/'
       sessionStorage.removeItem('login_return_url')
 
       try {
-        const { token, user } = await loginWithLinuxDo(code)
-        login(token, user)
+        const { token: newToken, user } = await loginWithLinuxDo(code)
+        login(newToken, user)
         setStatus('success')
         setIsAdmin(user.isAdmin || false)
 
@@ -70,7 +106,7 @@ function OAuthCallbackContent() {
     }
 
     handleCallback()
-  }, [searchParams, login, router, t])
+  }, [searchParams, login, router, t, token, isReady])
 
   return (
     <div className="w-full max-w-sm text-center">
@@ -90,10 +126,10 @@ function OAuthCallbackContent() {
         <>
           <CheckCircle className="w-12 h-12 mx-auto mb-6 text-green-500" />
           <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
-            {t('login.oauth_success')}
+            {isBindFlow ? t('admin.linuxdo_bound') : t('login.oauth_success')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {isAdmin ? t('login.oauth_redirect') : t('login.oauth_redirect_home')}
+            {isBindFlow ? t('login.oauth_redirect_home') : (isAdmin ? t('login.oauth_redirect') : t('login.oauth_redirect_home'))}
           </p>
         </>
       )}

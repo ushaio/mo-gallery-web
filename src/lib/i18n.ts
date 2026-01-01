@@ -315,6 +315,14 @@ export const dictionaries = {
       sort_order_hint: '数字越小排序越靠前',
       total: '个',
       edit_photo: '编辑照片',
+      account: '账号管理',
+      linuxdo_binding_desc: '绑定 Linux DO 账号后，可使用 Linux DO 登录管理后台',
+      linuxdo_not_configured: 'Linux DO OAuth 未配置',
+      linuxdo_not_bound: '尚未绑定 Linux DO 账号',
+      linuxdo_bind_hint: '绑定后可使用 Linux DO 账号登录管理后台',
+      linuxdo_bind: '绑定账号',
+      linuxdo_bound: '已绑定',
+      linuxdo_unbind: '解除绑定',
     }
   },
   en: {
@@ -631,6 +639,14 @@ export const dictionaries = {
       sort_order_hint: 'Lower numbers appear first',
       total: 'total',
       edit_photo: 'Edit Photo',
+      account: 'Account',
+      linuxdo_binding_desc: 'Bind your Linux DO account to enable OAuth login for admin panel',
+      linuxdo_not_configured: 'Linux DO OAuth is not configured',
+      linuxdo_not_bound: 'No Linux DO account bound',
+      linuxdo_bind_hint: 'After binding, you can login to admin panel with your Linux DO account',
+      linuxdo_bind: 'Bind Account',
+      linuxdo_bound: 'Bound',
+      linuxdo_unbind: 'Unbind',
     }
   }
 }

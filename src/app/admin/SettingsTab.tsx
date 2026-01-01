@@ -10,13 +10,23 @@ import {
   Globe,
   Check,
   Trash2,
+  User,
+  Link,
+  Unlink,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   AdminSettingsDto,
   CommentDto,
+  LinuxDoBinding,
   getComments,
   updateCommentStatus,
   deleteComment,
+  getLinuxDoBinding,
+  unbindLinuxDoAccount,
+  getLinuxDoAuthUrl,
+  isLinuxDoEnabled,
   ApiUnauthorizedError,
 } from '@/lib/api'
 import { CustomInput } from '@/components/ui/CustomInput'
@@ -52,13 +62,23 @@ export function SettingsTab({
   const [comments, setComments] = useState<CommentDto[]>([])
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentTab, setCommentTab] = useState<'manage' | 'config'>('manage')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [limit] = useState(20)
+
+  // Linux DO binding state
+  const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
+  const [linuxDoBinding, setLinuxDoBinding] = useState<LinuxDoBinding | null>(null)
+  const [linuxDoLoading, setLinuxDoLoading] = useState(false)
+  const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
 
   const refreshComments = async () => {
     if (!token) return
     setCommentsLoading(true)
     try {
-      const data = await getComments(token)
+      const { data, meta } = await getComments(token, { page, limit })
       setComments(data)
+      setTotalPages(meta.totalPages)
     } catch (err) {
       console.error(err)
     } finally {
@@ -99,11 +119,74 @@ export function SettingsTab({
     }
   }
 
+  // Load Linux DO status and binding
+  const loadLinuxDoStatus = async () => {
+    try {
+      const enabled = await isLinuxDoEnabled()
+      setLinuxDoEnabled(enabled)
+      if (enabled && token) {
+        setLinuxDoLoading(true)
+        const binding = await getLinuxDoBinding(token)
+        setLinuxDoBinding(binding)
+      }
+    } catch (err) {
+      console.error('Failed to load Linux DO status:', err)
+    } finally {
+      setLinuxDoLoading(false)
+    }
+  }
+
+  // Handle Linux DO bind
+  const handleLinuxDoBind = async () => {
+    if (!token) return
+    try {
+      setLinuxDoBindLoading(true)
+      const { url, state } = await getLinuxDoAuthUrl()
+      // Store state and mark as admin binding flow
+      sessionStorage.setItem('linuxdo_oauth_state', state)
+      sessionStorage.setItem('linuxdo_admin_bind', 'true')
+      // Store current URL to return to after binding
+      sessionStorage.setItem('linuxdo_bind_return_url', window.location.pathname)
+      // Redirect to Linux DO auth
+      window.location.href = url
+    } catch (err) {
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+      setLinuxDoBindLoading(false)
+    }
+  }
+
+  // Handle Linux DO unbind
+  const handleLinuxDoUnbind = async () => {
+    if (!token || !window.confirm(t('common.confirm'))) return
+    try {
+      setLinuxDoBindLoading(true)
+      await unbindLinuxDoAccount(token)
+      setLinuxDoBinding(null)
+      notify(t('admin.notify_success'))
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) {
+        onUnauthorized()
+        return
+      }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+    } finally {
+      setLinuxDoBindLoading(false)
+    }
+  }
+
+  // Load Linux DO status on mount
+  useEffect(() => {
+    loadLinuxDoStatus()
+  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (settingsTab === 'comments') {
       refreshComments()
     }
-  }, [settingsTab, token]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (settingsTab === 'account') {
+      loadLinuxDoStatus()
+    }
+  }, [settingsTab, token, page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading || !settings) {
     return (
@@ -115,8 +198,8 @@ export function SettingsTab({
 
   return (
     <div className="max-w-[1920px]">
-      <div className="flex flex-col md:flex-row gap-12">
-        <aside className="w-full md:w-48 space-y-1">
+      <div className="flex flex-col md:flex-row gap-12 relative">
+        <aside className="w-full md:w-48 space-y-1 md:sticky md:top-0 md:h-fit">
           <div className="mb-6 pb-2 border-b border-border">
             <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">
               {t('admin.config')}
@@ -127,6 +210,7 @@ export function SettingsTab({
             { id: 'categories', label: t('admin.taxonomy') },
             { id: 'storage', label: t('admin.engine') },
             { id: 'comments', label: t('admin.comments') },
+            { id: 'account', label: t('admin.account') },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -710,9 +794,7 @@ export function SettingsTab({
                                     {comment.status}
                                   </span>
                                   <span className="text-[10px] text-muted-foreground font-mono">
-                                    {new Date(
-                                      comment.createdAt
-                                    ).toLocaleDateString()}
+                                    {new Date(comment.createdAt).toLocaleString()}
                                   </span>
                                 </div>
                                 <p className="text-sm text-foreground/80 leading-relaxed">
@@ -762,6 +844,29 @@ export function SettingsTab({
                             </div>
                           </div>
                         ))}
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-center gap-4 mt-8">
+                            <button
+                              onClick={() => setPage((p) => Math.max(1, p - 1))}
+                              disabled={page === 1}
+                              className="p-2 border border-border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted/50 transition-colors"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="text-xs font-mono">
+                              {page} / {totalPages}
+                            </span>
+                            <button
+                              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                              disabled={page === totalPages}
+                              className="p-2 border border-border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted/50 transition-colors"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -769,7 +874,114 @@ export function SettingsTab({
               </div>
             )}
 
-            {settingsTab !== 'site' && (
+            {settingsTab === 'account' && (
+              <div className="max-w-2xl space-y-8">
+                <div className="pb-4 border-b border-border">
+                  <h3 className="font-serif text-2xl">{t('admin.account')}</h3>
+                </div>
+
+                {/* Linux DO Binding Section */}
+                <div className="space-y-6">
+                  <div className="pb-4 border-b border-border/50">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                      </svg>
+                      <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+                        Linux DO
+                      </h4>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      {t('admin.linuxdo_binding_desc')}
+                    </p>
+                  </div>
+
+                  {!linuxDoEnabled ? (
+                    <div className="p-6 border border-dashed border-border text-center">
+                      <p className="text-xs text-muted-foreground">
+                        {t('admin.linuxdo_not_configured')}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground/70 mt-2 font-mono">
+                        Configure LINUXDO_CLIENT_ID and LINUXDO_CLIENT_SECRET in .env
+                      </p>
+                    </div>
+                  ) : linuxDoLoading ? (
+                    <div className="flex items-center justify-center p-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : linuxDoBinding ? (
+                    <div className="p-6 border border-border bg-muted/10 space-y-6">
+                      <div className="flex items-center gap-4">
+                        {linuxDoBinding.avatarUrl ? (
+                          <img
+                            src={linuxDoBinding.avatarUrl}
+                            alt={linuxDoBinding.username || ''}
+                            className="w-12 h-12 rounded-full border border-border"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full border border-border bg-muted flex items-center justify-center">
+                            <User className="w-6 h-6 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-bold text-foreground">
+                            {linuxDoBinding.username}
+                          </p>
+                          {linuxDoBinding.trustLevel !== null && (
+                            <p className="text-[10px] text-muted-foreground font-mono">
+                              Trust Level: {linuxDoBinding.trustLevel}
+                            </p>
+                          )}
+                        </div>
+                        <div className="ml-auto">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-widest border border-primary/20">
+                            <Link className="w-3 h-3" />
+                            {t('admin.linuxdo_bound')}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleLinuxDoUnbind}
+                        disabled={linuxDoBindLoading}
+                        className="w-full py-3 border border-destructive/50 text-destructive hover:bg-destructive/10 text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {linuxDoBindLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Unlink className="w-4 h-4" />
+                        )}
+                        {t('admin.linuxdo_unbind')}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-6 border border-dashed border-border text-center space-y-4">
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          {t('admin.linuxdo_not_bound')}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/70">
+                          {t('admin.linuxdo_bind_hint')}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleLinuxDoBind}
+                        disabled={linuxDoBindLoading}
+                        className="px-6 py-3 bg-[#f8d568] text-[#1a1a1a] hover:bg-[#f5c842] text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
+                      >
+                        {linuxDoBindLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Link className="w-4 h-4" />
+                        )}
+                        {t('admin.linuxdo_bind')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {settingsTab !== 'site' && settingsTab !== 'account' && (
               <div className="pt-8 border-t border-border flex justify-end">
                 <button
                   onClick={onSave}

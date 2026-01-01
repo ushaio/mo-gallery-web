@@ -195,11 +195,13 @@ auth.get('/linuxdo/binding', authMiddleware, async (c) => {
 
     return c.json({
       success: true,
-      binding: boundUser ? {
-        username: boundUser.oauthUsername,
-        avatarUrl: boundUser.avatarUrl,
-        trustLevel: boundUser.trustLevel,
-      } : null,
+      data: {
+        binding: boundUser ? {
+          username: boundUser.oauthUsername,
+          avatarUrl: boundUser.avatarUrl,
+          trustLevel: boundUser.trustLevel,
+        } : null,
+      },
     })
   } catch (error) {
     console.error('Get Linux DO binding error:', error)

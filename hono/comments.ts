@@ -117,20 +117,37 @@ comments.use('/admin/*', authMiddleware)
 comments.get('/admin/comments', async (c) => {
   const status = c.req.query('status')
   const photoId = c.req.query('photoId')
+  const page = parseInt(c.req.query('page') || '1')
+  const limit = parseInt(c.req.query('limit') || '20')
+  const skip = (page - 1) * limit
 
   const where: Record<string, string> = {}
   if (status) where.status = status
   if (photoId) where.photoId = photoId
 
-  const commentsList = await db.comment.findMany({
-    where,
-    include: {
-      photo: { select: { id: true, title: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
+  const [total, commentsList] = await Promise.all([
+    db.comment.count({ where }),
+    db.comment.findMany({
+      where,
+      include: {
+        photo: { select: { id: true, title: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+  ])
 
-  return c.json({ success: true, data: commentsList })
+  return c.json({
+    success: true,
+    data: commentsList,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  })
 })
 
 // Update comment status (admin)

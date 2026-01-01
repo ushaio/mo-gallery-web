@@ -27,15 +27,15 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-border pb-4">
+      <div className="flex space-x-1 border-b border-border">
         <button
           onClick={() => setUploadMode('photos')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all ${
+          className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${
             uploadMode === 'photos'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <ImageIcon className="w-4 h-4" />
@@ -43,10 +43,10 @@ export default function UploadPage() {
         </button>
         <button
           onClick={() => setUploadMode('story')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all ${
+          className={`flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${
             uploadMode === 'story'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <BookOpen className="w-4 h-4" />
