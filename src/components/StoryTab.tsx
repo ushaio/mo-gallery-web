@@ -450,7 +450,7 @@ export function StoryTab({ photoId, currentPhoto, onPhotoChange }: StoryTabProps
               </div>
               <div className="space-y-2">
                 <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
-                  {t('gallery.comment_email')}
+                  {linuxdoOnly && isLinuxDoUser ? t('gallery.comment_username') : t('gallery.comment_email')}
                 </label>
                 {linuxdoOnly && isLinuxDoUser ? (
                   /* Show Linux DO user badge instead of email input */

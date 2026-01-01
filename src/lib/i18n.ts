@@ -88,6 +88,7 @@ export const dictionaries = {
       comment_error: '评论提交失败',
       comment_linuxdo_only: '评论功能仅对 Linux DO 用户开放',
       comment_login_to_comment: '登录以发表评论',
+      comment_username: '用户名',
       // Timeline
       timeline_navigator: '时间线导航',
       timeline_photos: '张照片',
@@ -402,6 +403,7 @@ export const dictionaries = {
       comment_error: 'Failed to submit comment',
       comment_linuxdo_only: 'Comments are only available to Linux DO users',
       comment_login_to_comment: 'Sign in to comment',
+      comment_username: 'Username',
       // Timeline
       timeline_navigator: 'Timeline Navigator',
       timeline_photos: 'photos',

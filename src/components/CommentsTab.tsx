@@ -224,7 +224,7 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                {t('gallery.comment_email')}
+                {linuxdoOnly && isLinuxDoUser ? t('gallery.comment_username') : t('gallery.comment_email')}
               </label>
               {linuxdoOnly && isLinuxDoUser ? (
                 /* Show Linux DO user badge instead of email input */

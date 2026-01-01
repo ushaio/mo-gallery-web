@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { loginWithLinuxDo } from '@/lib/api'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [error, setError] = useState('')
   const { login } = useAuth()
@@ -61,50 +61,69 @@ export default function OAuthCallbackPage() {
   }, [searchParams, login, router, t])
 
   return (
+    <div className="w-full max-w-sm text-center">
+      {status === 'loading' && (
+        <>
+          <Loader2 className="w-12 h-12 mx-auto mb-6 animate-spin text-primary" />
+          <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
+            {t('login.oauth_processing')}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {t('login.oauth_wait')}
+          </p>
+        </>
+      )}
+
+      {status === 'success' && (
+        <>
+          <CheckCircle className="w-12 h-12 mx-auto mb-6 text-green-500" />
+          <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
+            {t('login.oauth_success')}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {t('login.oauth_redirect')}
+          </p>
+        </>
+      )}
+
+      {status === 'error' && (
+        <>
+          <XCircle className="w-12 h-12 mx-auto mb-6 text-destructive" />
+          <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
+            {t('login.oauth_error')}
+          </h1>
+          <p className="text-sm text-destructive mb-6">
+            {error}
+          </p>
+          <button
+            onClick={() => router.push('/login')}
+            className="px-6 py-3 bg-foreground text-background font-bold tracking-[0.15em] text-xs uppercase hover:bg-primary hover:text-primary-foreground transition-all duration-300"
+          >
+            {t('login.back_to_login')}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="w-full max-w-sm text-center">
+      <Loader2 className="w-12 h-12 mx-auto mb-6 animate-spin text-primary" />
+      <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
+        Loading...
+      </h1>
+    </div>
+  )
+}
+
+export default function OAuthCallbackPage() {
+  return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-background">
-      <div className="w-full max-w-sm text-center">
-        {status === 'loading' && (
-          <>
-            <Loader2 className="w-12 h-12 mx-auto mb-6 animate-spin text-primary" />
-            <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
-              {t('login.oauth_processing')}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {t('login.oauth_wait')}
-            </p>
-          </>
-        )}
-
-        {status === 'success' && (
-          <>
-            <CheckCircle className="w-12 h-12 mx-auto mb-6 text-green-500" />
-            <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
-              {t('login.oauth_success')}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {t('login.oauth_redirect')}
-            </p>
-          </>
-        )}
-
-        {status === 'error' && (
-          <>
-            <XCircle className="w-12 h-12 mx-auto mb-6 text-destructive" />
-            <h1 className="font-serif text-2xl font-light tracking-tighter text-foreground mb-2">
-              {t('login.oauth_error')}
-            </h1>
-            <p className="text-sm text-destructive mb-6">
-              {error}
-            </p>
-            <button
-              onClick={() => router.push('/login')}
-              className="px-6 py-3 bg-foreground text-background font-bold tracking-[0.15em] text-xs uppercase hover:bg-primary hover:text-primary-foreground transition-all duration-300"
-            >
-              {t('login.back_to_login')}
-            </button>
-          </>
-        )}
-      </div>
+      <Suspense fallback={<LoadingFallback />}>
+        <OAuthCallbackContent />
+      </Suspense>
     </div>
   )
 }
