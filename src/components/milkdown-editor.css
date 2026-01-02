@@ -5,15 +5,15 @@
   width: 100%;
   height: 100%;
   position: relative;
-  overflow: visible; /* Ensure block handle is not clipped */
+  overflow-y: auto; /* Allow vertical scrolling */
+  overflow-x: hidden; /* Hide horizontal overflow */
 }
 
 /* Milkdown root container - needs padding for drag handle */
 .milkdown-crepe-editor .milkdown {
   padding-left: 90px; /* Increased space for drag handle and add button on the left */
-  height: 100%;
+  min-height: 100%;
   box-sizing: border-box;
-  overflow: visible; /* Ensure block handle is not clipped */
 }
 
 /* ProseMirror editor */
