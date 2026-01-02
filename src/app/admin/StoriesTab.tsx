@@ -529,7 +529,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
           {/* Main Content - Left/Right Layout */}
           <div className="flex-1 flex gap-4 overflow-hidden">
             {/* Left: Editor (70%) */}
-            <div className="flex-[7] flex flex-col gap-4 overflow-hidden">
+            <div className="flex-[7] flex flex-col gap-4 overflow-hidden min-w-0">
               {/* Title Input */}
               <CustomInput
                 variant="config"
@@ -586,7 +586,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
             </div>
 
             {/* Right: Photos Panel (30%) */}
-            <div className="flex-[3] flex flex-col border border-border rounded-lg bg-muted/20 overflow-hidden">
+            <div className="flex-[3] flex flex-col border border-border rounded-lg bg-muted/20 overflow-hidden min-w-[320px]">
               {/* Photos Header */}
               <div className="flex items-center justify-between p-4 border-b border-border bg-background/50">
                 <div className="flex items-center gap-2">
@@ -610,7 +610,7 @@ export function StoriesTab({ token, t, notify, editStoryId }: StoriesTabProps) {
               {/* Photos Grid */}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
                 {currentStory?.photos && currentStory.photos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {currentStory.photos.map((photo, index) => (
                       <div
                         key={photo.id}
