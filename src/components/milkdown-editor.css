@@ -5,13 +5,15 @@
   width: 100%;
   height: 100%;
   position: relative;
+  overflow: visible; /* Ensure block handle is not clipped */
 }
 
 /* Milkdown root container - needs padding for drag handle */
 .milkdown-crepe-editor .milkdown {
-  padding-left: 48px; /* Space for drag handle on the left */
+  padding-left: 90px; /* Increased space for drag handle and add button on the left */
   height: 100%;
   box-sizing: border-box;
+  overflow: visible; /* Ensure block handle is not clipped */
 }
 
 /* ProseMirror editor */
@@ -23,14 +25,32 @@
   padding-bottom: 16px;
 }
 
-/* Block handle positioning - ensure it appears on the left within the padding area */
+/* Block handle container - ensure full visibility */
+.milkdown-crepe-editor .block-handle-container,
+.milkdown-crepe-editor [data-block-handle],
 .milkdown-crepe-editor [data-crepe-block-handle],
 .milkdown-crepe-editor .crepe-block-handle,
 .milkdown-crepe-editor .block-handle {
   z-index: 50;
-  /* Position within the left padding area */
-  left: 8px !important;
+  /* Position within the left padding area - ensure enough space for both drag and add buttons */
+  left: 4px !important;
   right: auto !important;
+  overflow: visible !important;
+}
+
+/* Block add button - the plus icon */
+.milkdown-crepe-editor [data-block-add],
+.milkdown-crepe-editor .block-add,
+.milkdown-crepe-editor .add-button {
+  left: 4px !important;
+  overflow: visible !important;
+}
+
+/* Ensure the block edit wrapper has enough space */
+.milkdown-crepe-editor .block-edit-wrapper,
+.milkdown-crepe-editor [data-block-edit] {
+  overflow: visible !important;
+  position: relative;
 }
 
 /* Dark mode support for Milkdown editor */

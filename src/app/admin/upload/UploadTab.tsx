@@ -41,17 +41,18 @@ interface UploadFile {
 }
 
 // Confirmation Modal Component
-function ConfirmModal({ 
-  open, 
-  onClose, 
-  onConfirm, 
-  fileCount, 
-  categories, 
-  albumNames, 
+function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  fileCount,
+  categories,
+  albumNames,
   storyName,
   storageProvider,
+  storagePath,
   compressionEnabled,
-  t 
+  t
 }: {
   open: boolean
   onClose: () => void
@@ -61,6 +62,7 @@ function ConfirmModal({
   albumNames: string[]
   storyName?: string
   storageProvider: string
+  storagePath?: string
   compressionEnabled: boolean
   t: (key: string) => string
 }) {
@@ -77,10 +79,12 @@ function ConfirmModal({
             <span className="text-muted-foreground text-sm">{t('admin.files')}</span>
             <span className="font-medium">{fileCount}</span>
           </div>
-          <div className="flex justify-between py-3 border-b border-border/50">
-            <span className="text-muted-foreground text-sm">{t('admin.categories')}</span>
-            <span className="font-medium">{categories.join(', ')}</span>
-          </div>
+          {categories.length > 0 && (
+            <div className="flex justify-between py-3 border-b border-border/50">
+              <span className="text-muted-foreground text-sm">{t('admin.categories')}</span>
+              <span className="font-medium">{categories.join(', ')}</span>
+            </div>
+          )}
           {albumNames.length > 0 && (
             <div className="flex justify-between py-3 border-b border-border/50">
               <span className="text-muted-foreground text-sm">{t('admin.albums')}</span>
@@ -97,6 +101,12 @@ function ConfirmModal({
             <span className="text-muted-foreground text-sm">{t('admin.storage_provider')}</span>
             <span className="font-medium capitalize">{storageProvider}</span>
           </div>
+          {storagePath && (
+            <div className="flex justify-between py-3 border-b border-border/50">
+              <span className="text-muted-foreground text-sm">{t('admin.path_prefix')}</span>
+              <span className="font-medium font-mono text-xs">{storagePath}</span>
+            </div>
+          )}
           <div className="flex justify-between py-3">
             <span className="text-muted-foreground text-sm">{t('admin.image_compression')}</span>
             <span className="font-medium">{compressionEnabled ? t('common.enabled') : t('common.disabled')}</span>
@@ -341,7 +351,6 @@ export function UploadTab({
     if (!token) return
     if (!uploadFiles.length) { setUploadError(t('admin.select_files')); return }
     if (uploadFiles.length === 1 && !uploadTitle.trim()) { setUploadError(t('admin.photo_title')); return }
-    if (!uploadCategories.length) { setUploadError(t('admin.categories')); return }
     setUploadError('')
     setShowConfirm(true)
   }
@@ -390,6 +399,16 @@ export function UploadTab({
 
   const selectedAlbumNames = uploadAlbumIds.map(id => albums.find(a => a.id === id)?.name || '').filter(Boolean)
   const selectedStoryName = stories.find(s => s.id === uploadStoryId)?.title
+  
+  // Calculate full storage path for display
+  const systemPrefix = uploadSource === 'r2'
+    ? settings?.r2_path
+    : uploadSource === 'github'
+      ? settings?.github_path
+      : undefined
+  const fullStoragePath = systemPrefix
+    ? (uploadPath.trim() ? `${systemPrefix}/${uploadPath.trim()}` : systemPrefix)
+    : uploadPath.trim() || undefined
 
   return (
     <>
@@ -417,7 +436,10 @@ export function UploadTab({
 
               {/* Categories */}
               <div ref={categoryRef} className="relative">
-                <label className="block text-xs text-muted-foreground mb-2">{t('admin.categories')}</label>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                  {t('admin.categories')}
+                  <span className="text-muted-foreground/50">({t('common.optional')})</span>
+                </label>
                 <div
                   className="min-h-[48px] p-3 bg-muted/30 border-b border-border flex flex-wrap gap-2 cursor-text focus-within:border-primary transition-colors"
                   onClick={() => { setIsCategoryOpen(true); categoryRef.current?.querySelector('input')?.focus() }}
@@ -560,7 +582,36 @@ export function UploadTab({
                 </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-2">{t('admin.path_prefix')}</label>
-                  <CustomInput variant="config" value={uploadPath} onChange={e => setUploadPath(e.target.value)} placeholder="e.g., 2025/vacation" />
+                  {/* System configured prefix (read-only) */}
+                  {(() => {
+                    const systemPrefix = uploadSource === 'r2'
+                      ? settings?.r2_path
+                      : uploadSource === 'github'
+                        ? settings?.github_path
+                        : undefined
+                    
+                    return systemPrefix ? (
+                      <div className="flex items-stretch">
+                        <div className="px-3 py-2 bg-muted/50 border-b border-l border-t border-border text-xs text-muted-foreground font-mono flex items-center min-w-0">
+                          <span className="truncate" title={systemPrefix}>{systemPrefix}/</span>
+                        </div>
+                        <CustomInput
+                          variant="config"
+                          value={uploadPath}
+                          onChange={e => setUploadPath(e.target.value)}
+                          placeholder="e.g., 2025/vacation"
+                          className="flex-1 rounded-l-none"
+                        />
+                      </div>
+                    ) : (
+                      <CustomInput
+                        variant="config"
+                        value={uploadPath}
+                        onChange={e => setUploadPath(e.target.value)}
+                        placeholder="e.g., 2025/vacation"
+                      />
+                    )
+                  })()}
                 </div>
               </div>
 
@@ -729,6 +780,7 @@ export function UploadTab({
         albumNames={selectedAlbumNames}
         storyName={selectedStoryName}
         storageProvider={uploadSource}
+        storagePath={fullStoragePath}
         compressionEnabled={compressionEnabled}
         t={t}
       />
