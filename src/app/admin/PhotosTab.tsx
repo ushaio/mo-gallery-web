@@ -497,30 +497,25 @@ export function PhotosTab({
                     />
                   </div>
 
-                  {/* Featured Badge */}
-                  {photo.isFeatured && (
-                    <div className="absolute top-2 right-2 p-1.5 bg-amber-500 text-white rounded z-10 shadow-lg">
-                      <Star className="w-3 h-3 fill-current" />
-                    </div>
-                  )}
-
                   {/* Hover Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
                   {/* Action Buttons - Fixed positions */}
                   <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    {/* Star button - always takes space, visible only when not featured */}
+                    {/* Star button - toggle featured status */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
                         onToggleFeatured(photo)
                       }}
-                      className={`p-1.5 bg-black/60 backdrop-blur-sm text-white hover:text-amber-400 rounded transition-colors ${
-                        photo.isFeatured ? 'invisible' : ''
+                      className={`p-1.5 backdrop-blur-sm rounded transition-colors ${
+                        photo.isFeatured
+                          ? 'bg-amber-500 text-white hover:bg-amber-600'
+                          : 'bg-black/60 text-white hover:text-amber-400'
                       }`}
-                      title="Add to featured"
+                      title={photo.isFeatured ? "Remove from featured" : "Add to featured"}
                     >
-                      <Star className="w-3.5 h-3.5" />
+                      <Star className={`w-3.5 h-3.5 ${photo.isFeatured ? 'fill-current' : ''}`} />
                     </button>
                     {/* Delete button - always in same position */}
                     <button
@@ -534,6 +529,20 @@ export function PhotosTab({
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
+
+                  {/* Featured Badge - Always visible when featured, higher z-index than hover overlay */}
+                  {photo.isFeatured && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleFeatured(photo)
+                      }}
+                      className="absolute top-2 right-2 p-1.5 bg-amber-500 text-white rounded z-30 shadow-lg hover:bg-amber-600 transition-colors group-hover:opacity-0 pointer-events-auto"
+                      title="Remove from featured"
+                    >
+                      <Star className="w-3 h-3 fill-current" />
+                    </button>
+                  )}
 
                   {/* Bottom Info */}
                   <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 pointer-events-none z-10">

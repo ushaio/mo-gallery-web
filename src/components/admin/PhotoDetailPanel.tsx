@@ -328,7 +328,33 @@ export function PhotoDetailPanel({
               />
               {/* Featured Badge */}
               <button
-                onClick={() => setEditData({ ...editData, isFeatured: !editData.isFeatured })}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (!photo || !token) return
+                  const newFeatured = !editData.isFeatured
+                  setEditData(prev => ({ ...prev, isFeatured: newFeatured }))
+                  
+                  try {
+                    const updated = await updatePhoto({
+                      token,
+                      id: photo.id,
+                      patch: {
+                        title: editData.title,
+                        category: editData.category,
+                        isFeatured: newFeatured,
+                      },
+                    })
+                    onSave(updated)
+                    notify(newFeatured ? t('admin.notify_featured_added') : t('admin.notify_featured_removed'), 'success')
+                  } catch (err) {
+                    setEditData(prev => ({ ...prev, isFeatured: !newFeatured }))
+                    if (err instanceof ApiUnauthorizedError) {
+                      onUnauthorized()
+                    } else {
+                      notify(t('common.error'), 'error')
+                    }
+                  }
+                }}
                 className={`absolute top-3 right-3 p-2 transition-colors ${
                   editData.isFeatured
                     ? 'bg-amber-500 text-white'
@@ -441,6 +467,10 @@ export function PhotoDetailPanel({
                       <div className="flex justify-between">
                         <span>Storage</span>
                         <span className="uppercase">{photo.storageProvider}</span>
+                      </div>
+                      <div className="flex justify-between flex-col gap-1">
+                        <span>Path</span>
+                        <span className="text-[10px] break-all bg-muted/50 p-1 rounded font-mono">{photo.storageKey || photo.url}</span>
                       </div>
                     </div>
                   </div>
