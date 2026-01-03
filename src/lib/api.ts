@@ -457,17 +457,67 @@ export function uploadPhotoWithProgress(input: {
   })
 }
 
+export interface PhotoDeleteError {
+  error: 'PHOTO_HAS_STORIES'
+  message: string
+  stories: { id: string; title: string }[]
+}
+
 export async function deletePhoto(input: {
   token: string
   id: string
   deleteFromStorage?: boolean
+  force?: boolean
 }): Promise<void> {
-  const queryParam = input.deleteFromStorage ? '?deleteFromStorage=true' : ''
+  const params = new URLSearchParams()
+  if (input.deleteFromStorage) params.set('deleteFromStorage', 'true')
+  if (input.force) params.set('force', 'true')
+  const queryParam = params.toString() ? `?${params.toString()}` : ''
   await apiRequest(
     `/api/admin/photos/${encodeURIComponent(input.id)}${queryParam}`,
     { method: 'DELETE' },
     input.token
   )
+}
+
+export async function checkPhotoStories(
+  token: string,
+  photoId: string
+): Promise<{ id: string; title: string }[] | null> {
+  try {
+    const result = await apiRequestData<{ stories: { id: string; title: string }[] }>(
+      `/api/admin/photos/${encodeURIComponent(photoId)}/stories`,
+      {},
+      token
+    )
+    return result.stories.length > 0 ? result.stories : null
+  } catch {
+    return null
+  }
+}
+
+export interface PhotoWithStories {
+  photoId: string
+  photoTitle: string
+  stories: { id: string; title: string }[]
+}
+
+export async function checkPhotosStories(
+  token: string,
+  photoIds: string[]
+): Promise<{ photosWithStories: PhotoWithStories[]; hasBlockingStories: boolean }> {
+  const result = await apiRequestData<{
+    photosWithStories: PhotoWithStories[]
+    hasBlockingStories: boolean
+  }>(
+    '/api/admin/photos/check-stories',
+    {
+      method: 'POST',
+      body: JSON.stringify({ photoIds }),
+    },
+    token
+  )
+  return result
 }
 
 export async function updatePhoto(input: {

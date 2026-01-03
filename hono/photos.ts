@@ -319,12 +319,31 @@ photos.delete('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const deleteFromStorage = c.req.query('deleteFromStorage') === 'true'
+    const forceDelete = c.req.query('force') === 'true'
 
     const photo = await db.photo.findUnique({
       where: { id },
+      include: {
+        stories: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
     })
 
     if (photo) {
+      // Check if photo has associated stories
+      if (photo.stories.length > 0 && !forceDelete) {
+        return c.json({
+          success: false,
+          error: 'PHOTO_HAS_STORIES',
+          message: 'Photo has associated stories and cannot be deleted',
+          stories: photo.stories,
+        }, 400)
+      }
+
       // Only delete files from storage if user explicitly requested it
       if (deleteFromStorage) {
         // Get storage configuration for the provider used by this photo
@@ -418,6 +437,87 @@ photos.patch('/admin/photos/:id', async (c) => {
     })
   } catch (error) {
     console.error('Update photo error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// Check if photos have associated stories
+photos.get('/admin/photos/:id/stories', async (c) => {
+  try {
+    const id = c.req.param('id')
+    
+    const photo = await db.photo.findUnique({
+      where: { id },
+      include: {
+        stories: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    })
+
+    if (!photo) {
+      return c.json({ error: 'Photo not found' }, 404)
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        stories: photo.stories,
+      },
+    })
+  } catch (error) {
+    console.error('Get photo stories error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// Check multiple photos for associated stories
+photos.post('/admin/photos/check-stories', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { photoIds } = body
+
+    if (!photoIds || !Array.isArray(photoIds)) {
+      return c.json({ error: 'photoIds array is required' }, 400)
+    }
+
+    const photos = await db.photo.findMany({
+      where: { id: { in: photoIds } },
+      include: {
+        stories: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    })
+
+    // Group photos by their associated stories
+    const photosWithStories: { photoId: string; photoTitle: string; stories: { id: string; title: string }[] }[] = []
+    
+    for (const photo of photos) {
+      if (photo.stories.length > 0) {
+        photosWithStories.push({
+          photoId: photo.id,
+          photoTitle: photo.title,
+          stories: photo.stories,
+        })
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        photosWithStories,
+        hasBlockingStories: photosWithStories.length > 0,
+      },
+    })
+  } catch (error) {
+    console.error('Check photos stories error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

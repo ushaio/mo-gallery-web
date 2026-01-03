@@ -8,6 +8,7 @@ import { getStories, type StoryDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { resolveAssetUrl } from '@/lib/api'
+import { QuickStoryEditor } from '@/components/story/QuickStoryEditor'
 
 export default function StoryListPage() {
   const { t } = useLanguage()
@@ -16,28 +17,31 @@ export default function StoryListPage() {
   const [loading, setLoading] = useState(true)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const storiesData = await getStories()
-        setStories(storiesData)
-      } catch (error) {
-        console.error('Failed to fetch story data:', error)
-      } finally {
-        setLoading(false)
-      }
+  async function loadStories() {
+    try {
+      const storiesData = await getStories()
+      setStories(storiesData)
+    } catch (error) {
+      console.error('Failed to fetch story data:', error)
+    } finally {
+      setLoading(false)
     }
-    fetchData()
+  }
+
+  useEffect(() => {
+    loadStories()
   }, [])
 
-  // Group stories by year
+  // Group stories by year and month
   const timelineData = useMemo(() => {
-    const grouped: Record<string, StoryDto[]> = {}
+    const grouped: Record<string, Record<string, StoryDto[]>> = {}
     stories.forEach(story => {
       const date = new Date(story.createdAt)
       const year = date.getFullYear().toString()
-      if (!grouped[year]) grouped[year] = []
-      grouped[year].push(story)
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      if (!grouped[year]) grouped[year] = {}
+      if (!grouped[year][month]) grouped[year][month] = []
+      grouped[year][month].push(story)
     })
     return grouped
   }, [stories])
@@ -45,6 +49,12 @@ export default function StoryListPage() {
   const years = useMemo(() => {
     return Object.keys(timelineData).sort((a, b) => parseInt(b) - parseInt(a))
   }, [timelineData])
+
+  const getMonthName = (month: string) => {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December']
+    return monthNames[parseInt(month) - 1]
+  }
 
   const getCoverUrl = (story: StoryDto): string | null => {
     if (story.coverPhotoId && story.photos.length > 0) {
@@ -134,112 +144,158 @@ export default function StoryListPage() {
       {/* Stories Content */}
       <div className="px-6 md:px-12 lg:px-24">
         <div className="max-w-screen-xl mx-auto">
+          
+          <QuickStoryEditor onSuccess={loadStories} />
+
           {stories.length === 0 ? (
             <div className="py-24 text-center border-t border-border/50">
               <BookOpen className="w-10 h-10 mx-auto mb-4 opacity-20" />
               <p className="text-muted-foreground font-serif italic text-sm">{t('story.empty') || 'No stories found yet.'}</p>
             </div>
           ) : (
-            <div className="space-y-24">
-              {years.map((year, yearIndex) => (
-                <section key={year} className="relative">
-                  {/* Year Header */}
-                  <div className="sticky top-20 z-10 flex items-center gap-4 mb-12 mix-blend-difference">
-                    <span className="text-4xl md:text-5xl font-mono font-black tracking-tighter opacity-10">
-                      {year}
-                    </span>
-                    <div className="h-px flex-1 bg-border/30" />
-                  </div>
+            <div className="space-y-16">
+              {years.map((year) => {
+                const months = Object.keys(timelineData[year]).sort((a, b) => parseInt(b) - parseInt(a))
+                
+                return (
+                  <section key={year} className="relative">
+                    {/* Year Header - Sticky at top */}
+                    <motion.div
+                      className="sticky top-20 z-20 py-3 bg-background/95 backdrop-blur-sm transition-all duration-300"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.4 }}
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="text-4xl md:text-5xl font-mono font-black tracking-tighter text-foreground/10">
+                          {year}
+                        </span>
+                        <div className="h-px flex-1 bg-border/30" />
+                      </div>
+                    </motion.div>
 
-                  {/* Story Grid */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-16 gap-y-24">
-                    {timelineData[year].map((story, index) => {
-                      const coverUrl = getCoverUrl(story)
-                      const isLarge = index % 3 === 0
-                      
-                      return (
-                        <motion.div
-                          key={story.id}
-                          initial={{ opacity: 0, y: 30 }}
-                          whileInView={{ opacity: 1, y: 0 }}
-                          viewport={{ once: true, margin: "-50px" }}
-                          transition={{ duration: 0.6, ease: [0.21, 0.45, 0.32, 0.9] }}
-                          className={`group relative ${isLarge ? 'lg:col-span-2' : ''}`}
-                          onMouseEnter={() => setHoveredId(story.id)}
-                          onMouseLeave={() => setHoveredId(null)}
-                        >
-                          <Link href={`/story/${story.id}`} className="block">
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-                              {/* Index & Date */}
-                              <div className="md:col-span-2 flex flex-row md:flex-col justify-between md:justify-start gap-4">
-                                <span className="text-[10px] font-mono text-muted-foreground/40 font-bold tracking-tighter">
-                                  {String(index + 1).padStart(2, '0')}
+                    {/* Months within Year */}
+                    <div className="space-y-12 mt-6">
+                      {months.map((month) => {
+                        const storiesInMonth = timelineData[year][month]
+                        let storyIndex = 0
+                        
+                        return (
+                          <div key={`${year}-${month}`} className="relative">
+                            {/* Month Header - Sticky below year */}
+                            <motion.div
+                              className="sticky top-36 z-10 py-2 bg-background/90 backdrop-blur-sm transition-all duration-300"
+                              initial={{ opacity: 0, x: -10 }}
+                              whileInView={{ opacity: 1, x: 0 }}
+                              viewport={{ once: true }}
+                              transition={{ duration: 0.3, ease: "easeOut" }}
+                            >
+                              <div className="flex items-center gap-3 pl-4 md:pl-8">
+                                <Calendar className="w-3.5 h-3.5 text-primary/60" />
+                                <span className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
+                                  {getMonthName(month)}
                                 </span>
-                                <div className="flex flex-col items-end md:items-start gap-0.5">
-                                  <span className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">
-                                    {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short' })}
-                                  </span>
-                                  <span className="text-lg font-mono tracking-tighter">
-                                    {new Date(story.createdAt).toLocaleDateString('en-US', { day: '2-digit' })}
-                                  </span>
-                                </div>
+                                <span className="text-[10px] font-mono text-muted-foreground/40">
+                                  ({storiesInMonth.length})
+                                </span>
+                                <div className="h-px flex-1 bg-border/20" />
                               </div>
+                            </motion.div>
 
-                              {/* Image Container */}
-                              <div className={`md:col-span-10 ${isLarge ? 'lg:col-span-8' : 'lg:col-span-10'}`}>
-                                <div className="relative aspect-[16/10] overflow-hidden bg-muted">
-                                  {coverUrl ? (
-                                    <motion.img
-                                      src={coverUrl}
-                                      alt={story.title}
-                                      className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                      <BookOpen className="w-10 h-10 opacity-10" />
-                                    </div>
-                                  )}
-                                  
-                                  {/* Hover Overlay */}
-                                  <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                                  
-                                  {/* Photo Count */}
-                                  <div className="absolute bottom-4 left-4 flex items-center gap-2 px-2 py-1 bg-background/90 backdrop-blur-md text-[9px] font-mono tracking-widest">
-                                    <ImageIcon className="w-3 h-3" />
-                                    {story.photos.length}
-                                  </div>
-                                </div>
-                              </div>
+                            {/* Story Grid - Irregular/Asymmetrical */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-20 mt-8 pl-4 md:pl-8">
+                              {storiesInMonth.map((story, i) => {
+                                const coverUrl = getCoverUrl(story)
+                                const currentIndex = storyIndex++
+                                // Create irregularity
+                                const isWide = i % 7 === 0 || i % 7 === 6
+                                const isTall = i % 5 === 2
+                                const offset = i % 2 === 1 && !isWide ? 'lg:mt-12' : ''
+                                
+                                return (
+                                  <motion.div
+                                    key={story.id}
+                                    initial={{ opacity: 0, y: 30 }}
+                                    whileInView={{ opacity: 1, y: 0 }}
+                                    viewport={{ once: true, margin: "-50px" }}
+                                    transition={{ duration: 0.6, ease: [0.21, 0.45, 0.32, 0.9] }}
+                                    className={`group relative flex flex-col gap-5 ${isWide ? 'md:col-span-2' : ''} ${offset}`}
+                                    onMouseEnter={() => setHoveredId(story.id)}
+                                    onMouseLeave={() => setHoveredId(null)}
+                                  >
+                                    <Link href={`/story/${story.id}`} className="block h-full">
+                                      <div className="flex flex-col h-full">
+                                        {/* Image Container */}
+                                        <div className={`relative overflow-hidden bg-muted mb-5 group-hover:shadow-2xl transition-all duration-700 ease-out ${isTall && !isWide ? 'aspect-[3/4]' : isWide ? 'aspect-[21/9]' : 'aspect-[3/2]'}`}>
+                                          {coverUrl ? (
+                                            <motion.img
+                                              src={coverUrl}
+                                              alt={story.title}
+                                              className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                              <BookOpen className="w-8 h-8 opacity-10" />
+                                            </div>
+                                          )}
+                                          
+                                          {/* Artistic Overlay */}
+                                          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                          
+                                          {/* Floating Date (Visible on hover or overlay) */}
+                                          <div className="absolute top-4 right-4 flex flex-col items-end opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0 text-white/90">
+                                            <span className="text-2xl font-serif italic">
+                                              {new Date(story.createdAt).getDate()}
+                                            </span>
+                                            <span className="text-[10px] font-mono tracking-widest uppercase text-white/70">
+                                              {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short' })}
+                                            </span>
+                                          </div>
 
-                              {/* Content Info */}
-                              <div className={`md:col-start-3 md:col-span-10 ${isLarge ? 'lg:col-start-11 lg:col-span-2' : 'lg:col-start-3 lg:col-span-10'} pt-4 lg:pt-0`}>
-                                <div className="space-y-4">
-                                  <h3 className="text-2xl md:text-3xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300">
-                                    {story.title}
-                                  </h3>
-                                  
-                                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3 font-serif italic">
-                                    {story.content.replace(/[#*`\[\]]/g, '').substring(0, 120)}...
-                                  </p>
+                                          {/* Photo Count Tag */}
+                                          <div className="absolute bottom-4 left-4 flex items-center gap-2 text-white/90 text-[10px] font-mono tracking-widest">
+                                            <div className="h-px w-3 bg-white/50" />
+                                            {story.photos.length} SHOTS
+                                          </div>
+                                        </div>
 
-                                  <div className="flex items-center gap-3 group/btn pt-2">
-                                    <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-primary">
-                                      {t('story.read_more') || 'READ'}
-                                    </span>
-                                    <div className="relative w-6 h-6 flex items-center justify-center border border-primary/20 rounded-full group-hover/btn:bg-primary group-hover/btn:border-primary transition-all duration-300">
-                                      <ArrowUpRight className="w-3 h-3 text-primary group-hover/btn:text-primary-foreground transition-colors" />
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                                        {/* Content Info - Minimalist High Fashion Style */}
+                                        <div className="flex flex-col flex-1 min-h-0 relative px-1">
+                                          <div className="flex items-baseline gap-3 mb-2">
+                                            <span className="text-[9px] font-mono text-primary/40 font-bold tracking-tighter">
+                                              NO.{String(currentIndex + 1).padStart(2, '0')}
+                                            </span>
+                                            <h3 className="text-2xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300">
+                                              {story.title}
+                                            </h3>
+                                          </div>
+                                          
+                                          {!isWide && (
+                                            <p className="text-xs text-muted-foreground/70 leading-relaxed font-serif italic mb-4 line-clamp-2 md:w-3/4">
+                                              {story.content.replace(/[#*`\[\]]/g, '')}
+                                            </p>
+                                          )}
+
+                                          <div className="flex items-center gap-2 group/btn mt-auto opacity-0 group-hover:opacity-100 transition-all duration-300 -translate-x-2 group-hover:translate-x-0">
+                                            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-primary">
+                                              Read Story
+                                            </span>
+                                            <ArrowRight className="w-3 h-3 text-primary" />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </Link>
+                                  </motion.div>
+                                )
+                              })}
                             </div>
-                          </Link>
-                        </motion.div>
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )
+              })}
             </div>
           )}
 

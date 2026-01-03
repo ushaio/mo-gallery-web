@@ -28,6 +28,7 @@ import {
   ApiUnauthorizedError,
   addPhotosToStory,
   batchUpdatePhotoUrls,
+  checkPhotosStories,
   deletePhoto,
   getAdminSettings,
   getCategories,
@@ -36,6 +37,7 @@ import {
   updatePhoto,
   type AdminSettingsDto,
   type PhotoDto,
+  type PhotoWithStories,
 } from '@/lib/api'
 import { Toast, type Notification } from '@/components/Toast'
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
@@ -136,6 +138,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     isBulk: boolean
   } | null>(null)
   const [deleteFromStorage, setDeleteFromStorage] = useState(true)
+  const [deleteDialogLoading, setDeleteDialogLoading] = useState(false)
+  const [photosWithStories, setPhotosWithStories] = useState<PhotoWithStories[]>([])
 
   // Logout Confirmation State
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -213,15 +217,30 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Photos Handlers ---
-  const handleDelete = useCallback((photoId?: string) => {
+  const handleDelete = useCallback(async (photoId?: string) => {
     if (!token) return
-    if (photoId) {
-      setDeleteConfirmDialog({ photoIds: [photoId], isBulk: false })
-    } else if (selectedPhotoIds.size > 0) {
-      setDeleteConfirmDialog({
-        photoIds: Array.from(selectedPhotoIds),
-        isBulk: true,
-      })
+    
+    const photoIds = photoId ? [photoId] : Array.from(selectedPhotoIds)
+    if (photoIds.length === 0) return
+    
+    // Show dialog immediately with loading state
+    setDeleteConfirmDialog({
+      photoIds,
+      isBulk: photoIds.length > 1,
+    })
+    setDeleteDialogLoading(true)
+    setPhotosWithStories([])
+    
+    try {
+      // Check if any photos have associated stories
+      const result = await checkPhotosStories(token, photoIds)
+      setPhotosWithStories(result.photosWithStories)
+    } catch (err) {
+      console.error('Failed to check photo stories:', err)
+      // If check fails, allow deletion to proceed
+      setPhotosWithStories([])
+    } finally {
+      setDeleteDialogLoading(false)
     }
   }, [token, selectedPhotoIds])
 
@@ -641,8 +660,11 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           onCancel={() => {
             setDeleteConfirmDialog(null)
             setDeleteFromStorage(true)
+            setPhotosWithStories([])
           }}
           t={t}
+          isLoading={deleteDialogLoading}
+          photosWithStories={photosWithStories}
         />
 
         <UrlUpdateConfirmDialog
