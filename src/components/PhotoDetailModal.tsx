@@ -407,7 +407,7 @@ export function PhotoDetailModal({
                            {isLoadingMore ? (
                              <Loader2 className="w-4 h-4 animate-spin text-white/50" />
                            ) : (
-                             <span className="text-[10px] text-white/50">...</span>
+                             <span className="text-ui-micro text-white/50">...</span>
                            )}
                         </div>
                       )}
@@ -428,7 +428,7 @@ export function PhotoDetailModal({
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabType)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-5 text-[10px] font-bold uppercase tracking-[0.2em] transition-all
+                    className={`flex-1 flex items-center justify-center gap-2 py-5 text-ui-xs font-bold uppercase tracking-[0.2em] transition-all
                       ${activeTab === tab.id ? 'text-primary bg-primary/5' : 'text-muted-foreground hover:bg-muted/30'}
                     `}
                   >
@@ -447,13 +447,13 @@ export function PhotoDetailModal({
                       <div className="space-y-6 text-center">
                         <div className="inline-flex flex-wrap justify-center gap-2">
                           {photo.isFeatured && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 text-[9px] font-bold uppercase tracking-widest border border-amber-500/20">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 text-ui-micro font-bold uppercase tracking-widest border border-amber-500/20">
                               <Star className="w-3 h-3 fill-current" />
                               Feature
                             </span>
                           )}
                           {photo.category.split(',').map(cat => (
-                            <span key={cat} className="px-3 py-1 bg-primary/5 text-primary text-[9px] font-bold uppercase tracking-widest border border-primary/20">
+                            <span key={cat} className="px-3 py-1 bg-primary/5 text-primary text-ui-micro font-bold uppercase tracking-widest border border-primary/20">
                               {cat}
                             </span>
                           ))}
@@ -469,7 +469,7 @@ export function PhotoDetailModal({
                           <div key={i} className="space-y-2">
                             <div className="flex items-center gap-2 text-muted-foreground/60">
                               <item.icon className="w-3.5 h-3.5" />
-                              <span className="text-[9px] font-bold uppercase tracking-[0.2em]">{item.label}</span>
+                              <span className="text-ui-micro font-bold uppercase tracking-[0.2em]">{item.label}</span>
                             </div>
                             <p className="font-mono text-sm border-b border-border/50 pb-2">{item.value}</p>
                           </div>
@@ -478,7 +478,7 @@ export function PhotoDetailModal({
 
                       {/* File Details */}
                       <div className="p-6 bg-muted/10 border border-border/50 space-y-6">
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground text-center">
+                        <h3 className="text-ui-xs font-bold uppercase tracking-[0.2em] text-muted-foreground text-center">
                           File Details
                         </h3>
                         <div className="flex justify-between items-center font-mono text-xs">
@@ -494,7 +494,7 @@ export function PhotoDetailModal({
                       {/* Colors */}
                       {dominantColors.length > 0 && (
                         <div className="space-y-4 text-center">
-                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                          <h3 className="text-ui-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
                             {t('gallery.palette')}
                           </h3>
                           <div className="flex justify-center flex-wrap gap-4">
@@ -505,7 +505,7 @@ export function PhotoDetailModal({
                                 className="group relative w-10 h-10 rounded-full border border-border/50 shadow-sm transition-transform hover:scale-110"
                                 style={{ backgroundColor: color }}
                               >
-                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background px-1 border border-border">
+                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background px-1 border border-border">
                                   {color}
                                 </span>
                               </button>

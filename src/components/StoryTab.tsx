@@ -321,12 +321,12 @@ export function StoryTab({
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <div className="h-px w-8 bg-primary/30" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.4em] text-primary/60">Journal</span>
+              <span className="text-ui-xs font-bold uppercase tracking-[0.4em] text-primary/60">Journal</span>
             </div>
             <h3 className="font-serif text-3xl md:text-4xl leading-[1.1] text-foreground tracking-tight">
               {story.title}
             </h3>
-            <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60">
+            <div className="flex items-center gap-4 text-ui-micro font-mono uppercase tracking-widest text-muted-foreground/60">
               {new Date(story.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                 year: 'numeric',
                 month: 'long',
@@ -340,10 +340,10 @@ export function StoryTab({
             <div className="py-8 border-t border-b border-border/50">
               <div className="flex items-center justify-between mb-6">
                 <div className="space-y-1">
-                  <h4 className="text-[10px] font-bold tracking-[0.3em] uppercase text-primary">
+                  <h4 className="text-ui-xs font-bold tracking-[0.3em] uppercase text-primary">
                     {t('story.story_album')}
                   </h4>
-                  <div className="text-[10px] font-mono text-muted-foreground/60 uppercase">
+                  <div className="text-ui-micro font-mono text-muted-foreground/60 uppercase">
                     Record {currentPhotoIndex + 1} of {story.photos.length}
                   </div>
                 </div>
@@ -402,7 +402,7 @@ export function StoryTab({
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-4">
             <MessageSquare className="w-5 h-5 text-primary/40" />
-            <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase text-primary/80">
+            <h3 className="text-ui-xs font-bold tracking-[0.4em] uppercase text-primary/80">
               {t('gallery.comments')} {comments.length > 0 && `(${comments.length})`}
             </h3>
           </div>
@@ -442,20 +442,20 @@ export function StoryTab({
           <form onSubmit={handleSubmit} className="relative space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-2">
-                <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
+                <label className="text-ui-micro font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
                   {t('gallery.comment_author')}
                 </label>
                 <input
                   type="text"
                   value={formData.author}
                   onChange={(e) => setFormData({ ...formData, author: e.target.value })}
-                  className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-sm font-serif"
+                  className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-ui-xs font-serif"
                   required
                   disabled={submitting || isLinuxDoUser || isAdmin}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
+                <label className="text-ui-micro font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
                   {isAdmin && !isLinuxDoUser ? t('admin.admin') : (linuxdoOnly && isLinuxDoUser ? t('gallery.comment_username') : t('gallery.comment_email'))}
                 </label>
                 {isAdmin && !isLinuxDoUser ? (
@@ -464,7 +464,7 @@ export function StoryTab({
                     <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
                     </svg>
-                    <span className="text-sm text-primary font-medium">{t('admin.admin')}</span>
+                    <span className="text-ui-xs text-primary font-medium">{t('admin.admin')}</span>
                   </div>
                 ) : linuxdoOnly && isLinuxDoUser ? (
                   /* Show Linux DO user badge instead of email input */
@@ -472,14 +472,14 @@ export function StoryTab({
                     <svg className="w-4 h-4 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
                     </svg>
-                    <span className="text-sm text-[#f8d568] font-medium">Linux DO</span>
+                    <span className="text-ui-xs text-[#f8d568] font-medium">Linux DO</span>
                   </div>
                 ) : (
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-sm font-serif placeholder:italic placeholder:text-muted-foreground/30"
+                  className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-ui-xs font-serif placeholder:italic placeholder:text-muted-foreground/30"
                   placeholder="Optional"
                   disabled={submitting}
                 />
@@ -488,13 +488,13 @@ export function StoryTab({
             </div>
 
             <div className="space-y-2">
-              <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
+              <label className="text-ui-micro font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
                 {t('gallery.comment_content')}
               </label>
               <textarea
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                className="w-full py-4 bg-transparent border border-border focus:border-primary p-4 outline-none transition-all text-sm font-serif min-h-[120px] resize-none"
+                className="w-full py-4 bg-transparent border border-border focus:border-primary p-4 outline-none transition-all text-ui-xs font-serif min-h-[120px] resize-none"
                 required
                 disabled={submitting}
               />
@@ -503,7 +503,7 @@ export function StoryTab({
             <button
               type="submit"
               disabled={submitting || !formData.author.trim() || !formData.content.trim()}
-              className="group/btn flex items-center gap-4 text-[10px] font-bold uppercase tracking-[0.4em] text-primary disabled:opacity-20"
+              className="group/btn flex items-center gap-4 text-ui-micro font-bold uppercase tracking-[0.4em] text-primary disabled:opacity-20"
             >
               <span>{submitting ? t('gallery.comment_submitting') : t('gallery.comment_submit')}</span>
               <div className="w-8 h-8 flex items-center justify-center border border-primary/20 rounded-full group-hover/btn:bg-primary group-hover/btn:text-primary-foreground transition-all">
@@ -549,11 +549,11 @@ export function StoryTab({
                     <CornerDownRight className="w-4 h-4" />
                   </div>
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="text-xs font-bold text-foreground tracking-tight">
+                    <span className="text-ui-xs font-bold text-foreground tracking-tight">
                       {comment.author}
                     </span>
                     <div className="w-1 h-1 rounded-full bg-border" />
-                    <span className="text-[9px] font-mono text-muted-foreground/60 uppercase tracking-widest">
+                    <span className="text-ui-micro font-mono text-muted-foreground/60 uppercase tracking-widest">
                       {new Date(comment.createdAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                         year: 'numeric',
                         month: '2-digit',
@@ -563,7 +563,7 @@ export function StoryTab({
                       })}
                     </span>
                   </div>
-                  <p className="text-sm font-serif leading-relaxed text-foreground/70">
+                  <p className="text-ui-xs font-serif leading-relaxed text-foreground/70">
                     {comment.content}
                   </p>
                 </motion.div>

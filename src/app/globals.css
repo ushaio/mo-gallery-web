@@ -31,10 +31,10 @@
 
 :root {
   /* Global Font Size Scale - 全局字体大小控制 */
-  --text-xs: 0.75rem;      /* 12px - 基础小字体 */
-  --text-xxs: 0.6875rem;   /* 11px - 较小标签 */
-  --text-micro: 0.625rem;  /* 10px - 微型标签（如分类、日期等） */
-  --text-nano: 0.5625rem;  /* 9px - 最小字体（如序号等） */
+  --text-xs: 0.825rem;     /* ~13.2px - 基础小字体 - Slightly larger for readability */
+  --text-xxs: 0.75rem;     /* 12px - 较小标签 */
+  --text-micro: 0.6875rem; /* 11px - 微型标签（如分类、日期等） */
+  --text-nano: 0.625rem;   /* 10px - 最小字体（如序号等） */
 
   /* Light Mode - "Gallery Wall" (Stark White & Sharp Black) */
   --background: #FFFFFF; /* Pure White for cleaner look */

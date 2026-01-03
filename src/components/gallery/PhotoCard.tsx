@@ -43,12 +43,12 @@ export function PhotoCard({ photo, index, settings, grayscale, onClick }: PhotoC
           <h3 className="text-lg font-serif leading-tight text-foreground group-hover:text-primary transition-colors duration-300">
             {photo.title}
           </h3>
-          <p className="text-ui-micro font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <p className="text-ui-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
              {photo.category.split(',')[0]}
           </p>
         </div>
         
-        <div className="flex flex-col items-end gap-1 text-ui-nano font-mono text-muted-foreground/60">
+        <div className="flex flex-col items-end gap-1 text-ui-micro font-mono text-muted-foreground/60">
            <span>{String(index + 1).padStart(2, '0')}</span>
            <span>{new Date(photo.createdAt).getFullYear()}</span>
         </div>

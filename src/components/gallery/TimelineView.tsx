@@ -393,17 +393,17 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
 
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
-                      <p className="text-ui-nano font-black text-primary uppercase tracking-[0.2em] mb-0.5">
+                      <p className="text-ui-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
                         {photo.category.split(',')[0]}
                       </p>
-                      <h3 className="text-ui-xs font-serif text-white leading-tight line-clamp-1">
+                      <h3 className="text-lg font-serif text-white leading-tight line-clamp-1">
                         {photo.title}
                       </h3>
                     </div>
 
                     {/* Time Badge */}
                     {photo.takenAt && (
-                      <div className="absolute top-2 right-2 text-ui-nano font-mono text-white/70 bg-black/40 px-1.5 py-0.5">
+                      <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/70 bg-black/40 px-1.5 py-0.5">
                         {new Date(photo.takenAt).toLocaleTimeString('en-US', {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -414,7 +414,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
 
                     {/* No date indicator */}
                     {!photo.takenAt && (
-                      <div className="absolute top-2 right-2 text-ui-nano font-mono text-white/50 bg-black/30 px-1.5 py-0.5">
+                      <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/50 bg-black/30 px-1.5 py-0.5">
                         ?
                       </div>
                     )}

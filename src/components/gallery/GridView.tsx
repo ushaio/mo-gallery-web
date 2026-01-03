@@ -45,14 +45,14 @@ export function GridView({ photos, settings, grayscale, onPhotoClick }: GridView
             {/* Meta Data - Below Image */}
             <div className="flex justify-between items-start opacity-60 group-hover:opacity-100 transition-opacity">
                <div className="space-y-1">
-                 <h3 className="text-ui-xs font-serif leading-tight text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                 <h3 className="text-lg font-serif leading-tight text-foreground line-clamp-1 group-hover:text-primary transition-colors">
                     {photo.title}
                  </h3>
-                 <p className="text-ui-nano font-mono text-muted-foreground uppercase tracking-widest">
+                 <p className="text-ui-xs font-mono text-muted-foreground uppercase tracking-widest">
                     {photo.category.split(',')[0]}
                  </p>
                </div>
-               <span className="text-ui-nano font-mono text-muted-foreground/60">
+               <span className="text-ui-micro font-mono text-muted-foreground/60">
                  {String(index + 1).padStart(2, '0')}
                </span>
             </div>
