@@ -229,30 +229,40 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
     e.dataTransfer.dropEffect = 'move'
   }, [])
 
+  // Optimized Move Logic
+  const movePendingFile = useCallback((sourceId: string, targetId?: string) => {
+    setPendingFiles(prev => {
+      const sourceIndex = prev.findIndex(f => f.id === sourceId)
+      if (sourceIndex === -1) return prev
+
+      const newFiles = [...prev]
+      const [draggedItem] = newFiles.splice(sourceIndex, 1)
+
+      if (targetId) {
+        const targetIndex = prev.findIndex(f => f.id === targetId)
+        if (targetIndex !== -1) {
+          newFiles.splice(targetIndex, 0, draggedItem)
+        } else {
+          newFiles.push(draggedItem)
+        }
+      } else {
+        // Drop on container -> Append to end
+        newFiles.push(draggedItem)
+      }
+      
+      return newFiles
+    })
+  }, [])
+
   const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
     e.preventDefault()
     e.stopPropagation()
     
-    if (!draggedItemId || draggedItemId === targetId) {
-      setDraggedItemId(null)
-      return
+    if (draggedItemId && draggedItemId !== targetId) {
+      movePendingFile(draggedItemId, targetId)
     }
-
-    setPendingFiles(prev => {
-      const draggedIndex = prev.findIndex(f => f.id === draggedItemId)
-      const targetIndex = prev.findIndex(f => f.id === targetId)
-      
-      if (draggedIndex === -1 || targetIndex === -1) return prev
-      
-      const newFiles = [...prev]
-      const [draggedItem] = newFiles.splice(draggedIndex, 1)
-      newFiles.splice(targetIndex, 0, draggedItem)
-      
-      return newFiles
-    })
-
     setDraggedItemId(null)
-  }, [draggedItemId])
+  }, [draggedItemId, movePendingFile])
 
   const handleDragEnd = useCallback(() => {
     setIsInternalDragging(false)
@@ -264,21 +274,11 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
     e.preventDefault()
     e.stopPropagation()
     
-    if (!draggedItemId) return
-
-    setPendingFiles(prev => {
-      const draggedIndex = prev.findIndex(f => f.id === draggedItemId)
-      if (draggedIndex === -1) return prev
-      
-      const newFiles = [...prev]
-      const [draggedItem] = newFiles.splice(draggedIndex, 1)
-      newFiles.push(draggedItem)
-      
-      return newFiles
-    })
-    
+    if (draggedItemId) {
+      movePendingFile(draggedItemId)
+    }
     setDraggedItemId(null)
-  }, [draggedItemId])
+  }, [draggedItemId, movePendingFile])
 
   // Submit Handler - Upload files first, then create story
   const handleSubmit = async () => {
