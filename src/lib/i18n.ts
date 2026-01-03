@@ -170,6 +170,10 @@ export const dictionaries = {
       draft_minutes_ago: '分钟前',
       draft_hours_ago: '小时前',
       draft_restored: '已恢复草稿',
+      discard_draft: '丢弃草稿',
+      toggle_compression: '切换压缩',
+      no_albums_found: '暂无相册',
+      albums_count: '个相册',
     },
     blog: {
       count_suffix: '篇文章',
@@ -631,6 +635,10 @@ export const dictionaries = {
       draft_minutes_ago: 'min ago',
       draft_hours_ago: 'h ago',
       draft_restored: 'Draft restored',
+      discard_draft: 'Discard Draft',
+      toggle_compression: 'Toggle Compression',
+      no_albums_found: 'No albums found',
+      albums_count: 'Albums',
     },
     blog: {
       count_suffix: 'Articles',
