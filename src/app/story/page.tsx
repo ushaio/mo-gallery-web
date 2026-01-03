@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { BookOpen, Calendar, ArrowRight, Image as ImageIcon, ArrowUpRight } from 'lucide-react'
+import { BookOpen, Calendar, ArrowRight, Image as ImageIcon, ArrowUpRight, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { getStories, type StoryDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -112,7 +112,7 @@ export default function StoryListPage() {
                 Journal
               </span>
             </motion.div>
-            
+
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
               <motion.h1
                 initial={{ opacity: 0, y: 30 }}
@@ -122,7 +122,7 @@ export default function StoryListPage() {
               >
                 {t('nav.story')}
               </motion.h1>
-              
+
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -144,7 +144,7 @@ export default function StoryListPage() {
       {/* Stories Content */}
       <div className="px-6 md:px-12 lg:px-24">
         <div className="max-w-screen-xl mx-auto">
-          
+
           <QuickStoryEditor onSuccess={loadStories} />
 
           {stories.length === 0 ? (
@@ -156,7 +156,7 @@ export default function StoryListPage() {
             <div className="space-y-16">
               {years.map((year) => {
                 const months = Object.keys(timelineData[year]).sort((a, b) => parseInt(b) - parseInt(a))
-                
+
                 return (
                   <section key={year} className="relative">
                     {/* Year Header - Sticky at top */}
@@ -179,7 +179,7 @@ export default function StoryListPage() {
                       {months.map((month) => {
                         const storiesInMonth = timelineData[year][month]
                         let storyIndex = 0
-                        
+
                         return (
                           <div key={`${year}-${month}`} className="relative">
                             {/* Month Header - Sticky below year */}
@@ -203,15 +203,15 @@ export default function StoryListPage() {
                             </motion.div>
 
                             {/* Story Grid - Irregular/Asymmetrical */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-20 mt-8 pl-4 md:pl-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 mt-8 pl-4 md:pl-8">
                               {storiesInMonth.map((story, i) => {
                                 const coverUrl = getCoverUrl(story)
                                 const currentIndex = storyIndex++
                                 // Create irregularity
                                 const isWide = i % 7 === 0 || i % 7 === 6
                                 const isTall = i % 5 === 2
-                                const offset = i % 2 === 1 && !isWide ? 'lg:mt-12' : ''
-                                
+                                const offset = i % 2 === 1 && !isWide ? 'lg:mt-6' : ''
+
                                 return (
                                   <motion.div
                                     key={story.id}
@@ -238,19 +238,18 @@ export default function StoryListPage() {
                                               <BookOpen className="w-8 h-8 opacity-10" />
                                             </div>
                                           )}
-                                          
+
                                           {/* Artistic Overlay */}
                                           <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                                          
-                                          {/* Floating Date (Visible on hover or overlay) */}
-                                          <div className="absolute top-4 right-4 flex flex-col items-end opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0 text-white/90">
-                                            <span className="text-2xl font-serif italic">
-                                              {new Date(story.createdAt).getDate()}
-                                            </span>
-                                            <span className="text-[10px] font-mono tracking-widest uppercase text-white/70">
-                                              {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short' })}
+
+                                          {/* Top Left: No. Tag */}
+                                          <div className="absolute top-4 left-4 z-10 text-white/90 drop-shadow-md">
+                                            <span className="text-[10px] font-mono font-bold tracking-tighter">
+                                              NO.{String(currentIndex + 1).padStart(2, '0')}
                                             </span>
                                           </div>
+
+
 
                                           {/* Photo Count Tag */}
                                           <div className="absolute bottom-4 left-4 flex items-center gap-2 text-white/90 text-[10px] font-mono tracking-widest">
@@ -261,27 +260,29 @@ export default function StoryListPage() {
 
                                         {/* Content Info - Minimalist High Fashion Style */}
                                         <div className="flex flex-col flex-1 min-h-0 relative px-1">
-                                          <div className="flex items-baseline gap-3 mb-2">
-                                            <span className="text-[9px] font-mono text-primary/40 font-bold tracking-tighter">
-                                              NO.{String(currentIndex + 1).padStart(2, '0')}
-                                            </span>
+
+
+                                          <div className="flex items-start justify-between gap-4 mb-3">
                                             <h3 className="text-2xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300">
                                               {story.title}
                                             </h3>
+                                            <div className="flex items-center gap-2 text-muted-foreground/40 mt-2.5 flex-shrink-0 text-[10px] font-mono tracking-widest uppercase">
+                                              <span>
+                                                {new Date(story.createdAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                                              </span>
+                                              <span className="opacity-70">
+                                                {new Date(story.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                              </span>
+                                            </div>
                                           </div>
-                                          
+
                                           {!isWide && (
-                                            <p className="text-xs text-muted-foreground/70 leading-relaxed font-serif italic mb-4 line-clamp-2 md:w-3/4">
+                                            <p className="text-xs text-muted-foreground/70 leading-relaxed font-serif italic mb-4 line-clamp-2 md:w-5/6">
                                               {story.content.replace(/[#*`\[\]]/g, '')}
                                             </p>
                                           )}
 
-                                          <div className="flex items-center gap-2 group/btn mt-auto opacity-0 group-hover:opacity-100 transition-all duration-300 -translate-x-2 group-hover:translate-x-0">
-                                            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-primary">
-                                              Read Story
-                                            </span>
-                                            <ArrowRight className="w-3 h-3 text-primary" />
-                                          </div>
+
                                         </div>
                                       </div>
                                     </Link>
