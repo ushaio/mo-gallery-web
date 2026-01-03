@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, Suspense } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import {
   BookText,
@@ -14,6 +14,8 @@ import {
   ImageIcon,
   X,
   Loader2,
+  Check,
+  Clock,
 } from 'lucide-react'
 import {
   PhotoDto,
@@ -29,6 +31,13 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
+import {
+  saveBlogDraftToDB,
+  getBlogDraftFromDB,
+  clearBlogDraftFromDB,
+  getAllBlogDraftsFromDB,
+  type BlogDraftData
+} from '@/lib/client-db'
 
 // Dynamically import MilkdownEditor to avoid SSR issues
 const MilkdownEditor = dynamic(
@@ -42,6 +51,8 @@ const MilkdownEditor = dynamic(
     )
   }
 )
+
+const AUTO_SAVE_DELAY = 2000 // 2 seconds debounce
 
 interface BlogTabProps {
   photos: PhotoDto[]
@@ -69,6 +80,11 @@ export function BlogTab({ photos, settings, t, notify }: BlogTabProps) {
   const [isInsertingPhoto, setIsInsertingPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
   const editorRef = useRef<MilkdownEditorHandle>(null)
+  
+  // Auto-save state
+  const [draftSaved, setDraftSaved] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const handleUnauthorized = () => {
     logout()
@@ -97,26 +113,135 @@ export function BlogTab({ photos, settings, t, notify }: BlogTabProps) {
     fetchBlogs()
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleCreateBlog = () => {
-    setCurrentBlog({
-      title: '',
-      content: '',
-      category: t('blog.uncategorized'),
-      tags: '',
-      isPublished: false,
-    })
+  // Load draft when entering editor mode
+  const loadDraftForBlog = useCallback(async (blogId?: string) => {
+    try {
+      const draft = await getBlogDraftFromDB(blogId)
+      if (draft) {
+        setLastSavedAt(draft.savedAt)
+        return draft
+      }
+    } catch (e) {
+      console.error('Failed to load blog draft', e)
+    }
+    return null
+  }, [])
+
+  // Save draft to IndexedDB
+  const saveDraft = useCallback(async () => {
+    if (!currentBlog) return
+    if (!currentBlog.title && !currentBlog.content) return
+
+    try {
+      await saveBlogDraftToDB({
+        blogId: currentBlog.id,
+        title: currentBlog.title,
+        content: currentBlog.content,
+        category: currentBlog.category,
+        tags: currentBlog.tags,
+        isPublished: currentBlog.isPublished,
+      })
+      setLastSavedAt(Date.now())
+      setDraftSaved(true)
+      setTimeout(() => setDraftSaved(false), 2000)
+    } catch (e) {
+      console.error('Failed to save blog draft', e)
+    }
+  }, [currentBlog])
+
+  // Clear draft from IndexedDB
+  const clearDraft = useCallback(async (blogId?: string) => {
+    try {
+      await clearBlogDraftFromDB(blogId)
+      setLastSavedAt(null)
+    } catch (e) {
+      console.error('Failed to clear blog draft', e)
+    }
+  }, [])
+
+  // Format relative time
+  const formatRelativeTime = useMemo(() => {
+    if (!lastSavedAt) return null
+    const diff = Date.now() - lastSavedAt
+    if (diff < 60000) return t('story.draft_just_now') || '刚刚'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} ${t('story.draft_minutes_ago') || '分钟前'}`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ${t('story.draft_hours_ago') || '小时前'}`
+    return new Date(lastSavedAt).toLocaleDateString()
+  }, [lastSavedAt, t])
+
+  // Auto-save draft when content changes
+  useEffect(() => {
+    if (!currentBlog) return
+    if (!currentBlog.title && !currentBlog.content) return
+
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+    }
+
+    // Set new timer for auto-save
+    autoSaveTimerRef.current = setTimeout(() => {
+      saveDraft()
+    }, AUTO_SAVE_DELAY)
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [currentBlog?.title, currentBlog?.content, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft])
+
+  const handleCreateBlog = async () => {
+    // Check for existing draft for new blog
+    const draft = await loadDraftForBlog(undefined)
+    if (draft) {
+      setCurrentBlog({
+        title: draft.title,
+        content: draft.content,
+        category: draft.category || t('blog.uncategorized'),
+        tags: draft.tags || '',
+        isPublished: draft.isPublished,
+      })
+      if (draft.title || draft.content) {
+        notify(t('story.draft_restored') || '已恢复草稿', 'info')
+      }
+    } else {
+      setCurrentBlog({
+        title: '',
+        content: '',
+        category: t('blog.uncategorized'),
+        tags: '',
+        isPublished: false,
+      })
+    }
     setEditMode('editor')
   }
 
-  const handleEditBlog = (blog: BlogDto) => {
-    setCurrentBlog({
-      id: blog.id,
-      title: blog.title,
-      content: blog.content,
-      category: blog.category || t('blog.uncategorized'),
-      tags: blog.tags || '',
-      isPublished: blog.isPublished,
-    })
+  const handleEditBlog = async (blog: BlogDto) => {
+    // Check for existing draft for this blog
+    const draft = await loadDraftForBlog(blog.id)
+    if (draft && draft.savedAt > new Date(blog.updatedAt).getTime()) {
+      // Draft is newer than saved version
+      setCurrentBlog({
+        id: blog.id,
+        title: draft.title,
+        content: draft.content,
+        category: draft.category || t('blog.uncategorized'),
+        tags: draft.tags || '',
+        isPublished: draft.isPublished,
+      })
+      notify(t('story.draft_restored') || '已恢复草稿', 'info')
+    } else {
+      setCurrentBlog({
+        id: blog.id,
+        title: blog.title,
+        content: blog.content,
+        category: blog.category || t('blog.uncategorized'),
+        tags: blog.tags || '',
+        isPublished: blog.isPublished,
+      })
+      setLastSavedAt(null)
+    }
     setEditMode('editor')
   }
 
@@ -170,9 +295,13 @@ export function BlogTab({ photos, settings, t, notify }: BlogTabProps) {
           isPublished: currentBlog.isPublished,
         })
       }
+      // Clear draft after successful save
+      await clearDraft(currentBlog.id)
+      
       await fetchBlogs()
       setEditMode('list')
       setCurrentBlog(null)
+      setLastSavedAt(null)
       notify(t('admin.notify_log_saved'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
@@ -300,12 +429,31 @@ export function BlogTab({ photos, settings, t, notify }: BlogTabProps) {
       ) : (
         <div className="flex-1 flex flex-col gap-6 overflow-hidden">
           <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-            <button
-              onClick={() => setEditMode('list')}
-              className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest hover:text-primary transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => {
+                  setEditMode('list')
+                  setCurrentBlog(null)
+                  setLastSavedAt(null)
+                }}
+                className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest hover:text-primary transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
+              </button>
+              {/* Draft Status Indicator */}
+              {draftSaved && (
+                <div className="flex items-center gap-1 text-[10px] text-green-500">
+                  <Check className="w-3 h-3" />
+                  <span>{t('story.draft_saved') || '已保存'}</span>
+                </div>
+              )}
+              {!draftSaved && lastSavedAt && (
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+                  <Clock className="w-3 h-3" />
+                  <span>{formatRelativeTime}</span>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs">
                 <input

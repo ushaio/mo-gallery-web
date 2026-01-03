@@ -446,6 +446,18 @@ export const dictionaries = {
       no_photos_match_filter: '没有匹配的照片',
       active_filters: '当前筛选',
       filter: '筛选',
+      blog: '博客',
+      drafts: '草稿',
+      local_drafts: '本地草稿',
+      story_draft: '叙事草稿',
+      blog_drafts: '博客草稿',
+      read_only: '只读',
+      no_drafts: '暂无草稿',
+      drafts_hint: '编辑博客或叙事时会自动保存草稿到本地',
+      no_content: '无内容',
+      new: '新建',
+      pending_files: '待上传文件',
+      draft_preview_hint: '这是本地保存的草稿预览，内容存储在浏览器中',
     }
   },
   en: {
@@ -892,6 +904,18 @@ export const dictionaries = {
       no_photos_match_filter: 'No photos match filter',
       active_filters: 'Active filters',
       filter: 'Filter',
+      blog: 'Blog',
+      drafts: 'Drafts',
+      local_drafts: 'Local Drafts',
+      story_draft: 'Story Draft',
+      blog_drafts: 'Blog Drafts',
+      read_only: 'Read Only',
+      no_drafts: 'No Drafts',
+      drafts_hint: 'Drafts are auto-saved locally when editing blogs or stories',
+      no_content: 'No Content',
+      new: 'New',
+      pending_files: 'Pending Files',
+      draft_preview_hint: 'This is a preview of locally saved draft, stored in browser',
     }
   }
 }
