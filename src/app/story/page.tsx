@@ -202,12 +202,15 @@ export default function StoryListPage() {
                               </div>
                             </motion.div>
 
-                            {/* Story Grid */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-16 gap-y-20 mt-8 pl-4 md:pl-8">
-                              {storiesInMonth.map((story) => {
+                            {/* Story Grid - Irregular/Asymmetrical */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-20 mt-8 pl-4 md:pl-8">
+                              {storiesInMonth.map((story, i) => {
                                 const coverUrl = getCoverUrl(story)
-                                const isLarge = storyIndex % 3 === 0
                                 const currentIndex = storyIndex++
+                                // Create irregularity
+                                const isWide = i % 7 === 0 || i % 7 === 6
+                                const isTall = i % 5 === 2
+                                const offset = i % 2 === 1 && !isWide ? 'lg:mt-12' : ''
                                 
                                 return (
                                   <motion.div
@@ -216,69 +219,68 @@ export default function StoryListPage() {
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true, margin: "-50px" }}
                                     transition={{ duration: 0.6, ease: [0.21, 0.45, 0.32, 0.9] }}
-                                    className={`group relative ${isLarge ? 'lg:col-span-2' : ''}`}
+                                    className={`group relative flex flex-col gap-5 ${isWide ? 'md:col-span-2' : ''} ${offset}`}
                                     onMouseEnter={() => setHoveredId(story.id)}
                                     onMouseLeave={() => setHoveredId(null)}
                                   >
-                                    <Link href={`/story/${story.id}`} className="block">
-                                      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-                                        {/* Index & Date */}
-                                        <div className="md:col-span-2 flex flex-row md:flex-col justify-between md:justify-start gap-4">
-                                          <span className="text-[10px] font-mono text-muted-foreground/40 font-bold tracking-tighter">
-                                            {String(currentIndex + 1).padStart(2, '0')}
-                                          </span>
-                                          <div className="flex flex-col items-end md:items-start gap-0.5">
-                                            <span className="text-lg font-mono tracking-tighter">
-                                              {new Date(story.createdAt).toLocaleDateString('en-US', { day: '2-digit' })}
+                                    <Link href={`/story/${story.id}`} className="block h-full">
+                                      <div className="flex flex-col h-full">
+                                        {/* Image Container */}
+                                        <div className={`relative overflow-hidden bg-muted mb-5 group-hover:shadow-2xl transition-all duration-700 ease-out ${isTall && !isWide ? 'aspect-[3/4]' : isWide ? 'aspect-[21/9]' : 'aspect-[3/2]'}`}>
+                                          {coverUrl ? (
+                                            <motion.img
+                                              src={coverUrl}
+                                              alt={story.title}
+                                              className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                                            />
+                                          ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                              <BookOpen className="w-8 h-8 opacity-10" />
+                                            </div>
+                                          )}
+                                          
+                                          {/* Artistic Overlay */}
+                                          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                          
+                                          {/* Floating Date (Visible on hover or overlay) */}
+                                          <div className="absolute top-4 right-4 flex flex-col items-end opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0 text-white/90">
+                                            <span className="text-2xl font-serif italic">
+                                              {new Date(story.createdAt).getDate()}
+                                            </span>
+                                            <span className="text-[10px] font-mono tracking-widest uppercase text-white/70">
+                                              {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short' })}
                                             </span>
                                           </div>
-                                        </div>
 
-                                        {/* Image Container */}
-                                        <div className={`md:col-span-10 ${isLarge ? 'lg:col-span-8' : 'lg:col-span-10'}`}>
-                                          <div className="relative aspect-[16/10] overflow-hidden bg-muted">
-                                            {coverUrl ? (
-                                              <motion.img
-                                                src={coverUrl}
-                                                alt={story.title}
-                                                className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-                                              />
-                                            ) : (
-                                              <div className="w-full h-full flex items-center justify-center">
-                                                <BookOpen className="w-10 h-10 opacity-10" />
-                                              </div>
-                                            )}
-                                            
-                                            {/* Hover Overlay */}
-                                            <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                                            
-                                            {/* Photo Count */}
-                                            <div className="absolute bottom-4 left-4 flex items-center gap-2 px-2 py-1 bg-background/90 backdrop-blur-md text-[9px] font-mono tracking-widest">
-                                              <ImageIcon className="w-3 h-3" />
-                                              {story.photos.length}
-                                            </div>
+                                          {/* Photo Count Tag */}
+                                          <div className="absolute bottom-4 left-4 flex items-center gap-2 text-white/90 text-[10px] font-mono tracking-widest">
+                                            <div className="h-px w-3 bg-white/50" />
+                                            {story.photos.length} SHOTS
                                           </div>
                                         </div>
 
-                                        {/* Content Info */}
-                                        <div className={`md:col-start-3 md:col-span-10 ${isLarge ? 'lg:col-start-11 lg:col-span-2' : 'lg:col-start-3 lg:col-span-10'} pt-4 lg:pt-0`}>
-                                          <div className="space-y-4">
-                                            <h3 className="text-2xl md:text-3xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300">
+                                        {/* Content Info - Minimalist High Fashion Style */}
+                                        <div className="flex flex-col flex-1 min-h-0 relative px-1">
+                                          <div className="flex items-baseline gap-3 mb-2">
+                                            <span className="text-[9px] font-mono text-primary/40 font-bold tracking-tighter">
+                                              NO.{String(currentIndex + 1).padStart(2, '0')}
+                                            </span>
+                                            <h3 className="text-2xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300">
                                               {story.title}
                                             </h3>
-                                            
-                                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3 font-serif italic">
-                                              {story.content.replace(/[#*`\[\]]/g, '').substring(0, 120)}...
+                                          </div>
+                                          
+                                          {!isWide && (
+                                            <p className="text-xs text-muted-foreground/70 leading-relaxed font-serif italic mb-4 line-clamp-2 md:w-3/4">
+                                              {story.content.replace(/[#*`\[\]]/g, '')}
                                             </p>
+                                          )}
 
-                                            <div className="flex items-center gap-3 group/btn pt-2">
-                                              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-primary">
-                                                {t('story.read_more') || 'READ'}
-                                              </span>
-                                              <div className="relative w-6 h-6 flex items-center justify-center border border-primary/20 rounded-full group-hover/btn:bg-primary group-hover/btn:border-primary transition-all duration-300">
-                                                <ArrowUpRight className="w-3 h-3 text-primary group-hover/btn:text-primary-foreground transition-colors" />
-                                              </div>
-                                            </div>
+                                          <div className="flex items-center gap-2 group/btn mt-auto opacity-0 group-hover:opacity-100 transition-all duration-300 -translate-x-2 group-hover:translate-x-0">
+                                            <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-primary">
+                                              Read Story
+                                            </span>
+                                            <ArrowRight className="w-3 h-3 text-primary" />
                                           </div>
                                         </div>
                                       </div>
