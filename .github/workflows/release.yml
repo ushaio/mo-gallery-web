@@ -1,32 +1,71 @@
-name: Create Release
+name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
-
-permissions:
-  contents: write
+    branches:
+      - main
+    paths:
+      - 'RELEASE.md'
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get tag name
-        id: tag_name
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Extract latest version from RELEASE.md
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^## v' RELEASE.md | sed 's/^## \(v[0-9.]*\).*/\1/')
+          echo "TAG=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=${VERSION#v}" >> $GITHUB_OUTPUT
 
-      - name: Create Release
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.version.outputs.TAG }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Update package.json version
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version --allow-same-version
+
+      - name: Commit and tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.TAG }}"
+          git tag ${{ steps.version.outputs.TAG }}
+          git push origin main --tags
+
+      - name: Extract changelog for this version
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.TAG }}"
+          awk "/^## ${TAG}/,/^## v[0-9]/{if(/^## v[0-9]/ && !/^## ${TAG}/)exit; print}" RELEASE.md > release_notes.md
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ steps.tag_name.outputs.tag }}
-          body_path: RELEASE.md
-          draft: false
-          prerelease: false
+          tag_name: ${{ steps.version.outputs.TAG }}
+          body_path: release_notes.md
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
