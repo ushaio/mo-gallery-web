@@ -20,7 +20,7 @@ import {
 import {
   PhotoDto,
   resolveAssetUrl,
-  PublicSettingsDto,
+  AdminSettingsDto,
   BlogDto,
   getAdminBlogs,
   createBlog,
@@ -59,7 +59,7 @@ const AUTO_SAVE_DELAY = 2000 // 2 seconds debounce
 
 interface BlogTabProps {
   photos: PhotoDto[]
-  settings: PublicSettingsDto | null
+  settings: AdminSettingsDto | null
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   refreshKey?: number

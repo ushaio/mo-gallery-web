@@ -259,10 +259,16 @@ export function PhotoDetailModal({
     fetchStoryData()
   }, [photo?.id, isOpen, isPhotoInCachedStory])
 
-  // Clear cache when modal closes
+  // Clear cache when modal closes and manage body scroll
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
       setStoryCache(null)
+    }
+    return () => {
+      document.body.style.overflow = ''
     }
   }, [isOpen])
 
@@ -612,7 +618,7 @@ export function PhotoDetailModal({
                 </div>
                 {/* Story Tab - Always mounted, hidden when not active */}
                 {!hideStoryTab && (
-                  <div className={`absolute inset-0 ${activeTab === 'story' ? '' : 'hidden'}`}>
+                  <div className={`absolute inset-0 overflow-y-auto custom-scrollbar ${activeTab === 'story' ? '' : 'hidden'}`}>
                     <StoryTab
                       photoId={photo.id}
                       currentPhoto={photo}

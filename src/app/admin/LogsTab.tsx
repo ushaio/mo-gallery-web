@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { BookText, BookOpen, FileArchive, Clock, Trash2, Eye, X, Image as ImageIcon, Edit3, ArrowRight } from 'lucide-react'
-import { PhotoDto, PublicSettingsDto } from '@/lib/api'
+import { PhotoDto, AdminSettingsDto } from '@/lib/api'
 import { BlogTab } from './BlogTab'
 import { StoriesTab } from './StoriesTab'
 import { CustomSelect, type SelectOption } from '@/components/ui/CustomSelect'
@@ -27,7 +27,7 @@ interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
 interface LogsTabProps {
   token: string | null
   photos: PhotoDto[]
-  settings: PublicSettingsDto | null
+  settings: AdminSettingsDto | null
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   initialTab?: 'blog' | 'stories' | 'drafts'
