@@ -574,6 +574,28 @@ export class WebGLImageViewerEngine extends ImageViewerEngineBase {
     }
   }
 
+  private loadMainImage(url: string): Promise<ImageBitmap> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      
+      img.onload = async () => {
+        try {
+          const imageBitmap = await createImageBitmap(img)
+          resolve(imageBitmap)
+        } catch (error) {
+          reject(new Error(`Failed to create ImageBitmap: ${error}`))
+        }
+      }
+      
+      img.onerror = () => {
+        reject(new Error(`Failed to load image: ${url}`))
+      }
+      
+      img.src = url
+    })
+  }
+
   async loadImage(url: string, preknownWidth?: number, preknownHeight?: number) {
     if (this.originalImageSrc === url && this.imageLoaded) {
       return Promise.resolve()
@@ -594,15 +616,11 @@ export class WebGLImageViewerEngine extends ImageViewerEngineBase {
       this.loadImageReject = reject
 
       try {
-        const response = await fetch(url)
-        if (!response.ok) {
-          throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`)
-        }
-        const blob = await response.blob()
-
+        const imageBitmap = await this.loadMainImage(url)
+        
         this.worker?.postMessage({
           type: 'init',
-          payload: { imageBitmap: await createImageBitmap(blob) },
+          payload: { imageBitmap },
         })
       } catch (error) {
         console.error('[Engine] Failed to load image:', error)
