@@ -27,7 +27,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { formatFileSize } from '@/lib/utils'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
-import { WebGLImageViewer } from './webgl-viewer'
+import { WebGLImageViewer, type WebGLImageViewerRef } from './webgl-viewer'
 
 type TabType = 'story' | 'info'
 
@@ -91,7 +91,7 @@ export function PhotoDetailModal({
   const touchMoveRef = useRef<{ x: number; y: number } | null>(null)
 
   // WebGL viewer reference
-  const webGLViewerRef = useRef<{ getScale: () => number } | null>(null)
+  const webGLViewerRef = useRef<WebGLImageViewerRef | null>(null)
   const [isZoomed, setIsZoomed] = useState(false)
 
   const currentPhotoIndex = photo && allPhotos.length > 0
