@@ -71,6 +71,8 @@ interface StoriesTabProps {
 }
 
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey }: StoriesTabProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { settings } = useSettings()
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
