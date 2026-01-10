@@ -1,5 +1,37 @@
 # 更新日志
 
+## v0.3.0 - 2026-01-10
+
+### 🎨 Story（叙事）体验优化
+
+#### 列表页骨架屏优化
+- 叙事列表页 Header 不再等待数据加载：进入页面即可展示标题与结构
+- 加载阶段仅对卡片列表区域显示骨架屏，降低“整页空白”的感知
+- 加载中计数使用占位符，避免闪烁/错位
+
+### 🧩 Footer 视觉与信息架构调整
+- Footer 主体布局更紧凑：减少高度与松散留白，保留更符合个人画廊的气质
+- 文字 hover 动效修复：避免动效导致整块区域偏移
+- 保持底部版权栏 “All rights reserved.” 结构不变
+
+### ⚙️ 公共环境变量统一注入（启动读取）
+- 新增启动注入机制：在应用启动时由服务端读取环境变量，并通过 `SettingsContext` 提供给业务组件使用
+- 业务组件不再直接读 `process.env` 或通过 public settings API 获取公共环境变量
+- 支持社交链接（数组）配置：`SOCIAL_LINKS='[{"title":"GitHub","url":"..."}, ...]'`
+- 站点作者改为 `SITE_AUTHOR`（用于首页 hero 文案替换）
+
+### 🧹 清理与兼容性调整
+
+#### 移除 public settings 接口
+- 移除原 `/api/settings/public`（环境变量 public settings）接口及前端调用封装，避免重复来源与不必要请求
+
+#### 环境变量变更（Breaking）
+- `NEXT_PUBLIC_SOCIAL_LINKS` → `SOCIAL_LINKS`
+- `NEXT_PUBLIC_SITE_AUTHOR` → `SITE_AUTHOR`
+- 修改 `.env` 后需要重启服务进程/开发服务器才能生效
+
+---
+
 ## v0.2.4 - 2026-01-07
 
 ### 🎨 Gallery 优化
