@@ -31,9 +31,8 @@ import {
   removePhotoFromStory,
   reanalyzePhotoColors,
 } from '@/lib/api'
-import { CustomInput } from '@/components/ui/CustomInput'
-import { CustomSelect } from '@/components/ui/CustomSelect'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
 interface PhotoDetailPanelProps {
   photo: PhotoDto | null
@@ -414,8 +413,7 @@ export function PhotoDetailPanel({
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                       {t('admin.photo_title') || 'Title'}
                     </label>
-                    <CustomInput
-                      variant="config"
+                    <AdminInput
                       value={editData.title}
                       onChange={(e) => setEditData({ ...editData, title: e.target.value })}
                       placeholder={t('admin.title_hint_single') || 'Enter title'}
@@ -428,7 +426,7 @@ export function PhotoDetailPanel({
                       <Tag className="w-3 h-3" />
                       {t('admin.categories') || 'Categories'}
                     </label>
-                    <CustomSelect
+                    <AdminSelect
                       value={editData.category}
                       onChange={(val: string) => setEditData({ ...editData, category: val })}
                       options={categories.filter(c => c !== '全部').map(c => ({ value: c, label: c }))}
@@ -551,8 +549,7 @@ export function PhotoDetailPanel({
                           <div className="px-3 py-2 bg-muted/50 border-b border-l border-t border-border text-xs text-muted-foreground font-mono flex items-center">
                             /
                           </div>
-                          <CustomInput
-                            variant="config"
+                          <AdminInput
                             value={editData.storagePath}
                             onChange={(e) => setEditData({ ...editData, storagePath: e.target.value })}
                             placeholder="uploads/2024"
@@ -581,8 +578,7 @@ export function PhotoDetailPanel({
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                             {t('admin.story_title')}
                           </label>
-                          <CustomInput
-                            variant="config"
+                          <AdminInput
                             value={storyData.title}
                             onChange={(e) => setStoryData({ ...storyData, title: e.target.value })}
                             placeholder={t('admin.story_title')}

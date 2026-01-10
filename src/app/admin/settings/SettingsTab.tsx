@@ -29,8 +29,8 @@ import {
   isLinuxDoEnabled,
   ApiUnauthorizedError,
 } from '@/lib/api'
-import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
 interface SettingsTabProps {
   token: string | null
@@ -246,7 +246,7 @@ export function SettingsTab({
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                       {t('admin.site_title')}
                     </label>
-                    <CustomInput
+                    <AdminInput
                       variant="config"
                       value={settings.site_title}
                       disabled
@@ -260,7 +260,7 @@ export function SettingsTab({
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                       {t('admin.cdn_host')}
                     </label>
-                    <CustomInput
+                    <AdminInput
                       variant="config"
                       value={settings.cdn_domain}
                       disabled
@@ -332,7 +332,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Endpoint
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.r2_endpoint ?? ''}
@@ -349,7 +349,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Access Key ID
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.r2_access_key_id ?? ''}
@@ -365,7 +365,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Secret Access Key
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="password"
                           value={settings.r2_secret_access_key ?? ''}
@@ -381,7 +381,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Bucket
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.r2_bucket ?? ''}
@@ -397,7 +397,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Path Prefix
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.r2_path ?? ''}
@@ -414,7 +414,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Public URL <span className="text-destructive">*</span>
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.r2_public_url ?? ''}
@@ -439,7 +439,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Personal Access Token
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="password"
                           value={settings.github_token ?? ''}
@@ -458,7 +458,7 @@ export function SettingsTab({
                             Repo (owner/repo)
                           </label>
                         </div>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.github_repo ?? ''}
@@ -524,7 +524,7 @@ export function SettingsTab({
                             {t('admin.gh_test')}
                           </AdminButton>
                         </div>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.github_branch ?? ''}
@@ -541,7 +541,7 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           {t('admin.path_prefix')}
                         </label>
-                        <CustomInput
+                        <AdminInput
                           variant="config"
                           type="text"
                           value={settings.github_path ?? ''}
@@ -558,31 +558,27 @@ export function SettingsTab({
                         <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                           Access Method (访问方式)
                         </label>
-                        <select
+                        <AdminSelect
                           value={settings.github_access_method || 'jsdelivr'}
-                          onChange={(e) =>
+                          onChange={(value) =>
                             setSettings({
                               ...settings,
-                              github_access_method: e.target.value,
+                              github_access_method: value,
                             })
                           }
-                          className="w-full p-3 bg-background border border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"
-                        >
-                          <option value="raw">
-                            raw.githubusercontent.com
-                          </option>
-                          <option value="jsdelivr">
-                            jsDelivr CDN (推荐)
-                          </option>
-                          <option value="pages">GitHub Pages</option>
-                        </select>
+                          options={[
+                            { value: 'raw', label: 'raw.githubusercontent.com' },
+                            { value: 'jsdelivr', label: 'jsDelivr CDN (推荐)' },
+                            { value: 'pages', label: 'GitHub Pages' },
+                          ]}
+                        />
                       </div>
                       {settings.github_access_method === 'pages' && (
                         <div className="md:col-span-2 space-y-2">
                           <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
                             GitHub Pages URL
                           </label>
-                          <CustomInput
+                          <AdminInput
                             variant="config"
                             type="text"
                             value={settings.github_pages_url ?? ''}
@@ -653,21 +649,21 @@ export function SettingsTab({
                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                           {t('admin.comment_provider')}
                         </label>
-                        <select
+                        <AdminSelect
                           value={settings.comment_provider || 'local'}
-                          onChange={(e) =>
+                          onChange={(value) =>
                             setSettings({
                               ...settings,
-                              comment_provider: e.target.value,
+                              comment_provider: value,
                             })
                           }
-                          className="w-full p-4 bg-transparent border border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"
-                        >
-                          <option value="local">Local (Basic)</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="gemini">Google Gemini</option>
-                          <option value="anthropic">Anthropic Claude</option>
-                        </select>
+                          options={[
+                            { value: 'local', label: 'Local (Basic)' },
+                            { value: 'openai', label: 'OpenAI' },
+                            { value: 'gemini', label: 'Google Gemini' },
+                            { value: 'anthropic', label: 'Anthropic Claude' },
+                          ]}
+                        />
                       </div>
 
                       {settings.comment_provider &&
@@ -677,7 +673,7 @@ export function SettingsTab({
                               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                                 {t('admin.comment_api_key')}
                               </label>
-                              <CustomInput
+                              <AdminInput
                                 variant="config"
                                 type="password"
                                 value={settings.comment_api_key || ''}
@@ -694,7 +690,7 @@ export function SettingsTab({
                               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                                 {t('admin.comment_endpoint')}
                               </label>
-                              <CustomInput
+                              <AdminInput
                                 variant="config"
                                 type="text"
                                 value={settings.comment_api_endpoint || ''}
@@ -711,7 +707,7 @@ export function SettingsTab({
                               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                                 {t('admin.comment_model')}
                               </label>
-                              <CustomInput
+                              <AdminInput
                                 variant="config"
                                 type="text"
                                 value={settings.comment_model || ''}

@@ -28,8 +28,8 @@ import {
   deleteBlog,
   ApiUnauthorizedError
 } from '@/lib/api'
-import { CustomSelect, type SelectOption } from '@/components/ui/CustomSelect'
 import { useAuth } from '@/contexts/AuthContext'
+import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { useRouter } from 'next/navigation'
 import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
 import {
@@ -500,7 +500,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                 placeholder={t('admin.search_placeholder') || '搜索...'}
                 className="px-3 py-2 text-sm bg-transparent border border-border rounded-md focus:border-primary outline-none w-48"
               />
-              <CustomSelect
+              <AdminSelect
                 value={statusFilter}
                 options={statusOptions}
                 onChange={setStatusFilter}

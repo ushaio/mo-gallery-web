@@ -5,7 +5,6 @@ import { BookText, BookOpen, FileArchive, Clock, Trash2, Eye, X, Image as ImageI
 import { PhotoDto, AdminSettingsDto } from '@/lib/api'
 import { BlogTab } from './BlogTab'
 import { StoriesTab } from './StoriesTab'
-import { CustomSelect, type SelectOption } from '@/components/ui/CustomSelect'
 import {
   getAllDraftsFromDB,
   clearDraftFromDB,
@@ -19,6 +18,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 
 // Extended type with preview URLs for display
 interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
@@ -304,7 +304,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                   placeholder={t('admin.search_placeholder')}
                   className="px-3 py-2 text-sm bg-transparent border border-border rounded-md focus:border-primary outline-none w-48"
                 />
-                <CustomSelect
+                <AdminSelect
                   value={draftTypeFilter}
                   options={draftTypeOptions}
                   onChange={setDraftTypeFilter}

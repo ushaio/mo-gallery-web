@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { Search, Circle, CircleOff } from 'lucide-react'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
-import { CustomInput } from '@/components/ui/CustomInput'
+import { SiteInput } from '@/components/ui/SiteFormControls'
 
 interface GalleryHeaderProps {
   activeCategory: string
@@ -128,15 +128,13 @@ export function GalleryToolbar({
           {/* Search Bar - Minimal */}
           <div className="flex-1 min-w-0 max-w-[120px] sm:max-w-sm">
              <div className="relative group">
-              <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder={t('common.search')}
-                className="w-full bg-transparent border-none py-2 pl-6 sm:pl-8 text-ui placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0 font-serif"
-              />
-            </div>
+               <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+               <SiteInput
+                 value={search}
+                 onChange={(e) => onSearchChange(e.target.value)}
+                 placeholder={t('common.search')}
+               />
+             </div>
           </div>
 
           {/* Controls */}

@@ -35,9 +35,8 @@ import {
   type StoryDto,
   type PhotoDto,
 } from '@/lib/api'
-import { CustomInput } from '@/components/ui/CustomInput'
-import { CustomSelect, type SelectOption } from '@/components/ui/CustomSelect'
 import { useSettings } from '@/contexts/SettingsContext'
+import { AdminInput, AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -861,7 +860,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                 placeholder={t('admin.search_placeholder') || '搜索...'}
                 className="px-3 py-2 text-sm bg-transparent border border-border rounded-md focus:border-primary outline-none w-48"
               />
-              <CustomSelect
+              <AdminSelect
                 value={statusFilter}
                 options={statusOptions}
                 onChange={setStatusFilter}
@@ -1033,8 +1032,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             {/* Left: Editor (70%) */}
             <div className="flex-[7] flex flex-col gap-4 overflow-hidden min-w-0">
               {/* Title Input */}
-              <CustomInput
-                variant="config"
+              <AdminInput
                 type="text"
                 value={currentStory?.title || ''}
                 onChange={(e) =>

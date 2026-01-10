@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Upload,
   Loader2,
@@ -20,10 +20,9 @@ import {
 import { AdminSettingsDto, getAdminStories, getAdminAlbums, type StoryDto, type AlbumDto } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
-import { CustomSelect } from '@/components/ui/CustomSelect'
-import { CustomInput } from '@/components/ui/CustomInput'
 import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
 
 interface UploadTabProps {
   token: string | null
@@ -256,9 +255,6 @@ export function UploadTab({
 
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
-  const [categoryInput, setCategoryInput] = useState('')
-  const [isCategoryOpen, setIsCategoryOpen] = useState(false)
-  const categoryRef = useRef<HTMLDivElement>(null)
 
   const [uploadStoryId, setUploadStoryId] = useState('')
   const [stories, setStories] = useState<StoryDto[]>([])
@@ -267,9 +263,6 @@ export function UploadTab({
   const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>([])
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
-  const [albumInput, setAlbumInput] = useState('')
-  const [isAlbumOpen, setIsAlbumOpen] = useState(false)
-  const albumRef = useRef<HTMLDivElement>(null)
 
   const [uploadSource, setUploadSource] = useState('local')
   const [uploadPath, setUploadPath] = useState('')
@@ -307,24 +300,23 @@ export function UploadTab({
     return () => { cancelled = true }
   }, [token])
 
-  const filteredCategories = useMemo(() =>
-    categories.filter(c => c !== 'all' && c !== '全部' && c.toLowerCase().includes(categoryInput.toLowerCase()) && !uploadCategories.includes(c)),
-    [categories, categoryInput, uploadCategories]
+  const categoryOptions = useMemo(
+    () =>
+      categories
+        .filter((c) => c !== 'all' && c !== '全部')
+        .map((c) => ({ value: c, label: c })),
+    [categories]
   )
 
-  const filteredAlbums = useMemo(() =>
-    albums.filter(a => a.name.toLowerCase().includes(albumInput.toLowerCase()) && !uploadAlbumIds.includes(a.id)),
-    [albums, albumInput, uploadAlbumIds]
+  const albumOptions = useMemo(
+    () =>
+      albums.map((a) => ({
+        value: a.id,
+        label: a.name,
+        suffix: !a.isPublished ? `(${t('admin.draft')})` : undefined,
+      })),
+    [albums, t]
   )
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (isCategoryOpen && categoryRef.current && !categoryRef.current.contains(e.target as Node)) setIsCategoryOpen(false)
-      if (isAlbumOpen && albumRef.current && !albumRef.current.contains(e.target as Node)) setIsAlbumOpen(false)
-    }
-    document.addEventListener('click', handler, true)
-    return () => document.removeEventListener('click', handler, true)
-  }, [isCategoryOpen, isAlbumOpen])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -430,8 +422,7 @@ export function UploadTab({
               {/* Title */}
               <div>
                 <label className="block text-xs text-muted-foreground mb-2">{t('admin.photo_title')}</label>
-                <CustomInput
-                  variant="config"
+                <AdminInput
                   value={uploadTitle}
                   onChange={e => setUploadTitle(e.target.value)}
                   disabled={uploadFiles.length > 1}
@@ -439,133 +430,37 @@ export function UploadTab({
                 />
               </div>
 
-              {/* Categories */}
-              <div ref={categoryRef} className="relative">
+              {/* Categories (multi-select, searchable, creatable) */}
+              <div>
                 <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                   {t('admin.categories')}
                   <span className="text-muted-foreground/50">({t('common.optional')})</span>
                 </label>
-                <div
-                  className="min-h-[48px] p-3 bg-muted/30 border-b border-border flex flex-wrap gap-2 cursor-text focus-within:border-primary transition-colors"
-                  onClick={() => { setIsCategoryOpen(true); categoryRef.current?.querySelector('input')?.focus() }}
-                >
-                  {uploadCategories.map(cat => (
-                    <span key={cat} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-foreground/10 text-xs font-medium">
-                      {cat}
-                      <AdminButton
-                        onClick={e => { e.stopPropagation(); setUploadCategories(prev => prev.filter(c => c !== cat)) }}
-                        adminVariant="icon"
-                        size="xs"
-                        className="p-0 hover:text-destructive"
-                      >
-                        <X className="w-3 h-3" />
-                      </AdminButton>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    value={categoryInput}
-                    onChange={e => { setCategoryInput(e.target.value); setIsCategoryOpen(true) }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && categoryInput.trim()) {
-                        e.preventDefault()
-                        if (!uploadCategories.includes(categoryInput.trim())) setUploadCategories(prev => [...prev, categoryInput.trim()])
-                        setCategoryInput('')
-                      } else if (e.key === 'Backspace' && !categoryInput && uploadCategories.length) {
-                        setUploadCategories(prev => prev.slice(0, -1))
-                      }
-                    }}
-                    className="flex-1 min-w-[60px] outline-none bg-transparent text-sm"
-                    placeholder={uploadCategories.length ? '' : t('admin.search_create')}
-                  />
-                </div>
-                {isCategoryOpen && (
-                  <div className="absolute z-20 w-full mt-1 bg-background border border-border shadow-xl max-h-40 overflow-y-auto">
-                    {filteredCategories.length ? filteredCategories.map(cat => (
-                      <AdminButton
-                        key={cat}
-                        onClick={e => { e.stopPropagation(); setUploadCategories(prev => [...prev, cat]); setCategoryInput('') }}
-                        adminVariant="ghost"
-                        size="md"
-                        className="w-full justify-between px-4 py-2.5 text-sm font-medium text-left"
-                      >
-                        {cat}
-                        <Check className="w-3 h-3 opacity-0 group-hover:opacity-100" />
-                      </AdminButton>
-                    )) : categoryInput.trim() ? (
-                      <AdminButton
-                        onClick={e => { e.stopPropagation(); setUploadCategories(prev => [...prev, categoryInput.trim()]); setCategoryInput('') }}
-                        adminVariant="ghost"
-                        size="md"
-                        className="w-full px-4 py-2.5 text-sm font-medium text-left text-primary flex items-center gap-2"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Create &ldquo;{categoryInput}&rdquo;
-                      </AdminButton>
-                    ) : (
-                      <div className="px-4 py-3 text-xs text-muted-foreground text-center">Start typing...</div>
-                    )}
-                  </div>
-                )}
+                <AdminMultiSelect
+                  values={uploadCategories}
+                  options={categoryOptions}
+                  onChange={setUploadCategories}
+                  placeholder={t('admin.search_create')}
+                  inputPlaceholder={t('admin.search_create')}
+                  allowCreate
+                />
               </div>
 
-              {/* Albums */}
-              <div ref={albumRef} className="relative">
+              {/* Albums (multi-select, searchable, not creatable) */}
+              <div>
                 <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                   <FolderOpen className="w-3 h-3" />
                   {t('admin.album_select')}
                   <span className="text-muted-foreground/50">({t('common.optional')})</span>
                 </label>
-                <div
-                  className="min-h-[48px] p-3 bg-muted/30 border-b border-border flex flex-wrap gap-2 cursor-text focus-within:border-primary transition-colors"
-                  onClick={() => { setIsAlbumOpen(true); albumRef.current?.querySelector('input')?.focus() }}
-                >
-                  {uploadAlbumIds.map(id => {
-                    const album = albums.find(a => a.id === id)
-                    return (
-                      <span key={id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-foreground/10 text-xs font-medium">
-                        {album?.name}
-                        <AdminButton
-                          onClick={e => { e.stopPropagation(); setUploadAlbumIds(prev => prev.filter(i => i !== id)) }}
-                          adminVariant="icon"
-                          size="xs"
-                          className="p-0 hover:text-destructive"
-                        >
-                          <X className="w-3 h-3" />
-                        </AdminButton>
-                      </span>
-                    )
-                  })}
-                  <input
-                    type="text"
-                    value={albumInput}
-                    onChange={e => { setAlbumInput(e.target.value); setIsAlbumOpen(true) }}
-                    onKeyDown={e => { if (e.key === 'Backspace' && !albumInput && uploadAlbumIds.length) setUploadAlbumIds(prev => prev.slice(0, -1)) }}
-                    className="flex-1 min-w-[60px] outline-none bg-transparent text-sm"
-                    placeholder={uploadAlbumIds.length ? '' : t('admin.search_album')}
-                    disabled={loadingAlbums}
-                  />
-                </div>
-                {isAlbumOpen && (
-                  <div className="absolute z-20 w-full mt-1 bg-background border border-border shadow-xl max-h-40 overflow-y-auto">
-                    {filteredAlbums.length ? filteredAlbums.map(album => (
-                      <AdminButton
-                        key={album.id}
-                        onClick={e => { e.stopPropagation(); setUploadAlbumIds(prev => [...prev, album.id]); setAlbumInput('') }}
-                        adminVariant="ghost"
-                        size="md"
-                        className="w-full px-4 py-2.5 text-sm font-medium text-left"
-                      >
-                        {album.name}
-                        {!album.isPublished && <span className="ml-2 text-muted-foreground">({t('admin.draft')})</span>}
-                      </AdminButton>
-                    )) : (
-                      <div className="px-4 py-3 text-xs text-muted-foreground text-center">
-                        {loadingAlbums ? t('common.loading') : t('admin.no_albums_found')}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <AdminMultiSelect
+                  values={uploadAlbumIds}
+                  options={albumOptions}
+                  onChange={setUploadAlbumIds}
+                  placeholder={t('admin.search_album')}
+                  inputPlaceholder={t('admin.search_album')}
+                  disabled={loadingAlbums}
+                />
               </div>
 
               {/* Story */}
@@ -575,7 +470,7 @@ export function UploadTab({
                   {t('ui.photo_story')}
                   <span className="text-muted-foreground/50">({t('common.optional')})</span>
                 </label>
-                <CustomSelect
+                <AdminSelect
                   value={uploadStoryId}
                   onChange={setUploadStoryId}
                   disabled={loadingStories}
@@ -591,7 +486,7 @@ export function UploadTab({
               <div className="pt-4 border-t border-border/50 space-y-4">
                 <div>
                   <label className="block text-xs text-muted-foreground mb-2">{t('admin.storage_provider')}</label>
-                  <CustomSelect
+                  <AdminSelect
                     value={uploadSource}
                     onChange={setUploadSource}
                     options={[
@@ -618,8 +513,7 @@ export function UploadTab({
                         <div className="px-3 py-2 bg-muted/50 border-b border-l border-t border-border text-xs text-muted-foreground font-mono flex items-center min-w-0">
                           <span className="truncate" title={displayPrefix}>{displayPrefix}{systemPrefix ? '/' : ''}</span>
                         </div>
-                        <CustomInput
-                          variant="config"
+                        <AdminInput
                           value={uploadPath}
                           onChange={e => setUploadPath(e.target.value)}
                           placeholder="e.g., 2025/vacation"
@@ -637,7 +531,7 @@ export function UploadTab({
                   <Minimize2 className="w-3 h-3" />
                   {t('admin.image_compression')}
                 </label>
-                <CustomSelect
+                <AdminSelect
                   value={compressionMode}
                   onChange={(v) => setCompressionMode(v as CompressionMode)}
                   options={[
@@ -650,8 +544,7 @@ export function UploadTab({
                 {compressionMode !== 'none' && (
                   <div className="flex items-center gap-3 mt-3">
                     <span className="text-xs text-muted-foreground">{t('admin.max_size_mb')}</span>
-                    <CustomInput
-                      variant="config"
+                    <AdminInput
                       type="number"
                       min="0.5"
                       max="10"

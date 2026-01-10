@@ -3,8 +3,8 @@
 import { useState, useRef, useCallback } from 'react'
 import { X, Upload, Loader2, Minimize2 } from 'lucide-react'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
-import { CustomSelect } from '@/components/ui/CustomSelect'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminSelect } from '@/components/admin/AdminFormControls'
 
 interface MissingFileInfo {
   photoId: string
@@ -175,7 +175,7 @@ export function MissingFileUploadModal({
               <Minimize2 className="w-3 h-3" />
               {t('admin.image_compression')}
             </label>
-            <CustomSelect
+            <AdminSelect
               value={compressionMode}
               onChange={v => setCompressionMode(v as CompressionMode)}
               options={[

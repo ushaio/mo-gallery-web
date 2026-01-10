@@ -7,6 +7,7 @@ import { scanStorage, cleanupStorage, fixMissingPhotos, generateThumbnail, Stora
 import { MissingFileUploadModal } from '@/components/admin/MissingFileUploadModal'
 import { Toast, Notification } from '@/components/Toast'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '-'
@@ -194,52 +195,62 @@ export default function StorageCleanupPage() {
     status === 'missing' || status === 'missing_original' || status === 'missing_thumbnail'
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">{t('admin.storage_cleanup')}</h1>
-      
-      <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg text-sm space-y-1">
-        <div className="font-medium mb-2">{t('admin.storage_help_title')}</div>
-        <div className="text-green-600 dark:text-green-400">✓ {t('admin.storage_help_linked')}</div>
-        <div className="text-yellow-600 dark:text-yellow-400">⚠ {t('admin.storage_help_orphan')}</div>
-        <div className="text-red-600 dark:text-red-400">✗ {t('admin.storage_help_missing')}</div>
+    <div className="max-w-[1920px]">
+      <div className="pb-6 border-b border-border mb-8">
+        <h1 className="font-serif text-3xl">{t('admin.storage_cleanup')}</h1>
       </div>
       
-      <div className="flex flex-wrap gap-4 mb-6">
-        <select
-          value={provider}
-          onChange={e => setProvider(e.target.value)}
-          className="px-3 py-2 border rounded-lg dark:bg-zinc-800 dark:border-zinc-700"
-        >
-          <option value="local">{t('admin.storage_provider_local')}</option>
-          <option value="r2">{t('admin.storage_provider_r2')}</option>
-          <option value="github">{t('admin.storage_provider_github')}</option>
-        </select>
+      <div className="mb-8 p-6 border border-border bg-muted/20 space-y-2">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">{t('admin.storage_help_title')}</div>
+        <div className="text-xs font-mono text-primary">✓ {t('admin.storage_help_linked')}</div>
+        <div className="text-xs font-mono text-amber-500">⚠ {t('admin.storage_help_orphan')}</div>
+        <div className="text-xs font-mono text-destructive">✗ {t('admin.storage_help_missing')}</div>
+      </div>
+      
+      <div className="flex flex-wrap gap-4 mb-8 items-end">
+        <div className="space-y-2">
+          <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Provider</label>
+          <AdminSelect
+            value={provider}
+            onChange={setProvider}
+            options={[
+              { value: 'local', label: t('admin.storage_provider_local') },
+              { value: 'r2', label: t('admin.storage_provider_r2') },
+              { value: 'github', label: t('admin.storage_provider_github') },
+            ]}
+            className="min-w-[160px]"
+          />
+        </div>
         
-        <select 
-          value={statusFilter} 
-          onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border rounded-lg dark:bg-zinc-800 dark:border-zinc-700"
-        >
-          <option value="">{t('admin.all_status')}</option>
-          <option value="linked">{t('admin.storage_linked')}</option>
-          <option value="orphan">{t('admin.storage_orphan')}</option>
-          <option value="missing">{t('admin.storage_missing')}</option>
-        </select>
+        <div className="space-y-2">
+          <label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Status</label>
+          <AdminSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: t('admin.all_status') },
+              { value: 'linked', label: t('admin.storage_linked') },
+              { value: 'orphan', label: t('admin.storage_orphan') },
+              { value: 'missing', label: t('admin.storage_missing') },
+            ]}
+            className="min-w-[160px]"
+          />
+        </div>
         
-        <div className="flex gap-2 flex-1">
-          <input
-            type="text"
+        <div className="flex gap-2 flex-1 min-w-[200px]">
+          <AdminInput
+            variant="config"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             placeholder={t('common.search')}
-            className="flex-1 px-3 py-2 border rounded-lg dark:bg-zinc-800 dark:border-zinc-700"
+            className="flex-1"
           />
           <AdminButton
             onClick={handleSearch}
             adminVariant="outline"
-            size="sm"
-            className="px-4 py-2 text-sm font-medium normal-case rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            size="none"
+            className="px-4 py-2"
           >
             {t('common.search').replace('...', '')}
           </AdminButton>
@@ -249,64 +260,64 @@ export default function StorageCleanupPage() {
           onClick={() => loadFiles()}
           disabled={loading}
           adminVariant="primary"
-          size="sm"
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium normal-case rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          size="none"
+          className="px-6 py-2"
         >
           {loading ? t('admin.storage_scanning') : t('admin.storage_scan')}
         </AdminButton>
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-          <div className="text-2xl font-bold">{stats.total}</div>
-          <div className="text-zinc-600 dark:text-zinc-400 text-xs">{t('admin.storage_total')}</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        <div className="p-4 border border-border bg-muted/30">
+          <div className="text-2xl font-bold font-mono">{stats.total}</div>
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t('admin.storage_total')}</div>
         </div>
-        <div className="p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.linked}</div>
-          <div className="text-zinc-600 dark:text-zinc-400 text-xs">{t('admin.storage_linked')}</div>
+        <div className="p-4 border border-primary/30 bg-primary/5">
+          <div className="text-2xl font-bold font-mono text-primary">{stats.linked}</div>
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t('admin.storage_linked')}</div>
         </div>
-        <div className="p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-          <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.orphan}</div>
-          <div className="text-zinc-600 dark:text-zinc-400 text-xs">{t('admin.storage_orphan')}</div>
+        <div className="p-4 border border-amber-500/30 bg-amber-500/5">
+          <div className="text-2xl font-bold font-mono text-amber-500">{stats.orphan}</div>
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t('admin.storage_orphan')}</div>
         </div>
-        <div className="p-4 bg-red-100 dark:bg-red-900/30 rounded-lg">
-          <div className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.missing}</div>
-          <div className="text-zinc-600 dark:text-zinc-400 text-xs">{t('admin.storage_missing')}</div>
+        <div className="p-4 border border-destructive/30 bg-destructive/5">
+          <div className="text-2xl font-bold font-mono text-destructive">{stats.missing}</div>
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t('admin.storage_missing')}</div>
         </div>
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-          <div className="text-2xl font-bold text-red-500 dark:text-red-300">{stats.missingOriginal}</div>
-          <div className="text-zinc-600 dark:text-zinc-400 text-xs">{t('admin.storage_missing_original')}</div>
+        <div className="p-4 border border-destructive/20 bg-destructive/5">
+          <div className="text-2xl font-bold font-mono text-destructive/80">{stats.missingOriginal}</div>
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t('admin.storage_missing_original')}</div>
         </div>
-        <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-          <div className="text-2xl font-bold text-orange-500 dark:text-orange-300">{stats.missingThumbnail}</div>
-          <div className="text-zinc-600 dark:text-zinc-400 text-xs">{t('admin.storage_missing_thumb')}</div>
+        <div className="p-4 border border-orange-500/30 bg-orange-500/5">
+          <div className="text-2xl font-bold font-mono text-orange-500">{stats.missingThumbnail}</div>
+          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t('admin.storage_missing_thumb')}</div>
         </div>
       </div>
       
       {selected.size > 0 && (
-        <div className="flex gap-4 mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg items-center">
-          <span>{t('admin.selected')} {selected.size}</span>
+        <div className="flex gap-4 mb-6 p-4 border border-primary/30 bg-primary/5 items-center">
+          <span className="text-xs font-bold uppercase tracking-widest">{t('admin.selected')} {selected.size}</span>
           <AdminButton
             onClick={handleCleanup}
             adminVariant="destructive"
-            size="xs"
-            className="px-3 py-1 text-xs font-medium normal-case rounded hover:bg-red-700"
+            size="none"
+            className="px-4 py-2"
           >
             {t('admin.storage_cleanup_selected')}
           </AdminButton>
           <AdminButton
             onClick={() => setSelected(new Set())}
             adminVariant="outline"
-            size="xs"
-            className="px-3 py-1 text-xs font-medium normal-case rounded hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            size="none"
+            className="px-4 py-2"
           >
             {t('common.cancel')}
           </AdminButton>
         </div>
       )}
       
-      <div className="border dark:border-zinc-700 rounded-lg overflow-hidden">
-        <div className="flex items-center p-3 bg-zinc-50 dark:bg-zinc-800 border-b dark:border-zinc-700 text-sm font-medium select-none">
+      <div className="border border-border overflow-hidden">
+        <div className="flex items-center p-3 bg-muted/30 border-b border-border text-[10px] font-bold uppercase tracking-widest text-muted-foreground select-none">
           <input
             type="checkbox"
             className="mr-4"
@@ -337,21 +348,23 @@ export default function StorageCleanupPage() {
         </div>
         
         {files.length === 0 && !loading && (
-          <div className="p-8 text-center text-zinc-500">{t('admin.storage_no_files')}</div>
+          <div className="p-12 text-center">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('admin.storage_no_files')}</p>
+          </div>
         )}
         
         {sortedFolders.map(folder => (
           <div key={folder}>
             <div
-              className="flex items-center p-2 bg-zinc-100 dark:bg-zinc-700/50 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              className="flex items-center p-3 bg-muted/50 cursor-pointer hover:bg-muted transition-colors border-b border-border"
               onClick={() => toggleFolder(folder)}
             >
-              <span className="mr-2">{collapsedFolders.has(folder) ? '▶' : '▼'}</span>
-              <span className="font-mono text-sm font-medium">{folder || '/'}</span>
-              <span className="ml-2 text-xs text-zinc-500">({groupedFiles[folder].length})</span>
+              <span className="mr-3 text-muted-foreground text-xs">{collapsedFolders.has(folder) ? '▶' : '▼'}</span>
+              <span className="font-mono text-xs font-bold">{folder || '/'}</span>
+              <span className="ml-2 text-[10px] text-muted-foreground font-mono">({groupedFiles[folder].length})</span>
             </div>
             {!collapsedFolders.has(folder) && groupedFiles[folder].map(file => (
-              <div key={file.key} className="flex items-center p-3 pl-8 border-b dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+              <div key={file.key} className="flex items-center p-3 pl-8 border-b border-border hover:bg-muted/30 transition-colors">
                 <input
                   type="checkbox"
                   className="mr-4"
@@ -432,7 +445,7 @@ export default function StorageCleanupPage() {
       
       {previewUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-8"
           onClick={() => setPreviewUrl(null)}
         >
           <img
@@ -443,9 +456,9 @@ export default function StorageCleanupPage() {
           />
           <AdminButton
             onClick={() => setPreviewUrl(null)}
-            adminVariant="iconOnDark"
-            size="sm"
-            className="absolute top-4 right-4 text-2xl hover:text-zinc-300"
+            adminVariant="unstyled"
+            size="none"
+            className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-white/70 hover:text-white border border-white/20 hover:border-white/50 transition-all"
           >
             ✕
           </AdminButton>

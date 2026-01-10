@@ -19,9 +19,9 @@ import {
 import { AdminSettingsDto, uploadPhoto, createStory } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
 import { formatFileSize } from '@/lib/utils'
-import { CustomInput } from '@/components/ui/CustomInput'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminInput, AdminMultiSelect } from '@/components/admin/AdminFormControls'
 
 interface StoryUploadFile {
   id: string
@@ -63,9 +63,6 @@ export function StoryUploadTab({
 
   // Categories
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
-  const [categoryInput, setCategoryInput] = useState('')
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
-  const categoryContainerRef = useRef<HTMLDivElement>(null)
 
   // Batch title
   const [batchPhotoTitle, setBatchPhotoTitle] = useState('')
@@ -94,40 +91,13 @@ export function StoryUploadTab({
     }
   }, [settings, isInitialized])
 
-  // Click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        categoryContainerRef.current &&
-        !categoryContainerRef.current.contains(event.target as Node)
-      ) {
-        setIsCategoryDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const filteredCategories = useMemo(() => {
-    return categories.filter(
-      (c) =>
-        c !== '全部' &&
-        c.toLowerCase().includes(categoryInput.toLowerCase()) &&
-        !uploadCategories.includes(c)
-    )
-  }, [categories, categoryInput, uploadCategories])
-
-  const addCategory = (cat: string) => {
-    const trimmed = cat.trim()
-    if (trimmed && !uploadCategories.includes(trimmed)) {
-      setUploadCategories([...uploadCategories, trimmed])
-    }
-    setCategoryInput('')
-  }
-
-  const removeCategory = (cat: string) => {
-    setUploadCategories(uploadCategories.filter((c) => c !== cat))
-  }
+  const categoryOptions = useMemo(
+    () =>
+      categories
+        .filter((c) => c !== 'all' && c !== '全部')
+        .map((c) => ({ value: c, label: c })),
+    [categories]
+  )
 
   // Generate preview for file
   const generatePreview = (file: File): Promise<string> => {
@@ -342,8 +312,7 @@ export function StoryUploadTab({
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.story_title')} *
               </label>
-              <CustomInput
-                variant="config"
+              <AdminInput
                 type="text"
                 value={storyTitle}
                 onChange={(e) => setStoryTitle(e.target.value)}
@@ -365,100 +334,19 @@ export function StoryUploadTab({
               />
             </div>
 
-            {/* Categories */}
-            <div ref={categoryContainerRef} className="relative">
+            {/* Categories (multi-select, searchable, creatable) */}
+            <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.categories')} *
               </label>
-              <div
-                className="min-h-12 p-2 bg-background border-b border-border flex flex-wrap gap-2 cursor-text items-center transition-colors focus-within:border-primary"
-                onClick={() => {
-                  setIsCategoryDropdownOpen(true)
-                  categoryContainerRef.current?.querySelector('input')?.focus()
-                }}
-              >
-                {uploadCategories.map((cat) => (
-                  <span
-                    key={cat}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider"
-                  >
-                    {cat}
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        removeCategory(cat)
-                      }}
-                      adminVariant="icon"
-                      size="xs"
-                      className="p-0 hover:text-primary/70"
-                    >
-                      <X className="w-3 h-3" />
-                    </AdminButton>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={categoryInput}
-                  onChange={(e) => {
-                    setCategoryInput(e.target.value)
-                    setIsCategoryDropdownOpen(true)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      if (categoryInput.trim()) addCategory(categoryInput)
-                    } else if (
-                      e.key === 'Backspace' &&
-                      !categoryInput &&
-                      uploadCategories.length > 0
-                    ) {
-                      removeCategory(uploadCategories[uploadCategories.length - 1])
-                    }
-                  }}
-                  className="flex-1 min-w-[80px] outline-none bg-transparent text-sm font-mono"
-                  placeholder={
-                    uploadCategories.length === 0 ? t('admin.search_create') : ''
-                  }
-                />
-              </div>
-              {isCategoryDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto">
-                  {filteredCategories.length > 0 ? (
-                    filteredCategories.map((cat) => (
-                      <AdminButton
-                        key={cat}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          addCategory(cat)
-                        }}
-                        adminVariant="ghost"
-                        size="md"
-                        className="w-full px-4 py-3 text-xs font-bold uppercase tracking-wider text-left flex items-center justify-between group hover:bg-primary hover:text-primary-foreground"
-                      >
-                        <span>{cat}</span>
-                        <Check className="w-3 h-3 opacity-0 group-hover:opacity-100" />
-                      </AdminButton>
-                    ))
-                  ) : categoryInput.trim() ? (
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        addCategory(categoryInput)
-                      }}
-                      adminVariant="ghost"
-                      size="md"
-                      className="w-full px-4 py-3 text-xs font-bold uppercase tracking-wider text-left text-primary flex items-center justify-between hover:bg-primary hover:text-primary-foreground"
-                    >
-                      <span>Create &ldquo;{categoryInput}&rdquo;</span>
-                      <Plus className="w-3 h-3" />
-                    </AdminButton>
-                  ) : (
-                    <div className="px-4 py-3 text-[10px] text-muted-foreground uppercase tracking-widest text-center">
-                      Start typing...
-                    </div>
-                  )}
-                </div>
-              )}
+              <AdminMultiSelect
+                values={uploadCategories}
+                options={categoryOptions}
+                onChange={setUploadCategories}
+                placeholder={t('admin.search_create')}
+                inputPlaceholder={t('admin.search_create')}
+                allowCreate
+              />
             </div>
 
             {/* Batch Photo Title */}
@@ -466,8 +354,7 @@ export function StoryUploadTab({
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.batch_photo_title')}
               </label>
-              <CustomInput
-                variant="config"
+              <AdminInput
                 type="text"
                 value={batchPhotoTitle}
                 onChange={(e) => setBatchPhotoTitle(e.target.value)}
@@ -495,8 +382,7 @@ export function StoryUploadTab({
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                   {t('admin.path_prefix')}
                 </label>
-                <CustomInput
-                  variant="config"
+                <AdminInput
                   type="text"
                   value={uploadPath}
                   onChange={(e) => setUploadPath(e.target.value)}
@@ -526,8 +412,7 @@ export function StoryUploadTab({
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
                     {t('admin.max_size_mb')}
                   </label>
-                  <CustomInput
-                    variant="config"
+                  <AdminInput
                     type="number"
                     min="0.5"
                     max="10"

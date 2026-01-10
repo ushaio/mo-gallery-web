@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 
 export interface SelectOption {
@@ -9,12 +9,15 @@ export interface SelectOption {
   suffix?: string // 可选后缀，如 "(草稿)"
 }
 
+type UiVariant = 'admin' | 'site'
+
 interface CustomSelectProps {
   value: string
   options: SelectOption[]
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
+  uiVariant?: UiVariant
   className?: string
 }
 
@@ -24,6 +27,7 @@ export function CustomSelect({
   onChange,
   placeholder = '请选择',
   disabled = false,
+  uiVariant = 'admin',
   className = '',
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -33,6 +37,32 @@ export function CustomSelect({
   const displayLabel = selectedOption
     ? `${selectedOption.label}${selectedOption.suffix ? ` ${selectedOption.suffix}` : ''}`
     : placeholder
+
+  const ui = useMemo(() => {
+    if (uiVariant === 'site') {
+      return {
+        trigger:
+          'min-h-10 px-3 py-2 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
+        label: 'text-sm',
+        dropdown:
+          'absolute z-20 w-full mt-1 bg-background border border-border rounded-md shadow-xl max-h-56 overflow-y-auto',
+        option:
+          'w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between group transition-colors',
+        optionActive: 'bg-muted text-foreground',
+      }
+    }
+
+    return {
+      trigger:
+        'min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
+      label: 'text-xs font-mono',
+      dropdown:
+        'absolute z-20 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto',
+      option:
+        'w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground flex items-center justify-between group transition-colors',
+      optionActive: 'bg-primary/10 text-primary',
+    }
+  }, [uiVariant])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -51,16 +81,16 @@ export function CustomSelect({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div
-        className={`min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`${ui.trigger} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
-        <span className="text-xs font-mono">{displayLabel}</span>
+        <span className={ui.label}>{displayLabel}</span>
         <ChevronDown
           className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
       </div>
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto">
+        <div className={ui.dropdown}>
           {options.map((option) => (
             <button
               key={option.value}
@@ -68,7 +98,7 @@ export function CustomSelect({
                 onChange(option.value)
                 setIsOpen(false)
               }}
-              className={`w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground flex items-center justify-between group transition-colors ${value === option.value ? 'bg-primary/10 text-primary' : ''}`}
+              className={`${ui.option} ${value === option.value ? ui.optionActive : ''}`}
             >
               <span>
                 {option.label}
