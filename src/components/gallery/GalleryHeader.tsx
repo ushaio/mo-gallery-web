@@ -21,26 +21,26 @@ export function GalleryHeader({
   t,
 }: GalleryHeaderProps) {
   return (
-    <header className="mb-20">
-      <div className="flex flex-col gap-12">
+    <header className="mb-12 md:mb-16">
+      <div className="flex flex-col gap-8">
         {/* Title Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-          <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-3">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-4"
+              className="flex items-center gap-3"
             >
-              <div className="h-px w-8 bg-primary" />
-              <span className="text-label-sm font-bold uppercase tracking-[0.4em] text-primary">
+              <div className="h-px w-6 bg-primary/60" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary/80">
                 Collection
               </span>
             </motion.div>
             <motion.h1
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-5xl md:text-7xl lg:text-8xl font-serif font-light tracking-tighter leading-[0.9]"
+              className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight"
             >
               {activeCategory === 'all' ? t('gallery.title') : activeCategory}
             </motion.h1>
@@ -50,49 +50,47 @@ export function GalleryHeader({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="flex flex-col items-start md:items-end gap-2"
+            className="flex items-center gap-4"
           >
-             <p className="text-body-sm text-muted-foreground font-serif italic max-w-xs text-right hidden md:block">
-              Curated visual moments and captured memories.
-            </p>
-            <div className="text-label-sm font-mono text-muted-foreground uppercase tracking-widest">
+            <span className="text-xs text-muted-foreground/60 font-serif italic hidden md:block">
+              Visual moments
+            </span>
+            <div className="h-4 w-px bg-border/50 hidden md:block" />
+            <div className="text-xs font-mono text-muted-foreground tracking-wider">
               {photoCount} {t('gallery.count_suffix')}
             </div>
           </motion.div>
         </div>
 
-        {/* Category Filter - Minimalist Text */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
+        {/* Category Filter */}
+        <motion.nav
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="border-t border-border/50 pt-6"
+          className="border-t border-border/30 pt-4"
         >
-          <div className="flex flex-wrap gap-6 md:gap-8">
+          <div className="flex flex-wrap gap-1">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => onCategoryChange(cat)}
-                className={`relative py-2 text-label font-bold uppercase tracking-[0.2em] transition-colors group ${
+                className={`relative px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all ${
                   activeCategory === cat
-                    ? 'text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'text-primary bg-primary/8'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
               >
                 {cat === 'all' ? t('gallery.all') : cat}
-                {/* Active Indicator */}
                 {activeCategory === cat && (
                   <motion.div
                     layoutId="activeCategory"
-                    className="absolute bottom-0 left-0 w-full h-px bg-primary"
+                    className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
                   />
                 )}
-                {/* Hover Indicator */}
-                <div className="absolute bottom-0 left-0 w-0 h-px bg-foreground/30 transition-all group-hover:w-full" />
               </button>
             ))}
           </div>
-        </motion.div>
+        </motion.nav>
       </div>
     </header>
   )
@@ -122,48 +120,50 @@ export function GalleryToolbar({
   t,
 }: GalleryToolbarProps) {
   return (
-    <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/50 transition-all">
+    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30 transition-all">
       <div className="px-4 md:px-8 lg:px-12">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-2 sm:gap-4 h-14 sm:h-16">
-          {/* Search Bar - Minimal */}
-          <div className="flex-1 min-w-0 max-w-[120px] sm:max-w-sm">
-             <div className="relative group">
-               <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-               <SiteInput
-                 value={search}
-                 onChange={(e) => onSearchChange(e.target.value)}
-                 placeholder={t('common.search')}
-               />
-             </div>
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-3 h-12">
+          {/* Search Bar */}
+          <div className="flex-1 min-w-0 max-w-[140px] sm:max-w-xs">
+            <div className="relative group">
+              <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
+              <SiteInput
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder={t('common.search')}
+              />
+            </div>
           </div>
 
           {/* Controls */}
-          <div className="flex items-center gap-2 sm:gap-6 overflow-x-auto">
+          <div className="flex items-center gap-1">
             {/* Immersive Toggle */}
             <button
               onClick={() => onImmersiveChange(!immersive)}
-              className={`flex-shrink-0 flex items-center gap-1 sm:gap-2 text-label-sm font-bold uppercase tracking-widest transition-colors ${
-                immersive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-all ${
+                immersive
+                  ? 'text-primary bg-primary/8'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
               title={t('gallery.immersive') || '沉浸模式'}
             >
-              <span>{t('gallery.immersive') || '沉浸'}</span>
+              {t('gallery.immersive') || '沉浸'}
             </button>
-
-            <div className="w-px h-4 bg-border flex-shrink-0" />
 
             {/* Grayscale Toggle */}
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
-              className={`flex-shrink-0 flex items-center gap-1 sm:gap-2 text-label-sm font-bold uppercase tracking-widest transition-colors ${
-                grayscale ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                grayscale
+                  ? 'text-primary bg-primary/8'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
             >
-              {grayscale ? <Circle className="w-3 h-3" /> : <CircleOff className="w-3 h-3" />}
+              {grayscale ? <Circle className="w-2.5 h-2.5" /> : <CircleOff className="w-2.5 h-2.5" />}
               <span className="hidden sm:inline">B&W</span>
             </button>
 
-            <div className="w-px h-4 bg-border flex-shrink-0" />
+            <div className="w-px h-4 bg-border/30 mx-1" />
 
             {/* View Mode Toggle */}
             <ViewModeToggle

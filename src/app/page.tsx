@@ -9,10 +9,10 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 export default function Home() {
-  const { settings } = useSettings()
+  const { settings, envConfig } = useSettings()
   const { t } = useLanguage()
   const siteTitle = settings?.site_title || 'MO GALLERY'
-  const siteAuthor = process.env.NEXT_PUBLIC_SITE_AUTHOR || 'MO'
+  const siteAuthor = envConfig.siteAuthor
 
   const [featuredImages, setFeaturedImages] = useState<PhotoDto[]>([])
   const [heroImage, setHeroImage] = useState<PhotoDto | null>(null)

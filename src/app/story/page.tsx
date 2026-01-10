@@ -70,84 +70,94 @@ export default function StoryListPage() {
     return null
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background pt-24 pb-16">
-        <div className="px-6 md:px-12 lg:px-24">
-          <div className="max-w-screen-xl mx-auto">
-            <div className="animate-pulse space-y-12">
-              <div className="h-16 bg-muted rounded-none w-1/3"></div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="space-y-6">
-                    <div className="aspect-[16/9] bg-muted rounded-none"></div>
-                    <div className="space-y-3">
-                      <div className="h-6 bg-muted rounded-none w-3/4"></div>
-                      <div className="h-4 bg-muted rounded-none w-full"></div>
-                      <div className="h-4 bg-muted rounded-none w-2/3"></div>
-                    </div>
-                  </div>
-                ))}
+  // Skeleton for story cards
+  const StorySkeleton = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 pl-4 md:pl-8">
+      {[...Array(6)].map((_, i) => {
+        const isWide = i % 7 === 0
+        const isTall = i % 5 === 2
+        return (
+          <div key={i} className={`animate-pulse space-y-5 ${isWide ? 'md:col-span-2' : ''}`}>
+            <div className={`bg-muted ${isTall && !isWide ? 'aspect-[3/4]' : isWide ? 'aspect-[21/9]' : 'aspect-[3/2]'}`} />
+            <div className="space-y-3 px-1">
+              <div className="flex justify-between">
+                <div className="h-6 bg-muted w-2/3" />
+                <div className="h-4 bg-muted w-24" />
               </div>
+              <div className="h-4 bg-muted w-5/6" />
             </div>
           </div>
-        </div>
-      </div>
-    )
-  }
+        )
+      })}
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-background text-foreground pt-28 pb-20">
-      {/* Header Section */}
-      <div className="px-6 md:px-12 lg:px-24 mb-16 md:mb-24">
-        <div className="max-w-screen-xl mx-auto">
-          <header className="relative">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-4 mb-4"
-            >
-              <div className="h-px w-8 bg-primary" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">
-                Journal
-              </span>
-            </motion.div>
-
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-              <motion.h1
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-5xl md:text-7xl font-serif font-light tracking-tighter leading-[0.9]"
-              >
-                {t('nav.story')}
-              </motion.h1>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="max-w-xs"
-              >
-                <p className="text-xs text-muted-foreground leading-relaxed font-serif italic">
-                  A collection of visual narratives, personal journeys, and documented moments in time.
-                </p>
-                <div className="mt-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60">
-                  {stories.length} {t('story.count_suffix') || 'STORIES'}
+    <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
+      {/* Header Section - Always visible */}
+      <div className="px-4 md:px-8 lg:px-12">
+        <div className="max-w-screen-2xl mx-auto">
+          <header className="relative mb-12 md:mb-16">
+            <div className="flex flex-col gap-8">
+              {/* Title Section */}
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div className="space-y-3">
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-3"
+                  >
+                    <div className="h-px w-6 bg-primary/60" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary/80">
+                      Journal
+                    </span>
+                  </motion.div>
+                  <motion.h1
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight"
+                  >
+                    {t('nav.story')}
+                  </motion.h1>
                 </div>
-              </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="flex items-center gap-4"
+                >
+                  <span className="text-xs text-muted-foreground/60 font-serif italic hidden md:block">
+                    Visual narratives
+                  </span>
+                  <div className="h-4 w-px bg-border/50 hidden md:block" />
+                  <div className="text-xs font-mono text-muted-foreground tracking-wider">
+                    {loading ? '—' : stories.length} {t('story.count_suffix') || 'STORIES'}
+                  </div>
+                </motion.div>
+              </div>
+
+              {/* Separator */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="border-t border-border/30"
+              />
             </div>
           </header>
         </div>
       </div>
 
       {/* Stories Content */}
-      <div className="px-6 md:px-12 lg:px-24">
-        <div className="max-w-screen-xl mx-auto">
-
+      <div className="px-4 md:px-8 lg:px-12">
+        <div className="max-w-screen-2xl mx-auto">
           <QuickStoryEditor onSuccess={loadStories} />
 
-          {stories.length === 0 ? (
+          {loading ? (
+            <StorySkeleton />
+          ) : stories.length === 0 ? (
             <div className="py-24 text-center border-t border-border/50">
               <BookOpen className="w-10 h-10 mx-auto mb-4 opacity-20" />
               <p className="text-muted-foreground font-serif italic text-sm">{t('story.empty') || 'No stories found yet.'}</p>

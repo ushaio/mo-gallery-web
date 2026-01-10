@@ -58,11 +58,41 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * Parse environment variables once at server render time.
+ * Business components read via SettingsContext, not process.env.
+ */
+function getBootConfig() {
+  let socialLinks: { title: string; url: string }[] = []
+  try {
+    const raw = process.env.SOCIAL_LINKS
+    if (raw) socialLinks = JSON.parse(raw)
+  } catch {}
+
+  const commentsStorage = process.env.COMMENTS_STORAGE || ''
+  const isWaline = commentsStorage.toUpperCase() === 'LEANCLOUD'
+
+  return {
+    envConfig: {
+      socialLinks,
+      siteAuthor: process.env.SITE_AUTHOR || 'MO',
+    },
+    publicSettings: {
+      site_title: process.env.SITE_TITLE || 'MO GALLERY',
+      cdn_domain: process.env.CDN_DOMAIN || '',
+      linuxdo_only: process.env.LINUXDO_COMMENTS_ONLY === 'true',
+      comments_storage: commentsStorage,
+      waline_server_url: isWaline ? process.env.WALINE_SERVER_URL || '' : '',
+    },
+  }
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const bootConfig = getBootConfig()
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
@@ -88,7 +118,7 @@ export default function RootLayout({
         className={`${cormorant.variable} ${montserrat.variable} antialiased bg-background text-foreground font-sans selection:bg-primary selection:text-primary-foreground`}
       >
         <ThemeProvider>
-          <SettingsProvider>
+          <SettingsProvider initialEnvConfig={bootConfig.envConfig} initialSettings={bootConfig.publicSettings}>
             <LanguageProvider>
               <AuthProvider>
                 <Navbar />

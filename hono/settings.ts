@@ -5,26 +5,6 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 
 const settings = new Hono<{ Variables: AuthVariables }>()
 
-// Public endpoint for getting public settings (no auth required)
-// These settings are read from environment variables
-settings.get('/public', async (c) => {
-  const commentsStorage = process.env.COMMENTS_STORAGE || ''
-  const isWaline = commentsStorage.toUpperCase() === 'LEANCLOUD'
-
-  const config = {
-    site_title: process.env.SITE_TITLE || 'MO GALLERY',
-    cdn_domain: process.env.CDN_DOMAIN || '',
-    linuxdo_only: process.env.LINUXDO_COMMENTS_ONLY === 'true',
-    comments_storage: commentsStorage,
-    waline_server_url: isWaline ? process.env.WALINE_SERVER_URL || '' : '',
-  }
-
-  return c.json({
-    success: true,
-    data: config,
-  })
-})
-
 // Protected settings endpoints
 settings.get('/', authMiddleware, async (c) => {
   try {
