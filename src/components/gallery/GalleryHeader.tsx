@@ -32,7 +32,7 @@ export function GalleryHeader({
               className="flex items-center gap-4"
             >
               <div className="h-px w-8 bg-primary" />
-              <span className="text-ui-micro font-bold uppercase tracking-[0.4em] text-primary">
+              <span className="text-label-sm font-bold uppercase tracking-[0.4em] text-primary">
                 Collection
               </span>
             </motion.div>
@@ -52,10 +52,10 @@ export function GalleryHeader({
             transition={{ delay: 0.2 }}
             className="flex flex-col items-start md:items-end gap-2"
           >
-             <p className="text-ui-xs text-muted-foreground font-serif italic max-w-xs text-right hidden md:block">
+             <p className="text-body-sm text-muted-foreground font-serif italic max-w-xs text-right hidden md:block">
               Curated visual moments and captured memories.
             </p>
-            <div className="text-ui-micro font-mono text-muted-foreground uppercase tracking-widest">
+            <div className="text-label-sm font-mono text-muted-foreground uppercase tracking-widest">
               {photoCount} {t('gallery.count_suffix')}
             </div>
           </motion.div>
@@ -73,7 +73,7 @@ export function GalleryHeader({
               <button
                 key={cat}
                 onClick={() => onCategoryChange(cat)}
-                className={`relative py-2 text-ui-xs font-bold uppercase tracking-[0.2em] transition-colors group ${
+                className={`relative py-2 text-label font-bold uppercase tracking-[0.2em] transition-colors group ${
                   activeCategory === cat
                     ? 'text-foreground'
                     : 'text-muted-foreground hover:text-foreground'
@@ -134,7 +134,7 @@ export function GalleryToolbar({
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={t('common.search')}
-                className="w-full bg-transparent border-none py-2 pl-6 sm:pl-8 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0 font-serif"
+                className="w-full bg-transparent border-none py-2 pl-6 sm:pl-8 text-ui placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0 font-serif"
               />
             </div>
           </div>
@@ -144,7 +144,7 @@ export function GalleryToolbar({
             {/* Immersive Toggle */}
             <button
               onClick={() => onImmersiveChange(!immersive)}
-              className={`flex-shrink-0 flex items-center gap-1 sm:gap-2 text-ui-micro font-bold uppercase tracking-widest transition-colors ${
+              className={`flex-shrink-0 flex items-center gap-1 sm:gap-2 text-label-sm font-bold uppercase tracking-widest transition-colors ${
                 immersive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
               title={t('gallery.immersive') || '沉浸模式'}
@@ -157,7 +157,7 @@ export function GalleryToolbar({
             {/* Grayscale Toggle */}
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
-              className={`flex-shrink-0 flex items-center gap-1 sm:gap-2 text-ui-micro font-bold uppercase tracking-widest transition-colors ${
+              className={`flex-shrink-0 flex items-center gap-1 sm:gap-2 text-label-sm font-bold uppercase tracking-widest transition-colors ${
                 grayscale ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >

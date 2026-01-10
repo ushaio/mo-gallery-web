@@ -96,7 +96,7 @@ export default function BlogListPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex items-center gap-3 text-primary"
                   >
-                    <span className="text-[10px] font-black uppercase tracking-[0.4em]">Blog</span>
+                    <span className="text-label-sm font-black uppercase tracking-[0.4em]">Blog</span>
                     <div className="h-[1px] w-12 bg-primary/30" />
                   </motion.div>
                   <motion.h1
@@ -113,7 +113,7 @@ export default function BlogListPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.2 }}
-                  className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest"
+                  className="text-label-sm font-mono text-muted-foreground uppercase tracking-widest"
                 >
                   {filteredBlogs.length} {t('blog.count_suffix')}
                 </motion.div>
@@ -132,7 +132,7 @@ export default function BlogListPage() {
                       <button
                         key={category}
                         onClick={() => setActiveCategory(category)}
-                        className={`px-3 md:px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all border whitespace-nowrap shrink-0 ${
+                        className={`px-3 md:px-4 py-1.5 text-label font-bold uppercase tracking-widest transition-all border whitespace-nowrap shrink-0 ${
                           activeCategory === category
                             ? 'bg-primary text-primary-foreground border-primary'
                             : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
@@ -191,7 +191,7 @@ export default function BlogListPage() {
                           <div key={`${year}-${month}`} className="relative">
                             {/* Month Label */}
                             <div className="flex items-center gap-4 mb-6">
-                              <div className="text-sm font-mono text-muted-foreground uppercase tracking-widest">
+                              <div className="text-label font-mono text-muted-foreground uppercase tracking-widest">
                                 {month} 月
                               </div>
                               <div className="flex-1 h-[1px] bg-border/50" />
@@ -220,7 +220,7 @@ export default function BlogListPage() {
                                     </h3>
 
                                     {/* Meta */}
-                                    <div className="flex flex-wrap items-center gap-3 md:gap-4 text-[10px] text-muted-foreground uppercase tracking-widest">
+                                    <div className="flex flex-wrap items-center gap-3 md:gap-4 text-label-sm text-muted-foreground uppercase tracking-widest">
                                       <div className="flex items-center gap-1">
                                         <Calendar className="w-3 h-3" />
                                         {new Date(blog.createdAt).toLocaleDateString('zh-CN', {
@@ -237,12 +237,12 @@ export default function BlogListPage() {
                                     </div>
 
                                     {/* Excerpt */}
-                                    <p className="text-sm md:text-base text-muted-foreground line-clamp-2 leading-relaxed">
+                                    <p className="text-body-sm md:text-body text-muted-foreground line-clamp-2 leading-relaxed">
                                       {blog.content.replace(/[#*`\[\]]/g, '').substring(0, 150)}...
                                     </p>
 
                                     {/* Read More */}
-                                    <div className="flex items-center gap-2 text-[10px] text-primary font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center gap-2 text-label-sm text-primary font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
                                       {t('blog.read_more')}
                                       <ArrowRight className="w-3 h-3" />
                                     </div>
@@ -267,7 +267,7 @@ export default function BlogListPage() {
           >
             <Link
               href="/gallery"
-              className="inline-block px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all text-xs font-bold uppercase tracking-widest"
+              className="inline-block px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all text-label font-bold uppercase tracking-widest"
             >
               {t('blog.back_to_gallery')}
             </Link>
