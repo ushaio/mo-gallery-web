@@ -5,7 +5,6 @@ import React, { useState, useMemo, useEffect } from 'react'
 import {
   Upload,
   Loader2,
-  Check,
   X,
   Trash2,
   Plus,
@@ -17,7 +16,8 @@ import {
   Settings2,
   CloudUpload,
   MapPinOff,
-  FileSearch,
+  AlertTriangle,
+  ExternalLink,
 } from 'lucide-react'
 import { AdminSettingsDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, type StoryDto, type AlbumDto } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
@@ -158,6 +158,7 @@ function DraggableFileItem({
   item,
   index,
   selected,
+  duplicateInfo,
   onSelect,
   onRemove,
   onPreview,
@@ -165,10 +166,12 @@ function DraggableFileItem({
   onDragOver,
   onDrop,
   isDragging,
+  t,
 }: {
   item: UploadFile
   index: number
   selected: boolean
+  duplicateInfo?: DuplicateInfo
   onSelect: (id: string) => void
   onRemove: (id: string) => void
   onPreview: (item: UploadFile) => void
@@ -176,6 +179,7 @@ function DraggableFileItem({
   onDragOver: (e: React.DragEvent, index: number) => void
   onDrop: (e: React.DragEvent) => void
   isDragging: boolean
+  t: (key: string) => string
 }) {
   const [preview, setPreview] = useState<string | null>(null)
 
@@ -207,7 +211,7 @@ function DraggableFileItem({
       onDrop={onDrop}
       className={`group flex items-center gap-4 p-4 bg-background border transition-all cursor-move ${
         isDragging ? 'opacity-50 border-primary' : 'border-transparent hover:border-border'
-      } ${selected ? 'bg-primary/5' : ''}`}
+      } ${selected ? 'bg-primary/5' : ''} ${duplicateInfo ? 'border-amber-300/60 bg-amber-50/20' : ''}`}
     >
       <div className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors">
         <GripVertical className="w-4 h-4" />
@@ -239,6 +243,30 @@ function DraggableFileItem({
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{item.file.name}</p>
         <p className="text-xs text-muted-foreground font-mono">{formatFileSize(item.file.size)}</p>
+        {duplicateInfo && (
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-amber-600">
+            <AlertTriangle className="w-3 h-3" />
+            <span>{t('admin.duplicate_found')}</span>
+            <a
+              href={duplicateInfo.existingPhoto.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-amber-700 hover:text-amber-800"
+              title={duplicateInfo.existingPhoto.title}
+            >
+              {duplicateInfo.existingPhoto.thumbnailUrl ? (
+                <img
+                  src={duplicateInfo.existingPhoto.thumbnailUrl}
+                  alt={duplicateInfo.existingPhoto.title}
+                  className="w-5 h-5 rounded border border-amber-200/60 object-cover"
+                />
+              ) : (
+                <ExternalLink className="w-3 h-3" />
+              )}
+              <span className="max-w-[120px] truncate">{duplicateInfo.existingPhoto.title}</span>
+            </a>
+          </div>
+        )}
       </div>
 
       <AdminButton
@@ -295,7 +323,6 @@ export function UploadTab({
   const [privacyProgress, setPrivacyProgress] = useState({ current: 0, total: 0 })
 
   // Duplicate check
-  const [duplicateCheckEnabled, setDuplicateCheckEnabled] = useState(true)
   const [checkingDuplicates, setCheckingDuplicates] = useState(false)
   const [duplicateProgress, setDuplicateProgress] = useState({ current: 0, total: 0 })
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
@@ -348,13 +375,119 @@ export function UploadTab({
     [albums, t]
   )
 
+  const duplicateInfoMap = useMemo(() => {
+    const map = new Map<string, DuplicateInfo>()
+    duplicateInfos.forEach(info => map.set(info.fileId, info))
+    return map
+  }, [duplicateInfos])
+  
+  const checkDuplicatesForFiles = async (files: UploadFile[]) => {
+    if (!token || files.length === 0) return
+    setCheckingDuplicates(true)
+    setDuplicateProgress({ current: 0, total: files.length })
+    
+    const nextHashMap = new Map(fileHashMap)
+    for (let i = 0; i < files.length; i++) {
+      const item = files[i]
+      try {
+        const hash = await calculateFileHash(item.file)
+        nextHashMap.set(item.id, hash)
+      } catch (err) {
+        console.error('Failed to calculate hash for', item.file.name, err)
+      }
+      setDuplicateProgress({ current: i + 1, total: files.length })
+    }
+    setFileHashMap(nextHashMap)
+    
+    const hashes = files
+      .map(f => nextHashMap.get(f.id))
+      .filter((hash): hash is string => Boolean(hash))
+    
+    const fileIdSet = new Set(files.map(f => f.id))
+    
+    if (hashes.length > 0) {
+      try {
+        const result = await checkDuplicatePhotos(token, hashes)
+        const newDuplicates: DuplicateInfo[] = []
+        
+        if (result.hasDuplicates) {
+          for (const file of files) {
+            const hash = nextHashMap.get(file.id)
+            if (!hash) continue
+            const existing = result.duplicates[hash]
+            if (existing) {
+              newDuplicates.push({
+                fileId: file.id,
+                fileName: file.file.name,
+                existingPhoto: {
+                  ...existing,
+                  createdAt: String(existing.createdAt),
+                },
+              })
+            }
+          }
+        }
+        
+        setDuplicateInfos(prev => {
+          const remaining = prev.filter(d => !fileIdSet.has(d.fileId))
+          return [...remaining, ...newDuplicates]
+        })
+      } catch (err) {
+        console.error('Failed to check duplicates:', err)
+      }
+    } else {
+      setDuplicateInfos(prev => prev.filter(d => !fileIdSet.has(d.fileId)))
+    }
+    
+    setCheckingDuplicates(false)
+  }
+  
+  const addUploadFiles = (files: File[]) => {
+    const imageFiles = files.filter(f => f.type.startsWith('image/'))
+    if (!imageFiles.length) return
+    const newItems = imageFiles.map(f => ({ id: crypto.randomUUID(), file: f }))
+    setUploadFiles(prev => [...prev, ...newItems])
+    void checkDuplicatesForFiles(newItems)
+  }
+  
+  const removeUploadFile = (id: string) => {
+    setUploadFiles(prev => prev.filter(f => f.id !== id))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    setDuplicateInfos(prev => prev.filter(d => d.fileId !== id))
+    setFileHashMap(prev => {
+      const next = new Map(prev)
+      next.delete(id)
+      return next
+    })
+  }
+  
+  const removeSelectedFiles = () => {
+    if (selectedIds.size === 0) return
+    setUploadFiles(prev => prev.filter(f => !selectedIds.has(f.id)))
+    setDuplicateInfos(prev => prev.filter(d => !selectedIds.has(d.fileId)))
+    setFileHashMap(prev => {
+      const next = new Map(prev)
+      selectedIds.forEach(id => next.delete(id))
+      return next
+    })
+    setSelectedIds(new Set())
+  }
+  
+  const clearAllFiles = () => {
+    setUploadFiles([])
+    setSelectedIds(new Set())
+    setDuplicateInfos([])
+    setFileHashMap(new Map())
+  }
+  
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-    if (files.length) {
-      setUploadFiles(prev => [...prev, ...files.map(f => ({ id: crypto.randomUUID(), file: f }))])
-    }
+    addUploadFiles(Array.from(e.dataTransfer.files))
   }
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -389,69 +522,14 @@ export function UploadTab({
     if (!token) return
 
     const filesToUpload = uploadFiles
-    const hashMap = new Map<string, string>()
 
-    // Step 0: Calculate file hashes and check for duplicates (on ORIGINAL files)
-    if (duplicateCheckEnabled) {
-      setCheckingDuplicates(true)
-      setDuplicateProgress({ current: 0, total: filesToUpload.length })
-      
-      // Calculate hashes for all files
-      for (let i = 0; i < filesToUpload.length; i++) {
-        const item = filesToUpload[i]
-        try {
-          const hash = await calculateFileHash(item.file)
-          hashMap.set(item.id, hash)
-        } catch (err) {
-          console.error('Failed to calculate hash for', item.file.name, err)
-        }
-        setDuplicateProgress({ current: i + 1, total: filesToUpload.length })
-      }
-      
-      // Check for duplicates in batch
-      const hashes = Array.from(hashMap.values())
-      if (hashes.length > 0) {
-        try {
-          const result = await checkDuplicatePhotos(token, hashes)
-          if (result.hasDuplicates) {
-            // Build duplicate info list
-            const duplicates: DuplicateInfo[] = []
-            for (const [fileId, hash] of hashMap.entries()) {
-              const existing = result.duplicates[hash]
-              if (existing) {
-                const file = filesToUpload.find(f => f.id === fileId)
-                if (file) {
-                  duplicates.push({
-                    fileId,
-                    fileName: file.file.name,
-                    existingPhoto: {
-                      ...existing,
-                      createdAt: String(existing.createdAt),
-                    },
-                  })
-                }
-              }
-            }
-            
-            if (duplicates.length > 0) {
-              setCheckingDuplicates(false)
-              setDuplicateInfos(duplicates)
-              setFileHashMap(hashMap)
-              setPendingUploadFiles(filesToUpload)
-              setShowDuplicateDialog(true)
-              return // Wait for user decision
-            }
-          }
-        } catch (err) {
-          console.error('Failed to check duplicates:', err)
-        }
-      }
-      
-      setCheckingDuplicates(false)
+    if (duplicateInfos.length > 0) {
+      setPendingUploadFiles(filesToUpload)
+      setShowDuplicateDialog(true)
+      return
     }
 
-    // Continue with upload
-    await proceedWithUpload(filesToUpload, hashMap)
+    await proceedWithUpload(filesToUpload, fileHashMap)
   }
 
   const proceedWithUpload = async (filesToUpload: UploadFile[], hashMap: Map<string, string>) => {
@@ -512,6 +590,7 @@ export function UploadTab({
     setUploadTitle('')
     setUploadStoryId('')
     setUploadAlbumIds([])
+    setDuplicateInfos([])
     setFileHashMap(new Map())
     setPendingUploadFiles([])
     notify(t('admin.upload_started'), 'info')
@@ -524,9 +603,12 @@ export function UploadTab({
     const nonDuplicateFiles = pendingUploadFiles.filter(f => !duplicateIds.has(f.id))
     
     if (nonDuplicateFiles.length === 0) {
-      notify(t('admin.all_files_duplicates') || '所有文件都是重复的', 'info')
+      notify(t('admin.all_files_duplicates'), 'info')
       setUploadFiles([])
       setSelectedIds(new Set())
+      setDuplicateInfos([])
+      setFileHashMap(new Map())
+      setPendingUploadFiles([])
       return
     }
     
@@ -663,7 +745,7 @@ export function UploadTab({
                         <AdminInput
                           value={uploadPath}
                           onChange={e => setUploadPath(e.target.value)}
-                          placeholder="e.g., 2025/vacation"
+                          placeholder={t('admin.path_placeholder')}
                           className="flex-1 rounded-l-none"
                         />
                       </div>
@@ -693,33 +775,6 @@ export function UploadTab({
                     <span
                       className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${
                         privacyStripEnabled ? 'translate-x-5' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {/* Duplicate Check */}
-              <div className="pt-4 border-t border-border/50">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                  <FileSearch className="w-3 h-3" />
-                  {t('admin.duplicate_check') || '重复检查'}
-                </label>
-                <div className="flex items-center justify-between p-3 bg-muted/30 border border-border/50 rounded">
-                  <div className="flex-1 min-w-0 pr-4">
-                    <p className="text-xs font-medium">{t('admin.check_duplicates') || '检查重复图片'}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{t('admin.check_duplicates_desc') || '上传前检查是否已存在相同图片'}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDuplicateCheckEnabled(!duplicateCheckEnabled)}
-                    className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors ${
-                      duplicateCheckEnabled ? 'bg-primary' : 'bg-muted'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${
-                        duplicateCheckEnabled ? 'translate-x-5' : 'translate-x-1'
                       }`}
                     />
                   </button>
@@ -769,7 +824,7 @@ export function UploadTab({
                 {checkingDuplicates ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {t('admin.checking_duplicates') || '检查重复'} ({duplicateProgress.current}/{duplicateProgress.total})
+                    {t('admin.checking_duplicates')} ({duplicateProgress.current}/{duplicateProgress.total})
                   </>
                 ) : strippingPrivacy ? (
                   <>
@@ -815,11 +870,11 @@ export function UploadTab({
                       className="w-4 h-4 accent-primary"
                     />
                     <span className="text-sm text-muted-foreground">
-                      {selectedIds.size ? `${selectedIds.size} selected` : `${uploadFiles.length} files`}
+                      {selectedIds.size ? `${selectedIds.size} ${t('admin.selected')}` : `${uploadFiles.length} ${t('admin.files')}`}
                     </span>
                     {selectedIds.size > 0 && (
                       <AdminButton
-                        onClick={() => { setUploadFiles(prev => prev.filter(f => !selectedIds.has(f.id))); setSelectedIds(new Set()) }}
+                        onClick={removeSelectedFiles}
                         adminVariant="iconDestructive"
                         size="xs"
                         className="p-1.5"
@@ -829,13 +884,18 @@ export function UploadTab({
                     )}
                   </div>
                   <div className="flex items-center gap-3">
+                    {duplicateInfos.length > 0 && (
+                      <span className="text-xs text-amber-600">
+                        {t('admin.duplicate_found')}: {duplicateInfos.length}
+                      </span>
+                    )}
                     <AdminButton
-                      onClick={() => setUploadFiles([])}
+                      onClick={clearAllFiles}
                       adminVariant="link"
                       size="xs"
                       className="text-xs text-muted-foreground hover:text-destructive"
                     >
-                      Clear all
+                      {t('admin.clear_all')}
                     </AdminButton>
                     <label className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary cursor-pointer transition-colors">
                       <Plus className="w-3.5 h-3.5" />
@@ -847,7 +907,7 @@ export function UploadTab({
                         className="hidden"
                         onChange={e => {
                           if (e.target.files) {
-                            setUploadFiles(prev => [...prev, ...Array.from(e.target.files!).map(f => ({ id: crypto.randomUUID(), file: f }))])
+                            addUploadFiles(Array.from(e.target.files))
                           }
                         }}
                       />
@@ -863,13 +923,15 @@ export function UploadTab({
                       item={item}
                       index={index}
                       selected={selectedIds.has(item.id)}
+                      duplicateInfo={duplicateInfoMap.get(item.id)}
                       onSelect={id => setSelectedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })}
-                      onRemove={id => { setUploadFiles(prev => prev.filter(f => f.id !== id)); setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next }) }}
+                      onRemove={removeUploadFile}
                       onPreview={() => onPreview(item)}
                       onDragStart={handleDragStart}
                       onDragOver={handleDragOver}
                       onDrop={handleDragEnd}
                       isDragging={dragIndex === index}
+                      t={t}
                     />
                   ))}
                 </div>
@@ -888,7 +950,7 @@ export function UploadTab({
                     className="hidden"
                     onChange={e => {
                       if (e.target.files) {
-                        setUploadFiles(prev => [...prev, ...Array.from(e.target.files!).map(f => ({ id: crypto.randomUUID(), file: f }))])
+                        addUploadFiles(Array.from(e.target.files))
                       }
                     }}
                   />
@@ -920,7 +982,6 @@ export function UploadTab({
         onClose={() => {
           setShowDuplicateDialog(false)
           setPendingUploadFiles([])
-          setFileHashMap(new Map())
         }}
         onSkipDuplicates={handleSkipDuplicates}
         onUploadAnyway={handleUploadAnyway}

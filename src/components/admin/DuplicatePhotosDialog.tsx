@@ -35,6 +35,8 @@ export function DuplicatePhotosDialog({
 }: DuplicatePhotosDialogProps) {
   if (!open || duplicates.length === 0) return null
 
+  const desc = t('admin.duplicate_photos_desc').replace('{count}', String(duplicates.length))
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -44,7 +46,7 @@ export function DuplicatePhotosDialog({
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             <h3 className="text-lg font-light tracking-wide">
-              {t('admin.duplicate_photos_found') || '发现重复图片'}
+              {t('admin.duplicate_photos_found')}
             </h3>
           </div>
           <button
@@ -58,8 +60,7 @@ export function DuplicatePhotosDialog({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <p className="text-sm text-muted-foreground mb-4">
-            {t('admin.duplicate_photos_desc') || 
-              `以下 ${duplicates.length} 张图片已存在于图库中，您可以选择跳过这些重复图片或强制上传。`}
+            {desc}
           </p>
 
           <div className="space-y-3">
@@ -87,7 +88,7 @@ export function DuplicatePhotosDialog({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{dup.fileName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {t('admin.matches_existing') || '匹配已有图片'}: {dup.existingPhoto.title}
+                    {t('admin.matches_existing')}: {dup.existingPhoto.title}
                   </p>
                   <p className="text-xs text-muted-foreground/60">
                     {new Date(dup.existingPhoto.createdAt).toLocaleDateString()}
@@ -100,7 +101,7 @@ export function DuplicatePhotosDialog({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 hover:bg-muted rounded transition-colors text-muted-foreground hover:text-primary"
-                  title={t('admin.view_original') || '查看原图'}
+                  title={t('admin.view_original')}
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
@@ -117,7 +118,7 @@ export function DuplicatePhotosDialog({
             size="lg"
             className="flex-1 py-3 text-sm font-medium"
           >
-            {t('common.cancel') || '取消'}
+            {t('common.cancel')}
           </AdminButton>
           <AdminButton
             onClick={onSkipDuplicates}
@@ -125,7 +126,7 @@ export function DuplicatePhotosDialog({
             size="lg"
             className="flex-1 py-3 text-sm font-medium"
           >
-            {t('admin.skip_duplicates') || '跳过重复'}
+            {t('admin.skip_duplicates')}
           </AdminButton>
           <AdminButton
             onClick={onUploadAnyway}
@@ -133,7 +134,7 @@ export function DuplicatePhotosDialog({
             size="lg"
             className="flex-1 py-3 text-sm font-medium"
           >
-            {t('admin.upload_anyway') || '仍然上传'}
+            {t('admin.upload_anyway')}
           </AdminButton>
         </div>
       </div>
