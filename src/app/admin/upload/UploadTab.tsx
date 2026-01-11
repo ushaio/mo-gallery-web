@@ -445,7 +445,22 @@ export function UploadTab({
   const addUploadFiles = (files: File[]) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/'))
     if (!imageFiles.length) return
-    const newItems = imageFiles.map(f => ({ id: crypto.randomUUID(), file: f }))
+
+    const existingFileKeys = new Set(uploadFiles.map(f => `${f.file.name}-${f.file.size}`))
+
+    const newItems = imageFiles
+      .filter(f => !existingFileKeys.has(`${f.name}-${f.size}`))
+      .map(f => ({ id: crypto.randomUUID(), file: f }))
+
+    if (newItems.length === 0) {
+      notify(t('admin.duplicate_file_not_added') || '重复的文件已忽略', 'info')
+      return
+    }
+
+    if (newItems.length < imageFiles.length) {
+      notify(t('admin.duplicate_files_ignored') || '部分重复的文件已忽略', 'info')
+    }
+
     setUploadFiles(prev => [...prev, ...newItems])
     void checkDuplicatesForFiles(newItems)
   }

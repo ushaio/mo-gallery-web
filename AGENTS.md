@@ -8,6 +8,8 @@ This file provides guidance to AI agents working with this codebase.
 # Development
 pnpm run dev              # Start dev server (http://localhost:3000)
 pnpm run build            # Production build
+pnpm run build:vercel     # Build for Vercel (includes database)
+pnpm run build:node       # Build for Node.js server
 pnpm run start            # Start production server
 pnpm run lint             # Run ESLint (fix with --fix)
 
@@ -18,7 +20,6 @@ pnpm run prisma:generate  # Generate Prisma client
 pnpm run prisma:seed      # Seed admin user
 
 # Testing (no test framework configured)
-# No test commands available - codebase currently has no tests
 ```
 
 ## Code Style Guidelines
@@ -146,11 +147,3 @@ try {
 - Branch: Create feature branches from main
 - Commits: Conventional commits format (`feat:`, `fix:`, `refactor:`)
 - Never commit node_modules, .next, or build artifacts
-
-### Common Patterns
-- **Infinite scroll**: Use Intersection Observer with ref
-- **Modal dialogs**: Use framer-motion `AnimatePresence` for enter/exit
-- **Forms**: Controlled components with useState for each field
-- **Loading states**: Show spinners from `lucide-react` (`<Loader2 className="animate-spin" />`)
-- **Toast notifications**: Use `Toast` component from `@/components/Toast`
-- **i18n**: Use `useLanguage()` hook with `t(key)` function
