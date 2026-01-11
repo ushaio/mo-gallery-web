@@ -1,6 +1,29 @@
 import { ApiUnauthorizedError, apiRequest, apiRequestData, apiRequestWithMeta, buildApiUrl, buildQuery, extractErrorMessage } from './core'
 import type { PhotoDto, PhotoPaginationMeta, PhotoDeleteError, PhotoWithStories } from './types'
 
+// Duplicate check types
+export interface DuplicateCheckResult {
+  isDuplicate: boolean
+  existingPhoto?: {
+    id: string
+    title: string
+    thumbnailUrl: string | null
+    url: string
+    createdAt: string
+  }
+}
+
+export interface BatchDuplicateCheckResult {
+  duplicates: Record<string, {
+    id: string
+    title: string
+    thumbnailUrl: string | null
+    url: string
+    createdAt: string
+  }>
+  hasDuplicates: boolean
+}
+
 export async function getCategories(): Promise<string[]> {
   return apiRequestData<string[]>('/api/categories')
 }
@@ -41,6 +64,36 @@ export async function getFeaturedPhotos(): Promise<PhotoDto[]> {
   return apiRequestData<PhotoDto[]>('/api/photos/featured')
 }
 
+// Check for duplicate photos by file hash (single)
+export async function checkDuplicatePhoto(
+  token: string,
+  fileHash: string
+): Promise<DuplicateCheckResult> {
+  return apiRequestData<DuplicateCheckResult>(
+    '/api/admin/photos/check-duplicate',
+    {
+      method: 'POST',
+      body: JSON.stringify({ fileHash }),
+    },
+    token,
+  )
+}
+
+// Check for duplicate photos by file hashes (batch)
+export async function checkDuplicatePhotos(
+  token: string,
+  fileHashes: string[]
+): Promise<BatchDuplicateCheckResult> {
+  return apiRequestData<BatchDuplicateCheckResult>(
+    '/api/admin/photos/check-duplicate',
+    {
+      method: 'POST',
+      body: JSON.stringify({ fileHashes }),
+    },
+    token,
+  )
+}
+
 export async function uploadPhoto(input: {
   token: string
   file: File
@@ -48,6 +101,7 @@ export async function uploadPhoto(input: {
   category: string | string[]
   storage_provider?: string
   storage_path?: string
+  file_hash?: string
 }): Promise<PhotoDto> {
   const form = new FormData()
   form.set('file', input.file)
@@ -56,6 +110,7 @@ export async function uploadPhoto(input: {
   form.set('category', categoryValue)
   if (input.storage_provider) form.set('storage_provider', input.storage_provider)
   if (input.storage_path) form.set('storage_path', input.storage_path)
+  if (input.file_hash) form.set('file_hash', input.file_hash)
 
   return apiRequestData<PhotoDto>(
     '/api/admin/photos',
@@ -71,6 +126,7 @@ export function uploadPhotoWithProgress(input: {
   category?: string | string[]
   storage_provider?: string
   storage_path?: string
+  file_hash?: string
   onProgress?: (progress: number) => void
 }): Promise<PhotoDto> {
   return new Promise((resolve, reject) => {
@@ -83,6 +139,7 @@ export function uploadPhotoWithProgress(input: {
     }
     if (input.storage_provider) form.set('storage_provider', input.storage_provider)
     if (input.storage_path) form.set('storage_path', input.storage_path)
+    if (input.file_hash) form.set('file_hash', input.file_hash)
 
     const xhr = new XMLHttpRequest()
     const url = buildApiUrl('/api/admin/photos')

@@ -59,6 +59,7 @@ model Photo {
   size            Int?
   isFeatured      Boolean  @default(false)
   dominantColors  String?  // JSON array of hex colors, e.g. ["#ff0000", "#00ff00"]
+  fileHash        String?  // SHA-256 hash of the original file for duplicate detection
   createdAt       DateTime @default(now())
 
   // Equipment relations
@@ -89,6 +90,7 @@ model Photo {
 
   @@index([cameraId])
   @@index([lensId])
+  @@index([fileHash])
 }
 
 model Album {

@@ -21,6 +21,7 @@ export interface UploadTask {
   storagePath?: string
   storyId?: string
   albumIds?: string[]
+  fileHash?: string // Original file hash for duplicate detection
   batchId: string // Unique batch identifier
   // Result
   photoId?: string
@@ -31,7 +32,7 @@ interface UploadQueueContextType {
   isMinimized: boolean
   setIsMinimized: (value: boolean) => void
   addTasks: (params: {
-    files: { id: string; file: File }[]
+    files: { id: string; file: File; fileHash?: string }[]
     title: string
     categories: string[]
     storageProvider?: string
@@ -155,6 +156,7 @@ export function UploadQueueProvider({
         category: task.categories,
         storage_provider: task.storageProvider,
         storage_path: task.storagePath,
+        file_hash: task.fileHash,
         onProgress: (progress) => {
           updateTaskProgress(task.id, progress)
         },
@@ -227,7 +229,7 @@ export function UploadQueueProvider({
 
   const addTasks = useCallback(
     async (params: {
-      files: { id: string; file: File }[]
+      files: { id: string; file: File; fileHash?: string }[]
       title: string
       categories: string[]
       storageProvider?: string
@@ -262,6 +264,7 @@ export function UploadQueueProvider({
             storagePath: params.storagePath,
             storyId: params.storyId,
             albumIds: params.albumIds,
+            fileHash: item.fileHash,
             batchId,
           }
         })

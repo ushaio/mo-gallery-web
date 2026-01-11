@@ -180,6 +180,88 @@ photos.get('/categories', async (c) => {
 // Protected endpoints
 photos.use('/admin/*', authMiddleware)
 
+// Check for duplicate photos by file hash
+photos.post('/admin/photos/check-duplicate', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { fileHash, fileHashes } = body
+
+    // Support both single hash and batch check
+    if (fileHashes && Array.isArray(fileHashes)) {
+      // Batch check: return all duplicates found
+      const existingPhotos = await db.photo.findMany({
+        where: {
+          fileHash: { in: fileHashes },
+        },
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true,
+          url: true,
+          fileHash: true,
+          createdAt: true,
+        },
+      })
+
+      // Create a map of hash -> photo for easy lookup
+      const duplicateMap: Record<string, {
+        id: string
+        title: string
+        thumbnailUrl: string | null
+        url: string
+        createdAt: Date
+      }> = {}
+      
+      existingPhotos.forEach((photo) => {
+        if (photo.fileHash) {
+          duplicateMap[photo.fileHash] = {
+            id: photo.id,
+            title: photo.title,
+            thumbnailUrl: photo.thumbnailUrl,
+            url: photo.url,
+            createdAt: photo.createdAt,
+          }
+        }
+      })
+
+      return c.json({
+        success: true,
+        data: {
+          duplicates: duplicateMap,
+          hasDuplicates: existingPhotos.length > 0,
+        },
+      })
+    }
+
+    // Single hash check (backward compatible)
+    if (!fileHash) {
+      return c.json({ error: 'fileHash or fileHashes is required' }, 400)
+    }
+
+    const existingPhoto = await db.photo.findFirst({
+      where: { fileHash },
+      select: {
+        id: true,
+        title: true,
+        thumbnailUrl: true,
+        url: true,
+        createdAt: true,
+      },
+    })
+
+    return c.json({
+      success: true,
+      data: {
+        isDuplicate: !!existingPhoto,
+        existingPhoto,
+      },
+    })
+  } catch (error) {
+    console.error('Check duplicate error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 photos.post('/admin/photos', async (c) => {
   try {
     const formData = await c.req.formData()
@@ -188,9 +270,26 @@ photos.post('/admin/photos', async (c) => {
     const category = formData.get('category') as string
     const storageProvider = formData.get('storage_provider') as string
     const storagePath = formData.get('storage_path') as string
+    const fileHash = formData.get('file_hash') as string | null
 
     if (!file || !title) {
       return c.json({ error: 'File and title are required' }, 400)
+    }
+
+    // Check for duplicate if fileHash is provided
+    if (fileHash) {
+      const existingPhoto = await db.photo.findFirst({
+        where: { fileHash },
+        select: { id: true, title: true },
+      })
+      
+      if (existingPhoto) {
+        return c.json({
+          error: 'DUPLICATE_PHOTO',
+          message: `A photo with the same content already exists: "${existingPhoto.title}"`,
+          existingPhotoId: existingPhoto.id,
+        }, 409)
+      }
     }
 
     // Process image buffer
@@ -312,6 +411,7 @@ photos.post('/admin/photos', async (c) => {
         size: buffer.length,
         isFeatured: false,
         dominantColors: dominantColors.length > 0 ? JSON.stringify(dominantColors) : null,
+        fileHash: fileHash || null,
         // Equipment relations
         cameraId,
         lensId,
@@ -394,19 +494,14 @@ photos.delete('/admin/photos/:id', async (c) => {
         const storage = StorageProviderFactory.create(storageConfig)
 
         // Derive thumbnail key from storage key
-        // The thumbnail filename is "thumb-{originalFilename}"
-        // For local: storageKey = "filename.jpg" -> thumbnailKey = "thumb-filename.jpg"
-        // For R2/GitHub: storageKey = "path/filename.jpg" -> thumbnailKey = "path/thumb-filename.jpg"
         let thumbnailKey: string | undefined
         if (deleteThumbnail && photo.storageKey) {
           const lastSlashIndex = photo.storageKey.lastIndexOf('/')
           if (lastSlashIndex >= 0) {
-            // Has path prefix: "path/to/filename.jpg" -> "path/to/thumb-filename.jpg"
             const pathPart = photo.storageKey.substring(0, lastSlashIndex + 1)
             const filenamePart = photo.storageKey.substring(lastSlashIndex + 1)
             thumbnailKey = `${pathPart}thumb-${filenamePart}`
           } else {
-            // No path prefix: "filename.jpg" -> "thumb-filename.jpg"
             thumbnailKey = `thumb-${photo.storageKey}`
           }
         }
@@ -416,13 +511,10 @@ photos.delete('/admin/photos/:id', async (c) => {
         const thumbKey = deleteThumbnail ? thumbnailKey : undefined
 
         if (originalKey && thumbKey) {
-          // Delete both
           await storage.delete(originalKey, thumbKey)
         } else if (originalKey) {
-          // Delete only original
           await storage.delete(originalKey)
         } else if (thumbKey) {
-          // Delete only thumbnail
           await storage.delete(thumbKey)
         }
       } else {
@@ -586,7 +678,7 @@ photos.post('/admin/photos/check-stories', async (c) => {
       return c.json({ error: 'photoIds array is required' }, 400)
     }
 
-    const photos = await db.photo.findMany({
+    const photosList = await db.photo.findMany({
       where: { id: { in: photoIds } },
       include: {
         stories: {
@@ -601,7 +693,7 @@ photos.post('/admin/photos/check-stories', async (c) => {
     // Group photos by their associated stories
     const photosWithStories: { photoId: string; photoTitle: string; stories: { id: string; title: string }[] }[] = []
     
-    for (const photo of photos) {
+    for (const photo of photosList) {
       if (photo.stories.length > 0) {
         photosWithStories.push({
           photoId: photo.id,
@@ -634,7 +726,7 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
     }
 
     // Find all photos using this storage provider
-    const photos = await db.photo.findMany({
+    const photosList = await db.photo.findMany({
       where: {
         storageProvider: storageProvider as 'local' | 'github' | 'r2',
       },
@@ -644,7 +736,7 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
     let failed = 0
 
     // Update URLs for each photo
-    for (const photo of photos) {
+    for (const photo of photosList) {
       try {
         // Replace old URL with new URL in both url and thumbnailUrl
         const newUrl = photo.url.replace(oldPublicUrl, newPublicUrl)

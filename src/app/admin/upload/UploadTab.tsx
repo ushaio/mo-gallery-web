@@ -17,14 +17,17 @@ import {
   Settings2,
   CloudUpload,
   MapPinOff,
+  FileSearch,
 } from 'lucide-react'
-import { AdminSettingsDto, getAdminStories, getAdminAlbums, type StoryDto, type AlbumDto } from '@/lib/api'
+import { AdminSettingsDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, type StoryDto, type AlbumDto } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
 import { stripGpsData } from '@/lib/privacy-strip'
+import { calculateFileHash } from '@/lib/file-hash'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
+import { DuplicatePhotosDialog, type DuplicateInfo } from '@/components/admin/DuplicatePhotosDialog'
 
 interface UploadTabProps {
   token: string | null
@@ -291,6 +294,15 @@ export function UploadTab({
   const [strippingPrivacy, setStrippingPrivacy] = useState(false)
   const [privacyProgress, setPrivacyProgress] = useState({ current: 0, total: 0 })
 
+  // Duplicate check
+  const [duplicateCheckEnabled, setDuplicateCheckEnabled] = useState(true)
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false)
+  const [duplicateProgress, setDuplicateProgress] = useState({ current: 0, total: 0 })
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
+  const [duplicateInfos, setDuplicateInfos] = useState<DuplicateInfo[]>([])
+  const [fileHashMap, setFileHashMap] = useState<Map<string, string>>(new Map())
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<UploadFile[]>([])
+
   const [uploadError, setUploadError] = useState('')
 
   useEffect(() => {
@@ -376,7 +388,74 @@ export function UploadTab({
     setShowConfirm(false)
     if (!token) return
 
-    let filesToUpload = uploadFiles
+    const filesToUpload = uploadFiles
+    const hashMap = new Map<string, string>()
+
+    // Step 0: Calculate file hashes and check for duplicates (on ORIGINAL files)
+    if (duplicateCheckEnabled) {
+      setCheckingDuplicates(true)
+      setDuplicateProgress({ current: 0, total: filesToUpload.length })
+      
+      // Calculate hashes for all files
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const item = filesToUpload[i]
+        try {
+          const hash = await calculateFileHash(item.file)
+          hashMap.set(item.id, hash)
+        } catch (err) {
+          console.error('Failed to calculate hash for', item.file.name, err)
+        }
+        setDuplicateProgress({ current: i + 1, total: filesToUpload.length })
+      }
+      
+      // Check for duplicates in batch
+      const hashes = Array.from(hashMap.values())
+      if (hashes.length > 0) {
+        try {
+          const result = await checkDuplicatePhotos(token, hashes)
+          if (result.hasDuplicates) {
+            // Build duplicate info list
+            const duplicates: DuplicateInfo[] = []
+            for (const [fileId, hash] of hashMap.entries()) {
+              const existing = result.duplicates[hash]
+              if (existing) {
+                const file = filesToUpload.find(f => f.id === fileId)
+                if (file) {
+                  duplicates.push({
+                    fileId,
+                    fileName: file.file.name,
+                    existingPhoto: {
+                      ...existing,
+                      createdAt: String(existing.createdAt),
+                    },
+                  })
+                }
+              }
+            }
+            
+            if (duplicates.length > 0) {
+              setCheckingDuplicates(false)
+              setDuplicateInfos(duplicates)
+              setFileHashMap(hashMap)
+              setPendingUploadFiles(filesToUpload)
+              setShowDuplicateDialog(true)
+              return // Wait for user decision
+            }
+          }
+        } catch (err) {
+          console.error('Failed to check duplicates:', err)
+        }
+      }
+      
+      setCheckingDuplicates(false)
+    }
+
+    // Continue with upload
+    await proceedWithUpload(filesToUpload, hashMap)
+  }
+
+  const proceedWithUpload = async (filesToUpload: UploadFile[], hashMap: Map<string, string>) => {
+    if (!token) return
 
     // Step 1: Strip GPS/location data if enabled
     if (privacyStripEnabled) {
@@ -412,8 +491,13 @@ export function UploadTab({
       setCompressing(false)
     }
 
+    // Step 3: Upload with file hashes
     await addTasks({
-      files: filesToUpload,
+      files: filesToUpload.map(f => ({
+        id: f.id,
+        file: f.file,
+        fileHash: hashMap.get(f.id),
+      })),
       title: uploadTitle.trim(),
       categories: uploadCategories,
       storageProvider: uploadSource,
@@ -428,7 +512,33 @@ export function UploadTab({
     setUploadTitle('')
     setUploadStoryId('')
     setUploadAlbumIds([])
+    setFileHashMap(new Map())
+    setPendingUploadFiles([])
     notify(t('admin.upload_started'), 'info')
+  }
+
+  // Handle duplicate dialog actions
+  const handleSkipDuplicates = async () => {
+    setShowDuplicateDialog(false)
+    const duplicateIds = new Set(duplicateInfos.map(d => d.fileId))
+    const nonDuplicateFiles = pendingUploadFiles.filter(f => !duplicateIds.has(f.id))
+    
+    if (nonDuplicateFiles.length === 0) {
+      notify(t('admin.all_files_duplicates') || '所有文件都是重复的', 'info')
+      setUploadFiles([])
+      setSelectedIds(new Set())
+      return
+    }
+    
+    await proceedWithUpload(nonDuplicateFiles, fileHashMap)
+  }
+
+  const handleUploadAnyway = async () => {
+    setShowDuplicateDialog(false)
+    // Clear hashes for duplicates so they won't be rejected by backend
+    const newHashMap = new Map(fileHashMap)
+    duplicateInfos.forEach(d => newHashMap.delete(d.fileId))
+    await proceedWithUpload(pendingUploadFiles, newHashMap)
   }
 
   const selectedAlbumNames = uploadAlbumIds.map(id => albums.find(a => a.id === id)?.name || '').filter(Boolean)
@@ -589,6 +699,33 @@ export function UploadTab({
                 </div>
               </div>
 
+              {/* Duplicate Check */}
+              <div className="pt-4 border-t border-border/50">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                  <FileSearch className="w-3 h-3" />
+                  {t('admin.duplicate_check') || '重复检查'}
+                </label>
+                <div className="flex items-center justify-between p-3 bg-muted/30 border border-border/50 rounded">
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p className="text-xs font-medium">{t('admin.check_duplicates') || '检查重复图片'}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t('admin.check_duplicates_desc') || '上传前检查是否已存在相同图片'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateCheckEnabled(!duplicateCheckEnabled)}
+                    className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors ${
+                      duplicateCheckEnabled ? 'bg-primary' : 'bg-muted'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${
+                        duplicateCheckEnabled ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               {/* Compression */}
               <div className="pt-4 border-t border-border/50">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
@@ -624,12 +761,17 @@ export function UploadTab({
               {/* Upload Button */}
               <AdminButton
                 onClick={handleUploadClick}
-                disabled={compressing || strippingPrivacy || !uploadFiles.length}
+                disabled={compressing || strippingPrivacy || checkingDuplicates || !uploadFiles.length}
                 adminVariant="primary"
                 size="lg"
                 className="w-full py-4 mt-6 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {strippingPrivacy ? (
+                {checkingDuplicates ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {t('admin.checking_duplicates') || '检查重复'} ({duplicateProgress.current}/{duplicateProgress.total})
+                  </>
+                ) : strippingPrivacy ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     {t('admin.stripping_privacy') || '擦除隐私'} ({privacyProgress.current}/{privacyProgress.total})
@@ -769,6 +911,19 @@ export function UploadTab({
         storagePath={fullStoragePath}
         compressionEnabled={compressionMode !== 'none'}
         privacyStripEnabled={privacyStripEnabled}
+        t={t}
+      />
+
+      <DuplicatePhotosDialog
+        open={showDuplicateDialog}
+        duplicates={duplicateInfos}
+        onClose={() => {
+          setShowDuplicateDialog(false)
+          setPendingUploadFiles([])
+          setFileHashMap(new Map())
+        }}
+        onSkipDuplicates={handleSkipDuplicates}
+        onUploadAnyway={handleUploadAnyway}
         t={t}
       />
     </>
