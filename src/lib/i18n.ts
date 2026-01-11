@@ -540,6 +540,10 @@ export const dictionaries = {
       camera: '相机',
       focal_length: '焦段',
       lens: '镜头',
+      privacy_strip: '隐私擦除',
+      strip_gps: '移除地理位置',
+      strip_gps_desc: '上传前擦除图片中的GPS坐标信息',
+      stripping_privacy: '擦除隐私',
     }
   },
   en: {
@@ -1080,6 +1084,10 @@ export const dictionaries = {
       camera: 'Camera',
       focal_length: 'Focal Length',
       lens: 'Lens',
+      privacy_strip: 'Privacy Strip',
+      strip_gps: 'Remove Location',
+      strip_gps_desc: 'Strip GPS coordinates from images before upload',
+      stripping_privacy: 'Stripping Privacy',
     }
   }
 }

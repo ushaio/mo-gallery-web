@@ -12,8 +12,12 @@ import friends from './friends'
 import storage from './storage'
 import equipment from './equipment'
 import { walineHandler } from './waline'
+import { originCheckMiddleware } from './middleware/origin-check'
 
 const route = new Hono()
+
+// Apply origin check middleware to all routes
+route.use('*', originCheckMiddleware)
 
 route.onError((err, c) => {
   if (err instanceof HTTPException) {

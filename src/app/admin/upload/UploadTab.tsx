@@ -16,9 +16,11 @@ import {
   Eye,
   Settings2,
   CloudUpload,
+  MapPinOff,
 } from 'lucide-react'
 import { AdminSettingsDto, getAdminStories, getAdminAlbums, type StoryDto, type AlbumDto } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
+import { stripGpsData } from '@/lib/privacy-strip'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -52,6 +54,7 @@ function ConfirmModal({
   storageProvider,
   storagePath,
   compressionEnabled,
+  privacyStripEnabled,
   t
 }: {
   open: boolean
@@ -64,6 +67,7 @@ function ConfirmModal({
   storageProvider: string
   storagePath?: string
   compressionEnabled: boolean
+  privacyStripEnabled: boolean
   t: (key: string) => string
 }) {
   if (!open) return null
@@ -107,6 +111,15 @@ function ConfirmModal({
               <span className="font-medium font-mono text-xs">{storagePath}</span>
             </div>
           )}
+          <div className="flex justify-between py-3 border-b border-border/50">
+            <span className="text-muted-foreground text-sm flex items-center gap-2">
+              <MapPinOff className="w-3 h-3" />
+              {t('admin.privacy_strip') || '隐私擦除'}
+            </span>
+            <span className={`font-medium ${privacyStripEnabled ? 'text-primary' : ''}`}>
+              {privacyStripEnabled ? t('common.enabled') : t('common.disabled')}
+            </span>
+          </div>
           <div className="flex justify-between py-3">
             <span className="text-muted-foreground text-sm">{t('admin.image_compression')}</span>
             <span className="font-medium">{compressionEnabled ? t('common.enabled') : t('common.disabled')}</span>
@@ -273,6 +286,11 @@ export function UploadTab({
   const [compressing, setCompressing] = useState(false)
   const [compressionProgress, setCompressionProgress] = useState({ current: 0, total: 0 })
 
+  // Privacy strip - remove GPS/location data
+  const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
+  const [strippingPrivacy, setStrippingPrivacy] = useState(false)
+  const [privacyProgress, setPrivacyProgress] = useState({ current: 0, total: 0 })
+
   const [uploadError, setUploadError] = useState('')
 
   useEffect(() => {
@@ -359,17 +377,36 @@ export function UploadTab({
     if (!token) return
 
     let filesToUpload = uploadFiles
+
+    // Step 1: Strip GPS/location data if enabled
+    if (privacyStripEnabled) {
+      setStrippingPrivacy(true)
+      setPrivacyProgress({ current: 0, total: filesToUpload.length })
+      const stripped: UploadFile[] = []
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const item = filesToUpload[i]
+        try {
+          const file = await stripGpsData(item.file)
+          stripped.push({ id: item.id, file })
+        } catch { stripped.push(item) }
+        setPrivacyProgress({ current: i + 1, total: filesToUpload.length })
+      }
+      filesToUpload = stripped
+      setStrippingPrivacy(false)
+    }
+
+    // Step 2: Compress images if enabled
     if (compressionMode !== 'none') {
       setCompressing(true)
-      setCompressionProgress({ current: 0, total: uploadFiles.length })
+      setCompressionProgress({ current: 0, total: filesToUpload.length })
       const compressed: UploadFile[] = []
-      for (let i = 0; i < uploadFiles.length; i++) {
-        const item = uploadFiles[i]
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const item = filesToUpload[i]
         try {
           const file = await compressImage(item.file, { mode: compressionMode, maxSizeMB })
           compressed.push({ id: item.id, file })
         } catch { compressed.push(item) }
-        setCompressionProgress({ current: i + 1, total: uploadFiles.length })
+        setCompressionProgress({ current: i + 1, total: filesToUpload.length })
       }
       filesToUpload = compressed
       setCompressing(false)
@@ -525,6 +562,33 @@ export function UploadTab({
                 </div>
               </div>
 
+              {/* Privacy Strip - GPS/Location removal */}
+              <div className="pt-4 border-t border-border/50">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                  <MapPinOff className="w-3 h-3" />
+                  {t('admin.privacy_strip') || '隐私擦除'}
+                </label>
+                <div className="flex items-center justify-between p-3 bg-muted/30 border border-border/50 rounded">
+                  <div className="flex-1 min-w-0 pr-4">
+                    <p className="text-xs font-medium">{t('admin.strip_gps') || '移除地理位置'}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t('admin.strip_gps_desc') || '上传前擦除图片中的GPS坐标信息'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPrivacyStripEnabled(!privacyStripEnabled)}
+                    className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors ${
+                      privacyStripEnabled ? 'bg-primary' : 'bg-muted'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${
+                        privacyStripEnabled ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               {/* Compression */}
               <div className="pt-4 border-t border-border/50">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
@@ -560,12 +624,17 @@ export function UploadTab({
               {/* Upload Button */}
               <AdminButton
                 onClick={handleUploadClick}
-                disabled={compressing || !uploadFiles.length}
+                disabled={compressing || strippingPrivacy || !uploadFiles.length}
                 adminVariant="primary"
                 size="lg"
                 className="w-full py-4 mt-6 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {compressing ? (
+                {strippingPrivacy ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {t('admin.stripping_privacy') || '擦除隐私'} ({privacyProgress.current}/{privacyProgress.total})
+                  </>
+                ) : compressing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     {t('admin.compressing')} ({compressionProgress.current}/{compressionProgress.total})
@@ -699,6 +768,7 @@ export function UploadTab({
         storageProvider={uploadSource}
         storagePath={fullStoragePath}
         compressionEnabled={compressionMode !== 'none'}
+        privacyStripEnabled={privacyStripEnabled}
         t={t}
       />
     </>
