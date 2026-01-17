@@ -319,16 +319,16 @@ export function PhotoDetailPanel({
             className="fixed top-0 right-0 h-full w-full max-w-2xl z-[101] bg-background border-l border-border shadow-2xl overflow-hidden flex flex-col"
           >
             {/* Header - Refined with glass effect */}
-            <div className="flex items-center justify-between px-8 py-4 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-20 flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-20 flex-shrink-0">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-primary/5 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-primary" />
+                <div className="w-8 h-8 rounded-sm bg-primary/5 flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black uppercase tracking-[0.2em] leading-none">
+                  <h3 className="text-sm font-bold uppercase tracking-widest leading-none">
                     {t('admin.edit_photo') || 'Edit Photo'}
                   </h3>
-                  <p className="text-[10px] text-muted-foreground font-mono mt-1.5 opacity-60">
+                  <p className="text-xs text-muted-foreground font-mono mt-1 opacity-60">
                     ID: {photo.id}
                   </p>
                 </div>
@@ -337,9 +337,9 @@ export function PhotoDetailPanel({
                 onClick={onClose}
                 adminVariant="icon"
                 size="sm"
-                className="p-2 hover:rotate-90 transition-transform duration-300"
+                className="p-2"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </AdminButton>
             </div>
 
@@ -349,9 +349,8 @@ export function PhotoDetailPanel({
                 <img
                   src={resolveAssetUrl(photo.url, cdnDomain)}
                   alt={photo.title}
-                  className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105"
+                  className="w-full h-full object-contain"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 
                 {/* Featured Toggle Overlay */}
                 <div className="absolute top-4 right-4">
@@ -384,45 +383,39 @@ export function PhotoDetailPanel({
                       }
                     }}
                     adminVariant={editData.isFeatured ? 'iconAccent' : 'iconOnDark'}
-                    size="md"
-                    className="p-3 shadow-xl backdrop-blur-md"
+                    size="sm"
+                    className="shadow-sm"
                     title={editData.isFeatured ? t('admin.notify_featured_removed') : t('admin.notify_featured_added')}
                   >
-                    <Star className={`w-5 h-5 ${editData.isFeatured ? 'fill-current' : ''}`} />
+                    <Star className={`w-4 h-4 ${editData.isFeatured ? 'fill-current' : ''}`} />
                   </AdminButton>
                 </div>
 
                 {/* Image Info Overlay */}
-                <div className="absolute bottom-4 left-6 text-white opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-2 group-hover:translate-y-0">
-                  <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-white/70">Resolution</p>
+                <div className="absolute bottom-4 left-6 text-white opacity-0 group-hover:opacity-100 transition-all duration-200">
+                  <p className="text-xs font-bold uppercase tracking-widest mb-1 text-white/70">Resolution</p>
                   <p className="text-sm font-mono font-medium">{photo.width} × {photo.height}</p>
                 </div>
               </div>
 
               {/* Navigation Tabs - Editorial Style */}
               <div className="flex px-8 border-b border-border bg-background sticky top-0 z-10">
-                <button
+                <AdminButton
                   onClick={() => setActiveTab('info')}
-                  className={`py-4 px-6 text-[11px] font-black uppercase tracking-[0.25em] transition-all relative ${
-                    activeTab === 'info' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                  adminVariant="tab"
+                  data-state={activeTab === 'info' ? 'active' : 'inactive'}
+                  className="py-4 px-6 h-auto rounded-none"
                 >
                   {t('gallery.info') || 'Information'}
-                  {activeTab === 'info' && (
-                    <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                  )}
-                </button>
-                <button
+                </AdminButton>
+                <AdminButton
                   onClick={() => setActiveTab('story')}
-                  className={`py-4 px-6 text-[11px] font-black uppercase tracking-[0.25em] transition-all relative ${
-                    activeTab === 'story' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                  adminVariant="tab"
+                  data-state={activeTab === 'story' ? 'active' : 'inactive'}
+                  className="py-4 px-6 h-auto rounded-none"
                 >
                   {t('gallery.story') || 'Narrative'}
-                  {activeTab === 'story' && (
-                    <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-                  )}
-                </button>
+                </AdminButton>
               </div>
 
               {/* Content Area */}
@@ -439,19 +432,18 @@ export function PhotoDetailPanel({
                       {/* Basic Metadata */}
                       <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-3">
-                          <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
                             {t('admin.photo_title') || 'Title'}
                           </label>
                           <AdminInput
                             value={editData.title}
                             onChange={(e) => setEditData({ ...editData, title: e.target.value })}
                             placeholder={t('admin.title_hint_single') || 'Enter title'}
-                            className="text-sm font-medium border-transparent bg-muted/30 focus:bg-background transition-colors"
                           />
                         </div>
                         <div className="space-y-3">
-                          <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] flex items-center gap-2">
-                            <Tag className="w-3 h-3" />
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                            <Tag className="w-4 h-4" />
                             {t('admin.categories') || 'Category'}
                           </label>
                           <AdminSelect
@@ -464,43 +456,43 @@ export function PhotoDetailPanel({
 
                       {/* Technical Specs - Grid Layout */}
                       <section className="pt-8 border-t border-border/50">
-                        <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.25em] mb-8 flex items-center gap-3">
-                          <span className="w-8 h-px bg-primary/20" />
+                        <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-6 flex items-center gap-3">
+                          <span className="w-4 h-px bg-primary/20" />
                           {t('gallery.technical_specs') || 'Technical Specifications'}
                         </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-8 gap-x-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-6 gap-x-4">
                           <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Camera</p>
-                            <div className="flex items-center gap-2.5">
-                              <Camera className="w-3.5 h-3.5 text-primary/60" />
-                              <span className="text-xs font-medium">{photo.cameraModel || 'Unknown'}</span>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Camera</p>
+                            <div className="flex items-center gap-2">
+                              <Camera className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-xs font-mono">{photo.cameraModel || 'Unknown'}</span>
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Aperture</p>
-                            <div className="flex items-center gap-2.5">
-                              <Aperture className="w-3.5 h-3.5 text-primary/60" />
-                              <span className="text-xs font-medium">{photo.aperture || 'N/A'}</span>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Aperture</p>
+                            <div className="flex items-center gap-2">
+                              <Aperture className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-xs font-mono">{photo.aperture || 'N/A'}</span>
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Shutter</p>
-                            <div className="flex items-center gap-2.5">
-                              <Clock className="w-3.5 h-3.5 text-primary/60" />
-                              <span className="text-xs font-medium">{photo.shutterSpeed || 'N/A'}</span>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Shutter</p>
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-xs font-mono">{photo.shutterSpeed || 'N/A'}</span>
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">ISO</p>
-                            <p className="text-xs font-medium pl-6">{photo.iso || 'N/A'}</p>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">ISO</p>
+                            <p className="text-xs font-mono pl-5">{photo.iso || 'N/A'}</p>
                           </div>
                           <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Focal Length</p>
-                            <p className="text-xs font-medium pl-6">{photo.focalLength || 'N/A'}</p>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Focal Length</p>
+                            <p className="text-xs font-mono pl-5">{photo.focalLength || 'N/A'}</p>
                           </div>
                           <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Lens</p>
-                            <p className="text-xs font-medium pl-6 truncate max-w-[120px]" title={photo.lensModel || ''}>
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Lens</p>
+                            <p className="text-xs font-mono pl-5 truncate max-w-[120px]" title={photo.lensModel || ''}>
                               {photo.lensModel || 'Unknown'}
                             </p>
                           </div>
@@ -510,8 +502,8 @@ export function PhotoDetailPanel({
                       {/* Color Palette - Visual Focus */}
                       <section className="pt-8 border-t border-border/50">
                         <div className="flex items-center justify-between mb-8">
-                          <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.25em] flex items-center gap-3">
-                            <span className="w-8 h-px bg-primary/20" />
+                          <h4 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-3">
+                            <span className="w-4 h-px bg-primary/20" />
                             {t('gallery.palette') || 'Color Palette'}
                           </h4>
                           <AdminButton
@@ -536,7 +528,7 @@ export function PhotoDetailPanel({
                             disabled={reanalyzing}
                             adminVariant="ghost"
                             size="xs"
-                            className="text-[9px] font-black tracking-widest opacity-60 hover:opacity-100"
+                            className="text-[10px] font-bold tracking-widest opacity-60 hover:opacity-100"
                           >
                             <RefreshCw className={`w-3 h-3 mr-2 ${reanalyzing ? 'animate-spin' : ''}`} />
                             RE-ANALYZE
@@ -544,11 +536,11 @@ export function PhotoDetailPanel({
                         </div>
                         
                         {displayColors && displayColors.length > 0 ? (
-                          <div className="flex items-center gap-4 flex-wrap">
+                          <div className="flex items-center gap-3 flex-wrap">
                             {displayColors.map((color, index) => (
                               <motion.div
                                 key={index}
-                                whileHover={{ y: -4 }}
+                                whileHover={{ y: -2 }}
                                 className="relative group cursor-pointer"
                                 onClick={() => {
                                   navigator.clipboard.writeText(color)
@@ -556,17 +548,17 @@ export function PhotoDetailPanel({
                                 }}
                               >
                                 <div
-                                  className="w-12 h-12 rounded-xl border border-border/50 shadow-sm transition-all group-hover:shadow-lg group-hover:border-primary/30"
+                                  className="w-8 h-8 rounded-sm border border-border shadow-sm transition-all group-hover:shadow-md group-hover:border-primary/30"
                                   style={{ backgroundColor: color }}
                                 />
-                                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-mono font-bold text-muted-foreground uppercase whitespace-nowrap tracking-tighter">
+                                <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-mono text-muted-foreground uppercase whitespace-nowrap">
                                   {color}
                                 </div>
                               </motion.div>
                             ))}
                           </div>
                         ) : (
-                          <div className="py-8 border-2 border-dashed border-border rounded-2xl flex flex-center justify-center">
+                          <div className="py-6 border border-dashed border-border flex items-center justify-center">
                             <p className="text-xs text-muted-foreground italic">{t('admin.no_color_data')}</p>
                           </div>
                         )}
@@ -574,42 +566,42 @@ export function PhotoDetailPanel({
 
                       {/* File & Storage Details */}
                       <section className="pt-8 border-t border-border/50">
-                        <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.25em] mb-8 flex items-center gap-3">
-                          <span className="w-8 h-px bg-primary/20" />
+                        <h4 className="text-xs font-bold text-primary uppercase tracking-widest mb-6 flex items-center gap-3">
+                          <span className="w-4 h-px bg-primary/20" />
                           {t('gallery.file_info') || 'Storage & File'}
                         </h4>
-                        <div className="bg-muted/20 rounded-2xl p-6 space-y-6">
-                          <div className="grid grid-cols-2 gap-8">
+                        <div className="bg-muted/20 p-6 border border-border/50 space-y-6">
+                          <div className="grid grid-cols-2 gap-6">
                             <div className="space-y-1.5">
-                              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">File Size</p>
-                              <p className="text-xs font-mono font-medium">{formatFileSize(photo.size || 0)}</p>
+                              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">File Size</p>
+                              <p className="text-xs font-mono">{formatFileSize(photo.size || 0)}</p>
                             </div>
                             <div className="space-y-1.5">
-                              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Captured On</p>
-                              <p className="text-xs font-mono font-medium">{formatDate(photo.takenAt || photo.createdAt)}</p>
+                              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Captured On</p>
+                              <p className="text-xs font-mono">{formatDate(photo.takenAt || photo.createdAt)}</p>
                             </div>
                             <div className="space-y-1.5">
-                              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Provider</p>
-                              <p className="text-xs font-mono font-medium uppercase tracking-wider">{photo.storageProvider}</p>
+                              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Provider</p>
+                              <p className="text-xs font-mono uppercase tracking-wider">{photo.storageProvider}</p>
                             </div>
                           </div>
                           
-                          <div className="space-y-3 pt-4 border-t border-border/30">
-                            <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+                          <div className="space-y-3 pt-4 border-t border-border/50">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
                               {t('admin.path_prefix') || 'Storage Path'}
                             </label>
-                            <div className="flex items-stretch group">
-                              <div className="px-4 py-2.5 bg-muted/50 border border-r-0 border-border rounded-l-xl text-xs text-muted-foreground font-mono flex items-center group-focus-within:border-primary/30 transition-colors">
+                            <div className="flex items-stretch">
+                              <div className="px-3 py-2 bg-muted/30 border border-r-0 border-border text-xs text-muted-foreground font-mono flex items-center">
                                 /
                               </div>
                               <AdminInput
                                 value={editData.storagePath}
                                 onChange={(e) => setEditData({ ...editData, storagePath: e.target.value })}
                                 placeholder="uploads/2024"
-                                className="flex-1 rounded-l-none rounded-r-xl border-l-0 bg-muted/30 focus:bg-background transition-all"
+                                className="flex-1 border-l-0"
                               />
                             </div>
-                            <p className="text-[10px] text-muted-foreground font-mono opacity-60 pl-1">
+                            <p className="text-xs text-muted-foreground font-mono opacity-60 pl-1">
                               Filename: {(photo.storageKey || photo.url).split('/').pop()}
                             </p>
                           </div>
@@ -634,30 +626,29 @@ export function PhotoDetailPanel({
                           {/* Story Editor Section */}
                           <div className="space-y-8">
                             <div className="space-y-3">
-                              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+                              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
                                 {t('admin.story_title') || 'Narrative Title'}
                               </label>
                               <AdminInput
                                 value={storyData.title}
                                 onChange={(e) => setStoryData({ ...storyData, title: e.target.value })}
                                 placeholder={t('admin.story_title')}
-                                className="text-lg font-serif border-transparent bg-muted/30 focus:bg-background transition-all"
                               />
                             </div>
 
                             <div className="space-y-3">
-                              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] flex items-center gap-2">
-                                <BookOpen className="w-3 h-3" />
+                              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                <BookOpen className="w-4 h-4" />
                                 {t('admin.log_content') || 'The Story'}
                               </label>
                               <textarea
                                 value={storyData.content}
                                 onChange={(e) => setStoryData({ ...storyData, content: e.target.value })}
                                 placeholder={t('admin.story_description_hint')}
-                                className="w-full h-64 p-6 bg-muted/30 border border-transparent focus:border-primary/20 focus:bg-background outline-none text-sm leading-relaxed transition-all resize-none font-serif rounded-2xl"
+                                className="w-full h-64 p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono transition-colors resize-none"
                               />
                               <div className="flex justify-end">
-                                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest opacity-60">
+                                <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest opacity-60">
                                   {storyData.content.length} Characters
                                 </span>
                               </div>
@@ -665,7 +656,7 @@ export function PhotoDetailPanel({
 
                             <div className="flex items-center justify-between p-4 bg-muted/20 rounded-xl">
                               <div className="flex items-center gap-4">
-                                <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
                                   {t('admin.publish') || 'Visibility'}
                                 </label>
                                 <AdminButton
@@ -674,7 +665,7 @@ export function PhotoDetailPanel({
                                   data-state={storyData.isPublished ? 'checked' : 'unchecked'}
                                 />
                               </div>
-                              <span className={`text-[10px] font-black uppercase tracking-widest ${
+                              <span className={`text-xs font-bold uppercase tracking-widest ${
                                 storyData.isPublished ? 'text-primary' : 'text-muted-foreground'
                               }`}>
                                 {storyData.isPublished ? t('admin.published') : t('admin.draft')}
@@ -684,17 +675,17 @@ export function PhotoDetailPanel({
 
                           {/* Associated Photos - Visual Grid */}
                           {story && (
-                            <section className="pt-10 border-t border-border/50 space-y-8">
+                            <section className="pt-8 border-t border-border/50 space-y-6">
                               <div className="flex items-center justify-between">
-                                <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.25em] flex items-center gap-3">
-                                  <span className="w-8 h-px bg-primary/20" />
+                                <h4 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-3">
+                                  <span className="w-4 h-px bg-primary/20" />
                                   {t('admin.associate_photos') || 'Gallery Collection'} ({story.photos.length})
                                 </h4>
                                 <AdminButton
                                   onClick={() => setShowPhotoSelector(!showPhotoSelector)}
                                   adminVariant="primarySoft"
-                                  size="xs"
-                                  className="rounded-full px-4"
+                                  size="sm"
+                                  className="rounded-none px-4"
                                 >
                                   <Plus className="w-3 h-3 mr-2" />
                                   {t('admin.add_photos')}
@@ -710,9 +701,9 @@ export function PhotoDetailPanel({
                                     exit={{ opacity: 0, height: 0 }}
                                     className="overflow-hidden"
                                   >
-                                    <div className="border border-primary/10 rounded-2xl p-6 space-y-6 bg-primary/5 mb-8">
+                                    <div className="border border-primary/10 p-4 space-y-4 bg-primary/5 mb-6">
                                       <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-black text-primary/60 uppercase tracking-widest">
+                                        <p className="text-xs font-bold text-primary/60 uppercase tracking-widest">
                                           {t('admin.select_photos')} — {selectedPhotoIds.size} Selected
                                         </p>
                                         <button onClick={() => setShowPhotoSelector(false)} className="text-primary/40 hover:text-primary">
@@ -726,9 +717,9 @@ export function PhotoDetailPanel({
                                             whileHover={{ scale: 1.05 }}
                                             whileTap={{ scale: 0.95 }}
                                             onClick={() => togglePhotoSelection(p.id)}
-                                            className={`relative aspect-square cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                                            className={`relative aspect-square cursor-pointer overflow-hidden border-2 transition-all ${
                                               selectedPhotoIds.has(p.id)
-                                                ? 'border-primary ring-4 ring-primary/10'
+                                                ? 'border-primary ring-2 ring-primary/10'
                                                 : 'border-transparent grayscale hover:grayscale-0'
                                             }`}
                                           >
@@ -750,7 +741,7 @@ export function PhotoDetailPanel({
                                           onClick={handleAddPhotos}
                                           adminVariant="primary"
                                           size="md"
-                                          className="w-full rounded-xl py-3"
+                                          className="w-full py-2"
                                         >
                                           CONFIRM SELECTION ({selectedPhotoIds.size})
                                         </AdminButton>
@@ -766,29 +757,29 @@ export function PhotoDetailPanel({
                                   <motion.div
                                     key={p.id}
                                     layout
-                                    className="relative group aspect-square rounded-xl overflow-hidden border border-border/50"
+                                    className="relative group aspect-square overflow-hidden border border-border/50"
                                   >
                                     <img
                                       src={resolveAssetUrl(p.thumbnailUrl || p.url, cdnDomain)}
                                       alt={p.title}
                                       className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${
-                                        story.coverPhotoId === p.id ? 'ring-4 ring-primary ring-inset' : ''
+                                        story.coverPhotoId === p.id ? 'ring-2 ring-primary ring-inset' : ''
                                       }`}
                                     />
                                     
                                     {story.coverPhotoId === p.id && (
-                                      <div className="absolute top-2 left-2 px-2 py-1 bg-primary text-primary-foreground text-[8px] font-black uppercase tracking-widest rounded-sm shadow-lg">
+                                      <div className="absolute top-2 left-2 px-2 py-1 bg-primary text-primary-foreground text-[8px] font-bold uppercase tracking-widest shadow-sm">
                                         {t('admin.cover')}
                                       </div>
                                     )}
 
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]">
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-2 backdrop-blur-[1px]">
                                       {story.coverPhotoId !== p.id && (
                                         <AdminButton
                                           onClick={() => handleSetCover(p.id)}
                                           adminVariant="iconOnDark"
                                           size="sm"
-                                          className="rounded-full p-2"
+                                          className="rounded-sm p-1.5"
                                           title={t('admin.set_as_cover')}
                                         >
                                           <ImageIcon className="w-4 h-4" />
@@ -799,7 +790,7 @@ export function PhotoDetailPanel({
                                           onClick={() => handleRemovePhoto(p.id)}
                                           adminVariant="iconOnDarkDanger"
                                           size="sm"
-                                          className="rounded-full p-2"
+                                          className="rounded-sm p-1.5"
                                           title={t('admin.remove')}
                                         >
                                           <X className="w-4 h-4" />
@@ -820,12 +811,12 @@ export function PhotoDetailPanel({
             </div>
 
             {/* Footer - Fixed with glass effect */}
-            <div className="flex gap-4 p-8 border-t border-border bg-background/80 backdrop-blur-md sticky bottom-0 z-20 flex-shrink-0">
+            <div className="flex gap-4 p-6 border-t border-border bg-background sticky bottom-0 z-20 flex-shrink-0">
               <AdminButton
                 onClick={onClose}
                 adminVariant="outline"
-                size="xl"
-                className="flex-1 rounded-2xl border-border/50 hover:bg-muted/50 transition-all"
+                size="lg"
+                className="flex-1 border-border hover:bg-muted transition-all rounded-none"
               >
                 {t('common.cancel')}
               </AdminButton>
@@ -833,15 +824,15 @@ export function PhotoDetailPanel({
                 onClick={activeTab === 'info' ? handleSave : handleSaveStory}
                 disabled={activeTab === 'info' ? saving : storySaving}
                 adminVariant="primary"
-                size="xl"
-                className="flex-[1.5] flex items-center justify-center gap-3 rounded-2xl shadow-xl shadow-primary/20 transition-all active:scale-[0.98]"
+                size="lg"
+                className="flex-[1.5] flex items-center justify-center gap-3 transition-all active:scale-[0.98] rounded-none"
               >
                 {activeTab === 'info' ? (
                   saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
                 ) : (
                   storySaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
                 )}
-                <span className="tracking-[0.2em]">
+                <span className="tracking-widest">
                   {activeTab === 'info'
                     ? (saving ? t('admin.saving') : t('admin.save'))
                     : (storySaving ? t('admin.saving') : (story ? t('admin.save') : t('admin.create_story_upload')))
