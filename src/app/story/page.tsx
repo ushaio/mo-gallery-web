@@ -102,32 +102,18 @@ export default function StoryListPage() {
               {/* Title Section */}
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-3">
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-3"
-                  >
+                  <div className="flex items-center gap-3">
                     <div className="h-px w-6 bg-primary/60" />
-                    <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary/80">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-primary/80">
                       Journal
                     </span>
-                  </motion.div>
-                  <motion.h1
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight"
-                  >
+                  </div>
+                  <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight text-balance">
                     {t('nav.story')}
-                  </motion.h1>
+                  </h1>
                 </div>
 
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex items-center gap-4"
-                >
+                <div className="flex items-center gap-4">
                   <span className="text-xs text-muted-foreground/60 font-serif italic hidden md:block">
                     Visual narratives
                   </span>
@@ -135,16 +121,11 @@ export default function StoryListPage() {
                   <div className="text-xs font-mono text-muted-foreground tracking-wider">
                     {loading ? '—' : stories.length} {t('story.count_suffix') || 'STORIES'}
                   </div>
-                </motion.div>
+                </div>
               </div>
 
               {/* Separator */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="border-t border-border/30"
-              />
+              <div className="border-t border-border/30" />
             </div>
           </header>
         </div>
@@ -159,7 +140,7 @@ export default function StoryListPage() {
             <StorySkeleton />
           ) : stories.length === 0 ? (
             <div className="py-24 text-center border-t border-border/50">
-              <BookOpen className="w-10 h-10 mx-auto mb-4 opacity-20" />
+              <BookOpen className="size-10 mx-auto mb-4 opacity-20" />
               <p className="text-muted-foreground font-serif italic text-sm">{t('story.empty') || 'No stories found yet.'}</p>
             </div>
           ) : (
@@ -171,10 +152,10 @@ export default function StoryListPage() {
                   <section key={year} className="relative">
                     {/* Year Header - Sticky at top */}
                     <motion.div
-                      className="sticky top-20 z-20 py-3 bg-background/95 backdrop-blur-sm transition-all duration-300"
+                      className="sticky top-20 z-20 py-3 bg-background/95 backdrop-blur-sm transition-all duration-200"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      transition={{ duration: 0.4 }}
+                      transition={{ duration: 0.2 }}
                     >
                       <div className="flex items-center gap-4">
                         <span className="text-4xl md:text-5xl font-mono font-black tracking-tighter text-foreground/10">
@@ -194,14 +175,14 @@ export default function StoryListPage() {
                           <div key={`${year}-${month}`} className="relative">
                             {/* Month Header - Sticky below year */}
                             <motion.div
-                              className="sticky top-36 z-10 py-2 bg-background/90 backdrop-blur-sm transition-all duration-300"
+                              className="sticky top-36 z-10 py-2 bg-background/90 backdrop-blur-sm transition-all duration-200"
                               initial={{ opacity: 0, x: -10 }}
                               whileInView={{ opacity: 1, x: 0 }}
                               viewport={{ once: true }}
-                              transition={{ duration: 0.3, ease: "easeOut" }}
+                              transition={{ duration: 0.2, ease: "easeOut" }}
                             >
                               <div className="flex items-center gap-3 pl-4 md:pl-8">
-                                <Calendar className="w-3.5 h-3.5 text-primary/60" />
+                                <Calendar className="size-3.5 text-primary/60" />
                                 <span className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
                                   {getMonthName(month)}
                                 </span>
@@ -228,7 +209,7 @@ export default function StoryListPage() {
                                     initial={{ opacity: 0, y: 30 }}
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true, margin: "-50px" }}
-                                    transition={{ duration: 0.6, ease: [0.21, 0.45, 0.32, 0.9] }}
+                                    transition={{ duration: 0.2, ease: "easeOut" }}
                                     className={`group relative flex flex-col gap-5 ${isWide ? 'md:col-span-2' : ''} ${offset}`}
                                     onMouseEnter={() => setHoveredId(story.id)}
                                     onMouseLeave={() => setHoveredId(null)}
@@ -236,21 +217,18 @@ export default function StoryListPage() {
                                     <Link href={`/story/${story.id}`} className="block h-full">
                                       <div className="flex flex-col h-full">
                                         {/* Image Container */}
-                                        <div className={`relative overflow-hidden bg-muted mb-5 group-hover:shadow-2xl transition-all duration-700 ease-out ${isTall && !isWide ? 'aspect-[3/4]' : isWide ? 'aspect-[21/9]' : 'aspect-[3/2]'}`}>
+                                        <div className={`relative overflow-hidden bg-muted mb-5 group-hover:shadow-2xl transition-shadow duration-200 ease-out ${isTall && !isWide ? 'aspect-[3/4]' : isWide ? 'aspect-[21/9]' : 'aspect-[3/2]'}`}>
                                           {coverUrl ? (
                                             <motion.img
                                               src={coverUrl}
                                               alt={story.title}
-                                              className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+                                              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                                             />
                                           ) : (
                                             <div className="w-full h-full flex items-center justify-center">
-                                              <BookOpen className="w-8 h-8 opacity-10" />
+                                              <BookOpen className="size-8 opacity-10" />
                                             </div>
                                           )}
-
-                                          {/* Artistic Overlay */}
-                                          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
                                           {/* Top Left: No. Tag */}
                                           <div className="absolute top-4 left-4 z-10 text-white/90 drop-shadow-md">
@@ -273,7 +251,7 @@ export default function StoryListPage() {
 
 
                                           <div className="flex items-start justify-between gap-4 mb-3">
-                                            <h3 className="text-2xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300">
+                                            <h3 className="text-2xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300 text-balance">
                                               {story.title}
                                             </h3>
                                             <div className="flex items-center gap-2 text-muted-foreground/40 mt-2.5 flex-shrink-0 text-[10px] font-mono tracking-widest uppercase">
@@ -321,7 +299,7 @@ export default function StoryListPage() {
               href="/gallery"
               className="group inline-flex flex-col items-center gap-4"
             >
-              <span className="text-[9px] font-bold uppercase tracking-[0.4em] text-muted-foreground group-hover:text-primary transition-colors">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">
                 Explore More
               </span>
               <span className="text-3xl md:text-5xl font-serif font-light italic tracking-tight hover:text-primary transition-colors">

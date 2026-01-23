@@ -75,7 +75,7 @@ export default function StoryDetailPage() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-px bg-primary animate-[grow_2s_infinite]" />
-          <span className="text-[10px] font-mono uppercase tracking-[0.5em] text-primary">Loading Narrative</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-primary">Loading Narrative</span>
         </div>
       </div>
     )
@@ -87,7 +87,7 @@ export default function StoryDetailPage() {
         <div className="text-center space-y-6">
           <p className="text-muted-foreground font-serif italic">{error || 'Story not found'}</p>
           <Link href="/story" className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest hover:text-primary transition-colors">
-            <ArrowLeft className="w-3 h-3" />
+            <ArrowLeft className="size-3" />
             {t('story.back_to_list') || 'Back to Journal'}
           </Link>
         </div>
@@ -113,45 +113,30 @@ export default function StoryDetailPage() {
           ) : (
             <div className="w-full h-full bg-muted/10" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-background" />
+          <div className="absolute inset-0 bg-black/50" />
         </motion.div>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex items-center gap-3 mb-6"
-          >
+          <div className="flex items-center gap-3 mb-6">
             <div className="h-px w-8 bg-primary/50" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary/80">Narrative</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-primary/80">Narrative</span>
             <div className="h-px w-8 bg-primary/50" />
-          </motion.div>
+          </div>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.8 }}
-            className="text-4xl md:text-6xl lg:text-7xl font-serif font-light tracking-tighter text-white leading-[0.95] max-w-4xl"
-          >
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif font-light tracking-tighter text-white leading-[0.95] max-w-4xl text-balance">
             {story.title}
-          </motion.h1>
+          </h1>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-8 flex items-center gap-6 text-[10px] font-mono uppercase tracking-[0.3em] text-white/60"
-          >
+          <div className="mt-8 flex items-center gap-6 text-[10px] font-mono uppercase tracking-widest text-white/60">
             <div className="flex items-center gap-2">
-              <Calendar className="w-3 h-3" />
+              <Calendar className="size-3" />
               {new Date(story.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
             <div className="flex items-center gap-2">
-              <Clock className="w-3 h-3" />
+              <Clock className="size-3" />
               {Math.ceil(story.content.length / 500)} min read
             </div>
-          </motion.div>
+          </div>
         </div>
 
         {/* Back Button */}
@@ -160,8 +145,8 @@ export default function StoryDetailPage() {
             href="/story"
             className="group flex items-center gap-3 text-white/50 hover:text-white transition-colors"
           >
-            <div className="w-8 h-8 flex items-center justify-center border border-white/20 rounded-full group-hover:border-white/40 transition-colors">
-              <ArrowLeft className="w-4 h-4" />
+            <div className="size-8 flex items-center justify-center border border-white/20 rounded-full group-hover:border-white/40 transition-colors">
+              <ArrowLeft className="size-4" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest hidden md:block">Back</span>
           </Link>
@@ -171,7 +156,7 @@ export default function StoryDetailPage() {
       {/* Split Layout: Article Left, Photos Right (desktop) / Article then Photos (mobile) */}
       <div className="flex flex-col lg:flex-row">
         {/* Left: Article Content */}
-        <div className="w-full lg:w-1/2 xl:w-[45%] lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
+        <div className="w-full lg:w-1/2 xl:w-[45%] lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
           <div className="px-6 md:px-12 lg:px-16 py-12 lg:py-16">
             {/* Meta Info */}
             <div className="mb-8 pb-6 border-b border-border/30">
@@ -185,21 +170,16 @@ export default function StoryDetailPage() {
             </div>
 
             {/* Article */}
-            <motion.article
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              className="milkdown-article prose prose-lg dark:prose-invert max-w-none"
-            >
+            <article className="milkdown-article prose prose-lg dark:prose-invert max-w-none">
               <MilkdownViewer content={story.content} />
-            </motion.article>
+            </article>
 
             {/* Mobile Photo Gallery - after article content */}
             <div className="lg:hidden mt-12 pt-8 border-t border-border/30">
               <div className="mb-4 flex items-end justify-between">
                 <div>
-                  <span className="text-[10px] font-mono text-primary uppercase tracking-[0.3em]">Visual Archive</span>
-                  <h2 className="text-xl font-serif font-light tracking-tight mt-1">Gallery</h2>
+                  <span className="text-[10px] font-mono text-primary uppercase tracking-widest">Visual Archive</span>
+                  <h2 className="text-xl font-serif font-light tracking-tight mt-1 text-balance">Gallery</h2>
                 </div>
                 <span className="text-xs text-muted-foreground font-mono">{story.photos.length} photos</span>
               </div>
@@ -258,7 +238,7 @@ export default function StoryDetailPage() {
                 href="/story"
                 className="group inline-flex items-center gap-4 text-muted-foreground hover:text-primary transition-colors"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="size-4" />
                 <span className="text-sm font-bold uppercase tracking-widest">Back to Journal</span>
               </Link>
             </div>
@@ -271,18 +251,15 @@ export default function StoryDetailPage() {
             {/* Gallery Header */}
             <div className="mb-6 flex items-end justify-between">
               <div>
-                <span className="text-[10px] font-mono text-primary uppercase tracking-[0.3em]">Visual Archive</span>
-                <h2 className="text-2xl md:text-3xl font-serif font-light tracking-tight mt-1">Gallery</h2>
+                <span className="text-[10px] font-mono text-primary uppercase tracking-widest">Visual Archive</span>
+                <h2 className="text-2xl md:text-3xl font-serif font-light tracking-tight mt-1 text-balance">Gallery</h2>
               </div>
               <span className="text-xs text-muted-foreground font-mono">{story.photos.length} photos</span>
             </div>
 
             {/* Featured Photo */}
             {story.photos.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6 }}
+              <div
                 className="relative h-[50vh] lg:h-[60vh] mb-4 overflow-hidden bg-black flex items-center justify-center cursor-pointer group"
                 onClick={() => setSelectedPhoto(story.photos[activePhotoIndex])}
               >
@@ -300,20 +277,17 @@ export default function StoryDetailPage() {
                     {activePhotoIndex + 1} / {story.photos.length}
                   </span>
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* Thumbnail Grid */}
             <div className="grid grid-cols-4 xl:grid-cols-5 gap-2">
               {story.photos.map((photo, index) => (
-                <motion.div
+                <div
                   key={photo.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
                   className={`relative aspect-square overflow-hidden bg-muted cursor-pointer group transition-all duration-200 ${
-                    index === activePhotoIndex 
-                      ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' 
+                    index === activePhotoIndex
+                      ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
                       : 'hover:ring-1 hover:ring-border'
                   }`}
                   onClick={() => setActivePhotoIndex(index)}
@@ -322,11 +296,11 @@ export default function StoryDetailPage() {
                   <img
                     src={getPhotoUrl(photo, true)}
                     alt={photo.title}
-                    className={`w-full h-full object-cover transition-all duration-300 ${
+                    className={`w-full h-full object-cover transition-all duration-200 ${
                       index === activePhotoIndex ? 'scale-100' : 'grayscale-[30%] group-hover:grayscale-0'
                     }`}
                   />
-                </motion.div>
+                </div>
               ))}
             </div>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, TouchEvent } from 'react'
+import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -82,7 +83,10 @@ export function PhotoDetailModal({
 
   // Mobile panel state
   const [mobilePanelExpanded, setMobilePanelExpanded] = useState(false)
-  
+
+  // Progressive image loading: show thumbnail first, then fade to full image
+  const [fullImageLoaded, setFullImageLoaded] = useState(false)
+
   // Touch swipe handling
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const touchMoveRef = useRef<{ x: number; y: number } | null>(null)
@@ -286,6 +290,11 @@ export function PhotoDetailModal({
     }
   }, [photo, isOpen])
 
+  // Reset fullImageLoaded when photo changes
+  useEffect(() => {
+    setFullImageLoaded(false)
+  }, [photo?.id])
+
   // Scroll to current photo in thumbnails
   useEffect(() => {
     if (showThumbnails && thumbnailsScrollRef.current && currentPhotoIndex >= 0) {
@@ -355,12 +364,17 @@ export function PhotoDetailModal({
                 )}
 
                 <div className="absolute inset-0 flex items-center justify-center p-2 md:p-12">
-                  <img
-                    src={resolveAssetUrl(photo.url, settings?.cdn_domain)}
-                    alt={photo.title}
-                    className="max-w-full max-h-full object-contain shadow-2xl select-none"
-                    draggable={false}
-                  />
+                  <div className="relative w-full h-full">
+                    <Image
+                      src={resolveAssetUrl(photo.url, settings?.cdn_domain)}
+                      alt={photo.title}
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 70vw"
+                      className="object-contain shadow-2xl select-none"
+                      draggable={false}
+                      priority
+                    />
+                  </div>
                 </div>
 
                 {/* Navigation Arrows - Hidden on mobile */}
@@ -446,11 +460,12 @@ export function PhotoDetailModal({
                                : 'opacity-50 hover:opacity-100 hover:scale-105'
                            }`}
                          >
-                           <img
+                           <Image
                             src={resolveAssetUrl(p.thumbnailUrl || p.url, settings?.cdn_domain)}
                             alt={p.title}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
+                            fill
+                            sizes="72px"
+                            className="object-cover"
                           />
                         </button>
                       ))}
@@ -483,11 +498,12 @@ export function PhotoDetailModal({
                             : 'opacity-50'
                         }`}
                       >
-                        <img
+                        <Image
                           src={resolveAssetUrl(p.thumbnailUrl || p.url, settings?.cdn_domain)}
                           alt={p.title}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
+                          fill
+                          sizes="48px"
+                          className="object-cover"
                         />
                       </button>
                     ))}

@@ -11,7 +11,8 @@
       "Bash(sqlite3:*)",
       "Bash(curl:*)",
       "Bash(echo:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(tree -L 2 -I 'node_modules|.next|.git' --dirsfirst)"
     ]
   }
 }

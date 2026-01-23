@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
@@ -15,17 +16,16 @@ export default function Home() {
   const siteAuthor = envConfig.siteAuthor
 
   const [featuredImages, setFeaturedImages] = useState<PhotoDto[]>([])
-  const [heroImage, setHeroImage] = useState<PhotoDto | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0)
   const [isMounted, setIsMounted] = useState(false)
-  
+
   const heroRef = useRef<HTMLElement>(null)
   const { scrollYProgress } = useScroll({
     target: heroRef,
     offset: ["start start", "end start"]
   })
-  
+
   const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
   const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 1.1])
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 100])
@@ -52,7 +52,6 @@ export default function Home() {
         const data = await getFeaturedPhotos()
         if (data && data.length > 0) {
           setFeaturedImages(data)
-          setHeroImage(data[Math.floor(Math.random() * data.length)])
         }
       } catch (err) {
         console.error('Failed to load featured images', err)
@@ -72,18 +71,15 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [featuredImages.length])
 
-  useEffect(() => {
-    if (featuredImages.length > 0) {
-      setHeroImage(featuredImages[currentHeroIndex])
-    }
-  }, [currentHeroIndex, featuredImages])
+  // Derive hero image from current index
+  const heroImage = featuredImages.length > 0 ? featuredImages[currentHeroIndex] : null
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary">
       {/* Hero Section */}
-      <section 
+      <section
         ref={heroRef}
-        className="relative w-full h-screen flex flex-col justify-center items-center overflow-hidden"
+        className="relative w-full h-dvh flex flex-col justify-center items-center overflow-hidden"
       >
         {/* Animated Background Image with Parallax */}
         <AnimatePresence mode="wait">
@@ -97,33 +93,29 @@ export default function Home() {
               className="absolute inset-0 z-0"
               style={{ scale: heroScale, y: heroY }}
             >
-              <motion.img
-                src={resolveAssetUrl(heroImage.url)}
-                alt="Hero Background"
-                className="w-full h-full object-cover"
-                initial={{ scale: 1.2 }}
-                animate={{ scale: 1 }}
-                transition={{ duration: 20, ease: 'linear' }}
-              />
-              {/* Multi-layer gradient overlay for depth */}
-              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-black/60" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/20 via-transparent to-black/20" />
-              {/* Subtle vignette effect */}
-              <div className="absolute inset-0" style={{
-                background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%)'
-              }} />
+              <motion.div
+                className="relative w-full h-full"
+              >
+                <Image
+                  src={resolveAssetUrl(heroImage.url)}
+                  alt="Hero Background"
+                  fill
+                  sizes="100vw"
+                  className="object-cover"
+                  priority
+                />
+              </motion.div>
+              {/* Overlay for depth */}
+              <div className="absolute inset-0 bg-black/50" />
             </motion.div>
           ) : (
-            <motion.div 
+            <motion.div
               className="absolute inset-0 z-0"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
-              {/* Animated gradient background when no image */}
-              <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900" />
-              <div className="absolute inset-0 opacity-30">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(120,119,198,0.3),transparent_50%)]" />
-              </div>
+              {/* Background when no image */}
+              <div className="absolute inset-0 bg-neutral-900" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -134,14 +126,13 @@ export default function Home() {
             {particles.map((particle) => (
               <motion.div
                 key={particle.id}
-                className="absolute w-1 h-1 bg-white/20 rounded-full"
-                initial={{
+                className="absolute size-1 bg-white/20 rounded-full"
+                style={{
                   x: particle.x,
                   y: particle.y,
-                  opacity: 0,
                 }}
                 animate={{
-                  y: [particle.y, particle.y - 100],
+                  y: particle.y - 100,
                   opacity: [0, 1, 0],
                 }}
                 transition={{
@@ -162,56 +153,56 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+            transition={{ duration: 0.2, delay: 0.1, ease: "easeOut" }}
             className="flex flex-col items-center gap-6"
           >
             {/* Decorative element */}
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
+              transition={{ duration: 0.2, delay: 0.1, ease: "easeOut" }}
               className="mb-4"
             >
-              <Sparkles className="w-8 h-8 text-white/60" />
+              <Sparkles className="size-8 text-white/60" />
             </motion.div>
 
-            <motion.h1 
-              className="font-serif text-5xl md:text-7xl lg:text-8xl tracking-tight leading-none"
+            <motion.h1
+              className="font-serif text-5xl md:text-7xl lg:text-8xl leading-none text-balance"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
+              transition={{ duration: 0.2, delay: 0.1, ease: "easeOut" }}
             >
-              <span className="block bg-gradient-to-r from-white via-white/90 to-white/80 bg-clip-text text-transparent">
+              <span className="block text-white">
                 {(t('home.hero_vis') || 'YOUR MOMENTS').replace('{SITE_AUTHOR}', siteAuthor)}
               </span>
             </motion.h1>
             
-            <motion.p 
-              className="font-serif text-3xl md:text-5xl lg:text-6xl tracking-tight leading-none text-white/70"
+            <motion.p
+              className="font-serif text-3xl md:text-5xl lg:text-6xl leading-none text-white/70 text-balance"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.6 }}
+              transition={{ duration: 0.2, delay: 0.15, ease: "easeOut" }}
             >
               {t('home.hero_real') || 'YOUR STORIES'}
             </motion.p>
             
             {/* Animated divider */}
-            <motion.div 
+            <motion.div
               className="flex items-center gap-4 my-6"
               initial={{ opacity: 0, scaleX: 0 }}
               animate={{ opacity: 1, scaleX: 1 }}
-              transition={{ duration: 1, delay: 0.8 }}
+              transition={{ duration: 0.2, delay: 0.2, ease: "easeOut" }}
             >
-              <div className="h-[1px] w-16 bg-gradient-to-r from-transparent to-white/60" />
-              <div className="w-2 h-2 rounded-full bg-white/60" />
-              <div className="h-[1px] w-16 bg-gradient-to-l from-transparent to-white/60" />
+              <div className="h-[1px] w-16 bg-white/60" />
+              <div className="size-2 rounded-full bg-white/60" />
+              <div className="h-[1px] w-16 bg-white/60" />
             </motion.div>
             
-            <motion.p 
-              className="font-sans text-sm md:text-base max-w-lg text-white/60 leading-relaxed"
+            <motion.p
+              className="font-sans text-sm md:text-base max-w-lg text-white/60 leading-relaxed text-pretty"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 1 }}
+              transition={{ duration: 0.2, delay: 0.2, ease: "easeOut" }}
             >
               {(t('home.hero_desc') || '').replace('{siteTitle}', siteTitle)}
             </motion.p>
@@ -220,15 +211,15 @@ export default function Home() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 1.2 }}
+              transition={{ duration: 0.2, delay: 0.2, ease: "easeOut" }}
               className="mt-8"
             >
-              <Link 
+              <Link
                 href="/gallery"
-                className="group relative inline-flex items-center gap-3 px-8 py-4 bg-white/15 border border-white/30 rounded-full text-white text-sm tracking-wider hover:bg-white/25 hover:border-white/50 transition-colors duration-300"
+                className="group relative inline-flex items-center gap-3 px-8 py-4 bg-white/15 border border-white/30 rounded-full text-white text-sm hover:bg-white/25 hover:border-white/50 transition-colors duration-200"
               >
                 <span className="relative z-10">{t('home.explore') || 'EXPLORE GALLERY'}</span>
-                <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </motion.div>
           </motion.div>
@@ -246,9 +237,10 @@ export default function Home() {
               <button
                 key={i}
                 onClick={() => setCurrentHeroIndex(i)}
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  i === currentHeroIndex 
-                    ? 'bg-white w-8' 
+                aria-label={`View hero image ${i + 1}`}
+                className={`h-2 rounded-full transition-all duration-200 ${
+                  i === currentHeroIndex
+                    ? 'bg-white w-8'
                     : 'bg-white/40 hover:bg-white/60 w-2'
                 }`}
               />
@@ -263,15 +255,15 @@ export default function Home() {
           transition={{ delay: 2, duration: 1 }}
           className="absolute bottom-8 z-10 text-white/50"
         >
-          <motion.div 
+          <motion.div
             className="flex flex-col items-center gap-3"
             animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
           >
-            <span className="text-[10px] tracking-[0.3em] uppercase font-light">
+            <span className="text-[10px] uppercase font-light">
               {t('home.enter') || 'SCROLL TO EXPLORE'}
             </span>
-            <div className="w-[1px] h-8 bg-gradient-to-b from-white/60 to-transparent" />
+            <div className="w-[1px] h-8 bg-white/60" />
           </motion.div>
         </motion.div>
       </section>
@@ -280,8 +272,8 @@ export default function Home() {
       <section className="relative py-32 md:py-40 px-6 bg-background overflow-hidden">
         {/* Background decoration */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/4 size-96 bg-primary/5 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 size-96 bg-primary/5 rounded-full blur-3xl" />
         </div>
         
         <div className="max-w-4xl mx-auto text-center relative z-10">
@@ -294,7 +286,7 @@ export default function Home() {
             {/* Quote marks */}
             <span className="block text-6xl md:text-8xl font-serif text-primary/20 leading-none mb-4">&ldquo;</span>
             
-            <p className="font-serif text-2xl md:text-4xl font-light leading-relaxed text-foreground/90 -mt-8">
+            <p className="font-serif text-2xl md:text-4xl font-light leading-relaxed text-foreground/90 text-pretty">
               {t('home.quote') || 'An ordinary photo becomes extraordinary because of your story.'}
             </p>
             
@@ -306,7 +298,7 @@ export default function Home() {
             whileInView={{ scaleX: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 1.2, delay: 0.3 }}
-            className="mt-8 w-48 h-[2px] bg-gradient-to-r from-transparent via-primary/40 to-transparent mx-auto"
+            className="mt-8 w-48 h-[2px] bg-primary/40 mx-auto"
           />
         </div>
       </section>
@@ -321,22 +313,22 @@ export default function Home() {
           transition={{ duration: 0.8 }}
         >
           <div className="text-center md:text-left">
-            <span className="block text-xs tracking-[0.3em] text-primary/60 uppercase mb-3">
+            <span className="block text-xs text-primary/60 uppercase mb-3">
               {t('home.curated') || 'CURATED COLLECTION'}
             </span>
-            <h2 className="font-serif text-4xl md:text-5xl text-foreground">
+            <h2 className="font-serif text-4xl md:text-5xl text-foreground text-balance">
               {t('home.works') || 'Featured Works'}
             </h2>
           </div>
           
-          <Link 
-            href="/gallery" 
-            className="group flex items-center gap-3 px-6 py-3 border border-border rounded-full hover:border-primary hover:bg-primary/5 transition-all duration-300"
+          <Link
+            href="/gallery"
+            className="group flex items-center gap-3 px-6 py-3 border border-border rounded-full hover:border-primary hover:bg-primary/5 transition-all duration-200"
           >
-            <span className="font-sans text-xs tracking-[0.2em] text-muted-foreground group-hover:text-primary transition-colors">
+            <span className="font-sans text-xs text-muted-foreground group-hover:text-primary transition-colors">
               VIEW ALL WORKS
             </span>
-            <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-all group-hover:translate-x-1" />
+            <ArrowRight className="size-4 text-muted-foreground group-hover:text-primary transition-all group-hover:translate-x-1" />
           </Link>
         </motion.div>
 
@@ -351,8 +343,8 @@ export default function Home() {
                 animate={{ opacity: 1 }}
                 transition={{ delay: i * 0.1 }}
               >
-                <div className="aspect-[4/5] bg-gradient-to-br from-secondary/60 to-secondary/30 animate-pulse rounded-lg overflow-hidden">
-                  <div className="w-full h-full bg-gradient-to-t from-black/20 to-transparent" />
+                <div className="aspect-[4/5] bg-secondary/60 animate-pulse rounded-lg overflow-hidden">
+                  <div className="w-full h-full bg-secondary/30" />
                 </div>
                 <div className="space-y-3 px-2">
                   <div className="h-5 w-3/4 bg-secondary/50 rounded-full animate-pulse mx-auto" />
@@ -377,34 +369,36 @@ export default function Home() {
                 <Link href={`/gallery?photoId=${image.id}`}>
                   <div className="relative overflow-hidden aspect-[4/5] bg-secondary rounded-lg mb-6 cursor-pointer">
                     {/* Image */}
-                    <img
+                    <Image
                       src={resolveAssetUrl(image.thumbnailUrl || image.url)}
                       alt={image.title}
-                      className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08]"
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08]"
                     />
-                    
+
                     {/* Overlay gradient */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     
                     {/* Hover content - only show if has category */}
                     {image.category && (
                       <div className="absolute inset-0 flex flex-col justify-end p-6 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0">
-                        <span className="text-white/80 text-xs tracking-[0.2em] uppercase">
+                        <span className="text-white/80 text-xs uppercase">
                           {image.category}
                         </span>
                       </div>
                     )}
-                    
+
                     {/* Corner accent */}
-                    <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-tr-lg" />
-                    <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-bl-lg" />
+                    <div className="absolute top-4 right-4 size-8 border-t-2 border-r-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-tr-lg" />
+                    <div className="absolute bottom-4 left-4 size-8 border-b-2 border-l-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-bl-lg" />
                   </div>
                 </Link>
                 
                 {/* Card info - visible on mobile, only show category */}
                 {image.category && (
                   <div className="flex flex-col items-center text-center md:hidden">
-                    <span className="mt-2 text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                    <span className="mt-2 text-[10px] text-muted-foreground uppercase">
                       {image.category}
                     </span>
                   </div>
@@ -417,14 +411,13 @@ export default function Home() {
 
       {/* About Section - Enhanced Design */}
       <section className="relative w-full py-32 overflow-hidden">
-        {/* Background with gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-secondary/40 to-secondary/20" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_0%,rgba(0,0,0,0.1)_100%)]" />
-        
+        {/* Background */}
+        <div className="absolute inset-0 bg-secondary/30" />
+
         {/* Decorative lines */}
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-border to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-border to-transparent" />
-        
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-border" />
+        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-border" />
+
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -433,26 +426,26 @@ export default function Home() {
             transition={{ duration: 0.8 }}
           >
             {/* Icon */}
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-8">
-              <Sparkles className="w-6 h-6 text-primary" />
+            <div className="inline-flex items-center justify-center size-16 rounded-full bg-primary/10 mb-8">
+              <Sparkles className="size-6 text-primary" />
             </div>
-            
-            <span className="block font-sans text-xs tracking-[0.3em] text-primary mb-6 uppercase">
+
+            <span className="block font-sans text-xs text-primary mb-6 uppercase">
               {t('home.artist') || 'ABOUT THE GALLERY'}
             </span>
-            
-            <p className="font-serif text-xl md:text-2xl text-foreground/80 leading-relaxed mb-12 max-w-2xl mx-auto">
+
+            <p className="font-serif text-xl md:text-2xl text-foreground/80 leading-relaxed mb-12 max-w-2xl mx-auto text-pretty">
               {(t('home.about_text') || '').replace('{siteTitle}', siteTitle)}
             </p>
             
             <Link
               href="/about"
-              className="group inline-flex items-center gap-4 px-8 py-4 bg-foreground text-background rounded-full hover:bg-primary transition-colors duration-300"
+              className="group inline-flex items-center gap-4 px-8 py-4 bg-foreground text-background rounded-full hover:bg-primary transition-colors duration-200"
             >
-              <span className="font-sans text-sm tracking-[0.15em]">
+              <span className="font-sans text-sm">
                 {t('home.read_bio') || 'LEARN MORE'}
               </span>
-              <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
+              <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
             </Link>
           </motion.div>
         </div>

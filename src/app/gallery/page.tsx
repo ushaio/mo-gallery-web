@@ -186,7 +186,7 @@ export default function GalleryPage() {
             >
               {loadingMore && (
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="size-5 animate-spin" />
                   <span className="text-sm">{t('gallery.loadingMore') || '加载更多...'}</span>
                 </div>
               )}
@@ -221,11 +221,12 @@ export default function GalleryPage() {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             onClick={scrollToTop}
             className="fixed bottom-8 right-8 p-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:shadow-xl transition-shadow z-50"
             aria-label="Back to top"
           >
-            <ArrowUp className="w-6 h-6" />
+            <ArrowUp className="size-6" />
           </motion.button>
         )}
       </AnimatePresence>
