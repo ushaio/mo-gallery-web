@@ -591,7 +591,6 @@ export function UploadTab({
     setDuplicateInfos([])
     setFileHashMap(new Map())
     setPendingUploadFiles([])
-    notify(t('admin.upload_started'), 'info')
   }
 
   // Handle duplicate dialog actions
