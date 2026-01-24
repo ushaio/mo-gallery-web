@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   Upload,
   Loader2,
@@ -28,6 +28,7 @@ import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
 import { DuplicatePhotosDialog, type DuplicateInfo } from '@/components/admin/DuplicatePhotosDialog'
+import { StorySelectorModal } from '@/components/admin/StorySelectorModal'
 
 interface UploadTabProps {
   token: string | null
@@ -301,8 +302,10 @@ export function UploadTab({
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
 
   const [uploadStoryId, setUploadStoryId] = useState('')
+  const [uploadStoryTitle, setUploadStoryTitle] = useState('')
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loadingStories, setLoadingStories] = useState(false)
+  const [showStorySelector, setShowStorySelector] = useState(false)
 
   const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>([])
   const [albums, setAlbums] = useState<AlbumDto[]>([])
@@ -339,13 +342,23 @@ export function UploadTab({
     }
   }, [settings, isInitialized])
 
+  // Load stories only when modal opens
+  const loadStories = useCallback(async () => {
+    if (!token || stories.length > 0) return
+    setLoadingStories(true)
+    try {
+      const data = await getAdminStories(token)
+      setStories(data)
+    } finally {
+      setLoadingStories(false)
+    }
+  }, [token, stories.length])
+
   useEffect(() => {
-    if (!token) return
-    let cancelled = false
-    queueMicrotask(() => !cancelled && setLoadingStories(true))
-    getAdminStories(token).then(data => !cancelled && setStories(data)).finally(() => !cancelled && setLoadingStories(false))
-    return () => { cancelled = true }
-  }, [token])
+    if (showStorySelector) {
+      loadStories()
+    }
+  }, [showStorySelector, loadStories])
 
   useEffect(() => {
     if (!token) return
@@ -587,6 +600,7 @@ export function UploadTab({
     setSelectedIds(new Set())
     setUploadTitle('')
     setUploadStoryId('')
+    setUploadStoryTitle('')
     setUploadAlbumIds([])
     setDuplicateInfos([])
     setFileHashMap(new Map())
@@ -637,17 +651,17 @@ export function UploadTab({
     <>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
         {/* Left Panel - Settings */}
-        <div className="lg:col-span-4 space-y-6">
+        <div className="lg:col-span-4">
           <div className="sticky top-6">
-            <div className="flex items-center gap-3 mb-8">
-              <Settings2 className="w-5 h-5 text-muted-foreground" />
-              <h2 className="text-sm font-medium tracking-wide uppercase text-muted-foreground">{t('admin.upload_params')}</h2>
+            <div className="flex items-center gap-3 mb-4">
+              <Settings2 className="w-4 h-4 text-muted-foreground" />
+              <h2 className="text-xs font-medium tracking-wide uppercase text-muted-foreground">{t('admin.upload_params')}</h2>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Title */}
               <div>
-                <label className="block text-xs text-muted-foreground mb-2">{t('admin.photo_title')}</label>
+                <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.photo_title')}</label>
                 <AdminInput
                   value={uploadTitle}
                   onChange={e => setUploadTitle(e.target.value)}
@@ -656,147 +670,140 @@ export function UploadTab({
                 />
               </div>
 
-              {/* Categories (multi-select, searchable, creatable) */}
-              <div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                  {t('admin.categories')}
-                  <span className="text-muted-foreground/50">({t('common.optional')})</span>
-                </label>
-                <AdminMultiSelect
-                  values={uploadCategories}
-                  options={categoryOptions}
-                  onChange={setUploadCategories}
-                  placeholder={t('admin.search_create')}
-                  inputPlaceholder={t('admin.search_create')}
-                  allowCreate
-                />
-              </div>
-
-              {/* Albums (multi-select, searchable, not creatable) */}
-              <div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                  <FolderOpen className="w-3 h-3" />
-                  {t('admin.album_select')}
-                  <span className="text-muted-foreground/50">({t('common.optional')})</span>
-                </label>
-                <AdminMultiSelect
-                  values={uploadAlbumIds}
-                  options={albumOptions}
-                  onChange={setUploadAlbumIds}
-                  placeholder={t('admin.search_album')}
-                  inputPlaceholder={t('admin.search_album')}
-                  disabled={loadingAlbums}
-                />
+              {/* Categories & Albums - 2 column grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.categories')}</label>
+                  <AdminMultiSelect
+                    values={uploadCategories}
+                    options={categoryOptions}
+                    onChange={setUploadCategories}
+                    placeholder={t('admin.search_create')}
+                    inputPlaceholder={t('admin.search_create')}
+                    allowCreate
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                    <FolderOpen className="w-3 h-3" />
+                    {t('admin.album_select')}
+                  </label>
+                  <AdminMultiSelect
+                    values={uploadAlbumIds}
+                    options={albumOptions}
+                    onChange={setUploadAlbumIds}
+                    placeholder={t('admin.search_album')}
+                    inputPlaceholder={t('admin.search_album')}
+                    disabled={loadingAlbums}
+                  />
+                </div>
               </div>
 
               {/* Story */}
               <div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
                   <BookOpen className="w-3 h-3" />
                   {t('ui.photo_story')}
-                  <span className="text-muted-foreground/50">({t('common.optional')})</span>
                 </label>
-                <AdminSelect
-                  value={uploadStoryId}
-                  onChange={setUploadStoryId}
+                <button
+                  type="button"
+                  onClick={() => setShowStorySelector(true)}
                   disabled={loadingStories}
-                  placeholder={t('ui.no_association')}
-                  options={[
-                    { value: '', label: t('ui.no_association') },
-                    ...stories.map(s => ({ value: s.id, label: s.title, suffix: !s.isPublished ? `(${t('admin.draft')})` : undefined }))
-                  ]}
-                />
+                  className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+                >
+                  <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
+                    {uploadStoryTitle || t('ui.no_association')}
+                  </span>
+                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
               </div>
 
-              {/* Storage */}
-              <div className="pt-4 border-t border-border/50 space-y-4">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-2">{t('admin.storage_provider')}</label>
-                  <AdminSelect
-                    value={uploadSource}
-                    onChange={setUploadSource}
-                    options={[
-                      { value: 'local', label: 'Local Storage' },
-                      { value: 'r2', label: 'Cloudflare R2' },
-                      { value: 'github', label: 'GitHub' },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-2">{t('admin.path_prefix')}</label>
-                  {/* System configured prefix (read-only) - always show root path */}
-                  {(() => {
-                    const systemPrefix = uploadSource === 'r2'
-                      ? settings?.r2_path
-                      : uploadSource === 'github'
-                        ? settings?.github_path
-                        : undefined
-                    
-                    const displayPrefix = systemPrefix || '/'
-                    
-                    return (
-                      <div className="flex items-stretch">
-                        <div className="px-3 py-2 bg-muted/50 border-b border-l border-t border-border text-xs text-muted-foreground font-mono flex items-center min-w-0">
-                          <span className="truncate" title={displayPrefix}>{displayPrefix}{systemPrefix ? '/' : ''}</span>
-                        </div>
-                        <AdminInput
-                          value={uploadPath}
-                          onChange={e => setUploadPath(e.target.value)}
-                          placeholder={t('admin.path_placeholder')}
-                          className="flex-1 rounded-l-none"
-                        />
-                      </div>
-                    )
-                  })()}
-                </div>
-              </div>
-
-              {/* Privacy Strip - GPS/Location removal */}
-              <div className="pt-4 border-t border-border/50">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                  <MapPinOff className="w-3 h-3" />
-                  {t('admin.privacy_strip') || '隐私擦除'}
-                </label>
-                <div className="flex items-center justify-between p-3 bg-muted/30 border border-border/50 rounded">
-                  <div className="flex-1 min-w-0 pr-4">
-                    <p className="text-xs font-medium">{t('admin.strip_gps') || '移除地理位置'}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{t('admin.strip_gps_desc') || '上传前擦除图片中的GPS坐标信息'}</p>
+              {/* Storage - compact layout */}
+              <div className="pt-3 border-t border-border/50">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
+                    <AdminSelect
+                      value={uploadSource}
+                      onChange={setUploadSource}
+                      options={[
+                        { value: 'local', label: 'Local' },
+                        { value: 'r2', label: 'R2' },
+                        { value: 'github', label: 'GitHub' },
+                      ]}
+                    />
                   </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.path_prefix')}</label>
+                    {(() => {
+                      const systemPrefix = uploadSource === 'r2'
+                        ? settings?.r2_path
+                        : uploadSource === 'github'
+                          ? settings?.github_path
+                          : undefined
+                      const displayPrefix = systemPrefix || '/'
+                      return (
+                        <div className="flex items-stretch">
+                          <div className="px-2 py-2 bg-muted/50 border-b border-l border-t border-border text-[10px] text-muted-foreground font-mono flex items-center">
+                            <span className="truncate max-w-[60px]" title={displayPrefix}>{displayPrefix}{systemPrefix ? '/' : ''}</span>
+                          </div>
+                          <AdminInput
+                            value={uploadPath}
+                            onChange={e => setUploadPath(e.target.value)}
+                            placeholder="path"
+                            className="flex-1 rounded-l-none"
+                          />
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Privacy & Compression - inline toggles */}
+              <div className="pt-3 border-t border-border/50 space-y-3">
+                {/* Privacy Strip */}
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <MapPinOff className="w-3 h-3" />
+                    {t('admin.strip_gps') || '移除地理位置'}
+                  </label>
                   <button
                     type="button"
                     onClick={() => setPrivacyStripEnabled(!privacyStripEnabled)}
-                    className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors ${
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
                       privacyStripEnabled ? 'bg-primary' : 'bg-muted'
                     }`}
                   >
                     <span
-                      className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${
-                        privacyStripEnabled ? 'translate-x-5' : 'translate-x-1'
+                      className={`pointer-events-none block size-4 rounded-full bg-background shadow-lg transition-transform ${
+                        privacyStripEnabled ? 'translate-x-4' : 'translate-x-0.5'
                       }`}
                     />
                   </button>
                 </div>
-              </div>
 
-              {/* Compression */}
-              <div className="pt-4 border-t border-border/50">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                  <Minimize2 className="w-3 h-3" />
-                  {t('admin.image_compression')}
-                </label>
-                <AdminSelect
-                  value={compressionMode}
-                  onChange={(v) => setCompressionMode(v as CompressionMode)}
-                  options={[
-                    { value: 'none', label: t('admin.compression_none') || '原图无压缩' },
-                    { value: 'quality', label: t('admin.compression_quality') || '质量优先' },
-                    { value: 'balanced', label: t('admin.compression_balanced') || '平衡模式' },
-                    { value: 'size', label: t('admin.compression_size') || '体积优先' },
-                  ]}
-                />
+                {/* Compression */}
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Minimize2 className="w-3 h-3" />
+                    {t('admin.image_compression')}
+                  </label>
+                  <AdminSelect
+                    value={compressionMode}
+                    onChange={(v) => setCompressionMode(v as CompressionMode)}
+                    className="w-28"
+                    options={[
+                      { value: 'none', label: t('admin.compression_none') || '无压缩' },
+                      { value: 'quality', label: t('admin.compression_quality') || '质量优先' },
+                      { value: 'balanced', label: t('admin.compression_balanced') || '平衡' },
+                      { value: 'size', label: t('admin.compression_size') || '体积优先' },
+                    ]}
+                  />
+                </div>
                 {compressionMode !== 'none' && (
-                  <div className="flex items-center gap-3 mt-3">
-                    <span className="text-xs text-muted-foreground">{t('admin.max_size_mb')}</span>
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="text-[10px] text-muted-foreground">{t('admin.max_size_mb')}</span>
                     <AdminInput
                       type="number"
                       min="0.5"
@@ -804,7 +811,7 @@ export function UploadTab({
                       step="0.5"
                       value={maxSizeMB}
                       onChange={e => setMaxSizeMB(parseFloat(e.target.value) || 4)}
-                      className="w-20 text-center"
+                      className="w-16 text-center text-xs"
                     />
                   </div>
                 )}
@@ -816,7 +823,7 @@ export function UploadTab({
                 disabled={strippingPrivacy || checkingDuplicates || !uploadFiles.length}
                 adminVariant="primary"
                 size="lg"
-                className="w-full py-4 mt-6 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3 mt-2 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {checkingDuplicates ? (
                   <>
@@ -835,7 +842,7 @@ export function UploadTab({
                   </>
                 )}
               </AdminButton>
-              {uploadError && <p className="text-xs text-destructive text-center mt-2">{uploadError}</p>}
+              {uploadError && <p className="text-xs text-destructive text-center mt-1">{uploadError}</p>}
             </div>
           </div>
         </div>
@@ -977,6 +984,19 @@ export function UploadTab({
         }}
         onSkipDuplicates={handleSkipDuplicates}
         onUploadAnyway={handleUploadAnyway}
+        t={t}
+      />
+
+      <StorySelectorModal
+        isOpen={showStorySelector}
+        onClose={() => setShowStorySelector(false)}
+        onSelect={(storyId, storyTitle) => {
+          setUploadStoryId(storyId || '')
+          setUploadStoryTitle(storyTitle || '')
+        }}
+        stories={stories}
+        selectedStoryId={uploadStoryId}
+        loading={loadingStories}
         t={t}
       />
     </>
