@@ -18,11 +18,15 @@ const PRESETS: Record<CompressionMode, Partial<CompressionOptions>> = {
 
 export async function compressImage(
   file: File,
-  options: CompressionOptions = {}
+  options: CompressionOptions = {},
+  onProgress?: (progress: number) => void
 ): Promise<File> {
   const mode = options.mode || 'balanced'
-  
-  if (mode === 'none') return file
+
+  if (mode === 'none') {
+    onProgress?.(100)
+    return file
+  }
 
   const preset = PRESETS[mode]
   const maxSizeMB = options.maxSizeMB ?? preset.maxSizeMB ?? 4
@@ -30,7 +34,10 @@ export async function compressImage(
   const initialQuality = options.initialQuality ?? preset.initialQuality ?? 0.8
 
   // Skip if already smaller than target
-  if (file.size <= maxSizeMB * 1024 * 1024) return file
+  if (file.size <= maxSizeMB * 1024 * 1024) {
+    onProgress?.(100)
+    return file
+  }
 
   const blob = await imageCompression(file, {
     maxSizeMB,
@@ -39,6 +46,7 @@ export async function compressImage(
     useWebWorker: true,
     preserveExif: true,
     alwaysKeepResolution: mode === 'quality',
+    onProgress: onProgress,
   })
 
   return new File([blob], file.name, { type: blob.type, lastModified: Date.now() })

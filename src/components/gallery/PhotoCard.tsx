@@ -25,7 +25,10 @@ export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grays
       className={`break-inside-avoid group cursor-pointer ${immersive ? 'mb-1' : 'mb-12'}`}
       onClick={onClick}
     >
-      <div className={`relative overflow-hidden bg-muted ${immersive ? '' : 'mb-4'}`}>
+      <div
+        className={`relative overflow-hidden ${immersive ? '' : 'mb-4'}`}
+        style={{ backgroundColor: photo.dominantColors?.[0] || '#e5e5e5' }}
+      >
         <Image
           src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
           alt={photo.title}
@@ -36,8 +39,6 @@ export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grays
             grayscale ? 'grayscale group-hover:grayscale-0' : ''
           }`}
           loading="lazy"
-          placeholder={photo.blurDataUrl ? "blur" : "empty"}
-          blurDataURL={photo.blurDataUrl}
         />
 
         {/* Subtle Overlay on Hover */}

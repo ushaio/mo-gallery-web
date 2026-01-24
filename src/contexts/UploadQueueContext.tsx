@@ -2,14 +2,17 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
 import { uploadPhotoWithProgress, addPhotosToAlbum } from '@/lib/api'
+import { compressImage, CompressionMode } from '@/lib/image-compress'
 
-export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
+export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
 
 export interface UploadTask {
   id: string
   file: File
   fileName: string
   fileSize: number
+  originalSize: number // Original file size before compression
+  compressedSize?: number // Size after compression
   preview: string | null
   status: UploadTaskStatus
   progress: number
@@ -23,6 +26,9 @@ export interface UploadTask {
   albumIds?: string[]
   fileHash?: string // Original file hash for duplicate detection
   batchId: string // Unique batch identifier
+  // Compression settings
+  compressionMode?: CompressionMode
+  maxSizeMB?: number
   // Result
   photoId?: string
 }
@@ -39,6 +45,8 @@ interface UploadQueueContextType {
     storagePath?: string
     storyId?: string
     albumIds?: string[]
+    compressionMode?: CompressionMode
+    maxSizeMB?: number
     token: string
   }) => void
   retryTask: (taskId: string, token: string) => void
@@ -88,10 +96,10 @@ export function UploadQueueProvider({
     })
   }
 
-  const updateTaskProgress = useCallback((taskId: string, progress: number) => {
+  const updateTaskProgress = useCallback((taskId: string, progress: number, status?: UploadTaskStatus) => {
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === taskId ? { ...t, progress } : t
+        t.id === taskId ? { ...t, progress, ...(status && { status }) } : t
       )
     )
   }, [])
@@ -141,7 +149,7 @@ export function UploadQueueProvider({
 
       return currentTasks.map((t) =>
         tasksToStart.some((ts) => ts.id === t.id)
-          ? { ...t, status: 'uploading' as UploadTaskStatus, progress: 0 }
+          ? { ...t, status: (t.compressionMode && t.compressionMode !== 'none' ? 'compressing' : 'uploading') as UploadTaskStatus, progress: 0 }
           : t
       )
     })
@@ -149,16 +157,47 @@ export function UploadQueueProvider({
 
   const uploadSingleFile = async (task: UploadTask) => {
     try {
+      let fileToUpload = task.file
+      let compressedSize: number | undefined
+
+      // Step 1: Compress if needed
+      if (task.compressionMode && task.compressionMode !== 'none') {
+        try {
+          fileToUpload = await compressImage(
+            task.file,
+            { mode: task.compressionMode, maxSizeMB: task.maxSizeMB },
+            (progress) => {
+              updateTaskProgress(task.id, Math.round(progress))
+            }
+          )
+          compressedSize = fileToUpload.size
+
+          // Update compressed size info
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === task.id
+                ? { ...t, compressedSize, fileSize: compressedSize! }
+                : t
+            )
+          )
+        } catch (compressError) {
+          // If compression fails, continue with original file
+          console.warn('Compression failed, using original file:', compressError)
+        }
+      }
+
+      // Step 2: Upload
       const photo = await uploadPhotoWithProgress({
         token: tokenRef.current,
-        file: task.file,
+        file: fileToUpload,
         title: task.title,
         category: task.categories,
         storage_provider: task.storageProvider,
         storage_path: task.storagePath,
         file_hash: task.fileHash,
         onProgress: (progress) => {
-          updateTaskProgress(task.id, progress)
+          // Always set status to uploading when receiving upload progress
+          updateTaskProgress(task.id, progress, 'uploading')
         },
       })
 
@@ -236,6 +275,8 @@ export function UploadQueueProvider({
       storagePath?: string
       storyId?: string
       albumIds?: string[]
+      compressionMode?: CompressionMode
+      maxSizeMB?: number
       token: string
     }) => {
       tokenRef.current = params.token
@@ -251,6 +292,7 @@ export function UploadQueueProvider({
             file: item.file,
             fileName: item.file.name,
             fileSize: item.file.size,
+            originalSize: item.file.size,
             preview,
             status: 'pending' as UploadTaskStatus,
             progress: 0,
@@ -265,6 +307,8 @@ export function UploadQueueProvider({
             storyId: params.storyId,
             albumIds: params.albumIds,
             fileHash: item.fileHash,
+            compressionMode: params.compressionMode,
+            maxSizeMB: params.maxSizeMB,
             batchId,
           }
         })

@@ -20,7 +20,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { AdminSettingsDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, type StoryDto, type AlbumDto } from '@/lib/api'
-import { compressImage, type CompressionMode } from '@/lib/image-compress'
+import { type CompressionMode } from '@/lib/image-compress'
 import { stripGpsData } from '@/lib/privacy-strip'
 import { calculateFileHash } from '@/lib/file-hash'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
@@ -314,8 +314,6 @@ export function UploadTab({
 
   const [compressionMode, setCompressionMode] = useState<CompressionMode>('none')
   const [maxSizeMB, setMaxSizeMB] = useState(4)
-  const [compressing, setCompressing] = useState(false)
-  const [compressionProgress, setCompressionProgress] = useState({ current: 0, total: 0 })
 
   // Privacy strip - remove GPS/location data
   const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
@@ -567,24 +565,7 @@ export function UploadTab({
       setStrippingPrivacy(false)
     }
 
-    // Step 2: Compress images if enabled
-    if (compressionMode !== 'none') {
-      setCompressing(true)
-      setCompressionProgress({ current: 0, total: filesToUpload.length })
-      const compressed: UploadFile[] = []
-      for (let i = 0; i < filesToUpload.length; i++) {
-        const item = filesToUpload[i]
-        try {
-          const file = await compressImage(item.file, { mode: compressionMode, maxSizeMB })
-          compressed.push({ id: item.id, file })
-        } catch { compressed.push(item) }
-        setCompressionProgress({ current: i + 1, total: filesToUpload.length })
-      }
-      filesToUpload = compressed
-      setCompressing(false)
-    }
-
-    // Step 3: Upload with file hashes
+    // Step 2: Upload with file hashes (compression happens in upload queue)
     await addTasks({
       files: filesToUpload.map(f => ({
         id: f.id,
@@ -597,6 +578,8 @@ export function UploadTab({
       storagePath: uploadPath.trim() || undefined,
       storyId: uploadStoryId || undefined,
       albumIds: uploadAlbumIds.length ? uploadAlbumIds : undefined,
+      compressionMode: compressionMode !== 'none' ? compressionMode : undefined,
+      maxSizeMB: compressionMode !== 'none' ? maxSizeMB : undefined,
       token,
     })
 
@@ -831,7 +814,7 @@ export function UploadTab({
               {/* Upload Button */}
               <AdminButton
                 onClick={handleUploadClick}
-                disabled={compressing || strippingPrivacy || checkingDuplicates || !uploadFiles.length}
+                disabled={strippingPrivacy || checkingDuplicates || !uploadFiles.length}
                 adminVariant="primary"
                 size="lg"
                 className="w-full py-4 mt-6 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -845,11 +828,6 @@ export function UploadTab({
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     {t('admin.stripping_privacy') || '擦除隐私'} ({privacyProgress.current}/{privacyProgress.total})
-                  </>
-                ) : compressing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {t('admin.compressing')} ({compressionProgress.current}/{compressionProgress.total})
                   </>
                 ) : (
                   <>

@@ -49,12 +49,13 @@ export function UploadProgressPopup({
   const completedCount = tasks.filter((t) => t.status === 'completed').length
   const failedCount = tasks.filter((t) => t.status === 'failed').length
   const uploadingCount = tasks.filter((t) => t.status === 'uploading').length
+  const compressingCount = tasks.filter((t) => t.status === 'compressing').length
   const pendingCount = tasks.filter((t) => t.status === 'pending').length
   const totalCount = tasks.length
 
   const allCompleted = completedCount === totalCount
   const hasFailures = failedCount > 0
-  const isUploading = uploadingCount > 0 || pendingCount > 0
+  const isUploading = uploadingCount > 0 || compressingCount > 0 || pendingCount > 0
 
   // Calculate overall progress
   const overallProgress = tasks.reduce((acc, task) => {
@@ -75,6 +76,35 @@ export function UploadProgressPopup({
         return (
           <div className="w-5 h-5 rounded-full bg-destructive/20 flex items-center justify-center">
             <AlertCircle className="w-3 h-3 text-destructive" />
+          </div>
+        )
+      case 'compressing':
+        return (
+          <div className="relative w-5 h-5">
+            <svg className="w-5 h-5 -rotate-90" viewBox="0 0 20 20">
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-muted/30"
+              />
+              <circle
+                cx="10"
+                cy="10"
+                r="8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray={`${progress * 0.5} 50`}
+                className="text-amber-500 transition-all duration-300"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-amber-500">
+              {progress}
+            </span>
           </div>
         )
       case 'uploading':
@@ -117,8 +147,9 @@ export function UploadProgressPopup({
 
   const getStatusText = () => {
     if (allCompleted) return `${t('admin.upload_complete')} ${completedCount}/${totalCount}`
+    if (compressingCount > 0) return `${t('admin.compressing')} ${completedCount}/${totalCount}`
     if (uploadingCount > 0) return `${t('admin.uploading')} ${completedCount}/${totalCount}`
-    if (hasFailures && pendingCount === 0 && uploadingCount === 0) {
+    if (hasFailures && pendingCount === 0 && uploadingCount === 0 && compressingCount === 0) {
       return `${completedCount}/${totalCount} · ${failedCount} ${t('admin.failed')}`
     }
     return `${t('admin.pending')} ${completedCount}/${totalCount}`
@@ -228,9 +259,21 @@ export function UploadProgressPopup({
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate mb-0.5">{task.fileName}</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {formatFileSize(task.fileSize)}
-                  </span>
+                  {/* Show compression info if compressed */}
+                  {task.compressedSize && task.compressedSize < task.originalSize ? (
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {formatFileSize(task.originalSize)} → {formatFileSize(task.compressedSize)}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {formatFileSize(task.originalSize)}
+                    </span>
+                  )}
+                  {task.status === 'compressing' && (
+                    <span className="text-[10px] text-amber-500 font-bold">
+                      {t('admin.compressing')} {task.progress}%
+                    </span>
+                  )}
                   {task.status === 'uploading' && (
                     <span className="text-[10px] text-primary font-bold">
                       {task.progress}%
@@ -243,10 +286,12 @@ export function UploadProgressPopup({
                   )}
                 </div>
                 {/* Individual Progress Bar */}
-                {task.status === 'uploading' && (
+                {(task.status === 'compressing' || task.status === 'uploading') && (
                   <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                      className={`h-full rounded-full transition-all duration-300 ease-out ${
+                        task.status === 'compressing' ? 'bg-amber-500' : 'bg-primary'
+                      }`}
                       style={{ width: `${task.progress}%` }}
                     />
                   </div>
