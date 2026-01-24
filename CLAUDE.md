@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MO Gallery is a photo gallery application with integrated frontend and backend. It supports photo management, albums, stories (photo narratives), blogs, and comments with multiple storage backends (local, GitHub, Cloudflare R2).
+MO Gallery is a photo gallery application with integrated frontend and backend. It supports photo management, albums, stories (photo narratives), blogs, friend links, and comments with multiple storage backends (local, GitHub, Cloudflare R2).
 
 ## Development Commands
 
@@ -17,6 +17,8 @@ pnpm run dev
 
 # Build for production
 pnpm run build
+pnpm run build:vercel    # Build for Vercel (includes migrations + seed)
+pnpm run build:node      # Build for Node.js deployment
 
 # Lint
 pnpm run lint
@@ -26,6 +28,7 @@ pnpm run prisma:dev      # Create migration and apply (development)
 pnpm run prisma:deploy   # Apply migrations (production)
 pnpm run prisma:generate # Generate Prisma client
 pnpm run prisma:seed     # Seed database with admin user
+pnpm run prisma:studio   # Open Prisma Studio for database inspection
 ```
 
 ## Architecture
@@ -41,12 +44,13 @@ pnpm run prisma:seed     # Seed database with admin user
 ```
 ├── hono/                 # API routes (Hono.js)
 │   ├── index.ts          # Route aggregator
-│   ├── auth.ts           # Authentication endpoints
-│   ├── photos.ts         # Photo CRUD
+│   ├── auth.ts           # Authentication & Linux DO OAuth
+│   ├── photos.ts         # Photo CRUD with pagination
 │   ├── albums.ts         # Album management
 │   ├── stories.ts        # Photo stories/narratives
 │   ├── blogs.ts          # Blog posts
-│   ├── comments.ts       # Comment system
+│   ├── comments.ts       # Comment system with moderation
+│   ├── friends.ts        # Friend links management
 │   ├── settings.ts       # Admin settings
 │   └── middleware/auth.ts
 ├── server/lib/           # Server-side utilities
@@ -69,7 +73,7 @@ pnpm run prisma:seed     # Seed database with admin user
 │   │   ├── gallery/      # Public gallery
 │   │   └── blog/         # Blog pages
 │   ├── components/       # React components
-│   ├── contexts/         # React contexts (Auth, Theme, Settings, Language)
+│   ├── contexts/         # React contexts (Auth, Theme, Settings, Language, UploadQueue)
 │   └── lib/
 │       ├── api.ts        # Frontend API client with typed DTOs
 │       ├── i18n.ts       # Internationalization
@@ -90,11 +94,13 @@ pnpm run prisma:seed     # Seed database with admin user
 
 ## Database Schema (Key Models)
 
-- `Photo`: Core entity with EXIF data, categories, dominant colors
-- `Album`: Photo collections with cover image
+- `Photo`: Core entity with EXIF data, categories, dominant colors, file hash for deduplication
+- `Album`: Photo collections with cover image and publish status
 - `Story`: Markdown narratives linked to multiple photos
 - `Blog`: Standalone markdown posts with categories/tags
-- `Comment`: Photo comments with moderation status
+- `Comment`: Photo comments with moderation status (pending/approved/rejected)
+- `Camera` / `Lens`: Equipment entities linked to photos
+- `FriendLink`: Friend/partner site links with avatars
 - `Setting`: Key-value store for app configuration
 
 ## Environment Setup
