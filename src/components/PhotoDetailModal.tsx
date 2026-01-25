@@ -335,13 +335,13 @@ export function PhotoDetailModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex bg-background/95 backdrop-blur-xl"
+          className="fixed inset-0 z-[100] flex bg-background"
         >
           <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
           
           <div className="flex flex-col lg:flex-row w-full h-full overflow-hidden">
             {/* Left: Immersive Photo Viewer */}
-            <div className={`relative bg-black/5 flex flex-col overflow-hidden transition-all duration-300 ${mobilePanelExpanded ? 'h-[35vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
+            <div className={`relative bg-black/5 flex flex-col overflow-hidden ${mobilePanelExpanded ? 'h-[35vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
               <div
                 className="relative flex-1 flex items-center justify-center group overflow-hidden"
                 onTouchStart={handleTouchStart}
@@ -351,14 +351,14 @@ export function PhotoDetailModal({
                 {/* Close Button */}
                 <button
                   onClick={onClose}
-                  className="absolute top-4 left-4 md:top-6 md:left-6 z-50 p-2.5 bg-black/20 hover:bg-black/40 text-white/90 hover:text-white rounded-full backdrop-blur-md transition-all border border-white/10"
+                  className="absolute top-4 left-4 md:top-6 md:left-6 z-50 p-2.5 bg-black/20 hover:bg-black/40 text-white/90 hover:text-white rounded-full border border-white/10"
                 >
                   <X className="w-5 h-5" />
                 </button>
 
                 {/* Photo Counter - Top Right */}
                 {(allPhotos.length > 1 || hasMore) && (
-                  <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 px-3 py-1.5 bg-black/40 backdrop-blur-md text-white/80 font-mono text-xs rounded border border-white/10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-500">
+                  <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 px-3 py-1.5 bg-black/40 text-white/80 font-mono text-xs rounded border border-white/10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
                     {displayIndex} / {displayTotal}
                   </div>
                 )}
@@ -440,11 +440,12 @@ export function PhotoDetailModal({
               <AnimatePresence>
                 {showThumbnails && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, type: "spring", stiffness: 200, damping: 25 }}
-                    className="hidden md:block relative bg-black/10 backdrop-blur-md border-t border-white/5 shrink-0 z-30 overflow-hidden"
+                    initial={{ opacity: 0, scaleY: 0 }}
+                    animate={{ opacity: 1, scaleY: 1 }}
+                    exit={{ opacity: 0, scaleY: 0 }}
+                    style={{ transformOrigin: 'top' }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="hidden md:block relative bg-black/10 border-t border-white/5 shrink-0 z-30 overflow-hidden"
                   >
                      <div
                        ref={thumbnailsScrollRef}
@@ -486,7 +487,7 @@ export function PhotoDetailModal({
               
               {/* Mobile Thumbnails Strip */}
               {allPhotos.length > 1 && (
-                <div className="md:hidden relative bg-black/10 backdrop-blur-md border-t border-white/5 shrink-0 z-30">
+                <div className="md:hidden relative bg-black/10 border-t border-white/5 shrink-0 z-30">
                   <div className="flex items-center gap-1.5 p-2 overflow-x-auto scroll-smooth h-16">
                     {allPhotos.map((p) => (
                       <button
@@ -522,7 +523,7 @@ export function PhotoDetailModal({
             </div>
 
             {/* Right: Info & Story Panel */}
-            <div className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col transition-all duration-300 ${mobilePanelExpanded ? 'flex-1' : 'h-auto lg:h-full'}`}>
+            <div className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col ${mobilePanelExpanded ? 'flex-1' : 'h-auto lg:h-full'}`}>
               {/* Mobile Panel Handle */}
               <button
                 onClick={toggleMobilePanel}

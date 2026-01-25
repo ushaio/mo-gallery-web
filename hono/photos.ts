@@ -79,7 +79,10 @@ photos.get('/photos', async (c) => {
       const photosList = await db.photo.findMany({
         where,
         include: { categories: true, camera: true, lens: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [
+          { takenAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+        ],
       })
 
       const data = photosList.map((p) => ({
@@ -107,7 +110,10 @@ photos.get('/photos', async (c) => {
         include: { categories: true, camera: true, lens: true },
         skip,
         take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [
+          { takenAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+        ],
       })
     ])
 
@@ -140,7 +146,10 @@ photos.get('/photos/featured', async (c) => {
       where: { isFeatured: true },
       include: { categories: true, camera: true, lens: true },
       take: 6,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { takenAt: { sort: 'desc', nulls: 'last' } },
+        { createdAt: 'desc' },
+      ],
     })
 
     const data = photosList.map((p) => ({

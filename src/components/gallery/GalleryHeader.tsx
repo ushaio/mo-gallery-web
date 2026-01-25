@@ -1,9 +1,8 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Search, Circle, CircleOff } from 'lucide-react'
+import { Search, Circle, CircleOff, Maximize2, Minimize2 } from 'lucide-react'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
-import { SiteInput } from '@/components/ui/SiteFormControls'
 
 interface GalleryHeaderProps {
   activeCategory: string
@@ -120,50 +119,54 @@ export function GalleryToolbar({
   t,
 }: GalleryToolbarProps) {
   return (
-    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30 transition-all">
+    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30">
       <div className="px-4 md:px-8 lg:px-12">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-3 h-12">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-4 h-12">
           {/* Search Bar */}
-          <div className="flex-1 min-w-0 max-w-[140px] sm:max-w-xs">
+          <div className="flex-1 min-w-0 max-w-[160px] sm:max-w-xs">
             <div className="relative group">
-              <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
-              <SiteInput
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary" />
+              <input
+                type="text"
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={t('common.search')}
+                className="w-full h-8 pl-8 pr-3 bg-transparent border border-border text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary"
               />
             </div>
           </div>
 
           {/* Controls */}
           <div className="flex items-center gap-1">
-            {/* Immersive Toggle */}
+            {/* Display Options */}
             <button
               onClick={() => onImmersiveChange(!immersive)}
-              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-all ${
+              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
                 immersive
-                  ? 'text-primary bg-primary/8'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
-              title={t('gallery.immersive') || '沉浸模式'}
+              aria-label={t('gallery.immersive') || '沉浸模式'}
+              aria-pressed={immersive}
             >
               {t('gallery.immersive') || '沉浸'}
             </button>
 
-            {/* Grayscale Toggle */}
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
-              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider flex items-center gap-1.5 ${
                 grayscale
-                  ? 'text-primary bg-primary/8'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
+              aria-label="Black & White mode"
+              aria-pressed={grayscale}
             >
-              {grayscale ? <Circle className="w-2.5 h-2.5" /> : <CircleOff className="w-2.5 h-2.5" />}
+              {grayscale ? <Circle className="size-2.5" /> : <CircleOff className="size-2.5" />}
               <span className="hidden sm:inline">B&W</span>
             </button>
 
-            <div className="w-px h-4 bg-border/30 mx-1" />
+            <div className="w-px h-4 bg-border/50 mx-1" />
 
             {/* View Mode Toggle */}
             <ViewModeToggle

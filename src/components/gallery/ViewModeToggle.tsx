@@ -18,19 +18,21 @@ const viewModes: { mode: ViewMode; icon: typeof Grid3X3; labelKey: string }[] = 
 
 export function ViewModeToggle({ viewMode, onViewModeChange, t }: ViewModeToggleProps) {
   return (
-    <div className="flex items-center gap-1 border border-border p-1">
+    <div className="flex items-center border border-border p-0.5" role="radiogroup" aria-label="View mode">
       {viewModes.map(({ mode, icon: Icon, labelKey }) => (
         <button
           key={mode}
           onClick={() => onViewModeChange(mode)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-ui-micro font-bold uppercase tracking-widest transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider ${
             viewMode === mode
               ? 'bg-primary text-primary-foreground'
               : 'text-muted-foreground hover:text-foreground'
           }`}
-          title={t(labelKey)}
+          role="radio"
+          aria-checked={viewMode === mode}
+          aria-label={t(labelKey)}
         >
-          <Icon className="w-3.5 h-3.5" />
+          <Icon className="size-3.5" />
           <span className="hidden sm:inline">{t(labelKey)}</span>
         </button>
       ))}

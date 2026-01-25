@@ -106,12 +106,17 @@ export default function GalleryPage() {
     }
   }, [loadMore, meta?.hasMore, loading, loadingMore])
 
-  // Handle scroll for back to top button
+  // Handle scroll for back to top button - using ref to avoid unnecessary re-renders
+  const showBackToTopRef = useRef(false)
   useEffect(() => {
     const handleScroll = () => {
-      setShowBackToTop(window.scrollY > 400)
+      const shouldShow = window.scrollY > 400
+      if (shouldShow !== showBackToTopRef.current) {
+        showBackToTopRef.current = shouldShow
+        setShowBackToTop(shouldShow)
+      }
     }
-    window.addEventListener('scroll', handleScroll)
+    window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
@@ -223,7 +228,7 @@ export default function GalleryPage() {
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             onClick={scrollToTop}
-            className="fixed bottom-8 right-8 p-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:shadow-xl transition-shadow z-50"
+            className="fixed bottom-8 right-8 p-3 bg-primary text-primary-foreground rounded-full shadow-lg z-40"
             aria-label="Back to top"
           >
             <ArrowUp className="size-6" />
