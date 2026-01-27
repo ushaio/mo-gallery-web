@@ -351,35 +351,79 @@ export function PhotoDetailModal({
                 {/* Close Button */}
                 <button
                   onClick={onClose}
-                  className="absolute top-4 left-4 md:top-6 md:left-6 z-50 p-2.5 bg-black/20 hover:bg-black/40 text-white/90 hover:text-white rounded-full border border-white/10"
+                  className="absolute top-4 left-4 md:top-6 md:left-6 z-50 w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/80 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-105"
                 >
                   <X className="w-5 h-5" />
                 </button>
 
                 {/* Photo Counter - Top Right */}
                 {(allPhotos.length > 1 || hasMore) && (
-                  <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 px-3 py-1.5 bg-black/40 text-white/80 font-mono text-xs rounded border border-white/10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
-                    {displayIndex} / {displayTotal}
+                  <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 px-4 py-2 bg-black/30 backdrop-blur-md text-white/80 font-mono text-xs rounded-full border border-white/10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
+                    <span className="text-white">{displayIndex}</span>
+                    <span className="text-white/50 mx-1">/</span>
+                    <span className="text-white/50">{displayTotal}</span>
                   </div>
                 )}
 
-                {/* Blurred Background */}
-                <div 
-                  className="absolute inset-0 bg-cover bg-center blur-3xl opacity-30 dark:opacity-20 scale-110 z-0 transition-all duration-700"
-                  style={{ backgroundImage: `url(${resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)})` }}
-                />
+                {/* Dual-layer Blurred Background */}
+                <div className="absolute inset-0 z-0 overflow-hidden">
+                  {/* Base layer - deep blur with darkening */}
+                  <div
+                    className="absolute inset-0 bg-cover bg-center blur-3xl scale-125 transition-all duration-1000"
+                    style={{
+                      backgroundImage: `url(${resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)})`,
+                      opacity: 0.4,
+                    }}
+                  />
+                  {/* Top layer - lighter blur with gradient overlay */}
+                  <div
+                    className="absolute inset-0 bg-cover bg-center blur-2xl scale-110 transition-all duration-700"
+                    style={{
+                      backgroundImage: `url(${resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)})`,
+                      opacity: 0.15,
+                    }}
+                  />
+                  {/* Gradient overlays for depth */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/40" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30" />
+                </div>
 
                 <div className="absolute inset-0 flex items-center justify-center p-2 md:p-12 z-10">
                   <div className="relative w-full h-full">
+                    {/* Thumbnail placeholder - shows while full image loads */}
+                    <Image
+                      src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
+                      alt={photo.title}
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 70vw"
+                      className={`object-contain select-none transition-opacity duration-500 ${
+                        fullImageLoaded ? 'opacity-0' : 'opacity-100'
+                      }`}
+                      style={{ filter: 'blur(8px)' }}
+                      draggable={false}
+                      priority
+                    />
+                    {/* Full resolution image */}
                     <Image
                       src={resolveAssetUrl(photo.url, settings?.cdn_domain)}
                       alt={photo.title}
                       fill
                       sizes="(max-width: 1024px) 100vw, 70vw"
-                      className="object-contain shadow-2xl select-none"
+                      className={`object-contain shadow-2xl select-none transition-opacity duration-700 ${
+                        fullImageLoaded ? 'opacity-100' : 'opacity-0'
+                      }`}
                       draggable={false}
                       priority
+                      onLoad={() => setFullImageLoaded(true)}
                     />
+                    {/* Loading indicator */}
+                    {!fullImageLoaded && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -389,52 +433,63 @@ export function PhotoDetailModal({
                     <button
                       onClick={handlePrevious}
                       disabled={!hasPrevious}
-                      className="hidden md:block absolute left-4 top-1/2 -translate-y-1/2 p-4 text-foreground/20 hover:text-foreground disabled:opacity-0 transition-all z-20"
+                      className="hidden md:flex absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
                     >
-                      <ChevronLeft className="w-12 h-12" />
+                      <ChevronLeft className="w-7 h-7 transition-transform group-hover:-translate-x-0.5" />
                     </button>
                     <button
                       onClick={handleNext}
                       disabled={!hasNext || isLoadingMore}
-                      className="hidden md:block absolute right-4 top-1/2 -translate-y-1/2 p-4 text-foreground/20 hover:text-foreground disabled:opacity-0 transition-all z-20"
+                      className="hidden md:flex absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
                     >
                       {isLoadingMore ? (
-                        <Loader2 className="w-12 h-12 animate-spin" />
+                        <Loader2 className="w-6 h-6 animate-spin" />
                       ) : (
-                        <ChevronRight className="w-12 h-12" />
+                        <ChevronRight className="w-7 h-7 transition-transform group-hover:translate-x-0.5" />
                       )}
                     </button>
                   </>
                 )}
                 
-                {/* Bottom Meta Overlay */}
-                <div className={`absolute bottom-0 left-0 right-0 p-4 md:p-8 bg-gradient-to-t from-black/50 to-transparent text-white transition-opacity duration-500 pointer-events-none z-10 ${mobilePanelExpanded ? 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}>
+                {/* Bottom Info Card */}
+                <div className={`absolute bottom-0 left-0 right-0 p-4 md:p-8 transition-opacity duration-500 pointer-events-none z-10 ${mobilePanelExpanded ? 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}>
                   <div className="max-w-screen-2xl mx-auto">
-                    <div className="space-y-1 md:space-y-2">
-                      <p className="font-serif text-lg md:text-3xl line-clamp-1">{photo.title}</p>
-                      {photo.takenAt && (
-                        <p className="font-mono text-xs opacity-70 uppercase tracking-widest">
-                          {user?.isAdmin
-                            ? new Date(photo.takenAt).toLocaleString(locale, {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : new Date(photo.takenAt).toLocaleDateString(locale, { dateStyle: 'long' })
-                          }
-                        </p>
-                      )}
+                    <div className="inline-flex flex-col gap-2 p-4 md:p-5 bg-black/40 backdrop-blur-xl rounded-lg border border-white/10">
+                      <p className="font-serif text-lg md:text-2xl text-white leading-tight">{photo.title}</p>
+                      <div className="flex items-center gap-4 text-white/60">
+                        {photo.takenAt && (
+                          <span className="font-mono text-xs uppercase tracking-wider">
+                            {user?.isAdmin
+                              ? new Date(photo.takenAt).toLocaleString(locale, {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : new Date(photo.takenAt).toLocaleDateString(locale, { dateStyle: 'long' })
+                            }
+                          </span>
+                        )}
+                        {photo.cameraModel && (
+                          <>
+                            <span className="w-px h-3 bg-white/20" />
+                            <span className="font-mono text-xs uppercase tracking-wider flex items-center gap-1.5">
+                              <Camera className="w-3 h-3" />
+                              {photo.cameraModel}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Thumbnail Toggle Button - Desktop only */}
-                <div className="hidden md:block absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                <div className="hidden md:block absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                    <button
                     onClick={toggleThumbnails}
-                    className={`p-2 bg-black/40 hover:bg-black/60 text-white/90 hover:text-white rounded backdrop-blur-md transition-all border border-white/10 ${showThumbnails ? 'bg-primary/40 border-primary/40' : ''}`}
+                    className={`w-10 h-10 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 ${showThumbnails ? 'bg-white/20 border-white/30' : ''}`}
                     title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
                   >
                     {showThumbnails ? <ChevronDown className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
@@ -446,12 +501,11 @@ export function PhotoDetailModal({
               <AnimatePresence>
                 {showThumbnails && (
                   <motion.div
-                    initial={{ opacity: 0, scaleY: 0 }}
-                    animate={{ opacity: 1, scaleY: 1 }}
-                    exit={{ opacity: 0, scaleY: 0 }}
-                    style={{ transformOrigin: 'top' }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="hidden md:block relative bg-black/10 border-t border-white/5 shrink-0 z-30 overflow-hidden"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    className="hidden md:block relative bg-black/20 backdrop-blur-sm border-t border-white/5 shrink-0 z-30 overflow-hidden"
                   >
                      <div
                        ref={thumbnailsScrollRef}
@@ -461,10 +515,10 @@ export function PhotoDetailModal({
                          <button
                            key={p.id}
                            onClick={() => onPhotoChange?.(p)}
-                           className={`relative flex-shrink-0 h-full aspect-square rounded overflow-hidden transition-all group/thumb ${
+                           className={`relative flex-shrink-0 h-full aspect-square rounded-lg overflow-hidden transition-all duration-300 group/thumb ${
                              p.id === photo.id
-                               ? 'ring-2 ring-primary scale-95 opacity-100'
-                               : 'opacity-50 hover:opacity-100 hover:scale-105'
+                               ? 'ring-2 ring-white/80 scale-95 opacity-100'
+                               : 'opacity-40 hover:opacity-90 hover:scale-105'
                            }`}
                          >
                            <Image
@@ -478,11 +532,11 @@ export function PhotoDetailModal({
                       ))}
                       {/* Load More Indicator in Thumbnails */}
                       {hasMore && (
-                        <div className="flex-shrink-0 h-full bg-black/20 rounded flex items-center justify-center px-4">
+                        <div className="flex-shrink-0 h-full aspect-square bg-white/5 rounded-lg flex items-center justify-center border border-white/10">
                            {isLoadingMore ? (
                              <Loader2 className="w-4 h-4 animate-spin text-white/50" />
                            ) : (
-                             <span className="text-ui-micro text-white/50">...</span>
+                             <span className="text-ui-micro text-white/40">+{(totalPhotos ?? 0) - allPhotos.length}</span>
                            )}
                         </div>
                       )}
@@ -493,16 +547,16 @@ export function PhotoDetailModal({
               
               {/* Mobile Thumbnails Strip */}
               {allPhotos.length > 1 && (
-                <div className="md:hidden relative bg-black/10 border-t border-white/5 shrink-0 z-30">
+                <div className="md:hidden relative bg-black/20 backdrop-blur-sm border-t border-white/5 shrink-0 z-30">
                   <div className="flex items-center gap-1.5 p-2 overflow-x-auto scroll-smooth h-16">
                     {allPhotos.map((p) => (
                       <button
                         key={p.id}
                         onClick={() => onPhotoChange?.(p)}
-                        className={`relative flex-shrink-0 h-full aspect-square rounded overflow-hidden transition-all ${
+                        className={`relative flex-shrink-0 h-full aspect-square rounded-md overflow-hidden transition-all duration-300 ${
                           p.id === photo.id
-                            ? 'ring-2 ring-primary opacity-100'
-                            : 'opacity-50'
+                            ? 'ring-2 ring-white/80 opacity-100'
+                            : 'opacity-40'
                         }`}
                       >
                         <Image
@@ -515,11 +569,11 @@ export function PhotoDetailModal({
                       </button>
                     ))}
                     {hasMore && (
-                      <div className="flex-shrink-0 h-full aspect-square bg-black/20 rounded flex items-center justify-center">
+                      <div className="flex-shrink-0 h-full aspect-square bg-white/5 rounded-md flex items-center justify-center border border-white/10">
                         {isLoadingMore ? (
                           <Loader2 className="w-3 h-3 animate-spin text-white/50" />
                         ) : (
-                          <span className="text-[10px] text-white/50">...</span>
+                          <span className="text-[10px] text-white/40">+</span>
                         )}
                       </div>
                     )}
@@ -538,9 +592,9 @@ export function PhotoDetailModal({
                 {mobilePanelExpanded ? <ChevronDown className="w-5 h-5 text-muted-foreground" /> : <ChevronUp className="w-5 h-5 text-muted-foreground" />}
               </button>
               
-              {/* Tabs */}
+              {/* Tabs with Sliding Indicator */}
               {!hideStoryTab && (
-                <div className="flex border-b border-border">
+                <div className="relative flex border-b border-border">
                   {[
                     { id: 'story', icon: BookOpen, label: t('gallery.story') },
                     { id: 'info', icon: Info, label: t('gallery.info') }
@@ -548,108 +602,142 @@ export function PhotoDetailModal({
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as TabType)}
-                      className={`flex-1 flex items-center justify-center gap-2 py-5 text-ui-xs font-bold uppercase tracking-[0.2em] transition-all
-                        ${activeTab === tab.id ? 'text-primary bg-primary/5' : 'text-muted-foreground hover:bg-muted/30'}
+                      className={`relative flex-1 flex items-center justify-center gap-2 py-4 text-ui-xs font-bold uppercase tracking-[0.2em] transition-colors duration-200
+                        ${activeTab === tab.id ? 'text-primary' : 'text-muted-foreground hover:text-foreground/70'}
                       `}
                     >
                       <tab.icon className="w-3.5 h-3.5" />
                       {tab.label}
+                      {activeTab === tab.id && (
+                        <motion.div
+                          layoutId="tab-indicator"
+                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+                          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                        />
+                      )}
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* Content Area */}
+              {/* Content Area with Animated Transitions */}
               <div className="flex-1 overflow-hidden relative">
-                {/* Info Tab */}
-                <div className={`absolute inset-0 overflow-y-auto custom-scrollbar ${activeTab === 'info' ? '' : 'hidden'}`}>
-                  <div className="p-8 md:p-12 space-y-12">
-                      {/* Header Info */}
-                      <div className="space-y-6 text-center">
-                        <div className="inline-flex flex-wrap justify-center gap-2">
-                          {photo.isFeatured && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 text-ui-micro font-bold uppercase tracking-widest border border-amber-500/20">
-                              <Star className="w-3 h-3 fill-current" />
-                              {t('gallery.featured')}
-                            </span>
-                          )}
-                          {photo.category && photo.category.split(',').filter(cat => cat.trim()).map(cat => (
-                            <span key={cat} className="px-3 py-1 bg-primary/5 text-primary text-ui-micro font-bold uppercase tracking-widest border border-primary/20">
-                              {cat}
-                            </span>
-                          ))}
-                        </div>
-                        <h2 className="font-serif text-3xl md:text-4xl text-foreground">{photo.title}</h2>
-                      </div>
-
-                      <div className="w-12 h-px bg-border mx-auto" />
-
-                      {/* Technical Grid */}
-                      <div className="grid grid-cols-2 gap-x-8 gap-y-8">
-                        {exifItems.map((item, i) => (
-                          <div key={i} className="space-y-2">
-                            <div className="flex items-center gap-2 text-muted-foreground/60">
-                              <item.icon className="w-3.5 h-3.5" />
-                              <span className="text-ui-micro font-bold uppercase tracking-[0.2em]">{item.label}</span>
-                            </div>
-                            <p className="font-mono text-sm border-b border-border/50 pb-2">{item.value}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* File Details */}
-                      <div className="p-6 bg-muted/10 border border-border/50 space-y-6">
-                        <h3 className="text-ui-xs font-bold uppercase tracking-[0.2em] text-muted-foreground text-center">
-                          {t('gallery.file_details')}
-                        </h3>
-                        <div className="flex justify-between items-center font-mono text-xs">
-                          <span className="text-muted-foreground">{t('gallery.dimensions')}</span>
-                          <span>{photo.width} × {photo.height}</span>
-                        </div>
-                        <div className="flex justify-between items-center font-mono text-xs">
-                          <span className="text-muted-foreground">{t('gallery.size')}</span>
-                          <span>{formatFileSize(photo.size)}</span>
-                        </div>
-                      </div>
-
-                      {/* Colors */}
-                      {dominantColors.length > 0 && (
+                <AnimatePresence mode="wait">
+                  {activeTab === 'info' && (
+                    <motion.div
+                      key="info-tab"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="absolute inset-0 overflow-y-auto custom-scrollbar"
+                    >
+                      <div className="p-6 md:p-8 space-y-8">
+                        {/* Header Info */}
                         <div className="space-y-4 text-center">
-                          <h3 className="text-ui-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                            {t('gallery.palette')}
-                          </h3>
-                          <div className="flex justify-center flex-wrap gap-4">
-                            {dominantColors.map((color, i) => (
-                              <button
-                                key={i}
-                                onClick={() => handleCopyColor(color)}
-                                className="group relative w-10 h-10 rounded-full border border-border/50 shadow-sm transition-transform hover:scale-110"
-                                style={{ backgroundColor: color }}
-                              >
-                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background px-1 border border-border">
-                                  {color}
-                                </span>
-                              </button>
+                          <div className="inline-flex flex-wrap justify-center gap-2">
+                            {photo.isFeatured && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 text-ui-micro font-bold uppercase tracking-widest border border-amber-500/20">
+                                <Star className="w-3 h-3 fill-current" />
+                                {t('gallery.featured')}
+                              </span>
+                            )}
+                            {photo.category && photo.category.split(',').filter(cat => cat.trim()).map(cat => (
+                              <span key={cat} className="px-3 py-1 bg-primary/5 text-primary text-ui-micro font-bold uppercase tracking-widest border border-primary/20">
+                                {cat}
+                              </span>
                             ))}
                           </div>
+                          <h2 className="font-serif text-2xl md:text-3xl text-foreground leading-tight">{photo.title}</h2>
                         </div>
-                      )}
-                  </div>
-                </div>
-                {/* Story Tab - Always mounted, hidden when not active */}
-                {!hideStoryTab && (
-                  <div className={`absolute inset-0 overflow-y-auto custom-scrollbar ${activeTab === 'story' ? '' : 'hidden'}`}>
-                    <StoryTab
-                      photoId={photo.id}
-                      currentPhoto={photo}
-                      onPhotoChange={onPhotoChange}
-                      cachedStory={storyCache?.story}
-                      cachedComments={storyCache?.comments}
-                      isLoading={storyLoading}
-                      onCommentsUpdate={updateCommentsCache}
-                    />
-                  </div>
-                )}
+
+                        <div className="w-10 h-px bg-border mx-auto" />
+
+                        {/* Technical Grid */}
+                        {exifItems.length > 0 && (
+                          <div className="space-y-4">
+                            <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-2">
+                              <Camera className="w-3 h-3" />
+                              {t('gallery.equipment')}
+                            </h3>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+                              {exifItems.map((item, i) => (
+                                <div key={i} className="space-y-1.5">
+                                  <div className="flex items-center gap-1.5 text-muted-foreground/50">
+                                    <item.icon className="w-3 h-3" />
+                                    <span className="text-ui-micro font-medium uppercase tracking-wider">{item.label}</span>
+                                  </div>
+                                  <p className="font-mono text-ui-xs text-foreground/90">{item.value}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* File Details */}
+                        <div className="p-5 bg-muted/5 border border-border/30 space-y-4">
+                          <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+                            {t('gallery.file_details')}
+                          </h3>
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-center font-mono text-ui-xs">
+                              <span className="text-muted-foreground">{t('gallery.dimensions')}</span>
+                              <span className="text-foreground/90">{photo.width} × {photo.height}</span>
+                            </div>
+                            <div className="flex justify-between items-center font-mono text-ui-xs">
+                              <span className="text-muted-foreground">{t('gallery.size')}</span>
+                              <span className="text-foreground/90">{formatFileSize(photo.size)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Colors */}
+                        {dominantColors.length > 0 && (
+                          <div className="space-y-4">
+                            <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-muted-foreground/60 text-center">
+                              {t('gallery.palette')}
+                            </h3>
+                            <div className="flex justify-center flex-wrap gap-3">
+                              {dominantColors.map((color, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => handleCopyColor(color)}
+                                  className="group relative w-9 h-9 rounded-full border border-border/30 shadow-sm transition-all duration-200 hover:scale-125 hover:shadow-md"
+                                  style={{ backgroundColor: color }}
+                                  title={color}
+                                >
+                                  <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background/95 backdrop-blur-sm px-1.5 py-0.5 border border-border/50 shadow-sm">
+                                    {color}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                  {activeTab === 'story' && !hideStoryTab && (
+                    <motion.div
+                      key="story-tab"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.2, ease: 'easeOut' }}
+                      className="absolute inset-0 overflow-y-auto custom-scrollbar"
+                    >
+                      <StoryTab
+                        photoId={photo.id}
+                        currentPhoto={photo}
+                        onPhotoChange={onPhotoChange}
+                        cachedStory={storyCache?.story}
+                        cachedComments={storyCache?.comments}
+                        isLoading={storyLoading}
+                        onCommentsUpdate={updateCommentsCache}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Action Bar */}
