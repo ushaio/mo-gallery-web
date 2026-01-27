@@ -1,10 +1,94 @@
 'use client'
 
-import { useMemo, useState, useRef, useCallback } from 'react'
+import { useMemo, useState, useRef, useCallback, useEffect, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Calendar, ChevronRight, X } from 'lucide-react'
 import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
+
+// Unified photo item with IntersectionObserver-based entrance animation
+interface TimelinePhotoItemProps {
+  photo: PhotoDto
+  index: number
+  settings: PublicSettingsDto | null
+  grayscale: boolean
+  onClick: () => void
+}
+
+const TimelinePhotoItem = memo(function TimelinePhotoItem({ photo, index, settings, grayscale, onClick }: TimelinePhotoItemProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.1, rootMargin: '50px' }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Stagger delay - creates wave effect across grid
+  const staggerDelay = (index % 6) * 0.06
+
+  return (
+    <div
+      ref={ref}
+      className="group relative aspect-square cursor-pointer overflow-hidden bg-muted"
+      onClick={onClick}
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0) scale(1)' : 'translateY(24px) scale(0.96)',
+        transition: `opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s`,
+      }}
+    >
+      <img
+        src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
+        alt={photo.title}
+        className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
+          grayscale ? 'grayscale group-hover:grayscale-0' : ''
+        }`}
+      />
+
+      {/* Hover Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
+        <p className="text-ui-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
+          {photo.category.split(',')[0]}
+        </p>
+        <h3 className="text-lg font-serif text-white leading-tight line-clamp-1">
+          {photo.title}
+        </h3>
+      </div>
+
+      {/* Time Badge */}
+      {photo.takenAt && (
+        <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/70 bg-black/40 px-1.5 py-0.5">
+          {new Date(photo.takenAt).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          })}
+        </div>
+      )}
+
+      {/* No date indicator */}
+      {!photo.takenAt && (
+        <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/50 bg-black/30 px-1.5 py-0.5">
+          ?
+        </div>
+      )}
+    </div>
+  )
+})
 
 interface TimelineViewProps {
   photos: PhotoDto[]
@@ -316,17 +400,12 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
       {/* Timeline Line - Left side */}
       <div className="absolute left-4 md:left-8 top-0 bottom-0 w-px bg-border" />
 
-      <AnimatePresence>
-        {groupedByDay.map((dayGroup, dayIndex) => (
-          <motion.div
-            key={dayGroup.dateKey}
-            ref={(el) => setDayRef(dayGroup.dateKey, el)}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.4, delay: Math.min(dayIndex * 0.05, 0.5) }}
-            className="relative"
-          >
+      {groupedByDay.map((dayGroup, dayIndex) => (
+        <div
+          key={dayGroup.dateKey}
+          ref={(el) => setDayRef(dayGroup.dateKey, el)}
+          className="relative"
+        >
             {/* Sticky Date Header */}
             <div className="sticky top-[116px] z-20 -ml-1 md:-ml-0">
               <div className="relative py-3 bg-background/95 backdrop-blur-sm">
@@ -375,56 +454,19 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
             <div className="ml-10 md:ml-16 pb-8 pt-2">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
                 {dayGroup.photos.map((photo, index) => (
-                  <motion.div
+                  <TimelinePhotoItem
                     key={photo.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3, delay: Math.min(index * 0.02, 0.3) }}
-                    className="group relative aspect-square cursor-pointer overflow-hidden bg-muted"
+                    photo={photo}
+                    index={index}
+                    settings={settings}
+                    grayscale={grayscale}
                     onClick={() => onPhotoClick(photo)}
-                  >
-                    <img
-                      src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
-                      alt={photo.title}
-                      className={`w-full h-full object-cover transition-all duration-500 ease-out group-hover:scale-105 ${
-                        grayscale ? 'grayscale group-hover:grayscale-0' : ''
-                      }`}
-                    />
-
-                    {/* Hover Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
-                      <p className="text-ui-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
-                        {photo.category.split(',')[0]}
-                      </p>
-                      <h3 className="text-lg font-serif text-white leading-tight line-clamp-1">
-                        {photo.title}
-                      </h3>
-                    </div>
-
-                    {/* Time Badge */}
-                    {photo.takenAt && (
-                      <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/70 bg-black/40 px-1.5 py-0.5">
-                        {new Date(photo.takenAt).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: false
-                        })}
-                      </div>
-                    )}
-
-                    {/* No date indicator */}
-                    {!photo.takenAt && (
-                      <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/50 bg-black/30 px-1.5 py-0.5">
-                        ?
-                      </div>
-                    )}
-                  </motion.div>
+                  />
                 ))}
               </div>
             </div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
+        </div>
+      ))}
 
       {/* Empty State */}
       {groupedByDay.length === 0 && (

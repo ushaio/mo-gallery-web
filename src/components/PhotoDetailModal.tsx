@@ -363,7 +363,13 @@ export function PhotoDetailModal({
                   </div>
                 )}
 
-                <div className="absolute inset-0 flex items-center justify-center p-2 md:p-12">
+                {/* Blurred Background */}
+                <div 
+                  className="absolute inset-0 bg-cover bg-center blur-3xl opacity-30 dark:opacity-20 scale-110 z-0 transition-all duration-700"
+                  style={{ backgroundImage: `url(${resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)})` }}
+                />
+
+                <div className="absolute inset-0 flex items-center justify-center p-2 md:p-12 z-10">
                   <div className="relative w-full h-full">
                     <Image
                       src={resolveAssetUrl(photo.url, settings?.cdn_domain)}

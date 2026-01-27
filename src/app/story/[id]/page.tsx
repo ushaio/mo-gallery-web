@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, useScroll, useTransform } from 'framer-motion'
-import { ArrowLeft, Calendar, Clock } from 'lucide-react'
+import { ArrowLeft, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { getStory, type StoryDto, type PhotoDto, resolveAssetUrl } from '@/lib/api'
@@ -153,64 +153,92 @@ export default function StoryDetailPage() {
         </div>
       </section>
 
-      {/* Split Layout: Article Left, Photos Right (desktop) / Article then Photos (mobile) */}
-      <div className="flex flex-col lg:flex-row">
-        {/* Left: Article Content */}
-        <div className="w-full lg:w-1/2 xl:w-[45%] lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
-          <div className="px-6 md:px-12 lg:px-16 py-12 lg:py-16">
-            {/* Meta Info */}
-            <div className="mb-8 pb-6 border-b border-border/30">
-              <div className="flex items-center gap-3 text-primary/60 mb-3">
-                <span className="text-xs font-mono">01</span>
-                <div className="h-px flex-1 bg-border/40" />
-              </div>
-              <p className="text-lg md:text-xl font-serif italic text-muted-foreground leading-relaxed">
-                {story.photos.length} visual records from this journey.
-              </p>
+      {/* Main Content Layout */}
+      <div className="container mx-auto px-4 md:px-6 lg:px-8 py-12">
+        <div className="max-w-4xl mx-auto">
+          {/* Meta Info */}
+          <div className="mb-12 pb-8 border-b border-border/30 text-center">
+            <p className="text-xl md:text-2xl font-serif italic text-muted-foreground leading-relaxed">
+              {story.photos.length} visual records from this journey.
+            </p>
+          </div>
+
+          {/* Article */}
+          <article className="milkdown-article prose prose-lg dark:prose-invert max-w-none mb-24">
+            <MilkdownViewer content={story.content} />
+          </article>
+        </div>
+
+        {/* Gallery Section */}
+        <div className="max-w-6xl mx-auto mb-24">
+          <div className="mb-12 flex items-end justify-between border-b border-border/30 pb-4">
+            <div>
+              <span className="text-xs font-mono text-primary uppercase tracking-widest">Visual Archive</span>
+              <h2 className="text-3xl md:text-4xl font-serif font-light tracking-tight mt-2">Gallery</h2>
             </div>
+            <span className="text-sm text-muted-foreground font-mono">{story.photos.length} photos</span>
+          </div>
 
-            {/* Article */}
-            <article className="milkdown-article prose prose-lg dark:prose-invert max-w-none">
-              <MilkdownViewer content={story.content} />
-            </article>
+          {story.photos.length > 0 && (
+            <div className="space-y-8">
+              {/* Featured Photo */}
+              <div
+                className="relative h-[50vh] md:h-[70vh] w-full overflow-hidden bg-muted/20 rounded-sm group flex items-center justify-center"
+              >
+                {/* Blurred Background */}
+                <div 
+                  className="absolute inset-0 bg-cover bg-center blur-3xl opacity-30 dark:opacity-20 scale-110"
+                  style={{ backgroundImage: `url(${getPhotoUrl(story.photos[activePhotoIndex], true)})` }}
+                />
 
-            {/* Mobile Photo Gallery - after article content */}
-            <div className="lg:hidden mt-12 pt-8 border-t border-border/30">
-              <div className="mb-4 flex items-end justify-between">
-                <div>
-                  <span className="text-[10px] font-mono text-primary uppercase tracking-widest">Visual Archive</span>
-                  <h2 className="text-xl font-serif font-light tracking-tight mt-1 text-balance">Gallery</h2>
+                {/* Main Image */}
+                <img
+                  src={getPhotoUrl(story.photos[activePhotoIndex])}
+                  alt={story.photos[activePhotoIndex].title}
+                  className="relative max-w-full max-h-full object-contain z-10 cursor-zoom-in transition-transform duration-300"
+                  onClick={() => setSelectedPhoto(story.photos[activePhotoIndex])}
+                />
+
+                {/* Navigation Buttons */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setActivePhotoIndex(prev => (prev > 0 ? prev - 1 : story.photos.length - 1))
+                  }}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/70 hover:text-white backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <ChevronLeft className="size-6" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setActivePhotoIndex(prev => (prev < story.photos.length - 1 ? prev + 1 : 0))
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 rounded-full bg-black/20 hover:bg-black/40 text-white/70 hover:text-white backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <ChevronRight className="size-6" />
+                </button>
+
+                {/* Info Overlay */}
+                <div className="absolute bottom-6 left-6 right-6 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                  <span className="text-white text-lg font-medium drop-shadow-md">
+                    {story.photos[activePhotoIndex].title}
+                  </span>
+                  <span className="text-white/80 text-sm font-mono bg-black/50 px-2 py-1 rounded">
+                    {activePhotoIndex + 1} / {story.photos.length}
+                  </span>
                 </div>
-                <span className="text-xs text-muted-foreground font-mono">{story.photos.length} photos</span>
               </div>
 
-              {story.photos.length > 0 && (
-                <div
-                  className="relative h-[40vh] mb-3 overflow-hidden bg-black flex items-center justify-center cursor-pointer"
-                  onClick={() => setSelectedPhoto(story.photos[activePhotoIndex])}
-                >
-                  <img
-                    src={getPhotoUrl(story.photos[activePhotoIndex])}
-                    alt={story.photos[activePhotoIndex].title}
-                    className="max-w-full max-h-full object-contain"
-                  />
-                  <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
-                    <span className="text-white text-xs font-medium drop-shadow-lg">
-                      {story.photos[activePhotoIndex].title}
-                    </span>
-                    <span className="text-white/70 text-[10px] font-mono">
-                      {activePhotoIndex + 1} / {story.photos.length}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {/* Thumbnail Grid */}
+              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {story.photos.map((photo, index) => (
                   <div
                     key={photo.id}
-                    className={`flex-shrink-0 w-16 h-16 overflow-hidden bg-muted cursor-pointer ${
-                      index === activePhotoIndex ? 'ring-2 ring-primary' : ''
+                    className={`relative aspect-square overflow-hidden bg-muted cursor-pointer transition-all duration-300 ${
+                      index === activePhotoIndex
+                        ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-[1.02]'
+                        : 'hover:opacity-80 hover:scale-[1.02]'
                     }`}
                     onClick={() => setActivePhotoIndex(index)}
                     onDoubleClick={() => setSelectedPhoto(photo)}
@@ -218,95 +246,44 @@ export default function StoryDetailPage() {
                     <img
                       src={getPhotoUrl(photo, true)}
                       alt={photo.title}
-                      className="w-full h-full object-cover"
+                      className={`w-full h-full object-cover transition-all duration-500 ${
+                        index === activePhotoIndex ? 'scale-110 grayscale-0' : 'grayscale-[30%] hover:grayscale-0'
+                      }`}
                     />
+                    {/* Active Indicator Overlay */}
+                    {index !== activePhotoIndex && (
+                      <div className="absolute inset-0 bg-black/10 hover:bg-transparent transition-colors" />
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Comments */}
-            {targetPhotoId && (
-              <div className="mt-12 pt-8 border-t border-border/30">
-                <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} />
-              </div>
-            )}
-
-            {/* Footer Nav */}
-            <div className="mt-12 pt-8 border-t border-border/30">
-              <Link
-                href="/story"
-                className="group inline-flex items-center gap-4 text-muted-foreground hover:text-primary transition-colors"
-              >
-                <ArrowLeft className="size-4" />
-                <span className="text-sm font-bold uppercase tracking-widest">Back to Journal</span>
-              </Link>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Right: Photo Gallery (desktop only) */}
-        <div className="hidden lg:block w-full lg:w-1/2 xl:w-[55%] bg-muted/20 lg:border-l border-border/20">
-          <div className="p-4 md:p-6 lg:p-8">
-            {/* Gallery Header */}
-            <div className="mb-6 flex items-end justify-between">
-              <div>
-                <span className="text-[10px] font-mono text-primary uppercase tracking-widest">Visual Archive</span>
-                <h2 className="text-2xl md:text-3xl font-serif font-light tracking-tight mt-1 text-balance">Gallery</h2>
-              </div>
-              <span className="text-xs text-muted-foreground font-mono">{story.photos.length} photos</span>
+        <div className="max-w-4xl mx-auto">
+          {/* Comments */}
+          {targetPhotoId && (
+            <div className="mb-16 pt-12 border-t border-border/30">
+               <div className="mb-8">
+                  <span className="text-xs font-mono text-primary uppercase tracking-widest">Discussion</span>
+                  <h2 className="text-2xl font-serif font-light tracking-tight mt-2">Comments</h2>
+               </div>
+              <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} />
             </div>
+          )}
 
-            {/* Featured Photo */}
-            {story.photos.length > 0 && (
-              <div
-                className="relative h-[50vh] lg:h-[60vh] mb-4 overflow-hidden bg-black flex items-center justify-center cursor-pointer group"
-                onClick={() => setSelectedPhoto(story.photos[activePhotoIndex])}
-              >
-                <img
-                  src={getPhotoUrl(story.photos[activePhotoIndex])}
-                  alt={story.photos[activePhotoIndex].title}
-                  className="max-w-full max-h-full object-contain transition-transform duration-700 group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-white text-sm font-medium drop-shadow-lg">
-                    {story.photos[activePhotoIndex].title}
-                  </span>
-                  <span className="text-white/70 text-xs font-mono">
-                    {activePhotoIndex + 1} / {story.photos.length}
-                  </span>
-                </div>
+          {/* Footer Nav */}
+          <div className="flex justify-center pt-12 border-t border-border/30">
+            <Link
+              href="/story"
+              className="group flex flex-col items-center gap-4 text-muted-foreground hover:text-primary transition-colors"
+            >
+              <div className="size-12 rounded-full border border-border flex items-center justify-center group-hover:border-primary transition-colors">
+                <ArrowLeft className="size-5" />
               </div>
-            )}
-
-            {/* Thumbnail Grid */}
-            <div className="grid grid-cols-4 xl:grid-cols-5 gap-2">
-              {story.photos.map((photo, index) => (
-                <div
-                  key={photo.id}
-                  className={`relative aspect-square overflow-hidden bg-muted cursor-pointer group transition-all duration-200 ${
-                    index === activePhotoIndex
-                      ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-                      : 'hover:ring-1 hover:ring-border'
-                  }`}
-                  onClick={() => setActivePhotoIndex(index)}
-                  onDoubleClick={() => setSelectedPhoto(photo)}
-                >
-                  <img
-                    src={getPhotoUrl(photo, true)}
-                    alt={photo.title}
-                    className={`w-full h-full object-cover transition-all duration-200 ${
-                      index === activePhotoIndex ? 'scale-100' : 'grayscale-[30%] group-hover:grayscale-0'
-                    }`}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <p className="mt-4 text-[10px] text-muted-foreground text-center font-mono uppercase tracking-wider">
-              Click to preview · Double-click to view full
-            </p>
+              <span className="text-sm font-bold uppercase tracking-widest">Back to Journal</span>
+            </Link>
           </div>
         </div>
       </div>

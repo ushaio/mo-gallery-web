@@ -45,3 +45,5 @@ pnpm-lock.yaml
 public/uploads
 .claude
 .spec-workflow
+.ace-tool/
+.env.local
