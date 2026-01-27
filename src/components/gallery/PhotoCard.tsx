@@ -1,9 +1,10 @@
 'use client'
 
-import { memo, useRef, useEffect, useState } from 'react'
+import { memo } from 'react'
 import Image from 'next/image'
 import { PhotoDto, resolveAssetUrl } from '@/lib/api'
 import { PublicSettingsDto } from '@/lib/api'
+import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
 
 interface PhotoCardProps {
   photo: PhotoDto
@@ -11,44 +12,19 @@ interface PhotoCardProps {
   settings: PublicSettingsDto | null
   grayscale: boolean
   immersive?: boolean
+  columnCount?: number
   onClick: () => void
 }
 
-export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grayscale, immersive = false, onClick }: PhotoCardProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.1, rootMargin: '50px' }
-    )
-
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  // Stagger delay - creates wave effect across columns
-  const staggerDelay = (index % 6) * 0.06
+export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grayscale, immersive = false, columnCount = 5, onClick }: PhotoCardProps) {
+  const { ref, style } = useEntranceAnimation({ index, columnCount })
 
   return (
     <div
       ref={ref}
       className={`break-inside-avoid group cursor-pointer ${immersive ? 'mb-1' : 'mb-12'}`}
       onClick={onClick}
-      style={{
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0) scale(1)' : 'translateY(24px) scale(0.96)',
-        transition: `opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s`,
-      }}
+      style={style}
     >
       <div
         className={`relative overflow-hidden ${immersive ? '' : 'mb-4'}`}

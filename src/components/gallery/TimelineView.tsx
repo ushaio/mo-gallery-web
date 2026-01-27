@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useState, useRef, useCallback, useEffect, memo } from 'react'
+import { useMemo, useState, useRef, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Calendar, ChevronRight, X } from 'lucide-react'
 import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
 
 // Unified photo item with IntersectionObserver-based entrance animation
 interface TimelinePhotoItemProps {
@@ -16,40 +17,14 @@ interface TimelinePhotoItemProps {
 }
 
 const TimelinePhotoItem = memo(function TimelinePhotoItem({ photo, index, settings, grayscale, onClick }: TimelinePhotoItemProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.1, rootMargin: '50px' }
-    )
-
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  // Stagger delay - creates wave effect across grid
-  const staggerDelay = (index % 6) * 0.06
+  const { ref, style } = useEntranceAnimation({ index, columnCount: 6 })
 
   return (
     <div
       ref={ref}
       className="group relative aspect-square cursor-pointer overflow-hidden bg-muted"
       onClick={onClick}
-      style={{
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0) scale(1)' : 'translateY(24px) scale(0.96)',
-        transition: `opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s`,
-      }}
+      style={style}
     >
       <img
         src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}

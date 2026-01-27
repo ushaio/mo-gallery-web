@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useEffect, useState, memo } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
+import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
 
 interface GridViewProps {
   photos: PhotoDto[]
@@ -17,44 +18,19 @@ interface GridItemProps {
   settings: PublicSettingsDto | null
   grayscale: boolean
   immersive: boolean
+  columnCount: number
   onClick: () => void
 }
 
-const GridItem = memo(function GridItem({ photo, index, settings, grayscale, immersive, onClick }: GridItemProps) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.1, rootMargin: '50px' }
-    )
-
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  // Stagger delay based on grid position - creates wave effect
-  const staggerDelay = (index % 6) * 0.06
+const GridItem = memo(function GridItem({ photo, index, settings, grayscale, immersive, columnCount, onClick }: GridItemProps) {
+  const { ref, style } = useEntranceAnimation({ index, columnCount })
 
   return (
     <div
       ref={ref}
       className="group cursor-pointer"
       onClick={onClick}
-      style={{
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0) scale(1)' : 'translateY(24px) scale(0.96)',
-        transition: `opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${staggerDelay}s`,
-      }}
+      style={style}
     >
       <div className={`relative aspect-square overflow-hidden bg-muted ${immersive ? '' : 'mb-3'}`}>
         <img
@@ -90,6 +66,25 @@ const GridItem = memo(function GridItem({ photo, index, settings, grayscale, imm
 })
 
 export function GridView({ photos, settings, grayscale, immersive = false, onPhotoClick }: GridViewProps) {
+  const [columnCount, setColumnCount] = useState(2)
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window !== 'undefined') {
+        const width = window.innerWidth
+        if (width >= 1280) setColumnCount(6)
+        else if (width >= 1024) setColumnCount(5)
+        else if (width >= 768) setColumnCount(4)
+        else if (width >= 640) setColumnCount(3)
+        else setColumnCount(2)
+      }
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   return (
     <div
       className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${immersive ? 'gap-1' : 'gap-4 sm:gap-6 lg:gap-8'}`}
@@ -102,6 +97,7 @@ export function GridView({ photos, settings, grayscale, immersive = false, onPho
           settings={settings}
           grayscale={grayscale}
           immersive={immersive}
+          columnCount={columnCount}
           onClick={() => onPhotoClick(photo)}
         />
       ))}

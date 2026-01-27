@@ -65,6 +65,7 @@ export function MasonryView({ photos, settings, grayscale, immersive = false, on
               settings={settings}
               grayscale={grayscale}
               immersive={immersive}
+              columnCount={columnCount}
               onClick={() => onPhotoClick(photo)}
             />
           ))}
