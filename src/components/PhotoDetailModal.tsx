@@ -84,6 +84,10 @@ export function PhotoDetailModal({
   // Mobile panel state
   const [mobilePanelExpanded, setMobilePanelExpanded] = useState(false)
 
+  // Mobile immersive mode - controls visibility
+  const [mobileControlsVisible, setMobileControlsVisible] = useState(true)
+  const mobileControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Progressive image loading: show thumbnail first, then fade to full image
   const [fullImageLoaded, setFullImageLoaded] = useState(false)
 
@@ -313,6 +317,32 @@ export function PhotoDetailModal({
   const toggleThumbnails = () => setShowThumbnails(!showThumbnails)
   const toggleMobilePanel = () => setMobilePanelExpanded(!mobilePanelExpanded)
 
+  // Toggle mobile controls visibility on tap
+  const handleMobilePhotoTap = useCallback(() => {
+    if (mobilePanelExpanded) return // Don't toggle if panel is expanded
+
+    setMobileControlsVisible(prev => !prev)
+
+    // Auto-hide controls after 3 seconds
+    if (mobileControlsTimeoutRef.current) {
+      clearTimeout(mobileControlsTimeoutRef.current)
+    }
+    if (!mobileControlsVisible) {
+      mobileControlsTimeoutRef.current = setTimeout(() => {
+        setMobileControlsVisible(false)
+      }, 3000)
+    }
+  }, [mobilePanelExpanded, mobileControlsVisible])
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (mobileControlsTimeoutRef.current) {
+        clearTimeout(mobileControlsTimeoutRef.current)
+      }
+    }
+  }, [])
+
   if (!photo) return null
 
   const exifItems = [
@@ -341,24 +371,34 @@ export function PhotoDetailModal({
           
           <div className="flex flex-col lg:flex-row w-full h-full overflow-hidden">
             {/* Left: Immersive Photo Viewer */}
-            <div className={`relative bg-black/5 flex flex-col overflow-hidden ${mobilePanelExpanded ? 'h-[35vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
+            <div className={`relative bg-black/5 flex flex-col overflow-hidden ${mobilePanelExpanded ? 'h-[40vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
               <div
                 className="relative flex-1 flex items-center justify-center group overflow-hidden"
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+                onClick={(e) => {
+                  // Only trigger on mobile and if not clicking a button
+                  if (window.innerWidth < 1024 && (e.target as HTMLElement).tagName !== 'BUTTON') {
+                    handleMobilePhotoTap()
+                  }
+                }}
               >
-                {/* Close Button */}
+                {/* Close Button - Hidden on mobile when controls not visible */}
                 <button
                   onClick={onClose}
-                  className="absolute top-4 left-4 md:top-6 md:left-6 z-50 w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/80 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-105"
+                  className={`absolute top-4 left-4 md:top-6 md:left-6 z-50 w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/80 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-105 ${
+                    !mobileControlsVisible && !mobilePanelExpanded ? 'lg:flex opacity-0 pointer-events-none lg:opacity-100 lg:pointer-events-auto' : ''
+                  }`}
                 >
                   <X className="w-5 h-5" />
                 </button>
 
                 {/* Photo Counter - Top Right */}
                 {(allPhotos.length > 1 || hasMore) && (
-                  <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 px-4 py-2 bg-black/30 backdrop-blur-md text-white/80 font-mono text-xs rounded-full border border-white/10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
+                  <div className={`absolute top-4 right-4 md:top-6 md:right-6 z-50 px-4 py-2 bg-black/30 backdrop-blur-md text-white/80 font-mono text-xs rounded-full border border-white/10 transition-all duration-300 ${
+                    !mobileControlsVisible && !mobilePanelExpanded ? 'lg:opacity-0 lg:group-hover:opacity-100 opacity-0 pointer-events-none lg:pointer-events-auto' : 'md:opacity-0 md:group-hover:opacity-100'
+                  }`}>
                     <span className="text-white">{displayIndex}</span>
                     <span className="text-white/50 mx-1">/</span>
                     <span className="text-white/50">{displayTotal}</span>
@@ -451,8 +491,14 @@ export function PhotoDetailModal({
                   </>
                 )}
                 
-                {/* Bottom Info Card */}
-                <div className={`absolute bottom-0 left-0 right-0 p-4 md:p-8 transition-opacity duration-500 pointer-events-none z-10 ${mobilePanelExpanded ? 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}>
+                {/* Bottom Info Card - Hidden on mobile when controls not visible */}
+                <div className={`absolute bottom-0 left-0 right-0 p-4 md:p-8 transition-all duration-300 pointer-events-none z-10 ${
+                  mobilePanelExpanded
+                    ? 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100'
+                    : mobileControlsVisible
+                      ? 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
+                      : 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100'
+                }`}>
                   <div className="max-w-screen-2xl mx-auto">
                     <div className="inline-flex flex-col gap-2 p-4 md:p-5 bg-black/40 backdrop-blur-xl rounded-lg border border-white/10">
                       <p className="font-serif text-lg md:text-2xl text-white leading-tight">{photo.title}</p>
@@ -545,51 +591,63 @@ export function PhotoDetailModal({
                 )}
               </AnimatePresence>
               
-              {/* Mobile Thumbnails Strip */}
+              {/* Mobile Thumbnails Strip - Hidden when controls not visible */}
               {allPhotos.length > 1 && (
-                <div className="md:hidden relative bg-black/20 backdrop-blur-sm border-t border-white/5 shrink-0 z-30">
-                  <div className="flex items-center gap-1.5 p-2 overflow-x-auto scroll-smooth h-16">
-                    {allPhotos.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => onPhotoChange?.(p)}
-                        className={`relative flex-shrink-0 h-full aspect-square rounded-md overflow-hidden transition-all duration-300 ${
-                          p.id === photo.id
-                            ? 'ring-2 ring-white/80 opacity-100'
-                            : 'opacity-40'
-                        }`}
-                      >
-                        <Image
-                          src={resolveAssetUrl(p.thumbnailUrl || p.url, settings?.cdn_domain)}
-                          alt={p.title}
-                          fill
-                          sizes="48px"
-                          className="object-cover"
-                        />
-                      </button>
-                    ))}
-                    {hasMore && (
-                      <div className="flex-shrink-0 h-full aspect-square bg-white/5 rounded-md flex items-center justify-center border border-white/10">
-                        {isLoadingMore ? (
-                          <Loader2 className="w-3 h-3 animate-spin text-white/50" />
-                        ) : (
-                          <span className="text-[10px] text-white/40">+</span>
+                <AnimatePresence>
+                  {(mobileControlsVisible || mobilePanelExpanded) && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="md:hidden relative bg-black/30 backdrop-blur-md border-t border-white/5 shrink-0 z-30"
+                    >
+                      <div className="flex items-center gap-1.5 p-2 overflow-x-auto scroll-smooth h-14">
+                        {allPhotos.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => onPhotoChange?.(p)}
+                            className={`relative flex-shrink-0 h-full aspect-square overflow-hidden transition-all duration-300 ${
+                              p.id === photo.id
+                                ? 'ring-2 ring-white/80 opacity-100'
+                                : 'opacity-50'
+                            }`}
+                          >
+                            <Image
+                              src={resolveAssetUrl(p.thumbnailUrl || p.url, settings?.cdn_domain)}
+                              alt={p.title}
+                              fill
+                              sizes="40px"
+                              className="object-cover"
+                            />
+                          </button>
+                        ))}
+                        {hasMore && (
+                          <div className="flex-shrink-0 h-full aspect-square bg-white/5 flex items-center justify-center border border-white/10">
+                            {isLoadingMore ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-white/50" />
+                            ) : (
+                              <span className="text-[10px] text-white/40">+</span>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               )}
             </div>
 
             {/* Right: Info & Story Panel */}
-            <div className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col ${mobilePanelExpanded ? 'flex-1' : 'h-auto lg:h-full'}`}>
-              {/* Mobile Panel Handle */}
+            <div className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col transition-all duration-300 ${mobilePanelExpanded ? 'flex-1' : 'h-auto lg:h-full'}`}>
+              {/* Mobile Panel Handle - Minimal drag handle */}
               <button
                 onClick={toggleMobilePanel}
-                className="lg:hidden flex items-center justify-center py-2 bg-muted/30 border-b border-border"
+                className={`lg:hidden flex items-center justify-center py-2.5 bg-background border-b border-border transition-all ${
+                  mobileControlsVisible || mobilePanelExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none h-0 py-0 overflow-hidden'
+                }`}
               >
-                {mobilePanelExpanded ? <ChevronDown className="w-5 h-5 text-muted-foreground" /> : <ChevronUp className="w-5 h-5 text-muted-foreground" />}
+                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
               </button>
               
               {/* Tabs with Sliding Indicator */}
@@ -740,8 +798,8 @@ export function PhotoDetailModal({
                 </AnimatePresence>
               </div>
 
-              {/* Action Bar */}
-              <div className={`p-4 md:p-6 border-t border-border bg-background flex gap-4 shrink-0 ${!mobilePanelExpanded ? 'hidden lg:flex' : ''}`}>
+              {/* Action Bar - Only show on desktop or when panel expanded on mobile */}
+              <div className={`p-4 md:p-6 border-t border-border bg-background flex gap-4 shrink-0 ${!mobilePanelExpanded ? 'hidden lg:flex' : 'flex'}`}>
                 <a
                   href={resolveAssetUrl(photo.url, settings?.cdn_domain)}
                   target="_blank"
