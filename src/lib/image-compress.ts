@@ -1,6 +1,6 @@
 import imageCompression from 'browser-image-compression'
 
-export type CompressionMode = 'none' | 'balanced' | 'quality' | 'size'
+export type CompressionMode = 'none' | 'quality' | 'size'
 
 export interface CompressionOptions {
   mode?: CompressionMode
@@ -11,9 +11,8 @@ export interface CompressionOptions {
 
 const PRESETS: Record<CompressionMode, Partial<CompressionOptions>> = {
   none: {},
-  balanced: { maxSizeMB: 4, maxWidthOrHeight: 4096, initialQuality: 0.8 },
   quality: { maxSizeMB: 8, maxWidthOrHeight: 8192, initialQuality: 0.92 },
-  size: { maxSizeMB: 2, maxWidthOrHeight: 2048, initialQuality: 0.7 },
+  size: { maxSizeMB: 1.5, maxWidthOrHeight: 2048, initialQuality: 0.65 },
 }
 
 export async function compressImage(

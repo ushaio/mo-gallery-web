@@ -404,10 +404,9 @@ export function StoryUploadTab({
               >
                 <option value="none">{t('admin.compression_none')}</option>
                 <option value="quality">{t('admin.compression_quality')}</option>
-                <option value="balanced">{t('admin.compression_balanced')}</option>
                 <option value="size">{t('admin.compression_size')}</option>
               </select>
-              {compressionMode !== 'none' && (
+              {compressionMode === 'quality' && (
                 <div className="flex items-center gap-3 mt-3">
                   <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
                     {t('admin.max_size_mb')}

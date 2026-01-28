@@ -794,14 +794,13 @@ export function UploadTab({
                     onChange={(v) => setCompressionMode(v as CompressionMode)}
                     className="w-28"
                     options={[
-                      { value: 'none', label: t('admin.compression_none') || '无压缩' },
+                      { value: 'none', label: t('admin.compression_none') || '原图' },
                       { value: 'quality', label: t('admin.compression_quality') || '质量优先' },
-                      { value: 'balanced', label: t('admin.compression_balanced') || '平衡' },
                       { value: 'size', label: t('admin.compression_size') || '体积优先' },
                     ]}
                   />
                 </div>
-                {compressionMode !== 'none' && (
+                {compressionMode === 'quality' && (
                   <div className="flex items-center justify-end gap-2">
                     <span className="text-[10px] text-muted-foreground">{t('admin.max_size_mb')}</span>
                     <AdminInput

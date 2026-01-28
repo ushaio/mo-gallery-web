@@ -181,7 +181,6 @@ export function MissingFileUploadModal({
               options={[
                 { value: 'none', label: t('admin.compression_none') },
                 { value: 'quality', label: t('admin.compression_quality') },
-                { value: 'balanced', label: t('admin.compression_balanced') },
                 { value: 'size', label: t('admin.compression_size') },
               ]}
             />
