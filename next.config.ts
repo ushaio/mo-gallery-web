@@ -12,16 +12,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["sharp", "@waline/vercel"],
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**",
-      },
-      {
-        protocol: "http",
-        hostname: "**",
-      },
-    ],
+    unoptimized: true,
   },
 };
 
