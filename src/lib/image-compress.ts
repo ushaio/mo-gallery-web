@@ -20,7 +20,7 @@ export async function compressImage(
   options: CompressionOptions = {},
   onProgress?: (progress: number) => void
 ): Promise<File> {
-  const mode = options.mode || 'balanced'
+  const mode = options.mode || 'quality'
 
   if (mode === 'none') {
     onProgress?.(100)
