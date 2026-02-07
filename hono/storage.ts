@@ -1,9 +1,10 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, settings as settingsTable, photos } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { StorageProviderFactory, StorageConfig } from '~/server/lib/storage'
 import path from 'path'
+import { eq, inArray } from 'drizzle-orm'
 
 const storage = new Hono<{ Variables: AuthVariables }>()
 
@@ -24,7 +25,7 @@ interface FileWithStatus {
 }
 
 async function getStorageConfig(providerOverride?: string): Promise<StorageConfig> {
-  const settings = await db.setting.findMany()
+  const settings = await db.select().from(settingsTable)
   const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]))
 
   const provider = (providerOverride || settingsMap.storage_provider || 'local') as 'local' | 'github' | 'r2'
@@ -66,10 +67,16 @@ storage.get('/admin/storage/scan', async (c) => {
 
   const listResult = await storageProvider.list({ fullScan: true })
 
-  const dbPhotos = await db.photo.findMany({
-    where: { storageProvider: provider },
-    select: { id: true, title: true, storageKey: true, url: true, thumbnailUrl: true },
-  })
+  const dbPhotos = await db
+    .select({
+      id: photos.id,
+      title: photos.title,
+      storageKey: photos.storageKey,
+      url: photos.url,
+      thumbnailUrl: photos.thumbnailUrl,
+    })
+    .from(photos)
+    .where(eq(photos.storageProvider, provider))
 
   const keyToPhoto = new Map(dbPhotos.map(p => [p.storageKey || p.url, p]))
   const storageKeys = new Set(listResult.files.map(f => f.key))
@@ -215,13 +222,14 @@ storage.post('/admin/storage/fix-missing', async (c) => {
     return c.json({ error: 'photoIds array is required' }, 400)
   }
 
-  const result = await db.photo.deleteMany({
-    where: { id: { in: photoIds } },
-  })
+  const result = await db
+    .delete(photos)
+    .where(inArray(photos.id, photoIds))
+    .returning()
 
   return c.json({
     success: true,
-    data: { deleted: result.count },
+    data: { deleted: result.length },
   })
 })
 

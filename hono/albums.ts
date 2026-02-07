@@ -1,9 +1,9 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, albums as albumsTable, photos, albumPhotos, categories, photoCategories } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { eq, and, desc, asc, count, sql, inArray } from 'drizzle-orm'
 
 const albums = new Hono<{ Variables: AuthVariables }>()
 
@@ -29,48 +29,95 @@ const AddPhotosSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1),
 })
 
-// Helper to handle Prisma errors
-const handlePrismaError = (c: any, error: unknown, entityName = 'Record') => {
+// Helper to handle errors
+const handleError = (c: any, error: unknown, entityName = 'Record') => {
   console.error(`${entityName} operation error:`, error)
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === 'P2025') {
-      return c.json({ error: `${entityName} not found or dependency missing` }, 404)
-    }
-  }
   if (error instanceof z.ZodError) {
     return c.json({ error: 'Validation error', details: error.issues }, 400)
   }
   return c.json({ error: 'Internal server error' }, 500)
 }
 
+// Helper to get album with photos and categories
+async function getAlbumWithDetails(albumId: string) {
+  const album = await db.select().from(albumsTable).where(eq(albumsTable.id, albumId)).limit(1)
+  if (album.length === 0) return null
+
+  // Get photos in this album
+  const albumPhotosList = await db
+    .select({
+      photoId: albumPhotos.B,
+    })
+    .from(albumPhotos)
+    .where(eq(albumPhotos.A, albumId))
+
+  const photoIds = albumPhotosList.map(ap => ap.photoId)
+  
+  if (photoIds.length === 0) {
+    return {
+      ...album[0],
+      photoCount: 0,
+      photos: [],
+    }
+  }
+
+  // Get photos with their categories
+  const photosList = await db
+    .select({
+      id: photos.id,
+      title: photos.title,
+      url: photos.url,
+      thumbnailUrl: photos.thumbnailUrl,
+      width: photos.width,
+      height: photos.height,
+      isFeatured: photos.isFeatured,
+      takenAt: photos.takenAt,
+      createdAt: photos.createdAt,
+    })
+    .from(photos)
+    .where(inArray(photos.id, photoIds))
+
+  // Get categories for each photo
+  const photosWithCategories = await Promise.all(
+    photosList.map(async (photo) => {
+      const photoCats = await db
+        .select({
+          name: categories.name,
+        })
+        .from(photoCategories)
+        .innerJoin(categories, eq(photoCategories.A, categories.id))
+        .where(eq(photoCategories.B, photo.id))
+
+      return {
+        ...photo,
+        category: photoCats.map(c => c.name).join(','),
+      }
+    })
+  )
+
+  return {
+    ...album[0],
+    photoCount: photosList.length,
+    photos: photosWithCategories,
+  }
+}
+
 // Public endpoints
 albums.get('/albums', async (c) => {
   try {
-    const albumsList = await db.album.findMany({
-      where: { isPublished: true },
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-    })
+    const albumsList = await db
+      .select()
+      .from(albumsTable)
+      .where(eq(albumsTable.isPublished, true))
+      .orderBy(asc(albumsTable.sortOrder), desc(albumsTable.createdAt))
 
-    const data = albumsList.map((album) => ({
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }))
+    const data = await Promise.all(
+      albumsList.map(album => getAlbumWithDetails(album.id))
+    )
 
     return c.json({
       success: true,
-      data,
+      data: data.filter(Boolean),
     })
   } catch (error) {
     console.error('Get albums error:', error)
@@ -82,30 +129,20 @@ albums.get('/albums/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    const album = await db.album.findUnique({
-      where: { id, isPublished: true },
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const album = await db
+      .select()
+      .from(albumsTable)
+      .where(and(
+        eq(albumsTable.id, id),
+        eq(albumsTable.isPublished, true)
+      ))
+      .limit(1)
 
-    if (!album) {
+    if (album.length === 0) {
       return c.json({ error: 'Album not found' }, 404)
     }
 
-    const data = {
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }
+    const data = await getAlbumWithDetails(id)
 
     return c.json({
       success: true,
@@ -131,12 +168,11 @@ albums.patch('/admin/albums/reorder', async (c) => {
       })),
     }).parse(body)
 
-    await db.$transaction(
+    await Promise.all(
       items.map((item) =>
-        db.album.updateMany({
-          where: { id: item.id },
-          data: { sortOrder: item.sortOrder },
-        })
+        db.update(albumsTable)
+          .set({ sortOrder: item.sortOrder, updatedAt: new Date() })
+          .where(eq(albumsTable.id, item.id))
       )
     )
 
@@ -145,36 +181,24 @@ albums.patch('/admin/albums/reorder', async (c) => {
       message: 'Albums reordered successfully',
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album')
+    return handleError(c, error, 'Album')
   }
 })
 
 albums.get('/admin/albums', async (c) => {
   try {
-    const albumsList = await db.album.findMany({
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-    })
+    const albumsList = await db
+      .select()
+      .from(albumsTable)
+      .orderBy(asc(albumsTable.sortOrder), desc(albumsTable.createdAt))
 
-    const data = albumsList.map((album) => ({
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }))
+    const data = await Promise.all(
+      albumsList.map(album => getAlbumWithDetails(album.id))
+    )
 
     return c.json({
       success: true,
-      data,
+      data: data.filter(Boolean),
     })
   } catch (error) {
     console.error('Get admin albums error:', error)
@@ -187,44 +211,35 @@ albums.post('/admin/albums', async (c) => {
     const body = await c.req.json()
     const validated = CreateAlbumSchema.parse(body)
 
-    const album = await db.album.create({
-      data: {
+    const [album] = await db.insert(albumsTable)
+      .values({
         name: validated.name,
         description: validated.description,
         coverUrl: validated.coverUrl,
         isPublished: validated.isPublished,
         sortOrder: validated.sortOrder,
-        photos: validated.photoIds
-          ? {
-              connect: validated.photoIds.map((id) => ({ id })),
-            }
-          : undefined,
-      },
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+      })
+      .returning()
 
-    const data = {
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
+    // Connect photos if provided
+    if (validated.photoIds && validated.photoIds.length > 0) {
+      await Promise.all(
+        validated.photoIds.map(photoId =>
+          db.insert(albumPhotos)
+            .values({ A: album.id, B: photoId })
+            .onConflictDoNothing()
+        )
+      )
     }
+
+    const data = await getAlbumWithDetails(album.id)
 
     return c.json({
       success: true,
       data,
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album or Photo')
+    return handleError(c, error, 'Album or Photo')
   }
 })
 
@@ -234,34 +249,19 @@ albums.patch('/admin/albums/:id', async (c) => {
     const body = await c.req.json()
     const validated = UpdateAlbumSchema.parse(body)
 
-    const album = await db.album.update({
-      where: { id },
-      data: validated,
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const [album] = await db.update(albumsTable)
+      .set({ ...validated, updatedAt: new Date() })
+      .where(eq(albumsTable.id, id))
+      .returning()
 
-    const data = {
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }
+    const data = await getAlbumWithDetails(album.id)
 
     return c.json({
       success: true,
       data,
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album')
+    return handleError(c, error, 'Album')
   }
 })
 
@@ -269,16 +269,15 @@ albums.delete('/admin/albums/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    await db.album.delete({
-      where: { id },
-    })
+    await db.delete(albumsTable)
+      .where(eq(albumsTable.id, id))
 
     return c.json({
       success: true,
       message: 'Album deleted successfully',
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album')
+    return handleError(c, error, 'Album')
   }
 })
 
@@ -289,38 +288,23 @@ albums.post('/admin/albums/:id/photos', async (c) => {
     const body = await c.req.json()
     const validated = AddPhotosSchema.parse(body)
 
-    const album = await db.album.update({
-      where: { id },
-      data: {
-        photos: {
-          connect: validated.photoIds.map((photoId) => ({ id: photoId })),
-        },
-      },
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    // Add photos to album
+    await Promise.all(
+      validated.photoIds.map(photoId =>
+        db.insert(albumPhotos)
+          .values({ A: id, B: photoId })
+          .onConflictDoNothing()
+      )
+    )
 
-    const data = {
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }
+    const data = await getAlbumWithDetails(id)
 
     return c.json({
       success: true,
       data,
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album or Photo')
+    return handleError(c, error, 'Album or Photo')
   }
 })
 
@@ -330,38 +314,20 @@ albums.delete('/admin/albums/:albumId/photos/:photoId', async (c) => {
     const albumId = c.req.param('albumId')
     const photoId = c.req.param('photoId')
 
-    const album = await db.album.update({
-      where: { id: albumId },
-      data: {
-        photos: {
-          disconnect: { id: photoId },
-        },
-      },
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    await db.delete(albumPhotos)
+      .where(and(
+        eq(albumPhotos.A, albumId),
+        eq(albumPhotos.B, photoId)
+      ))
 
-    const data = {
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }
+    const data = await getAlbumWithDetails(albumId)
 
     return c.json({
       success: true,
       data,
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album or Photo')
+    return handleError(c, error, 'Album or Photo')
   }
 })
 
@@ -373,45 +339,35 @@ albums.patch('/admin/albums/:id/cover', async (c) => {
     const { photoId } = body
 
     // Get photo URL
-    const photo = await db.photo.findUnique({
-      where: { id: photoId },
-      select: { thumbnailUrl: true, url: true },
-    })
+    const [photo] = await db
+      .select({
+        thumbnailUrl: photos.thumbnailUrl,
+        url: photos.url,
+      })
+      .from(photos)
+      .where(eq(photos.id, photoId))
+      .limit(1)
 
     if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
     }
 
-    const album = await db.album.update({
-      where: { id },
-      data: {
+    const [album] = await db.update(albumsTable)
+      .set({
         coverUrl: photo.thumbnailUrl || photo.url,
-      },
-      include: {
-        photos: {
-          include: { categories: true },
-        },
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+        updatedAt: new Date(),
+      })
+      .where(eq(albumsTable.id, id))
+      .returning()
 
-    const data = {
-      ...album,
-      photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-      })),
-    }
+    const data = await getAlbumWithDetails(album.id)
 
     return c.json({
       success: true,
       data,
     })
   } catch (error) {
-    return handlePrismaError(c, error, 'Album')
+    return handleError(c, error, 'Album')
   }
 })
 

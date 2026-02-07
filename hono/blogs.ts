@@ -1,8 +1,9 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, blogs as blogsTable } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
+import { eq, and, desc, sql } from 'drizzle-orm'
 
 const blogs = new Hono<{ Variables: AuthVariables }>()
 
@@ -29,11 +30,17 @@ blogs.get('/blogs', async (c) => {
     const limit = c.req.query('limit')
     const limitNum = limit ? parseInt(limit) : undefined
 
-    const blogsList = await db.blog.findMany({
-      where: { isPublished: true },
-      orderBy: { createdAt: 'desc' },
-      take: limitNum,
-    })
+    let query = db
+      .select()
+      .from(blogsTable)
+      .where(eq(blogsTable.isPublished, true))
+      .orderBy(desc(blogsTable.createdAt))
+
+    if (limitNum) {
+      query = query.limit(limitNum) as typeof query
+    }
+
+    const blogsList = await query
 
     return c.json({
       success: true,
@@ -50,9 +57,14 @@ blogs.get('/blogs/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    const blog = await db.blog.findUnique({
-      where: { id, isPublished: true },
-    })
+    const [blog] = await db
+      .select()
+      .from(blogsTable)
+      .where(and(
+        eq(blogsTable.id, id),
+        eq(blogsTable.isPublished, true)
+      ))
+      .limit(1)
 
     if (!blog) {
       return c.json({ error: 'Blog not found' }, 404)
@@ -71,11 +83,10 @@ blogs.get('/blogs/:id', async (c) => {
 // Public endpoint - Get blog categories
 blogs.get('/blogs/categories/list', async (c) => {
   try {
-    const categories = await db.blog.findMany({
-      where: { isPublished: true },
-      select: { category: true },
-      distinct: ['category'],
-    })
+    const categories = await db
+      .selectDistinct({ category: blogsTable.category })
+      .from(blogsTable)
+      .where(eq(blogsTable.isPublished, true))
 
     const categoryList = categories.map(c => c.category).filter(Boolean)
 
@@ -95,9 +106,10 @@ blogs.use('/admin/*', authMiddleware)
 // Get all blogs (admin)
 blogs.get('/admin/blogs', async (c) => {
   try {
-    const blogsList = await db.blog.findMany({
-      orderBy: { createdAt: 'desc' },
-    })
+    const blogsList = await db
+      .select()
+      .from(blogsTable)
+      .orderBy(desc(blogsTable.createdAt))
 
     return c.json({
       success: true,
@@ -115,9 +127,9 @@ blogs.post('/admin/blogs', async (c) => {
     const body = await c.req.json()
     const validated = CreateBlogSchema.parse(body)
 
-    const blog = await db.blog.create({
-      data: validated,
-    })
+    const [blog] = await db.insert(blogsTable)
+      .values(validated)
+      .returning()
 
     return c.json({
       success: true,
@@ -139,10 +151,10 @@ blogs.patch('/admin/blogs/:id', async (c) => {
     const body = await c.req.json()
     const validated = UpdateBlogSchema.parse(body)
 
-    const blog = await db.blog.update({
-      where: { id },
-      data: validated,
-    })
+    const [blog] = await db.update(blogsTable)
+      .set({ ...validated, updatedAt: new Date() })
+      .where(eq(blogsTable.id, id))
+      .returning()
 
     return c.json({
       success: true,
@@ -162,9 +174,8 @@ blogs.delete('/admin/blogs/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    await db.blog.delete({
-      where: { id },
-    })
+    await db.delete(blogsTable)
+      .where(eq(blogsTable.id, id))
 
     return c.json({
       success: true,

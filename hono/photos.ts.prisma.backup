@@ -1,6 +1,6 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db, photos as photosTable, categories, photoCategories, cameras, lenses, photoStories, stories, settings as settingsTable } from '~/server/lib/drizzle'
+import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { extractExifData } from '~/server/lib/exif'
 import { extractDominantColors } from '~/server/lib/colors'
@@ -8,7 +8,6 @@ import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/
 import { StorageProviderFactory, StorageConfig, StorageError } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
-import { eq, desc, count, inArray } from 'drizzle-orm'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
 
@@ -19,7 +18,7 @@ async function getStorageConfig(
   providerOverride?: string
 ): Promise<StorageConfig> {
   // Fetch all settings
-  const settings = await db.select().from(settingsTable)
+  const settings = await db.setting.findMany()
   const settingsMap = Object.fromEntries(
     settings.map((s) => [s.key, s.value])
   )
@@ -61,37 +60,6 @@ async function getStorageConfig(
   return config
 }
 
-// Helper to get photo with categories, camera, and lens
-async function getPhotoWithDetails(photoId: string) {
-  const [photo] = await db.select().from(photosTable).where(eq(photosTable.id, photoId)).limit(1)
-  if (!photo) return null
-
-  const photoCats = await db
-    .select({ id: categories.id, name: categories.name })
-    .from(photoCategories)
-    .innerJoin(categories, eq(photoCategories.A, categories.id))
-    .where(eq(photoCategories.B, photoId))
-
-  let camera = null
-  if (photo.cameraId) {
-    const [cam] = await db.select().from(cameras).where(eq(cameras.id, photo.cameraId)).limit(1)
-    camera = cam || null
-  }
-
-  let lens = null
-  if (photo.lensId) {
-    const [len] = await db.select().from(lenses).where(eq(lenses.id, photo.lensId)).limit(1)
-    lens = len || null
-  }
-
-  return {
-    ...photo,
-    categories: photoCats,
-    camera,
-    lens,
-  }
-}
-
 // Public endpoints
 photos.get('/photos', async (c) => {
   try {
@@ -99,51 +67,34 @@ photos.get('/photos', async (c) => {
     const limitStr = c.req.query('limit')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
-    const allStr = c.req.query('all')
+    const allStr = c.req.query('all') // If 'true', return all photos without pagination
     
-    // Build where clause for category filter
-    let photoIds: string[] | null = null
-    if (category && category !== '全部') {
-      const catResult = await db
-        .select({ id: categories.id })
-        .from(categories)
-        .where(eq(categories.name, category))
-        .limit(1)
-      
-      if (catResult.length > 0) {
-        const photoCatLinks = await db
-          .select({ photoId: photoCategories.B })
-          .from(photoCategories)
-          .where(eq(photoCategories.A, catResult[0].id))
-        
-        photoIds = photoCatLinks.map(pc => pc.photoId)
-        if (photoIds.length === 0) {
-          return c.json({ success: true, data: [], meta: { total: 0, page: 1, pageSize: 20, totalPages: 0, hasMore: false } })
-        }
-      }
-    }
+    const where =
+      category && category !== '全部'
+        ? { categories: { some: { name: category } } }
+        : {}
 
-    // If 'all=true', return all photos without pagination
+    // If 'all=true', return all photos without pagination (for admin use)
     if (allStr === 'true') {
-      let query = db.select().from(photosTable)
-      if (photoIds) {
-        query = query.where(inArray(photosTable.id, photoIds)) as typeof query
-      }
-      
-      const photosList = await query.orderBy(desc(photosTable.takenAt), desc(photosTable.createdAt))
+      const photosList = await db.photo.findMany({
+        where,
+        include: { categories: true, camera: true, lens: true },
+        orderBy: [
+          { takenAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+        ],
+      })
 
-      const data = await Promise.all(
-        photosList.map(async (p) => {
-          const details = await getPhotoWithDetails(p.id)
-          return {
-            ...details,
-            category: details?.categories.map((c) => c.name).join(',') || '',
-            dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-          }
-        })
-      )
+      const data = photosList.map((p) => ({
+        ...p,
+        category: p.categories.map((c) => c.name).join(','),
+        dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
+      }))
 
-      return c.json({ success: true, data })
+      return c.json({
+        success: true,
+        data,
+      })
     }
 
     // Support both old limit-only mode and new pagination mode
@@ -152,34 +103,25 @@ photos.get('/photos', async (c) => {
     const skip = (page - 1) * pageSize
 
     // Get total count and photos in parallel
-    let countQuery = db.select({ count: count() }).from(photosTable)
-    let photosQuery = db.select().from(photosTable)
-    
-    if (photoIds) {
-      countQuery = countQuery.where(inArray(photosTable.id, photoIds)) as typeof countQuery
-      photosQuery = photosQuery.where(inArray(photosTable.id, photoIds)) as typeof photosQuery
-    }
-
-    const [totalResult, photosList] = await Promise.all([
-      countQuery,
-      photosQuery
-        .orderBy(desc(photosTable.takenAt), desc(photosTable.createdAt))
-        .limit(pageSize)
-        .offset(skip)
+    const [total, photosList] = await Promise.all([
+      db.photo.count({ where }),
+      db.photo.findMany({
+        where,
+        include: { categories: true, camera: true, lens: true },
+        skip,
+        take: pageSize,
+        orderBy: [
+          { takenAt: { sort: 'desc', nulls: 'last' } },
+          { createdAt: 'desc' },
+        ],
+      })
     ])
 
-    const total = totalResult[0]?.count || 0
-
-    const data = await Promise.all(
-      photosList.map(async (p) => {
-        const details = await getPhotoWithDetails(p.id)
-        return {
-          ...details,
-          category: details?.categories.map((c) => c.name).join(',') || '',
-          dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-        }
-      })
-    )
+    const data = photosList.map((p) => ({
+      ...p,
+      category: p.categories.map((c) => c.name).join(','),
+      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
+    }))
 
     return c.json({
       success: true,
@@ -200,23 +142,21 @@ photos.get('/photos', async (c) => {
 
 photos.get('/photos/featured', async (c) => {
   try {
-    const photosList = await db
-      .select()
-      .from(photosTable)
-      .where(eq(photosTable.isFeatured, true))
-      .orderBy(desc(photosTable.takenAt), desc(photosTable.createdAt))
-      .limit(6)
+    const photosList = await db.photo.findMany({
+      where: { isFeatured: true },
+      include: { categories: true, camera: true, lens: true },
+      take: 6,
+      orderBy: [
+        { takenAt: { sort: 'desc', nulls: 'last' } },
+        { createdAt: 'desc' },
+      ],
+    })
 
-    const data = await Promise.all(
-      photosList.map(async (p) => {
-        const details = await getPhotoWithDetails(p.id)
-        return {
-          ...details,
-          category: details?.categories.map((c) => c.name).join(',') || '',
-          dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-        }
-      })
-    )
+    const data = photosList.map((p) => ({
+      ...p,
+      category: p.categories.map((c) => c.name).join(','),
+      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
+    }))
 
     return c.json({
       success: true,
@@ -230,11 +170,11 @@ photos.get('/photos/featured', async (c) => {
 
 photos.get('/categories', async (c) => {
   try {
-    const categoriesList = await db
-      .select({ name: categories.name })
-      .from(categories)
+    const categories = await db.category.findMany({
+      select: { name: true },
+    })
 
-    const data = categoriesList.map((c) => c.name)
+    const data = categories.map((c) => c.name)
 
     return c.json({
       success: true,
@@ -258,17 +198,19 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
     // Support both single hash and batch check
     if (fileHashes && Array.isArray(fileHashes)) {
       // Batch check: return all duplicates found
-      const existingPhotos = await db
-        .select({
-          id: photosTable.id,
-          title: photosTable.title,
-          thumbnailUrl: photosTable.thumbnailUrl,
-          url: photosTable.url,
-          fileHash: photosTable.fileHash,
-          createdAt: photosTable.createdAt,
-        })
-        .from(photosTable)
-        .where(inArray(photosTable.fileHash, fileHashes))
+      const existingPhotos = await db.photo.findMany({
+        where: {
+          fileHash: { in: fileHashes },
+        },
+        select: {
+          id: true,
+          title: true,
+          thumbnailUrl: true,
+          url: true,
+          fileHash: true,
+          createdAt: true,
+        },
+      })
 
       // Create a map of hash -> photo for easy lookup
       const duplicateMap: Record<string, {
@@ -305,17 +247,16 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
       return c.json({ error: 'fileHash or fileHashes is required' }, 400)
     }
 
-    const [existingPhoto] = await db
-      .select({
-        id: photosTable.id,
-        title: photosTable.title,
-        thumbnailUrl: photosTable.thumbnailUrl,
-        url: photosTable.url,
-        createdAt: photosTable.createdAt,
-      })
-      .from(photosTable)
-      .where(eq(photosTable.fileHash, fileHash))
-      .limit(1)
+    const existingPhoto = await db.photo.findFirst({
+      where: { fileHash },
+      select: {
+        id: true,
+        title: true,
+        thumbnailUrl: true,
+        url: true,
+        createdAt: true,
+      },
+    })
 
     return c.json({
       success: true,
@@ -347,14 +288,10 @@ photos.post('/admin/photos', async (c) => {
 
     // Check for duplicate if fileHash is provided
     if (fileHash) {
-      const [existingPhoto] = await db
-        .select({
-          id: photosTable.id,
-          title: photosTable.title,
-        })
-        .from(photosTable)
-        .where(eq(photosTable.fileHash, fileHash))
-        .limit(1)
+      const existingPhoto = await db.photo.findFirst({
+        where: { fileHash },
+        select: { id: true, title: true },
+      })
       
       if (existingPhoto) {
         return c.json({
@@ -441,17 +378,14 @@ photos.post('/admin/photos', async (c) => {
       const normalizedMake = normalizeMake(exifData.cameraMake) || exifData.cameraMake
       const brandKey = makeBrandKey(normalizedMake)
       if (brandKey) {
-        const [camera] = await db
-          .insert(cameras)
-          .values({
+        const camera = await db.camera.upsert({
+          where: { id: brandKey },
+          update: { name: normalizedMake },
+          create: {
             id: brandKey,
             name: normalizedMake,
-          })
-          .onConflictDoUpdate({
-            target: cameras.id,
-            set: { name: normalizedMake },
-          })
-          .returning()
+          },
+        })
         cameraId = camera.id
       }
     }
@@ -462,95 +396,64 @@ photos.post('/admin/photos', async (c) => {
       const lensMake = normalizeMake(extractLensMakeFromModel(exifData.lens))
       const brandKey = makeBrandKey(lensMake)
       if (brandKey && lensMake) {
-        const [lens] = await db
-          .insert(lenses)
-          .values({
+        const lens = await db.lens.upsert({
+          where: { id: brandKey },
+          update: { name: lensMake },
+          create: {
             id: brandKey,
             name: lensMake,
-          })
-          .onConflictDoUpdate({
-            target: lenses.id,
-            set: { name: lensMake },
-          })
-          .returning()
+          },
+        })
         lensId = lens.id
       }
     }
 
-    // Create photo record with transaction for categories
-    const result = await db.transaction(async (tx) => {
-      // 1. Insert photo
-      const [photo] = await tx
-        .insert(photosTable)
-        .values({
-          title,
-          url: uploadResult.url,
-          thumbnailUrl: uploadResult.thumbnailUrl,
-          storageProvider: storageConfig.provider,
-          storageKey: uploadResult.key,
-          width: metadata.width || 0,
-          height: metadata.height || 0,
-          size: buffer.length,
-          isFeatured: false,
-          dominantColors: dominantColors.length > 0 ? JSON.stringify(dominantColors) : null,
-          fileHash: fileHash || null,
-          cameraId,
-          lensId,
-          cameraMake: exifData.cameraMake,
-          cameraModel: exifData.cameraModel,
-          lensModel: exifData.lens,
-          focalLength: exifData.focalLength,
-          aperture: exifData.aperture,
-          shutterSpeed: exifData.shutterSpeed,
-          iso: exifData.iso,
-          takenAt: exifData.takenAt,
-          latitude: exifData.latitude,
-          longitude: exifData.longitude,
-          orientation: exifData.orientation,
-          software: exifData.software,
-          exifRaw: exifData.exifRaw,
-        })
-        .returning()
-
-      // 2. Handle categories (upsert each category)
-      const categoryRecords = []
-      for (const name of categoriesArray) {
-        const [category] = await tx
-          .insert(categories)
-          .values({ name })
-          .onConflictDoUpdate({
-            target: categories.name,
-            set: { name },
-          })
-          .returning()
-        categoryRecords.push(category)
-      }
-
-      // 3. Create photo-category associations (A = categoryId, B = photoId)
-      if (categoryRecords.length > 0) {
-        await tx.insert(photoCategories).values(
-          categoryRecords.map((cat) => ({
-            A: cat.id,
-            B: photo.id,
-          }))
-        )
-      }
-
-      return photo
+    // Create photo record
+    const photo = await db.photo.create({
+      data: {
+        title,
+        url: uploadResult.url,
+        thumbnailUrl: uploadResult.thumbnailUrl,
+        storageProvider: storageConfig.provider,
+        storageKey: uploadResult.key,
+        width: metadata.width || 0,
+        height: metadata.height || 0,
+        size: buffer.length,
+        isFeatured: false,
+        dominantColors: dominantColors.length > 0 ? JSON.stringify(dominantColors) : null,
+        fileHash: fileHash || null,
+        // Equipment relations
+        cameraId,
+        lensId,
+        // EXIF data (raw)
+        cameraMake: exifData.cameraMake,
+        cameraModel: exifData.cameraModel,
+        lensModel: exifData.lens,
+        focalLength: exifData.focalLength,
+        aperture: exifData.aperture,
+        shutterSpeed: exifData.shutterSpeed,
+        iso: exifData.iso,
+        takenAt: exifData.takenAt,
+        latitude: exifData.latitude,
+        longitude: exifData.longitude,
+        orientation: exifData.orientation,
+        software: exifData.software,
+        exifRaw: exifData.exifRaw,
+        categories: {
+          connectOrCreate: categoriesArray.map((name: string) => ({
+            where: { name },
+            create: { name },
+          })),
+        },
+      },
+      include: { categories: true, camera: true, lens: true },
     })
-
-    // Fetch complete photo with relations
-    const photoWithDetails = await getPhotoWithDetails(result.id)
-
-    if (!photoWithDetails) {
-      return c.json({ error: 'Failed to fetch photo details' }, 500)
-    }
 
     return c.json({
       success: true,
       data: {
-        ...photoWithDetails,
-        category: photoWithDetails.categories?.map((c) => c.name).join(',') || '',
+        ...photo,
+        category: photo.categories.map((c) => c.name).join(','),
       },
     })
   } catch (error) {
@@ -569,43 +472,26 @@ photos.delete('/admin/photos/:id', async (c) => {
     const deleteThumbnail = c.req.query('deleteThumbnail') === 'true'
     const forceDelete = c.req.query('force') === 'true'
 
-    // Fetch photo with stories
-    const photoResult = await db
-      .select({
-        id: photosTable.id,
-        storageProvider: photosTable.storageProvider,
-        storageKey: photosTable.storageKey,
-        url: photosTable.url,
-      })
-      .from(photosTable)
-      .where(eq(photosTable.id, id))
-      .limit(1)
-    
-    const photo = photoResult[0]
-    
-    // Get associated stories
-    let associatedStories: Array<{ id: string; title: string }> = []
-    if (photo) {
-      const storiesResult = await db
-        .select({
-          id: stories.id,
-          title: stories.title,
-        })
-        .from(photoStories)
-        .innerJoin(stories, eq(photoStories.B, stories.id))
-        .where(eq(photoStories.A, id))
-      
-      associatedStories = storiesResult
-    }
+    const photo = await db.photo.findUnique({
+      where: { id },
+      include: {
+        stories: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    })
 
     if (photo) {
       // Check if photo has associated stories
-      if (associatedStories.length > 0 && !forceDelete) {
+      if (photo.stories.length > 0 && !forceDelete) {
         return c.json({
           success: false,
           error: 'PHOTO_HAS_STORIES',
           message: 'Photo has associated stories and cannot be deleted',
-          stories: associatedStories,
+          stories: photo.stories,
         }, 400)
       }
 
@@ -648,7 +534,9 @@ photos.delete('/admin/photos/:id', async (c) => {
       }
 
       // Always delete photo record from database
-      await db.delete(photosTable).where(eq(photosTable.id, id))
+      await db.photo.delete({
+        where: { id },
+      })
     }
 
     return c.json({
@@ -675,8 +563,7 @@ photos.patch('/admin/photos/:id', async (c) => {
 
     // Handle storage path change (move file)
     if (body.storagePath !== undefined) {
-      const photoResult = await db.select().from(photosTable).where(eq(photosTable.id, id)).limit(1)
-      const photo = photoResult[0]
+      const photo = await db.photo.findUnique({ where: { id } })
       if (!photo) {
         return c.json({ error: 'Photo not found' }, 404)
       }
@@ -718,49 +605,38 @@ photos.patch('/admin/photos/:id', async (c) => {
         : []
 
       // First disconnect all existing categories
-      await db.delete(photoCategories).where(eq(photoCategories.B, id))
+      await db.photo.update({
+        where: { id },
+        data: {
+          categories: {
+            set: [], // Clear existing
+          },
+        },
+      })
 
       // Then connect or create new ones
       if (categoriesArray.length > 0) {
-        for (const name of categoriesArray) {
-          // Upsert category
-          const [category] = await db
-            .insert(categories)
-            .values({ name })
-            .onConflictDoUpdate({
-              target: categories.name,
-              set: { name }
-            })
-            .returning()
-
-          // Create photo-category relation
-          await db.insert(photoCategories).values({
-            A: category.id,
-            B: id
-          })
+        updateData.categories = {
+          connectOrCreate: categoriesArray.map((name: string) => ({
+            where: { name },
+            create: { name },
+          })),
         }
       }
     }
 
-    // Update photo
-    const [updatedPhoto] = await db
-      .update(photosTable)
-      .set(updateData)
-      .where(eq(photosTable.id, id))
-      .returning()
-
-    if (!updatedPhoto) {
-      return c.json({ error: 'Photo not found' }, 404)
-    }
-
-    // Get photo with details
-    const photoWithDetails = await getPhotoWithDetails(updatedPhoto.id)
+    const photo = await db.photo.update({
+      where: { id },
+      data: updateData,
+      include: { categories: true, camera: true, lens: true }
+    })
 
     return c.json({
       success: true,
       data: {
-        ...photoWithDetails,
-        dominantColors: photoWithDetails?.dominantColors ? JSON.parse(photoWithDetails.dominantColors) : null,
+        ...photo,
+        category: photo.categories.map((c) => c.name).join(','),
+        dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
       },
     })
   } catch (error) {
@@ -774,29 +650,26 @@ photos.get('/admin/photos/:id/stories', async (c) => {
   try {
     const id = c.req.param('id')
     
-    // Check if photo exists
-    const photoResult = await db.select().from(photosTable).where(eq(photosTable.id, id)).limit(1)
-    if (photoResult.length === 0) {
+    const photo = await db.photo.findUnique({
+      where: { id },
+      include: {
+        stories: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    })
+
+    if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
     }
-
-    // Get associated stories
-    const photoStoriesResult = await db
-      .select({
-        storyId: photoStories.B,
-        storyTitle: stories.title,
-      })
-      .from(photoStories)
-      .leftJoin(stories, eq(photoStories.B, stories.id))
-      .where(eq(photoStories.A, id))
 
     return c.json({
       success: true,
       data: {
-        stories: photoStoriesResult.map(ps => ({
-          id: ps.storyId,
-          title: ps.storyTitle,
-        })),
+        stories: photo.stories,
       },
     })
   } catch (error) {
@@ -815,44 +688,28 @@ photos.post('/admin/photos/check-stories', async (c) => {
       return c.json({ error: 'photoIds array is required' }, 400)
     }
 
-    // Get photos with their stories
-    const photoStoriesResult = await db
-      .select({
-        photoId: photoStories.A,
-        photoTitle: photosTable.title,
-        storyId: photoStories.B,
-        storyTitle: stories.title,
-      })
-      .from(photoStories)
-      .leftJoin(photosTable, eq(photoStories.A, photosTable.id))
-      .leftJoin(stories, eq(photoStories.B, stories.id))
-      .where(inArray(photoStories.A, photoIds))
+    const photosList = await db.photo.findMany({
+      where: { id: { in: photoIds } },
+      include: {
+        stories: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+    })
 
     // Group photos by their associated stories
     const photosWithStories: { photoId: string; photoTitle: string; stories: { id: string; title: string }[] }[] = []
     
-    const photoMap = new Map<string, { photoId: string; photoTitle: string; stories: { id: string; title: string }[] }>()
-    
-    for (const row of photoStoriesResult) {
-      if (!photoMap.has(row.photoId)) {
-        photoMap.set(row.photoId, {
-          photoId: row.photoId,
-          photoTitle: row.photoTitle || '',
-          stories: [],
+    for (const photo of photosList) {
+      if (photo.stories.length > 0) {
+        photosWithStories.push({
+          photoId: photo.id,
+          photoTitle: photo.title,
+          stories: photo.stories,
         })
-      }
-      
-      if (row.storyId && row.storyTitle) {
-        photoMap.get(row.photoId)!.stories.push({
-          id: row.storyId,
-          title: row.storyTitle,
-        })
-      }
-    }
-    
-    for (const item of photoMap.values()) {
-      if (item.stories.length > 0) {
-        photosWithStories.push(item)
       }
     }
 
@@ -879,10 +736,11 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
     }
 
     // Find all photos using this storage provider
-    const photosList = await db
-      .select()
-      .from(photosTable)
-      .where(eq(photosTable.storageProvider, storageProvider as 'local' | 'github' | 'r2'))
+    const photosList = await db.photo.findMany({
+      where: {
+        storageProvider: storageProvider as 'local' | 'github' | 'r2',
+      },
+    })
 
     let updated = 0
     let failed = 0
@@ -896,13 +754,13 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
           ? photo.thumbnailUrl.replace(oldPublicUrl, newPublicUrl)
           : photo.thumbnailUrl
 
-        await db
-          .update(photosTable)
-          .set({
+        await db.photo.update({
+          where: { id: photo.id },
+          data: {
             url: newUrl,
             thumbnailUrl: newThumbnailUrl,
-          })
-          .where(eq(photosTable.id, photo.id))
+          },
+        })
 
         updated++
       } catch (error) {
@@ -926,12 +784,7 @@ photos.post('/admin/photos/:id/reanalyze-colors', async (c) => {
   try {
     const id = c.req.param('id')
 
-    const [photo] = await db
-      .select()
-      .from(photosTable)
-      .where(eq(photosTable.id, id))
-      .limit(1)
-      
+    const photo = await db.photo.findUnique({ where: { id } })
     if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
     }
@@ -949,21 +802,19 @@ photos.post('/admin/photos/:id/reanalyze-colors', async (c) => {
     const dominantColors = await extractDominantColors(buffer)
 
     // Update database
-    const [updated] = await db
-      .update(photosTable)
-      .set({
+    const updated = await db.photo.update({
+      where: { id },
+      data: {
         dominantColors: dominantColors.length > 0 ? JSON.stringify(dominantColors) : null,
-      })
-      .where(eq(photosTable.id, id))
-      .returning()
-
-    // Get photo with details
-    const photoWithDetails = await getPhotoWithDetails(updated.id)
+      },
+      include: { categories: true, camera: true, lens: true },
+    })
 
     return c.json({
       success: true,
       data: {
-        ...photoWithDetails,
+        ...updated,
+        category: updated.categories.map((c) => c.name).join(','),
         dominantColors,
       },
     })
@@ -979,11 +830,13 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     const id = c.req.param('id')
     const missingType = c.req.query('type') as 'original' | 'thumbnail' | 'both' | undefined
 
-    const photoWithDetails = await getPhotoWithDetails(id)
-    if (!photoWithDetails) {
+    const photo = await db.photo.findUnique({
+      where: { id },
+      include: { categories: true },
+    })
+    if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
     }
-    const photo = photoWithDetails
 
     const formData = await c.req.formData()
     const file = formData.get('file') as File
@@ -1069,17 +922,14 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
           const normalizedMake = normalizeMake(exifData.cameraMake) || exifData.cameraMake
           const brandKey = makeBrandKey(normalizedMake)
           if (brandKey) {
-            const [camera] = await db
-              .insert(cameras)
-              .values({
+            const camera = await db.camera.upsert({
+              where: { id: brandKey },
+              update: { name: normalizedMake },
+              create: {
                 id: brandKey,
                 name: normalizedMake,
-              })
-              .onConflictDoUpdate({
-                target: cameras.id,
-                set: { name: normalizedMake },
-              })
-              .returning()
+              },
+            })
             updateData.cameraId = camera.id
           }
         }
@@ -1088,17 +938,14 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
           const lensMake = normalizeMake(extractLensMakeFromModel(exifData.lens))
           const brandKey = makeBrandKey(lensMake)
           if (brandKey && lensMake) {
-            const [lens] = await db
-              .insert(lenses)
-              .values({
+            const lens = await db.lens.upsert({
+              where: { id: brandKey },
+              update: { name: lensMake },
+              create: {
                 id: brandKey,
                 name: lensMake,
-              })
-              .onConflictDoUpdate({
-                target: lenses.id,
-                set: { name: lensMake },
-              })
-              .returning()
+              },
+            })
             updateData.lensId = lens.id
           }
         }
@@ -1110,16 +957,19 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
       updateData.thumbnailUrl = uploadResult.url
     }
 
-    await db
-      .update(photosTable)
-      .set(updateData)
-      .where(eq(photosTable.id, id))
-
-    const updatedWithDetails = await getPhotoWithDetails(id)
+    const updated = await db.photo.update({
+      where: { id },
+      data: updateData,
+      include: { categories: true, camera: true, lens: true },
+    })
 
     return c.json({
       success: true,
-      data: updatedWithDetails,
+      data: {
+        ...updated,
+        category: updated.categories.map((c) => c.name).join(','),
+        dominantColors: updated.dominantColors ? JSON.parse(updated.dominantColors) : null,
+      },
     })
   } catch (error) {
     console.error('Reupload photo error:', error)
@@ -1134,7 +984,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
 photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
   try {
     const id = c.req.param('id')
-    const [photo] = await db.select().from(photosTable).where(eq(photosTable.id, id)).limit(1)
+    const photo = await db.photo.findUnique({ where: { id } })
     if (!photo) return c.json({ error: 'Photo not found' }, 404)
 
     const storageConfig = await getStorageConfig(photo.storageProvider)
@@ -1162,16 +1012,19 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
       contentType: 'image/jpeg',
     })
 
-    await db
-      .update(photosTable)
-      .set({ thumbnailUrl: uploadResult.url })
-      .where(eq(photosTable.id, id))
-
-    const updatedWithDetails = await getPhotoWithDetails(id)
+    const updated = await db.photo.update({
+      where: { id },
+      data: { thumbnailUrl: uploadResult.url },
+      include: { categories: true, camera: true, lens: true },
+    })
 
     return c.json({
       success: true,
-      data: updatedWithDetails,
+      data: {
+        ...updated,
+        category: updated.categories.map((c) => c.name).join(','),
+        dominantColors: updated.dominantColors ? JSON.parse(updated.dominantColors) : null,
+      },
     })
   } catch (error) {
     console.error('Generate thumbnail error:', error)

@@ -1,8 +1,9 @@
 import 'server-only'
 import { Hono } from 'hono'
 import { signToken } from '~/server/lib/jwt'
-import { db } from '~/server/lib/db'
+import { db, users } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import { eq, and } from 'drizzle-orm'
 
 const auth = new Hono<{ Variables: AuthVariables }>()
 
@@ -130,11 +131,11 @@ auth.post('/linuxdo/callback', async (c) => {
   }
 
   // Check if this Linux DO account is already bound to an admin user
-  const existingUser = await db.user.findFirst({
-    where: {
-      oauthProvider: 'linuxdo',
-      oauthId: String(userData.id),
-    },
+  const existingUser = await db.query.users.findFirst({
+    where: and(
+      eq(users.oauthProvider, 'linuxdo'),
+      eq(users.oauthId, String(userData.id))
+    ),
   })
 
   // Only existing users with isAdmin=true can be admin via Linux DO login
@@ -142,29 +143,34 @@ auth.post('/linuxdo/callback', async (c) => {
   const isAdmin = existingUser?.isAdmin ?? false
 
   // Find or create user in database
-  const user = await db.user.upsert({
-    where: {
-      oauthProvider_oauthId: {
+  let user = existingUser
+  if (existingUser) {
+    // Update existing user
+    const [updated] = await db.update(users)
+      .set({
+        oauthUsername: userData.username,
+        avatarUrl: userData.avatar_url,
+        trustLevel: userData.trust_level,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, existingUser.id))
+      .returning()
+    user = updated
+  } else {
+    // Create new user
+    const [created] = await db.insert(users)
+      .values({
+        username: `linuxdo_${userData.id}`,
         oauthProvider: 'linuxdo',
         oauthId: String(userData.id),
-      },
-    },
-    update: {
-      oauthUsername: userData.username,
-      avatarUrl: userData.avatar_url,
-      trustLevel: userData.trust_level,
-      // Don't update isAdmin here - preserve existing value
-    },
-    create: {
-      username: `linuxdo_${userData.id}`,
-      oauthProvider: 'linuxdo',
-      oauthId: String(userData.id),
-      oauthUsername: userData.username,
-      avatarUrl: userData.avatar_url,
-      trustLevel: userData.trust_level,
-      isAdmin: false, // New users are never admin
-    },
-  })
+        oauthUsername: userData.username,
+        avatarUrl: userData.avatar_url,
+        trustLevel: userData.trust_level,
+        isAdmin: false,
+      })
+      .returning()
+    user = created
+  }
 
   const token = signToken({
     sub: user.id,
@@ -197,13 +203,12 @@ auth.get('/linuxdo/enabled', (c) => {
 auth.get('/linuxdo/binding', authMiddleware, async (c) => {
   try {
     // Find admin user with Linux DO binding
-    const boundUser = await db.user.findFirst({
-      where: {
-        isAdmin: true,
-        oauthProvider: 'linuxdo',
-        oauthId: { not: null },
-      },
-      select: {
+    const boundUser = await db.query.users.findFirst({
+      where: and(
+        eq(users.isAdmin, true),
+        eq(users.oauthProvider, 'linuxdo')
+      ),
+      columns: {
         id: true,
         oauthUsername: true,
         avatarUrl: true,
@@ -298,28 +303,28 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
   }
 
   // Check if this Linux DO account is already bound to another user
-  const existingBinding = await db.user.findFirst({
-    where: {
-      oauthProvider: 'linuxdo',
-      oauthId: String(userData.id),
-    },
+  const existingBinding = await db.query.users.findFirst({
+    where: and(
+      eq(users.oauthProvider, 'linuxdo'),
+      eq(users.oauthId, String(userData.id))
+    ),
   })
 
   if (existingBinding) {
     // If already bound, just update it to be admin
-    await db.user.update({
-      where: { id: existingBinding.id },
-      data: {
+    await db.update(users)
+      .set({
         isAdmin: true,
         oauthUsername: userData.username,
         avatarUrl: userData.avatar_url,
         trustLevel: userData.trust_level,
-      },
-    })
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, existingBinding.id))
   } else {
     // Create new binding as admin
-    await db.user.create({
-      data: {
+    await db.insert(users)
+      .values({
         username: `linuxdo_${userData.id}`,
         oauthProvider: 'linuxdo',
         oauthId: String(userData.id),
@@ -327,8 +332,7 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
         avatarUrl: userData.avatar_url,
         trustLevel: userData.trust_level,
         isAdmin: true,
-      },
-    })
+      })
   }
 
   return c.json({
@@ -345,19 +349,20 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
 auth.delete('/linuxdo/bind', authMiddleware, async (c) => {
   try {
     // Find and remove admin binding
-    const result = await db.user.updateMany({
-      where: {
-        isAdmin: true,
-        oauthProvider: 'linuxdo',
-      },
-      data: {
+    const result = await db.update(users)
+      .set({
         isAdmin: false,
-      },
-    })
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(users.isAdmin, true),
+        eq(users.oauthProvider, 'linuxdo')
+      ))
+      .returning()
 
     return c.json({
       success: true,
-      unboundCount: result.count,
+      unboundCount: result.length,
     })
   } catch (error) {
     console.error('Unbind Linux DO error:', error)

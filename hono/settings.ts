@@ -1,14 +1,15 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, settings as settingsTable } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import { eq } from 'drizzle-orm'
 
 const settings = new Hono<{ Variables: AuthVariables }>()
 
 // Protected settings endpoints
 settings.get('/', authMiddleware, async (c) => {
   try {
-    const settingsList = await db.setting.findMany()
+    const settingsList = await db.select().from(settingsTable)
 
     const config: Record<string, string> = {
       // These are read from environment variables (read-only)
@@ -60,19 +61,23 @@ settings.patch('/', authMiddleware, async (c) => {
 
     // Use transaction to avoid prepared statement conflicts with connection poolers
     if (Object.keys(filteredData).length > 0) {
-      await db.$transaction(
-        Object.keys(filteredData).map((key) =>
-          db.setting.upsert({
-            where: { key },
-            update: { value: String(filteredData[key]) },
-            create: { key, value: String(filteredData[key]) },
-          }),
-        ),
-      )
+      await db.transaction(async (tx) => {
+        for (const key of Object.keys(filteredData)) {
+          const existing = await tx.select().from(settingsTable).where(eq(settingsTable.key, key)).limit(1)
+          if (existing.length > 0) {
+            await tx.update(settingsTable)
+              .set({ value: String(filteredData[key]) })
+              .where(eq(settingsTable.key, key))
+          } else {
+            await tx.insert(settingsTable)
+              .values({ key, value: String(filteredData[key]) })
+          }
+        }
+      })
     }
 
     // Return updated settings (including env-based ones)
-    const settingsList = await db.setting.findMany()
+    const settingsList = await db.select().from(settingsTable)
     const config: Record<string, string> = {
       // These are read from environment variables (read-only)
       site_title: process.env.SITE_TITLE || 'MO GALLERY',

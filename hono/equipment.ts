@@ -1,7 +1,8 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, cameras, lenses, photos } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import { eq, sql } from 'drizzle-orm'
 
 const equipment = new Hono<{ Variables: AuthVariables }>()
 
@@ -11,22 +12,22 @@ const equipment = new Hono<{ Variables: AuthVariables }>()
  */
 equipment.get('/cameras', async (c) => {
   try {
-    const cameras = await db.camera.findMany({
-      orderBy: [{ name: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const camerasList = await db
+      .select({
+        id: cameras.id,
+        name: cameras.name,
+        photoCount: sql<number>`cast(count(${photos.id}) as int)`,
+      })
+      .from(cameras)
+      .leftJoin(photos, eq(cameras.id, photos.cameraId))
+      .groupBy(cameras.id, cameras.name)
+      .orderBy(cameras.name)
 
-    const data = cameras.map((camera) => ({
+    const data = camerasList.map((camera) => ({
       id: camera.id,
       name: camera.name,
       displayName: camera.name,
-      photoCount: camera._count.photos,
+      photoCount: camera.photoCount,
     }))
 
     return c.json({
@@ -45,22 +46,22 @@ equipment.get('/cameras', async (c) => {
  */
 equipment.get('/lenses', async (c) => {
   try {
-    const lenses = await db.lens.findMany({
-      orderBy: [{ name: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const lensesList = await db
+      .select({
+        id: lenses.id,
+        name: lenses.name,
+        photoCount: sql<number>`cast(count(${photos.id}) as int)`,
+      })
+      .from(lenses)
+      .leftJoin(photos, eq(lenses.id, photos.lensId))
+      .groupBy(lenses.id, lenses.name)
+      .orderBy(lenses.name)
 
-    const data = lenses.map((lens) => ({
+    const data = lensesList.map((lens) => ({
       id: lens.id,
       name: lens.name,
       displayName: lens.name,
-      photoCount: lens._count.photos,
+      photoCount: lens.photoCount,
     }))
 
     return c.json({
@@ -83,14 +84,17 @@ equipment.get('/admin/cameras/:id', async (c) => {
   try {
     const id = c.req.param('id')
     
-    const camera = await db.camera.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const [camera] = await db
+      .select({
+        id: cameras.id,
+        name: cameras.name,
+        photoCount: sql<number>`cast(count(${photos.id}) as int)`,
+      })
+      .from(cameras)
+      .leftJoin(photos, eq(cameras.id, photos.cameraId))
+      .where(eq(cameras.id, id))
+      .groupBy(cameras.id, cameras.name)
+      .limit(1)
 
     if (!camera) {
       return c.json({ error: 'Camera not found' }, 404)
@@ -102,7 +106,7 @@ equipment.get('/admin/cameras/:id', async (c) => {
         id: camera.id,
         name: camera.name,
         displayName: camera.name,
-        photoCount: camera._count.photos,
+        photoCount: camera.photoCount,
       },
     })
   } catch (error) {
@@ -118,14 +122,17 @@ equipment.get('/admin/lenses/:id', async (c) => {
   try {
     const id = c.req.param('id')
     
-    const lens = await db.lens.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: { photos: true },
-        },
-      },
-    })
+    const [lens] = await db
+      .select({
+        id: lenses.id,
+        name: lenses.name,
+        photoCount: sql<number>`cast(count(${photos.id}) as int)`,
+      })
+      .from(lenses)
+      .leftJoin(photos, eq(lenses.id, photos.lensId))
+      .where(eq(lenses.id, id))
+      .groupBy(lenses.id, lenses.name)
+      .limit(1)
 
     if (!lens) {
       return c.json({ error: 'Lens not found' }, 404)
@@ -137,7 +144,7 @@ equipment.get('/admin/lenses/:id', async (c) => {
         id: lens.id,
         name: lens.name,
         displayName: lens.name,
-        photoCount: lens._count.photos,
+        photoCount: lens.photoCount,
       },
     })
   } catch (error) {

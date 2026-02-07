@@ -1,8 +1,9 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, friendLinks } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
+import { eq, desc, asc } from 'drizzle-orm'
 
 const friends = new Hono<{ Variables: AuthVariables }>()
 
@@ -30,18 +31,15 @@ const UpdateFriendLinkSchema = z.object({
 // Public endpoint - Get active friend links
 friends.get('/friends', async (c) => {
   try {
-    const friendLinks = await db.friendLink.findMany({
-      where: { isActive: true },
-      orderBy: [
-        { featured: 'desc' },
-        { sortOrder: 'asc' },
-        { createdAt: 'desc' },
-      ],
-    })
+    const friendLinksList = await db
+      .select()
+      .from(friendLinks)
+      .where(eq(friendLinks.isActive, true))
+      .orderBy(desc(friendLinks.featured), asc(friendLinks.sortOrder), desc(friendLinks.createdAt))
 
     return c.json({
       success: true,
-      data: friendLinks,
+      data: friendLinksList,
     })
   } catch (error) {
     console.error('Get friend links error:', error)
@@ -55,16 +53,14 @@ friends.use('/admin/*', authMiddleware)
 // Get all friend links (admin)
 friends.get('/admin/friends', async (c) => {
   try {
-    const friendLinks = await db.friendLink.findMany({
-      orderBy: [
-        { sortOrder: 'asc' },
-        { createdAt: 'desc' },
-      ],
-    })
+    const friendLinksList = await db
+      .select()
+      .from(friendLinks)
+      .orderBy(asc(friendLinks.sortOrder), desc(friendLinks.createdAt))
 
     return c.json({
       success: true,
-      data: friendLinks,
+      data: friendLinksList,
     })
   } catch (error) {
     console.error('Get admin friend links error:', error)
@@ -78,9 +74,9 @@ friends.post('/admin/friends', async (c) => {
     const body = await c.req.json()
     const validated = CreateFriendLinkSchema.parse(body)
 
-    const friendLink = await db.friendLink.create({
-      data: validated,
-    })
+    const [friendLink] = await db.insert(friendLinks)
+      .values(validated)
+      .returning()
 
     return c.json({
       success: true,
@@ -108,10 +104,9 @@ friends.patch('/admin/friends/reorder', async (c) => {
     // Update each item's sort order
     await Promise.all(
       items.map((item) =>
-        db.friendLink.update({
-          where: { id: item.id },
-          data: { sortOrder: item.sortOrder },
-        })
+        db.update(friendLinks)
+          .set({ sortOrder: item.sortOrder, updatedAt: new Date() })
+          .where(eq(friendLinks.id, item.id))
       )
     )
 
@@ -132,10 +127,10 @@ friends.patch('/admin/friends/:id', async (c) => {
     const body = await c.req.json()
     const validated = UpdateFriendLinkSchema.parse(body)
 
-    const friendLink = await db.friendLink.update({
-      where: { id },
-      data: validated,
-    })
+    const [friendLink] = await db.update(friendLinks)
+      .set({ ...validated, updatedAt: new Date() })
+      .where(eq(friendLinks.id, id))
+      .returning()
 
     return c.json({
       success: true,
@@ -155,9 +150,8 @@ friends.delete('/admin/friends/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
-    await db.friendLink.delete({
-      where: { id },
-    })
+    await db.delete(friendLinks)
+      .where(eq(friendLinks.id, id))
 
     return c.json({
       success: true,

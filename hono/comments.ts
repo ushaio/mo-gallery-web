@@ -1,9 +1,10 @@
 import 'server-only'
 import { Hono } from 'hono'
-import { db } from '~/server/lib/db'
+import { db, comments as commentsTable, photos, settings as settingsTable } from '~/server/lib/drizzle'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { verifyToken } from '~/server/lib/jwt'
 import { z } from 'zod'
+import { eq, and, desc, count } from 'drizzle-orm'
 
 const comments = new Hono<{ Variables: AuthVariables }>()
 
@@ -25,17 +26,20 @@ const UpdateCommentStatusSchema = z.object({
 comments.get('/photos/:photoId/comments', async (c) => {
   const photoId = c.req.param('photoId')
 
-  const commentsList = await db.comment.findMany({
-    where: { photoId, status: 'approved' },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      author: true,
-      avatarUrl: true,
-      content: true,
-      createdAt: true,
-    },
-  })
+  const commentsList = await db
+    .select({
+      id: commentsTable.id,
+      author: commentsTable.author,
+      avatarUrl: commentsTable.avatarUrl,
+      content: commentsTable.content,
+      createdAt: commentsTable.createdAt,
+    })
+    .from(commentsTable)
+    .where(and(
+      eq(commentsTable.photoId, photoId),
+      eq(commentsTable.status, 'approved')
+    ))
+    .orderBy(desc(commentsTable.createdAt))
 
   return c.json({ success: true, data: commentsList })
 })
@@ -82,18 +86,16 @@ comments.post('/photos/:photoId/comments', async (c) => {
 
   const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown'
 
-  const photo = await db.photo.findUnique({ where: { id: photoId } })
-  if (!photo) {
+  const photo = await db.select().from(photos).where(eq(photos.id, photoId)).limit(1)
+  if (photo.length === 0) {
     return c.json({ error: 'Photo not found' }, 404)
   }
 
-  const moderationSetting = await db.setting.findUnique({
-    where: { key: 'comment_moderation' },
-  })
-  const requiresModeration = moderationSetting?.value === 'true'
+  const moderationSetting = await db.select().from(settingsTable).where(eq(settingsTable.key, 'comment_moderation')).limit(1)
+  const requiresModeration = moderationSetting[0]?.value === 'true'
 
-  const comment = await db.comment.create({
-    data: {
+  const [comment] = await db.insert(commentsTable)
+    .values({
       photoId,
       author: validated.author,
       email: validated.email,
@@ -101,8 +103,8 @@ comments.post('/photos/:photoId/comments', async (c) => {
       content: validated.content,
       status: requiresModeration ? 'pending' : 'approved',
       ip,
-    },
-  })
+    })
+    .returning()
 
   return c.json({
     success: true,
@@ -128,25 +130,42 @@ comments.get('/admin/comments', async (c) => {
   const status = c.req.query('status')
   const photoId = c.req.query('photoId')
   const page = parseInt(c.req.query('page') || '1')
-  const limit = parseInt(c.req.query('limit') || '20')
-  const skip = (page - 1) * limit
+  const limitNum = parseInt(c.req.query('limit') || '20')
+  const skip = (page - 1) * limitNum
 
-  const where: Record<string, string> = {}
-  if (status) where.status = status
-  if (photoId) where.photoId = photoId
+  const conditions = []
+  if (status) conditions.push(eq(commentsTable.status, status))
+  if (photoId) conditions.push(eq(commentsTable.photoId, photoId))
 
-  const [total, commentsList] = await Promise.all([
-    db.comment.count({ where }),
-    db.comment.findMany({
-      where,
-      include: {
-        photo: { select: { id: true, title: true } },
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  const [totalResult, commentsList] = await Promise.all([
+    db.select({ count: count() }).from(commentsTable).where(whereClause),
+    db.select({
+      id: commentsTable.id,
+      photoId: commentsTable.photoId,
+      author: commentsTable.author,
+      email: commentsTable.email,
+      avatarUrl: commentsTable.avatarUrl,
+      content: commentsTable.content,
+      status: commentsTable.status,
+      ip: commentsTable.ip,
+      createdAt: commentsTable.createdAt,
+      updatedAt: commentsTable.updatedAt,
+      photo: {
+        id: photos.id,
+        title: photos.title,
       },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
+    })
+    .from(commentsTable)
+    .leftJoin(photos, eq(commentsTable.photoId, photos.id))
+    .where(whereClause)
+    .orderBy(desc(commentsTable.createdAt))
+    .limit(limitNum)
+    .offset(skip)
   ])
+
+  const total = totalResult[0]?.count || 0
 
   return c.json({
     success: true,
@@ -154,8 +173,8 @@ comments.get('/admin/comments', async (c) => {
     meta: {
       total,
       page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
     },
   })
 })
@@ -166,10 +185,13 @@ comments.patch('/admin/comments/:id/status', async (c) => {
   const body = await c.req.json()
   const validated = UpdateCommentStatusSchema.parse(body)
 
-  const comment = await db.comment.update({
-    where: { id },
-    data: { status: validated.status },
-  })
+  const [comment] = await db.update(commentsTable)
+    .set({ 
+      status: validated.status,
+      updatedAt: new Date(),
+    })
+    .where(eq(commentsTable.id, id))
+    .returning()
 
   return c.json({ success: true, data: comment })
 })
@@ -177,7 +199,7 @@ comments.patch('/admin/comments/:id/status', async (c) => {
 // Delete comment (admin)
 comments.delete('/admin/comments/:id', async (c) => {
   const id = c.req.param('id')
-  await db.comment.delete({ where: { id } })
+  await db.delete(commentsTable).where(eq(commentsTable.id, id))
   return c.json({ success: true, message: 'Comment deleted successfully' })
 })
 
