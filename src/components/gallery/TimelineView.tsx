@@ -7,7 +7,7 @@ import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
 
-// Unified photo item with IntersectionObserver-based entrance animation
+// 时间线照片单元组件 - 使用 IntersectionObserver 实现入场动画
 interface TimelinePhotoItemProps {
   photo: PhotoDto
   index: number
@@ -34,7 +34,7 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({ photo, index, settin
         }`}
       />
 
-      {/* Hover Overlay */}
+      {/* 悬浮信息遮罩 */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
         <p className="text-ui-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
           {photo.category.split(',')[0]}
@@ -44,7 +44,7 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({ photo, index, settin
         </h3>
       </div>
 
-      {/* Time Badge */}
+      {/* 拍摄时间标记 */}
       {photo.takenAt && (
         <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/70 bg-black/40 px-1.5 py-0.5">
           {new Date(photo.takenAt).toLocaleTimeString('en-US', {
@@ -55,7 +55,7 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({ photo, index, settin
         </div>
       )}
 
-      {/* No date indicator */}
+      {/* 无拍摄日期标记 */}
       {!photo.takenAt && (
         <div className="absolute top-2 right-2 text-ui-micro font-mono text-white/50 bg-black/30 px-1.5 py-0.5">
           ?
@@ -90,13 +90,14 @@ interface YearGroup {
   }[]
 }
 
+// 时间线视图 - 按日期分组展示照片，支持日期跳转导航
 export function TimelineView({ photos, settings, grayscale, onPhotoClick }: TimelineViewProps) {
   const { t } = useLanguage()
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [expandedYear, setExpandedYear] = useState<number | null>(null)
   const dayRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  // Group photos by date (takenAt first, then createdAt for those without takenAt)
+  // 按日期分组照片（优先使用拍摄日期，无拍摄日期的按上传日期分组）
   const groupedByDay = useMemo(() => {
     const withTakenAt: PhotoDto[] = []
     const withoutTakenAt: PhotoDto[] = []
@@ -162,7 +163,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
     return [...sortedDaysWithTakenAt, ...sortedDaysWithoutTakenAt]
   }, [photos])
 
-  // Group by year > month for jump dialog
+  // 按年 > 月层级分组，用于日期跳转对话框
   const yearGroups = useMemo((): YearGroup[] => {
     const groups: Map<number, Map<number, DayGroup[]>> = new Map()
 
@@ -189,6 +190,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
       }))
   }, [groupedByDay])
 
+  // 格式化月份名称
   const formatMonth = (month: number) => {
     const monthKeys = [
       'gallery.months_jan', 'gallery.months_feb', 'gallery.months_mar',
@@ -225,6 +227,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
     }
   }, [])
 
+  // 滚动到指定日期位置
   const scrollToDate = (dateKey: string) => {
     const element = dayRefs.current.get(dateKey)
     if (element) {
@@ -243,11 +246,11 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
 
   return (
     <div className="relative">
-      {/* Jump Dialog */}
+      {/* 日期跳转对话框 */}
       <AnimatePresence>
         {showJumpDialog && (
           <>
-            {/* Backdrop */}
+            {/* 遮罩层 */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -259,7 +262,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
               }}
             />
 
-            {/* Dialog */}
+            {/* 对话框 */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -267,7 +270,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md max-h-[70vh] bg-background border border-border shadow-2xl overflow-hidden"
             >
-              {/* Header */}
+              {/* 对话框头部 */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30">
                 <div className="flex items-center gap-3">
                   <Calendar className="w-5 h-5 text-primary" />
@@ -289,11 +292,11 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
                 </button>
               </div>
 
-              {/* Content */}
+              {/* 年份/月份/日期内容 */}
               <div className="overflow-y-auto max-h-[calc(70vh-64px)] custom-scrollbar">
                 {yearGroups.map((yearGroup) => (
                   <div key={yearGroup.year} className="border-b border-border last:border-b-0">
-                    {/* Year Header */}
+                    {/* 年份标题 */}
                     <button
                       onClick={() => setExpandedYear(expandedYear === yearGroup.year ? null : yearGroup.year)}
                       className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/50 transition-colors"
@@ -321,7 +324,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
                       </div>
                     </button>
 
-                    {/* Months & Days */}
+                    {/* 月份和日期列表 */}
                     <AnimatePresence>
                       {expandedYear === yearGroup.year && (
                         <motion.div
@@ -333,14 +336,14 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
                         >
                           {yearGroup.months.map((monthGroup) => (
                             <div key={monthGroup.month} className="border-t border-border/50">
-                              {/* Month Header */}
+                              {/* 月份标题 */}
                               <div className="px-6 py-2 bg-muted/30">
                                 <span className="text-ui-micro font-black uppercase tracking-[0.2em] text-muted-foreground">
                                   {yearGroup.year === 0 ? t('gallery.timeline_uploaded') : formatMonth(monthGroup.month)}
                                 </span>
                               </div>
 
-                              {/* Days Grid */}
+                              {/* 日期网格 */}
                               <div className="px-6 py-3 flex flex-wrap gap-2">
                                 {monthGroup.days.map((day) => (
                                   <button
@@ -354,7 +357,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
                                     <span className="text-ui-nano text-muted-foreground font-mono">
                                       {day.photos.length}
                                     </span>
-                                    {/* Indicator dot */}
+                                    {/* 悬浮指示点 */}
                                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </button>
                                 ))}
@@ -372,7 +375,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
         )}
       </AnimatePresence>
 
-      {/* Timeline Line - Left side */}
+      {/* 时间线左侧竖线 */}
       <div className="absolute left-4 md:left-8 top-0 bottom-0 w-px bg-border" />
 
       {groupedByDay.map((dayGroup, dayIndex) => (
@@ -381,17 +384,17 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
           ref={(el) => setDayRef(dayGroup.dateKey, el)}
           className="relative"
         >
-            {/* Sticky Date Header */}
+            {/* 吸顶日期标题 */}
             <div className="sticky top-[116px] z-20 -ml-1 md:-ml-0">
               <div className="relative py-3 bg-background/95 backdrop-blur-sm">
-                {/* Timeline Node - Clickable */}
+                {/* 时间线节点 - 可点击跳转 */}
                 <button
                   onClick={() => setShowJumpDialog(true)}
                   className="absolute left-[17px] md:left-[33px] top-1/2 -translate-y-1/2 w-3 h-3 bg-primary border-2 border-background z-10 shadow-sm hover:scale-150 hover:bg-primary/80 transition-transform cursor-pointer"
                   title={t('gallery.timeline_jump_hint')}
                 />
 
-                {/* Date Label - Also Clickable */}
+                {/* 日期标签 - 可点击 */}
                 <div className="ml-10 md:ml-16">
                   <button
                     onClick={() => setShowJumpDialog(true)}
@@ -425,7 +428,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
               </div>
             </div>
 
-            {/* Photos Grid */}
+            {/* 照片网格 */}
             <div className="ml-10 md:ml-16 pb-8 pt-2">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
                 {dayGroup.photos.map((photo, index) => (
@@ -443,7 +446,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
         </div>
       ))}
 
-      {/* Empty State */}
+      {/* 空状态 */}
       {groupedByDay.length === 0 && (
         <div className="ml-10 md:ml-16 py-20 text-center">
           <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />

@@ -6,6 +6,7 @@ import { MasonryView } from './MasonryView'
 import { TimelineView } from './TimelineView'
 import { ViewMode } from './ViewModeToggle'
 
+// 照片网格容器 - 根据视图模式分发到不同的布局组件
 interface PhotoGridProps {
   loading: boolean
   photos: PhotoDto[]

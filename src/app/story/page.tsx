@@ -10,6 +10,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { resolveAssetUrl } from '@/lib/api'
 import { QuickStoryEditor } from '@/components/story/QuickStoryEditor'
 
+// 故事列表页 - 按年月时间线展示所有故事
 export default function StoryListPage() {
   const { t } = useLanguage()
   const { settings } = useSettings()
@@ -17,6 +18,7 @@ export default function StoryListPage() {
   const [loading, setLoading] = useState(true)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
+  // 加载故事列表数据
   async function loadStories() {
     try {
       const storiesData = await getStories()
@@ -28,11 +30,12 @@ export default function StoryListPage() {
     }
   }
 
+  // 页面初始化时加载数据
   useEffect(() => {
     loadStories()
   }, [])
 
-  // Group stories by year and month
+  // 按年份和月份对故事进行分组，用于时间线展示
   const timelineData = useMemo(() => {
     const grouped: Record<string, Record<string, StoryDto[]>> = {}
     stories.forEach(story => {
@@ -46,16 +49,19 @@ export default function StoryListPage() {
     return grouped
   }, [stories])
 
+  // 年份降序排列
   const years = useMemo(() => {
     return Object.keys(timelineData).sort((a, b) => parseInt(b) - parseInt(a))
   }, [timelineData])
 
+  // 获取月份英文名称
   const getMonthName = (month: string) => {
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December']
     return monthNames[parseInt(month) - 1]
   }
 
+  // 获取故事封面图片 URL：优先使用指定封面，其次使用第一张照片
   const getCoverUrl = (story: StoryDto): string | null => {
     if (story.coverPhotoId && story.photos.length > 0) {
       const coverPhoto = story.photos.find(p => p.id === story.coverPhotoId)
@@ -70,7 +76,7 @@ export default function StoryListPage() {
     return null
   }
 
-  // Skeleton for story cards
+  // 加载骨架屏 - 故事卡片占位
   const StorySkeleton = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 pl-4 md:pl-8">
       {[...Array(6)].map((_, i) => {
@@ -94,12 +100,12 @@ export default function StoryListPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
-      {/* Header Section - Always visible */}
+      {/* 页面头部区域 */}
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
           <header className="relative mb-12 md:mb-16">
             <div className="flex flex-col gap-8">
-              {/* Title Section */}
+              {/* 标题区域 */}
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
@@ -124,14 +130,14 @@ export default function StoryListPage() {
                 </div>
               </div>
 
-              {/* Separator */}
+              {/* 分隔线 */}
               <div className="border-t border-border/30" />
             </div>
           </header>
         </div>
       </div>
 
-      {/* Stories Content */}
+      {/* 故事内容区域 */}
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
           <QuickStoryEditor onSuccess={loadStories} />
@@ -150,7 +156,7 @@ export default function StoryListPage() {
 
                 return (
                   <section key={year} className="relative">
-                    {/* Year Header - Sticky at top */}
+                    {/* 年份标题 - 页面滚动时吸顶 */}
                     <motion.div
                       className="sticky top-20 z-20 py-3 bg-background/95 backdrop-blur-sm transition-all duration-200"
                       initial={{ opacity: 0 }}
@@ -165,7 +171,7 @@ export default function StoryListPage() {
                       </div>
                     </motion.div>
 
-                    {/* Months within Year */}
+                    {/* 年份内的月份分组 */}
                     <div className="space-y-12 mt-6">
                       {months.map((month) => {
                         const storiesInMonth = timelineData[year][month]
@@ -173,7 +179,7 @@ export default function StoryListPage() {
 
                         return (
                           <div key={`${year}-${month}`} className="relative">
-                            {/* Month Header - Sticky below year */}
+                            {/* 月份标题 - 吸顶在年份标题下方 */}
                             <motion.div
                               className="sticky top-36 z-10 py-2 bg-background/90 backdrop-blur-sm transition-all duration-200"
                               initial={{ opacity: 0, x: -10 }}
@@ -193,12 +199,12 @@ export default function StoryListPage() {
                               </div>
                             </motion.div>
 
-                            {/* Story Grid - Irregular/Asymmetrical */}
+                            {/* 故事卡片网格 - 不规则/非对称布局 */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 mt-8 pl-4 md:pl-8">
                               {storiesInMonth.map((story, i) => {
                                 const coverUrl = getCoverUrl(story)
                                 const currentIndex = storyIndex++
-                                // Create irregularity
+                                // 创建不规则布局效果
                                 const isWide = i % 7 === 0 || i % 7 === 6
                                 const isTall = i % 5 === 2
                                 const offset = i % 2 === 1 && !isWide ? 'lg:mt-6' : ''
@@ -216,7 +222,7 @@ export default function StoryListPage() {
                                   >
                                     <Link href={`/story/${story.id}`} className="block h-full">
                                       <div className="flex flex-col h-full">
-                                        {/* Image Container */}
+                                        {/* 图片容器 */}
                                         <div className={`relative overflow-hidden bg-muted mb-5 group-hover:shadow-2xl transition-shadow duration-200 ease-out ${isTall && !isWide ? 'aspect-[3/4]' : isWide ? 'aspect-[21/9]' : 'aspect-[3/2]'}`}>
                                           {coverUrl ? (
                                             <motion.img
@@ -230,7 +236,7 @@ export default function StoryListPage() {
                                             </div>
                                           )}
 
-                                          {/* Top Left: No. Tag */}
+                                          {/* 左上角：编号标签 */}
                                           <div className="absolute top-4 left-4 z-10 text-white/90 drop-shadow-md">
                                             <span className="text-[10px] font-mono font-bold tracking-tighter">
                                               NO.{String(currentIndex + 1).padStart(2, '0')}
@@ -239,14 +245,14 @@ export default function StoryListPage() {
 
 
 
-                                          {/* Photo Count Tag */}
+                                          {/* 照片数量标签 */}
                                           <div className="absolute bottom-4 left-4 flex items-center gap-2 text-white/90 text-[10px] font-mono tracking-widest">
                                             <div className="h-px w-3 bg-white/50" />
                                             {story.photos.length} SHOTS
                                           </div>
                                         </div>
 
-                                        {/* Content Info - Minimalist High Fashion Style */}
+                                        {/* 内容信息 - 极简高端时尚风格 */}
                                         <div className="flex flex-col flex-1 min-h-0 relative px-1">
 
 
@@ -288,7 +294,7 @@ export default function StoryListPage() {
             </div>
           )}
 
-          {/* Footer Navigation */}
+          {/* 底部导航 - 返回画廊 */}
           <motion.div
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}

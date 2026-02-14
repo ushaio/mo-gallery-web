@@ -2,6 +2,7 @@
 
 import { Grid3X3, LayoutGrid, Clock } from 'lucide-react'
 
+// 视图模式类型：网格、瀑布流、时间线
 export type ViewMode = 'grid' | 'masonry' | 'timeline'
 
 interface ViewModeToggleProps {
@@ -10,12 +11,14 @@ interface ViewModeToggleProps {
   t: (key: string) => string
 }
 
+// 视图模式配置项
 const viewModes: { mode: ViewMode; icon: typeof Grid3X3; labelKey: string }[] = [
   { mode: 'grid', icon: Grid3X3, labelKey: 'gallery.view_grid' },
   { mode: 'masonry', icon: LayoutGrid, labelKey: 'gallery.view_masonry' },
   { mode: 'timeline', icon: Clock, labelKey: 'gallery.view_timeline' },
 ]
 
+// 视图模式切换组件 - 单选按钮组样式
 export function ViewModeToggle({ viewMode, onViewModeChange, t }: ViewModeToggleProps) {
   return (
     <div className="flex items-center border border-border p-0.5" role="radiogroup" aria-label="View mode">

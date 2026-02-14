@@ -1,0 +1,324 @@
+{
+  "version": "2.8",
+  "children": [
+    {
+      "type": "frame",
+      "id": "lswTm",
+      "x": 0,
+      "y": 0,
+      "name": "MO Gallery Landing Page",
+      "clip": true,
+      "width": 1440,
+      "fill": "#0A0A0A",
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "x5GSS",
+          "name": "Header",
+          "width": "fill_container",
+          "padding": [
+            24,
+            64
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "Y3rzp",
+              "name": "logo",
+              "fill": "#FFFFFF",
+              "content": "MO GALLERY",
+              "fontFamily": "Cormorant Garamond",
+              "fontSize": 24,
+              "fontWeight": "600",
+              "letterSpacing": 2
+            },
+            {
+              "type": "frame",
+              "id": "7ucXN",
+              "name": "Nav",
+              "gap": 40,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "rWbcr",
+                  "name": "n1",
+                  "fill": "#FFFFFF",
+                  "content": "HOME",
+                  "fontFamily": "Outfit",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 2
+                },
+                {
+                  "type": "text",
+                  "id": "upQGI",
+                  "name": "n2",
+                  "fill": "#999999",
+                  "content": "GALLERY",
+                  "fontFamily": "Outfit",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 2
+                },
+                {
+                  "type": "text",
+                  "id": "EC0xC",
+                  "name": "n3",
+                  "fill": "#999999",
+                  "content": "STORIES",
+                  "fontFamily": "Outfit",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 2
+                },
+                {
+                  "type": "text",
+                  "id": "OysIH",
+                  "name": "n4",
+                  "fill": "#999999",
+                  "content": "ABOUT",
+                  "fontFamily": "Outfit",
+                  "fontSize": 11,
+                  "fontWeight": "500",
+                  "letterSpacing": 2
+                },
+                {
+                  "type": "rectangle",
+                  "id": "QrHRt",
+                  "name": "nd",
+                  "fill": "#333333",
+                  "width": 1,
+                  "height": 16
+                },
+                {
+                  "type": "text",
+                  "id": "reFRa",
+                  "name": "nl",
+                  "fill": "#999999",
+                  "content": "EN",
+                  "fontFamily": "Outfit",
+                  "fontSize": 11,
+                  "fontWeight": "600",
+                  "letterSpacing": 1.5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "NypQt",
+          "name": "Hero Section",
+          "width": "fill_container",
+          "height": 720,
+          "layout": "none",
+          "children": [
+            {
+              "type": "frame",
+              "id": "CkVgv",
+              "x": 0,
+              "y": 0,
+              "name": "Hero BG",
+              "metadata": {
+                "type": "unsplash",
+                "username": "stefano_zocca",
+                "link": "https://unsplash.com/@stefano_zocca",
+                "author": "Stefano Zocca"
+              },
+              "width": 1440,
+              "height": 720,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "https://images.unsplash.com/photo-1529257003635-9d8f5c8584a3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzEwNTkyMTl8&ixlib=rb-4.1.0&q=80&w=1080",
+                "mode": "fill"
+              }
+            },
+            {
+              "type": "rectangle",
+              "id": "4iHeE",
+              "x": 0,
+              "y": 0,
+              "name": "Overlay",
+              "fill": "#0A0A0ACC",
+              "width": 1440,
+              "height": 720
+            },
+            {
+              "type": "frame",
+              "id": "gwdS6",
+              "x": 0,
+              "y": 0,
+              "name": "Hero Content",
+              "width": 1440,
+              "height": 720,
+              "layout": "vertical",
+              "gap": 24,
+              "padding": [
+                0,
+                64
+              ],
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "3CKMF",
+                  "name": "spark",
+                  "width": 28,
+                  "height": 28,
+                  "iconFontName": "sparkles",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFF40"
+                },
+                {
+                  "type": "text",
+                  "id": "iL6JA",
+                  "name": "h1",
+                  "fill": "#FFFFFF",
+                  "content": "YOUR MOMENTS",
+                  "textAlign": "center",
+                  "fontFamily": "Cormorant Garamond",
+                  "fontSize": 96,
+                  "fontWeight": "500",
+                  "letterSpacing": -2
+                },
+                {
+                  "type": "text",
+                  "id": "JhNu7",
+                  "name": "h2",
+                  "fill": "#FFFFFF70",
+                  "content": "YOUR STORIES",
+                  "textAlign": "center",
+                  "fontFamily": "Cormorant Garamond",
+                  "fontSize": 56,
+                  "fontWeight": "300",
+                  "letterSpacing": -1
+                },
+                {
+                  "type": "frame",
+                  "id": "gbvrG",
+                  "name": "Divider",
+                  "gap": 16,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "id": "1sY2Q",
+                      "name": "dl1",
+                      "fill": "#FFFFFF50",
+                      "width": 64,
+                      "height": 1
+                    },
+                    {
+                      "type": "ellipse",
+                      "id": "c7gvi",
+                      "name": "dot",
+                      "fill": "#FFFFFF50",
+                      "width": 6,
+                      "height": 6
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "uZO0B",
+                      "name": "dl2",
+                      "fill": "#FFFFFF50",
+                      "width": 64,
+                      "height": 1
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "pwhxE",
+                  "name": "desc",
+                  "fill": "#FFFFFF50",
+                  "textGrowth": "fixed-width",
+                  "width": 480,
+                  "content": "Capturing the unspoken moments of existence. A curated visual poetry of light and shadow.",
+                  "lineHeight": 1.6,
+                  "textAlign": "center",
+                  "fontFamily": "Outfit",
+                  "fontSize": 14,
+                  "letterSpacing": 0.2
+                },
+                {
+                  "type": "frame",
+                  "id": "56bqH",
+                  "name": "CTA Button",
+                  "cornerRadius": 100,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#FFFFFF30"
+                  },
+                  "gap": 12,
+                  "padding": [
+                    16,
+                    40
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "cizBx",
+                      "name": "ctaTxt",
+                      "fill": "#FFFFFF",
+                      "content": "EXPLORE GALLERY",
+                      "fontFamily": "Outfit",
+                      "fontSize": 12,
+                      "fontWeight": "500",
+                      "letterSpacing": 2
+                    },
+                    {
+                      "type": "icon_font",
+                      "id": "YabMs",
+                      "name": "ctaIco",
+                      "width": 14,
+                      "height": 14,
+                      "iconFontName": "arrow-right",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "bsfqQ",
+                  "name": "Scroll Hint",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "7ifgU",
+                      "name": "scrollTxt",
+                      "fill": "#FFFFFF40",
+                      "content": "SCROLL TO EXPLORE",
+                      "fontFamily": "Outfit",
+                      "fontSize": 9,
+                      "letterSpacing": 2
+                    },
+                    {
+                      "type": "rectangle",
+                      "id": "Sn0kz",
+                      "name": "scrollLine",
+                      "fill": "#FFFFFF40",
+                      "width": 1,
+                      "height": 32
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

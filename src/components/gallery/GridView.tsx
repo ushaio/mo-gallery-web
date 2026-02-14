@@ -22,6 +22,7 @@ interface GridItemProps {
   onClick: () => void
 }
 
+// 网格单元组件 - 等比正方形裁切展示
 const GridItem = memo(function GridItem({ photo, index, settings, grayscale, immersive, columnCount, onClick }: GridItemProps) {
   const { ref, style } = useEntranceAnimation({ index, columnCount })
 
@@ -41,11 +42,11 @@ const GridItem = memo(function GridItem({ photo, index, settings, grayscale, imm
           }`}
         />
 
-        {/* Minimal Overlay on Hover */}
+        {/* 悬浮遮罩 */}
         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
       </div>
 
-      {/* Meta Data - Below Image */}
+      {/* 元数据 - 图片下方 */}
       {!immersive && (
         <div className="flex justify-between items-start opacity-60 group-hover:opacity-100 transition-opacity">
            <div className="space-y-1">
@@ -65,9 +66,11 @@ const GridItem = memo(function GridItem({ photo, index, settings, grayscale, imm
   )
 })
 
+// 网格视图 - 等比正方形网格布局
 export function GridView({ photos, settings, grayscale, immersive = false, onPhotoClick }: GridViewProps) {
   const [columnCount, setColumnCount] = useState(2)
 
+  // 响应式列数调整
   useEffect(() => {
     const handleResize = () => {
       if (typeof window !== 'undefined') {

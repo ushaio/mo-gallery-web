@@ -11,8 +11,9 @@ import { ViewMode } from '@/components/gallery/ViewModeToggle'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 20 // 每页加载照片数量
 
+// 画廊页面 - 支持分类筛选、搜索、多种视图模式和无限滚动
 export default function GalleryPage() {
   const { t } = useLanguage()
   const { settings } = useSettings()
@@ -30,10 +31,11 @@ export default function GalleryPage() {
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState<PhotoPaginationMeta | null>(null)
   
+  // 加载更多触发器的 ref（用于 IntersectionObserver）
   const loadMoreRef = useRef<HTMLDivElement>(null)
-  const isLoadingRef = useRef(false)
+  const isLoadingRef = useRef(false) // 防止并发加载
 
-  // Fetch initial data
+  // 初始化数据：根据分类获取照片和分类列表
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -59,7 +61,7 @@ export default function GalleryPage() {
     fetchInitialData()
   }, [activeCategory])
 
-  // Load more photos - returns a promise that resolves when loading is complete
+  // 加载更多照片 - 返回 Promise，用于无限滚动
   const loadMore = useCallback(async (): Promise<void> => {
     if (isLoadingRef.current || !meta?.hasMore) return
     
@@ -82,7 +84,7 @@ export default function GalleryPage() {
     }
   }, [page, activeCategory, meta?.hasMore])
 
-  // Intersection Observer for infinite scroll
+  // IntersectionObserver 实现无限滚动
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -106,7 +108,7 @@ export default function GalleryPage() {
     }
   }, [loadMore, meta?.hasMore, loading, loadingMore])
 
-  // Handle scroll for back to top button - using ref to avoid unnecessary re-renders
+  // 监听滚动以显示/隐藏"回到顶部"按钮（使用 ref 避免不必要的重渲染）
   const showBackToTopRef = useRef(false)
   useEffect(() => {
     const handleScroll = () => {
@@ -120,11 +122,12 @@ export default function GalleryPage() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  // 平滑滚动到页面顶部
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // Filter photos by search (client-side filtering for already loaded photos)
+  // 按关键词过滤已加载的照片（客户端搜索）
   const filteredPhotos = useMemo(() => {
     if (!search.trim()) return photos
 
@@ -135,12 +138,12 @@ export default function GalleryPage() {
     )
   }, [photos, search])
 
-  // Calculate total count for display
+  // 显示数量：搜索时显示匹配数，否则显示总数
   const displayCount = search.trim() ? filteredPhotos.length : (meta?.total ?? photos.length)
 
   return (
     <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
-      {/* Header Section */}
+      {/* 页面头部区域 */}
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
           <GalleryHeader
@@ -148,7 +151,7 @@ export default function GalleryPage() {
             categories={categories}
             onCategoryChange={(cat) => {
               setActiveCategory(cat)
-              setSearch('') // Clear search when changing category
+              setSearch('') // 切换分类时清空搜索
             }}
             photoCount={displayCount}
             t={t}
@@ -156,7 +159,7 @@ export default function GalleryPage() {
         </div>
       </div>
 
-      {/* Sticky Toolbar - outside container for proper sticky behavior */}
+      {/* 吸顶工具栏 - 放在容器外以确保吸顶效果正常 */}
       <GalleryToolbar
         search={search}
         onSearchChange={setSearch}
@@ -169,7 +172,7 @@ export default function GalleryPage() {
         t={t}
       />
 
-      {/* Photo Grid */}
+      {/* 照片网格 */}
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
           <PhotoGrid
@@ -183,7 +186,7 @@ export default function GalleryPage() {
             t={t}
           />
           
-          {/* Load More Trigger */}
+          {/* 加载更多触发区域 */}
           {!loading && meta?.hasMore && !search.trim() && (
             <div 
               ref={loadMoreRef} 
@@ -198,7 +201,7 @@ export default function GalleryPage() {
             </div>
           )}
           
-          {/* End of list indicator */}
+          {/* 列表底部提示 */}
           {!loading && !meta?.hasMore && photos.length > 0 && !search.trim() && (
             <div className="flex justify-center items-center py-8">
               <span className="text-sm text-muted-foreground">

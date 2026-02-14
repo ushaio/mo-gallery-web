@@ -29,9 +29,9 @@ import { formatFileSize } from '@/lib/utils'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
 
-type TabType = 'story' | 'info'
+type TabType = 'story' | 'info' // 面板标签类型：故事 | 信息
 
-// Cache for story data to avoid re-fetching
+// 故事数据缓存，避免重复请求
 interface StoryCache {
   photoId: string
   story: StoryDto | null
@@ -45,12 +45,13 @@ interface PhotoDetailModalProps {
   onClose: () => void
   onPhotoChange?: (photo: PhotoDto) => void
   allPhotos?: PhotoDto[]
-  totalPhotos?: number // Total count of all photos (for display)
-  hasMore?: boolean // Whether there are more photos to load
-  onLoadMore?: () => Promise<void> // Callback to load more photos
-  hideStoryTab?: boolean // Hide the story tab (useful when viewing from story detail page)
+  totalPhotos?: number // 照片总数（用于显示）
+  hasMore?: boolean // 是否还有更多照片可加载
+  onLoadMore?: () => Promise<void> // 加载更多照片的回调
+  hideStoryTab?: boolean // 隐藏故事标签（从故事详情页打开时使用）
 }
 
+// 照片详情弹窗 - 全屏沉浸式查看照片，包含故事、EXIF 信息、评论和下载
 export function PhotoDetailModal({
   photo,
   isOpen,
@@ -72,26 +73,26 @@ export function PhotoDetailModal({
   const pendingNextRef = useRef(false)
   const prevPhotosLengthRef = useRef(allPhotos.length)
   
-  // Story data cache - persists across tab switches
+  // 故事数据缓存 - 在标签切换之间持久化
   const [storyCache, setStoryCache] = useState<StoryCache | null>(null)
   const [storyLoading, setStoryLoading] = useState(false)
   const storyFetchingRef = useRef(false)
-  
-  // Thumbnails visibility state
+
+  // 缩略图条可见性状态
   const [showThumbnails, setShowThumbnails] = useState(true)
   const thumbnailsScrollRef = useRef<HTMLDivElement>(null)
 
-  // Mobile panel state
+  // 移动端面板展开状态
   const [mobilePanelExpanded, setMobilePanelExpanded] = useState(false)
 
-  // Mobile immersive mode - controls visibility
+  // 移动端沉浸模式 - 控制控件可见性
   const [mobileControlsVisible, setMobileControlsVisible] = useState(true)
   const mobileControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Progressive image loading: show thumbnail first, then fade to full image
+  // 渐进式图片加载：先显示缩略图，再淡入全尺寸图片
   const [fullImageLoaded, setFullImageLoaded] = useState(false)
 
-  // Touch swipe handling
+  // 触摸滑动处理
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const touchMoveRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -103,7 +104,7 @@ export function PhotoDetailModal({
   const canLoadMore = hasMore && onLoadMore
   const hasNext = hasNextLoaded || canLoadMore
   
-  // Display total: use totalPhotos if provided, otherwise use loaded count
+  // 显示总数：优先使用传入的总数，否则使用已加载数量
   const displayTotal = totalPhotos ?? allPhotos.length
   const displayIndex = currentPhotoIndex >= 0 ? currentPhotoIndex + 1 : 0
 
@@ -129,10 +130,10 @@ export function PhotoDetailModal({
     }
   }
 
-  // Effect to handle navigation after loading more photos
+  // 加载更多照片后自动导航到下一张
   useEffect(() => {
     if (pendingNextRef.current && allPhotos.length > prevPhotosLengthRef.current) {
-      // New photos were loaded, navigate to the next one
+      // 新照片已加载，导航到下一张
       const nextIndex = prevPhotosLengthRef.current
       if (nextIndex < allPhotos.length && onPhotoChange) {
         onPhotoChange(allPhotos[nextIndex])
@@ -153,7 +154,7 @@ export function PhotoDetailModal({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, allPhotos, currentPhotoIndex, hasPrevious, hasNext])
 
-  // Touch swipe handlers for mobile navigation
+  // 触摸滑动处理 - 移动端左右滑动切换照片
   const handleTouchStart = (e: TouchEvent) => {
     touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     touchMoveRef.current = null
@@ -188,21 +189,21 @@ export function PhotoDetailModal({
     setTimeout(() => setNotifications((prev) => prev.filter((n) => n.id !== id)), 2000)
   }
 
-  // Check if the photo is within the cached story
+  // 检查照片是否在已缓存的故事中
   const isPhotoInCachedStory = useCallback((pid: string) => {
     return storyCache?.story?.photos?.some(p => p.id === pid) ?? false
   }, [storyCache?.story?.photos])
 
-  // Fetch story data - only when story tab is active
+  // 获取故事数据 - 仅在故事标签激活时加载
   useEffect(() => {
     if (!photo || !isOpen || hideStoryTab || activeTab !== 'story') return
-    
-    // If photo is within the cached story, no need to refetch
+
+    // 如果照片在已缓存的故事中，无需重新获取
     if (storyCache && isPhotoInCachedStory(photo.id)) {
       return
     }
-    
-    // Prevent duplicate fetches
+
+    // 防止重复请求
     if (storyFetchingRef.current) return
     
     const fetchStoryData = async () => {
@@ -232,7 +233,7 @@ export function PhotoDetailModal({
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load story'
         if (errorMessage.includes('No story found')) {
-          // No story, but try to get photo comments
+          // 无故事，尝试获取照片评论
           try {
             const photoComments = await getPhotoComments(photo.id)
             photoComments.sort((a, b) =>
@@ -264,7 +265,7 @@ export function PhotoDetailModal({
     fetchStoryData()
   }, [photo?.id, isOpen, isPhotoInCachedStory])
 
-  // Clear cache when modal closes and manage body scroll
+  // 弹窗关闭时清除缓存并恢复页面滚动
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
@@ -277,7 +278,7 @@ export function PhotoDetailModal({
     }
   }, [isOpen])
 
-  // Update comments in cache
+  // 更新缓存中的评论列表
   const updateCommentsCache = useCallback((newComments: PublicCommentDto[]) => {
     setStoryCache(prev => prev ? { ...prev, comments: newComments } : null)
   }, [])
@@ -294,12 +295,12 @@ export function PhotoDetailModal({
     }
   }, [photo, isOpen])
 
-  // Reset fullImageLoaded when photo changes
+  // 照片切换时重置全尺寸图片加载状态
   useEffect(() => {
     setFullImageLoaded(false)
   }, [photo?.id])
 
-  // Scroll to current photo in thumbnails
+  // 缩略图条滚动到当前照片位置
   useEffect(() => {
     if (showThumbnails && thumbnailsScrollRef.current && currentPhotoIndex >= 0) {
       const activeElement = thumbnailsScrollRef.current.children[currentPhotoIndex] as HTMLElement
@@ -309,6 +310,7 @@ export function PhotoDetailModal({
     }
   }, [currentPhotoIndex, showThumbnails])
 
+  // 点击复制颜色值到剪贴板
   const handleCopyColor = (color: string) => {
     navigator.clipboard.writeText(color)
     notify(t('common.copied'))
@@ -317,9 +319,9 @@ export function PhotoDetailModal({
   const toggleThumbnails = () => setShowThumbnails(!showThumbnails)
   const toggleMobilePanel = () => setMobilePanelExpanded(!mobilePanelExpanded)
 
-  // Toggle mobile controls visibility on tap
+  // 移动端照片点击 - 切换控件可见性
   const handleMobilePhotoTap = useCallback(() => {
-    if (mobilePanelExpanded) return // Don't toggle if panel is expanded
+    if (mobilePanelExpanded) return // 面板展开时不切换
 
     setMobileControlsVisible(prev => !prev)
 

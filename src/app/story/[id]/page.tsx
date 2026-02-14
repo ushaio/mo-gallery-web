@@ -12,6 +12,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { StoryComments } from '@/components/StoryComments'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 
+// Markdown 渲染器（动态加载，避免 SSR 问题）
 const MilkdownViewer = dynamic(
   () => import('@/components/MilkdownViewer'),
   {
@@ -26,6 +27,7 @@ const MilkdownViewer = dynamic(
   }
 )
 
+// 故事详情页 - 展示单个故事的完整内容、照片画廊和评论
 export default function StoryDetailPage() {
   const params = useParams()
   const { t } = useLanguage()
@@ -35,12 +37,14 @@ export default function StoryDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
-  
+
+  // 头部视差滚动效果
   const heroRef = useRef<HTMLDivElement>(null)
   const { scrollY } = useScroll()
   const opacity = useTransform(scrollY, [0, 400], [1, 0])
   const scale = useTransform(scrollY, [0, 400], [1, 1.1])
 
+  // 根据路由参数获取故事数据
   useEffect(() => {
     async function fetchStory() {
       if (!params.id) return
@@ -57,11 +61,13 @@ export default function StoryDetailPage() {
     fetchStory()
   }, [params.id])
 
+  // 获取照片 URL，支持缩略图和原图
   const getPhotoUrl = (photo: PhotoDto, thumbnail = false): string => {
     const url = thumbnail ? (photo.thumbnailUrl || photo.url) : photo.url
     return resolveAssetUrl(url, settings?.cdn_domain)
   }
 
+  // 获取封面照片：优先使用指定封面，否则使用第一张
   const getCoverPhoto = () => {
     if (!story) return null
     if (story.coverPhotoId) {
@@ -70,6 +76,7 @@ export default function StoryDetailPage() {
     return story.photos[0]
   }
 
+  // 加载中状态
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -81,6 +88,7 @@ export default function StoryDetailPage() {
     )
   }
 
+  // 错误或未找到故事
   if (error || !story) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -101,7 +109,7 @@ export default function StoryDetailPage() {
 
   return (
     <div className="bg-background text-foreground">
-      {/* Compact Hero Section */}
+      {/* 紧凑型头图区域 - 带视差滚动效果 */}
       <section ref={heroRef} className="relative h-[50vh] md:h-[60vh] w-full overflow-hidden bg-black">
         <motion.div style={{ scale, opacity }} className="absolute inset-0">
           {coverUrl ? (
@@ -139,7 +147,7 @@ export default function StoryDetailPage() {
           </div>
         </div>
 
-        {/* Back Button */}
+        {/* 返回按钮 */}
         <div className="absolute top-24 left-6 md:left-12 z-10">
           <Link
             href="/story"
@@ -153,23 +161,23 @@ export default function StoryDetailPage() {
         </div>
       </section>
 
-      {/* Main Content Layout */}
+      {/* 主要内容布局 */}
       <div className="container mx-auto px-4 md:px-6 lg:px-8 py-12">
         <div className="max-w-4xl mx-auto">
-          {/* Meta Info */}
+          {/* 概要信息 */}
           <div className="mb-12 pb-8 border-b border-border/30 text-center">
             <p className="text-xl md:text-2xl font-serif italic text-muted-foreground leading-relaxed">
               {story.photos.length} visual records from this journey.
             </p>
           </div>
 
-          {/* Article */}
+          {/* 文章正文 */}
           <article className="milkdown-article prose prose-lg dark:prose-invert max-w-none mb-24">
             <MilkdownViewer content={story.content} />
           </article>
         </div>
 
-        {/* Gallery Section */}
+        {/* 照片画廊区域 */}
         <div className="max-w-6xl mx-auto mb-24">
           <div className="mb-12 flex items-end justify-between border-b border-border/30 pb-4">
             <div>
@@ -181,17 +189,17 @@ export default function StoryDetailPage() {
 
           {story.photos.length > 0 && (
             <div className="space-y-8">
-              {/* Featured Photo */}
+              {/* 焦点大图展示 */}
               <div
                 className="relative h-[50vh] md:h-[70vh] w-full overflow-hidden bg-muted/20 rounded-sm group flex items-center justify-center"
               >
-                {/* Blurred Background */}
+                {/* 模糊背景 */}
                 <div 
                   className="absolute inset-0 bg-cover bg-center blur-3xl opacity-30 dark:opacity-20 scale-110"
                   style={{ backgroundImage: `url(${getPhotoUrl(story.photos[activePhotoIndex], true)})` }}
                 />
 
-                {/* Main Image */}
+                {/* 主图 */}
                 <img
                   src={getPhotoUrl(story.photos[activePhotoIndex])}
                   alt={story.photos[activePhotoIndex].title}
@@ -199,7 +207,7 @@ export default function StoryDetailPage() {
                   onClick={() => setSelectedPhoto(story.photos[activePhotoIndex])}
                 />
 
-                {/* Navigation Buttons */}
+                {/* 前后翻页按钮 */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -219,7 +227,7 @@ export default function StoryDetailPage() {
                   <ChevronRight className="size-6" />
                 </button>
 
-                {/* Info Overlay */}
+                {/* 悬浮信息栏：标题和页码 */}
                 <div className="absolute bottom-6 left-6 right-6 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
                   <span className="text-white text-lg font-medium drop-shadow-md">
                     {story.photos[activePhotoIndex].title}
@@ -230,7 +238,7 @@ export default function StoryDetailPage() {
                 </div>
               </div>
 
-              {/* Thumbnail Grid */}
+              {/* 缩略图网格 */}
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {story.photos.map((photo, index) => (
                   <div
@@ -250,7 +258,7 @@ export default function StoryDetailPage() {
                         index === activePhotoIndex ? 'scale-110 grayscale-0' : 'grayscale-[30%] hover:grayscale-0'
                       }`}
                     />
-                    {/* Active Indicator Overlay */}
+                    {/* 选中状态遮罩 */}
                     {index !== activePhotoIndex && (
                       <div className="absolute inset-0 bg-black/10 hover:bg-transparent transition-colors" />
                     )}
@@ -262,7 +270,7 @@ export default function StoryDetailPage() {
         </div>
 
         <div className="max-w-4xl mx-auto">
-          {/* Comments */}
+          {/* 评论区 */}
           {targetPhotoId && (
             <div className="mb-16 pt-12 border-t border-border/30">
                <div className="mb-8">
@@ -273,7 +281,7 @@ export default function StoryDetailPage() {
             </div>
           )}
 
-          {/* Footer Nav */}
+          {/* 底部导航 - 返回故事列表 */}
           <div className="flex justify-center pt-12 border-t border-border/30">
             <Link
               href="/story"
@@ -288,7 +296,7 @@ export default function StoryDetailPage() {
         </div>
       </div>
 
-      {/* Photo Detail Modal */}
+      {/* 照片详情弹窗 */}
       <PhotoDetailModal
         photo={selectedPhoto}
         isOpen={!!selectedPhoto}

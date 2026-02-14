@@ -16,6 +16,7 @@ interface PhotoCardProps {
   onClick: () => void
 }
 
+// 照片卡片组件 - 用于瀑布流布局，支持灰度和沉浸模式
 export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grayscale, immersive = false, columnCount = 5, onClick }: PhotoCardProps) {
   const { ref, style } = useEntranceAnimation({ index, columnCount })
 
@@ -42,11 +43,11 @@ export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grays
           loading="lazy"
         />
 
-        {/* Subtle Overlay on Hover */}
+        {/* 悬浮遮罩 */}
         <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
       </div>
 
-      {/* Info Below */}
+      {/* 图片下方信息（非沉浸模式显示） */}
       {!immersive && (
         <div className="flex justify-between items-start gap-4">
           <div className="space-y-1.5 max-w-[80%]">

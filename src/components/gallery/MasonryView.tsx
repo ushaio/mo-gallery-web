@@ -16,9 +16,11 @@ type ColumnPhotos = {
   [columnIndex: number]: (PhotoDto & { originalIndex: number })[]
 }
 
+// 瀑布流视图 - 根据窗口宽度自适应列数
 export function MasonryView({ photos, settings, grayscale, immersive = false, onPhotoClick }: MasonryViewProps) {
   const [columnCount, setColumnCount] = useState(2)
 
+  // 响应式列数调整
   useEffect(() => {
     const handleResize = () => {
       if (typeof window !== 'undefined') {
@@ -35,6 +37,7 @@ export function MasonryView({ photos, settings, grayscale, immersive = false, on
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // 将照片按列分配（轮流分配到各列）
   const columnPhotos: ColumnPhotos = useMemo(() => {
     const columns: ColumnPhotos = {}
 

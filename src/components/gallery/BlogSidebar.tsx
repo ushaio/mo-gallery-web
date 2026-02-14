@@ -6,6 +6,7 @@ import { BookText, Calendar, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import { getBlogs, type BlogDto } from '@/lib/api'
 
+// 博客侧边栏组件 - 展示最新的博客文章
 interface BlogSidebarProps {
   t: (key: string) => string
 }
@@ -14,10 +15,11 @@ export function BlogSidebar({ t }: BlogSidebarProps) {
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
 
+  // 获取最新 3 篇博客
   useEffect(() => {
     async function fetchBlogs() {
       try {
-        const data = await getBlogs(3) // Get latest 3 blogs
+        const data = await getBlogs(3) // 获取最新 3 篇博客
         setBlogs(data)
       } catch (error) {
         console.error('Failed to fetch blogs:', error)
@@ -52,7 +54,7 @@ export function BlogSidebar({ t }: BlogSidebarProps) {
         transition={{ delay: 0.3 }}
         className="sticky top-24 space-y-6"
       >
-        {/* Blog Section */}
+        {/* 博客列表区域 */}
         <div className="border border-border bg-card/50">
           <div className="p-6 border-b border-border">
             <div className="flex items-center gap-3 mb-2">

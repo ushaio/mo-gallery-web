@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Search, Circle, CircleOff, Maximize2, Minimize2 } from 'lucide-react'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
+// 画廊页面头部组件 - 包含标题、分类筛选和照片计数
 interface GalleryHeaderProps {
   activeCategory: string
   categories: string[]
@@ -22,7 +23,7 @@ export function GalleryHeader({
   return (
     <header className="mb-12 md:mb-16">
       <div className="flex flex-col gap-8">
-        {/* Title Section */}
+        {/* 标题区域 */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-3">
             <motion.div
@@ -61,7 +62,7 @@ export function GalleryHeader({
           </motion.div>
         </div>
 
-        {/* Category Filter */}
+        {/* 分类筛选导航 */}
         <motion.nav
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -95,6 +96,7 @@ export function GalleryHeader({
   )
 }
 
+// 画廊工具栏组件 - 搜索、显示选项和视图模式切换
 interface GalleryToolbarProps {
   search: string
   onSearchChange: (search: string) => void
@@ -122,7 +124,7 @@ export function GalleryToolbar({
     <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30">
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-4 h-12">
-          {/* Search Bar */}
+          {/* 搜索栏 */}
           <div className="flex-1 min-w-0 max-w-[160px] sm:max-w-xs">
             <div className="relative group">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary" />
@@ -136,9 +138,9 @@ export function GalleryToolbar({
             </div>
           </div>
 
-          {/* Controls */}
+          {/* 显示控制项 */}
           <div className="flex items-center gap-1">
-            {/* Display Options */}
+            {/* 沉浸模式 / 黑白模式 */}
             <button
               onClick={() => onImmersiveChange(!immersive)}
               className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
@@ -168,7 +170,7 @@ export function GalleryToolbar({
 
             <div className="w-px h-4 bg-border/50 mx-1" />
 
-            {/* View Mode Toggle */}
+            {/* 视图模式切换 */}
             <ViewModeToggle
               viewMode={viewMode}
               onViewModeChange={onViewModeChange}
