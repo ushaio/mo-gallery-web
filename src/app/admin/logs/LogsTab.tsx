@@ -1,3 +1,6 @@
+/**
+ * 日志标签页容器 - 包含博客、故事、草稿三个子标签页的切换与管理
+ */
 'use client'
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'
@@ -20,7 +23,7 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 
-// Extended type with preview URLs for display
+// 扩展类型：为故事草稿文件添加预览 URL
 interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
   files: { id: string; file: File; preview: string }[]
 }
@@ -38,43 +41,43 @@ interface LogsTabProps {
 export function LogsTab({ token, photos, settings, t, notify, initialTab, editStoryId }: LogsTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<'blog' | 'stories' | 'drafts'>(initialTab || 'stories')
   
-  // Drafts state - use extended type with preview URLs
+  // 草稿状态 - 使用带预览 URL 的扩展类型
   const [storyDraft, setStoryDraft] = useState<StoryDraftWithPreviews | null>(null)
   const [blogDrafts, setBlogDrafts] = useState<BlogDraftData[]>([])
   const [storyEditorDrafts, setStoryEditorDrafts] = useState<StoryEditorDraftData[]>([])
   const [loadingDrafts, setLoadingDrafts] = useState(false)
   const [selectedDraft, setSelectedDraft] = useState<StoryDraftWithPreviews | BlogDraftData | StoryEditorDraftData | null>(null)
   
-  // State for editing story from draft
+  // 从草稿编辑故事的状态
   const [editFromDraft, setEditFromDraft] = useState<StoryEditorDraftData | null>(null)
   
-  // Delete dialog state
+  // 删除确认对话框状态
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean
     type: 'story' | 'blog' | 'storyEditor' | 'all'
     id?: string
   }>({ isOpen: false, type: 'story' })
   
-  // Keep track of preview URLs for cleanup
+  // 保存预览 URL 引用，用于组件卸载时清理
   const previewUrlsRef = useRef<string[]>([])
   
-  // Track last click for double-click refresh
+  // 双击刷新：记录上次点击的标签页和时间
   const lastClickRef = useRef<{ tab: string; time: number }>({ tab: '', time: 0 })
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0)
   const [blogRefreshKey, setBlogRefreshKey] = useState(0)
   
-  // Filter state for drafts
+  // 草稿筛选状态
   const [draftTypeFilter, setDraftTypeFilter] = useState('')
   const [draftSearchQuery, setDraftSearchQuery] = useState('')
   
-  // Load drafts every time switching to drafts tab
+  // 切换到草稿标签时重新加载草稿
   useEffect(() => {
     if (activeSubTab === 'drafts') {
       loadDrafts()
     }
   }, [activeSubTab])
 
-  // Cleanup preview URLs on unmount
+  // 组件卸载时清理预览 URL
   useEffect(() => {
     return () => {
       previewUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
@@ -84,14 +87,14 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
   async function loadDrafts() {
     setLoadingDrafts(true)
     
-    // Cleanup old preview URLs
+    // 清理旧的预览 URL
     previewUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
     previewUrlsRef.current = []
     
     try {
       const { storyDraft: rawStoryDraft, blogDrafts, storyEditorDrafts } = await getAllDraftsFromDB()
       
-      // Process story draft: generate preview URLs for files
+      // 处理故事草稿：为文件生成预览 URL
       if (rawStoryDraft && rawStoryDraft.files && rawStoryDraft.files.length > 0) {
         const filesWithPreviews = rawStoryDraft.files.map(f => {
           let preview = ''
@@ -159,7 +162,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
     setActiveSubTab('stories')
   }
 
-  // Format relative time
+  // 格式化相对时间
   function formatRelativeTime(timestamp: number): string {
     const diff = Date.now() - timestamp
     if (diff < 60000) return t('story.draft_just_now') || '刚刚'
@@ -168,21 +171,21 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
     return new Date(timestamp).toLocaleString()
   }
 
-  // Count total drafts
+  // 计算草稿总数
   const totalDrafts = useMemo(() => {
     let count = blogDrafts.length + storyEditorDrafts.length
     if (storyDraft) count++
     return count
   }, [storyDraft, blogDrafts, storyEditorDrafts])
 
-  // Draft type filter options
+  // 草稿类型筛选选项
   const draftTypeOptions: SelectOption[] = useMemo(() => [
     { value: '', label: t('admin.all_types') },
     { value: 'story', label: t('nav.story') },
     { value: 'blog', label: t('admin.blog') },
   ], [t])
 
-  // Filtered drafts based on type and search query
+  // 根据类型和搜索关键词筛选草稿
   const filteredStoryDraft = useMemo(() => {
     if (draftTypeFilter === 'blog') return null
     if (!storyDraft) return null
@@ -213,11 +216,11 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
     )
   }, [blogDrafts, draftTypeFilter, draftSearchQuery])
 
-  // Handle tab click with double-click refresh
+  // 标签页点击处理：支持双击刷新
   function handleTabClick(tab: 'blog' | 'stories' | 'drafts') {
     const now = Date.now()
     if (lastClickRef.current.tab === tab && now - lastClickRef.current.time < 300) {
-      // Double click - refresh
+      // 双击 - 刷新对应标签页
       if (tab === 'drafts') {
         loadDrafts()
       } else if (tab === 'stories') {
@@ -232,7 +235,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
 
   return (
     <div className="h-full flex flex-col">
-      {/* Sub-tab Navigation */}
+      {/* 子标签页导航 */}
       <div className="flex space-x-1 border-b border-border flex-shrink-0">
         <AdminButton
           onClick={() => handleTabClick('stories')}
@@ -271,7 +274,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
         </AdminButton>
       </div>
 
-      {/* Sub-tab Content */}
+      {/* 子标签页内容 */}
       <div className="flex-1 overflow-hidden pt-6">
         <div className={activeSubTab === 'blog' ? 'h-full' : 'hidden'}>
           <BlogTab
@@ -342,7 +345,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                 </div>
               ) : (
                 <>
-                  {/* Story Draft Section */}
+                  {/* 故事上传草稿区 */}
                   {filteredStoryDraft && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
@@ -400,7 +403,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                     </div>
                   )}
 
-                  {/* Story Editor Drafts Section */}
+                  {/* 故事编辑器草稿区 */}
                   {filteredStoryEditorDrafts.length > 0 && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
@@ -480,7 +483,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                     </div>
                   )}
 
-                  {/* Blog Drafts Section */}
+                  {/* 博客草稿区 */}
                   {filteredBlogDrafts.length > 0 && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
@@ -554,7 +557,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                     </div>
                   )}
 
-                  {/* Empty State */}
+                  {/* 空状态提示 */}
                   {!filteredStoryDraft && filteredBlogDrafts.length === 0 && filteredStoryEditorDrafts.length === 0 && (
                     <div className="py-24 text-center border border-dashed border-border rounded-lg">
                       <FileArchive className="w-12 h-12 mx-auto mb-4 opacity-10" />
@@ -573,7 +576,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
         ) : null}
       </div>
 
-      {/* Draft Preview Modal */}
+      {/* 草稿预览弹窗 */}
       <AnimatePresence>
         {selectedDraft && (
           <motion.div
@@ -590,7 +593,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
               onClick={(e) => e.stopPropagation()}
               className="w-full max-w-3xl max-h-[80vh] bg-background border border-border shadow-2xl flex flex-col overflow-hidden rounded-lg"
             >
-              {/* Header */}
+              {/* 弹窗头部 */}
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
                   <h3 className="font-serif text-2xl">
@@ -624,7 +627,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                 </AdminButton>
               </div>
 
-              {/* Content */}
+              {/* 弹窗内容 */}
               <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/30 p-4 rounded-lg overflow-x-auto">
@@ -632,7 +635,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                   </pre>
                 </div>
                 
-                {/* Blog-specific metadata */}
+                {/* 博客草稿元信息 */}
                 {'category' in selectedDraft && (
                   <div className="mt-6 pt-6 border-t border-border">
                     <div className="grid grid-cols-2 gap-4 text-sm">
@@ -648,7 +651,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                   </div>
                 )}
 
-                {/* Story-specific metadata */}
+                {/* 故事草稿元信息 */}
                 {'files' in selectedDraft && (selectedDraft as StoryDraftWithPreviews).files?.length > 0 && (
                   <div className="mt-6 pt-6 border-t border-border">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -683,7 +686,7 @@ export function LogsTab({ token, photos, settings, t, notify, initialTab, editSt
                 )}
               </div>
 
-              {/* Footer */}
+              {/* 弹窗底部 */}
               <div className="p-4 border-t border-border bg-muted/20">
                 <p className="text-[10px] text-muted-foreground text-center">
                   {t('admin.draft_preview_hint')}

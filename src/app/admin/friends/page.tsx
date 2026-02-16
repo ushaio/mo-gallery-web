@@ -31,6 +31,7 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { useAdmin } from '../layout'
 
+// 友链表单数据接口
 interface FriendFormData {
   id?: string
   name: string
@@ -42,6 +43,7 @@ interface FriendFormData {
   isActive: boolean
 }
 
+// 默认表单数据
 const defaultFormData: FriendFormData = {
   name: '',
   url: '',
@@ -56,19 +58,23 @@ export default function FriendsPage() {
   const { t, notify } = useAdmin()
   const { token, logout } = useAuth()
   const router = useRouter()
-  const [friends, setFriends] = useState<FriendLinkDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [editingFriend, setEditingFriend] = useState<FriendFormData | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [draggedId, setDraggedId] = useState<string | null>(null)
 
+  // 状态管理
+  const [friends, setFriends] = useState<FriendLinkDto[]>([]) // 友链列表
+  const [loading, setLoading] = useState(true) // 加载状态
+  const [saving, setSaving] = useState(false) // 保存状态
+  const [showModal, setShowModal] = useState(false) // 模态框显示状态
+  const [editingFriend, setEditingFriend] = useState<FriendFormData | null>(null) // 正在编辑的友链
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null) // 删除确认对话框
+  const [draggedId, setDraggedId] = useState<string | null>(null) // 拖拽中的友链ID
+
+  // 处理未授权情况
   const handleUnauthorized = () => {
     logout()
     router.push('/login')
   }
 
+  // 获取友链列表
   const fetchFriends = async () => {
     if (!token) return
     setLoading(true)
@@ -87,15 +93,18 @@ export default function FriendsPage() {
     }
   }
 
+  // 初始化加载友链列表
   useEffect(() => {
     fetchFriends()
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 创建新友链
   const handleCreate = () => {
     setEditingFriend({ ...defaultFormData, sortOrder: friends.length })
     setShowModal(true)
   }
 
+  // 编辑友链
   const handleEdit = (friend: FriendLinkDto) => {
     setEditingFriend({
       id: friend.id,
@@ -110,6 +119,7 @@ export default function FriendsPage() {
     setShowModal(true)
   }
 
+  // 保存友链（创建或更新）
   const handleSave = async () => {
     if (!editingFriend || !token) return
     if (!editingFriend.name.trim()) {
@@ -121,7 +131,7 @@ export default function FriendsPage() {
       return
     }
 
-    // Validate URL format
+    // 验证URL格式
     try {
       new URL(editingFriend.url)
     } catch {
@@ -163,6 +173,7 @@ export default function FriendsPage() {
     }
   }
 
+  // 删除友链
   const handleDelete = async (id: string) => {
     if (!token) return
     try {
@@ -180,6 +191,7 @@ export default function FriendsPage() {
     }
   }
 
+  // 切换精选状态
   const handleToggleFeatured = async (friend: FriendLinkDto) => {
     if (!token) return
     try {
@@ -199,6 +211,7 @@ export default function FriendsPage() {
     }
   }
 
+  // 切换启用/禁用状态
   const handleToggleActive = async (friend: FriendLinkDto) => {
     if (!token) return
     try {
@@ -218,7 +231,7 @@ export default function FriendsPage() {
     }
   }
 
-  // Drag and drop handlers
+  // 拖拽排序处理函数
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedId(id)
     e.dataTransfer.effectAllowed = 'move'
@@ -238,12 +251,12 @@ export default function FriendsPage() {
 
     if (draggedIndex === -1 || targetIndex === -1) return
 
-    // Reorder locally first
+    // 先在本地重新排序
     const newFriends = [...friends]
     const [removed] = newFriends.splice(draggedIndex, 1)
     newFriends.splice(targetIndex, 0, removed)
 
-    // Update sort orders
+    // 更新排序顺序
     const updatedFriends = newFriends.map((f, index) => ({
       ...f,
       sortOrder: index,
@@ -252,7 +265,7 @@ export default function FriendsPage() {
     setFriends(updatedFriends)
     setDraggedId(null)
 
-    // Save to server
+    // 保存到服务器
     try {
       await reorderFriendLinks(
         token,
@@ -264,7 +277,7 @@ export default function FriendsPage() {
         handleUnauthorized()
         return
       }
-      // Revert on error
+      // 出错时恢复原状态
       await fetchFriends()
       notify(t('common.error'), 'error')
     }
@@ -276,7 +289,7 @@ export default function FriendsPage() {
 
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
-      {/* Header */}
+      {/* 页面头部 */}
       <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
         <div className="flex items-center gap-4">
           <Users className="w-6 h-6 text-primary" />
@@ -298,7 +311,7 @@ export default function FriendsPage() {
         </AdminButton>
       </div>
 
-      {/* Friends List */}
+      {/* 友链列表 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {friends.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-border">
@@ -320,12 +333,12 @@ export default function FriendsPage() {
                   draggedId === friend.id ? 'opacity-50' : ''
                 } ${!friend.isActive ? 'opacity-60' : ''}`}
               >
-                {/* Drag Handle */}
+                {/* 拖拽手柄 */}
                 <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
                   <GripVertical className="w-4 h-4" />
                 </div>
 
-                {/* Avatar */}
+                {/* 头像 */}
                 <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                   {friend.avatar ? (
                     <img
@@ -342,7 +355,7 @@ export default function FriendsPage() {
                   )}
                 </div>
 
-                {/* Info */}
+                {/* 友链信息 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className="font-serif text-lg truncate">{friend.name}</h4>
@@ -366,7 +379,7 @@ export default function FriendsPage() {
                   )}
                 </div>
 
-                {/* Actions */}
+                {/* 操作按钮 */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <AdminButton
                     onClick={() => handleToggleActive(friend)}
@@ -418,11 +431,11 @@ export default function FriendsPage() {
         )}
       </div>
 
-      {/* Edit/Create Modal */}
+      {/* 编辑/创建模态框 */}
       {showModal && editingFriend && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-background/95 backdrop-blur-sm">
           <div className="w-full max-w-lg bg-background border border-border shadow-2xl">
-            {/* Modal Header */}
+            {/* 模态框头部 */}
             <div className="p-6 border-b border-border flex items-center justify-between">
               <h3 className="font-serif text-2xl uppercase tracking-tight">
                 {editingFriend.id ? t('admin.friends_edit') : t('admin.friends_add')}
@@ -438,9 +451,9 @@ export default function FriendsPage() {
               </AdminButton>
             </div>
 
-            {/* Modal Body */}
+            {/* 模态框内容 */}
             <div className="p-6 space-y-4">
-              {/* Name */}
+              {/* 名称 */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest mb-2">
                   {t('admin.friends_name')} *
@@ -456,7 +469,7 @@ export default function FriendsPage() {
                 />
               </div>
 
-              {/* URL */}
+              {/* 网址 */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest mb-2">
                   {t('admin.friends_url')} *
@@ -472,7 +485,7 @@ export default function FriendsPage() {
                 />
               </div>
 
-              {/* Description */}
+              {/* 描述 */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest mb-2">
                   {t('admin.friends_description')}
@@ -488,7 +501,7 @@ export default function FriendsPage() {
                 />
               </div>
 
-              {/* Avatar URL */}
+              {/* 头像URL */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest mb-2">
                   {t('admin.friends_avatar')}
@@ -504,7 +517,7 @@ export default function FriendsPage() {
                 />
               </div>
 
-              {/* Options */}
+              {/* 选项 */}
               <div className="flex items-center gap-6">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
@@ -535,7 +548,7 @@ export default function FriendsPage() {
               </div>
             </div>
 
-            {/* Modal Footer */}
+            {/* 模态框底部 */}
             <div className="p-6 border-t border-border flex justify-end gap-3">
               <AdminButton
                 onClick={() => {
@@ -566,7 +579,7 @@ export default function FriendsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation */}
+      {/* 删除确认对话框 */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-background/95 backdrop-blur-sm">
           <div className="w-full max-w-md bg-background border border-border shadow-2xl p-8">

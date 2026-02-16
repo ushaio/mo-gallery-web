@@ -1,3 +1,6 @@
+/**
+ * 故事上传标签页 - 批量上传照片并快速创建故事
+ */
 'use client'
 
 import React, { useState, useRef, useMemo, useEffect } from 'react'
@@ -51,37 +54,37 @@ export function StoryUploadTab({
 }: StoryUploadTabProps) {
   const { addTasks } = useUploadQueue()
 
-  // Story fields
+  // 故事字段
   const [storyTitle, setStoryTitle] = useState('')
   const [storyDescription, setStoryDescription] = useState('')
 
-  // Photo fields
+  // 照片字段
   const [uploadFiles, setUploadFiles] = useState<StoryUploadFile[]>([])
   const [uploadViewMode, setUploadViewMode] = useState<'list' | 'grid'>('list')
   const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
 
-  // Categories
+  // 分类
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
 
-  // Batch title
+  // 批量标题
   const [batchPhotoTitle, setBatchPhotoTitle] = useState('')
 
-  // Storage config
+  // 存储配置
   const [uploadSource, setUploadSource] = useState('local')
   const [isInitialized, setIsInitialized] = useState(false)
   const [uploadPath, setUploadPath] = useState('')
 
-  // Upload state
+  // 上传状态
   const [uploadError, setUploadError] = useState('')
 
-  // Compression settings
+  // 压缩设置
   const [compressionMode, setCompressionMode] = useState<CompressionMode>('none')
   const [maxSizeMB, setMaxSizeMB] = useState(4)
   const [compressing, setCompressing] = useState(false)
   const [compressionProgress, setCompressionProgress] = useState({ current: 0, total: 0 })
 
-  // Initialize defaults from settings
+  // 从设置初始化默认值
   useEffect(() => {
     if (settings?.storage_provider && !isInitialized) {
       queueMicrotask(() => {
@@ -99,7 +102,7 @@ export function StoryUploadTab({
     [categories]
   )
 
-  // Generate preview for file
+  // 生成文件缩略图预览
   const generatePreview = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const url = URL.createObjectURL(file)
@@ -195,10 +198,10 @@ export function StoryUploadTab({
 
     setUploadError('')
 
-    // Filter only pending files
+    // 仅上传待处理的文件
     let filesToUpload = uploadFiles.filter(f => f.status === 'pending')
 
-    // Compress images if enabled
+    // 如果启用了压缩，先压缩图片
     if (compressionMode !== 'none') {
       setCompressing(true)
       setCompressionProgress({ current: 0, total: filesToUpload.length })
@@ -218,7 +221,7 @@ export function StoryUploadTab({
       setCompressing(false)
     }
 
-    // First create the story (without photos)
+    // 先创建故事（不含照片）
     try {
       const story = await createStory(token, {
         title: storyTitle.trim(),
@@ -227,8 +230,7 @@ export function StoryUploadTab({
         photoIds: [],
       })
 
-      // Add tasks to the upload queue with storyId
-      // The queue will handle the upload and associate photos with the story
+      // 将任务添加到上传队列，队列将处理上传并关联照片到故事
       await addTasks({
         files: filesToUpload.map(item => ({ id: item.id, file: item.file })),
         title: batchPhotoTitle.trim() || '', // Will use filename if empty
@@ -240,7 +242,7 @@ export function StoryUploadTab({
         token,
       })
 
-      // Clear the form
+      // 清空表单
       setUploadFiles([])
       setSelectedUploadIds(new Set())
       setStoryTitle('')
@@ -248,7 +250,7 @@ export function StoryUploadTab({
 
       notify(t('admin.upload_started'), 'info')
 
-      // Navigate to story editor
+      // 跳转到故事编辑器
       onStoryCreated(story.id)
     } catch (err) {
       console.error('Failed to create story:', err)
@@ -299,7 +301,7 @@ export function StoryUploadTab({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-      {/* Left Panel - Story Info */}
+      {/* 左侧面板 - 故事信息 */}
       <div className="lg:col-span-4 space-y-8">
         <div className="border border-border p-8 space-y-8 bg-card/50">
           <h3 className="font-serif text-xl font-light uppercase tracking-tight flex items-center gap-2">
@@ -307,7 +309,7 @@ export function StoryUploadTab({
             {t('admin.upload_tab_story')}
           </h3>
           <div className="space-y-6">
-            {/* Story Title */}
+            {/* 故事标题 */}
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.story_title')} *
@@ -320,7 +322,7 @@ export function StoryUploadTab({
               />
             </div>
 
-            {/* Story Description */}
+            {/* 故事描述 */}
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.story_description')}
@@ -334,7 +336,7 @@ export function StoryUploadTab({
               />
             </div>
 
-            {/* Categories (multi-select, searchable, creatable) */}
+            {/* 分类（多选、可搜索、可创建） */}
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.categories')} *
@@ -349,7 +351,7 @@ export function StoryUploadTab({
               />
             </div>
 
-            {/* Batch Photo Title */}
+            {/* 批量照片标题 */}
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 {t('admin.batch_photo_title')}
@@ -362,7 +364,7 @@ export function StoryUploadTab({
               />
             </div>
 
-            {/* Storage Config */}
+            {/* 存储配置 */}
             <div className="space-y-6">
               <div>
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
@@ -391,7 +393,7 @@ export function StoryUploadTab({
               </div>
             </div>
 
-            {/* Image Compression */}
+            {/* 图片压缩 */}
             <div className="border-t border-border pt-6">
               <label className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                 <Minimize2 className="w-3 h-3" />
@@ -425,7 +427,7 @@ export function StoryUploadTab({
             </div>
           </div>
 
-          {/* Upload Button */}
+          {/* 上传按钮 */}
           <div className="pt-4">
             <AdminButton
               onClick={handleUpload}
@@ -458,7 +460,7 @@ export function StoryUploadTab({
         </div>
       </div>
 
-      {/* Right Panel - Upload Area */}
+      {/* 右侧面板 - 上传区域 */}
       <div className="lg:col-span-8 flex flex-col">
         <div
           onDragOver={(e) => {
@@ -475,7 +477,7 @@ export function StoryUploadTab({
         >
           {uploadFiles.length > 0 ? (
             <div className="flex-1 flex flex-col p-6 overflow-hidden">
-              {/* Toolbar */}
+              {/* 工具栏 */}
               <div className="flex items-center justify-between mb-4 px-2">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 mr-2">
@@ -558,7 +560,7 @@ export function StoryUploadTab({
                 </div>
               </div>
 
-              {/* File List */}
+              {/* 文件列表 */}
               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                 <div
                   className={
@@ -610,7 +612,7 @@ export function StoryUploadTab({
   )
 }
 
-// File item component with title editing
+// 文件项组件 - 支持标题编辑
 function StoryUploadFileItem({
   item,
   viewMode,
@@ -678,7 +680,7 @@ function StoryUploadFileItem({
           </div>
         )}
 
-        {/* Selection checkbox */}
+        {/* 选择复选框 */}
         <div
           className={`absolute top-2 left-2 z-20 transition-opacity ${
             selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
@@ -693,7 +695,7 @@ function StoryUploadFileItem({
           />
         </div>
 
-        {/* Status overlay */}
+        {/* 状态遮罩 */}
         {item.status !== 'pending' && (
           <div
             className={`absolute inset-0 flex items-center justify-center z-20 ${
@@ -708,7 +710,7 @@ function StoryUploadFileItem({
           </div>
         )}
 
-        {/* Remove button */}
+        {/* 删除按钮 */}
         {!uploading && item.status !== 'success' && (
           <AdminButton
             onClick={() => onRemove(item.id)}
@@ -720,7 +722,7 @@ function StoryUploadFileItem({
           </AdminButton>
         )}
 
-        {/* Title at bottom */}
+        {/* 底部标题 */}
         <div className="absolute bottom-0 left-0 w-full p-2 bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity">
           {isEditing ? (
             <input
@@ -752,7 +754,7 @@ function StoryUploadFileItem({
     )
   }
 
-  // List view
+  // 列表视图
   return (
     <div
       className={`flex items-center gap-4 p-3 border border-border mb-2 transition-colors ${
@@ -763,7 +765,7 @@ function StoryUploadFileItem({
           : 'bg-background hover:bg-muted/30'
       } ${selected ? 'border-primary/50 bg-primary/5' : ''}`}
     >
-      {/* Checkbox */}
+      {/* 复选框 */}
       <div className="flex items-center">
         <input
           type="checkbox"
@@ -774,7 +776,7 @@ function StoryUploadFileItem({
         />
       </div>
 
-      {/* Preview */}
+      {/* 缩略图预览 */}
       <div className="w-12 h-12 flex-shrink-0 bg-muted overflow-hidden border border-border">
         {item.previewUrl ? (
           <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
@@ -785,7 +787,7 @@ function StoryUploadFileItem({
         )}
       </div>
 
-      {/* Title (editable) */}
+      {/* 标题（可编辑） */}
       <div className="flex-1 min-w-0">
         {isEditing ? (
           <input
@@ -819,7 +821,7 @@ function StoryUploadFileItem({
         </p>
       </div>
 
-      {/* Status / Actions */}
+      {/* 状态 / 操作 */}
       <div className="flex items-center gap-3">
         {item.status === 'success' ? (
           <div className="flex items-center gap-1 text-green-500">
