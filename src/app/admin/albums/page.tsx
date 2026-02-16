@@ -4,6 +4,10 @@ import { useAdmin } from '../layout'
 import { AlbumsTab } from '@/app/admin/albums/AlbumsTab'
 import { useSettings } from '@/contexts/SettingsContext'
 
+/**
+ * 相册管理页面
+ * 从 Admin 布局获取公共状态，传递给 AlbumsTab 组件
+ */
 export default function AlbumsPage() {
   const {
     token,
