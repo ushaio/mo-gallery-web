@@ -469,11 +469,10 @@ export function StoryUploadTab({
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`h-[600px] border border-dashed transition-all flex flex-col relative ${
-            isDragging
-              ? 'border-primary bg-primary/5'
-              : 'border-border bg-muted/20'
-          }`}
+          className={`h-[600px] border border-dashed transition-all flex flex-col relative ${isDragging
+            ? 'border-primary bg-primary/5'
+            : 'border-border bg-muted/20'
+            }`}
         >
           {uploadFiles.length > 0 ? (
             <div className="flex-1 flex flex-col p-6 overflow-hidden">
@@ -514,11 +513,10 @@ export function StoryUploadTab({
                       onClick={() => setUploadViewMode('list')}
                       adminVariant="icon"
                       size="xs"
-                      className={`p-1.5 ${
-                        uploadViewMode === 'list'
-                          ? 'bg-background text-primary'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`p-1.5 ${uploadViewMode === 'list'
+                        ? 'bg-background text-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                        }`}
                     >
                       <ListIcon className="w-3.5 h-3.5" />
                     </AdminButton>
@@ -526,11 +524,10 @@ export function StoryUploadTab({
                       onClick={() => setUploadViewMode('grid')}
                       adminVariant="icon"
                       size="xs"
-                      className={`p-1.5 ${
-                        uploadViewMode === 'grid'
-                          ? 'bg-background text-primary'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`p-1.5 ${uploadViewMode === 'grid'
+                        ? 'bg-background text-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                        }`}
                     >
                       <LayoutGrid className="w-3.5 h-3.5" />
                     </AdminButton>
@@ -662,11 +659,9 @@ function StoryUploadFileItem({
   if (viewMode === 'grid') {
     return (
       <div
-        className={`relative aspect-square border border-border transition-all group overflow-hidden ${
-          item.status === 'uploading' ? 'ring-2 ring-primary' : ''
-        } ${item.status === 'failed' ? 'ring-2 ring-destructive' : ''} ${
-          selected ? 'border-primary bg-primary/5' : 'bg-background'
-        }`}
+        className={`relative aspect-square border border-border transition-all group overflow-hidden ${item.status === 'uploading' ? 'ring-2 ring-primary' : ''
+          } ${item.status === 'failed' ? 'ring-2 ring-destructive' : ''} ${selected ? 'border-primary bg-primary/5' : 'bg-background'
+          }`}
       >
         {item.previewUrl ? (
           <img
@@ -682,9 +677,8 @@ function StoryUploadFileItem({
 
         {/* 选择复选框 */}
         <div
-          className={`absolute top-2 left-2 z-20 transition-opacity ${
-            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}
+          className={`absolute top-2 left-2 z-20 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
         >
           <input
             type="checkbox"
@@ -698,13 +692,12 @@ function StoryUploadFileItem({
         {/* 状态遮罩 */}
         {item.status !== 'pending' && (
           <div
-            className={`absolute inset-0 flex items-center justify-center z-20 ${
-              item.status === 'success'
-                ? 'bg-green-500/20'
-                : item.status === 'failed'
+            className={`absolute inset-0 flex items-center justify-center z-20 ${item.status === 'success'
+              ? 'bg-green-500/20'
+              : item.status === 'failed'
                 ? 'bg-destructive/20'
                 : 'bg-background/40'
-            }`}
+              }`}
           >
             {statusIcon()}
           </div>
@@ -757,13 +750,12 @@ function StoryUploadFileItem({
   // 列表视图
   return (
     <div
-      className={`flex items-center gap-4 p-3 border border-border mb-2 transition-colors ${
-        item.status === 'uploading'
-          ? 'bg-primary/5 border-primary/30'
-          : item.status === 'failed'
+      className={`flex items-center gap-4 p-3 border border-border mb-2 transition-colors ${item.status === 'uploading'
+        ? 'bg-primary/5 border-primary/30'
+        : item.status === 'failed'
           ? 'bg-destructive/5 border-destructive/30'
           : 'bg-background hover:bg-muted/30'
-      } ${selected ? 'border-primary/50 bg-primary/5' : ''}`}
+        } ${selected ? 'border-primary/50 bg-primary/5' : ''}`}
     >
       {/* 复选框 */}
       <div className="flex items-center">
