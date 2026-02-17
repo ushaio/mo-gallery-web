@@ -1,3 +1,6 @@
+/**
+ * 博客管理标签页 - 博客文章的创建、编辑、删除及草稿恢复
+ */
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
@@ -44,7 +47,7 @@ import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 
-// Dynamically import MilkdownEditor to avoid SSR issues
+// 动态导入 MilkdownEditor，避免 SSR 问题
 const MilkdownEditor = dynamic(
   () => import('@/components/MilkdownEditor'),
   { 
@@ -57,7 +60,7 @@ const MilkdownEditor = dynamic(
   }
 )
 
-const AUTO_SAVE_DELAY = 2000 // 2 seconds debounce
+const AUTO_SAVE_DELAY = 2000 // 自动保存防抖延迟（毫秒）
 
 interface BlogTabProps {
   photos: PhotoDto[]
@@ -87,12 +90,12 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const [saving, setSaving] = useState(false)
   const editorRef = useRef<MilkdownEditorHandle>(null)
   
-  // Auto-save state
+  // 自动保存状态
   const [draftSaved, setDraftSaved] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   
-  // Track initial state for dirty checking
+  // 记录初始状态，用于脏检查
   const [isDirty, setIsDirty] = useState(false)
   const initialBlogRef = useRef<{
     title: string
@@ -102,13 +105,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     isPublished: boolean
   } | null>(null)
   
-  // Delete dialog state
+  // 删除确认对话框状态
   const [deleteBlogId, setDeleteBlogId] = useState<string | null>(null)
   
-  // Status filter state
+  // 发布状态筛选
   const [statusFilter, setStatusFilter] = useState('')
   
-  // Draft restore dialog state
+  // 草稿恢复对话框状态
   const [draftRestoreDialog, setDraftRestoreDialog] = useState<{
     isOpen: boolean
     draft: BlogDraftData | null
@@ -154,7 +157,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
   }, [refreshKey])
 
-  // Load draft when entering editor mode
+  // 进入编辑模式时加载草稿
   const loadDraftForBlog = useCallback(async (blogId?: string) => {
     try {
       const draft = await getBlogDraftFromDB(blogId)
@@ -168,7 +171,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     return null
   }, [])
 
-  // Save draft to IndexedDB
+  // 保存草稿到 IndexedDB
   const saveDraft = useCallback(async () => {
     if (!currentBlog) return
     if (!currentBlog.title && !currentBlog.content) return
@@ -190,7 +193,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
   }, [currentBlog])
 
-  // Clear draft from IndexedDB
+  // 从 IndexedDB 清除草稿
   const clearDraft = useCallback(async (blogId?: string) => {
     try {
       await clearBlogDraftFromDB(blogId)
@@ -200,7 +203,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
   }, [])
 
-  // Format relative time
+  // 格式化相对时间
   const formatRelativeTime = useMemo(() => {
     if (!lastSavedAt) return null
     const diff = Date.now() - lastSavedAt
@@ -210,7 +213,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     return new Date(lastSavedAt).toLocaleDateString()
   }, [lastSavedAt, t])
 
-  // Check if content has changed (dirty check)
+  // 检查内容是否变更（脏检查）
   useEffect(() => {
     if (editMode !== 'editor' || !currentBlog || !initialBlogRef.current) {
       setIsDirty(false)
@@ -228,17 +231,17 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setIsDirty(hasChanged)
   }, [editMode, currentBlog?.title, currentBlog?.content, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished])
 
-  // Auto-save draft when content changes (only if dirty)
+  // 内容变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
     if (!currentBlog || !isDirty) return
     if (!currentBlog.title && !currentBlog.content) return
 
-    // Clear existing timer
+    // 清除已有定时器
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
     }
 
-    // Set new timer for auto-save
+    // 设置新的自动保存定时器
     autoSaveTimerRef.current = setTimeout(() => {
       saveDraft()
     }, AUTO_SAVE_DELAY)
@@ -250,7 +253,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
   }, [currentBlog?.title, currentBlog?.content, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isDirty])
 
-  // Apply draft to current blog
+  // 将草稿应用到当前博客
   const applyDraft = useCallback((draft: BlogDraftData, blogId?: string) => {
     setCurrentBlog({
       id: blogId,
@@ -261,7 +264,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       isPublished: draft.isPublished,
     })
     setLastSavedAt(draft.savedAt)
-    // Update initial ref to match restored draft (so it's not considered dirty)
+    // 更新初始引用以匹配恢复的草稿（不视为脏数据）
     initialBlogRef.current = {
       title: draft.title,
       content: draft.content,
@@ -272,7 +275,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     notify(t('admin.restored_from_draft'), 'info')
   }, [t, notify])
 
-  // Handle draft restore dialog confirm
+  // 草稿恢复对话框 - 确认恢复
   const handleDraftRestore = useCallback(() => {
     if (draftRestoreDialog.draft) {
       applyDraft(draftRestoreDialog.draft, draftRestoreDialog.blog?.id)
@@ -281,7 +284,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setEditMode('editor')
   }, [draftRestoreDialog, applyDraft])
 
-  // Handle draft restore dialog discard
+  // 草稿恢复对话框 - 丢弃草稿
   const handleDraftDiscard = useCallback(() => {
     if (draftRestoreDialog.isNew) {
       setCurrentBlog({
@@ -306,14 +309,14 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setEditMode('editor')
   }, [draftRestoreDialog, t])
 
-  // Handle draft restore dialog cancel (close without action)
+  // 草稿恢复对话框 - 取消（关闭不操作）
   const handleDraftCancel = useCallback(() => {
     setDraftRestoreDialog({ isOpen: false, draft: null, blog: null, isNew: false })
     setCurrentBlog(null)
   }, [])
 
   const handleCreateBlog = async () => {
-    // Set initial state for dirty checking
+    // 设置脏检查的初始状态
     initialBlogRef.current = {
       title: '',
       content: '',
@@ -322,10 +325,10 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       isPublished: false,
     }
     
-    // Check for existing draft for new blog
+    // 检查是否存在新博客的草稿
     const draft = await loadDraftForBlog(undefined)
     if (draft && (draft.title || draft.content)) {
-      // Show dialog to ask user
+      // 弹出对话框询问用户是否恢复草稿
       setCurrentBlog({
         title: '',
         content: '',
@@ -348,7 +351,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const handleEditBlog = async (blog: BlogDto) => {
-    // Set initial state for dirty checking
+    // 设置脏检查的初始状态
     initialBlogRef.current = {
       title: blog.title,
       content: blog.content,
@@ -357,10 +360,10 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       isPublished: blog.isPublished,
     }
     
-    // Check for existing draft for this blog
+    // 检查是否存在该博客的草稿
     const draft = await loadDraftForBlog(blog.id)
     if (draft && draft.savedAt > new Date(blog.updatedAt).getTime()) {
-      // Draft is newer than saved version, show dialog
+      // 草稿比已保存版本更新，弹出对话框
       setCurrentBlog({
         id: blog.id,
         title: blog.title,
@@ -417,7 +420,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setSaving(true)
     try {
       if (currentBlog.id) {
-        // Update existing blog
+        // 更新已有博客
         await updateBlog(token, currentBlog.id, {
           title: currentBlog.title,
           content: currentBlog.content,
@@ -426,7 +429,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           isPublished: currentBlog.isPublished,
         })
       } else {
-        // Create new blog
+        // 创建新博客
         await createBlog(token, {
           title: currentBlog.title,
           content: currentBlog.content,
@@ -435,7 +438,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           isPublished: currentBlog.isPublished,
         })
       }
-      // Clear draft after successful save
+      // 保存成功后清除草稿
       await clearDraft(currentBlog.id)
       
       await fetchBlogs()
@@ -479,7 +482,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     return <AdminLoading text={t('common.loading')} />
   }
 
-  // Status filter options for blogs
+  // 博客发布状态筛选选项
   const statusOptions: SelectOption[] = [
     { value: '', label: t('admin.all_status') || '全部状态' },
     { value: 'published', label: t('admin.published') || '已发布' },
@@ -603,7 +606,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               >
                 <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
               </AdminButton>
-              {/* Draft Status Indicator */}
+              {/* 草稿状态指示器 */}
               {draftSaved && (
                 <div className="flex items-center gap-1 text-[10px] text-green-500">
                   <Check className="w-3 h-3" />
@@ -712,7 +715,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         </div>
       )}
 
-      {/* Photo Selection Modal */}
+      {/* 插入照片弹窗 */}
       {isInsertingPhoto && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 md:p-12 bg-background/95 backdrop-blur-sm">
           <div className="w-full h-full max-w-6xl bg-background border border-border flex flex-col overflow-hidden shadow-2xl">

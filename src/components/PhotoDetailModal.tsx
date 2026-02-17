@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, TouchEvent } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, type PanInfo } from 'framer-motion'
 import {
   X,
   Camera,
@@ -19,7 +19,6 @@ import {
   Loader2,
   LayoutGrid,
   ChevronDown,
-  ChevronUp,
 } from 'lucide-react'
 import { PhotoDto, resolveAssetUrl, getPhotoStory, type StoryDto, getPhotoComments, getStoryComments, type PublicCommentDto } from '@/lib/api'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -87,14 +86,10 @@ export function PhotoDetailModal({
 
   // 移动端沉浸模式 - 控制控件可见性
   const [mobileControlsVisible, setMobileControlsVisible] = useState(true)
-  const mobileControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const mobileControlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 渐进式图片加载：先显示缩略图，再淡入全尺寸图片
   const [fullImageLoaded, setFullImageLoaded] = useState(false)
-
-  // 触摸滑动处理
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
-  const touchMoveRef = useRef<{ x: number; y: number } | null>(null)
 
   const currentPhotoIndex = photo && allPhotos.length > 0
     ? allPhotos.findIndex(p => p.id === photo.id)
@@ -154,34 +149,60 @@ export function PhotoDetailModal({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, allPhotos, currentPhotoIndex, hasPrevious, hasNext])
 
-  // 触摸滑动处理 - 移动端左右滑动切换照片
-  const handleTouchStart = (e: TouchEvent) => {
-    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-    touchMoveRef.current = null
-  }
+  // 触摸滑动处理
+  const [scale, setScale] = useState(1)
+  const [isDragging, setIsDragging] = useState(false)
+  
+  // 双击放大/缩小
+  const handleDoubleTap = useCallback(() => {
+    setScale(prev => prev === 1 ? 2 : 1)
+  }, [])
 
-  const handleTouchMove = (e: TouchEvent) => {
-    touchMoveRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-  }
+  // 拖拽关闭阈值
+  const DRAG_DISMISS_THRESHOLD = 150
+  
+  // 拖拽处理
+  const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    setIsDragging(false)
+    
+    // 如果处于放大状态，不处理切换逻辑
+    if (scale > 1) return
 
-  const handleTouchEnd = () => {
-    if (!touchStartRef.current || !touchMoveRef.current) return
-
-    const deltaX = touchMoveRef.current.x - touchStartRef.current.x
-    const deltaY = touchMoveRef.current.y - touchStartRef.current.y
-    const minSwipeDistance = 50
-
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
-      if (deltaX > 0 && hasPrevious) {
-        handlePrevious()
-      } else if (deltaX < 0 && hasNext) {
-        handleNext()
-      }
+    // 垂直拖拽关闭判定
+    if (Math.abs(info.offset.y) > DRAG_DISMISS_THRESHOLD) {
+      onClose()
+      return
     }
 
-    touchStartRef.current = null
-    touchMoveRef.current = null
+    // 水平拖拽切换判定
+    const SWIPE_THRESHOLD = 50
+    const VELOCITY_THRESHOLD = 500
+
+    if (info.offset.x > SWIPE_THRESHOLD || info.velocity.x > VELOCITY_THRESHOLD) {
+      if (hasPrevious) handlePrevious()
+    } else if (info.offset.x < -SWIPE_THRESHOLD || info.velocity.x < -VELOCITY_THRESHOLD) {
+      if (hasNext) handleNext()
+    }
   }
+
+  // 面板拖拽处理
+  const handlePanelDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    // 向下拖拽 (收起)
+    if (info.offset.y > 100 || info.velocity.y > 500) {
+      setMobilePanelExpanded(false)
+    } 
+    // 向上拖拽 (展开)
+    else if (info.offset.y < -80 || info.velocity.y < -400) {
+      setMobilePanelExpanded(true)
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+       // 更新面板高度状态以响应 mobilePanelExpanded 变化
+       // 实际高度由 CSS 类控制，这里主要用于状态同步
+    }
+  }, [mobilePanelExpanded])
 
   const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9)
@@ -298,6 +319,7 @@ export function PhotoDetailModal({
   // 照片切换时重置全尺寸图片加载状态
   useEffect(() => {
     setFullImageLoaded(false)
+    setScale(1)
   }, [photo?.id])
 
   // 缩略图条滚动到当前照片位置
@@ -317,33 +339,60 @@ export function PhotoDetailModal({
   }
 
   const toggleThumbnails = () => setShowThumbnails(!showThumbnails)
-  const toggleMobilePanel = () => setMobilePanelExpanded(!mobilePanelExpanded)
 
   // 移动端照片点击 - 切换控件可见性
-  const handleMobilePhotoTap = useCallback(() => {
-    if (mobilePanelExpanded) return // 面板展开时不切换
-
-    setMobileControlsVisible(prev => !prev)
-
-    // Auto-hide controls after 3 seconds
+  const clearMobileControlsTimeout = useCallback(() => {
     if (mobileControlsTimeoutRef.current) {
       clearTimeout(mobileControlsTimeoutRef.current)
+      mobileControlsTimeoutRef.current = null
     }
-    if (!mobileControlsVisible) {
-      mobileControlsTimeoutRef.current = setTimeout(() => {
-        setMobileControlsVisible(false)
-      }, 3000)
+  }, [])
+
+  const scheduleMobileControlsAutoHide = useCallback(() => {
+    clearMobileControlsTimeout()
+    mobileControlsTimeoutRef.current = setTimeout(() => {
+      setMobileControlsVisible(false)
+    }, 3000)
+  }, [clearMobileControlsTimeout])
+
+  const handleMobilePhotoTap = useCallback(() => {
+    if (mobilePanelExpanded) return
+
+    setMobileControlsVisible((prev) => {
+      const nextVisible = !prev
+      if (nextVisible) {
+        scheduleMobileControlsAutoHide()
+      } else {
+        clearMobileControlsTimeout()
+      }
+      return nextVisible
+    })
+  }, [mobilePanelExpanded, clearMobileControlsTimeout, scheduleMobileControlsAutoHide])
+
+  useEffect(() => {
+    if (!isOpen) {
+      clearMobileControlsTimeout()
+      return
     }
-  }, [mobilePanelExpanded, mobileControlsVisible])
+
+    setMobilePanelExpanded(false)
+    setMobileControlsVisible(true)
+    scheduleMobileControlsAutoHide()
+  }, [isOpen, clearMobileControlsTimeout, scheduleMobileControlsAutoHide])
+
+  useEffect(() => {
+    if (mobilePanelExpanded) {
+      clearMobileControlsTimeout()
+      setMobileControlsVisible(true)
+    }
+  }, [mobilePanelExpanded, clearMobileControlsTimeout])
 
   // Clear timeout on unmount
   useEffect(() => {
     return () => {
-      if (mobileControlsTimeoutRef.current) {
-        clearTimeout(mobileControlsTimeoutRef.current)
-      }
+      clearMobileControlsTimeout()
     }
-  }, [])
+  }, [clearMobileControlsTimeout])
 
   if (!photo) return null
 
@@ -375,16 +424,17 @@ export function PhotoDetailModal({
             {/* Left: Immersive Photo Viewer */}
             <div className={`relative bg-black/5 flex flex-col overflow-hidden ${mobilePanelExpanded ? 'h-[40vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
               <div
-                className="relative flex-1 flex items-center justify-center group overflow-hidden"
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
+                className="relative flex-1 flex items-center justify-center group overflow-hidden touch-none"
                 onClick={(e) => {
-                  // Only trigger on mobile and if not clicking a button
-                  if (window.innerWidth < 1024 && (e.target as HTMLElement).tagName !== 'BUTTON') {
-                    handleMobilePhotoTap()
-                  }
+                  if (isDragging) return
+                  if (window.innerWidth >= 1024) return
+
+                  const target = e.target as HTMLElement
+                  if (target.closest('button, a, input, textarea, select, label')) return
+
+                  handleMobilePhotoTap()
                 }}
+                onDoubleClick={handleDoubleTap}
               >
                 {/* Close Button - Hidden on mobile when controls not visible */}
                 <button
@@ -430,8 +480,15 @@ export function PhotoDetailModal({
                   <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30" />
                 </div>
 
-                <div className="absolute inset-0 flex items-center justify-center p-2 md:p-12 z-10">
-                  <div className="relative w-full h-full">
+                <motion.div
+                  className="absolute inset-0 flex items-center justify-center p-2 md:p-12 z-10 touch-none"
+                  drag={scale === 1}
+                  dragElastic={0.2}
+                  dragSnapToOrigin
+                  onDragStart={() => setIsDragging(true)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div className="relative w-full h-full pointer-events-none">
                     {/* Thumbnail placeholder - shows while full image loads */}
                     <Image
                       src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
@@ -441,7 +498,7 @@ export function PhotoDetailModal({
                       className={`object-contain select-none transition-opacity duration-500 ${
                         fullImageLoaded ? 'opacity-0' : 'opacity-100'
                       }`}
-                      style={{ filter: 'blur(8px)' }}
+                      style={{ filter: 'blur(8px)', transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
                       draggable={false}
                       priority
                     />
@@ -454,6 +511,7 @@ export function PhotoDetailModal({
                       className={`object-contain shadow-2xl select-none transition-opacity duration-700 ${
                         fullImageLoaded ? 'opacity-100' : 'opacity-0'
                       }`}
+                      style={{ transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
                       draggable={false}
                       priority
                       onLoad={() => setFullImageLoaded(true)}
@@ -467,7 +525,7 @@ export function PhotoDetailModal({
                       </div>
                     )}
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Navigation Arrows - Hidden on mobile */}
                 {(allPhotos.length > 1 || hasMore) && (
@@ -559,7 +617,7 @@ export function PhotoDetailModal({
                        ref={thumbnailsScrollRef}
                        className="flex items-center gap-2 p-3 overflow-x-auto custom-scrollbar scroll-smooth h-24"
                      >
-                       {allPhotos.map((p, idx) => (
+                       {allPhotos.map((p) => (
                          <button
                            key={p.id}
                            onClick={() => onPhotoChange?.(p)}
@@ -641,16 +699,24 @@ export function PhotoDetailModal({
             </div>
 
             {/* Right: Info & Story Panel */}
-            <div className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col transition-all duration-300 ${mobilePanelExpanded ? 'flex-1' : 'h-auto lg:h-full'}`}>
+            <motion.div 
+              className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col transition-all duration-300 lg:h-full lg:static fixed bottom-0 left-0 right-0 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] rounded-t-2xl lg:rounded-none overflow-hidden`}
+              animate={{
+                height: mobilePanelExpanded ? '80vh' : 'auto',
+                y: 0
+              }}
+              drag={mobilePanelExpanded ? "y" : false}
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={0.05}
+              onDragEnd={handlePanelDragEnd}
+            >
               {/* Mobile Panel Handle - Minimal drag handle */}
-              <button
-                onClick={toggleMobilePanel}
-                className={`lg:hidden flex items-center justify-center py-2.5 bg-background border-b border-border transition-all ${
-                  mobileControlsVisible || mobilePanelExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none h-0 py-0 overflow-hidden'
-                }`}
+              <motion.div
+                className="lg:hidden flex items-center justify-center py-3 bg-background border-b border-border touch-none cursor-grab active:cursor-grabbing"
+                onTap={() => setMobilePanelExpanded((prev) => !prev)}
               >
-                <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
-              </button>
+                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+              </motion.div>
               
               {/* Tabs with Sliding Indicator */}
               {!hideStoryTab && (
@@ -812,7 +878,7 @@ export function PhotoDetailModal({
                   {t('gallery.download')}
                 </a>
               </div>
-            </div>
+            </motion.div>
           </div>
         </motion.div>
       )}

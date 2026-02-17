@@ -173,7 +173,7 @@ export default function GalleryPage() {
       />
 
       {/* 照片网格 */}
-      <div className="px-4 md:px-8 lg:px-12">
+      <div className="px-2 sm:px-4 md:px-8 lg:px-12 pt-4 md:pt-8">
         <div className="max-w-screen-2xl mx-auto">
           <PhotoGrid
             loading={loading}

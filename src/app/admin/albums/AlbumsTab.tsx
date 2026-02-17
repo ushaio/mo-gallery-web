@@ -38,19 +38,39 @@ import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 
+/** 视图模式：网格 / 列表 */
 type ViewMode = 'grid' | 'list'
+/** 筛选状态：全部 / 已发布 / 草稿 */
 type FilterStatus = 'all' | 'published' | 'draft'
 
+/** AlbumsTab 组件属性 */
 interface AlbumsTabProps {
+  /** 认证令牌 */
   token: string | null
+  /** 所有照片列表，用于添加照片到相册 */
   photos: PhotoDto[]
+  /** CDN 域名，用于拼接资源 URL */
   cdnDomain: string
+  /** 国际化翻译函数 */
   t: (key: string) => string
+  /** 通知提示回调 */
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
+  /** 认证失效回调（跳转登录等） */
   onUnauthorized: () => void
+  /** 照片预览回调 */
   onPreview: (photo: PhotoDto) => void
 }
 
+/**
+ * 相册管理组件
+ *
+ * 功能：
+ * - 相册列表（网格/列表视图）、搜索与筛选
+ * - 创建/编辑/删除相册
+ * - 管理相册照片（添加、移除、设置封面）
+ * - 拖拽排序相册
+ * - 切换发布/草稿状态
+ */
 export function AlbumsTab({
   token,
   photos,
@@ -60,29 +80,36 @@ export function AlbumsTab({
   onUnauthorized,
   onPreview,
 }: AlbumsTabProps) {
-  const [albums, setAlbums] = useState<AlbumDto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [currentAlbum, setCurrentAlbum] = useState<AlbumDto | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'photos'>('overview')
-  const [saving, setSaving] = useState(false)
-  const [showPhotoSelector, setShowPhotoSelector] = useState(false)
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
-  const [draggingId, setDraggingId] = useState<string | null>(null)
+  // ==================== 状态定义 ====================
 
-  // New filter states
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [albums, setAlbums] = useState<AlbumDto[]>([])           // 相册列表
+  const [loading, setLoading] = useState(true)                   // 加载状态
+  const [currentAlbum, setCurrentAlbum] = useState<AlbumDto | null>(null) // 当前编辑的相册（null 表示列表视图）
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos'>('overview') // 详情页子标签
+  const [saving, setSaving] = useState(false)                    // 保存中状态
+  const [showPhotoSelector, setShowPhotoSelector] = useState(false) // 是否显示照片选择器
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set()) // 已选中待添加的照片 ID
+  const [draggingId, setDraggingId] = useState<string | null>(null) // 正在拖拽的相册 ID
 
+  // 筛选与视图状态
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')          // 视图模式
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all') // 发布状态筛选
+  const [searchQuery, setSearchQuery] = useState('')                   // 搜索关键字
+  const [showFilters, setShowFilters] = useState(false)                // 是否展开筛选面板
+
+  // token 变化时重新加载相册
   useEffect(() => { loadAlbums() }, [token])
 
+  // ==================== 派生状态 ====================
+
+  /** 当前激活的筛选条件数量 */
   const activeFilterCount = useMemo(() => {
     let count = 0
     if (filterStatus !== 'all') count++
     return count
   }, [filterStatus])
 
+  /** 根据筛选条件过滤后的相册列表 */
   const filteredAlbums = useMemo(() => {
     return albums.filter(album => {
       if (filterStatus === 'published' && !album.isPublished) return false
@@ -92,10 +119,13 @@ export function AlbumsTab({
     })
   }, [albums, filterStatus, searchQuery])
 
+  /** 重置所有筛选条件 */
   const clearAllFilters = () => {
     setFilterStatus('all')
     setSearchQuery('')
   }
+
+  // ==================== 拖拽排序 ====================
 
   async function handleDragStart(e: React.DragEvent, id: string) {
     e.dataTransfer.effectAllowed = 'move'
@@ -114,6 +144,7 @@ export function AlbumsTab({
     setAlbums(newAlbums)
   }
 
+  /** 拖拽结束：持久化新排序到后端 */
   async function handleDragEnd() {
     setDraggingId(null)
     if (!token) return
@@ -125,6 +156,9 @@ export function AlbumsTab({
     }
   }
 
+  // ==================== 数据操作 ====================
+
+  /** 加载相册列表 */
   async function loadAlbums() {
     if (!token) return
     try {
@@ -138,6 +172,7 @@ export function AlbumsTab({
     }
   }
 
+  /** 初始化新相册并进入编辑视图 */
   function handleCreateAlbum() {
     setCurrentAlbum({
       id: '', name: '', description: '', coverUrl: '', isPublished: false,
@@ -147,6 +182,7 @@ export function AlbumsTab({
     setActiveTab('overview')
   }
 
+  /** 删除相册（需用户确认） */
   async function handleDeleteAlbum(id: string, e?: React.MouseEvent) {
     e?.stopPropagation()
     if (!token || !window.confirm(t('common.confirm') + '?')) return
@@ -161,6 +197,7 @@ export function AlbumsTab({
     }
   }
 
+  /** 保存相册（创建或更新） */
   async function handleSaveAlbum() {
     if (!token || !currentAlbum || !currentAlbum.name.trim()) {
       notify(t('admin.album_name_required') || 'Please enter album name', 'error')
@@ -182,6 +219,7 @@ export function AlbumsTab({
     }
   }
 
+  /** 切换相册发布/草稿状态 */
   async function handleTogglePublish(album: AlbumDto, e?: React.MouseEvent) {
     e?.stopPropagation()
     if (!token) return
@@ -196,6 +234,9 @@ export function AlbumsTab({
     }
   }
 
+  // ==================== 照片管理 ====================
+
+  /** 批量添加照片到当前相册 */
   async function handleAddPhotos() {
     if (!token || !currentAlbum || selectedPhotoIds.size === 0) return
     try {
@@ -216,6 +257,7 @@ export function AlbumsTab({
     }
   }
 
+  /** 从当前相册移除单张照片 */
   async function handleRemovePhoto(photoId: string) {
     if (!token || !currentAlbum) return
     try {
@@ -229,6 +271,7 @@ export function AlbumsTab({
     }
   }
 
+  /** 设置照片为相册封面 */
   async function handleSetCover(photoId: string) {
     if (!token || !currentAlbum) return
     try {
@@ -242,17 +285,20 @@ export function AlbumsTab({
     }
   }
 
+  /** 可添加的照片：排除当前相册已有的照片 */
   const availablePhotos = useMemo(() => {
     if (!currentAlbum) return photos
     const albumPhotoIds = new Set(currentAlbum.photos.map(p => p.id))
     return photos.filter(p => !albumPhotoIds.has(p.id))
   }, [photos, currentAlbum])
 
+  // ==================== 渲染 ====================
+
   if (loading) {
     return <AdminLoading text={t('common.loading')} />
   }
 
-  // List View
+  // ---------- 列表视图（未选中相册） ----------
   if (!currentAlbum) {
     return (
       <div className="space-y-6">
@@ -278,7 +324,7 @@ export function AlbumsTab({
                 <span className="text-muted-foreground">{filteredAlbums.length} {t('admin.albums') || 'Albums'}</span>
               </span>
             </div>
-  
+
             {/* Center: Search */}
             <div className="flex-1 max-w-md">
               <div className="relative">
@@ -301,18 +347,17 @@ export function AlbumsTab({
                 )}
               </div>
             </div>
-  
+
             {/* Right: Actions */}
             <div className="flex items-center gap-2 shrink-0">
               {/* Filter Toggle */}
               <AdminButton
                 onClick={() => setShowFilters(!showFilters)}
                 adminVariant="unstyled"
-                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-md transition-all ${
-                  showFilters || activeFilterCount > 0
-                    ? 'bg-primary/10 border-primary/30 text-primary'
-                    : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
-                }`}
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-md transition-all ${showFilters || activeFilterCount > 0
+                  ? 'bg-primary/10 border-primary/30 text-primary'
+                  : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                  }`}
               >
                 <Filter className="w-4 h-4" />
                 <span className="hidden sm:inline">{t('admin.filter') || 'Filter'}</span>
@@ -322,17 +367,16 @@ export function AlbumsTab({
                   </span>
                 )}
               </AdminButton>
-  
+
               {/* View Mode Toggle */}
               <div className="flex bg-background border border-border rounded-md overflow-hidden">
                 <AdminButton
                   onClick={() => setViewMode('grid')}
                   adminVariant="unstyled"
-                  className={`p-2 transition-colors ${
-                    viewMode === 'grid'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                  }`}
+                  className={`p-2 transition-colors ${viewMode === 'grid'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
                   title="Grid view"
                 >
                   <LayoutGrid className="w-4 h-4" />
@@ -340,11 +384,10 @@ export function AlbumsTab({
                 <AdminButton
                   onClick={() => setViewMode('list')}
                   adminVariant="unstyled"
-                  className={`p-2 transition-colors ${
-                    viewMode === 'list'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                  }`}
+                  className={`p-2 transition-colors ${viewMode === 'list'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
                   title="List view"
                 >
                   <List className="w-4 h-4" />
@@ -352,7 +395,7 @@ export function AlbumsTab({
               </div>
             </div>
           </div>
-  
+
           {/* Filter Row - Collapsible */}
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-border">
@@ -373,7 +416,7 @@ export function AlbumsTab({
                     ))}
                   </div>
                 </div>
-  
+
                 {/* Clear Filters */}
                 {activeFilterCount > 0 && (
                   <>
@@ -391,7 +434,7 @@ export function AlbumsTab({
               </div>
             </div>
           )}
-  
+
           {/* Active Filters Tags */}
           {activeFilterCount > 0 && !showFilters && (
             <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
@@ -513,7 +556,7 @@ export function AlbumsTab({
     )
   }
 
-  // Detail View
+  // ---------- 详情视图（编辑相册） ----------
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between pb-4 border-b border-border">

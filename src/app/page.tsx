@@ -26,11 +26,12 @@ export default function Home() {
     offset: ["start start", "end start"]
   })
 
+  // 从滚动进度派生透明度、缩放与位移
   const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
   const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 1.1])
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 100])
 
-  // Generate particle positions only on client side to avoid hydration mismatch
+  // 仅在客户端生成粒子位置，避免水合不一致
   const particles = useMemo(() => {
     if (!isMounted) return []
     return [...Array(20)].map((_, i) => ({
@@ -62,7 +63,7 @@ export default function Home() {
     run()
   }, [])
 
-  // Auto-rotate hero images
+  // 自动轮播首屏图片
   useEffect(() => {
     if (featuredImages.length <= 1) return
     const interval = setInterval(() => {
@@ -71,17 +72,18 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [featuredImages.length])
 
-  // Derive hero image from current index
+  // 根据当前索引取首屏图片
+  // 当前展示的首屏图片
   const heroImage = featuredImages.length > 0 ? featuredImages[currentHeroIndex] : null
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary">
-      {/* Hero Section */}
+      {/* 首屏区域 */}
       <section
         ref={heroRef}
         className="relative w-full h-dvh flex flex-col justify-center items-center overflow-hidden"
       >
-        {/* Animated Background Image with Parallax */}
+        {/* 带视差的背景图动画 */}
         <AnimatePresence mode="wait">
           {heroImage ? (
             <motion.div
@@ -105,7 +107,7 @@ export default function Home() {
                   priority
                 />
               </motion.div>
-              {/* Overlay for depth */}
+              {/* 叠加遮罩增强层次 */}
               <div className="absolute inset-0 bg-black/50" />
             </motion.div>
           ) : (
@@ -114,13 +116,13 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
-              {/* Background when no image */}
+              {/* 无图片时的默认背景 */}
               <div className="absolute inset-0 bg-neutral-900" />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Floating particles effect - Only render on client */}
+        {/* 漂浮粒子效果，仅在客户端渲染 */}
         {isMounted && (
           <div className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
             {particles.map((particle) => (
@@ -145,8 +147,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Hero Content */}
-        <motion.div 
+        {/* 首屏内容 */}
+        <motion.div
           className="z-10 relative px-6 text-center text-white"
           style={{ opacity: heroOpacity }}
         >
@@ -156,7 +158,7 @@ export default function Home() {
             transition={{ duration: 0.2, delay: 0.1, ease: "easeOut" }}
             className="flex flex-col items-center gap-6"
           >
-            {/* Decorative element */}
+            {/* 装饰元素 */}
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
@@ -176,7 +178,7 @@ export default function Home() {
                 {(t('home.hero_vis') || 'YOUR MOMENTS').replace('{SITE_AUTHOR}', siteAuthor)}
               </span>
             </motion.h1>
-            
+
             <motion.p
               className="font-serif text-3xl md:text-5xl lg:text-6xl leading-none text-white/70 text-balance"
               initial={{ opacity: 0, y: 20 }}
@@ -185,8 +187,8 @@ export default function Home() {
             >
               {t('home.hero_real') || 'YOUR STORIES'}
             </motion.p>
-            
-            {/* Animated divider */}
+
+            {/* 动画分隔线 */}
             <motion.div
               className="flex items-center gap-4 my-6"
               initial={{ opacity: 0, scaleX: 0 }}
@@ -197,7 +199,7 @@ export default function Home() {
               <div className="size-2 rounded-full bg-white/60" />
               <div className="h-[1px] w-16 bg-white/60" />
             </motion.div>
-            
+
             <motion.p
               className="font-sans text-sm md:text-base max-w-lg text-white/60 leading-relaxed text-pretty"
               initial={{ opacity: 0 }}
@@ -207,7 +209,7 @@ export default function Home() {
               {(t('home.hero_desc') || '').replace('{siteTitle}', siteTitle)}
             </motion.p>
 
-            {/* CTA Button - Optimized without backdrop-blur for better performance */}
+            {/* CTA 按钮 - 去掉 backdrop-blur 以优化性能 */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -225,7 +227,7 @@ export default function Home() {
           </motion.div>
         </motion.div>
 
-        {/* Hero image indicators */}
+        {/* 首屏图片指示器 */}
         {featuredImages.length > 1 && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -238,17 +240,16 @@ export default function Home() {
                 key={i}
                 onClick={() => setCurrentHeroIndex(i)}
                 aria-label={`View hero image ${i + 1}`}
-                className={`h-2 rounded-full transition-all duration-200 ${
-                  i === currentHeroIndex
-                    ? 'bg-white w-8'
-                    : 'bg-white/40 hover:bg-white/60 w-2'
-                }`}
+                className={`h-2 rounded-full transition-all duration-200 ${i === currentHeroIndex
+                  ? 'bg-white w-8'
+                  : 'bg-white/40 hover:bg-white/60 w-2'
+                  }`}
               />
             ))}
           </motion.div>
         )}
 
-        {/* Scroll Indicator */}
+        {/* 滚动提示 */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -268,14 +269,14 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Intro / Statement */}
+      {/* 引言 / 主题陈述 */}
       <section className="relative py-32 md:py-40 px-6 bg-background overflow-hidden">
-        {/* Background decoration */}
+        {/* 背景装饰 */}
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/4 size-96 bg-primary/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 size-96 bg-primary/5 rounded-full blur-3xl" />
         </div>
-        
+
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -283,16 +284,16 @@ export default function Home() {
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 1 }}
           >
-            {/* Quote marks */}
+            {/* 引号装饰 */}
             <span className="block text-6xl md:text-8xl font-serif text-primary/20 leading-none mb-4">&ldquo;</span>
-            
+
             <p className="font-serif text-2xl md:text-4xl font-light leading-relaxed text-foreground/90 text-pretty">
               {t('home.quote') || 'An ordinary photo becomes extraordinary because of your story.'}
             </p>
-            
+
             <span className="block text-6xl md:text-8xl font-serif text-primary/20 leading-none mt-4 rotate-180">&rdquo;</span>
           </motion.div>
-          
+
           <motion.div
             initial={{ scaleX: 0 }}
             whileInView={{ scaleX: 1 }}
@@ -303,9 +304,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Featured Works - Enhanced Grid Layout */}
+      {/* 精选作品 - 强化网格布局 */}
       <section className="px-6 md:px-12 lg:px-24 pb-32 pt-16">
-        <motion.div 
+        <motion.div
           className="flex flex-col md:flex-row justify-between items-center mb-20 gap-6"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -320,7 +321,7 @@ export default function Home() {
               {t('home.works') || 'Featured Works'}
             </h2>
           </div>
-          
+
           <Link
             href="/gallery"
             className="group flex items-center gap-3 px-6 py-3 border border-border rounded-full hover:border-primary hover:bg-primary/5 transition-all duration-200"
@@ -334,10 +335,10 @@ export default function Home() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
           {isLoading ? (
-            // Enhanced Skeletons
+            // 骨架屏占位
             [...Array(6)].map((_, i) => (
-              <motion.div 
-                key={i} 
+              <motion.div
+                key={i}
                 className="space-y-4"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -359,8 +360,8 @@ export default function Home() {
                 initial={{ opacity: 0, y: 60 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-50px" }}
-                transition={{ 
-                  duration: 0.8, 
+                transition={{
+                  duration: 0.8,
                   delay: index * 0.15,
                   ease: [0.25, 0.46, 0.45, 0.94]
                 }}
@@ -368,7 +369,7 @@ export default function Home() {
               >
                 <Link href={`/gallery?photoId=${image.id}`}>
                   <div className="relative overflow-hidden aspect-[4/5] bg-secondary rounded-lg mb-6 cursor-pointer">
-                    {/* Image */}
+                    {/* 图片 */}
                     <Image
                       src={resolveAssetUrl(image.thumbnailUrl || image.url)}
                       alt={image.title}
@@ -377,10 +378,10 @@ export default function Home() {
                       className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08]"
                     />
 
-                    {/* Overlay gradient */}
+                    {/* 悬停遮罩渐变 */}
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    
-                    {/* Hover content - only show if has category */}
+
+                    {/* 悬停内容 - 仅在有分类时显示 */}
                     {image.category && (
                       <div className="absolute inset-0 flex flex-col justify-end p-6 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0">
                         <span className="text-white/80 text-xs uppercase">
@@ -389,13 +390,13 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Corner accent */}
+                    {/* 角标装饰 */}
                     <div className="absolute top-4 right-4 size-8 border-t-2 border-r-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-tr-lg" />
                     <div className="absolute bottom-4 left-4 size-8 border-b-2 border-l-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-bl-lg" />
                   </div>
                 </Link>
-                
-                {/* Card info - visible on mobile, only show category */}
+
+                {/* 卡片信息 - 移动端显示，仅展示分类 */}
                 {image.category && (
                   <div className="flex flex-col items-center text-center md:hidden">
                     <span className="mt-2 text-[10px] text-muted-foreground uppercase">
@@ -409,12 +410,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* About Section - Enhanced Design */}
+      {/* 关于区域 - 强化设计 */}
       <section className="relative w-full py-32 overflow-hidden">
-        {/* Background */}
+        {/* 背景 */}
         <div className="absolute inset-0 bg-secondary/30" />
 
-        {/* Decorative lines */}
+        {/* 装饰线 */}
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-border" />
         <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-border" />
 
@@ -425,7 +426,7 @@ export default function Home() {
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
           >
-            {/* Icon */}
+            {/* 图标 */}
             <div className="inline-flex items-center justify-center size-16 rounded-full bg-primary/10 mb-8">
               <Sparkles className="size-6 text-primary" />
             </div>
@@ -437,7 +438,7 @@ export default function Home() {
             <p className="font-serif text-xl md:text-2xl text-foreground/80 leading-relaxed mb-12 max-w-2xl mx-auto text-pretty">
               {(t('home.about_text') || '').replace('{siteTitle}', siteTitle)}
             </p>
-            
+
             <Link
               href="/about"
               className="group inline-flex items-center gap-4 px-8 py-4 bg-foreground text-background rounded-full hover:bg-primary transition-colors duration-200"

@@ -1,3 +1,6 @@
+/**
+ * 故事管理标签页 - 图文故事的创建、编辑、照片关联及发布管理
+ */
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -48,7 +51,7 @@ import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDr
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 
-// Dynamically import MilkdownEditor to avoid SSR issues
+// 动态导入 MilkdownEditor，避免 SSR 问题
 const MilkdownEditor = dynamic(
   () => import('@/components/MilkdownEditor'),
   {
@@ -82,43 +85,43 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [saving, setSaving] = useState(false)
   const editorRef = useRef<MilkdownEditorHandle>(null)
   
-  // Photo management
+  // 照片管理
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
   
-  // Drag and drop state (supports both photos and pending images)
+  // 拖拽排序状态（支持已上传照片和待上传图片）
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
   const [draggedItemType, setDraggedItemType] = useState<'photo' | 'pending' | null>(null)
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null)
   
-  // Photo/pending menu state
+  // 照片/待上传图片的菜单状态
   const [openMenuPhotoId, setOpenMenuPhotoId] = useState<string | null>(null)
   const [openMenuPendingId, setOpenMenuPendingId] = useState<string | null>(null)
   
-  // Pending cover state (for pending images before upload)
+  // 待上传图片的封面状态
   const [pendingCoverId, setPendingCoverId] = useState<string | null>(null)
   
-  // Preview modal state
+  // 预览弹窗状态
   const [showPreview, setShowPreview] = useState(false)
   const [previewPhotoIndex, setPreviewPhotoIndex] = useState<number | null>(null)
   
-  // Pending images for deferred upload
+  // 待上传图片（延迟上传）
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([])
   const [showUploadSettings, setShowUploadSettings] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, currentFile: '' })
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   
-  // Draft auto-save state
+  // 草稿自动保存状态
   const [draftSaved, setDraftSaved] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const AUTO_SAVE_DELAY = 2000
 
-  // Photo order persistence key
+  // 照片排序持久化键名
   const photoOrderKey = 'story_photo_order'
 
-  // Helper to get saved photo order from localStorage
+  // 从 localStorage 获取已保存的照片排序
   function getSavedPhotoOrder(storyId: string): Record<string, string[]> {
     if (typeof window === 'undefined') return {}
     try {
@@ -129,7 +132,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
   }
 
-  // Helper to save photo order to localStorage
+  // 保存照片排序到 localStorage
   function savePhotoOrder(storyId: string, photoIds: string[]) {
     if (typeof window === 'undefined') return
     try {
@@ -141,7 +144,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
   }
 
-  // Apply saved order to stories list
+  // 将已保存的排序应用到故事列表
   function applySavedOrder(stories: StoryDto[]): StoryDto[] {
     const photoOrders = getSavedPhotoOrder('')
     return stories.map(story => {
@@ -149,7 +152,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       if (order && story.photos) {
         const photoMap = new Map(story.photos.map(p => [p.id, p]))
         const sortedPhotos = order.map((id: string) => photoMap.get(id)).filter((p): p is PhotoDto => !!p)
-        // Only apply if all ordered photos exist
+        // 仅当所有排序照片都存在时才应用
         if (sortedPhotos.length === story.photos.length) {
           return { ...story, photos: sortedPhotos }
         }
@@ -158,7 +161,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     })
   }
   
-  // Track initial state for dirty checking
+  // 记录初始状态，用于脏检查
   const [isDirty, setIsDirty] = useState(false)
   const initialStoryRef = useRef<{
     title: string
@@ -169,16 +172,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     coverPhotoId?: string
   } | null>(null)
   
-  // Delete dialog state
+  // 删除确认对话框状态
   const [deleteStoryId, setDeleteStoryId] = useState<string | null>(null)
   
-  // Status filter state
+  // 发布状态筛选
   const [statusFilter, setStatusFilter] = useState('')
   
-  // Custom date toggle state
+  // 自定义日期开关状态
   const [useCustomDate, setUseCustomDate] = useState(false)
   
-  // Draft restore dialog state
+  // 草稿恢复对话框状态
   const [draftRestoreDialog, setDraftRestoreDialog] = useState<{
     isOpen: boolean
     draft: StoryEditorDraftData | null
@@ -194,7 +197,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
   }, [token])
   
-  // Refresh when refreshKey changes - also reset to list mode
+  // refreshKey 变化时刷新 - 同时重置到列表模式
   useEffect(() => {
     if (refreshKey && refreshKey > 0) {
       loadStories()
@@ -207,7 +210,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
   }, [refreshKey])
 
-  // Handle editStoryId - auto-open editor for the specified story
+  // 处理 editStoryId - 自动打开指定故事的编辑器
   useEffect(() => {
     if (editStoryId && stories.length > 0) {
       const storyToEdit = stories.find(s => s.id === editStoryId)
@@ -218,7 +221,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
   }, [editStoryId, stories])
 
-  // Handle editFromDraft - open editor with draft data (no database call)
+  // 处理 editFromDraft - 从草稿数据打开编辑器（无需数据库调用）
   useEffect(() => {
     if (editFromDraft && allPhotos.length > 0) {
       const restoredPhotos = editFromDraft.photoIds
@@ -248,7 +251,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         setPendingImages(restoredPending)
       }
       
-      // Restore pendingCoverId from draft
+      // 从草稿恢复待上传封面 ID
       if (editFromDraft.pendingCoverId) {
         setPendingCoverId(editFromDraft.pendingCoverId)
       }
@@ -260,24 +263,24 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
   }, [editFromDraft, allPhotos, onDraftConsumed])
 
-  // Load photos first when editFromDraft is provided
+  // 提供 editFromDraft 时先加载照片
   useEffect(() => {
     if (editFromDraft && allPhotos.length === 0) {
       loadAllPhotos()
     }
   }, [editFromDraft])
 
-  // Load all photos when entering editor mode
+  // 进入编辑模式时加载所有照片
   useEffect(() => {
     if (storyEditMode === 'editor' && allPhotos.length === 0) {
       loadAllPhotos()
     }
   }, [storyEditMode])
 
-  // Note: Draft loading is now handled in handleEditStory and handleCreateStory
-  // to allow user to choose whether to restore draft
+  // 注意：草稿加载现在在 handleEditStory 和 handleCreateStory 中处理
+  // 以便用户选择是否恢复草稿
 
-  // Check if content has changed (dirty check)
+  // 检查内容是否变更（脏检查）
   useEffect(() => {
     if (storyEditMode !== 'editor' || !currentStory || !initialStoryRef.current) {
       setIsDirty(false)
@@ -300,7 +303,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setIsDirty(hasChanged)
   }, [storyEditMode, currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.createdAt, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId])
 
-  // Auto-save draft when story data changes (only if dirty)
+  // 故事数据变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
     if (storyEditMode !== 'editor' || !currentStory || !isDirty) return
     if (!currentStory.title && !currentStory.content && pendingImages.length === 0) return
@@ -311,9 +314,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
   }, [currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.createdAt, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId, isDirty])
 
-  // Apply draft to current story
+  // 将草稿应用到当前故事
   const applyDraft = useCallback((draft: StoryEditorDraftData, baseStory: StoryDto) => {
-    // Use draft photoIds directly - if empty, it means user deleted all photos
+    // 直接使用草稿的 photoIds - 若为空表示用户已删除所有照片
     const restoredPhotos = draft.photoIds
       .map(id => allPhotos.find(p => p.id === id) || baseStory.photos?.find(p => p.id === id))
       .filter((p): p is PhotoDto => !!p)
@@ -340,13 +343,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       setPendingImages(restoredPending)
     }
     
-    // Restore pendingCoverId from draft
+    // 从草稿恢复待上传封面 ID
     if (draft.pendingCoverId) {
       setPendingCoverId(draft.pendingCoverId)
     }
     
     setLastSavedAt(draft.savedAt)
-    // Update initial ref to match restored draft (so it's not considered dirty)
+    // 更新初始引用以匹配恢复的草稿（不视为脏数据）
     initialStoryRef.current = {
       title: draft.title || baseStory.title,
       content: draft.content || baseStory.content,
@@ -358,7 +361,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     notify(t('admin.restored_from_draft'), 'info')
   }, [allPhotos, notify, t])
 
-  // Handle draft restore dialog confirm
+  // 草稿恢复对话框 - 确认恢复
   const handleDraftRestore = useCallback(() => {
     if (draftRestoreDialog.draft && draftRestoreDialog.story) {
       applyDraft(draftRestoreDialog.draft, draftRestoreDialog.story)
@@ -367,7 +370,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setStoryEditMode('editor')
   }, [draftRestoreDialog, applyDraft])
 
-  // Handle draft restore dialog discard
+  // 草稿恢复对话框 - 丢弃草稿
   const handleDraftDiscard = useCallback(() => {
     if (draftRestoreDialog.story) {
       setCurrentStory({ ...draftRestoreDialog.story })
@@ -376,7 +379,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setStoryEditMode('editor')
   }, [draftRestoreDialog])
 
-  // Handle draft restore dialog cancel (close without action)
+  // 草稿恢复对话框 - 取消（关闭不操作）
   const handleDraftCancel = useCallback(() => {
     setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
     setCurrentStory(null)
@@ -420,7 +423,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     try {
       setLoading(true)
       const data = await getAdminStories(token)
-      // Apply saved photo order from localStorage
+      // 从 localStorage 应用已保存的照片排序
       setStories(applySavedOrder(data))
     } catch (err) {
       console.error('Failed to load stories:', err)
@@ -450,7 +453,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       photos: [],
     }
     
-    // Set initial state for dirty checking
+    // 设置脏检查的初始状态
     initialStoryRef.current = {
       title: '',
       content: '',
@@ -460,11 +463,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       coverPhotoId: undefined,
     }
     
-    // Check for existing draft for new story
+    // 检查是否存在新故事的草稿
     try {
       const draft = await getStoryEditorDraftFromDB(undefined)
       if (draft && draft.savedAt && (draft.title || draft.content || (draft.files && draft.files.length > 0))) {
-        // Show dialog to ask user
+        // 弹出对话框询问用户是否恢复草稿
         setCurrentStory(newStory)
         setDraftRestoreDialog({ isOpen: true, draft, story: newStory })
         return
@@ -478,7 +481,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }
 
   async function handleEditStory(story: StoryDto) {
-    // Set initial state for dirty checking
+    // 设置脏检查的初始状态
     initialStoryRef.current = {
       title: story.title,
       content: story.content,
@@ -488,11 +491,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       coverPhotoId: story.coverPhotoId,
     }
     
-    // Check for existing draft for this story
+    // 检查是否存在该故事的草稿
     try {
       const draft = await getStoryEditorDraftFromDB(story.id)
       if (draft && draft.savedAt && draft.savedAt > new Date(story.updatedAt).getTime()) {
-        // Draft is newer than saved version, show dialog
+        // 草稿比已保存版本更新，弹出对话框
         setCurrentStory({ ...story })
         setDraftRestoreDialog({ isOpen: true, draft, story })
         return
@@ -596,29 +599,29 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
-          // Only pass createdAt if custom date is enabled
+          // 仅在启用自定义日期时传递 createdAt
           ...(useCustomDate && currentStory.createdAt ? { createdAt: currentStory.createdAt } : {}),
         })
         notify(t('story.created'), 'success')
       } else {
-        // Update story and sync photo order
+        // 更新故事并同步照片排序
         await updateStory(token, currentStory.id, {
           title: currentStory.title,
           content: currentStory.content,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
-          // Only pass createdAt if custom date is enabled
+          // 仅在启用自定义日期时传递 createdAt
           ...(useCustomDate ? { createdAt: currentStory.createdAt } : {}),
         })
-        // Sync photo order with server
+        // 同步照片排序到服务端
         if (photoIds.length > 0) {
           await reorderStoryPhotos(token, currentStory.id, photoIds)
         }
-        // Persist photo order to localStorage
+        // 持久化照片排序到 localStorage
         savePhotoOrder(currentStory.id, photoIds)
         notify(t('story.updated'), 'success')
       }
-      // Clear draft after successful save
+      // 保存成功后清除草稿
       const isNewStory = !stories.find((s) => s.id === currentStory.id)
       await clearDraft(isNewStory ? undefined : currentStory.id)
 
@@ -628,7 +631,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       setCurrentStory(null)
       await loadStories()
 
-      // Clear URL parameter after successful save
+      // 保存成功后清除 URL 参数
       if (window.location.search.includes('editStory=')) {
         router.replace('/admin/logs', { scroll: false })
       }
@@ -726,12 +729,12 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   function handleUpdatePhotos(selectedPhotoIds: string[]) {
     if (!currentStory) return
     
-    // Get the photos in the selected order
+    // 按选中的顺序获取照片
     const selectedPhotos = selectedPhotoIds
       .map(id => allPhotos.find(p => p.id === id))
       .filter((p): p is PhotoDto => p !== undefined)
     
-    // Always update local state only - save to server when clicking Save button
+    // 仅更新本地状态 - 点击保存按钮时才提交到服务端
     setCurrentStory(prev => ({
       ...prev!,
       photos: selectedPhotos
@@ -756,7 +759,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }))
   }
 
-  // Unified drag handlers for photos and pending images
+  // 统一的拖拽处理（照片和待上传图片）
   function handleItemDragStart(e: React.DragEvent, itemId: string, type: 'photo' | 'pending') {
     setDraggedItemId(itemId)
     setDraggedItemType(type)
@@ -783,7 +786,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setDragOverItemId(null)
   }
 
-  // Build combined list for ordering: photos first, then pending
+  // 构建合并列表用于排序：已上传照片在前，待上传图片在后
   function getCombinedItems() {
     const photoItems = (currentStory?.photos || []).map(p => ({ id: p.id, type: 'photo' as const }))
     const pendingItems = pendingImages.map(p => ({ id: p.id, type: 'pending' as const }))
@@ -804,7 +807,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     const [dragged] = combined.splice(draggedIdx, 1)
     combined.splice(targetIdx, 0, dragged)
 
-    // Separate back into photos and pending - only update local state
+    // 拆分回照片和待上传列表 - 仅更新本地状态
     const newPhotoIds = combined.filter(i => i.type === 'photo').map(i => i.id)
     const newPendingIds = combined.filter(i => i.type === 'pending').map(i => i.id)
 
@@ -819,7 +822,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setCurrentStory(prev => prev ? { ...prev, content } : prev)
   }, [])
 
-  // Get current photo IDs (for initial selection in modal)
+  // 获取当前照片 ID（用于弹窗中的初始选中状态）
   const currentPhotoIds = currentStory?.photos?.map(p => p.id) || []
 
   const handlePrevPhoto = () => {
@@ -836,7 +839,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     return <AdminLoading text={t('common.loading')} />
   }
 
-  // Status filter options for stories
+  // 故事发布状态筛选选项
   const statusOptions: SelectOption[] = [
     { value: '', label: t('admin.all_status') || '全部状态' },
     { value: 'published', label: t('admin.published') || '已发布' },
@@ -974,7 +977,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         </div>
       ) : (
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          {/* Header - Back button, Draft status, and Save button */}
+          {/* 头部 - 返回按钮、草稿状态、保存按钮 */}
           <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
             <div className="flex items-center gap-4">
               <AdminButton
@@ -985,7 +988,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   initialStoryRef.current = null
                   setIsDirty(false)
                   setUseCustomDate(false)
-                  // Clear URL parameter when returning to list
+                  // 返回列表时清除 URL 参数
                   if (window.location.search.includes('editStory=')) {
                     router.replace('/admin/logs', { scroll: false })
                   }
@@ -995,7 +998,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               >
                 <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
               </AdminButton>
-              {/* Draft status indicator */}
+              {/* 草稿状态指示器 */}
               {draftSaved && (
                 <span className="flex items-center gap-1 text-[10px] text-green-500">
                   <Check className="w-3 h-3" />
@@ -1021,11 +1024,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             </AdminButton>
           </div>
 
-          {/* Main Content - Left/Right Layout */}
+          {/* 主内容区 - 左右布局 */}
           <div className="flex-1 flex gap-4 overflow-hidden">
-            {/* Left: Editor (70%) */}
+            {/* 左侧：编辑器 (70%) */}
             <div className="flex-[7] flex flex-col gap-4 overflow-hidden min-w-0">
-              {/* Title Input */}
+              {/* 标题输入 */}
               <AdminInput
                 type="text"
                 value={currentStory?.title || ''}
@@ -1039,9 +1042,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                 className="text-xl md:text-2xl font-serif p-4 md:p-6"
               />
               
-              {/* Publish Checkbox, Date, Character Count, and Preview Button */}
+              {/* 发布勾选、日期、字数统计、预览按钮 */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-2">
-                {/* Left: Publish Checkbox, Date, and Character Count */}
+                {/* 左侧：发布勾选、日期、字数 */}
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -1059,7 +1062,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                       {t('ui.publish_now')}
                     </span>
                   </label>
-                  {/* Custom Date Toggle */}
+                  {/* 自定义日期开关 */}
                   <div className="flex items-center gap-2">
                     <AdminButton
                       onClick={() => setUseCustomDate(!useCustomDate)}
@@ -1096,7 +1099,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                     {currentStory?.content?.length || 0} {t('admin.characters')}
                   </span>
                 </div>
-                {/* Right: Preview Button */}
+                {/* 右侧：预览按钮 */}
                 <AdminButton
                   onClick={() => setShowPreview(true)}
                   adminVariant="unstyled"
@@ -1107,7 +1110,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                 </AdminButton>
               </div>
               
-              {/* Content Area - WYSIWYG Editor */}
+              {/* 内容区 - 所见即所得编辑器 */}
               <div className="flex-1 relative border border-border bg-card/30 rounded-lg overflow-hidden">
                 {currentStory && (
                   <MilkdownEditor
@@ -1121,7 +1124,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               </div>
             </div>
 
-            {/* Right: Photos Panel (30%) */}
+            {/* 右侧：照片面板 (30%) */}
             <StoryPhotoPanel
               currentStory={currentStory}
               pendingImages={pendingImages}
@@ -1171,7 +1174,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         t={t}
       />
 
-      {/* Preview Modal */}
+      {/* 预览弹窗 */}
       {showPreview && currentStory && (
         <StoryPreviewModal
           story={currentStory}

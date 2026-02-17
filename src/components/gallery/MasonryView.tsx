@@ -54,11 +54,11 @@ export function MasonryView({ photos, settings, grayscale, immersive = false, on
   }, [photos, columnCount])
 
   return (
-    <div className={`flex ${immersive ? 'gap-1' : 'gap-4 sm:gap-6 lg:gap-8'}`}>
+    <div className={`flex ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}>
       {Array.from({ length: columnCount }).map((_, colIndex) => (
         <div 
           key={colIndex} 
-          className="flex-1 min-w-0 flex flex-col gap-1"
+          className={`flex-1 min-w-0 flex flex-col ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}
         >
           {columnPhotos[colIndex]?.map((photo, photoIndex) => (
             <PhotoCard
