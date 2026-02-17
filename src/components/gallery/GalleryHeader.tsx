@@ -69,12 +69,13 @@ export function GalleryHeader({
           transition={{ delay: 0.3 }}
           className="border-t border-border/30 pt-4"
         >
-          <div className="flex flex-wrap gap-1">
+          {/* 移动端横向滚动，桌面端自动换行 */}
+          <div className="flex md:flex-wrap gap-2 md:gap-1 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide mask-gradient-x md:mask-none">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => onCategoryChange(cat)}
-                className={`relative px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all ${
+                className={`relative px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all whitespace-nowrap flex-shrink-0 ${
                   activeCategory === cat
                     ? 'text-primary bg-primary/8'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -121,25 +122,25 @@ export function GalleryToolbar({
   t,
 }: GalleryToolbarProps) {
   return (
-    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30">
+    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30 transition-all duration-300">
       <div className="px-4 md:px-8 lg:px-12">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-4 h-12">
-          {/* 搜索栏 */}
-          <div className="flex-1 min-w-0 max-w-[160px] sm:max-w-xs">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-2 sm:gap-4 h-12 md:h-14">
+          {/* 搜索栏 - 移动端自适应宽度 */}
+          <div className="flex-1 min-w-0 max-w-[140px] sm:max-w-xs transition-all duration-300 ease-in-out focus-within:max-w-full sm:focus-within:max-w-xs">
             <div className="relative group">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary transition-colors" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={t('common.search')}
-                className="w-full h-8 pl-8 pr-3 bg-transparent border border-border text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary"
+                className="w-full h-8 pl-8 pr-3 bg-muted/30 border-transparent focus:bg-background border focus:border-border rounded-full text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all"
               />
             </div>
           </div>
 
           {/* 显示控制项 */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* 沉浸模式 / 黑白模式 */}
             <button
               onClick={() => onImmersiveChange(!immersive)}

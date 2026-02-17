@@ -90,7 +90,7 @@ export function GridView({ photos, settings, grayscale, immersive = false, onPho
 
   return (
     <div
-      className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${immersive ? 'gap-1' : 'gap-4 sm:gap-6 lg:gap-8'}`}
+      className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}
     >
       {photos.map((photo, index) => (
         <GridItem

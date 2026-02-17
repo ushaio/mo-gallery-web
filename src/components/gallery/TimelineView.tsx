@@ -385,7 +385,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
           className="relative"
         >
             {/* 吸顶日期标题 */}
-            <div className="sticky top-[116px] z-20 -ml-1 md:-ml-0">
+            <div className="sticky top-[108px] md:top-[116px] z-20 -ml-1 md:-ml-0">
               <div className="relative py-3 bg-background/95 backdrop-blur-sm">
                 {/* 时间线节点 - 可点击跳转 */}
                 <button
@@ -398,27 +398,27 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
                 <div className="ml-10 md:ml-16">
                   <button
                     onClick={() => setShowJumpDialog(true)}
-                    className="inline-flex items-center gap-3 border border-border px-4 py-2 bg-background shadow-sm hover:border-primary hover:shadow-md transition-all group"
+                    className="inline-flex items-center gap-2 md:gap-3 border border-border px-3 md:px-4 py-2 bg-background shadow-sm hover:border-primary hover:shadow-md transition-all group max-w-[calc(100vw-64px)] overflow-hidden"
                   >
-                    <Calendar className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
+                    <Calendar className="w-4 h-4 text-primary group-hover:scale-110 transition-transform flex-shrink-0" />
                     {dayGroup.hasTakenAt ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-ui-xs font-black uppercase tracking-[0.2em]">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="text-ui-xs font-black uppercase tracking-[0.2em] whitespace-nowrap">
                           {formatMonthShort(dayGroup.month)} {formatDay(dayGroup.day)}
                         </span>
-                        <span className="text-ui-micro text-muted-foreground font-mono">
+                        <span className="text-ui-micro text-muted-foreground font-mono hidden sm:inline">
                           {dayGroup.year}
                         </span>
-                        <span className="text-ui-micro text-muted-foreground/60 font-mono">
+                        <span className="text-ui-micro text-muted-foreground/60 font-mono hidden sm:inline">
                           {getWeekday(dayGroup.date)}
                         </span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="text-ui-xs font-black uppercase tracking-[0.2em] text-muted-foreground">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="text-ui-xs font-black uppercase tracking-[0.2em] text-muted-foreground whitespace-nowrap">
                           {t('gallery.timeline_uploaded')}
                         </span>
-                        <span className="text-ui-micro text-muted-foreground font-mono">
+                        <span className="text-ui-micro text-muted-foreground font-mono truncate">
                           {formatMonthShort(dayGroup.month)} {formatDay(dayGroup.day)}, {dayGroup.year}
                         </span>
                       </div>
@@ -429,8 +429,8 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
             </div>
 
             {/* 照片网格 */}
-            <div className="ml-10 md:ml-16 pb-8 pt-2">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+            <div className="ml-10 md:ml-16 pb-8 pt-2 pr-2 md:pr-0">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
                 {dayGroup.photos.map((photo, index) => (
                   <TimelinePhotoItem
                     key={photo.id}
