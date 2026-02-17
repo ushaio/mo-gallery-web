@@ -1,0 +1,458 @@
+/* Vditor 编辑器主题适配
+ * 覆盖 Vditor 默认样式以匹配项目设计系统
+ */
+
+/* ========================================
+   编辑器容器
+   ======================================== */
+.vditor-wrapper {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.vditor {
+  height: 100% !important;
+  border: none !important;
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+}
+
+/* ========================================
+   工具栏样式
+   ======================================== */
+.vditor-toolbar {
+  background: var(--background) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 8px 12px !important;
+  position: relative;
+  z-index: 50;
+}
+
+.vditor-toolbar__item {
+  color: var(--muted-foreground) !important;
+  border-radius: 4px !important;
+  margin: 0 1px !important;
+}
+
+.vditor-toolbar__item:hover {
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+.vditor-toolbar__item--current {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+.vditor-toolbar__divider {
+  background: var(--border) !important;
+  margin: 0 8px !important;
+}
+
+/* 工具栏提示 - 强制显示在下方 */
+.vditor-hint,
+.vditor-tip {
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  z-index: 9999 !important;
+}
+
+/* 工具栏按钮的 tooltip 强制显示在下方 */
+.vditor-toolbar .vditor-tooltipped::before,
+.vditor-toolbar .vditor-tooltipped::after {
+  z-index: 9999 !important;
+}
+
+/* 覆盖北向(上方)显示，改为南向(下方) */
+.vditor-toolbar .vditor-tooltipped__n::after,
+.vditor-toolbar .vditor-tooltipped__nw::after,
+.vditor-toolbar .vditor-tooltipped__ne::after {
+  bottom: auto !important;
+  top: 100% !important;
+  margin-top: 6px !important;
+  margin-bottom: 0 !important;
+}
+
+.vditor-toolbar .vditor-tooltipped__n::before,
+.vditor-toolbar .vditor-tooltipped__nw::before,
+.vditor-toolbar .vditor-tooltipped__ne::before {
+  bottom: auto !important;
+  top: 100% !important;
+  margin-top: 1px !important;
+  margin-bottom: 0 !important;
+  border-top-color: transparent !important;
+  border-bottom-color: rgba(0, 0, 0, 0.8) !important;
+  border-width: 0 6px 6px 6px !important;
+}
+
+.vditor-hint button {
+  color: var(--foreground) !important;
+}
+
+.vditor-hint button:hover,
+.vditor-hint button.vditor-hint--current {
+  background: var(--muted) !important;
+  color: var(--primary) !important;
+}
+
+/* ========================================
+   编辑区域
+   ======================================== */
+.vditor-content {
+  background: var(--background) !important;
+}
+
+.vditor-ir {
+  padding: 24px 32px !important;
+}
+
+.vditor-sv {
+  padding: 24px 32px !important;
+}
+
+.vditor-wysiwyg {
+  padding: 24px 32px !important;
+}
+
+/* 编辑器文字样式 */
+.vditor-ir pre.vditor-reset,
+.vditor-sv pre.vditor-reset,
+.vditor-wysiwyg pre.vditor-reset {
+  color: var(--foreground) !important;
+  font-size: var(--text-body) !important;
+  line-height: 1.8 !important;
+}
+
+/* 占位符 */
+.vditor-reset::before {
+  color: var(--muted-foreground) !important;
+  opacity: 0.5 !important;
+}
+
+/* ========================================
+   Markdown 元素样式
+   ======================================== */
+
+/* 标题 */
+.vditor-ir h1,
+.vditor-wysiwyg h1,
+.vditor-reset h1 {
+  font-family: var(--font-serif) !important;
+  font-size: 2rem !important;
+  font-weight: 500 !important;
+  margin: 2rem 0 1rem !important;
+  padding-bottom: 0.5rem !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.vditor-ir h2,
+.vditor-wysiwyg h2,
+.vditor-reset h2 {
+  font-family: var(--font-serif) !important;
+  font-size: 1.5rem !important;
+  font-weight: 500 !important;
+  margin: 1.5rem 0 0.75rem !important;
+}
+
+.vditor-ir h3,
+.vditor-wysiwyg h3,
+.vditor-reset h3 {
+  font-family: var(--font-serif) !important;
+  font-size: 1.25rem !important;
+  font-weight: 500 !important;
+  margin: 1.25rem 0 0.5rem !important;
+}
+
+/* 段落 */
+.vditor-ir p,
+.vditor-wysiwyg p,
+.vditor-reset p {
+  margin: 1rem 0 !important;
+  line-height: 1.8 !important;
+}
+
+/* 链接 */
+.vditor-ir a,
+.vditor-wysiwyg a,
+.vditor-reset a {
+  color: var(--primary) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px !important;
+}
+
+.vditor-ir a:hover,
+.vditor-wysiwyg a:hover,
+.vditor-reset a:hover {
+  opacity: 0.8 !important;
+}
+
+/* 粗体/斜体 */
+.vditor-ir strong,
+.vditor-wysiwyg strong,
+.vditor-reset strong {
+  font-weight: 600 !important;
+}
+
+.vditor-ir em,
+.vditor-wysiwyg em,
+.vditor-reset em {
+  font-style: italic !important;
+}
+
+/* 引用块 */
+.vditor-ir blockquote,
+.vditor-wysiwyg blockquote,
+.vditor-reset blockquote {
+  border-left: 3px solid var(--primary) !important;
+  margin: 1.5rem 0 !important;
+  padding: 0.5rem 0 0.5rem 1.5rem !important;
+  background: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  font-style: italic !important;
+}
+
+/* 列表 */
+.vditor-ir ul,
+.vditor-wysiwyg ul,
+.vditor-reset ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin: 1rem 0 !important;
+}
+
+.vditor-ir ol,
+.vditor-wysiwyg ol,
+.vditor-reset ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin: 1rem 0 !important;
+}
+
+.vditor-ir li,
+.vditor-wysiwyg li,
+.vditor-reset li {
+  margin: 0.5rem 0 !important;
+  line-height: 1.6 !important;
+}
+
+/* 代码块 */
+.vditor-ir pre > code,
+.vditor-wysiwyg pre > code,
+.vditor-reset pre > code {
+  background: var(--muted) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px !important;
+  padding: 1rem !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 0.875rem !important;
+  line-height: 1.6 !important;
+  display: block !important;
+  overflow-x: auto !important;
+}
+
+/* 行内代码 */
+.vditor-ir code:not(pre code),
+.vditor-wysiwyg code:not(pre code),
+.vditor-reset code:not(pre code) {
+  background: var(--muted) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 3px !important;
+  padding: 0.15rem 0.4rem !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 0.85em !important;
+  color: var(--foreground) !important;
+}
+
+/* 分隔线 */
+.vditor-ir hr,
+.vditor-wysiwyg hr,
+.vditor-reset hr {
+  border: none !important;
+  border-top: 1px solid var(--border) !important;
+  margin: 2rem 0 !important;
+}
+
+/* 表格 */
+.vditor-ir table,
+.vditor-wysiwyg table,
+.vditor-reset table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 1.5rem 0 !important;
+}
+
+.vditor-ir th,
+.vditor-wysiwyg th,
+.vditor-reset th {
+  background: var(--muted) !important;
+  font-weight: 600 !important;
+  text-align: left !important;
+  padding: 0.75rem 1rem !important;
+  border: 1px solid var(--border) !important;
+}
+
+.vditor-ir td,
+.vditor-wysiwyg td,
+.vditor-reset td {
+  padding: 0.75rem 1rem !important;
+  border: 1px solid var(--border) !important;
+}
+
+.vditor-ir tr:nth-child(even),
+.vditor-wysiwyg tr:nth-child(even),
+.vditor-reset tr:nth-child(even) {
+  background: var(--muted) !important;
+}
+
+/* 图片 */
+.vditor-ir img,
+.vditor-wysiwyg img,
+.vditor-reset img {
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 4px !important;
+  margin: 1rem 0 !important;
+}
+
+/* ========================================
+   计数器
+   ======================================== */
+.vditor-counter {
+  background: transparent !important;
+  color: var(--muted-foreground) !important;
+  font-size: var(--text-label) !important;
+  padding: 4px 12px !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+/* ========================================
+   滚动条
+   ======================================== */
+.vditor-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.vditor-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vditor-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.vditor-content::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* ========================================
+   深色主题调整
+   ======================================== */
+.dark .vditor-toolbar {
+  background: var(--card) !important;
+}
+
+.dark .vditor-content {
+  background: var(--card) !important;
+}
+
+.dark .vditor-toolbar__item:hover {
+  background: var(--accent) !important;
+}
+
+.dark .vditor-ir pre > code,
+.dark .vditor-wysiwyg pre > code,
+.dark .vditor-reset pre > code {
+  background: #1a1a1a !important;
+}
+
+.dark .vditor-ir blockquote,
+.dark .vditor-wysiwyg blockquote,
+.dark .vditor-reset blockquote {
+  background: rgba(212, 175, 55, 0.1) !important;
+  border-left-color: var(--primary) !important;
+}
+
+/* ========================================
+   Outline 大纲
+   ======================================== */
+.vditor-outline {
+  background: var(--background) !important;
+  border-left: 1px solid var(--border) !important;
+}
+
+.vditor-outline__content {
+  padding: 12px !important;
+}
+
+.vditor-outline__item {
+  color: var(--muted-foreground) !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+}
+
+.vditor-outline__item:hover {
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+.vditor-outline__item--current {
+  color: var(--primary) !important;
+  font-weight: 500 !important;
+}
+
+/* ========================================
+   面板和弹窗
+   ======================================== */
+.vditor-panel {
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+}
+
+.vditor-panel--none {
+  background: transparent !important;
+}
+
+.vditor-input {
+  background: var(--input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+.vditor-input:focus {
+  border-color: var(--primary) !important;
+  outline: none !important;
+}
+
+/* ========================================
+   预览模式
+   ======================================== */
+.vditor-preview {
+  background: var(--background) !important;
+  padding: 24px 32px !important;
+}
+
+.vditor-preview__action {
+  background: var(--muted) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ========================================
+   全屏模式
+   ======================================== */
+.vditor--fullscreen {
+  z-index: 9999 !important;
+}
+
+.vditor--fullscreen .vditor-toolbar {
+  background: var(--background) !important;
+}
+
+.vditor--fullscreen .vditor-content {
+  background: var(--background) !important;
+}

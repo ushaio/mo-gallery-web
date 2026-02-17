@@ -46,14 +46,14 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
-import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
+import type { VditorEditorHandle } from '@/components/VditorEditor'
 import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDraftFromDB, type StoryEditorDraftData } from '@/lib/client-db'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 
-// 动态导入 MilkdownEditor，避免 SSR 问题
-const MilkdownEditor = dynamic(
-  () => import('@/components/MilkdownEditor'),
+// 动态导入 VditorEditor，避免 SSR 问题
+const VditorEditor = dynamic(
+  () => import('@/components/VditorEditor'),
   {
     ssr: false,
     loading: () => (
@@ -83,7 +83,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [currentStory, setCurrentStory] = useState<StoryDto | null>(null)
   const [storyEditMode, setStoryEditMode] = useState<'list' | 'editor'>('list')
   const [saving, setSaving] = useState(false)
-  const editorRef = useRef<MilkdownEditorHandle>(null)
+  const editorRef = useRef<VditorEditorHandle>(null)
   
   // 照片管理
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
@@ -592,6 +592,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       const isNew = !stories.find((s) => s.id === currentStory.id)
       const photoIds = currentStory.photos?.map(p => p.id) || []
 
+      const dateChanged = initialStoryRef.current && currentStory.createdAt !== initialStoryRef.current.createdAt
+
       if (isNew) {
         await createStory(token, {
           title: currentStory.title,
@@ -599,8 +601,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
-          // 仅在启用自定义日期时传递 createdAt
-          ...(useCustomDate && currentStory.createdAt ? { createdAt: currentStory.createdAt } : {}),
+          ...(dateChanged && currentStory.createdAt ? { createdAt: currentStory.createdAt } : {}),
         })
         notify(t('story.created'), 'success')
       } else {
@@ -610,8 +611,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           content: currentStory.content,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
-          // 仅在启用自定义日期时传递 createdAt
-          ...(useCustomDate ? { createdAt: currentStory.createdAt } : {}),
+          ...(dateChanged ? { createdAt: currentStory.createdAt } : {}),
         })
         // 同步照片排序到服务端
         if (photoIds.length > 0) {
@@ -1027,7 +1027,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           {/* 主内容区 - 左右布局 */}
           <div className="flex-1 flex gap-4 overflow-hidden">
             {/* 左侧：编辑器 (70%) */}
-            <div className="flex-[7] flex flex-col gap-4 overflow-hidden min-w-0">
+            <div className="flex-[7] flex flex-col gap-4 min-w-0 overflow-visible">
               {/* 标题输入 */}
               <AdminInput
                 type="text"
@@ -1062,39 +1062,42 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                       {t('ui.publish_now')}
                     </span>
                   </label>
-                  {/* 自定义日期开关 */}
+                  {/* 发布日期 - 点击编辑 */}
                   <div className="flex items-center gap-2">
-                    <AdminButton
-                      onClick={() => setUseCustomDate(!useCustomDate)}
-                      adminVariant="switch"
-                      data-state={useCustomDate ? 'on' : 'off'}
-                      title={t('admin.custom_date')}
-                    >
+                    <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                    {useCustomDate ? (
+                      <>
+                        <input
+                          type="datetime-local"
+                          value={currentStory?.createdAt ? new Date(currentStory.createdAt).toISOString().slice(0, 16) : ''}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setCurrentStory((prev) => ({
+                              ...prev!,
+                              createdAt: value ? new Date(value).toISOString() : new Date().toISOString(),
+                            }))
+                          }}
+                          className="px-2 py-1 text-xs font-mono bg-transparent border border-border rounded focus:border-primary outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setUseCustomDate(false)}
+                          className="text-primary hover:text-primary/80 transition-colors"
+                          title={t('admin.confirm') || '确认'}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
                       <span
-                        className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${useCustomDate ? 'left-5' : 'left-0.5'}`}
-                      />
-                    </AdminButton>
-                    <span className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                      {t('admin.custom_date')}
-                    </span>
+                        onClick={() => setUseCustomDate(true)}
+                        className="text-xs font-mono text-muted-foreground cursor-pointer hover:text-primary transition-colors"
+                        title={t('admin.custom_date') || '点击编辑日期'}
+                      >
+                        {currentStory?.createdAt ? new Date(currentStory.createdAt).toLocaleString() : '-'}
+                      </span>
+                    )}
                   </div>
-                  {useCustomDate && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                      <input
-                        type="datetime-local"
-                        value={currentStory?.createdAt ? new Date(currentStory.createdAt).toISOString().slice(0, 16) : ''}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setCurrentStory((prev) => ({
-                            ...prev!,
-                            createdAt: value ? new Date(value).toISOString() : new Date().toISOString(),
-                          }))
-                        }}
-                        className="px-2 py-1 text-xs font-mono bg-transparent border border-border rounded focus:border-primary outline-none"
-                      />
-                    </div>
-                  )}
                   <span className="text-xs text-muted-foreground">
                     {currentStory?.content?.length || 0} {t('admin.characters')}
                   </span>
@@ -1111,14 +1114,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               </div>
               
               {/* 内容区 - 所见即所得编辑器 */}
-              <div className="flex-1 relative border border-border bg-card/30 rounded-lg overflow-hidden">
+              <div className="flex-1 relative border border-border bg-card/30 rounded-lg overflow-visible">
                 {currentStory && (
-                  <MilkdownEditor
+                  <VditorEditor
                     key={currentStory.id}
                     ref={editorRef}
                     value={currentStory.content}
                     onChange={handleContentChange}
                     placeholder={t('ui.markdown_placeholder')}
+                    height="100%"
+                    className="overflow-hidden rounded-lg"
                   />
                 )}
               </div>

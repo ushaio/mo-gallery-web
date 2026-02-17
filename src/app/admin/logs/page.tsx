@@ -163,7 +163,7 @@ export default function LogsPage() {
         await clearStoryEditorDraftFromDB(deleteDialog.id)
         setStoryEditorDrafts(prev => prev.filter(d => d.storyId !== deleteDialog.id))
       }
-      notify(t('admin.notify_log_deleted'))
+      notify(t('admin.draft_deleted') || '草稿已删除')
     } catch (err) {
       console.error('Failed to delete draft:', err)
       notify(t('common.error'), 'error')
