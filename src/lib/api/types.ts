@@ -114,6 +114,19 @@ export interface BlogDto {
   updatedAt: string
 }
 
+export interface AlbumDto {
+  id: string
+  name: string
+  description?: string
+  coverUrl?: string
+  isPublished: boolean
+  sortOrder: number
+  photoCount: number
+  photos: PhotoDto[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface FriendLinkDto {
   id: string
   name: string
