@@ -1,15 +1,20 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Search, Circle, CircleOff, Maximize2, Minimize2 } from 'lucide-react'
+import { Search, Circle, CircleOff } from 'lucide-react'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
-// 画廊页面头部组件 - 包含标题、分类筛选和照片计数
+export type GalleryView = 'photos' | 'albums'
+
+// 画廊页面头部组件 - 包含标题、视图切换 Tab、分类筛选和计数
 interface GalleryHeaderProps {
   activeCategory: string
   categories: string[]
   onCategoryChange: (category: string) => void
   photoCount: number
+  albumCount?: number
+  view: GalleryView
+  onViewChange: (view: GalleryView) => void
   t: (key: string) => string
 }
 
@@ -18,6 +23,9 @@ export function GalleryHeader({
   categories,
   onCategoryChange,
   photoCount,
+  albumCount,
+  view,
+  onViewChange,
   t,
 }: GalleryHeaderProps) {
   return (
@@ -37,12 +45,15 @@ export function GalleryHeader({
               </span>
             </motion.div>
             <motion.h1
+              key={view === 'albums' ? 'albums' : activeCategory}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
               className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight"
             >
-              {activeCategory === 'all' ? t('gallery.title') : activeCategory}
+              {view === 'albums'
+                ? (t('gallery.albums') || 'Albums')
+                : (activeCategory === 'all' ? t('gallery.title') : activeCategory)}
             </motion.h1>
           </div>
 
@@ -57,41 +68,71 @@ export function GalleryHeader({
             </span>
             <div className="h-4 w-px bg-border/50 hidden md:block" />
             <div className="text-xs font-mono text-muted-foreground tracking-wider">
-              {photoCount} {t('gallery.count_suffix')}
+              {view === 'albums'
+                ? `${albumCount ?? 0} ${t('gallery.album_count_suffix') || 'albums'}`
+                : `${photoCount} ${t('gallery.count_suffix')}`}
             </div>
           </motion.div>
         </div>
 
-        {/* 分类筛选导航 */}
-        <motion.nav
+        {/* 视图切换 Tab + 分类筛选 */}
+        <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           className="border-t border-border/30 pt-4"
         >
-          {/* 移动端横向滚动，桌面端自动换行 */}
-          <div className="flex md:flex-wrap gap-2 md:gap-1 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide mask-gradient-x md:mask-none">
-            {categories.map((cat) => (
+          {/* Tab 切换 */}
+          <div role="tablist" aria-label="Gallery view" className="flex gap-0 mb-4">
+            {(['photos', 'albums'] as const).map((v) => (
               <button
-                key={cat}
-                onClick={() => onCategoryChange(cat)}
-                className={`relative px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all whitespace-nowrap flex-shrink-0 ${
-                  activeCategory === cat
+                key={v}
+                role="tab"
+                aria-selected={view === v}
+                onClick={() => onViewChange(v)}
+                className={`relative px-4 py-2 text-xs font-medium uppercase tracking-wider transition-all rounded-sm ${
+                  view === v
                     ? 'text-primary bg-primary/8'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                 }`}
               >
-                {cat === 'all' ? t('gallery.all') : cat}
-                {activeCategory === cat && (
+                {v === 'photos' ? (t('gallery.photos_tab') || 'Photos') : (t('gallery.albums_tab') || 'Albums')}
+                {view === v && (
                   <motion.div
-                    layoutId="activeCategory"
-                    className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
+                    layoutId="activeViewTab"
+                    className="absolute bottom-0 left-0 right-0 h-px bg-primary"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                   />
                 )}
               </button>
             ))}
           </div>
-        </motion.nav>
+
+          {/* 分类筛选导航 - 仅照片流显示 */}
+          {view === 'photos' && (
+            <div className="flex md:flex-wrap gap-2 md:gap-1 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide mask-gradient-x md:mask-none">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => onCategoryChange(cat)}
+                  className={`relative px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all whitespace-nowrap flex-shrink-0 ${
+                    activeCategory === cat
+                      ? 'text-primary bg-primary/8'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  {cat === 'all' ? t('gallery.all') : cat}
+                  {activeCategory === cat && (
+                    <motion.div
+                      layoutId="activeCategory"
+                      className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </motion.div>
       </div>
     </header>
   )

@@ -130,6 +130,11 @@ export const dictionaries = {
       loadingMore: '加载更多...',
       noMore: '已加载全部照片',
       immersive: '沉浸',
+      photos_tab: '照片',
+      albums_tab: '相册',
+      albums: '相册',
+      album_count_suffix: '个相册',
+      back_to_albums: '返回相册',
     },
     they: {
       title: '他们',
@@ -692,6 +697,11 @@ export const dictionaries = {
       loadingMore: 'Loading more...',
       noMore: 'All photos loaded',
       immersive: 'Immersive',
+      photos_tab: 'Photos',
+      albums_tab: 'Albums',
+      albums: 'Albums',
+      album_count_suffix: 'albums',
+      back_to_albums: 'Back to Albums',
     },
     they: {
       title: 'THEY',

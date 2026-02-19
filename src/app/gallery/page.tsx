@@ -1,22 +1,31 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { getPhotosWithMeta, getCategories, type PhotoDto, type PhotoPaginationMeta } from '@/lib/api'
+import { Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { getPhotosWithMeta, getCategories, getAlbums, type PhotoDto, type PhotoPaginationMeta, type AlbumDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
-import { GalleryHeader, GalleryToolbar } from '@/components/gallery/GalleryHeader'
+import { GalleryHeader, GalleryToolbar, type GalleryView } from '@/components/gallery/GalleryHeader'
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
+import { AlbumGrid } from '@/components/gallery/AlbumGrid'
 import { ViewMode } from '@/components/gallery/ViewModeToggle'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-const PAGE_SIZE = 20 // 每页加载照片数量
+const PAGE_SIZE = 20
 
-// 画廊页面 - 支持分类筛选、搜索、多种视图模式和无限滚动
-export default function GalleryPage() {
+function GalleryContent() {
   const { t } = useLanguage()
   const { settings } = useSettings()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // 视图状态：photos | albums
+  const [view, setView] = useState<GalleryView>(() => {
+    return (searchParams.get('view') as GalleryView) === 'albums' ? 'albums' : 'photos'
+  })
+
   const [photos, setPhotos] = useState<PhotoDto[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [activeCategory, setActiveCategory] = useState('all')
@@ -30,25 +39,57 @@ export default function GalleryPage() {
   const [showBackToTop, setShowBackToTop] = useState(false)
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState<PhotoPaginationMeta | null>(null)
-  
-  // 加载更多触发器的 ref（用于 IntersectionObserver）
-  const loadMoreRef = useRef<HTMLDivElement>(null)
-  const isLoadingRef = useRef(false) // 防止并发加载
 
-  // 初始化数据：根据分类获取照片和分类列表
+  // 相册数据
+  const [albums, setAlbums] = useState<AlbumDto[]>([])
+  const [albumsLoading, setAlbumsLoading] = useState(false)
+
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const isLoadingRef = useRef(false)
+
+  // 切换视图时更新 URL
+  const handleViewChange = useCallback((newView: GalleryView) => {
+    setView(newView)
+    setSearch('')
+    if (newView === 'albums') {
+      router.push('/gallery?view=albums', { scroll: false })
+    } else {
+      router.push('/gallery', { scroll: false })
+    }
+  }, [router])
+
+  // 加载相册数据
   useEffect(() => {
+    if (view !== 'albums') return
+    const fetchAlbums = async () => {
+      setAlbumsLoading(true)
+      try {
+        const data = await getAlbums()
+        setAlbums(data)
+      } catch (error) {
+        console.error('Failed to fetch albums:', error)
+      } finally {
+        setAlbumsLoading(false)
+      }
+    }
+    fetchAlbums()
+  }, [view])
+
+  // 加载照片数据
+  useEffect(() => {
+    if (view !== 'photos') return
     const fetchInitialData = async () => {
       try {
         setLoading(true)
         setPhotos([])
         setPage(1)
-        
+
         const category = activeCategory !== 'all' ? activeCategory : undefined
         const [photosResult, categoriesData] = await Promise.all([
           getPhotosWithMeta({ category, page: 1, pageSize: PAGE_SIZE }),
           getCategories()
         ])
-        
+
         setPhotos(photosResult.data)
         setMeta(photosResult.meta)
         setCategories(['all', ...categoriesData.filter(c => c !== 'all' && c !== '全部')])
@@ -59,20 +100,19 @@ export default function GalleryPage() {
       }
     }
     fetchInitialData()
-  }, [activeCategory])
+  }, [activeCategory, view])
 
-  // 加载更多照片 - 返回 Promise，用于无限滚动
   const loadMore = useCallback(async (): Promise<void> => {
     if (isLoadingRef.current || !meta?.hasMore) return
-    
+
     isLoadingRef.current = true
     setLoadingMore(true)
-    
+
     try {
       const nextPage = page + 1
       const category = activeCategory !== 'all' ? activeCategory : undefined
       const result = await getPhotosWithMeta({ category, page: nextPage, pageSize: PAGE_SIZE })
-      
+
       setPhotos(prev => [...prev, ...result.data])
       setMeta(result.meta)
       setPage(nextPage)
@@ -84,7 +124,6 @@ export default function GalleryPage() {
     }
   }, [page, activeCategory, meta?.hasMore])
 
-  // IntersectionObserver 实现无限滚动
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -97,18 +136,10 @@ export default function GalleryPage() {
     )
 
     const currentRef = loadMoreRef.current
-    if (currentRef) {
-      observer.observe(currentRef)
-    }
-
-    return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef)
-      }
-    }
+    if (currentRef) observer.observe(currentRef)
+    return () => { if (currentRef) observer.unobserve(currentRef) }
   }, [loadMore, meta?.hasMore, loading, loadingMore])
 
-  // 监听滚动以显示/隐藏"回到顶部"按钮（使用 ref 避免不必要的重渲染）
   const showBackToTopRef = useRef(false)
   useEffect(() => {
     const handleScroll = () => {
@@ -122,15 +153,10 @@ export default function GalleryPage() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // 平滑滚动到页面顶部
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
 
-  // 按关键词过滤已加载的照片（客户端搜索）
   const filteredPhotos = useMemo(() => {
     if (!search.trim()) return photos
-
     const searchLower = search.toLowerCase()
     return photos.filter(p =>
       p.title.toLowerCase().includes(searchLower) ||
@@ -138,8 +164,15 @@ export default function GalleryPage() {
     )
   }, [photos, search])
 
-  // 显示数量：搜索时显示匹配数，否则显示总数
   const displayCount = search.trim() ? filteredPhotos.length : (meta?.total ?? photos.length)
+
+  const handleAlbumClick = (albumId: string) => {
+    const album = albums.find(a => a.id === albumId)
+    if (album) {
+      sessionStorage.setItem(`album_preview_${albumId}`, JSON.stringify(album))
+    }
+    router.push(`/gallery/albums/${albumId}`)
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
@@ -151,15 +184,18 @@ export default function GalleryPage() {
             categories={categories}
             onCategoryChange={(cat) => {
               setActiveCategory(cat)
-              setSearch('') // 切换分类时清空搜索
+              setSearch('')
             }}
             photoCount={displayCount}
+            albumCount={albums.length}
+            view={view}
+            onViewChange={handleViewChange}
             t={t}
           />
         </div>
       </div>
 
-      {/* 吸顶工具栏 - 放在容器外以确保吸顶效果正常 */}
+      {/* 吸顶工具栏 */}
       <GalleryToolbar
         search={search}
         onSearchChange={setSearch}
@@ -172,43 +208,60 @@ export default function GalleryPage() {
         t={t}
       />
 
-      {/* 照片网格 */}
+      {/* 内容区域 */}
       <div className="px-2 sm:px-4 md:px-8 lg:px-12 pt-4 md:pt-8">
         <div className="max-w-screen-2xl mx-auto">
-          <PhotoGrid
-            loading={loading}
-            photos={filteredPhotos}
-            settings={settings}
-            viewMode={viewMode}
-            grayscale={grayscale}
-            immersive={immersive}
-            onPhotoClick={setSelectedPhoto}
-            t={t}
-          />
-          
-          {/* 加载更多触发区域 */}
-          {!loading && meta?.hasMore && !search.trim() && (
-            <div 
-              ref={loadMoreRef} 
-              className="flex justify-center items-center py-8"
-            >
-              {loadingMore && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
-                  <span className="text-sm">{t('gallery.loadingMore') || '加载更多...'}</span>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* 列表底部提示 */}
-          {!loading && !meta?.hasMore && photos.length > 0 && !search.trim() && (
-            <div className="flex justify-center items-center py-8">
-              <span className="text-sm text-muted-foreground">
-                {t('gallery.noMore') || `已加载全部 ${meta?.total ?? photos.length} 张照片`}
-              </span>
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {view === 'albums' ? (
+              <motion.div
+                key="albums"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <AlbumGrid albums={albums} onAlbumClick={handleAlbumClick} isLoading={albumsLoading} t={t} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="photos"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <PhotoGrid
+                  loading={loading}
+                  photos={filteredPhotos}
+                  settings={settings}
+                  viewMode={viewMode}
+                  grayscale={grayscale}
+                  immersive={immersive}
+                  onPhotoClick={setSelectedPhoto}
+                  t={t}
+                />
+
+                {!loading && meta?.hasMore && !search.trim() && (
+                  <div ref={loadMoreRef} className="flex justify-center items-center py-8">
+                    {loadingMore && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="size-5 animate-spin" />
+                        <span className="text-sm">{t('gallery.loadingMore') || '加载更多...'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!loading && !meta?.hasMore && photos.length > 0 && !search.trim() && (
+                  <div className="flex justify-center items-center py-8">
+                    <span className="text-sm text-muted-foreground">
+                      {t('gallery.noMore') || `已加载全部 ${meta?.total ?? photos.length} 张照片`}
+                    </span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -239,5 +292,13 @@ export default function GalleryPage() {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+export default function GalleryPage() {
+  return (
+    <Suspense>
+      <GalleryContent />
+    </Suspense>
   )
 }
