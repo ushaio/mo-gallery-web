@@ -22,6 +22,7 @@ export interface UploadTask {
   categories: string[]
   storageProvider?: string
   storagePath?: string
+  storagePathFull?: boolean
   storyId?: string
   albumIds?: string[]
   fileHash?: string // Original file hash for duplicate detection
@@ -43,6 +44,7 @@ interface UploadQueueContextType {
     categories: string[]
     storageProvider?: string
     storagePath?: string
+    storagePathFull?: boolean
     storyId?: string
     albumIds?: string[]
     compressionMode?: CompressionMode
@@ -194,6 +196,7 @@ export function UploadQueueProvider({
         category: task.categories,
         storage_provider: task.storageProvider,
         storage_path: task.storagePath,
+        storage_path_full: task.storagePathFull,
         file_hash: task.fileHash,
         onProgress: (progress) => {
           // Always set status to uploading when receiving upload progress
@@ -273,6 +276,7 @@ export function UploadQueueProvider({
       categories: string[]
       storageProvider?: string
       storagePath?: string
+      storagePathFull?: boolean
       storyId?: string
       albumIds?: string[]
       compressionMode?: CompressionMode
@@ -304,6 +308,7 @@ export function UploadQueueProvider({
             categories: params.categories,
             storageProvider: params.storageProvider,
             storagePath: params.storagePath,
+            storagePathFull: params.storagePathFull,
             storyId: params.storyId,
             albumIds: params.albumIds,
             fileHash: item.fileHash,

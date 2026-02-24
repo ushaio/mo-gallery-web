@@ -10,6 +10,8 @@ export interface UploadFileInput {
   filename: string
   path?: string
   contentType: string
+  /** When true, path is treated as the full path, skipping basePath prefix */
+  useFullPath?: boolean
 }
 
 export interface UploadResult {

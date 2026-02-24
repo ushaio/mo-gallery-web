@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   Upload,
   Loader2,
@@ -18,6 +18,8 @@ import {
   MapPinOff,
   AlertTriangle,
   ExternalLink,
+  ChevronDown,
+  Check,
 } from 'lucide-react'
 import { AdminSettingsDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, type StoryDto, type AlbumDto } from '@/lib/api'
 import { type CompressionMode } from '@/lib/image-compress'
@@ -150,6 +152,65 @@ function ConfirmModal({
           </AdminButton>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Inline Prefix Dropdown - matches admin style, integrates with input group
+function PrefixDropdown({
+  value,
+  options,
+  onChange,
+}: {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const selectedOption = options.find((opt) => opt.value === value)
+  const displayLabel = selectedOption?.label || value
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isOpen && containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('click', handleClickOutside, true)
+    return () => document.removeEventListener('click', handleClickOutside, true)
+  }, [isOpen])
+
+  return (
+    <div ref={containerRef} className="relative self-stretch">
+      <div
+        className="h-full px-3 bg-muted/50 border border-r-0 border-border text-[10px] text-muted-foreground font-mono flex items-center gap-0.5 cursor-pointer hover:bg-muted/80 transition-colors select-none"
+        onClick={() => setIsOpen(!isOpen)}
+        title={displayLabel}
+      >
+        <span className="truncate max-w-[80px]">{displayLabel}</span>
+        <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="absolute z-20 left-0 top-full mt-0.5 min-w-full bg-background border border-border shadow-2xl">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                onChange(option.value)
+                setIsOpen(false)
+              }}
+              className={`w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-primary hover:text-primary-foreground flex items-center justify-between gap-2 transition-colors whitespace-nowrap ${
+                value === option.value ? 'bg-primary/10 text-primary' : ''
+              }`}
+            >
+              <span>{option.label}</span>
+              {value === option.value && <Check className="w-2.5 h-2.5" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -312,6 +373,7 @@ export function UploadTab({
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
   const [uploadSource, setUploadSource] = useState('local')
+  const [useCustomPrefix, setUseCustomPrefix] = useState(false)
   const [uploadPath, setUploadPath] = useState('')
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -337,10 +399,25 @@ export function UploadTab({
     if (settings?.storage_provider && !isInitialized) {
       queueMicrotask(() => {
         setUploadSource(settings.storage_provider)
+        setUseCustomPrefix(false)
         setIsInitialized(true)
       })
     }
   }, [settings, isInitialized])
+
+  // Reset custom prefix when storage provider changes
+  useEffect(() => {
+    if (!isInitialized) return
+    setUseCustomPrefix(false)
+    setUploadPath('')
+  }, [uploadSource, isInitialized])
+
+  // Get the system prefix for current provider
+  const configPrefix = uploadSource === 'r2'
+    ? settings?.r2_path
+    : uploadSource === 'github'
+      ? settings?.github_path
+      : undefined
 
   // Load stories only when modal opens
   const loadStories = useCallback(async () => {
@@ -588,7 +665,8 @@ export function UploadTab({
       title: uploadTitle.trim(),
       categories: uploadCategories,
       storageProvider: uploadSource,
-      storagePath: uploadPath.trim() || undefined,
+      storagePath: useCustomPrefix ? (uploadPath.trim() || undefined) : (uploadPath.trim() || undefined),
+      storagePathFull: useCustomPrefix,
       storyId: uploadStoryId || undefined,
       albumIds: uploadAlbumIds.length ? uploadAlbumIds : undefined,
       compressionMode: compressionMode !== 'none' ? compressionMode : undefined,
@@ -638,14 +716,11 @@ export function UploadTab({
   const selectedStoryName = stories.find(s => s.id === uploadStoryId)?.title
   
   // Calculate full storage path for display
-  const systemPrefix = uploadSource === 'r2'
-    ? settings?.r2_path
-    : uploadSource === 'github'
-      ? settings?.github_path
-      : undefined
-  const fullStoragePath = systemPrefix
-    ? (uploadPath.trim() ? `${systemPrefix}/${uploadPath.trim()}` : systemPrefix)
-    : uploadPath.trim() || undefined
+  const fullStoragePath = useCustomPrefix
+    ? (uploadPath.trim() || undefined)
+    : (configPrefix
+      ? (uploadPath.trim() ? `${configPrefix}/${uploadPath.trim()}` : configPrefix)
+      : uploadPath.trim() || undefined)
 
   return (
     <>
@@ -735,27 +810,31 @@ export function UploadTab({
                   </div>
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.path_prefix')}</label>
-                    {(() => {
-                      const systemPrefix = uploadSource === 'r2'
-                        ? settings?.r2_path
-                        : uploadSource === 'github'
-                          ? settings?.github_path
-                          : undefined
-                      const displayPrefix = systemPrefix || '/'
-                      return (
-                        <div className="flex items-stretch">
-                          <div className="px-2 py-2 bg-muted/50 border-b border-l border-t border-border text-[10px] text-muted-foreground font-mono flex items-center">
-                            <span className="truncate max-w-[60px]" title={displayPrefix}>{displayPrefix}{systemPrefix ? '/' : ''}</span>
-                          </div>
-                          <AdminInput
-                            value={uploadPath}
-                            onChange={e => setUploadPath(e.target.value)}
-                            placeholder="path"
-                            className="flex-1 rounded-l-none"
-                          />
+                    <div className="flex items-stretch">
+                      {configPrefix ? (
+                        <PrefixDropdown
+                          value={useCustomPrefix ? '/' : configPrefix}
+                          options={[
+                            { value: configPrefix, label: `${configPrefix}/` },
+                            { value: '/', label: '/' },
+                          ]}
+                          onChange={(v) => {
+                            setUseCustomPrefix(v === '/')
+                            setUploadPath('')
+                          }}
+                        />
+                      ) : (
+                        <div className="self-stretch px-3 bg-muted/50 border border-r-0 border-border text-[10px] text-muted-foreground font-mono flex items-center">
+                          <span>/</span>
                         </div>
-                      )
-                    })()}
+                      )}
+                      <AdminInput
+                        value={uploadPath}
+                        onChange={e => setUploadPath(e.target.value)}
+                        placeholder="path"
+                        className="flex-1 rounded-l-none border-l-0"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

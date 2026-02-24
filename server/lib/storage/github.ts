@@ -77,7 +77,7 @@ export class GithubStorageProvider implements StorageProvider {
   ): Promise<UploadResult> {
     try {
       // Build file paths
-      const filePath = this.buildPath(file.filename, file.path)
+      const filePath = this.buildPath(file.filename, file.path, file.useFullPath)
 
       // Upload original and thumbnail in parallel
       const uploadPromises: Promise<void>[] = [
@@ -86,7 +86,7 @@ export class GithubStorageProvider implements StorageProvider {
 
       let thumbPath: string | undefined
       if (thumbnail) {
-        thumbPath = this.buildPath(thumbnail.filename, thumbnail.path)
+        thumbPath = this.buildPath(thumbnail.filename, thumbnail.path, file.useFullPath)
         uploadPromises.push(
           this.uploadToGithub(
             thumbPath,
@@ -244,8 +244,9 @@ export class GithubStorageProvider implements StorageProvider {
     }
   }
 
-  private buildPath(filename: string, subfolder?: string): string {
-    const parts = [this.basePath]
+  private buildPath(filename: string, subfolder?: string, useFullPath?: boolean): string {
+    const parts: string[] = []
+    if (!useFullPath) parts.push(this.basePath)
     if (subfolder) parts.push(subfolder)
     parts.push(filename)
     // Remove leading slashes and duplicate slashes

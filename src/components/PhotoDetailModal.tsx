@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
-import { motion, AnimatePresence, type PanInfo } from 'framer-motion'
+import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from 'framer-motion'
 import {
   X,
   Camera,
@@ -152,20 +152,29 @@ export function PhotoDetailModal({
   // 触摸滑动处理
   const [scale, setScale] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
-  
+  // 用 motion value 统一控制放大时的图片位置
+  const imgX = useMotionValue(0)
+  const imgY = useMotionValue(0)
+
   // 双击放大/缩小
   const handleDoubleTap = useCallback(() => {
-    setScale(prev => prev === 1 ? 2 : 1)
-  }, [])
+    setScale(prev => {
+      if (prev !== 1) {
+        animate(imgX, 0, { duration: 0.2 })
+        animate(imgY, 0, { duration: 0.2 })
+      }
+      return prev === 1 ? 2 : 1
+    })
+  }, [imgX, imgY])
 
   // 拖拽关闭阈值
   const DRAG_DISMISS_THRESHOLD = 150
-  
+
   // 拖拽处理
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false)
-    
-    // 如果处于放大状态，不处理切换逻辑
+
+    // 放大状态：位置已由 imgX/imgY motion value 实时更新，无需额外处理
     if (scale > 1) return
 
     // 垂直拖拽关闭判定
@@ -320,6 +329,8 @@ export function PhotoDetailModal({
   useEffect(() => {
     setFullImageLoaded(false)
     setScale(1)
+    imgX.set(0)
+    imgY.set(0)
   }, [photo?.id])
 
   // 缩略图条滚动到当前照片位置
@@ -487,6 +498,15 @@ export function PhotoDetailModal({
                   dragSnapToOrigin
                   onDragStart={() => setIsDragging(true)}
                   onDragEnd={handleDragEnd}
+                  onPanStart={() => { if (scale > 1) setIsDragging(true) }}
+                  onPan={(_, info) => {
+                    if (scale > 1) {
+                      imgX.set(imgX.get() + info.delta.x)
+                      imgY.set(imgY.get() + info.delta.y)
+                    }
+                  }}
+                  onPanEnd={() => { if (scale > 1) setIsDragging(false) }}
+                  style={{ x: scale > 1 ? imgX : undefined, y: scale > 1 ? imgY : undefined }}
                 >
                   <div className="relative w-full h-full pointer-events-none">
                     {/* Thumbnail placeholder - shows while full image loads */}
