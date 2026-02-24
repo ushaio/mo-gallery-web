@@ -85,7 +85,7 @@ export class R2StorageProvider implements StorageProvider {
   ): Promise<UploadResult> {
     try {
       // Build file key
-      const fileKey = this.buildKey(file.filename, file.path)
+      const fileKey = this.buildKey(file.filename, file.path, file.useFullPath)
 
       // Upload original and thumbnail in parallel
       const uploadPromises: Promise<void>[] = [
@@ -94,7 +94,7 @@ export class R2StorageProvider implements StorageProvider {
 
       let thumbKey: string | undefined
       if (thumbnail) {
-        thumbKey = this.buildKey(thumbnail.filename, thumbnail.path)
+        thumbKey = this.buildKey(thumbnail.filename, thumbnail.path, file.useFullPath)
         uploadPromises.push(
           this.uploadToR2(thumbKey, thumbnail.buffer, thumbnail.contentType)
         )
@@ -235,9 +235,9 @@ export class R2StorageProvider implements StorageProvider {
     }
   }
 
-  private buildKey(filename: string, subfolder?: string): string {
+  private buildKey(filename: string, subfolder?: string, useFullPath?: boolean): string {
     const parts: string[] = []
-    if (this.basePath) parts.push(this.basePath)
+    if (!useFullPath && this.basePath) parts.push(this.basePath)
     if (subfolder) parts.push(subfolder)
     parts.push(filename)
     // Remove leading slashes and duplicate slashes

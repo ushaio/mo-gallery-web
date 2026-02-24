@@ -280,6 +280,7 @@ photos.post('/admin/photos', async (c) => {
     const category = formData.get('category') as string
     const storageProvider = formData.get('storage_provider') as string
     const storagePath = formData.get('storage_path') as string
+    const storagePathFull = formData.get('storage_path_full') === 'true'
     const fileHash = formData.get('file_hash') as string | null
 
     if (!file) {
@@ -352,12 +353,14 @@ photos.post('/admin/photos', async (c) => {
         filename,
         path: storagePath,
         contentType: file.type,
+        useFullPath: storagePathFull,
       },
       {
         buffer: thumbnailBuffer,
         filename: thumbnailFilename,
         path: storagePath,
         contentType: 'image/jpeg',
+        useFullPath: storagePathFull,
       }
     )
 

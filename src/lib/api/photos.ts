@@ -126,6 +126,7 @@ export function uploadPhotoWithProgress(input: {
   category?: string | string[]
   storage_provider?: string
   storage_path?: string
+  storage_path_full?: boolean
   file_hash?: string
   onProgress?: (progress: number) => void
 }): Promise<PhotoDto> {
@@ -139,6 +140,7 @@ export function uploadPhotoWithProgress(input: {
     }
     if (input.storage_provider) form.set('storage_provider', input.storage_provider)
     if (input.storage_path) form.set('storage_path', input.storage_path)
+    if (input.storage_path_full) form.set('storage_path_full', 'true')
     if (input.file_hash) form.set('file_hash', input.file_hash)
 
     const xhr = new XMLHttpRequest()

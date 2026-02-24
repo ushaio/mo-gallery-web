@@ -397,14 +397,19 @@ export function SettingsTab({
                         <AdminInput
                           variant="config"
                           type="text"
-                          value={settings.r2_path ?? ''}
-                          onChange={(e) =>
+                          value={settings.r2_path ? (settings.r2_path.startsWith('/') ? settings.r2_path : `/${settings.r2_path}`) : '/'}
+                          onChange={(e) => {
+                            let v = e.target.value
+                            // Ensure starts with /
+                            if (!v.startsWith('/')) v = '/' + v
+                            // Remove duplicate slashes
+                            v = v.replace(/\/+/g, '/')
                             setSettings({
                               ...settings,
-                              r2_path: e.target.value,
+                              r2_path: v === '/' ? '' : v.replace(/^\//, ''),
                             })
-                          }
-                          placeholder="photos"
+                          }}
+                          placeholder="/photos"
                         />
                       </div>
                       <div className="md:col-span-2 space-y-2">
@@ -541,14 +546,19 @@ export function SettingsTab({
                         <AdminInput
                           variant="config"
                           type="text"
-                          value={settings.github_path ?? ''}
-                          onChange={(e) =>
+                          value={settings.github_path ? (settings.github_path.startsWith('/') ? settings.github_path : `/${settings.github_path}`) : '/'}
+                          onChange={(e) => {
+                            let v = e.target.value
+                            // Ensure starts with /
+                            if (!v.startsWith('/')) v = '/' + v
+                            // Remove duplicate slashes
+                            v = v.replace(/\/+/g, '/')
                             setSettings({
                               ...settings,
-                              github_path: e.target.value,
+                              github_path: v === '/' ? '' : v.replace(/^\//, ''),
                             })
-                          }
-                          placeholder={t('admin.gh_placeholder_path')}
+                          }}
+                          placeholder="/uploads"
                         />
                       </div>
                       <div className="md:col-span-2 space-y-2">
