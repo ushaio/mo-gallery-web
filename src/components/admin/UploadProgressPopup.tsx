@@ -1,12 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import {
   X,
   ChevronDown,
   ChevronUp,
   Check,
-  Loader2,
   AlertCircle,
   RefreshCw,
   Image as ImageIcon,
@@ -31,6 +30,136 @@ function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+const ITEM_HEIGHT = 72 // px per task row (h-12 thumbnail + py-3 padding)
+const CONTAINER_MAX_HEIGHT = 320 // max-h-80 = 320px
+const OVERSCAN = 3 // extra items rendered above/below viewport
+
+function VirtualTaskList({
+  tasks,
+  hoveredTaskId,
+  onHover,
+  onRetry,
+  getStatusIcon,
+  t,
+}: {
+  tasks: UploadTask[]
+  hoveredTaskId: string | null
+  onHover: (id: string | null) => void
+  onRetry: (taskId: string) => void
+  getStatusIcon: (status: UploadTaskStatus, progress: number) => React.ReactNode
+  t: (key: string) => string
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+
+  const handleScroll = useCallback(() => {
+    if (scrollRef.current) {
+      setScrollTop(scrollRef.current.scrollTop)
+    }
+  }, [])
+
+  const totalHeight = tasks.length * ITEM_HEIGHT
+  const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN)
+  const visibleCount = Math.ceil(CONTAINER_MAX_HEIGHT / ITEM_HEIGHT) + OVERSCAN * 2
+  const endIndex = Math.min(tasks.length, startIndex + visibleCount)
+  const offsetY = startIndex * ITEM_HEIGHT
+
+  return (
+    <div
+      ref={scrollRef}
+      className="overflow-y-auto custom-scrollbar"
+      style={{ maxHeight: CONTAINER_MAX_HEIGHT }}
+      onScroll={handleScroll}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
+          {tasks.slice(startIndex, endIndex).map((task) => (
+            <div
+              key={task.id}
+              className="group flex items-center gap-3 px-4 border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
+              style={{ height: ITEM_HEIGHT }}
+              onMouseEnter={() => onHover(task.id)}
+              onMouseLeave={() => onHover(null)}
+            >
+              {/* Thumbnail */}
+              <div className="w-12 h-12 bg-muted flex-shrink-0 overflow-hidden border border-border/50">
+                {task.preview ? (
+                  <img
+                    src={task.preview}
+                    alt={task.fileName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
+                  </div>
+                )}
+              </div>
+
+              {/* File Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate mb-0.5">{task.fileName}</p>
+                <div className="flex items-center gap-2">
+                  {task.compressedSize && task.compressedSize < task.originalSize ? (
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {formatFileSize(task.originalSize)} → {formatFileSize(task.compressedSize)}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      {formatFileSize(task.originalSize)}
+                    </span>
+                  )}
+                  {task.status === 'compressing' && (
+                    <span className="text-[10px] text-amber-500 font-bold">
+                      {t('admin.compressing')} {task.progress}%
+                    </span>
+                  )}
+                  {task.status === 'uploading' && (
+                    <span className="text-[10px] text-primary font-bold">
+                      {task.progress}%
+                    </span>
+                  )}
+                  {task.status === 'failed' && task.error && (
+                    <span className="text-[10px] text-destructive truncate max-w-[120px]">
+                      {task.error}
+                    </span>
+                  )}
+                </div>
+                {(task.status === 'compressing' || task.status === 'uploading') && (
+                  <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ease-out ${
+                        task.status === 'compressing' ? 'bg-amber-500' : 'bg-primary'
+                      }`}
+                      style={{ width: `${task.progress}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Status / Actions */}
+              <div className="flex-shrink-0 w-8 flex justify-center">
+                {task.status === 'failed' && hoveredTaskId === task.id ? (
+                  <AdminButton
+                    onClick={() => onRetry(task.id)}
+                    adminVariant="iconPrimary"
+                    className="p-1.5 text-primary hover:bg-primary/10"
+                    title={t('admin.retry')}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </AdminButton>
+                ) : (
+                  getStatusIcon(task.status, task.progress)
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function UploadProgressPopup({
@@ -230,92 +359,16 @@ export function UploadProgressPopup({
         </div>
       )}
 
-      {/* Task List */}
+      {/* Task List - Virtualized */}
       {!isMinimized && (
-        <div className="max-h-80 overflow-y-auto custom-scrollbar">
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              className="group flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
-              onMouseEnter={() => setHoveredTaskId(task.id)}
-              onMouseLeave={() => setHoveredTaskId(null)}
-            >
-              {/* Thumbnail */}
-              <div className="w-12 h-12 bg-muted flex-shrink-0 overflow-hidden border border-border/50">
-                {task.preview ? (
-                  <img
-                    src={task.preview}
-                    alt={task.fileName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
-                  </div>
-                )}
-              </div>
-
-              {/* File Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate mb-0.5">{task.fileName}</p>
-                <div className="flex items-center gap-2">
-                  {/* Show compression info if compressed */}
-                  {task.compressedSize && task.compressedSize < task.originalSize ? (
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {formatFileSize(task.originalSize)} → {formatFileSize(task.compressedSize)}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {formatFileSize(task.originalSize)}
-                    </span>
-                  )}
-                  {task.status === 'compressing' && (
-                    <span className="text-[10px] text-amber-500 font-bold">
-                      {t('admin.compressing')} {task.progress}%
-                    </span>
-                  )}
-                  {task.status === 'uploading' && (
-                    <span className="text-[10px] text-primary font-bold">
-                      {task.progress}%
-                    </span>
-                  )}
-                  {task.status === 'failed' && task.error && (
-                    <span className="text-[10px] text-destructive truncate max-w-[120px]">
-                      {task.error}
-                    </span>
-                  )}
-                </div>
-                {/* Individual Progress Bar */}
-                {(task.status === 'compressing' || task.status === 'uploading') && (
-                  <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ease-out ${
-                        task.status === 'compressing' ? 'bg-amber-500' : 'bg-primary'
-                      }`}
-                      style={{ width: `${task.progress}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Status / Actions */}
-              <div className="flex-shrink-0 w-8 flex justify-center">
-                {task.status === 'failed' && hoveredTaskId === task.id ? (
-                  <AdminButton
-                    onClick={() => onRetry(task.id)}
-                    adminVariant="iconPrimary"
-                    className="p-1.5 text-primary hover:bg-primary/10"
-                    title={t('admin.retry')}
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                  </AdminButton>
-                ) : (
-                  getStatusIcon(task.status, task.progress)
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        <VirtualTaskList
+          tasks={tasks}
+          hoveredTaskId={hoveredTaskId}
+          onHover={setHoveredTaskId}
+          onRetry={onRetry}
+          getStatusIcon={getStatusIcon}
+          t={t}
+        />
       )}
 
       {/* Footer Actions */}

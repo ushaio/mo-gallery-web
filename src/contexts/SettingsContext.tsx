@@ -6,6 +6,7 @@ import type { PublicSettingsDto } from '@/lib/api'
 export interface SocialLink {
   title: string
   url: string
+  icon?: string
 }
 
 export interface EnvConfig {

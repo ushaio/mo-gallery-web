@@ -4,6 +4,8 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Icon as IconifyIcon } from '@iconify/react'
+
 
 export default function Footer() {
   const { settings, envConfig } = useSettings()
@@ -21,10 +23,10 @@ export default function Footer() {
   const isStoryDetail = pathname?.startsWith('/story/')
 
   const navLinks = [
-    { name: t('nav.home'), path: '/' },
-    { name: t('nav.gallery'), path: '/gallery' },
-    { name: t('nav.about'), path: '/about' },
-    { name: t('nav.login'), path: '/login' },
+    { name: t('nav.home'), path: '/', icon: 'lucide:house' },
+    { name: t('nav.gallery'), path: '/gallery', icon: 'lucide:image' },
+    { name: t('nav.about'), path: '/about', icon: 'lucide:user' },
+    { name: t('nav.login'), path: '/login', icon: 'lucide:log-in' },
   ]
 
   return (
@@ -57,9 +59,9 @@ export default function Footer() {
                     <li key={item.path}>
                       <Link
                         href={item.path}
-                        className="group relative inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors duration-300"
+                        className="group relative inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors duration-300"
                       >
-                        <span className="absolute -left-4 w-0 h-px bg-primary transition-all duration-300 group-hover:w-3" />
+                        <IconifyIcon icon={item.icon} className="w-4 h-4" />
                         {item.name}
                       </Link>
                     </li>
@@ -81,9 +83,9 @@ export default function Footer() {
                         href={item.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="group relative inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors duration-300"
+                        className="group relative inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors duration-300"
                       >
-                        <span className="absolute -left-4 w-0 h-px bg-primary transition-all duration-300 group-hover:w-3" />
+                        <IconifyIcon icon={item.icon || 'lucide:globe'} className="w-4 h-4" />
                         {item.title}
                       </a>
                     </li>
