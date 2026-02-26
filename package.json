@@ -21,6 +21,7 @@
     "@aws-sdk/client-s3": "^3.958.0",
     "@hono/node-server": "^1.19.7",
     "@hono/zod-validator": "^0.7.6",
+    "@iconify/react": "^6.0.2",
     "@milkdown/core": "^7.17.3",
     "@milkdown/crepe": "^7.17.3",
     "@milkdown/ctx": "^7.17.3",
