@@ -319,7 +319,7 @@ export function StoryTab({
               {story.title}
             </a>
             <div className="text-ui-micro font-mono uppercase tracking-widest text-muted-foreground/50">
-              {new Date(story.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
+              {new Date(story.storyDate || story.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'

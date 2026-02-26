@@ -16,6 +16,7 @@ export interface StoryEditorDraftData {
   content: string;
   isPublished: boolean;
   createdAt: string;
+  storyDate: string;
   coverPhotoId?: string | null;
   pendingCoverId?: string | null; // Cover ID for pending (not yet uploaded) images
   photoIds: string[];
@@ -264,6 +265,7 @@ export async function saveStoryEditorDraftToDB(data: {
   content: string;
   isPublished: boolean;
   createdAt: string;
+  storyDate: string;
   coverPhotoId?: string | null;
   pendingCoverId?: string | null;
   photoIds: string[];
@@ -282,6 +284,7 @@ export async function saveStoryEditorDraftToDB(data: {
         content: data.content,
         isPublished: data.isPublished,
         createdAt: data.createdAt,
+        storyDate: data.storyDate,
         coverPhotoId: data.coverPhotoId,
         pendingCoverId: data.pendingCoverId,
         photoIds: data.photoIds,

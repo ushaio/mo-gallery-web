@@ -138,8 +138,14 @@ export default function StoryDetailPage() {
           <div className="mt-8 flex items-center gap-6 text-[10px] font-mono uppercase tracking-widest text-white/60">
             <div className="flex items-center gap-2">
               <Calendar className="size-3" />
-              {new Date(story.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              {new Date(story.storyDate || story.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
+            {story.storyDate && story.storyDate !== story.createdAt && (
+              <div className="flex items-center gap-2">
+                <Clock className="size-3" />
+                {new Date(story.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Clock className="size-3" />
               {Math.ceil(story.content.length / 500)} min read

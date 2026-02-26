@@ -167,7 +167,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     title: string
     content: string
     isPublished: boolean
-    createdAt: string
+    storyDate: string
     photoIds: string[]
     coverPhotoId?: string
   } | null>(null)
@@ -234,6 +234,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         content: editFromDraft.content,
         isPublished: editFromDraft.isPublished,
         createdAt: editFromDraft.createdAt,
+        storyDate: editFromDraft.storyDate || editFromDraft.createdAt,
         updatedAt: new Date().toISOString(),
         coverPhotoId: editFromDraft.coverPhotoId ?? undefined,
         photos: restoredPhotos,
@@ -294,14 +295,14 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       currentStory.title !== initial.title ||
       currentStory.content !== initial.content ||
       currentStory.isPublished !== initial.isPublished ||
-      currentStory.createdAt !== initial.createdAt ||
+      currentStory.storyDate !== initial.storyDate ||
       currentStory.coverPhotoId !== initial.coverPhotoId ||
       JSON.stringify(currentPhotoIds) !== JSON.stringify(initial.photoIds) ||
       pendingImages.length > 0 ||
       pendingCoverId !== null
-    
+
     setIsDirty(hasChanged)
-  }, [storyEditMode, currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.createdAt, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId])
+  }, [storyEditMode, currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.storyDate, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId])
 
   // 故事数据变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
@@ -312,7 +313,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     autoSaveTimerRef.current = setTimeout(() => saveDraft(), AUTO_SAVE_DELAY)
 
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
-  }, [currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.createdAt, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId, isDirty])
+  }, [currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.storyDate, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId, isDirty])
 
   // 将草稿应用到当前故事
   const applyDraft = useCallback((draft: StoryEditorDraftData, baseStory: StoryDto) => {
@@ -327,10 +328,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       content: draft.content || baseStory.content,
       isPublished: draft.isPublished,
       createdAt: draft.createdAt || baseStory.createdAt,
+      storyDate: draft.storyDate || baseStory.storyDate,
       coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
       photos: restoredPhotos,
     })
-    
+
     if (draft.files?.length > 0) {
       const restoredPending = draft.files.map(f => ({
         id: f.id,
@@ -342,19 +344,19 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       }))
       setPendingImages(restoredPending)
     }
-    
+
     // 从草稿恢复待上传封面 ID
     if (draft.pendingCoverId) {
       setPendingCoverId(draft.pendingCoverId)
     }
-    
+
     setLastSavedAt(draft.savedAt)
     // 更新初始引用以匹配恢复的草稿（不视为脏数据）
     initialStoryRef.current = {
       title: draft.title || baseStory.title,
       content: draft.content || baseStory.content,
       isPublished: draft.isPublished,
-      createdAt: draft.createdAt || baseStory.createdAt,
+      storyDate: draft.storyDate || baseStory.storyDate,
       photoIds: draft.photoIds,
       coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
     }
@@ -396,6 +398,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         content: currentStory.content,
         isPublished: currentStory.isPublished,
         createdAt: currentStory.createdAt,
+        storyDate: currentStory.storyDate,
         coverPhotoId: currentStory.coverPhotoId,
         pendingCoverId: pendingCoverId,
         photoIds: currentStory.photos?.map(p => p.id) || [],
@@ -443,22 +446,24 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }
 
   async function handleCreateStory() {
+    const now = new Date().toISOString()
     const newStory: StoryDto = {
       id: crypto.randomUUID(),
       title: '',
       content: '',
       isPublished: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      storyDate: now,
+      createdAt: now,
+      updatedAt: now,
       photos: [],
     }
-    
+
     // 设置脏检查的初始状态
     initialStoryRef.current = {
       title: '',
       content: '',
       isPublished: false,
-      createdAt: newStory.createdAt,
+      storyDate: now,
       photoIds: [],
       coverPhotoId: undefined,
     }
@@ -486,7 +491,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       title: story.title,
       content: story.content,
       isPublished: story.isPublished,
-      createdAt: story.createdAt,
+      storyDate: story.storyDate,
       photoIds: story.photos?.map(p => p.id) || [],
       coverPhotoId: story.coverPhotoId,
     }
@@ -592,7 +597,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       const isNew = !stories.find((s) => s.id === currentStory.id)
       const photoIds = currentStory.photos?.map(p => p.id) || []
 
-      const dateChanged = initialStoryRef.current && currentStory.createdAt !== initialStoryRef.current.createdAt
+      const dateChanged = initialStoryRef.current && currentStory.storyDate !== initialStoryRef.current.storyDate
 
       if (isNew) {
         await createStory(token, {
@@ -601,7 +606,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
-          ...(dateChanged && currentStory.createdAt ? { createdAt: currentStory.createdAt } : {}),
+          ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
         })
         notify(t('story.created'), 'success')
       } else {
@@ -611,7 +616,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           content: currentStory.content,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
-          ...(dateChanged ? { createdAt: currentStory.createdAt } : {}),
+          ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
         })
         // 同步照片排序到服务端
         if (photoIds.length > 0) {
@@ -909,13 +914,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                       </span>
                     </div>
                     <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1" title={t('admin.story_date')}>
                         <Calendar className="w-3 h-3" />{' '}
-                        {new Date(story.createdAt).toLocaleDateString()}
+                        {new Date(story.storyDate).toLocaleDateString()}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <History className="w-3 h-3" />{' '}
-                        {new Date(story.updatedAt).toLocaleString()}
+                      <span className="flex items-center gap-1" title={t('admin.publish_date')}>
+                        <Clock className="w-3 h-3" />{' '}
+                        {new Date(story.createdAt).toLocaleDateString()}
                       </span>
                       <span className="flex items-center gap-1">
                         <FileText className="w-3 h-3" /> {story.content.length}{' '}
@@ -1062,19 +1067,20 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                       {t('ui.publish_now')}
                     </span>
                   </label>
-                  {/* 发布日期 - 点击编辑 */}
+                  {/* 叙事日期 - 点击编辑 */}
                   <div className="flex items-center gap-2">
                     <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">{t('admin.story_date')}:</span>
                     {useCustomDate ? (
                       <>
                         <input
                           type="datetime-local"
-                          value={currentStory?.createdAt ? new Date(currentStory.createdAt).toISOString().slice(0, 16) : ''}
+                          value={currentStory?.storyDate ? new Date(currentStory.storyDate).toISOString().slice(0, 16) : ''}
                           onChange={(e) => {
                             const value = e.target.value
                             setCurrentStory((prev) => ({
                               ...prev!,
-                              createdAt: value ? new Date(value).toISOString() : new Date().toISOString(),
+                              storyDate: value ? new Date(value).toISOString() : new Date().toISOString(),
                             }))
                           }}
                           className="px-2 py-1 text-xs font-mono bg-transparent border border-border rounded focus:border-primary outline-none"
@@ -1094,7 +1100,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                         className="text-xs font-mono text-muted-foreground cursor-pointer hover:text-primary transition-colors"
                         title={t('admin.custom_date') || '点击编辑日期'}
                       >
-                        {currentStory?.createdAt ? new Date(currentStory.createdAt).toLocaleString() : '-'}
+                        {currentStory?.storyDate ? new Date(currentStory.storyDate).toLocaleString() : '-'}
                       </span>
                     )}
                   </div>
@@ -1150,7 +1156,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               onRemovePendingImage={handleRemovePendingImage}
               onSetCover={(photoId) => { handleSetCover(photoId); setPendingCoverId(null) }}
               onSetPendingCover={(id) => { setPendingCoverId(id); setCurrentStory(prev => ({ ...prev!, coverPhotoId: undefined })) }}
-              onSetPhotoDate={(takenAt) => { setCurrentStory(prev => ({ ...prev!, createdAt: takenAt })); setUseCustomDate(true) }}
+              onSetPhotoDate={(takenAt) => { setCurrentStory(prev => ({ ...prev!, storyDate: takenAt })); setUseCustomDate(true) }}
               onRetryFailedUploads={handleRetryFailedUploads}
               onPhotoPanelDragOver={handlePhotoPanelDragOver}
               onPhotoPanelDragLeave={handlePhotoPanelDragLeave}

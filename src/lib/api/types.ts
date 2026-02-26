@@ -98,6 +98,7 @@ export interface StoryDto {
   content: string
   coverPhotoId?: string
   isPublished: boolean
+  storyDate: string
   createdAt: string
   updatedAt: string
   photos: PhotoDto[]

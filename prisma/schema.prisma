@@ -128,12 +128,14 @@ model Story {
   content      String // Markdown content
   coverPhotoId String?
   isPublished  Boolean  @default(false)
+  storyDate    DateTime @default(now()) // 叙事日期：叙事内容关联的日期（如旅行日期）
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   photos Photo[] @relation("PhotoStories")
 
   @@index([isPublished])
+  @@index([storyDate])
   @@index([createdAt])
   @@index([coverPhotoId])
 }

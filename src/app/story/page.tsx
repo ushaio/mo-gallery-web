@@ -17,11 +17,13 @@ export default function StoryListPage() {
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'storyDate' | 'createdAt'>('storyDate')
 
   // 加载故事列表数据
-  async function loadStories() {
+  async function loadStories(sort: 'storyDate' | 'createdAt' = sortBy) {
     try {
-      const storiesData = await getStories()
+      setLoading(true)
+      const storiesData = await getStories(sort)
       setStories(storiesData)
     } catch (error) {
       console.error('Failed to fetch story data:', error)
@@ -35,11 +37,23 @@ export default function StoryListPage() {
     loadStories()
   }, [])
 
+  // 切换排序方式
+  function handleSortChange(sort: 'storyDate' | 'createdAt') {
+    if (sort === sortBy) return
+    setSortBy(sort)
+    loadStories(sort)
+  }
+
+  // 获取排序使用的日期字段
+  const getDateField = (story: StoryDto) => {
+    return sortBy === 'storyDate' ? (story.storyDate || story.createdAt) : story.createdAt
+  }
+
   // 按年份和月份对故事进行分组，用于时间线展示
   const timelineData = useMemo(() => {
     const grouped: Record<string, Record<string, StoryDto[]>> = {}
     stories.forEach(story => {
-      const date = new Date(story.createdAt)
+      const date = new Date(getDateField(story))
       const year = date.getFullYear().toString()
       const month = String(date.getMonth() + 1).padStart(2, '0')
       if (!grouped[year]) grouped[year] = {}
@@ -47,7 +61,7 @@ export default function StoryListPage() {
       grouped[year][month].push(story)
     })
     return grouped
-  }, [stories])
+  }, [stories, sortBy])
 
   // 年份降序排列
   const years = useMemo(() => {
@@ -132,6 +146,30 @@ export default function StoryListPage() {
 
               {/* 分隔线 */}
               <div className="border-t border-border/30" />
+
+              {/* 排序切换 Tab */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleSortChange('storyDate')}
+                  className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest transition-all ${
+                    sortBy === 'storyDate'
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground/60 hover:text-foreground'
+                  }`}
+                >
+                  {t('sort_by_story_date')}
+                </button>
+                <button
+                  onClick={() => handleSortChange('createdAt')}
+                  className={`px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest transition-all ${
+                    sortBy === 'createdAt'
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground/60 hover:text-foreground'
+                  }`}
+                >
+                  {t('sort_by_publish_date')}
+                </button>
+              </div>
             </div>
           </header>
         </div>
@@ -140,7 +178,7 @@ export default function StoryListPage() {
       {/* 故事内容区域 */}
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
-          <QuickStoryEditor onSuccess={loadStories} />
+          <QuickStoryEditor onSuccess={() => loadStories()} />
 
           {loading ? (
             <StorySkeleton />
@@ -262,10 +300,10 @@ export default function StoryListPage() {
                                             </h3>
                                             <div className="flex items-center gap-2 text-muted-foreground/40 mt-2.5 flex-shrink-0 text-[10px] font-mono tracking-widest uppercase">
                                               <span>
-                                                {new Date(story.createdAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                                                {new Date(getDateField(story)).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                                               </span>
                                               <span className="opacity-70">
-                                                {new Date(story.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {new Date(getDateField(story)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                               </span>
                                             </div>
                                           </div>

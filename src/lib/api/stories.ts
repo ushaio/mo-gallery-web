@@ -1,8 +1,9 @@
 import { apiRequest, apiRequestData } from './core'
 import type { StoryDto } from './types'
 
-export async function getStories(): Promise<StoryDto[]> {
-  return apiRequestData<StoryDto[]>('/api/stories')
+export async function getStories(sort?: 'storyDate' | 'createdAt'): Promise<StoryDto[]> {
+  const params = sort ? `?sort=${sort}` : ''
+  return apiRequestData<StoryDto[]>(`/api/stories${params}`)
 }
 
 export async function getStory(id: string): Promise<StoryDto> {
@@ -37,7 +38,7 @@ export async function getAdminStories(token: string): Promise<StoryDto[]> {
 
 export async function createStory(
   token: string,
-  data: { title: string; content: string; isPublished: boolean; photoIds?: string[]; coverPhotoId?: string },
+  data: { title: string; content: string; isPublished: boolean; photoIds?: string[]; coverPhotoId?: string; storyDate?: string },
 ): Promise<StoryDto> {
   return apiRequestData<StoryDto>(
     '/api/admin/stories',
@@ -52,7 +53,7 @@ export async function createStory(
 export async function updateStory(
   token: string,
   id: string,
-  data: { title?: string; content?: string; isPublished?: boolean; coverPhotoId?: string | null; createdAt?: string | null },
+  data: { title?: string; content?: string; isPublished?: boolean; coverPhotoId?: string | null; storyDate?: string | null },
 ): Promise<StoryDto> {
   return apiRequestData<StoryDto>(
     `/api/admin/stories/${encodeURIComponent(id)}`,

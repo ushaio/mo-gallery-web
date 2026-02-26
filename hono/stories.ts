@@ -21,6 +21,7 @@ const CreateStorySchema = z.object({
   isPublished: z.boolean().default(false),
   photoIds: z.array(z.string().uuid()).optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
+  storyDate: z.string().datetime().optional(),
 })
 
 const UpdateStorySchema = z.object({
@@ -28,7 +29,7 @@ const UpdateStorySchema = z.object({
   content: z.string().min(1).max(50000).optional(),
   isPublished: z.boolean().optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
-  createdAt: z.string().datetime().optional().nullable(),
+  storyDate: z.string().datetime().optional().nullable(),
 })
 
 const AddPhotosSchema = z.object({
@@ -42,6 +43,7 @@ const ReorderPhotosSchema = z.object({
 // Public endpoints
 stories.get('/stories', async (c) => {
   try {
+    const sort = c.req.query('sort') === 'createdAt' ? 'createdAt' : 'storyDate'
     const storiesList = await db.story.findMany({
       where: { isPublished: true },
       include: {
@@ -49,7 +51,7 @@ stories.get('/stories', async (c) => {
           include: { categories: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { [sort]: 'desc' },
     })
 
     const data = storiesList.map((story) => ({
@@ -279,6 +281,7 @@ stories.post('/admin/stories', async (c) => {
         content: validated.content,
         isPublished: validated.isPublished,
         coverPhotoId: validated.coverPhotoId,
+        storyDate: validated.storyDate ? new Date(validated.storyDate) : undefined,
         photos: validated.photoIds
           ? {
               connect: validated.photoIds.map((id) => ({ id })),
@@ -324,8 +327,8 @@ stories.patch('/admin/stories/:id', async (c) => {
     if (validated.content !== undefined) updateData.content = validated.content
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
-    if (validated.createdAt !== undefined) {
-      updateData.createdAt = validated.createdAt ? new Date(validated.createdAt) : new Date()
+    if (validated.storyDate !== undefined) {
+      updateData.storyDate = validated.storyDate ? new Date(validated.storyDate) : new Date()
     }
 
     const story = await db.story.update({
