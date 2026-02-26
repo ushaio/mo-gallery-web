@@ -63,7 +63,7 @@ export async function generateMetadata(): Promise<Metadata> {
  * Business components read via SettingsContext, not process.env.
  */
 function getBootConfig() {
-  let socialLinks: { title: string; url: string }[] = []
+  let socialLinks: { title: string; url: string; icon?: string }[] = []
   try {
     const raw = process.env.SOCIAL_LINKS
     if (raw) socialLinks = JSON.parse(raw)

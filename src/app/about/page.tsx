@@ -15,9 +15,9 @@ export default function About() {
               <img
                 src="https://r2.mo-gallery.shaio.top/2023/2afb8c3aabd86e361ade492ded3293fa.JPG?auto=format&fit=crop&w=1200&q=80"
                 alt="The Artist"
-                className="w-full h-full object-cover grayscale contrast-125 hover:grayscale-0 transition-all duration-1000 ease-out"
+                className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-1000 ease-out"
               />
-              <div className="absolute inset-0 border border-border/50" />
+              <div className="absolute inset-0 border border-border/50 pointer-events-none" />
             </div>
 
             {/* Overlay Text */}
@@ -42,7 +42,7 @@ export default function About() {
             <div className="prose prose-lg prose-invert text-muted-foreground font-serif leading-relaxed space-y-6">
               <p>
                 <span className="text-foreground text-5xl float-left mr-3 mt-[-10px] font-serif">你</span>
-                好，我是 SHAI。2023 年开始接触摄影，钟爱人文、人像、扫街与风景。喜欢一切美好的事物，用快门定格转瞬即逝的瞬间，让照片成为永恒。
+                好，我是 SHAI。2023 年开始接触摄影，钟爱人文、人像、与风光。喜欢一切美好的事物，用快门定格转瞬即逝的瞬间，让照片成为永恒。
               </p>
               <p>
                 我也试着用文字为每张照片注入温度，尽我所能让它们更加鲜活。
