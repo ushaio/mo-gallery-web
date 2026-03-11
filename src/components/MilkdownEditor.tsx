@@ -7,7 +7,6 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
-  useState,
 } from 'react'
 import { Crepe } from '@milkdown/crepe'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
@@ -51,7 +50,6 @@ const CrepeEditorInner: React.FC<CrepeEditorInnerProps> = ({
   const onChangeRef = useRef(onChange)
   const onEditorReadyRef = useRef(onEditorReady)
   const placeholderRef = useRef(placeholder)
-  const [editorKey, setEditorKey] = useState(0)
 
   useEffect(() => {
     latestValueRef.current = value
@@ -69,11 +67,6 @@ const CrepeEditorInner: React.FC<CrepeEditorInnerProps> = ({
     placeholderRef.current = placeholder
   }, [placeholder])
 
-  useEffect(() => {
-    if (!initializedRef.current) return
-    setEditorKey((prev) => prev + 1)
-    initializedRef.current = false
-  }, [value])
 
   useEditor(
     (root) => {
@@ -124,10 +117,10 @@ const CrepeEditorInner: React.FC<CrepeEditorInnerProps> = ({
 
       return crepe
     },
-    [editorKey]
+    []
   )
 
-  return <Milkdown key={editorKey} />
+  return <Milkdown />
 }
 
 export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(
@@ -186,7 +179,7 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
     const imperativeHandle = useMemo<MilkdownEditorHandle>(() => ({
       getValue: () => currentValueRef.current,
       setValue: (markdown: string) => {
-        syncValue(markdown)
+        syncValue(markdown ?? '')
       },
       insertValue: (markdown: string) => {
         const baseValue = currentValueRef.current

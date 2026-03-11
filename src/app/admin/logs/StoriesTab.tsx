@@ -51,8 +51,8 @@ import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
 import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDraftFromDB, type StoryEditorDraftData } from '@/lib/client-db'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
-import { buildGalleryDirective, buildPhotoDirective, getStoryDirectivePhotoIds } from '@/lib/story-rich-content'
 import { calculateFileHash } from '@/lib/file-hash'
+import { buildStoryMarkdownImage, getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
 
 const PASTE_UPLOAD_PLACEHOLDER_PREFIX = '<!-- story-paste-upload:'
 
@@ -611,11 +611,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       notify(t('story.fill_title_content'), 'error')
       return
     }
-    const usedPhotoIds = getStoryDirectivePhotoIds(currentStory.content)
-    const availablePhotoIds = new Set((currentStory.photos || []).map(photo => photo.id))
-    const invalidPhotoIds = Array.from(usedPhotoIds).filter(photoId => !availablePhotoIds.has(photoId))
-    if (invalidPhotoIds.length > 0) {
-      notify(`正文中引用了未关联的图片：${invalidPhotoIds.slice(0, 3).join(', ')}`, 'error')
+    const usedImageUrls = getStoryMarkdownImageUrls(currentStory.content)
+    const availablePhotoUrls = new Set(
+      (currentStory.photos || []).flatMap((photo) => [photo.url, photo.thumbnailUrl].filter((url): url is string => Boolean(url)))
+    )
+    const invalidImageUrls = Array.from(usedImageUrls).filter((url) => !availablePhotoUrls.has(url))
+    if (invalidImageUrls.length > 0) {
+      notify(`正文中引用了未关联的图片：${invalidImageUrls.slice(0, 3).join(', ')}`, 'error')
       return
     }
     const pendingToUpload = pendingImages.filter(p => p.status === 'pending' || p.status === 'failed')
@@ -907,11 +909,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           if (existingPhoto) {
             addPhotoToCache(existingPhoto)
             addPhotoToCurrentStory(existingPhoto)
-            replaceEditorText(placeholder.text, buildPhotoDirective({
-              photoId: existingPhoto.id,
-              caption: existingPhoto.title,
-              align: 'center',
-              size: 'lg',
+            replaceEditorText(placeholder.text, buildStoryMarkdownImage({
+              url: existingPhoto.url,
+              alt: existingPhoto.title,
             }))
             notify(`复用重复图片：${existingPhoto.title}`, 'info')
             continue
@@ -948,11 +948,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
         addPhotoToCache(uploadedPhoto)
         addPhotoToCurrentStory(uploadedPhoto)
-        replaceEditorText(placeholder.text, buildPhotoDirective({
-          photoId: uploadedPhoto.id,
-          caption: uploadedPhoto.title,
-          align: 'center',
-          size: 'lg',
+        replaceEditorText(placeholder.text, buildStoryMarkdownImage({
+          url: uploadedPhoto.url,
+          alt: uploadedPhoto.title,
         }))
       }
 
@@ -993,30 +991,41 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     await uploadAndInsertFiles(files, settings)
   }
 
-  function handleInsertPhotoDirective(photo: PhotoDto) {
-    insertDirective(buildPhotoDirective({
-      photoId: photo.id,
-      caption: photo.title,
-      align: 'center',
-      size: 'lg',
+  function handleInsertPhotoMarkdown(photo: PhotoDto) {
+    insertDirective(buildStoryMarkdownImage({
+      url: photo.url,
+      alt: photo.title,
     }))
-    notify('已插入站内图片块', 'success')
+    notify('已插入 Markdown 图片', 'success')
   }
 
-  function handleInsertGalleryDirective(photoIds: string[]) {
+  function handleInsertGalleryMarkdown(photoIds: string[]) {
     if (photoIds.length === 0) {
       notify('当前故事还没有可插入的图片', 'info')
       return
     }
 
-    insertDirective(buildGalleryDirective({
-      photoIds,
-      columns: photoIds.length >= 3 ? '3' : '2',
-    }))
-    notify('已插入图库块', 'success')
+    const photosToInsert = photoIds
+      .map((photoId) => currentStory?.photos?.find((photo) => photo.id === photoId))
+      .filter((photo): photo is PhotoDto => Boolean(photo))
+
+    if (photosToInsert.length === 0) {
+      notify('当前故事还没有可插入的图片', 'info')
+      return
+    }
+
+    const markdown = photosToInsert
+      .map((photo) => buildStoryMarkdownImage({
+        url: photo.url,
+        alt: photo.title,
+      }).trim())
+      .join('\n\n')
+
+    insertDirective(`\n${markdown}\n`)
+    notify('已插入 Markdown 图片组', 'success')
   }
 
-  function handleInsertExternalPhotoDirective() {
+  function handleInsertExternalPhotoMarkdown() {
     const url = window.prompt('请输入外链图片 URL（https）')
     if (!url) return
 
@@ -1027,13 +1036,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }
 
     const caption = window.prompt('请输入图片说明（可留空）')?.trim() || ''
-    insertDirective(buildPhotoDirective({
+    insertDirective(buildStoryMarkdownImage({
       url: trimmedUrl,
-      caption,
-      align: 'center',
-      size: 'lg',
+      alt: caption,
     }))
-    notify('已插入外链图片块', 'success')
+    notify('已插入 Markdown 外链图片', 'success')
   }
 
   // 统一的拖拽处理（照片和待上传图片）
@@ -1425,9 +1432,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               t={t}
               notify={notify}
               onAddPhotos={() => setShowPhotoSelector(true)}
-              onInsertExternalPhotoDirective={handleInsertExternalPhotoDirective}
-              onInsertPhotoDirective={handleInsertPhotoDirective}
-              onInsertGalleryDirective={handleInsertGalleryDirective}
+              onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
+              onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
+              onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
               onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
               onRemovePhoto={handleRemovePhoto}
               onRemovePendingImage={handleRemovePendingImage}

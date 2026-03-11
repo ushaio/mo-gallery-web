@@ -42,9 +42,9 @@ interface StoryPhotoPanelProps {
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   onAddPhotos: () => void
-  onInsertExternalPhotoDirective: () => void
-  onInsertPhotoDirective: (photo: PhotoDto) => void
-  onInsertGalleryDirective: (photoIds: string[]) => void
+  onInsertExternalPhotoMarkdown: () => void
+  onInsertPhotoMarkdown: (photo: PhotoDto) => void
+  onInsertGalleryMarkdown: (photoIds: string[]) => void
   onRemovePhoto: (photoId: string) => void
   onRemovePendingImage: (id: string) => void
   onSetCover: (photoId: string) => void
@@ -80,9 +80,9 @@ export function StoryPhotoPanel({
   t,
   notify,
   onAddPhotos,
-  onInsertExternalPhotoDirective,
-  onInsertPhotoDirective,
-  onInsertGalleryDirective,
+  onInsertExternalPhotoMarkdown,
+  onInsertPhotoMarkdown,
+  onInsertGalleryMarkdown,
   onRemovePhoto,
   onRemovePendingImage,
   onSetCover,
@@ -134,7 +134,7 @@ export function StoryPhotoPanel({
         <div className="flex items-center gap-2">
           <AdminButton
             type="button"
-            onClick={onInsertExternalPhotoDirective}
+            onClick={onInsertExternalPhotoMarkdown}
             adminVariant="outlineMuted"
             size="xs"
             className="rounded-md"
@@ -205,13 +205,13 @@ export function StoryPhotoPanel({
             </div>
             <AdminButton
               type="button"
-              onClick={() => onInsertGalleryDirective(currentStory.photos.map((photo) => photo.id))}
+              onClick={() => onInsertGalleryMarkdown(currentStory.photos.map((photo) => photo.id))}
               adminVariant="primarySoft"
               size="sm"
               className="flex w-full items-center justify-center gap-2 rounded-md"
             >
               <LayoutGrid className="h-3.5 w-3.5" />
-              插入当前故事图库块
+              插入当前故事 Markdown 图片组
             </AdminButton>
           </div>
         ) : null}
@@ -283,7 +283,7 @@ export function StoryPhotoPanel({
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()
-                            onInsertPhotoDirective(photo)
+                            onInsertPhotoMarkdown(photo)
                           }}
                           adminVariant="ghost"
                           className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
