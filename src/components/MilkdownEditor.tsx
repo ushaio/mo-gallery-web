@@ -8,9 +8,10 @@ import React, {
   useMemo,
   useRef,
 } from 'react'
-import { editorViewCtx } from '@milkdown/core'
+import { editorViewCtx, defaultValueCtx } from '@milkdown/core'
 import { Crepe } from '@milkdown/crepe'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
+import { getMarkdown, insert, replaceAll } from '@milkdown/utils'
 import { useTheme } from '@/contexts/ThemeContext'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
@@ -223,11 +224,21 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
     }, [])
 
     const imperativeHandle = useMemo<MilkdownEditorHandle>(() => ({
-      getValue: () => currentValueRef.current,
+      getValue: () => {
+        const crepe = crepeInstanceRef.current
+        if (crepe?.editor) {
+          return crepe.editor.action(getMarkdown()) ?? currentValueRef.current
+        }
+        return currentValueRef.current
+      },
       setValue: (markdown: string) => {
         const crepe = crepeInstanceRef.current
-        if (crepe) {
-          crepe.action(replaceAll(markdown ?? ''))
+        if (crepe?.editor) {
+          try {
+            crepe.editor.action(replaceAll(markdown ?? ''))
+          } catch (e) {
+            console.warn('[MilkdownEditor] setValue failed:', e)
+          }
         }
         syncValue(markdown ?? '')
       },
@@ -237,8 +248,12 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
         const separator = baseValue && !baseValue.endsWith('\n') ? '\n\n' : ''
         const nextValue = `${baseValue}${separator}${markdown}`
 
-        if (crepe) {
-          crepe.action(insert(markdown, false))
+        if (crepe?.editor) {
+          try {
+            crepe.editor.action(insert(markdown, false))
+          } catch (e) {
+            console.warn('[MilkdownEditor] insertValue failed:', e)
+          }
         }
         
         currentValueRef.current = nextValue
@@ -251,8 +266,12 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
         const separator = baseValue && !baseValue.endsWith('\n') ? '\n\n' : ''
         const nextValue = `${baseValue}${separator}${markdown}`
 
-        if (crepe) {
-          crepe.action(insert(markdown, false))
+        if (crepe?.editor) {
+          try {
+            crepe.editor.action(insert(markdown, false))
+          } catch (e) {
+            console.warn('[MilkdownEditor] insertMarkdown failed:', e)
+          }
         }
         
         currentValueRef.current = nextValue
@@ -266,8 +285,12 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
         if (replacedValue === baseValue) return false
 
         const crepe = crepeInstanceRef.current
-        if (crepe) {
-          crepe.action(replaceAll(replacedValue))
+        if (crepe?.editor) {
+          try {
+            crepe.editor.action(replaceAll(replacedValue))
+          } catch (e) {
+            console.warn('[MilkdownEditor] replaceText failed:', e)
+          }
         }
         
         currentValueRef.current = replacedValue
@@ -282,8 +305,12 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
         if (!nextValue) return false
 
         const crepe = crepeInstanceRef.current
-        if (crepe) {
-          crepe.action(replaceAll(nextValue))
+        if (crepe?.editor) {
+          try {
+            crepe.editor.action(replaceAll(nextValue))
+          } catch (e) {
+            console.warn('[MilkdownEditor] scaleLastImage failed:', e)
+          }
         }
         
         currentValueRef.current = nextValue
