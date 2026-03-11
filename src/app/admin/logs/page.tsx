@@ -68,6 +68,7 @@ export default function LogsPage() {
   const lastClickRef = useRef<{ tab: string; time: number }>({ tab: '', time: 0 })
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0) // 故事标签页刷新键
   const [blogRefreshKey, setBlogRefreshKey] = useState(0) // 博客标签页刷新键
+  const [isStoriesEditing, setIsStoriesEditing] = useState(false)
 
   // 草稿筛选状态
   const [draftTypeFilter, setDraftTypeFilter] = useState('') // 类型筛选（story/blog/all）
@@ -260,7 +261,7 @@ export default function LogsPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 子标签页导航 */}
-      <div className="flex space-x-1 border-b border-border flex-shrink-0">
+      <div className={`${isStoriesEditing && activeSubTab === 'stories' ? 'hidden' : 'flex'} space-x-1 border-b border-border flex-shrink-0`}>
         <AdminButton
           onClick={() => handleTabClick('stories')}
           adminVariant="tab"
@@ -299,7 +300,7 @@ export default function LogsPage() {
       </div>
 
       {/* 子标签页内容 */}
-      <div className="flex-1 overflow-hidden pt-6">
+      <div className={`flex-1 overflow-hidden ${isStoriesEditing && activeSubTab === 'stories' ? 'pt-0' : 'pt-6'}`}>
         <div className={activeSubTab === 'blog' ? 'h-full' : 'hidden'}>
           <BlogTab
             photos={photos}
@@ -318,6 +319,7 @@ export default function LogsPage() {
             editFromDraft={editFromDraft}
             onDraftConsumed={() => setEditFromDraft(null)}
             refreshKey={storiesRefreshKey}
+            onEditingChange={setIsStoriesEditing}
           />
         </div>
         {activeSubTab === 'drafts' ? (

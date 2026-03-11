@@ -33,6 +33,7 @@ import {
   addPhotosToStory,
   reorderStoryPhotos,
   getPhotos,
+  checkDuplicatePhoto,
   uploadPhotoWithProgress,
   addPhotosToAlbum,
   type StoryDto,
@@ -46,14 +47,18 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
-import type { VditorEditorHandle } from '@/components/VditorEditor'
+import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
 import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDraftFromDB, type StoryEditorDraftData } from '@/lib/client-db'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
+import { buildGalleryDirective, buildPhotoDirective, getStoryDirectivePhotoIds } from '@/lib/story-rich-content'
+import { calculateFileHash } from '@/lib/file-hash'
 
-// 动态导入 VditorEditor，避免 SSR 问题
-const VditorEditor = dynamic(
-  () => import('@/components/VditorEditor'),
+const PASTE_UPLOAD_PLACEHOLDER_PREFIX = '<!-- story-paste-upload:'
+
+// 动态导入 MilkdownEditor，避免 SSR 问题
+const MilkdownEditor = dynamic(
+  () => import('@/components/MilkdownEditor'),
   {
     ssr: false,
     loading: () => (
@@ -72,9 +77,10 @@ interface StoriesTabProps {
   editFromDraft?: StoryEditorDraftData | null
   onDraftConsumed?: () => void
   refreshKey?: number
+  onEditingChange?: (isEditing: boolean) => void
 }
 
-export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey }: StoriesTabProps) {
+export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { settings } = useSettings()
@@ -83,7 +89,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [currentStory, setCurrentStory] = useState<StoryDto | null>(null)
   const [storyEditMode, setStoryEditMode] = useState<'list' | 'editor'>('list')
   const [saving, setSaving] = useState(false)
-  const editorRef = useRef<VditorEditorHandle>(null)
+  const editorRef = useRef<MilkdownEditorHandle>(null)
   
   // 照片管理
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
@@ -108,9 +114,15 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   // 待上传图片（延迟上传）
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([])
   const [showUploadSettings, setShowUploadSettings] = useState(false)
+  const [showPasteUploadSettings, setShowPasteUploadSettings] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, currentFile: '' })
   const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const [pasteUploadSettings, setPasteUploadSettings] = useState<UploadSettings>({
+    category: 'story-inline',
+  })
+  const [hasConfirmedPasteSettings, setHasConfirmedPasteSettings] = useState(false)
+  const pendingPasteFilesRef = useRef<File[] | null>(null)
   
   // 草稿自动保存状态
   const [draftSaved, setDraftSaved] = useState(false)
@@ -196,6 +208,28 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       initialLoadRef.current = true
     }
   }, [token])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const raw = window.localStorage.getItem('story_paste_upload_settings')
+    if (!raw) return
+
+    try {
+      const parsed = JSON.parse(raw) as UploadSettings
+      setPasteUploadSettings((prev) => ({
+        ...prev,
+        ...parsed,
+      }))
+      setHasConfirmedPasteSettings(true)
+    } catch (error) {
+      console.error('Failed to restore paste upload settings:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    onEditingChange?.(storyEditMode === 'editor')
+  }, [onEditingChange, storyEditMode])
   
   // refreshKey 变化时刷新 - 同时重置到列表模式
   useEffect(() => {
@@ -577,6 +611,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       notify(t('story.fill_title_content'), 'error')
       return
     }
+    const usedPhotoIds = getStoryDirectivePhotoIds(currentStory.content)
+    const availablePhotoIds = new Set((currentStory.photos || []).map(photo => photo.id))
+    const invalidPhotoIds = Array.from(usedPhotoIds).filter(photoId => !availablePhotoIds.has(photoId))
+    if (invalidPhotoIds.length > 0) {
+      notify(`正文中引用了未关联的图片：${invalidPhotoIds.slice(0, 3).join(', ')}`, 'error')
+      return
+    }
     const pendingToUpload = pendingImages.filter(p => p.status === 'pending' || p.status === 'failed')
     if (pendingToUpload.length > 0) {
       setShowUploadSettings(true)
@@ -759,6 +800,242 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     }))
   }
 
+  function insertDirective(markdown: string) {
+    editorRef.current?.insertValue(markdown)
+    const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
+    setCurrentStory(prev => (prev ? { ...prev, content: nextValue } : prev))
+  }
+
+  function buildPasteUploadPlaceholder(id: string, fileName: string) {
+    return `\n${PASTE_UPLOAD_PLACEHOLDER_PREFIX}${id} -->\n![正在上传 ${fileName}...](uploading://${id})\n`
+  }
+
+  function replaceEditorText(searchValue: string, nextValue: string) {
+    const replaced = editorRef.current?.replaceText(searchValue, nextValue) ?? false
+    const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
+    setCurrentStory(prev => (prev ? { ...prev, content: latestValue } : prev))
+    return replaced
+  }
+
+  function persistPasteUploadSettings(settings: UploadSettings) {
+    setPasteUploadSettings(settings)
+    setHasConfirmedPasteSettings(true)
+
+    if (typeof window === 'undefined') return
+
+    try {
+      window.localStorage.setItem('story_paste_upload_settings', JSON.stringify(settings))
+    } catch (error) {
+      console.error('Failed to persist paste upload settings:', error)
+    }
+  }
+
+  function addPhotoToCurrentStory(photo: PhotoDto) {
+    setCurrentStory((prev) => {
+      if (!prev) return prev
+      if (prev.photos.some((item) => item.id === photo.id)) {
+        return prev
+      }
+      return {
+        ...prev,
+        photos: [...prev.photos, photo],
+      }
+    })
+  }
+
+  function addPhotoToCache(photo: PhotoDto) {
+    setAllPhotos((prev) => {
+      if (prev.some((item) => item.id === photo.id)) {
+        return prev
+      }
+      return [photo, ...prev]
+    })
+  }
+
+  async function uploadAndInsertFiles(files: File[], settings: UploadSettings) {
+    if (!token || !currentStory || files.length === 0) return
+
+    const nextSettings: UploadSettings = {
+      ...settings,
+      category: settings.category?.trim() || 'story-inline',
+    }
+
+    const placeholders = files.map((file) => {
+      const placeholderId = crypto.randomUUID()
+      return {
+        id: placeholderId,
+        file,
+        text: buildPasteUploadPlaceholder(placeholderId, file.name),
+      }
+    })
+
+    placeholders.forEach((item) => {
+      insertDirective(item.text)
+    })
+
+    persistPasteUploadSettings(nextSettings)
+    setShowPasteUploadSettings(false)
+    pendingPasteFilesRef.current = null
+    setIsUploading(true)
+    setUploadProgress({ current: 0, total: files.length, currentFile: '' })
+
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index]
+        const placeholder = placeholders[index]
+        setUploadProgress({
+          current: index + 1,
+          total: files.length,
+          currentFile: file.name,
+        })
+
+        const fileHash = await calculateFileHash(file)
+        const duplicate = await checkDuplicatePhoto(token, fileHash)
+
+        if (duplicate.isDuplicate && duplicate.existingPhoto) {
+          const existingPhotoId = duplicate.existingPhoto.id
+          let existingPhoto =
+            currentStory.photos.find((photo) => photo.id === existingPhotoId) ||
+            allPhotos.find((photo) => photo.id === existingPhotoId)
+
+          if (!existingPhoto) {
+            const photos = await getPhotos({ all: true })
+            existingPhoto = photos.find((photo) => photo.id === existingPhotoId)
+            setAllPhotos(photos)
+          }
+
+          if (existingPhoto) {
+            addPhotoToCache(existingPhoto)
+            addPhotoToCurrentStory(existingPhoto)
+            replaceEditorText(placeholder.text, buildPhotoDirective({
+              photoId: existingPhoto.id,
+              caption: existingPhoto.title,
+              align: 'center',
+              size: 'lg',
+            }))
+            notify(`复用重复图片：${existingPhoto.title}`, 'info')
+            continue
+          }
+        }
+
+        const fileToUpload = nextSettings.maxSizeMB
+          ? await compressImage(file, { maxSizeMB: nextSettings.maxSizeMB, maxWidthOrHeight: 4096 })
+          : file
+
+        const uploadedPhoto = await uploadPhotoWithProgress({
+          token,
+          file: fileToUpload,
+          title: file.name.replace(/\.[^/.]+$/, ''),
+          category: nextSettings.category,
+          storage_provider: nextSettings.storageProvider,
+          file_hash: fileHash,
+          onProgress: (progress) => {
+            setUploadProgress({
+              current: index + 1,
+              total: files.length,
+              currentFile: `${file.name} ${progress}%`,
+            })
+          },
+        })
+
+        if (nextSettings.albumId) {
+          try {
+            await addPhotosToAlbum(token, nextSettings.albumId, [uploadedPhoto.id])
+          } catch (error) {
+            console.error('Failed to add pasted upload to album:', error)
+          }
+        }
+
+        addPhotoToCache(uploadedPhoto)
+        addPhotoToCurrentStory(uploadedPhoto)
+        replaceEditorText(placeholder.text, buildPhotoDirective({
+          photoId: uploadedPhoto.id,
+          caption: uploadedPhoto.title,
+          align: 'center',
+          size: 'lg',
+        }))
+      }
+
+      notify('粘贴图片已处理并插入正文', 'success')
+    } catch (error) {
+      console.error('Failed to handle pasted files:', error)
+      notify(error instanceof Error ? error.message : '粘贴图片处理失败', 'error')
+    } finally {
+      setIsUploading(false)
+      setUploadProgress({ current: 0, total: 0, currentFile: '' })
+    }
+  }
+
+  function handlePasteFiles(files: File[]) {
+    if (!token || !currentStory) return
+
+    if (!hasConfirmedPasteSettings) {
+      pendingPasteFilesRef.current = files
+      setShowPasteUploadSettings(true)
+      return
+    }
+
+    void uploadAndInsertFiles(files, pasteUploadSettings)
+  }
+
+  async function handleConfirmPasteUpload(settings: UploadSettings) {
+    persistPasteUploadSettings({
+      ...settings,
+      category: settings.category?.trim() || 'story-inline',
+    })
+
+    const files = pendingPasteFilesRef.current
+    if (!files || files.length === 0) {
+      setShowPasteUploadSettings(false)
+      return
+    }
+
+    await uploadAndInsertFiles(files, settings)
+  }
+
+  function handleInsertPhotoDirective(photo: PhotoDto) {
+    insertDirective(buildPhotoDirective({
+      photoId: photo.id,
+      caption: photo.title,
+      align: 'center',
+      size: 'lg',
+    }))
+    notify('已插入站内图片块', 'success')
+  }
+
+  function handleInsertGalleryDirective(photoIds: string[]) {
+    if (photoIds.length === 0) {
+      notify('当前故事还没有可插入的图片', 'info')
+      return
+    }
+
+    insertDirective(buildGalleryDirective({
+      photoIds,
+      columns: photoIds.length >= 3 ? '3' : '2',
+    }))
+    notify('已插入图库块', 'success')
+  }
+
+  function handleInsertExternalPhotoDirective() {
+    const url = window.prompt('请输入外链图片 URL（https）')
+    if (!url) return
+
+    const trimmedUrl = url.trim()
+    if (!/^https:\/\//i.test(trimmedUrl)) {
+      notify('外链图片仅支持 https URL', 'error')
+      return
+    }
+
+    const caption = window.prompt('请输入图片说明（可留空）')?.trim() || ''
+    insertDirective(buildPhotoDirective({
+      url: trimmedUrl,
+      caption,
+      align: 'center',
+      size: 'lg',
+    }))
+    notify('已插入外链图片块', 'success')
+  }
+
   // 统一的拖拽处理（照片和待上传图片）
   function handleItemDragStart(e: React.DragEvent, itemId: string, type: 'photo' | 'pending') {
     setDraggedItemId(itemId)
@@ -851,7 +1128,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       {storyEditMode === 'list' ? (
         <div className="space-y-8 flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <input
                 type="text"
                 placeholder={t('admin.search_placeholder') || '搜索...'}
@@ -976,10 +1253,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-3 overflow-hidden">
           {/* 头部 - 返回按钮、草稿状态、保存按钮 */}
-          <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-3 border-b border-border pb-3 flex-shrink-0">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <AdminButton
                 onClick={() => {
                   setStoryEditMode('list')
@@ -994,10 +1271,22 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   }
                 }}
                 adminVariant="link"
-                className="flex items-center gap-2 hover:no-underline"
+                className="shrink-0 flex items-center gap-1.5 whitespace-nowrap hover:no-underline"
               >
                 <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
               </AdminButton>
+              <AdminInput
+                type="text"
+                value={currentStory?.title || ''}
+                onChange={(e) =>
+                  setCurrentStory((prev) => ({
+                    ...prev!,
+                    title: e.target.value,
+                  }))
+                }
+                placeholder={t('story.title_placeholder')}
+                className="min-w-0 flex-1 p-2.5 text-base leading-tight md:p-3 md:text-lg font-serif"
+              />
               {/* 草稿状态指示器 */}
               {draftSaved && (
                 <span className="flex items-center gap-1 text-[10px] text-green-500">
@@ -1025,25 +1314,15 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
 
           {/* 主内容区 - 左右布局 */}
-          <div className="flex-1 flex gap-4 overflow-hidden">
+          <div className="flex-1 flex gap-3 overflow-hidden">
             {/* 左侧：编辑器 (70%) */}
-            <div className="flex-[7] flex flex-col gap-4 min-w-0 overflow-visible">
+            <div className="flex-[7] flex flex-col gap-3 min-w-0 overflow-visible">
               {/* 标题输入 */}
-              <AdminInput
-                type="text"
-                value={currentStory?.title || ''}
-                onChange={(e) =>
-                  setCurrentStory((prev) => ({
-                    ...prev!,
-                    title: e.target.value,
-                  }))
-                }
-                placeholder={t('story.title_placeholder')}
-                className="text-xl md:text-2xl font-serif p-4 md:p-6"
-              />
+              
+              
               
               {/* 发布勾选、日期、字数统计、预览按钮 */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-2">
+              <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
                 {/* 左侧：发布勾选、日期、字数 */}
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1116,13 +1395,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               {/* 内容区 - 所见即所得编辑器 */}
               <div className="flex-1 relative border border-border bg-card/30 rounded-lg overflow-visible">
                 {currentStory && (
-                  <VditorEditor
+                  <MilkdownEditor
                     key={currentStory.id}
                     ref={editorRef}
                     value={currentStory.content}
                     onChange={handleContentChange}
+                    onPasteFiles={handlePasteFiles}
                     placeholder={t('ui.markdown_placeholder')}
-                    height="100%"
                     className="overflow-hidden rounded-lg"
                   />
                 )}
@@ -1146,6 +1425,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               t={t}
               notify={notify}
               onAddPhotos={() => setShowPhotoSelector(true)}
+              onInsertExternalPhotoDirective={handleInsertExternalPhotoDirective}
+              onInsertPhotoDirective={handleInsertPhotoDirective}
+              onInsertGalleryDirective={handleInsertGalleryDirective}
+              onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
               onRemovePhoto={handleRemovePhoto}
               onRemovePendingImage={handleRemovePendingImage}
               onSetCover={(photoId) => { handleSetCover(photoId); setPendingCoverId(null) }}
@@ -1169,6 +1452,19 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
       <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
       <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter(p => p.status === 'pending' || p.status === 'failed').length} t={t} token={token} />
+      <ImageUploadSettingsModal
+        isOpen={showPasteUploadSettings}
+        onClose={() => {
+          setShowPasteUploadSettings(false)
+          pendingPasteFilesRef.current = null
+        }}
+        onConfirm={handleConfirmPasteUpload}
+        pendingCount={pendingPasteFilesRef.current?.length || 0}
+        t={t}
+        token={token}
+        initialSettings={pasteUploadSettings}
+        confirmLabel="保存并处理粘贴图片"
+      />
       <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
       <DraftRestoreDialog
         isOpen={draftRestoreDialog.isOpen}

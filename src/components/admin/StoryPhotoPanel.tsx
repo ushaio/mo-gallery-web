@@ -10,6 +10,7 @@ import {
   Upload,
   RefreshCw,
   MoreVertical,
+  LayoutGrid,
 } from 'lucide-react'
 import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -41,6 +42,9 @@ interface StoryPhotoPanelProps {
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   onAddPhotos: () => void
+  onInsertExternalPhotoDirective: () => void
+  onInsertPhotoDirective: (photo: PhotoDto) => void
+  onInsertGalleryDirective: (photoIds: string[]) => void
   onRemovePhoto: (photoId: string) => void
   onRemovePendingImage: (id: string) => void
   onSetCover: (photoId: string) => void
@@ -57,6 +61,7 @@ interface StoryPhotoPanelProps {
   onItemDrop: (e: React.DragEvent, targetId: string, targetType: 'photo' | 'pending') => void
   onOpenMenuPhoto: (photoId: string | null) => void
   onOpenMenuPending: (pendingId: string | null) => void
+  onOpenPasteUploadSettings: () => void
 }
 
 export function StoryPhotoPanel({
@@ -75,6 +80,9 @@ export function StoryPhotoPanel({
   t,
   notify,
   onAddPhotos,
+  onInsertExternalPhotoDirective,
+  onInsertPhotoDirective,
+  onInsertGalleryDirective,
   onRemovePhoto,
   onRemovePendingImage,
   onSetCover,
@@ -91,244 +99,387 @@ export function StoryPhotoPanel({
   onItemDrop,
   onOpenMenuPhoto,
   onOpenMenuPending,
+  onOpenPasteUploadSettings,
 }: StoryPhotoPanelProps) {
-  // Build combined list for ordering: photos first, then pending
   const getCombinedItems = () => {
-    const photoItems = (currentStory?.photos || []).map(p => ({ id: p.id, type: 'photo' as const }))
-    const pendingItems = pendingImages.map(p => ({ id: p.id, type: 'pending' as const }))
+    const photoItems = (currentStory?.photos || []).map((photo) => ({ id: photo.id, type: 'photo' as const }))
+    const pendingItems = pendingImages.map((image) => ({ id: image.id, type: 'pending' as const }))
     return [...photoItems, ...pendingItems]
   }
 
   return (
     <div
-      className={`flex-[3] flex flex-col border rounded-lg overflow-hidden min-w-[320px] transition-colors ${isDraggingOver ? 'border-primary border-dashed bg-primary/5' : 'border-border bg-muted/20'}`}
+      className={`flex-[3] flex min-w-[320px] flex-col overflow-hidden rounded-lg border transition-colors ${
+        isDraggingOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/20'
+      }`}
       onDragOver={onPhotoPanelDragOver}
       onDragLeave={onPhotoPanelDragLeave}
       onDrop={onPhotoPanelDrop}
     >
-      <div className="flex items-center justify-between p-4 border-b border-border bg-background/50">
+      <div className="flex items-center justify-between border-b border-border bg-background/50 p-4">
         <div className="flex items-center gap-2">
-          <ImageIcon className="w-4 h-4 text-primary" />
-          <span className="text-xs font-bold uppercase tracking-widest">{t('story.related_photos')}</span>
-          <span className="text-xs text-muted-foreground">({(currentStory?.photos?.length || 0) + pendingImages.length})</span>
-          {pendingImages.length > 0 && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-600 text-[10px] font-bold rounded">{pendingImages.length} 待上传</span>}
+          <ImageIcon className="h-4 w-4 text-primary" />
+          <span className="text-xs font-bold uppercase tracking-widest">
+            {t('story.related_photos')}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            ({(currentStory?.photos?.length || 0) + pendingImages.length})
+          </span>
+          {pendingImages.length > 0 ? (
+            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
+              {pendingImages.length} 待上传
+            </span>
+          ) : null}
         </div>
-        <AdminButton
-          onClick={onAddPhotos}
-          adminVariant="ghost"
-          size="sm"
-          className="flex items-center gap-1 text-primary font-medium hover:bg-primary/10 rounded-md"
-        >
-          <Plus className="w-3.5 h-3.5" /><span>{t('admin.add_photos')}</span>
-        </AdminButton>
+        <div className="flex items-center gap-2">
+          <AdminButton
+            type="button"
+            onClick={onInsertExternalPhotoDirective}
+            adminVariant="outlineMuted"
+            size="xs"
+            className="rounded-md"
+          >
+            外链图
+          </AdminButton>
+          <AdminButton
+            type="button"
+            onClick={onOpenPasteUploadSettings}
+            adminVariant="outlineMuted"
+            size="xs"
+            className="rounded-md"
+          >
+            上传设置
+          </AdminButton>
+          <AdminButton
+            onClick={onAddPhotos}
+            adminVariant="ghost"
+            size="sm"
+            className="flex items-center gap-1 rounded-md text-primary hover:bg-primary/10"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>{t('admin.add_photos')}</span>
+          </AdminButton>
+        </div>
       </div>
 
-      {isUploading && (
-        <div className="px-4 py-2 bg-primary/5 border-b border-border">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-muted-foreground truncate max-w-[200px]">{uploadProgress.currentFile}</span>
-            <span className="text-primary font-medium">{uploadProgress.current}/{uploadProgress.total}</span>
+      {isUploading ? (
+        <div className="border-b border-border bg-primary/5 px-4 py-2">
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="max-w-[200px] truncate text-muted-foreground">
+              {uploadProgress.currentFile}
+            </span>
+            <span className="font-medium text-primary">
+              {uploadProgress.current}/{uploadProgress.total}
+            </span>
           </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-primary transition-all" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+            />
           </div>
         </div>
-      )}
+      ) : null}
 
-      {!isUploading && pendingImages.some(p => p.status === 'failed') && (
-        <div className="px-4 py-2 bg-destructive/10 border-b border-destructive/20 flex items-center justify-between">
-          <span className="text-xs text-destructive">{pendingImages.filter(p => p.status === 'failed').length} 张上传失败</span>
+      {!isUploading && pendingImages.some((image) => image.status === 'failed') ? (
+        <div className="flex items-center justify-between border-b border-destructive/20 bg-destructive/10 px-4 py-2">
+          <span className="text-xs text-destructive">
+            {pendingImages.filter((image) => image.status === 'failed').length} 张上传失败
+          </span>
           <AdminButton
             onClick={onRetryFailedUploads}
             adminVariant="link"
             className="flex items-center gap-1 text-xs text-destructive"
           >
-            <RefreshCw className="w-3 h-3" />重试
+            <RefreshCw className="h-3 w-3" />
+            重试
           </AdminButton>
         </div>
-      )}
+      ) : null}
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        {currentStory?.photos && currentStory.photos.length >= 2 ? (
+          <div className="mb-4 rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+              混排快捷插入
+            </div>
+            <AdminButton
+              type="button"
+              onClick={() => onInsertGalleryDirective(currentStory.photos.map((photo) => photo.id))}
+              adminVariant="primarySoft"
+              size="sm"
+              className="flex w-full items-center justify-center gap-2 rounded-md"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              插入当前故事图库块
+            </AdminButton>
+          </div>
+        ) : null}
+
         {(currentStory?.photos && currentStory.photos.length > 0) || pendingImages.length > 0 ? (
           <div className="grid grid-cols-3 gap-2">
-            {(() => {
-              const combined = getCombinedItems()
-              return combined.map((item, idx) => {
-                if (item.type === 'photo') {
-                  const photo = currentStory?.photos?.find(p => p.id === item.id)
-                  if (!photo) return null
-                  return (
-                    <div key={photo.id} className="relative">
-                      <div draggable onDragStart={(e) => onItemDragStart(e, photo.id, 'photo')} onDragEnd={onItemDragEnd} onDragOver={(e) => onItemDragOver(e, photo.id)} onDragLeave={onItemDragLeave} onDrop={(e) => onItemDrop(e, photo.id, 'photo')}
-                        className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-grab active:cursor-grabbing ${dragOverItemId === photo.id ? 'border-primary border-dashed scale-105 shadow-lg' : currentStory?.coverPhotoId === photo.id ? 'border-primary' : 'border-transparent hover:border-border'} ${draggedItemId === photo.id && draggedItemType === 'photo' ? 'opacity-50' : ''}`}>
-                        {/* Three-dot menu button */}
-                        <AdminButton
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onOpenMenuPhoto(openMenuPhotoId === photo.id ? null : photo.id)
-                          }}
-                          adminVariant="icon"
-                          className="absolute top-1 right-1 z-20 p-1 bg-black/40 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60 text-white"
-                        >
-                          <MoreVertical className="w-3 h-3" />
-                        </AdminButton>
-                        <div className="absolute bottom-1 right-1 z-10 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center"><span className="text-[10px] font-bold text-white">{idx + 1}</span></div>
-                        <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover pointer-events-none" />
-                        {currentStory?.coverPhotoId === photo.id && !pendingCoverId && <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-[8px] font-bold uppercase rounded">{t('admin.cover')}</div>}
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          {(currentStory?.coverPhotoId !== photo.id || pendingCoverId) && (
-                            <AdminButton
-                              onClick={(e) => { e.stopPropagation(); onSetCover(photo.id) }}
-                              adminVariant="ghost"
-                              className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded text-[10px] font-medium"
-                            >
-                              Cover
-                            </AdminButton>
-                          )}
+            {getCombinedItems().map((item, idx) => {
+              if (item.type === 'photo') {
+                const photo = currentStory?.photos?.find((current) => current.id === item.id)
+                if (!photo) return null
+
+                return (
+                  <div key={photo.id} className="relative">
+                    <div
+                      draggable
+                      onDragStart={(event) => onItemDragStart(event, photo.id, 'photo')}
+                      onDragEnd={onItemDragEnd}
+                      onDragOver={(event) => onItemDragOver(event, photo.id)}
+                      onDragLeave={onItemDragLeave}
+                      onDrop={(event) => onItemDrop(event, photo.id, 'photo')}
+                      className={`relative group aspect-square cursor-grab overflow-hidden rounded-lg border-2 transition-all active:cursor-grabbing ${
+                        dragOverItemId === photo.id
+                          ? 'scale-105 border-primary border-dashed shadow-lg'
+                          : currentStory?.coverPhotoId === photo.id
+                            ? 'border-primary'
+                            : 'border-transparent hover:border-border'
+                      } ${draggedItemId === photo.id && draggedItemType === 'photo' ? 'opacity-50' : ''}`}
+                    >
+                      <AdminButton
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpenMenuPhoto(openMenuPhotoId === photo.id ? null : photo.id)
+                        }}
+                        adminVariant="icon"
+                        className="absolute right-1 top-1 z-20 rounded bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+                      >
+                        <MoreVertical className="h-3 w-3" />
+                      </AdminButton>
+
+                      <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60">
+                        <span className="text-[10px] font-bold text-white">{idx + 1}</span>
+                      </div>
+
+                      <img
+                        src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)}
+                        alt={photo.title}
+                        className="h-full w-full object-cover pointer-events-none"
+                      />
+
+                      {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
+                        <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
+                          {t('admin.cover')}
+                        </div>
+                      ) : null}
+
+                      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                        {currentStory?.coverPhotoId !== photo.id || pendingCoverId ? (
                           <AdminButton
-                            onClick={(e) => { e.stopPropagation(); onRemovePhoto(photo.id) }}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onSetCover(photo.id)
+                            }}
                             adminVariant="ghost"
-                            className="p-1.5 bg-white/20 hover:bg-destructive text-white rounded"
+                            className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
                           >
-                            <X className="w-3.5 h-3.5" />
+                            Cover
                           </AdminButton>
-                        </div>
+                        ) : null}
+                        <AdminButton
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onInsertPhotoDirective(photo)
+                          }}
+                          adminVariant="ghost"
+                          className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
+                        >
+                          插入
+                        </AdminButton>
+                        <AdminButton
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onRemovePhoto(photo.id)
+                          }}
+                          adminVariant="ghost"
+                          className="rounded bg-white/20 p-1.5 text-white hover:bg-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </AdminButton>
                       </div>
-                      {/* Dropdown menu - outside the overflow-hidden container */}
-                      {openMenuPhotoId === photo.id && (
-                        <>
-                          {/* Backdrop to close menu when clicking outside */}
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onOpenMenuPhoto(null)
-                            }}
-                          />
-                          <div className="absolute top-8 right-0 bg-background border border-border rounded-md shadow-lg py-1 min-w-[160px] z-50">
-                            {photo.takenAt ? (
-                              <AdminButton
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  onSetPhotoDate(photo.takenAt!)
-                                  onOpenMenuPhoto(null)
-                                  notify(t('admin.set_publish_time_success'), 'success')
-                                }}
-                                adminVariant="ghost"
-                                className="w-full px-3 py-2 text-left text-xs hover:bg-muted flex items-center gap-2"
-                              >
-                                <Calendar className="w-3.5 h-3.5" />
-                                {t('admin.set_as_publish_time')}
-                              </AdminButton>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
-                                <Calendar className="w-3.5 h-3.5" />
-                                {t('admin.no_exif_time')}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
                     </div>
-                  )
-                } else {
-                  const pending = pendingImages.find(p => p.id === item.id)
-                  if (!pending) return null
-                  const isPendingCover = pendingCoverId === pending.id
-                  return (
-                    <div key={pending.id} className="relative">
-                      <div draggable={pending.status !== 'uploading'} onDragStart={(e) => onItemDragStart(e, pending.id, 'pending')} onDragEnd={onItemDragEnd} onDragOver={(e) => onItemDragOver(e, pending.id)} onDragLeave={onItemDragLeave} onDrop={(e) => onItemDrop(e, pending.id, 'pending')}
-                        className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all ${pending.status === 'uploading' ? 'border-primary border-solid' : pending.status === 'failed' ? 'border-destructive border-dashed' : isPendingCover ? 'border-primary border-solid' : 'border-amber-500 border-dashed'} ${dragOverItemId === pending.id ? 'scale-105 shadow-lg' : ''} ${draggedItemId === pending.id && draggedItemType === 'pending' ? 'opacity-50' : ''} ${pending.status !== 'uploading' ? 'cursor-grab active:cursor-grabbing' : ''}`}>
-                        {/* Three-dot menu button */}
-                        {pending.status !== 'uploading' && (
-                          <AdminButton
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onOpenMenuPending(openMenuPendingId === pending.id ? null : pending.id)
-                            }}
-                            adminVariant="icon"
-                            className="absolute top-1 right-1 z-20 p-1 bg-black/40 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60 text-white"
-                          >
-                            <MoreVertical className="w-3 h-3" />
-                          </AdminButton>
-                        )}
-                        <div className="absolute bottom-1 right-1 z-10 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center"><span className="text-[10px] font-bold text-white">{idx + 1}</span></div>
-                        <img src={pending.previewUrl} alt="" className="w-full h-full object-cover pointer-events-none" />
-                        {isPendingCover && <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-[8px] font-bold uppercase rounded">{t('admin.cover')}</div>}
-                        {/* Status overlay - only show when not hovered or uploading */}
-                        <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${pending.status === 'uploading' ? 'bg-black/40 opacity-100' : pending.status === 'failed' ? 'bg-destructive/30 opacity-100' : 'bg-amber-500/20 opacity-100 group-hover:opacity-0'}`}>
-                          {pending.status === 'uploading' && <div className="flex flex-col items-center"><Loader2 className="w-5 h-5 text-white animate-spin" /><span className="text-[10px] text-white mt-1">{pending.progress}%</span></div>}
-                          {pending.status === 'pending' && <Upload className="w-5 h-5 text-amber-600" />}
-                          {pending.status === 'failed' && <X className="w-5 h-5 text-destructive" />}
-                        </div>
-                        {/* Hover overlay with action buttons */}
-                        {pending.status !== 'uploading' && (
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                            {!isPendingCover && (
-                              <AdminButton
-                                onClick={(e) => { e.stopPropagation(); onSetPendingCover(pending.id) }}
-                                adminVariant="ghost"
-                                className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded text-[10px] font-medium"
-                              >
-                                Cover
-                              </AdminButton>
-                            )}
+
+                    {openMenuPhotoId === photo.id ? (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenMenuPhoto(null)
+                          }}
+                        />
+                        <div className="absolute right-0 top-8 z-50 min-w-[160px] rounded-md border border-border bg-background py-1 shadow-lg">
+                          {photo.takenAt ? (
                             <AdminButton
-                              onClick={(e) => { e.stopPropagation(); onRemovePendingImage(pending.id) }}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                onSetPhotoDate(photo.takenAt!)
+                                onOpenMenuPhoto(null)
+                                notify(t('admin.set_publish_time_success'), 'success')
+                              }}
                               adminVariant="ghost"
-                              className="p-1.5 bg-white/20 hover:bg-destructive text-white rounded"
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <Calendar className="h-3.5 w-3.5" />
+                              {t('admin.set_as_publish_time')}
                             </AdminButton>
+                          ) : (
+                            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                              <Calendar className="h-3.5 w-3.5" />
+                              {t('admin.no_exif_time')}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                )
+              }
+
+              const pending = pendingImages.find((image) => image.id === item.id)
+              if (!pending) return null
+
+              const isPendingCover = pendingCoverId === pending.id
+
+              return (
+                <div key={pending.id} className="relative">
+                  <div
+                    draggable={pending.status !== 'uploading'}
+                    onDragStart={(event) => onItemDragStart(event, pending.id, 'pending')}
+                    onDragEnd={onItemDragEnd}
+                    onDragOver={(event) => onItemDragOver(event, pending.id)}
+                    onDragLeave={onItemDragLeave}
+                    onDrop={(event) => onItemDrop(event, pending.id, 'pending')}
+                    className={`relative group aspect-square overflow-hidden rounded-lg border-2 transition-all ${
+                      pending.status === 'uploading'
+                        ? 'border-primary'
+                        : pending.status === 'failed'
+                          ? 'border-destructive border-dashed'
+                          : isPendingCover
+                            ? 'border-primary'
+                            : 'border-amber-500 border-dashed'
+                    } ${dragOverItemId === pending.id ? 'scale-105 shadow-lg' : ''} ${
+                      draggedItemId === pending.id && draggedItemType === 'pending' ? 'opacity-50' : ''
+                    } ${pending.status !== 'uploading' ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                  >
+                    {pending.status !== 'uploading' ? (
+                      <AdminButton
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpenMenuPending(openMenuPendingId === pending.id ? null : pending.id)
+                        }}
+                        adminVariant="icon"
+                        className="absolute right-1 top-1 z-20 rounded bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+                      >
+                        <MoreVertical className="h-3 w-3" />
+                      </AdminButton>
+                    ) : null}
+
+                    <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60">
+                      <span className="text-[10px] font-bold text-white">{idx + 1}</span>
+                    </div>
+
+                    <img src={pending.previewUrl} alt="" className="h-full w-full object-cover pointer-events-none" />
+
+                    {isPendingCover ? (
+                      <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
+                        {t('admin.cover')}
+                      </div>
+                    ) : null}
+
+                    <div
+                      className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+                        pending.status === 'uploading'
+                          ? 'bg-black/40 opacity-100'
+                          : pending.status === 'failed'
+                            ? 'bg-destructive/30 opacity-100'
+                            : 'bg-amber-500/20 opacity-100 group-hover:opacity-0'
+                      }`}
+                    >
+                      {pending.status === 'uploading' ? (
+                        <div className="flex flex-col items-center">
+                          <Loader2 className="h-5 w-5 animate-spin text-white" />
+                          <span className="mt-1 text-[10px] text-white">{pending.progress}%</span>
+                        </div>
+                      ) : null}
+                      {pending.status === 'pending' ? <Upload className="h-5 w-5 text-amber-600" /> : null}
+                      {pending.status === 'failed' ? <X className="h-5 w-5 text-destructive" /> : null}
+                    </div>
+
+                    {pending.status !== 'uploading' ? (
+                      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                        {!isPendingCover ? (
+                          <AdminButton
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onSetPendingCover(pending.id)
+                            }}
+                            adminVariant="ghost"
+                            className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
+                          >
+                            Cover
+                          </AdminButton>
+                        ) : null}
+                        <AdminButton
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onRemovePendingImage(pending.id)
+                          }}
+                          adminVariant="ghost"
+                          className="rounded bg-white/20 p-1.5 text-white hover:bg-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </AdminButton>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {openMenuPendingId === pending.id ? (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpenMenuPending(null)
+                        }}
+                      />
+                      <div className="absolute right-0 top-8 z-50 min-w-[160px] rounded-md border border-border bg-background py-1 shadow-lg">
+                        {pending.takenAt ? (
+                          <AdminButton
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onSetPhotoDate(pending.takenAt!)
+                              onOpenMenuPending(null)
+                              notify(t('admin.set_publish_time_success'), 'success')
+                            }}
+                            adminVariant="ghost"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted"
+                          >
+                            <Calendar className="h-3.5 w-3.5" />
+                            {t('admin.set_as_publish_time')}
+                          </AdminButton>
+                        ) : (
+                          <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {t('admin.no_exif_time')}
                           </div>
                         )}
                       </div>
-                      {/* Dropdown menu - outside the overflow-hidden container */}
-                      {openMenuPendingId === pending.id && (
-                        <>
-                          {/* Backdrop to close menu when clicking outside */}
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onOpenMenuPending(null)
-                            }}
-                          />
-                          <div className="absolute top-8 right-0 bg-background border border-border rounded-md shadow-lg py-1 min-w-[160px] z-50">
-                            {pending.takenAt ? (
-                              <AdminButton
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  onSetPhotoDate(pending.takenAt!)
-                                  onOpenMenuPending(null)
-                                  notify(t('admin.set_publish_time_success'), 'success')
-                                }}
-                                adminVariant="ghost"
-                                className="w-full px-3 py-2 text-left text-xs hover:bg-muted flex items-center gap-2"
-                              >
-                                <Calendar className="w-3.5 h-3.5" />
-                                {t('admin.set_as_publish_time')}
-                              </AdminButton>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
-                                <Calendar className="w-3.5 h-3.5" />
-                                {t('admin.no_exif_time')}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )
-                }
-              })
-            })()}
+                    </>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
         ) : (
-          <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-            <Upload className="w-12 h-12 mb-3 opacity-20" />
-            <p className="text-xs text-center mb-1">拖拽图片到此处</p>
-            <p className="text-[10px] text-center mb-3 opacity-60">或</p>
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+            <Upload className="mb-3 h-12 w-12 opacity-20" />
+            <p className="mb-1 text-center text-xs">拖拽图片到这里</p>
+            <p className="mb-3 text-center text-[10px] opacity-60">或先关联图片，再插入到正文</p>
             <AdminButton onClick={onAddPhotos} adminVariant="link" className="text-xs text-primary">
               从图库选择
             </AdminButton>

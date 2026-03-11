@@ -10,23 +10,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
-import dynamic from 'next/dynamic'
 import { AdminButton } from '@/components/admin/AdminButton'
-
-// Dynamically import MilkdownViewer for preview
-const MilkdownViewer = dynamic(
-  () => import('@/components/MilkdownViewer'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="animate-pulse space-y-4">
-        <div className="h-4 bg-muted rounded w-full"></div>
-        <div className="h-4 bg-muted rounded w-5/6"></div>
-        <div className="h-4 bg-muted rounded w-4/6"></div>
-      </div>
-    )
-  }
-)
+import { StoryRichContent } from '@/components/StoryRichContent'
 
 interface StoryPreviewModalProps {
   story: StoryDto
@@ -166,7 +151,11 @@ export function StoryPreviewModal({
             transition={{ duration: 0.8 }}
             className="milkdown-article"
           >
-            <MilkdownViewer content={story.content || ''} />
+            <StoryRichContent
+              content={story.content || ''}
+              photos={story.photos || []}
+              cdnDomain={cdnDomain}
+            />
           </motion.article>
 
           {/* Large Featured Photo */}
