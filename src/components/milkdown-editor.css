@@ -4,25 +4,53 @@
 .milkdown-crepe-editor {
   width: 100%;
   height: 100%;
+  min-height: 0;
   position: relative;
-  overflow-y: auto; /* Allow vertical scrolling */
-  overflow-x: hidden; /* Hide horizontal overflow */
+  overflow: hidden;
+}
+
+.milkdown-crepe-editor > div,
+.milkdown-crepe-editor [data-milkdown-root],
+.milkdown-crepe-editor .milkdown {
+  height: 100%;
+  min-height: 0;
 }
 
 /* Milkdown root container - needs padding for drag handle */
 .milkdown-crepe-editor .milkdown {
   padding-left: 90px; /* Increased space for drag handle and add button on the left */
-  min-height: 100%;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* ProseMirror editor */
 .milkdown-crepe-editor .ProseMirror {
-  min-height: 350px;
+  height: 100%;
+  min-height: 0;
   padding-left: 0; /* Padding is now on .milkdown container */
   padding-right: 90px; /* Match left padding for symmetry */
   padding-top: 16px;
   padding-bottom: 16px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.milkdown-crepe-editor .ProseMirror img,
+.milkdown-crepe-editor .milkdown img {
+  display: block;
+  width: auto;
+  max-width: min(100%, 720px);
+  max-height: 420px;
+  height: auto;
+  object-fit: contain;
+  margin: 1rem auto;
+  border-radius: 0.5rem;
+}
+
+.milkdown-crepe-editor .ProseMirror img[width],
+.milkdown-crepe-editor .milkdown img[width] {
+  width: min(100%, attr(width px));
+  max-width: 100%;
 }
 
 /* Block handle container - ensure full visibility */
@@ -148,6 +176,18 @@
   min-height: auto;
   padding: 0;
   cursor: default;
+}
+
+.milkdown-viewer .ProseMirror img,
+.milkdown-viewer .milkdown img {
+  display: block;
+  width: auto;
+  max-width: min(100%, 720px);
+  max-height: 420px;
+  height: auto;
+  object-fit: contain;
+  margin: 1rem auto;
+  border-radius: 0.5rem;
 }
 
 /* Remove focus outline in viewer mode */

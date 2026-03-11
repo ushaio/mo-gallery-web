@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
 } from 'react'
+import { editorViewCtx } from '@milkdown/core'
 import { Crepe } from '@milkdown/crepe'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -30,6 +31,7 @@ export interface MilkdownEditorHandle {
   insertValue: (markdown: string) => void
   insertMarkdown: (markdown: string) => void
   replaceText: (searchValue: string, nextValue: string) => boolean
+  scaleLastImage: (mode: 'sm' | 'md' | 'lg') => boolean
 }
 
 interface CrepeEditorInnerProps {
@@ -37,6 +39,42 @@ interface CrepeEditorInnerProps {
   placeholder?: string
   onChange: (value: string) => void
   onEditorReady?: (crepe: Crepe, root: HTMLElement) => void
+}
+
+const IMAGE_WIDTH_PRESETS: Record<'sm' | 'md' | 'lg', number> = {
+  sm: 320,
+  md: 480,
+  lg: 720,
+}
+
+const MARKDOWN_IMAGE_PATTERN = /!\[([^\]]*)\]\(([^\s)]+)(?:\s+=?(\d*)x)?\)/g
+
+function buildMarkdownImage(alt: string, url: string, width?: number) {
+  const escapedAlt = alt
+    .replace(/\\/g, '\\\\')
+    .replace(/\]/g, '\\]')
+
+  if (width && Number.isFinite(width)) {
+    return `![${escapedAlt}](${url} =${Math.max(160, Math.round(width))}x)`
+  }
+
+  return `![${escapedAlt}](${url})`
+}
+
+function replaceLastImageWidth(content: string, width: number) {
+  const matches = Array.from(content.matchAll(MARKDOWN_IMAGE_PATTERN))
+  const lastMatch = matches.at(-1)
+  if (!lastMatch || lastMatch.index == null) return null
+
+  const originalTag = lastMatch[0]
+  const alt = lastMatch[1] ?? ''
+  const url = lastMatch[2] ?? ''
+  if (!url) return null
+
+  const nextTag = buildMarkdownImage(alt, url, width)
+  if (nextTag === originalTag) return null
+
+  return `${content.slice(0, lastMatch.index)}${nextTag}${content.slice(lastMatch.index + originalTag.length)}`
 }
 
 const CrepeEditorInner: React.FC<CrepeEditorInnerProps> = ({
@@ -66,7 +104,6 @@ const CrepeEditorInner: React.FC<CrepeEditorInnerProps> = ({
   useEffect(() => {
     placeholderRef.current = placeholder
   }, [placeholder])
-
 
   useEditor(
     (root) => {
@@ -143,6 +180,15 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
       onChange(nextValue)
     }, [onChange])
 
+    const focusEditor = useCallback(() => {
+      try {
+        const view = crepeInstanceRef.current?.editor.action((ctx) => ctx.get(editorViewCtx))
+        view?.focus()
+      } catch (error) {
+        console.error('[MilkdownEditor] focus failed', error)
+      }
+    }, [])
+
     const handleEditorReady = useCallback((crepe: Crepe, root: HTMLElement) => {
       crepeInstanceRef.current = crepe
       editorRootRef.current = root
@@ -179,27 +225,73 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
     const imperativeHandle = useMemo<MilkdownEditorHandle>(() => ({
       getValue: () => currentValueRef.current,
       setValue: (markdown: string) => {
+        const crepe = crepeInstanceRef.current
+        if (crepe) {
+          crepe.action(replaceAll(markdown ?? ''))
+        }
         syncValue(markdown ?? '')
       },
       insertValue: (markdown: string) => {
+        const crepe = crepeInstanceRef.current
         const baseValue = currentValueRef.current
         const separator = baseValue && !baseValue.endsWith('\n') ? '\n\n' : ''
-        syncValue(`${baseValue}${separator}${markdown}`)
+        const nextValue = `${baseValue}${separator}${markdown}`
+
+        if (crepe) {
+          crepe.action(insert(markdown, false))
+        }
+        
+        currentValueRef.current = nextValue
+        onChange(nextValue)
+        focusEditor()
       },
       insertMarkdown: (markdown: string) => {
+        const crepe = crepeInstanceRef.current
         const baseValue = currentValueRef.current
         const separator = baseValue && !baseValue.endsWith('\n') ? '\n\n' : ''
-        syncValue(`${baseValue}${separator}${markdown}`)
+        const nextValue = `${baseValue}${separator}${markdown}`
+
+        if (crepe) {
+          crepe.action(insert(markdown, false))
+        }
+        
+        currentValueRef.current = nextValue
+        onChange(nextValue)
+        focusEditor()
       },
       replaceText: (searchValue: string, nextValue: string) => {
         if (!searchValue) return false
         const baseValue = currentValueRef.current
         const replacedValue = baseValue.replace(searchValue, nextValue)
         if (replacedValue === baseValue) return false
-        syncValue(replacedValue)
+
+        const crepe = crepeInstanceRef.current
+        if (crepe) {
+          crepe.action(replaceAll(replacedValue))
+        }
+        
+        currentValueRef.current = replacedValue
+        onChange(replacedValue)
+        focusEditor()
+
         return true
       },
-    }), [syncValue])
+      scaleLastImage: (mode: 'sm' | 'md' | 'lg') => {
+        const width = IMAGE_WIDTH_PRESETS[mode]
+        const nextValue = replaceLastImageWidth(currentValueRef.current, width)
+        if (!nextValue) return false
+
+        const crepe = crepeInstanceRef.current
+        if (crepe) {
+          crepe.action(replaceAll(nextValue))
+        }
+        
+        currentValueRef.current = nextValue
+        onChange(nextValue)
+        focusEditor()
+        return true
+      },
+    }), [focusEditor, onChange, syncValue])
 
     useImperativeHandle(ref, () => imperativeHandle, [imperativeHandle])
 
@@ -226,3 +318,4 @@ export const MilkdownEditor = forwardRef<MilkdownEditorHandle, MilkdownEditorPro
 MilkdownEditor.displayName = 'MilkdownEditor'
 
 export default MilkdownEditor
+

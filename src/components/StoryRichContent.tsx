@@ -11,6 +11,37 @@ interface StoryRichContentProps {
   className?: string
 }
 
+function normalizeImageWidth(width?: number | string) {
+  if (typeof width === 'number' && Number.isFinite(width)) {
+    return Math.max(160, Math.round(width))
+  }
+
+  if (typeof width === 'string') {
+    const parsed = Number.parseInt(width, 10)
+    if (Number.isFinite(parsed)) {
+      return Math.max(160, parsed)
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * 从 Markdown 图片 src 中提取真正的 URL 和可选的宽度
+ * 支持格式: "https://example.com/image.jpg =480x" -> { url: "https://example.com/image.jpg", width: 480 }
+ */
+function parseMarkdownImageSrc(rawSrc: string): { url: string; width?: number } {
+  const trimmed = rawSrc.trim()
+  const match = trimmed.match(/^(.+?)\s*=\s*(\d+)x\s*$/)
+  if (match) {
+    const parsed = Number.parseInt(match[2], 10)
+    return {
+      url: match[1].trim(),
+      width: Number.isFinite(parsed) ? Math.max(160, parsed) : undefined,
+    }
+  }
+  return { url: trimmed, width: undefined }
+}
 
 function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {
   return {
@@ -59,20 +90,24 @@ function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {
         {children}
       </a>
     ),
-    img: ({ src, alt }: React.ComponentProps<'img'>) => {
+    img: ({ src, alt, width }: React.ComponentProps<'img'>) => {
       const rawSrc = typeof src === 'string' ? src.trim() : ''
-      const matchedPhoto = photos.find((photo) => photo.url === rawSrc || photo.thumbnailUrl === rawSrc)
+      const { url: parsedUrl, width: parsedWidth } = parseMarkdownImageSrc(rawSrc)
+      const matchedPhoto = photos.find((photo) => photo.url === parsedUrl || photo.thumbnailUrl === parsedUrl)
       const resolvedSrc = matchedPhoto
         ? resolveAssetUrl(matchedPhoto.url, cdnDomain)
-        : rawSrc.startsWith('http://') || rawSrc.startsWith('https://') || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')
-          ? rawSrc
-          : resolveAssetUrl(rawSrc, cdnDomain)
+        : parsedUrl.startsWith('http://') || parsedUrl.startsWith('https://') || parsedUrl.startsWith('data:') || parsedUrl.startsWith('blob:')
+          ? parsedUrl
+          : resolveAssetUrl(parsedUrl, cdnDomain)
+      const normalizedWidth = parsedWidth ?? normalizeImageWidth(width)
 
       return (
         <img
           src={resolvedSrc}
           alt={alt ?? matchedPhoto?.title ?? ''}
-          className="my-6 w-full rounded-lg border border-border object-cover"
+          width={normalizedWidth}
+          className="my-6 max-w-full rounded-lg border border-border object-contain"
+          style={normalizedWidth ? { width: `${normalizedWidth}px`, maxWidth: '100%', height: 'auto' } : undefined}
         />
       )
     },

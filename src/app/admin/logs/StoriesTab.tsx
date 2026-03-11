@@ -24,6 +24,8 @@ import {
   Calendar,
   Clock,
   Check,
+  Shrink,
+  Expand,
 } from 'lucide-react'
 import {
   getAdminStories,
@@ -52,7 +54,7 @@ import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDr
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { calculateFileHash } from '@/lib/file-hash'
-import { buildStoryMarkdownImage, getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
+import { buildStoryMarkdownImage, getStoryMarkdownImageUrls, normalizeStoryContentImages } from '@/lib/story-rich-content'
 
 const PASTE_UPLOAD_PLACEHOLDER_PREFIX = '<!-- story-paste-upload:'
 
@@ -90,7 +92,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [storyEditMode, setStoryEditMode] = useState<'list' | 'editor'>('list')
   const [saving, setSaving] = useState(false)
   const editorRef = useRef<MilkdownEditorHandle>(null)
-  
+  const editorInsertVersionRef = useRef(0)
   // 照片管理
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
@@ -803,6 +805,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }
 
   function insertDirective(markdown: string) {
+    editorInsertVersionRef.current += 1
     editorRef.current?.insertValue(markdown)
     const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
     setCurrentStory(prev => (prev ? { ...prev, content: nextValue } : prev))
@@ -817,6 +820,25 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
     setCurrentStory(prev => (prev ? { ...prev, content: latestValue } : prev))
     return replaced
+  }
+
+  function handleScaleLastImage(mode: 'sm' | 'md' | 'lg') {
+    const scaled = editorRef.current?.scaleLastImage(mode) ?? false
+    if (!scaled) {
+      notify('当前正文中没有可调整的图片', 'info')
+      return
+    }
+
+    const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
+    setCurrentStory(prev => (prev ? { ...prev, content: latestValue } : prev))
+    notify(
+      mode === 'sm'
+        ? '已将最后一张图片调整为小尺寸'
+        : mode === 'lg'
+          ? '已将最后一张图片调整为大尺寸'
+          : '已将最后一张图片调整为标准尺寸',
+      'success'
+    )
   }
 
   function persistPasteUploadSettings(settings: UploadSettings) {
@@ -1103,7 +1125,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }
 
   const handleContentChange = useCallback((content: string) => {
-    setCurrentStory(prev => prev ? { ...prev, content } : prev)
+    setCurrentStory(prev => prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev)
   }, [])
 
   // 获取当前照片 ID（用于弹窗中的初始选中状态）
@@ -1321,9 +1343,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
 
           {/* 主内容区 - 左右布局 */}
-          <div className="flex-1 flex gap-3 overflow-hidden">
+          <div className="flex-1 flex gap-3 overflow-hidden min-h-0">
             {/* 左侧：编辑器 (70%) */}
-            <div className="flex-[7] flex flex-col gap-3 min-w-0 overflow-visible">
+            <div className="flex-[7] flex flex-col gap-3 min-w-0 min-h-0 overflow-hidden">
               {/* 标题输入 */}
               
               
@@ -1389,28 +1411,53 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   </span>
                 </div>
                 {/* 右侧：预览按钮 */}
-                <AdminButton
-                  onClick={() => setShowPreview(true)}
-                  adminVariant="unstyled"
-                  className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-primary border border-primary/30 hover:bg-primary/10 rounded-md transition-colors"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  {t('admin.preview') || '预览'}
-                </AdminButton>
+                <div className="flex flex-wrap items-center gap-2">
+                  <AdminButton
+                    onClick={() => handleScaleLastImage('sm')}
+                    adminVariant="unstyled"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-muted rounded-md transition-colors"
+                  >
+                    <Shrink className="w-3.5 h-3.5" />
+                    小图
+                  </AdminButton>
+                  <AdminButton
+                    onClick={() => handleScaleLastImage('md')}
+                    adminVariant="unstyled"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-muted rounded-md transition-colors"
+                  >
+                    标准
+                  </AdminButton>
+                  <AdminButton
+                    onClick={() => handleScaleLastImage('lg')}
+                    adminVariant="unstyled"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-muted rounded-md transition-colors"
+                  >
+                    <Expand className="w-3.5 h-3.5" />
+                    大图
+                  </AdminButton>
+                  <AdminButton
+                    onClick={() => setShowPreview(true)}
+                    adminVariant="unstyled"
+                    className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-primary border border-primary/30 hover:bg-primary/10 rounded-md transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    {t('admin.preview') || '预览'}
+                  </AdminButton>
+                </div>
               </div>
               
               {/* 内容区 - 所见即所得编辑器 */}
-              <div className="flex-1 relative border border-border bg-card/30 rounded-lg overflow-visible">
+              <div className="flex-1 min-h-0 relative border border-border bg-card/30 rounded-lg overflow-hidden">
                 {currentStory && (
-                  <MilkdownEditor
-                    key={currentStory.id}
-                    ref={editorRef}
-                    value={currentStory.content}
-                    onChange={handleContentChange}
-                    onPasteFiles={handlePasteFiles}
-                    placeholder={t('ui.markdown_placeholder')}
-                    className="overflow-hidden rounded-lg"
-                  />
+                      <MilkdownEditor
+                        key={`${currentStory.id}:${editorInsertVersionRef.current}`}
+                        ref={editorRef}
+                        value={currentStory.content}
+                        onChange={handleContentChange}
+                        onPasteFiles={handlePasteFiles}
+                        placeholder={t('ui.markdown_placeholder')}
+                        className="overflow-hidden rounded-lg"
+                      />
                 )}
               </div>
             </div>
