@@ -49,7 +49,7 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
-import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
+import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDraftFromDB, type StoryEditorDraftData } from '@/lib/client-db'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
@@ -58,9 +58,9 @@ import { buildStoryMarkdownImage, getStoryMarkdownImageUrls, normalizeStoryConte
 
 const PASTE_UPLOAD_PLACEHOLDER_PREFIX = '<!-- story-paste-upload:'
 
-// 动态导入 MilkdownEditor，避免 SSR 问题
-const MilkdownEditor = dynamic(
-  () => import('@/components/MilkdownEditor'),
+// 动态导入 NarrativeTipTapEditor，避免 SSR 问题
+const NarrativeTipTapEditor = dynamic(
+  () => import('@/components/NarrativeTipTapEditor'),
   {
     ssr: false,
     loading: () => (
@@ -91,7 +91,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [currentStory, setCurrentStory] = useState<StoryDto | null>(null)
   const [storyEditMode, setStoryEditMode] = useState<'list' | 'editor'>('list')
   const [saving, setSaving] = useState(false)
-  const editorRef = useRef<MilkdownEditorHandle>(null)
+  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   const editorInsertVersionRef = useRef(0)
   // 照片管理
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
@@ -1413,29 +1413,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                 {/* 右侧：预览按钮 */}
                 <div className="flex flex-wrap items-center gap-2">
                   <AdminButton
-                    onClick={() => handleScaleLastImage('sm')}
-                    adminVariant="unstyled"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-muted rounded-md transition-colors"
-                  >
-                    <Shrink className="w-3.5 h-3.5" />
-                    小图
-                  </AdminButton>
-                  <AdminButton
-                    onClick={() => handleScaleLastImage('md')}
-                    adminVariant="unstyled"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-muted rounded-md transition-colors"
-                  >
-                    标准
-                  </AdminButton>
-                  <AdminButton
-                    onClick={() => handleScaleLastImage('lg')}
-                    adminVariant="unstyled"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-muted rounded-md transition-colors"
-                  >
-                    <Expand className="w-3.5 h-3.5" />
-                    大图
-                  </AdminButton>
-                  <AdminButton
                     onClick={() => setShowPreview(true)}
                     adminVariant="unstyled"
                     className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-primary border border-primary/30 hover:bg-primary/10 rounded-md transition-colors"
@@ -1449,7 +1426,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               {/* 内容区 - 所见即所得编辑器 */}
               <div className="flex-1 min-h-0 relative border border-border bg-card/30 rounded-lg overflow-hidden">
                 {currentStory && (
-                      <MilkdownEditor
+                      <NarrativeTipTapEditor
                         key={`${currentStory.id}:${editorInsertVersionRef.current}`}
                         ref={editorRef}
                         value={currentStory.content}
