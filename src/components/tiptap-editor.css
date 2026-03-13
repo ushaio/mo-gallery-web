@@ -172,57 +172,39 @@
   }
 }
 
-/* TipTap Image Resize Handles */
-.ProseMirror img.ProseMirror-selectednode {
-  outline: 2px solid hsl(var(--primary));
+/* Resizable Image NodeView */
+.tiptap-editor .ProseMirror .resizable-image-wrapper {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 0;
 }
 
-/* Resize handles - TipTap v3 */
-.ProseMirror .resize-handle {
-  position: absolute;
-  background-color: hsl(var(--primary));
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  cursor: pointer;
-  z-index: 10;
+.tiptap-editor .ProseMirror .resizable-image-wrapper img {
+  border-radius: 0.5rem;
+  margin: 0;
 }
 
-.ProseMirror .resize-handle[data-direction="left"],
-.ProseMirror .resize-handle[data-direction="right"] {
-  top: 50%;
-  transform: translateY(-50%);
-  height: 16px;
-  width: 8px;
+/* Image Group NodeView */
+.tiptap-editor .ProseMirror .image-group-wrapper {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
-.ProseMirror .resize-handle[data-direction="left"] {
-  left: -6px;
+.tiptap-editor .ProseMirror .image-group-content {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
 }
 
-.ProseMirror .resize-handle[data-direction="right"] {
-  right: -6px;
+.tiptap-editor .ProseMirror .image-group-content > .resizable-image-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: block;
 }
 
-/* Alternative selector for resize handles */
-.ProseMirror [data-resize-handle] {
-  position: absolute;
-  background: hsl(var(--primary));
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  cursor: ew-resize;
-  z-index: 20;
-}
-
-.ProseMirror [data-resize-handle][data-direction="left"] {
-  left: -5px;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.ProseMirror [data-resize-handle][data-direction="right"] {
-  right: -5px;
-  top: 50%;
-  transform: translateY(-50%);
+.tiptap-editor .ProseMirror .image-group-content > .resizable-image-wrapper img {
+  width: 100% !important;
+  height: auto;
 }

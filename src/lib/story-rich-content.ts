@@ -2,7 +2,7 @@ import type { PhotoDto } from '@/lib/api'
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g
 const HTML_IMAGE_PATTERN = /<img\b[^>]*\bsrc=(['"])(.*?)\1[^>]*>/gi
-const HTML_IMAGE_WIDTH_PATTERN = /<img\b([^>]*?)\bsrc=(['"])(.*?)\2([^>]*?)\swidth=(['"])(\d+)\5([^>]*?)\/?>/gi
+const HTML_IMAGE_WIDTH_PATTERN = /<img\b([^>]*?)\bsrc=(['"])(.*?)\2([^>]*?)\swidth=(?:(['"])(\d+)\5|(\d+))([^>]*?)\/?>/gi
 
 function escapeHtmlAttribute(value: string) {
   return value
@@ -13,15 +13,19 @@ function escapeHtmlAttribute(value: string) {
     .replace(/>/g, '&gt;')
 }
 
-export function buildStoryMarkdownImage(options: {
+export function buildStoryHtmlImage(options: {
   url: string
   alt?: string
   width?: number
 }) {
   const alt = escapeHtmlAttribute(options.alt || '')
+  const src = escapeHtmlAttribute(options.url)
   const width = Number.isFinite(options.width) ? Math.max(160, Math.round(options.width as number)) : 480
-  return `\n![${alt}](${escapeHtmlAttribute(options.url)} =${width}x)\n`
+  return `\n<img src="${src}" alt="${alt}" width="${width}">\n`
 }
+
+/** @deprecated Use buildStoryHtmlImage instead */
+export const buildStoryMarkdownImage = buildStoryHtmlImage
 
 export function getStoryMarkdownImageUrls(content: string) {
   const urls = new Set<string>()
@@ -57,20 +61,16 @@ export function getStoryMarkdownImageUrls(content: string) {
 export function normalizeStoryContentImages(content: string) {
   return content.replace(
     HTML_IMAGE_WIDTH_PATTERN,
-    (_match, beforeSrc: string, quote: string, src: string, betweenSrcAndWidth: string, _widthQuote: string, width: string, afterWidth: string) => {
+    (_match, beforeSrc: string, quote: string, src: string, betweenSrcAndWidth: string, _widthQuote: string | undefined, quotedWidth: string | undefined, unquotedWidth: string | undefined, afterWidth: string) => {
+      const width = quotedWidth ?? unquotedWidth ?? '480'
+      const normalizedWidth = Math.max(160, Number.parseInt(width, 10) || 480)
       const trimmedBefore = beforeSrc.trim()
       const trimmedBetween = betweenSrcAndWidth.trim()
       const trimmedAfter = afterWidth.trim().replace(/\/$/, '').trim()
-      const attrs = [trimmedBefore, trimmedBetween, trimmedAfter]
+      const attrs = [trimmedBefore, `src=${quote}${src}${quote}`, trimmedBetween, `width="${normalizedWidth}"`, trimmedAfter]
         .filter(Boolean)
         .join(' ')
-      const altMatch = attrs.match(/\balt=(['"])(.*?)\1/i)
-      const alt = altMatch?.[2] ?? ''
-      const normalizedWidth = Math.max(160, Number.parseInt(width, 10) || 480)
-      const escapedAlt = alt
-        .replace(/\\/g, '\\\\')
-        .replace(/\]/g, '\\]')
-      return `![${escapedAlt}](${src} =${normalizedWidth}x)`
+      return `<img ${attrs}>`
     }
   )
 }

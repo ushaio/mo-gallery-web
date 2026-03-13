@@ -13,8 +13,8 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
-import Image from '@tiptap/extension-image'
-import ImageResize from 'tiptap-extension-resize-image'
+import { ResizableImage } from '@/components/tiptap-extensions/ResizableImage'
+import { ImageGroup } from '@/components/tiptap-extensions/ImageGroup'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
@@ -220,8 +220,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             class: 'text-primary underline',
           },
         }),
-        Image,
-        ImageResize,
+        ResizableImage,
+        ImageGroup,
         Underline,
         TextAlign.configure({
           types: ['heading', 'paragraph'],
@@ -425,7 +425,17 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [editor])
 
     const setTextAlign = (align: 'left' | 'center' | 'right') => {
-      editor?.chain().focus().setTextAlign(align).run()
+      if (!editor) return
+      const alignValue = align === 'left' ? null : align
+      if (editor.isActive('image')) {
+        editor.chain().focus().updateAttributes('image', { align: alignValue }).run()
+        return
+      }
+      if (editor.isActive('imageGroup')) {
+        editor.chain().focus().updateAttributes('imageGroup', { align: alignValue }).run()
+        return
+      }
+      editor.chain().focus().setTextAlign(align).run()
     }
 
     const undo = () => editor?.chain().focus().undo().run()
@@ -484,13 +494,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
           <ToolbarDivider />
 
-          <ToolbarButton onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' })} title="左对齐">
+          <ToolbarButton onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' }) || editor.isActive('image', { align: null }) || editor.isActive('imageGroup', { align: null })} title="左对齐">
             <AlignLeft className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' })} title="居中">
+          <ToolbarButton onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' }) || editor.isActive('image', { align: 'center' }) || editor.isActive('imageGroup', { align: 'center' })} title="居中">
             <AlignCenter className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' })} title="右对齐">
+          <ToolbarButton onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' }) || editor.isActive('image', { align: 'right' }) || editor.isActive('imageGroup', { align: 'right' })} title="右对齐">
             <AlignRight className="w-4 h-4" />
           </ToolbarButton>
 
