@@ -3,22 +3,9 @@
 import React, { useEffect, useState, createContext, useContext, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Upload as UploadIcon,
-  Image as ImageIcon,
-  Settings,
-  BookText,
   Menu,
   ExternalLink,
   LogOut,
-  LucideIcon,
-  Moon,
-  Sun,
-  Monitor,
-  FolderOpen,
-  Users,
-  HardDrive,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
@@ -26,7 +13,6 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
@@ -49,6 +35,8 @@ import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminSidebar } from '@/components/admin/AdminSidebar'
+import { getActiveAdminSidebarItem, getAdminSidebarItems } from '@/components/admin/admin-sidebar-config'
 
 // Admin Context for shared state
 interface AdminContextType {
@@ -89,13 +77,6 @@ export function useAdmin() {
     throw new Error('useAdmin must be used within AdminLayout')
   }
   return context
-}
-
-interface SidebarItem {
-  id: string
-  href: string
-  label: string
-  icon: LucideIcon
 }
 
 const ADMIN_SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed'
@@ -440,44 +421,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [token, settings, urlUpdateParams, refreshGlobalSettings, refreshPhotos, notify, t, handleUnauthorized])
 
-  // --- Sidebar Items ---
-  const sidebarItems: SidebarItem[] = [
-    { id: 'photos', href: '/admin/photos', label: t('admin.library'), icon: ImageIcon },
-    { id: 'albums', href: '/admin/albums', label: t('admin.albums'), icon: FolderOpen },
-    { id: 'upload', href: '/admin/upload', label: t('admin.upload'), icon: UploadIcon },
-    { id: 'logs', href: '/admin/logs', label: t('admin.logs'), icon: BookText },
-    { id: 'storage', href: '/admin/storage', label: t('admin.storage_cleanup'), icon: HardDrive },
-    { id: 'settings', href: '/admin/settings', label: t('admin.config'), icon: Settings },
-    { id: 'friends', href: '/admin/friends', label: t('admin.friends'), icon: Users },
-  ]
-
-  // Get current active tab from pathname
-  const getActiveTab = () => {
-    if (pathname.startsWith('/admin/photos')) return 'photos'
-    if (pathname.startsWith('/admin/albums')) return 'albums'
-    if (pathname.startsWith('/admin/upload')) return 'upload'
-    if (pathname.startsWith('/admin/friends')) return 'friends'
-    if (pathname.startsWith('/admin/logs')) return 'logs'
-    if (pathname.startsWith('/admin/storage')) return 'storage'
-    if (pathname.startsWith('/admin/settings')) return 'settings'
-    return 'photos'
-  }
-
-  const activeTab = getActiveTab()
-
-  // Get page title
-  const getPageTitle = () => {
-    switch (activeTab) {
-      case 'photos': return t('admin.library')
-      case 'albums': return t('admin.albums')
-      case 'upload': return t('admin.upload')
-      case 'friends': return t('admin.friends')
-      case 'logs': return t('admin.logs')
-      case 'storage': return t('admin.storage_cleanup')
-      case 'settings': return t('admin.config')
-      default: return t('admin.library')
-    }
-  }
+  const sidebarItems = getAdminSidebarItems(t)
+  const activeSidebarItem = getActiveAdminSidebarItem(pathname)
+  const pageTitle = t(activeSidebarItem.labelKey)
 
   const contextValue: AdminContextType = {
     token,
@@ -521,16 +467,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     notify(`${photoIds.length} ${t('admin.notify_upload_success')}`)
   }, [token, refreshPhotos, notify, t])
 
-  const collapseSidebarLabel =
-    locale === 'zh'
-      ? (isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏')
-      : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
-
-  const sidebarToggleLabel =
-    locale === 'zh'
-      ? (isSidebarCollapsed ? '\u5c55\u5f00\u4fa7\u8fb9\u680f' : '\u6536\u8d77\u4fa7\u8fb9\u680f')
-      : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
-
   return (
     <UploadQueueProvider onUploadComplete={handleUploadComplete}>
       <AdminContext.Provider value={contextValue}>
@@ -542,152 +478,30 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             }
           />
 
-        {/* Sidebar */}
-        <aside
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-background border-r border-border transform transition-[width,transform] duration-300 md:translate-x-0 ${
-            isSidebarCollapsed ? 'md:w-20' : 'md:w-64'
-          } ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        >
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="h-24 border-b border-border px-6 py-6">
-              <div className="flex h-full items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${
-                    globalSettingsLoading ? 'opacity-0' : 'opacity-100'
-                  } ${isSidebarCollapsed ? 'md:opacity-0' : ''}`}>
-                    {siteTitle || '\u00A0'}
-                  </h2>
-                  <p className={`mt-1 font-sans text-[10px] uppercase tracking-widest text-muted-foreground transition-opacity duration-300 ${
-                    isSidebarCollapsed ? 'md:opacity-0' : ''
-                  }`}>
-                    {t('admin.console')}
-                  </p>
-                </div>
-                <AdminButton
-                  onClick={toggleSidebarCollapse}
-                  adminVariant="icon"
-                  size="sm"
-                  className="hidden shrink-0 rounded-sm border border-border bg-background hover:bg-muted md:inline-flex"
-                  title={sidebarToggleLabel || collapseSidebarLabel}
-                  aria-label={sidebarToggleLabel || collapseSidebarLabel}
-                  aria-pressed={isSidebarCollapsed}
-                >
-                  {isSidebarCollapsed ? (
-                    <ChevronRight className="w-4 h-4" />
-                  ) : (
-                    <ChevronLeft className="w-4 h-4" />
-                  )}
-                </AdminButton>
-              </div>
-            </div>
+          <AdminSidebar
+            siteTitle={siteTitle}
+            isSiteTitleLoading={globalSettingsLoading}
+            isMobileMenuOpen={isMobileMenuOpen}
+            isCollapsed={isSidebarCollapsed}
+            activeItemId={activeSidebarItem.id}
+            user={user}
+            locale={locale}
+            mounted={mounted}
+            theme={theme}
+            onToggleCollapse={toggleSidebarCollapse}
+            onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+            onToggleTheme={toggleTheme}
+            onToggleLanguage={toggleLanguage}
+            onLogout={() => setShowLogoutConfirm(true)}
+            t={t}
+            items={sidebarItems}
+          />
 
-            {/* Navigation */}
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-              {sidebarItems.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 text-xs font-bold tracking-widest uppercase transition-all rounded-sm ${
-                    activeTab === item.id
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
-                  title={isSidebarCollapsed ? item.label : undefined}
-                  aria-label={item.label}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  <span className={isSidebarCollapsed ? 'md:hidden' : ''}>{item.label}</span>
-                </Link>
-              ))}
-            </nav>
-
-            {/* Footer */}
-            <div className={`space-y-3 border-t border-border p-4 ${isSidebarCollapsed ? 'md:px-3' : ''}`}>
-              {/* Settings Row */}
-              <div className={`flex items-center gap-2 ${isSidebarCollapsed ? 'md:flex-col' : ''}`}>
-                {/* Theme Toggle */}
-                <AdminButton
-                  onClick={toggleTheme}
-                  adminVariant="outline"
-                  size="sm"
-                  className={`flex-1 flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm ${
-                    isSidebarCollapsed ? 'md:w-full md:justify-center md:px-0' : ''
-                  }`}
-                  title={t('nav.toggle_theme')}
-                  aria-label={t('nav.toggle_theme')}
-                >
-                  {!mounted ? (
-                    <Monitor className="w-4 h-4" />
-                  ) : theme === 'system' ? (
-                    <Monitor className="w-4 h-4" />
-                  ) : theme === 'light' ? (
-                    <Sun className="w-4 h-4" />
-                  ) : (
-                    <Moon className="w-4 h-4" />
-                  )}
-                  <span className={isSidebarCollapsed ? 'md:hidden' : 'text-[10px] font-bold uppercase tracking-widest'}>
-                    {theme === 'system' ? t('nav.system') : theme === 'light' ? t('nav.light') : t('nav.dark')}
-                  </span>
-                </AdminButton>
-
-                {/* Language Toggle */}
-                <AdminButton
-                  onClick={toggleLanguage}
-                  adminVariant="outline"
-                  size="sm"
-                  className={`flex-1 flex items-center justify-center px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm ${
-                    isSidebarCollapsed ? 'md:w-full md:px-0' : ''
-                  }`}
-                  title={locale === 'zh' ? '\u5207\u6362\u8bed\u8a00' : 'Toggle language'}
-                  aria-label={locale === 'zh' ? '\u5207\u6362\u8bed\u8a00' : 'Toggle language'}
-                >
-                  {locale === 'zh' ? 'EN' : '中'}
-                </AdminButton>
-              </div>
-
-              {/* Divider */}
-              <div className="-mx-4 border-t border-border" />
-
-              {/* User Info */}
-              <div className={`flex items-center px-2 ${isSidebarCollapsed ? 'md:justify-center md:px-0' : 'space-x-3'}`}>
-                <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-xs text-primary-foreground font-bold">
-                  {user?.username?.substring(0, 1).toUpperCase() || 'A'}
-                </div>
-                <div className={`flex-1 min-w-0 ${isSidebarCollapsed ? 'md:hidden' : ''}`}>
-                  <p className="text-xs font-bold truncate uppercase tracking-wider">
-                    {user?.username || 'ADMIN'}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground truncate uppercase tracking-widest">
-                    {t('admin.super_user')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Logout Button */}
-              <AdminButton
-                onClick={() => setShowLogoutConfirm(true)}
-                adminVariant="destructiveOutline"
-                size="lg"
-                className={`w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-bold uppercase tracking-widest rounded-sm ${
-                  isSidebarCollapsed ? 'md:px-0' : ''
-                }`}
-                title={isSidebarCollapsed ? t('nav.logout') : undefined}
-                aria-label={t('nav.logout')}
-              >
-                <LogOut className="w-4 h-4" />
-                <span className={isSidebarCollapsed ? 'md:hidden' : ''}>{t('nav.logout')}</span>
-              </AdminButton>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${
-          isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
-        }`}>
-          <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
+          {/* Main Content */}
+          <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${
+            isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
+          }`}>
+            <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
             <div className="flex items-center">
               <AdminButton
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -698,7 +512,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                 <Menu className="w-5 h-5" />
               </AdminButton>
               <h1 className="font-serif text-2xl font-light tracking-tight uppercase">
-                {getPageTitle()}
+                {pageTitle}
               </h1>
             </div>
             <div className="flex items-center space-x-4">

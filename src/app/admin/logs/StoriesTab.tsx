@@ -1141,9 +1141,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setPreviewPhotoIndex(previewPhotoIndex < currentStory.photos.length - 1 ? previewPhotoIndex + 1 : 0)
   }
 
-  if (loading) {
-    return <AdminLoading text={t('common.loading')} />
-  }
 
   // 故事发布状态筛选选项
   const statusOptions: SelectOption[] = [
@@ -1182,7 +1179,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             </AdminButton>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <div className="grid grid-cols-1 gap-4">
+            {loading ? (
+              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
               {stories
                 .filter((story) => {
                   if (!statusFilter) return true
@@ -1278,7 +1278,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   </p>
                 </div>
               )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (

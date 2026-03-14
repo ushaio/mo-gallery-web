@@ -49,3 +49,4 @@ public/uploads
 .env.local
 .codex
 .vscode
+.gemini
