@@ -3,6 +3,8 @@
 import React, { useEffect, useState, createContext, useContext, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  ChevronLeft,
+  ChevronRight,
   Menu,
   ExternalLink,
   LogOut,
@@ -488,7 +490,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             locale={locale}
             mounted={mounted}
             theme={theme}
-            onToggleCollapse={toggleSidebarCollapse}
             onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
             onToggleTheme={toggleTheme}
             onToggleLanguage={toggleLanguage}
@@ -496,6 +497,24 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             t={t}
             items={sidebarItems}
           />
+
+          <button
+            type="button"
+            onClick={toggleSidebarCollapse}
+            className={`fixed top-1/2 z-50 hidden h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none md:flex ${
+              isSidebarCollapsed ? 'left-20' : 'left-64'
+            }`}
+            aria-label={locale === 'zh' ? (isSidebarCollapsed ? '灞曞紑渚ц竟鏍?' : '鏀惰捣渚ц竟鏍?') : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
+            aria-pressed={isSidebarCollapsed}
+          >
+            <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
+              {isSidebarCollapsed ? (
+                <ChevronRight className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronLeft className="h-3.5 w-3.5" />
+              )}
+            </div>
+          </button>
 
           {/* Main Content */}
           <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${

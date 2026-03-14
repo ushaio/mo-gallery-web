@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, LogOut, Monitor, Moon, Sun } from 'lucide-react'
+import { LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import { AdminButton } from '@/components/admin/AdminButton'
 import type { AdminSidebarItem } from '@/components/admin/admin-sidebar-config'
 import { cn } from '@/lib/utils'
@@ -18,7 +18,6 @@ interface AdminSidebarProps {
   locale: string
   mounted: boolean
   theme: ThemeMode
-  onToggleCollapse: () => void
   onCloseMobileMenu: () => void
   onToggleTheme: () => void
   onToggleLanguage: () => void
@@ -37,7 +36,6 @@ export function AdminSidebar({
   locale,
   mounted,
   theme,
-  onToggleCollapse,
   onCloseMobileMenu,
   onToggleTheme,
   onToggleLanguage,
@@ -45,12 +43,7 @@ export function AdminSidebar({
   t,
   items,
 }: AdminSidebarProps) {
-  const sidebarToggleLabel =
-    locale === 'zh'
-      ? (isCollapsed ? '展开侧边栏' : '收起侧边栏')
-      : (isCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
-
-  const languageToggleLabel = locale === 'zh' ? '切换语言' : 'Toggle language'
+  const languageToggleLabel = locale === 'zh' ? 'Toggle language' : 'Toggle language'
 
   const collapsibleTextClass = cn(
     'block min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-300 ease-out motion-reduce:transition-none',
@@ -67,7 +60,7 @@ export function AdminSidebar({
     >
       <div className="flex h-full flex-col">
         <div className="h-24 border-b border-border px-6 py-6">
-          <div className="flex h-full items-start justify-between gap-3">
+          <div className="flex h-full items-start gap-3">
             <div className="min-w-0 flex-1 overflow-hidden">
               <h2
                 className={cn(
@@ -87,21 +80,6 @@ export function AdminSidebar({
                 {t('admin.console')}
               </p>
             </div>
-            <AdminButton
-              onClick={onToggleCollapse}
-              adminVariant="icon"
-              size="sm"
-              className="hidden shrink-0 rounded-sm border border-border bg-background hover:bg-muted md:inline-flex"
-              title={sidebarToggleLabel}
-              aria-label={sidebarToggleLabel}
-              aria-pressed={isCollapsed}
-            >
-              {isCollapsed ? (
-                <ChevronRight className="w-4 h-4" />
-              ) : (
-                <ChevronLeft className="w-4 h-4" />
-              )}
-            </AdminButton>
           </div>
         </div>
 
@@ -165,7 +143,7 @@ export function AdminSidebar({
               title={languageToggleLabel}
               aria-label={languageToggleLabel}
             >
-              {locale === 'zh' ? 'EN' : '中'}
+              {locale === 'zh' ? 'EN' : 'ZH'}
             </AdminButton>
           </div>
 
