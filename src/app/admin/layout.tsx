@@ -550,13 +550,17 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         >
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className={`border-b border-border ${isSidebarCollapsed ? 'p-3 md:px-3 md:py-4' : 'p-6'}`}>
-              <div className={`flex items-start ${isSidebarCollapsed ? 'md:flex-col md:items-center md:gap-3' : 'justify-between gap-3'}`}>
-                <div className={`min-w-0 ${isSidebarCollapsed ? 'md:hidden' : ''}`}>
-                  <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${globalSettingsLoading ? 'opacity-0' : 'opacity-100'}`}>
+            <div className="h-24 border-b border-border px-6 py-6">
+              <div className="flex h-full items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${
+                    globalSettingsLoading ? 'opacity-0' : 'opacity-100'
+                  } ${isSidebarCollapsed ? 'md:opacity-0' : ''}`}>
                     {siteTitle || '\u00A0'}
                   </h2>
-                  <p className="mt-1 font-sans text-[10px] uppercase tracking-widest text-muted-foreground">
+                  <p className={`mt-1 font-sans text-[10px] uppercase tracking-widest text-muted-foreground transition-opacity duration-300 ${
+                    isSidebarCollapsed ? 'md:opacity-0' : ''
+                  }`}>
                     {t('admin.console')}
                   </p>
                 </div>
@@ -576,13 +580,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                   )}
                 </AdminButton>
               </div>
-              {isSidebarCollapsed && (
-                <div className="mt-3 hidden justify-center md:flex">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-border text-xs font-bold uppercase tracking-wider text-foreground">
-                    {(siteTitle || user?.username || 'A').trim().substring(0, 1).toUpperCase()}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Navigation */}
