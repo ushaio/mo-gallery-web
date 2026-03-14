@@ -17,6 +17,8 @@ import {
   FolderOpen,
   Users,
   HardDrive,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
@@ -96,6 +98,8 @@ interface SidebarItem {
   icon: LucideIcon
 }
 
+const ADMIN_SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed'
+
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const { logout, token, user } = useAuth()
   const { settings: globalSettings, isLoading: globalSettingsLoading, refresh: refreshGlobalSettings } = useSettings()
@@ -106,6 +110,20 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  useEffect(() => {
+    const savedValue = window.localStorage.getItem(ADMIN_SIDEBAR_COLLAPSED_KEY)
+    setIsSidebarCollapsed(savedValue === 'true')
+  }, [])
+
+  const toggleSidebarCollapse = useCallback(() => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev
+      window.localStorage.setItem(ADMIN_SIDEBAR_COLLAPSED_KEY, String(next))
+      return next
+    })
+  }, [])
 
   const toggleTheme = () => {
     if (theme === 'system') setTheme('light')
@@ -337,29 +355,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, [])
 
   // --- Settings Handlers ---
-  const handleSaveSettings = useCallback(async () => {
-    if (!token || !settings || !originalSettings) return
-
-    // Check if R2 Public URL has changed
-    const r2UrlChanged = settings.storage_provider === 'r2' &&
-      settings.r2_public_url !== originalSettings.r2_public_url &&
-      originalSettings.r2_public_url?.trim()
-
-    // If URL changed, show confirmation dialog
-    if (r2UrlChanged) {
-      setUrlUpdateParams({
-        storageProvider: 'r2',
-        oldPublicUrl: originalSettings.r2_public_url,
-        newPublicUrl: settings.r2_public_url,
-      })
-      setShowUrlUpdateDialog(true)
-      return
-    }
-
-    // Save settings normally
-    await saveSettingsWithoutUrlUpdate()
-  }, [token, settings, originalSettings])
-
   const saveSettingsWithoutUrlUpdate = useCallback(async () => {
     if (!token || !settings) return
     setSettingsError('')
@@ -381,6 +376,30 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       setSettingsSaving(false)
     }
   }, [token, settings, refreshGlobalSettings, notify, t, handleUnauthorized])
+
+  const handleSaveSettings = useCallback(async () => {
+    if (!token || !settings || !originalSettings) return
+
+    // Check if R2 Public URL has changed
+    const r2UrlChanged =
+      settings.storage_provider === 'r2' &&
+      settings.r2_public_url !== originalSettings.r2_public_url &&
+      originalSettings.r2_public_url?.trim()
+
+    // If URL changed, show confirmation dialog
+    if (r2UrlChanged) {
+      setUrlUpdateParams({
+        storageProvider: 'r2',
+        oldPublicUrl: originalSettings.r2_public_url,
+        newPublicUrl: settings.r2_public_url,
+      })
+      setShowUrlUpdateDialog(true)
+      return
+    }
+
+    // Save settings normally
+    await saveSettingsWithoutUrlUpdate()
+  }, [token, settings, originalSettings, saveSettingsWithoutUrlUpdate])
 
   const handleConfirmUrlUpdate = useCallback(async (updateUrls: boolean) => {
     if (!token || !settings) return
@@ -502,6 +521,16 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     notify(`${photoIds.length} ${t('admin.notify_upload_success')}`)
   }, [token, refreshPhotos, notify, t])
 
+  const collapseSidebarLabel =
+    locale === 'zh'
+      ? (isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏')
+      : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
+
+  const sidebarToggleLabel =
+    locale === 'zh'
+      ? (isSidebarCollapsed ? '\u5c55\u5f00\u4fa7\u8fb9\u680f' : '\u6536\u8d77\u4fa7\u8fb9\u680f')
+      : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
+
   return (
     <UploadQueueProvider onUploadComplete={handleUploadComplete}>
       <AdminContext.Provider value={contextValue}>
@@ -515,19 +544,45 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
         {/* Sidebar */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-background border-r border-border transform transition-transform duration-300 md:translate-x-0 ${
-            isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
+          className={`fixed inset-y-0 left-0 z-40 w-64 bg-background border-r border-border transform transition-[width,transform] duration-300 md:translate-x-0 ${
+            isSidebarCollapsed ? 'md:w-20' : 'md:w-64'
+          } ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
         >
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="p-6 border-b border-border">
-              <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${globalSettingsLoading ? 'opacity-0' : 'opacity-100'}`}>
-                {siteTitle || '\u00A0'}
-              </h2>
-              <p className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground mt-1">
-                {t('admin.console')}
-              </p>
+            <div className={`border-b border-border ${isSidebarCollapsed ? 'p-3 md:px-3 md:py-4' : 'p-6'}`}>
+              <div className={`flex items-start ${isSidebarCollapsed ? 'md:flex-col md:items-center md:gap-3' : 'justify-between gap-3'}`}>
+                <div className={`min-w-0 ${isSidebarCollapsed ? 'md:hidden' : ''}`}>
+                  <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${globalSettingsLoading ? 'opacity-0' : 'opacity-100'}`}>
+                    {siteTitle || '\u00A0'}
+                  </h2>
+                  <p className="mt-1 font-sans text-[10px] uppercase tracking-widest text-muted-foreground">
+                    {t('admin.console')}
+                  </p>
+                </div>
+                <AdminButton
+                  onClick={toggleSidebarCollapse}
+                  adminVariant="icon"
+                  size="sm"
+                  className="hidden shrink-0 rounded-sm border border-border bg-background hover:bg-muted md:inline-flex"
+                  title={sidebarToggleLabel || collapseSidebarLabel}
+                  aria-label={sidebarToggleLabel || collapseSidebarLabel}
+                  aria-pressed={isSidebarCollapsed}
+                >
+                  {isSidebarCollapsed ? (
+                    <ChevronRight className="w-4 h-4" />
+                  ) : (
+                    <ChevronLeft className="w-4 h-4" />
+                  )}
+                </AdminButton>
+              </div>
+              {isSidebarCollapsed && (
+                <div className="mt-3 hidden justify-center md:flex">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-border text-xs font-bold uppercase tracking-wider text-foreground">
+                    {(siteTitle || user?.username || 'A').trim().substring(0, 1).toUpperCase()}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Navigation */}
@@ -542,24 +597,29 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
+                  title={isSidebarCollapsed ? item.label : undefined}
+                  aria-label={item.label}
                 >
-                  <item.icon className="w-4 h-4" />
-                  <span>{item.label}</span>
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className={isSidebarCollapsed ? 'md:hidden' : ''}>{item.label}</span>
                 </Link>
               ))}
             </nav>
 
             {/* Footer */}
-            <div className="p-4 border-t border-border space-y-3">
+            <div className={`space-y-3 border-t border-border p-4 ${isSidebarCollapsed ? 'md:px-3' : ''}`}>
               {/* Settings Row */}
-              <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 ${isSidebarCollapsed ? 'md:flex-col' : ''}`}>
                 {/* Theme Toggle */}
                 <AdminButton
                   onClick={toggleTheme}
                   adminVariant="outline"
                   size="sm"
-                  className="flex-1 flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm"
+                  className={`flex-1 flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm ${
+                    isSidebarCollapsed ? 'md:w-full md:justify-center md:px-0' : ''
+                  }`}
                   title={t('nav.toggle_theme')}
+                  aria-label={t('nav.toggle_theme')}
                 >
                   {!mounted ? (
                     <Monitor className="w-4 h-4" />
@@ -570,7 +630,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                   ) : (
                     <Moon className="w-4 h-4" />
                   )}
-                  <span className="text-[10px] font-bold uppercase tracking-widest">
+                  <span className={isSidebarCollapsed ? 'md:hidden' : 'text-[10px] font-bold uppercase tracking-widest'}>
                     {theme === 'system' ? t('nav.system') : theme === 'light' ? t('nav.light') : t('nav.dark')}
                   </span>
                 </AdminButton>
@@ -580,7 +640,11 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                   onClick={toggleLanguage}
                   adminVariant="outline"
                   size="sm"
-                  className="flex-1 flex items-center justify-center px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm"
+                  className={`flex-1 flex items-center justify-center px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm ${
+                    isSidebarCollapsed ? 'md:w-full md:px-0' : ''
+                  }`}
+                  title={locale === 'zh' ? '\u5207\u6362\u8bed\u8a00' : 'Toggle language'}
+                  aria-label={locale === 'zh' ? '\u5207\u6362\u8bed\u8a00' : 'Toggle language'}
                 >
                   {locale === 'zh' ? 'EN' : '中'}
                 </AdminButton>
@@ -590,11 +654,11 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               <div className="-mx-4 border-t border-border" />
 
               {/* User Info */}
-              <div className="flex items-center space-x-3 px-2">
+              <div className={`flex items-center px-2 ${isSidebarCollapsed ? 'md:justify-center md:px-0' : 'space-x-3'}`}>
                 <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-xs text-primary-foreground font-bold">
                   {user?.username?.substring(0, 1).toUpperCase() || 'A'}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className={`flex-1 min-w-0 ${isSidebarCollapsed ? 'md:hidden' : ''}`}>
                   <p className="text-xs font-bold truncate uppercase tracking-wider">
                     {user?.username || 'ADMIN'}
                   </p>
@@ -609,17 +673,23 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                 onClick={() => setShowLogoutConfirm(true)}
                 adminVariant="destructiveOutline"
                 size="lg"
-                className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-bold uppercase tracking-widest rounded-sm"
+                className={`w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-bold uppercase tracking-widest rounded-sm ${
+                  isSidebarCollapsed ? 'md:px-0' : ''
+                }`}
+                title={isSidebarCollapsed ? t('nav.logout') : undefined}
+                aria-label={t('nav.logout')}
               >
                 <LogOut className="w-4 h-4" />
-                <span>{t('nav.logout')}</span>
+                <span className={isSidebarCollapsed ? 'md:hidden' : ''}>{t('nav.logout')}</span>
               </AdminButton>
             </div>
           </div>
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden">
+        <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${
+          isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
+        }`}>
           <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
             <div className="flex items-center">
               <AdminButton

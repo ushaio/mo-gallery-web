@@ -15,6 +15,8 @@ import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
 import { ResizableImage } from '@/components/tiptap-extensions/ResizableImage'
 import { ImageGroup } from '@/components/tiptap-extensions/ImageGroup'
+import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
+import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
@@ -26,9 +28,6 @@ import {
   Italic,
   Underline as UnderlineIcon,
   Strikethrough,
-  Heading1,
-  Heading2,
-  Heading3,
   List,
   ListOrdered,
   Quote,
@@ -74,12 +73,12 @@ function convertMarkdownToHtml(input: string): string {
   
   let result = input.replace(
     /!\[([^\]]*)\]\(([^)\s]+)(?:\s+=(\d+)x(\d+))?\)/g,
-    (match, alt, url, width, height) => {
-      let style = ''
+    (_match, alt, url, width) => {
+      let widthAttr = ''
       if (width) {
-        style = ` style="width: ${width}px; max-width: 100%;"`
+        widthAttr = ` width="${width}"`
       }
-      return `<img src="${url}" alt="${alt}"${style} />`
+      return `<img src="${url}" alt="${alt}"${widthAttr} />`
     }
   )
   
@@ -178,7 +177,6 @@ function ToolbarDivider() {
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
   ({ value, onChange, placeholder, onPasteFiles, className }, ref) => {
-    const editorRef = useRef<ReturnType<typeof useEditor> | null>(null)
     const currentValueRef = useRef(value)
     const onPasteFilesRef = useRef(onPasteFiles)
     const [showLinkInput, setShowLinkInput] = useState(false)
@@ -205,6 +203,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const editor = useEditor({
       extensions: [
+        PastedBlockStyle,
         StarterKit.configure({
           heading: {
             levels: [1, 2, 3],
@@ -220,9 +219,18 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             class: 'text-primary underline',
           },
         }),
-        ResizableImage,
+        ResizableImage.configure({
+          resize: {
+            enabled: true,
+            directions: ['bottom-left', 'bottom-right', 'top-left', 'top-right'],
+            minWidth: 100,
+            minHeight: 100,
+            alwaysPreserveAspectRatio: true,
+          },
+        }),
         ImageGroup,
         Underline,
+        PastedStyleMark,
         TextAlign.configure({
           types: ['heading', 'paragraph'],
         }),
@@ -267,8 +275,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       },
     })
 
-    editorRef.current = editor
-
     const focusEditor = useCallback(() => {
       editor?.commands.focus()
     }, [editor])
@@ -291,8 +297,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           if (isMarkdownImageSyntax(content)) {
             const attrs = convertMarkdownImageToHtmlAttrs(content)
             if (attrs) {
-              const style = attrs.width ? ` style="width: ${attrs.width}px; max-width: 100%;"` : ''
-              processedContent = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${style} />`
+              const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
+              processedContent = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${widthAttr} />`
             }
           }
           
@@ -319,8 +325,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         if (isMarkdownImageSyntax(nextValue)) {
           const attrs = convertMarkdownImageToHtmlAttrs(nextValue)
           if (attrs) {
-            const style = attrs.width ? ` style="width: ${attrs.width}px; max-width: 100%;"` : ''
-            processedNext = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${style} />`
+            const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
+            processedNext = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${widthAttr} />`
           }
         }
         
@@ -337,7 +343,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         
         // Find the last image node and update its width
         const { state } = editor
-        const { tr } = state
         let found = false
         let imagePos = -1
         

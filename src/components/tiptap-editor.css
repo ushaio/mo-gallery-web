@@ -172,39 +172,73 @@
   }
 }
 
-/* Resizable Image NodeView */
-.tiptap-editor .ProseMirror .resizable-image-wrapper {
-  display: inline-block;
+/* Tiptap official resizable image */
+.tiptap-editor .ProseMirror [data-resize-container][data-node='image'] {
+  width: fit-content;
   max-width: 100%;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
-  line-height: 0;
 }
 
-.tiptap-editor .ProseMirror .resizable-image-wrapper img {
+.tiptap-editor .ProseMirror [data-resize-container][data-node='image']:has(img[data-align='center']) {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.tiptap-editor .ProseMirror [data-resize-container][data-node='image']:has(img[data-align='right']) {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.tiptap-editor .ProseMirror [data-resize-container][data-node='image'] img {
+  display: block;
+  max-width: 100%;
+  height: auto;
   border-radius: 0.5rem;
   margin: 0;
 }
 
+.tiptap-editor .ProseMirror [data-resize-handle] {
+  width: 0.75rem;
+  height: 0.75rem;
+  background: hsl(var(--primary));
+  border: 1px solid hsl(var(--background));
+  border-radius: 9999px;
+}
+
 /* Image Group NodeView */
 .tiptap-editor .ProseMirror .image-group-wrapper {
+  width: fit-content;
+  max-width: 100%;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.tiptap-editor .ProseMirror .image-group-wrapper.mx-auto {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.tiptap-editor .ProseMirror .image-group-wrapper.ml-auto {
+  margin-left: auto;
+  margin-right: 0;
 }
 
 .tiptap-editor .ProseMirror .image-group-content {
   display: flex;
   gap: 0.5rem;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
 }
 
-.tiptap-editor .ProseMirror .image-group-content > .resizable-image-wrapper {
+.tiptap-editor .ProseMirror .image-group-content > [data-resize-container][data-node='image'] {
   flex: 1;
   min-width: 0;
-  display: block;
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
-.tiptap-editor .ProseMirror .image-group-content > .resizable-image-wrapper img {
+.tiptap-editor .ProseMirror .image-group-content > [data-resize-container][data-node='image'] img {
   width: 100% !important;
   height: auto;
 }

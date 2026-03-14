@@ -48,3 +48,4 @@ public/uploads
 .ace-tool/
 .env.local
 .codex
+.vscode

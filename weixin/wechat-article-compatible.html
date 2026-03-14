@@ -1,0 +1,186 @@
+<div style="margin:0 auto;max-width:677px;background:#ffffff;color:#333333;">
+  <div style="padding:0 12px 36px;">
+    <p style="margin:0 0 14px;text-align:center;">
+      <span style="display:inline-block;padding:6px 14px;background:#2f241f;color:#f8efe7;font-size:12px;letter-spacing:2px;">
+        WEEKEND VISUAL STORY
+      </span>
+    </p>
+
+    <p style="margin:0 0 12px;text-align:center;font-size:30px;line-height:1.5;color:#2b1d16;font-weight:bold;">
+      把春天写进城市角落：
+      <br />
+      一篇更偏微信公众号兼容的图文混排样稿
+    </p>
+
+    <p style="margin:0 0 20px;text-align:center;font-size:14px;line-height:1.9;color:#8a6a56;">
+      这个版本尽量减少复杂布局，重点测试微信粘贴后的保留效果
+    </p>
+
+    <p style="margin:0 0 8px;">
+      <img
+        src="https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1400&q=80"
+        alt="城市街角咖啡馆"
+        style="display:block;width:100%;"
+      />
+    </p>
+    <p style="margin:0 0 22px;text-align:center;font-size:12px;line-height:1.8;color:#9e8777;">
+      封面图说明：单张大图通常是公众号里最稳定的图片形式。
+    </p>
+
+    <p style="margin:0 0 16px;font-size:16px;line-height:2;color:#4d372c;text-indent:2em;">
+      如果你的目标是做一个支持公众号文章编写的编辑器，那么一定要把
+      <strong style="color:#1f1713;">浏览器效果</strong>
+      和
+      <strong style="color:#1f1713;">微信公众号粘贴效果</strong>
+      分开看。前者是标准 HTML/CSS，后者是经过微信清洗后的受限富文本。
+    </p>
+
+    <p style="margin:0 0 16px;font-size:16px;line-height:2;color:#4d372c;text-indent:2em;">
+      所以像
+      <span style="background:#fde7d6;color:#8f3d17;">高亮重点</span>、
+      <span style="color:#c24d2c;font-weight:bold;">彩色强调</span>、
+      <strong>粗体句子</strong>
+      这些通常比较稳；但
+      <span style="color:#8a6a56;">并排布局、复杂阴影、负边距、渐变和定位</span>
+      就容易被处理掉。
+    </p>
+
+    <div style="margin:0 0 26px;padding:14px 14px;background:#f8efe8;border-left:4px solid #cb7c52;">
+      <p style="margin:0;font-size:17px;line-height:1.9;color:#5a3b2b;font-weight:bold;">
+        “公众号不是一个完整浏览器，它更像一个会挑选样式的内容容器。”
+      </p>
+    </div>
+
+    <p style="margin:0 0 12px;font-size:22px;line-height:1.6;color:#2d1f18;font-weight:bold;">
+      01 / 稳定保留的文字样式
+    </p>
+
+    <p style="margin:0 0 16px;font-size:16px;line-height:2;color:#4d372c;">
+      一般来说，这几类样式保留率更高：标题字号、加粗、文字颜色、背景色高亮、引用块、分割线、单图、图片说明、列表。你的编辑器最好优先把这些能力打磨稳定。
+    </p>
+
+    <p style="margin:0 0 16px;font-size:16px;line-height:2;color:#4d372c;">
+      例如：
+      <span style="color:#b75a34;">重点色标记</span>、
+      <span style="background:#fff0c9;">背景高亮</span>、
+      <span style="font-size:13px;color:#8b6f62;">小号辅助说明</span>
+      和
+      <strong>粗体强调</strong>
+      ，通常都比复杂排版更可靠。
+    </p>
+
+    <p style="margin:20px 0 12px;font-size:22px;line-height:1.6;color:#2d1f18;font-weight:bold;">
+      02 / 双图测试：使用表格容器比普通并排更稳
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="width:49%;vertical-align:top;">
+          <img
+            src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1000&q=80"
+            alt="咖啡与手账"
+            style="display:block;width:100%;"
+          />
+          <p style="margin:8px 0 0;font-size:12px;line-height:1.8;color:#9a7765;text-align:center;">
+            左图：桌面静物
+          </p>
+        </td>
+        <td style="width:2%;">&nbsp;</td>
+        <td style="width:49%;vertical-align:top;">
+          <img
+            src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1000&q=80"
+            alt="窗边餐桌"
+            style="display:block;width:100%;"
+          />
+          <p style="margin:8px 0 0;font-size:12px;line-height:1.8;color:#9a7765;text-align:center;">
+            右图：空间氛围
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:16px 0 0;font-size:16px;line-height:2;color:#4d372c;text-indent:2em;">
+      如果这一段在公众号里仍然不能稳定并排，那就说明你的最终导出策略不能依赖多列 HTML。对于公众号发布，最稳的办法通常是把多图拼贴提前合成为
+      <strong style="color:#2f241f;">一张成品图</strong>
+      再插入文章。
+    </p>
+
+    <p style="margin:20px 0 12px;font-size:22px;line-height:1.6;color:#2d1f18;font-weight:bold;">
+      03 / 三图测试：合集内容的兼容方案
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="width:32%;vertical-align:top;">
+          <img
+            src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80"
+            alt="早晨"
+            style="display:block;width:100%;"
+          />
+          <p style="margin:8px 0 0;text-align:center;font-size:12px;line-height:1.8;color:#9a7765;">
+            早晨
+          </p>
+        </td>
+        <td style="width:2%;">&nbsp;</td>
+        <td style="width:32%;vertical-align:top;">
+          <img
+            src="https://images.unsplash.com/photo-1511988617509-a57c8a288659?auto=format&fit=crop&w=800&q=80"
+            alt="午后"
+            style="display:block;width:100%;"
+          />
+          <p style="margin:8px 0 0;text-align:center;font-size:12px;line-height:1.8;color:#9a7765;">
+            午后
+          </p>
+        </td>
+        <td style="width:2%;">&nbsp;</td>
+        <td style="width:32%;vertical-align:top;">
+          <img
+            src="https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=800&q=80"
+            alt="黄昏"
+            style="display:block;width:100%;"
+          />
+          <p style="margin:8px 0 0;text-align:center;font-size:12px;line-height:1.8;color:#9a7765;">
+            黄昏
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:16px 0 0;font-size:16px;line-height:2;color:#4d372c;">
+      这类三图并排在微信里有时候能保住，有时候会被改写。如果你要求的是
+      <strong style="color:#2f241f;">结果绝对一致</strong>，
+      就不要把它当纯 HTML 布局问题，而要把它视为
+      <strong style="color:#2f241f;">图片生成问题</strong>。
+    </p>
+
+    <p style="margin:20px 0 12px;font-size:22px;line-height:1.6;color:#2d1f18;font-weight:bold;">
+      04 / 更适合产品落地的导出策略
+    </p>
+
+    <ol style="margin:0;padding-left:22px;color:#4d372c;">
+      <li style="margin:0 0 8px;font-size:16px;line-height:1.9;">
+        单列文字、标题、引用、分割线、单图，直接导出为微信兼容 HTML。
+      </li>
+      <li style="margin:0 0 8px;font-size:16px;line-height:1.9;">
+        双图、三图、拼贴、卡片组合，优先导出为合成图片。
+      </li>
+      <li style="margin:0 0 8px;font-size:16px;line-height:1.9;">
+        编辑器内部保留完整 block 模型，对外提供“网页版导出”和“公众号版导出”两套渲染规则。
+      </li>
+      <li style="margin:0;font-size:16px;line-height:1.9;">
+        公众号版以稳定优先，不追求浏览器级复杂样式。
+      </li>
+    </ol>
+
+    <div style="margin:28px 0 0;padding:18px 16px;background:#f6efe8;text-align:center;">
+      <p style="margin:0 0 10px;font-size:22px;line-height:1.6;color:#2f241f;font-weight:bold;">
+        结论
+      </p>
+      <p style="margin:0;font-size:16px;line-height:2;color:#5a453b;">
+        公众号里“文字样式”通常可控，“复杂多栏布局”通常不稳定。
+        <br />
+        真正可落地的方案不是继续堆 CSS，而是给编辑器做一层微信专用导出策略。
+      </p>
+    </div>
+  </div>
+</div>

@@ -1,6 +1,4 @@
 import Image from '@tiptap/extension-image'
-import { ReactNodeViewRenderer } from '@tiptap/react'
-import ResizableImageNodeView from '@/components/tiptap-extensions/ResizableImageNodeView'
 
 function parsePixelValue(value: string | null): number | null {
   if (!value) {
@@ -114,10 +112,6 @@ export const ResizableImage = Image.extend({
         return commands.updateAttributes('image', { align })
       },
     }
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(ResizableImageNodeView)
   },
 })
 
