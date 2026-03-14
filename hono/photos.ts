@@ -10,6 +10,18 @@ import sharp from 'sharp'
 import path from 'path'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
+const THUMBNAIL_EXTENSION = '.webp'
+
+function buildThumbnailFilename(filename: string): string {
+  const parsed = path.parse(filename)
+  return `thumb-${parsed.name}${THUMBNAIL_EXTENSION}`
+}
+
+function buildThumbnailKey(originalKey: string): string {
+  const parsed = path.posix.parse(originalKey)
+  const thumbnailFilename = buildThumbnailFilename(parsed.base)
+  return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
+}
 
 /**
  * Build storage configuration from database settings
@@ -324,7 +336,7 @@ photos.post('/admin/photos', async (c) => {
               fit: 'inside',
               withoutEnlargement: true,
             })
-            .jpeg({ quality: 80 })
+            .webp({ quality: 80 })
             .toBuffer(),
         ])
         return { metadata, thumbnailBuffer }
@@ -344,7 +356,7 @@ photos.post('/admin/photos', async (c) => {
       .join('')
     const ext = path.extname(file.name)
     const filename = `${randomName}${ext}`
-    const thumbnailFilename = `thumb-${filename}`
+    const thumbnailFilename = buildThumbnailFilename(filename)
 
     // Upload via storage provider (original + thumbnail in parallel)
     const uploadResult = await storage.upload(
@@ -359,7 +371,7 @@ photos.post('/admin/photos', async (c) => {
         buffer: thumbnailBuffer,
         filename: thumbnailFilename,
         path: storagePath,
-        contentType: 'image/jpeg',
+        contentType: 'image/webp',
         useFullPath: storagePathFull,
       }
     )
@@ -509,14 +521,7 @@ photos.delete('/admin/photos/:id', async (c) => {
         // Derive thumbnail key from storage key
         let thumbnailKey: string | undefined
         if (deleteThumbnail && photo.storageKey) {
-          const lastSlashIndex = photo.storageKey.lastIndexOf('/')
-          if (lastSlashIndex >= 0) {
-            const pathPart = photo.storageKey.substring(0, lastSlashIndex + 1)
-            const filenamePart = photo.storageKey.substring(lastSlashIndex + 1)
-            thumbnailKey = `${pathPart}thumb-${filenamePart}`
-          } else {
-            thumbnailKey = `thumb-${photo.storageKey}`
-          }
+          thumbnailKey = buildThumbnailKey(photo.storageKey)
         }
 
         // Delete based on user selection
@@ -577,12 +582,7 @@ photos.patch('/admin/photos/:id', async (c) => {
       // Derive thumbnail key
       let thumbnailKey: string | undefined
       if (photo.storageKey) {
-        const lastSlash = photo.storageKey.lastIndexOf('/')
-        if (lastSlash >= 0) {
-          thumbnailKey = `${photo.storageKey.substring(0, lastSlash + 1)}thumb-${photo.storageKey.substring(lastSlash + 1)}`
-        } else {
-          thumbnailKey = `thumb-${photo.storageKey}`
-        }
+        thumbnailKey = buildThumbnailKey(photo.storageKey)
       }
 
       const moveResult = await storage.move(
@@ -858,7 +858,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     const lastSlash = storageKey.lastIndexOf('/')
     const storagePath = lastSlash >= 0 ? storageKey.substring(0, lastSlash) : ''
     const filename = lastSlash >= 0 ? storageKey.substring(lastSlash + 1) : storageKey
-    const thumbnailFilename = `thumb-${filename}`
+    const thumbnailFilename = buildThumbnailFilename(filename)
 
     const uploadOriginal = !missingType || missingType === 'original' || missingType === 'both'
     const uploadThumb = !missingType || missingType === 'thumbnail' || missingType === 'both'
@@ -875,26 +875,26 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
           const sharpInstance = sharp(buffer)
           const [meta, thumb] = await Promise.all([
             sharpInstance.metadata(),
-            uploadThumb ? sharp(buffer).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer() : null,
+            uploadThumb ? sharp(buffer).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer() : null,
           ])
           return { metadata: meta, thumbnailBuffer: thumb }
         })(),
       ])
       dominantColors = await extractDominantColors(buffer)
     } else if (uploadThumb) {
-      thumbnailBuffer = await sharp(buffer).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer()
+      thumbnailBuffer = await sharp(buffer).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer()
     }
 
     let uploadResult
     if (uploadOriginal && uploadThumb && thumbnailBuffer) {
       uploadResult = await storage.upload(
         { buffer, filename, path: storagePath, contentType: file.type },
-        { buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: 'image/jpeg' }
+        { buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: 'image/webp' }
       )
     } else if (uploadOriginal) {
       uploadResult = await storage.upload({ buffer, filename, path: storagePath, contentType: file.type })
     } else if (uploadThumb && thumbnailBuffer) {
-      uploadResult = await storage.upload({ buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: 'image/jpeg' })
+      uploadResult = await storage.upload({ buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: 'image/webp' })
     }
 
     const updateData: Record<string, unknown> = {}
@@ -999,20 +999,20 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const thumbnailBuffer = await sharp(buffer)
       .rotate()
       .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 80 })
+      .webp({ quality: 80 })
       .toBuffer()
 
     const storageKey = photo.storageKey || ''
     const lastSlash = storageKey.lastIndexOf('/')
     const storagePath = lastSlash >= 0 ? storageKey.substring(0, lastSlash) : ''
     const filename = lastSlash >= 0 ? storageKey.substring(lastSlash + 1) : storageKey
-    const thumbnailFilename = `thumb-${filename}`
+    const thumbnailFilename = buildThumbnailFilename(filename)
 
     const uploadResult = await storage.upload({
       buffer: thumbnailBuffer,
       filename: thumbnailFilename,
       path: storagePath,
-      contentType: 'image/jpeg',
+      contentType: 'image/webp',
     })
 
     const updated = await db.photo.update({
