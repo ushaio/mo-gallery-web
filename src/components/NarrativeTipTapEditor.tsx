@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, useEditorState, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
@@ -86,6 +86,18 @@ function convertMarkdownToHtml(input: string): string {
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     '<a href="$2">$1</a>'
   )
+
+  result = result.replace(
+    /^(?:>\s?.+(?:\r?\n>\s?.+)*)/gm,
+    (match) => {
+      const quoteContent = match
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^>\s?/, '').trim())
+        .join('<br>')
+
+      return `<blockquote><p>${quoteContent}</p></blockquote>`
+    }
+  )
   
   result = result
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
@@ -99,7 +111,7 @@ function convertMarkdownToHtml(input: string): string {
     .replace(/^\s*\d+\.\s+/gm, '<li>')
     .replace(/\n/g, '<br>')
   
-  if (!result.includes('<') && !result.includes('>')) {
+  if (!/<[a-z][\s\S]*>/i.test(result)) {
     result = result.split('<br>').map(p => `<p>${p}</p>`).join('')
   }
   
@@ -147,17 +159,19 @@ function isMarkdownContent(content: string): boolean {
 
 interface ToolbarButtonProps {
   onClick: () => void
+  onMouseDown?: (event: React.MouseEvent<HTMLButtonElement>) => void
   isActive?: boolean
   disabled?: boolean
   title: string
   children: React.ReactNode
 }
 
-function ToolbarButton({ onClick, isActive, disabled, title, children }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, children }: ToolbarButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseDown={onMouseDown}
       disabled={disabled}
       title={title}
       className={`p-1.5 rounded transition-colors ${
@@ -254,6 +268,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       ],
       content: processedContent || '',
       immediatelyRender: false,
+      shouldRerenderOnTransaction: true,
       onUpdate: ({ editor }) => {
         const html = editor.getHTML()
         currentValueRef.current = html
@@ -261,7 +276,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       },
       editorProps: {
         attributes: {
-          class: 'prose prose-sm sm:prose max-w-none focus:outline-none min-h-[300px] p-4',
+          class: 'tiptap focus:outline-none',
         },
         handlePaste: (view, event) => {
           const files = Array.from(event.clipboardData?.files || []).filter((file) =>
@@ -272,6 +287,59 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           void onPasteFilesRef.current?.(files)
           return true
         },
+      },
+    })
+
+    const editorUiState = useEditorState({
+      editor,
+      selector: ({ editor: currentEditor }) => {
+        if (!currentEditor) {
+          return {
+            isBold: false,
+            isItalic: false,
+            isUnderline: false,
+            isStrike: false,
+            isCode: false,
+            isHeading1: false,
+            isHeading2: false,
+            isHeading3: false,
+            isBulletList: false,
+            isOrderedList: false,
+            isBlockquote: false,
+            isLink: false,
+            isAlignLeft: false,
+            isAlignCenter: false,
+            isAlignRight: false,
+            isImageSelected: false,
+            isImageGroupSelected: false,
+          }
+        }
+
+        return {
+          isBold: currentEditor.isActive('bold'),
+          isItalic: currentEditor.isActive('italic'),
+          isUnderline: currentEditor.isActive('underline'),
+          isStrike: currentEditor.isActive('strike'),
+          isCode: currentEditor.isActive('code'),
+          isHeading1: currentEditor.isActive('heading', { level: 1 }),
+          isHeading2: currentEditor.isActive('heading', { level: 2 }),
+          isHeading3: currentEditor.isActive('heading', { level: 3 }),
+          isBulletList: currentEditor.isActive('bulletList'),
+          isOrderedList: currentEditor.isActive('orderedList'),
+          isBlockquote: currentEditor.isActive('blockquote'),
+          isLink: currentEditor.isActive('link'),
+          isAlignLeft: currentEditor.isActive({ textAlign: 'left' })
+            || currentEditor.isActive('image', { align: null })
+            || currentEditor.isActive('imageGroup', { align: null }),
+          isAlignCenter: currentEditor.isActive({ textAlign: 'center' })
+            || currentEditor.isActive('image', { align: 'center' })
+            || currentEditor.isActive('imageGroup', { align: 'center' }),
+          isAlignRight: currentEditor.isActive({ textAlign: 'right' })
+            || currentEditor.isActive('image', { align: 'right' })
+            || currentEditor.isActive('imageGroup', { align: 'right' }),
+          isImageSelected: currentEditor.isActive('image'),
+          isImageGroupSelected: currentEditor.isActive('imageGroup'),
+        }
       },
     })
 
@@ -431,17 +499,49 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const setTextAlign = (align: 'left' | 'center' | 'right') => {
       if (!editor) return
+
       const alignValue = align === 'left' ? null : align
-      if (editor.isActive('image')) {
+
+      if (editorUiState?.isImageSelected) {
         editor.chain().focus().updateAttributes('image', { align: alignValue }).run()
         return
       }
-      if (editor.isActive('imageGroup')) {
+
+      if (editorUiState?.isImageGroupSelected) {
         editor.chain().focus().updateAttributes('imageGroup', { align: alignValue }).run()
         return
       }
-      editor.chain().focus().setTextAlign(align).run()
+
+      editor
+        .chain()
+        .focus()
+        .command(({ state, tr }) => {
+          const { from, to, empty } = state.selection
+
+          if (empty) {
+            return true
+          }
+
+          state.doc.nodesBetween(from, to, (node, pos) => {
+            if (node.type.name !== 'image' && node.type.name !== 'imageGroup') {
+              return
+            }
+
+            tr.setNodeMarkup(pos, undefined, {
+              ...node.attrs,
+              align: alignValue,
+            })
+          })
+
+          return true
+        })
+        .setTextAlign(align)
+        .run()
     }
+
+    const preserveSelectionOnToolbarMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+    }, [])
 
     const undo = () => editor?.chain().focus().undo().run()
     const redo = () => editor?.chain().focus().redo().run()
@@ -499,13 +599,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
           <ToolbarDivider />
 
-          <ToolbarButton onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' }) || editor.isActive('image', { align: null }) || editor.isActive('imageGroup', { align: null })} title="左对齐">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' }) || editor.isActive('image', { align: null }) || editor.isActive('imageGroup', { align: null })} title="左对齐">
             <AlignLeft className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' }) || editor.isActive('image', { align: 'center' }) || editor.isActive('imageGroup', { align: 'center' })} title="居中">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' }) || editor.isActive('image', { align: 'center' }) || editor.isActive('imageGroup', { align: 'center' })} title="居中">
             <AlignCenter className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' }) || editor.isActive('image', { align: 'right' }) || editor.isActive('imageGroup', { align: 'right' })} title="右对齐">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' }) || editor.isActive('image', { align: 'right' }) || editor.isActive('imageGroup', { align: 'right' })} title="右对齐">
             <AlignRight className="w-4 h-4" />
           </ToolbarButton>
 
