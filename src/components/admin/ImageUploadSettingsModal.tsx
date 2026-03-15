@@ -146,7 +146,6 @@ export function ImageUploadSettingsModal({
                 onChange={(event) => setStorageProvider(event.target.value)}
                 className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
-                <option value="">{t('admin.use_default') || 'Use Default'}</option>
                 <option value="local">Local Storage</option>
                 <option value="r2">Cloudflare R2</option>
                 <option value="github">GitHub</option>
