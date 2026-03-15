@@ -149,7 +149,7 @@ export function StoryEditorView({
         <AdminButton onClick={onSave} disabled={saving} adminVariant="primary" size="lg" className="flex h-10 items-center gap-2 px-5 shadow-none"><Save className="h-4 w-4" /><span>{saving ? t('ui.saving') : t('admin.save')}</span></AdminButton>
       </div>
 
-      <div className={cn('relative flex min-h-0 flex-1 gap-4 overflow-hidden', isImmersiveMode && 'gap-0')}>
+      <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
         <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
           <div className={cn('flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between')}>
             <div className="flex flex-wrap items-center gap-4">
@@ -184,8 +184,18 @@ export function StoryEditorView({
           </div>
         </div>
 
-        <div className={cn('z-10 -mx-2 hidden flex-col justify-center md:flex', isImmersiveMode && 'mr-2')}>
-          <button type="button" onClick={togglePhotoPanelCollapse} className="relative flex h-14 w-6 shrink-0 items-center justify-center border border-border bg-background transition-all hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" aria-label={isPhotoPanelCollapsed ? (t('common.expand') || 'Expand related photos') : (t('common.collapse') || 'Collapse related photos')} aria-pressed={isPhotoPanelCollapsed}>{isPhotoPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>
+        <div className="relative z-10 hidden w-0 shrink-0 md:block">
+          <button
+            type="button"
+            onClick={togglePhotoPanelCollapse}
+            className="absolute left-1/2 top-1/2 z-10 flex h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none"
+            aria-label={isPhotoPanelCollapsed ? (t('common.expand') || 'Expand related photos') : (t('common.collapse') || 'Collapse related photos')}
+            aria-pressed={isPhotoPanelCollapsed}
+          >
+            <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
+              {isPhotoPanelCollapsed ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </div>
+          </button>
         </div>
 
         <div className={cn('h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
