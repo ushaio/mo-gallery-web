@@ -174,10 +174,10 @@ function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, childr
       onMouseDown={onMouseDown}
       disabled={disabled}
       title={title}
-      className={`p-1.5 rounded transition-colors ${
+      className={`p-1.5 sm:p-2 transition-all ${
         isActive
-          ? 'bg-primary/20 text-primary'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          ? 'bg-primary/15 text-primary shadow-sm'
+          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
       } disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       {children}
@@ -548,15 +548,15 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     if (!editor) {
       return (
-        <div className={`h-full flex items-center justify-center bg-muted/30 rounded-lg ${className || ''}`}>
-          <div className="animate-pulse w-full h-full min-h-[300px] bg-muted/50 rounded-lg" />
+        <div className={`h-full flex items-center justify-center bg-muted/30 ${className || ''}`}>
+          <div className="animate-pulse w-full h-full min-h-[300px] bg-muted/50" />
         </div>
       )
     }
 
     return (
       <div className={`tiptap-editor h-full flex flex-col ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
-        <div className="flex flex-wrap items-center gap-0.5 p-2 border-b border-border bg-muted/20 rounded-t-lg">
+        <div className="custom-scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border bg-muted/30 p-2 whitespace-nowrap">
           <ToolbarButton onClick={toggleH1} isActive={editor.isActive('heading', { level: 1 })} title="标题1">
             <span className="text-xs font-bold">H1</span>
           </ToolbarButton>
@@ -616,13 +616,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               <LinkIcon className="w-4 h-4" />
             </ToolbarButton>
             {showLinkInput && (
-              <div className="absolute top-full left-0 mt-1 flex items-center gap-1 p-2 bg-background border border-border rounded-lg shadow-lg z-10">
+              <div className="absolute top-full left-0 z-10 mt-1 flex items-center gap-1 border border-border bg-background p-2 shadow-lg">
                 <input
                   type="url"
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
                   placeholder="输入链接 URL"
-                  className="px-2 py-1 text-xs border border-border rounded focus:border-primary outline-none w-40"
+                  className="w-40 border border-border px-2 py-1 text-xs focus:border-primary outline-none"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') setLink()
                     if (e.key === 'Escape') setShowLinkInput(false)
@@ -631,7 +631,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 />
                 <button
                   onClick={setLink}
-                  className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
                 >
                   确认
                 </button>
@@ -644,13 +644,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               <ImageIcon className="w-4 h-4" />
             </ToolbarButton>
             {showImageInput && (
-              <div className="absolute top-full left-0 mt-1 flex items-center gap-1 p-2 bg-background border border-border rounded-lg shadow-lg z-10">
+              <div className="absolute top-full left-0 z-10 mt-1 flex items-center gap-1 border border-border bg-background p-2 shadow-lg">
                 <input
                   type="url"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
                   placeholder="输入图片 URL"
-                  className="px-2 py-1 text-xs border border-border rounded focus:border-primary outline-none w-40"
+                  className="w-40 border border-border px-2 py-1 text-xs focus:border-primary outline-none"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addImage()
                     if (e.key === 'Escape') setShowImageInput(false)
@@ -659,7 +659,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 />
                 <button
                   onClick={addImage}
-                  className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
                 >
                   确认
                 </button>

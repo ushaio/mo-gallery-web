@@ -65,7 +65,7 @@ const NarrativeTipTapEditor = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex-1 flex items-center justify-center border border-border bg-card/30 rounded-lg">
+      <div className="flex-1 flex items-center justify-center border border-border bg-card/30">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     )
@@ -1175,7 +1175,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               <input
                 type="text"
                 placeholder={t('admin.search_placeholder') || '搜索...'}
-                className="px-3 py-2 text-sm bg-background border border-border rounded-md focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all shadow-sm w-48"
+                className="px-3 py-2 text-sm bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all w-48"
               />
               <AdminSelect
                 value={statusFilter}
@@ -1189,7 +1189,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               onClick={handleCreateStory}
               adminVariant="primary"
               size="lg"
-              className="flex items-center rounded-md"
+              className="flex items-center"
             >
               <Plus className="w-4 h-4 mr-2" />
               {t('ui.create_story')}
@@ -1210,7 +1210,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                 .map((story) => (
                 <div
                   key={story.id}
-                  className="flex items-center justify-between p-5 bg-card border border-border hover:border-primary/50 hover:shadow-sm transition-all group rounded-xl"
+                  className="flex items-center justify-between border border-border bg-card px-5 py-5 transition-colors group hover:border-primary/50"
                 >
                   <div
                     className="flex-1 min-w-0"
@@ -1222,7 +1222,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                         {story.title || t('story.untitled')}
                       </h4>
                       <span
-                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+                        className={`text-[10px] font-bold uppercase px-2 py-0.5 border shrink-0 ${
                           story.isPublished
                             ? 'border-green-500/30 text-green-600 bg-green-500/10 dark:text-green-400'
                             : 'border-slate-500/30 text-slate-600 bg-slate-500/10 dark:text-slate-400'
@@ -1289,8 +1289,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                 </div>
               ))}
               {stories.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 px-4 border border-dashed border-border rounded-xl bg-card/50 text-center">
-                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 py-20 px-4 text-center">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
                     <BookOpen className="w-8 h-8 text-muted-foreground/50" />
                   </div>
                   <h3 className="text-sm font-semibold text-foreground mb-1">{t('ui.no_story')}</h3>
@@ -1336,7 +1336,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   }))
                 }
                 placeholder={t('story.title_placeholder')}
-                className="min-w-0 flex-1 px-3 py-2 text-lg leading-tight md:text-xl font-semibold bg-transparent border-transparent hover:bg-accent/50 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary shadow-none rounded-md transition-all"
+                className="min-w-0 flex-1 border border-transparent bg-transparent px-3 py-2 text-lg font-semibold leading-tight shadow-none transition-all hover:bg-accent/50 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary md:text-xl"
               />
               {/* 草稿状态指示器 */}
               {draftSaved && (
@@ -1357,7 +1357,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               disabled={saving}
               adminVariant="primary"
               size="lg"
-              className="flex items-center gap-2 rounded-md"
+              className="flex items-center gap-2"
             >
               <Save className="w-4 h-4" />
               <span>{saving ? t('ui.saving') : t('admin.save')}</span>
@@ -1365,20 +1365,15 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
 
           {/* 主内容区 - 左右布局 */}
-          <div className="relative flex-1 flex overflow-hidden min-h-0">
+          <div className="relative flex flex-1 min-h-0 overflow-hidden gap-4">
             {/* 左侧：编辑器 (70%) */}
-            <div
-              className={cn(
-                'flex flex-col gap-3 min-w-0 min-h-0 overflow-hidden rounded-l-lg border border-border bg-background/40 transition-[flex-basis] duration-300 md:rounded-r-none',
-                isPhotoPanelCollapsed ? 'flex-1' : 'flex-[7]'
-              )}
-            >
+            <div className="flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden border border-border bg-card">
               {/* 标题输入 */}
               
               
               
               {/* 发布勾选、日期、字数统计、预览按钮 */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-muted/30 p-3 rounded-lg border border-border/50">
+              <div className="flex flex-col gap-3 border-y border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* 左侧：发布勾选、日期、字数 */}
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer group">
@@ -1391,7 +1386,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                           isPublished: e.target.checked,
                         }))
                       }
-                      className="w-4 h-4 accent-primary cursor-pointer rounded transition-all"
+                      className="w-4 h-4 cursor-pointer accent-primary transition-all"
                     />
                     <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
                       {t('ui.publish_now')}
@@ -1415,12 +1410,12 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                               createdAt: value ? new Date(value).toISOString() : new Date().toISOString(),
                             }))
                           }}
-                          className="px-2 py-1 text-xs bg-background border border-border rounded focus:border-primary outline-none transition-all"
+                          className="px-2 py-1 text-xs bg-background border border-border focus:border-primary outline-none transition-all"
                         />
                         <button
                           type="button"
                           onClick={() => setUseCustomDate(false)}
-                          className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                          className="p-1 text-primary hover:bg-primary/10 transition-colors"
                           title={t('admin.confirm') || '确认'}
                         >
                           <Check className="w-4 h-4" />
@@ -1458,7 +1453,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               </div>
               
               {/* 内容区 - 所见即所得编辑器 */}
-              <div className="flex-1 min-h-0 relative border border-border bg-card/30 rounded-lg overflow-hidden">
+              <div className="relative flex-1 min-h-0 overflow-hidden border border-border bg-background">
                 {currentStory && (
                       <NarrativeTipTapEditor
                         key={`${currentStory.id}:${editorInsertVersionRef.current}`}
@@ -1467,67 +1462,74 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                         onChange={handleContentChange}
                         onPasteFiles={handlePasteFiles}
                         placeholder={t('ui.markdown_placeholder')}
-                        className="overflow-hidden rounded-lg"
+                        className="overflow-hidden"
                       />
                 )}
               </div>
             </div>
 
-            {/* 右侧：照片面板 (30%) */}
-            <button
-              type="button"
-              onClick={togglePhotoPanelCollapse}
-              className="relative z-20 hidden h-14 w-7 shrink-0 -mx-3 self-center items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none md:flex"
-              aria-label={isPhotoPanelCollapsed ? (t('common.expand') || 'Expand related photos') : (t('common.collapse') || 'Collapse related photos')}
-              aria-pressed={isPhotoPanelCollapsed}
-            >
-              <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
+            {/* 折叠切换按钮 (独立于两者之间) */}
+            <div className="flex flex-col justify-center -mx-2 z-10 hidden md:flex">
+              <button
+                type="button"
+                onClick={togglePhotoPanelCollapse}
+                className="relative flex h-14 w-6 shrink-0 items-center justify-center border border-border bg-background hover:border-primary/40 hover:text-primary transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                aria-label={isPhotoPanelCollapsed ? (t('common.expand') || 'Expand related photos') : (t('common.collapse') || 'Collapse related photos')}
+                aria-pressed={isPhotoPanelCollapsed}
+              >
                 {isPhotoPanelCollapsed ? (
-                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <ChevronLeft className="h-4 w-4" />
                 ) : (
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  <ChevronRight className="h-4 w-4" />
                 )}
-              </div>
-            </button>
+              </button>
+            </div>
 
-            <StoryPhotoPanel
-              isCollapsed={isPhotoPanelCollapsed}
-              currentStory={currentStory}
-              pendingImages={pendingImages}
-              pendingCoverId={pendingCoverId}
-              cdnDomain={settings?.cdn_domain}
-              isUploading={isUploading}
-              uploadProgress={uploadProgress}
-              isDraggingOver={isDraggingOver}
-              draggedItemId={draggedItemId}
-              draggedItemType={draggedItemType}
-              dragOverItemId={dragOverItemId}
-              openMenuPhotoId={openMenuPhotoId}
-              openMenuPendingId={openMenuPendingId}
-              t={t}
-              notify={notify}
-              onAddPhotos={() => setShowPhotoSelector(true)}
-              onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
-              onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
-              onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
-              onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
-              onRemovePhoto={handleRemovePhoto}
-              onRemovePendingImage={handleRemovePendingImage}
-              onSetCover={(photoId) => { handleSetCover(photoId); setPendingCoverId(null) }}
-              onSetPendingCover={(id) => { setPendingCoverId(id); setCurrentStory(prev => ({ ...prev!, coverPhotoId: undefined })) }}
-              onSetPhotoDate={(takenAt) => { setCurrentStory(prev => ({ ...prev!, createdAt: takenAt })); setUseCustomDate(true) }}
-              onRetryFailedUploads={handleRetryFailedUploads}
-              onPhotoPanelDragOver={handlePhotoPanelDragOver}
-              onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
-              onPhotoPanelDrop={handlePhotoPanelDrop}
-              onItemDragStart={handleItemDragStart}
-              onItemDragEnd={handleItemDragEnd}
-              onItemDragOver={handleItemDragOver}
-              onItemDragLeave={handleItemDragLeave}
-              onItemDrop={handleItemDrop}
-              onOpenMenuPhoto={setOpenMenuPhotoId}
-              onOpenMenuPending={setOpenMenuPendingId}
-            />
+            <div
+              className={cn(
+                'min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none',
+                isPhotoPanelCollapsed ? 'w-20' : 'w-[320px] xl:w-[360px]'
+              )}
+            >
+              <StoryPhotoPanel
+                isCollapsed={isPhotoPanelCollapsed}
+                currentStory={currentStory}
+                pendingImages={pendingImages}
+                pendingCoverId={pendingCoverId}
+                cdnDomain={settings?.cdn_domain}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                isDraggingOver={isDraggingOver}
+                draggedItemId={draggedItemId}
+                draggedItemType={draggedItemType}
+                dragOverItemId={dragOverItemId}
+                openMenuPhotoId={openMenuPhotoId}
+                openMenuPendingId={openMenuPendingId}
+                t={t}
+                notify={notify}
+                onAddPhotos={() => setShowPhotoSelector(true)}
+                onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
+                onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
+                onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
+                onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
+                onRemovePhoto={handleRemovePhoto}
+                onRemovePendingImage={handleRemovePendingImage}
+                onSetCover={(photoId) => { handleSetCover(photoId); setPendingCoverId(null) }}
+                onSetPendingCover={(id) => { setPendingCoverId(id); setCurrentStory(prev => ({ ...prev!, coverPhotoId: undefined })) }}
+                onSetPhotoDate={(takenAt) => { setCurrentStory(prev => ({ ...prev!, createdAt: takenAt })); setUseCustomDate(true) }}
+                onRetryFailedUploads={handleRetryFailedUploads}
+                onPhotoPanelDragOver={handlePhotoPanelDragOver}
+                onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
+                onPhotoPanelDrop={handlePhotoPanelDrop}
+                onItemDragStart={handleItemDragStart}
+                onItemDragEnd={handleItemDragEnd}
+                onItemDragOver={handleItemDragOver}
+                onItemDragLeave={handleItemDragLeave}
+                onItemDrop={handleItemDrop}
+                onOpenMenuPhoto={setOpenMenuPhotoId}
+                onOpenMenuPending={setOpenMenuPendingId}
+              />
+            </div>
           </div>
         </div>
       )}

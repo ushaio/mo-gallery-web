@@ -116,7 +116,7 @@ export function StoryPhotoPanel({
     return (
       <div
         className={cn(
-          'flex w-20 shrink-0 flex-col overflow-hidden border border-l-0 border-border bg-muted/20 transition-colors duration-300 md:rounded-r-lg md:rounded-l-none',
+          'flex w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
           isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
         )}
         onDragOver={onPhotoPanelDragOver}
@@ -134,11 +134,11 @@ export function StoryPhotoPanel({
             </span>
           </div>
           <div className="flex flex-col items-center gap-2">
-            <span className="rounded-sm bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
+            <span className="bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
               {totalPhotos}
             </span>
             {pendingImages.length > 0 ? (
-              <span className="rounded-sm bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-600">
+              <span className="bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-600">
                 {pendingImages.length}
               </span>
             ) : null}
@@ -151,35 +151,35 @@ export function StoryPhotoPanel({
   return (
     <div
       className={cn(
-        'flex-[3] flex min-w-[320px] flex-col overflow-hidden border border-l-0 bg-muted/20 transition-[flex-basis] duration-300 md:rounded-r-lg md:rounded-l-none',
+        'flex-[3] flex min-w-[320px] flex-col overflow-hidden border border-border bg-card transition-[flex-basis] duration-300',
         isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
       )}
       onDragOver={onPhotoPanelDragOver}
       onDragLeave={onPhotoPanelDragLeave}
       onDrop={onPhotoPanelDrop}
     >
-      <div className="flex items-center justify-between border-b border-border bg-background/50 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/50 px-4 py-3">
         <div className="flex items-center gap-2">
           <ImageIcon className="h-4 w-4 text-primary" />
-          <span className="text-xs font-bold uppercase tracking-widest">
+          <span className="text-xs font-bold uppercase tracking-widest text-foreground">
             {t('story.related_photos')}
           </span>
-          <span className="text-xs text-muted-foreground">
-            ({totalPhotos})
+          <span className="bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+            {totalPhotos}
           </span>
           {pendingImages.length > 0 ? (
-            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
+            <span className="bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
               {pendingImages.length} 待上传
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <AdminButton
             type="button"
             onClick={onInsertExternalPhotoMarkdown}
             adminVariant="outlineMuted"
             size="xs"
-            className="rounded-md"
+            className="h-7"
           >
             外链图
           </AdminButton>
@@ -188,15 +188,15 @@ export function StoryPhotoPanel({
             onClick={onOpenPasteUploadSettings}
             adminVariant="outlineMuted"
             size="xs"
-            className="rounded-md"
+            className="h-7"
           >
             上传设置
           </AdminButton>
           <AdminButton
             onClick={onAddPhotos}
             adminVariant="ghost"
-            size="sm"
-            className="flex items-center gap-1 rounded-md text-primary hover:bg-primary/10"
+            size="xs"
+            className="flex h-7 items-center gap-1 px-2 text-primary hover:bg-primary/10"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>{t('admin.add_photos')}</span>
@@ -214,7 +214,7 @@ export function StoryPhotoPanel({
               {uploadProgress.current}/{uploadProgress.total}
             </span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-1.5 overflow-hidden bg-muted">
             <div
               className="h-full bg-primary transition-all"
               style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
@@ -241,8 +241,8 @@ export function StoryPhotoPanel({
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         {currentStory?.photos && currentStory.photos.length >= 2 ? (
-          <div className="mb-4 rounded-lg border border-border bg-background/60 p-3">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+          <div className="mb-4 border border-border bg-card/50 p-3">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
               混排快捷插入
             </div>
             <AdminButton
@@ -250,9 +250,9 @@ export function StoryPhotoPanel({
               onClick={() => onInsertGalleryMarkdown(currentStory.photos.map((photo) => photo.id))}
               adminVariant="primarySoft"
               size="sm"
-              className="flex w-full items-center justify-center gap-2 rounded-md"
+              className="flex w-full items-center justify-center gap-2 font-medium"
             >
-              <LayoutGrid className="h-3.5 w-3.5" />
+              <LayoutGrid className="h-4 w-4" />
               插入当前故事 Markdown 图片组
             </AdminButton>
           </div>
@@ -274,7 +274,7 @@ export function StoryPhotoPanel({
                       onDragOver={(event) => onItemDragOver(event, photo.id)}
                       onDragLeave={onItemDragLeave}
                       onDrop={(event) => onItemDrop(event, photo.id, 'photo')}
-                      className={`relative group aspect-square cursor-grab overflow-hidden rounded-lg border-2 transition-all active:cursor-grabbing ${
+                      className={`relative group aspect-square cursor-grab overflow-hidden border-2 transition-all active:cursor-grabbing ${
                         dragOverItemId === photo.id
                           ? 'scale-105 border-primary border-dashed shadow-lg'
                           : currentStory?.coverPhotoId === photo.id
@@ -288,12 +288,12 @@ export function StoryPhotoPanel({
                           onOpenMenuPhoto(openMenuPhotoId === photo.id ? null : photo.id)
                         }}
                         adminVariant="icon"
-                        className="absolute right-1 top-1 z-20 rounded bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+                        className="absolute right-1 top-1 z-20 bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
                       >
                         <MoreVertical className="h-3 w-3" />
                       </AdminButton>
 
-                      <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60">
+                      <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center bg-black/60">
                         <span className="text-[10px] font-bold text-white">{idx + 1}</span>
                       </div>
 
@@ -304,7 +304,7 @@ export function StoryPhotoPanel({
                       />
 
                       {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
-                        <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
+                        <div className="absolute left-1 top-1 bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
                           {t('admin.cover')}
                         </div>
                       ) : null}
@@ -317,7 +317,7 @@ export function StoryPhotoPanel({
                               onSetCover(photo.id)
                             }}
                             adminVariant="ghost"
-                            className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
+                            className="bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
                           >
                             Cover
                           </AdminButton>
@@ -328,7 +328,7 @@ export function StoryPhotoPanel({
                             onInsertPhotoMarkdown(photo)
                           }}
                           adminVariant="ghost"
-                          className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
+                          className="bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
                         >
                           插入
                         </AdminButton>
@@ -338,7 +338,7 @@ export function StoryPhotoPanel({
                             onRemovePhoto(photo.id)
                           }}
                           adminVariant="ghost"
-                          className="rounded bg-white/20 p-1.5 text-white hover:bg-destructive"
+                          className="bg-white/20 p-1.5 text-white hover:bg-destructive"
                         >
                           <X className="h-3.5 w-3.5" />
                         </AdminButton>
@@ -354,7 +354,7 @@ export function StoryPhotoPanel({
                             onOpenMenuPhoto(null)
                           }}
                         />
-                        <div className="absolute right-0 top-8 z-50 min-w-[160px] rounded-md border border-border bg-background py-1 shadow-lg">
+                        <div className="absolute right-0 top-8 z-50 min-w-[160px] border border-border bg-background py-1 shadow-lg">
                           {photo.takenAt ? (
                             <AdminButton
                               onClick={(event) => {
@@ -396,7 +396,7 @@ export function StoryPhotoPanel({
                     onDragOver={(event) => onItemDragOver(event, pending.id)}
                     onDragLeave={onItemDragLeave}
                     onDrop={(event) => onItemDrop(event, pending.id, 'pending')}
-                    className={`relative group aspect-square overflow-hidden rounded-lg border-2 transition-all ${
+                    className={`relative group aspect-square overflow-hidden border-2 transition-all ${
                       pending.status === 'uploading'
                         ? 'border-primary'
                         : pending.status === 'failed'
@@ -415,20 +415,20 @@ export function StoryPhotoPanel({
                           onOpenMenuPending(openMenuPendingId === pending.id ? null : pending.id)
                         }}
                         adminVariant="icon"
-                        className="absolute right-1 top-1 z-20 rounded bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+                        className="absolute right-1 top-1 z-20 bg-black/40 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
                       >
                         <MoreVertical className="h-3 w-3" />
                       </AdminButton>
                     ) : null}
 
-                    <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60">
+                    <div className="absolute bottom-1 right-1 z-10 flex h-5 w-5 items-center justify-center bg-black/60">
                       <span className="text-[10px] font-bold text-white">{idx + 1}</span>
                     </div>
 
                     <img src={pending.previewUrl} alt="" className="h-full w-full object-cover pointer-events-none" />
 
                     {isPendingCover ? (
-                      <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
+                      <div className="absolute left-1 top-1 bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
                         {t('admin.cover')}
                       </div>
                     ) : null}
@@ -461,7 +461,7 @@ export function StoryPhotoPanel({
                               onSetPendingCover(pending.id)
                             }}
                             adminVariant="ghost"
-                            className="rounded bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
+                            className="bg-white/20 p-1.5 text-[10px] font-medium text-white hover:bg-white/40"
                           >
                             Cover
                           </AdminButton>
@@ -472,7 +472,7 @@ export function StoryPhotoPanel({
                             onRemovePendingImage(pending.id)
                           }}
                           adminVariant="ghost"
-                          className="rounded bg-white/20 p-1.5 text-white hover:bg-destructive"
+                          className="bg-white/20 p-1.5 text-white hover:bg-destructive"
                         >
                           <X className="h-3.5 w-3.5" />
                         </AdminButton>
@@ -489,7 +489,7 @@ export function StoryPhotoPanel({
                           onOpenMenuPending(null)
                         }}
                       />
-                      <div className="absolute right-0 top-8 z-50 min-w-[160px] rounded-md border border-border bg-background py-1 shadow-lg">
+                      <div className="absolute right-0 top-8 z-50 min-w-[160px] border border-border bg-background py-1 shadow-lg">
                         {pending.takenAt ? (
                           <AdminButton
                             onClick={(event) => {
