@@ -291,6 +291,8 @@ export function UploadQueueProvider({
       const newTasks: UploadTask[] = await Promise.all(
         params.files.map(async (item) => {
           const preview = await createPreview(item.file)
+          const fallbackTitle = item.file.name.replace(/\.[^/.]+$/, '')
+          const normalizedTitle = params.title.trim() || fallbackTitle
           return {
             id: item.id,
             file: item.file,
@@ -303,8 +305,8 @@ export function UploadQueueProvider({
             error: null,
             title:
               params.files.length === 1
-                ? params.title
-                : item.file.name.replace(/\.[^/.]+$/, ''),
+                ? normalizedTitle
+                : fallbackTitle,
             categories: params.categories,
             storageProvider: params.storageProvider,
             storagePath: params.storagePath,

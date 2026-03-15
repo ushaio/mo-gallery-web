@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { X, Upload, Settings, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Settings, Upload, X } from 'lucide-react'
 import { getAdminAlbums, type AlbumDto } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 
@@ -19,6 +19,8 @@ interface ImageUploadSettingsModalProps {
   pendingCount: number
   t: (key: string) => string
   token: string | null
+  initialSettings?: UploadSettings
+  confirmLabel?: string
 }
 
 export function ImageUploadSettingsModal({
@@ -28,11 +30,13 @@ export function ImageUploadSettingsModal({
   pendingCount,
   t,
   token,
+  initialSettings,
+  confirmLabel,
 }: ImageUploadSettingsModalProps) {
-  const [maxSizeMB, setMaxSizeMB] = useState<string>('')
-  const [storageProvider, setStorageProvider] = useState<string>('')
-  const [category, setCategory] = useState<string>('')
-  const [albumId, setAlbumId] = useState<string>('')
+  const [maxSizeMB, setMaxSizeMB] = useState('')
+  const [storageProvider, setStorageProvider] = useState('')
+  const [category, setCategory] = useState('')
+  const [albumId, setAlbumId] = useState('')
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
@@ -43,22 +47,29 @@ export function ImageUploadSettingsModal({
   }, [isOpen, token])
 
   useEffect(() => {
-    if (!isOpen) {
-      setMaxSizeMB('')
-      setStorageProvider('')
-      setCategory('')
-      setAlbumId('')
+    if (isOpen) {
+      setMaxSizeMB(initialSettings?.maxSizeMB ? String(initialSettings.maxSizeMB) : '')
+      setStorageProvider(initialSettings?.storageProvider || '')
+      setCategory(initialSettings?.category || '')
+      setAlbumId(initialSettings?.albumId || '')
+      return
     }
-  }, [isOpen])
+
+    setMaxSizeMB('')
+    setStorageProvider('')
+    setCategory('')
+    setAlbumId('')
+  }, [initialSettings, isOpen])
 
   async function loadAlbums() {
     if (!token) return
+
     try {
       setLoadingAlbums(true)
       const data = await getAdminAlbums(token)
       setAlbums(data)
-    } catch (err) {
-      console.error('Failed to load albums:', err)
+    } catch (error) {
+      console.error('Failed to load albums:', error)
     } finally {
       setLoadingAlbums(false)
     }
@@ -66,6 +77,7 @@ export function ImageUploadSettingsModal({
 
   function handleConfirm() {
     const settings: UploadSettings = {}
+
     if (maxSizeMB && parseFloat(maxSizeMB) > 0) {
       settings.maxSizeMB = parseFloat(maxSizeMB)
     }
@@ -78,6 +90,7 @@ export function ImageUploadSettingsModal({
     if (albumId) {
       settings.albumId = albumId
     }
+
     onConfirm(settings)
   }
 
@@ -85,34 +98,32 @@ export function ImageUploadSettingsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative bg-background border border-border rounded-lg shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-4 border-b border-border">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="relative w-full max-w-md rounded-lg border border-border bg-background shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-3">
-            <Settings className="w-5 h-5 text-primary" />
-            <h3 className="font-bold">{t('admin.upload_settings') || '上传设置'}</h3>
+            <Settings className="h-5 w-5 text-primary" />
+            <h3 className="font-bold">{t('admin.upload_settings') || 'Upload Settings'}</h3>
           </div>
           <AdminButton
             onClick={onClose}
             adminVariant="icon"
-            className="p-2 hover:bg-muted rounded-md"
+            className="rounded-md p-2 hover:bg-muted"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </AdminButton>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="space-y-5 p-6">
           <p className="text-sm text-muted-foreground">
-            {t('admin.upload_settings_hint') || `即将上传 ${pendingCount} 张图片，请设置上传参数（均为可选）：`}
+            {t('admin.upload_settings_hint') || `即将上传 ${pendingCount} 张图片，可选配置上传参数。`}
           </p>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                {t('admin.compression_size') || '压缩大小 (MB)'}
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('admin.compression_size') || 'Compression Size (MB)'}
               </label>
               <input
                 type="number"
@@ -120,22 +131,22 @@ export function ImageUploadSettingsModal({
                 max="20"
                 step="0.5"
                 value={maxSizeMB}
-                onChange={(e) => setMaxSizeMB(e.target.value)}
-                placeholder={t('admin.optional') || '可选，不填则不压缩'}
-                className="w-full p-3 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                onChange={(event) => setMaxSizeMB(event.target.value)}
+                placeholder={t('admin.optional') || 'Optional'}
+                className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                {t('admin.storage_provider') || '存储源'}
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('admin.storage_provider') || 'Storage Provider'}
               </label>
               <select
                 value={storageProvider}
-                onChange={(e) => setStorageProvider(e.target.value)}
-                className="w-full p-3 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                onChange={(event) => setStorageProvider(event.target.value)}
+                className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
-                <option value="">{t('admin.use_default') || '使用默认'}</option>
+                <option value="">{t('admin.use_default') || 'Use Default'}</option>
                 <option value="local">Local Storage</option>
                 <option value="r2">Cloudflare R2</option>
                 <option value="github">GitHub</option>
@@ -143,44 +154,46 @@ export function ImageUploadSettingsModal({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                {t('admin.category') || '分类'}
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('admin.category') || 'Category'}
               </label>
               <input
                 type="text"
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder={t('admin.optional') || '可选'}
-                className="w-full p-3 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                onChange={(event) => setCategory(event.target.value)}
+                placeholder={t('admin.optional') || 'Optional'}
+                className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                {t('admin.album') || '相册'}
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('admin.album') || 'Album'}
               </label>
               <select
                 value={albumId}
-                onChange={(e) => setAlbumId(e.target.value)}
+                onChange={(event) => setAlbumId(event.target.value)}
                 disabled={loadingAlbums}
-                className="w-full p-3 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
               >
-                <option value="">{t('admin.none') || '不添加到相册'}</option>
+                <option value="">{t('admin.none') || 'Do not add to album'}</option>
                 {albums.map((album) => (
-                  <option key={album.id} value={album.id}>{album.name}</option>
+                  <option key={album.id} value={album.id}>
+                    {album.name}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-4 border-t border-border">
+        <div className="flex items-center justify-end gap-3 border-t border-border p-4">
           <AdminButton
             onClick={onClose}
             adminVariant="link"
             className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
-            {t('common.cancel') || '取消'}
+            {t('common.cancel') || 'Cancel'}
           </AdminButton>
           <AdminButton
             onClick={handleConfirm}
@@ -188,8 +201,8 @@ export function ImageUploadSettingsModal({
             size="md"
             className="flex items-center gap-2 rounded-md text-sm"
           >
-            <Upload className="w-4 h-4" />
-            {t('admin.start_upload') || '开始上传'}
+            <Upload className="h-4 w-4" />
+            {confirmLabel || t('admin.start_upload') || 'Start Upload'}
           </AdminButton>
         </div>
       </div>

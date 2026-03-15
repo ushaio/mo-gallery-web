@@ -47,3 +47,7 @@ public/uploads
 .spec-workflow
 .ace-tool/
 .env.local
+.codex
+.vscode
+.gemini
+.opencode

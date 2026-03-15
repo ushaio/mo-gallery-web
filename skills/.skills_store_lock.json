@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "github-api": {
+      "name": "GitHub",
+      "zip_url": "https://lightmake.site/api/v1/download?slug=github-api",
+      "source": "skillhub",
+      "version": "1.0.3"
+    }
+  }
+}

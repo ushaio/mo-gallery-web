@@ -294,9 +294,6 @@ export function AlbumsTab({
 
   // ==================== 渲染 ====================
 
-  if (loading) {
-    return <AdminLoading text={t('common.loading')} />
-  }
 
   // ---------- 列表视图（未选中相册） ----------
   if (!currentAlbum) {
@@ -459,7 +456,11 @@ export function AlbumsTab({
         </div>
 
         {/* Content */}
-        {filteredAlbums.length === 0 ? (
+        {loading ? (
+          <div className="py-20">
+            <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+          </div>
+        ) : filteredAlbums.length === 0 ? (
           <div className="py-20 text-center border border-dashed border-border/50 bg-muted/5">
             <FolderOpen className="w-12 h-12 mx-auto mb-4 opacity-10" />
             <p className="text-sm text-muted-foreground mb-4">{searchQuery || filterStatus !== 'all' ? 'No albums match your filters' : (t('admin.no_albums') || 'No albums yet')}</p>
@@ -631,17 +632,21 @@ export function AlbumsTab({
                     Add
                   </AdminButton>
                 </div>
-                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                  {availablePhotos.map(photo => {
-                    const isSelected = selectedPhotoIds.has(photo.id)
-                    return (
-                      <div key={photo.id} onClick={() => setSelectedPhotoIds(prev => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next })} className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}>
-                        <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
-                        {isSelected && <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>}
-                      </div>
-                    )
-                  })}
-                </div>
+                {loading ? (
+                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                    {availablePhotos.map(photo => {
+                      const isSelected = selectedPhotoIds.has(photo.id)
+                      return (
+                        <div key={photo.id} onClick={() => setSelectedPhotoIds(prev => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next })} className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}>
+                          <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
+                          {isSelected && <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             ) : currentAlbum.photos.length === 0 ? (
               <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">

@@ -615,7 +615,6 @@ export function UploadTab({
   const handleUploadClick = () => {
     if (!token) return
     if (!uploadFiles.length) { setUploadError(t('admin.select_files')); return }
-    if (uploadFiles.length === 1 && !uploadTitle.trim()) { setUploadError(t('admin.photo_title')); return }
     setUploadError('')
     setShowConfirm(true)
   }
