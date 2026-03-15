@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useCallback } from 'react'
 import { compressImage } from '@/lib/image-compress'
@@ -16,7 +16,7 @@ import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal
 
 interface UploadAndInsertParams {
   token: string
-  currentStory: StoryDto
+  currentStory: StoryDto | null
   allPhotos: PhotoDto[]
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   setAllPhotos: React.Dispatch<React.SetStateAction<PhotoDto[]>>
@@ -85,7 +85,7 @@ export function useStoryPasteUploads({
         if (duplicate.isDuplicate && duplicate.existingPhoto) {
           const existingPhotoId = duplicate.existingPhoto.id
           let existingPhoto =
-            currentStory.photos.find((photo) => photo.id === existingPhotoId) ||
+            currentStory?.photos.find((photo) => photo.id === existingPhotoId) ||
             allPhotos.find((photo) => photo.id === existingPhotoId)
 
           if (!existingPhoto) {
@@ -145,7 +145,7 @@ export function useStoryPasteUploads({
     addPhotoToCurrentStory,
     allPhotos,
     buildPasteUploadPlaceholder,
-    currentStory.photos,
+    currentStory?.photos,
     insertDirective,
     notify,
     pendingPasteFilesRef,
