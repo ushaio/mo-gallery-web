@@ -5,6 +5,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { DragEvent } from 'react'
 import ExifReader from 'exifreader'
 import { compressImage } from '@/lib/image-compress'
+import { stripGpsData } from '@/lib/privacy-strip'
 import {
   addPhotosToAlbum,
   addPhotosToStory,
@@ -224,16 +225,28 @@ export function useStoryEditorActions({
       setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'uploading' as const, progress: 0 } : image))
 
       try {
-        const fileToUpload = settings.maxSizeMB
-          ? await compressImage(pending.file, { maxSizeMB: settings.maxSizeMB, maxWidthOrHeight: 4096 })
-          : pending.file
+        let fileToUpload = pending.file
+
+        if (settings.stripGps) {
+          fileToUpload = await stripGpsData(fileToUpload)
+        }
+
+        if (settings.compressionMode && settings.compressionMode !== 'none' && settings.maxSizeMB) {
+          fileToUpload = await compressImage(fileToUpload, {
+            mode: settings.compressionMode,
+            maxSizeMB: settings.maxSizeMB,
+            maxWidthOrHeight: 4096,
+          })
+        }
 
         const photo = await uploadPhotoWithProgress({
           token,
           file: fileToUpload,
           title: pending.file.name.replace(/\.[^/.]+$/, ''),
-          category: settings.category,
+          category: settings.categories?.length ? settings.categories : settings.category,
           storage_provider: settings.storageProvider,
+          storage_path: settings.storagePath,
+          storage_path_full: settings.storagePathFull,
           onProgress: (progress) => {
             setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, progress } : image))
           },
@@ -247,7 +260,13 @@ export function useStoryEditorActions({
       }
     }
 
-    if (settings.albumId && uploadedPhotoIds.length > 0) {
+    if (settings.albumIds?.length && uploadedPhotoIds.length > 0) {
+      for (const albumId of settings.albumIds) {
+        try {
+          await addPhotosToAlbum(token, albumId, uploadedPhotoIds)
+        } catch {}
+      }
+    } else if (settings.albumId && uploadedPhotoIds.length > 0) {
       try {
         await addPhotosToAlbum(token, settings.albumId, uploadedPhotoIds)
       } catch {}

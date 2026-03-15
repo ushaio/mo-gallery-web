@@ -15,7 +15,6 @@ import {
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
-import { useSettings } from '@/contexts/SettingsContext'
 import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -37,13 +36,27 @@ import { useStoryEditorActions } from './stories/useStoryEditorActions'
 import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
 import { applySavedOrder, savePhotoOrder } from './stories/utils'
 
-const DEFAULT_UPLOAD_SETTINGS: UploadSettings = { maxSizeMB: 2 }
-const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = { maxSizeMB: 2, category: 'story-inline' }
+const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
+  maxSizeMB: 2,
+  compressionMode: 'size',
+  storageProvider: 'local',
+  categories: [],
+  albumIds: [],
+  stripGps: false,
+}
+
+const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
+  maxSizeMB: 2,
+  compressionMode: 'size',
+  storageProvider: 'local',
+  categories: ['story-inline'],
+  albumIds: [],
+  stripGps: false,
+}
 
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
-  const { settings } = useSettings()
-  const { isImmersiveMode, setIsImmersiveMode } = useAdmin()
+  const { settings, categories, isImmersiveMode, setIsImmersiveMode } = useAdmin()
 
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -498,7 +511,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       )}
 
       <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
-      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} />
+      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}
         onClose={() => {
@@ -510,6 +523,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         t={t}
         token={token}
         initialSettings={pasteUploadSettings}
+        settings={settings}
+        categories={categories}
         confirmLabel={t('admin.save_and_process_pasted_images')}
       />
       <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
