@@ -291,14 +291,25 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     await doSaveStory()
   }, [currentStory, doSaveStory, notify, pendingImages, setShowUploadSettings, t, token])
 
-  const handleUpdatePhotos = useCallback((selectedPhotoIds: string[]) => {
+  const handleUpdatePhotos = useCallback(async (selectedPhotoIds: string[]) => {
+    let sourcePhotos = allPhotos
+
+    if (selectedPhotoIds.some((id) => !sourcePhotos.find((photo) => photo.id === id))) {
+      try {
+        sourcePhotos = await getPhotos({ all: true })
+        setAllPhotos(sourcePhotos)
+      } catch (error) {
+        console.error('Failed to refresh photos for selector:', error)
+      }
+    }
+
     const selectedPhotos = selectedPhotoIds
-      .map((id) => allPhotos.find((photo) => photo.id === id))
+      .map((id) => sourcePhotos.find((photo) => photo.id === id) || currentStory?.photos?.find((photo) => photo.id === id))
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
     setCurrentStory((prev) => (prev ? { ...prev, photos: selectedPhotos } : prev))
     setShowPhotoSelector(false)
-  }, [allPhotos])
+  }, [allPhotos, currentStory?.photos])
 
   const handleRemovePhoto = useCallback((photoId: string) => {
     setCurrentStory((prev) => (prev ? { ...prev, photos: prev.photos?.filter((photo) => photo.id !== photoId) || [] } : prev))
