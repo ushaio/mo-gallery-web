@@ -145,7 +145,7 @@ export function useStoryEditorActions({
 
   const { uploadAndInsertFiles } = useStoryPasteUploads({
     token: token || '',
-    currentStory: currentStory || ({ photos: [] } as StoryDto),
+    currentStory,
     allPhotos,
     notify,
     setAllPhotos,
@@ -255,7 +255,7 @@ export function useStoryEditorActions({
       return
     }
 
-    notify(t('admin.some_uploads_failed') || `${failedCount} 张图片上传失败`, 'error')
+    notify(t('admin.some_uploads_failed') || (String(failedCount) + ' uploads failed'), 'error')
   }, [currentStory, notify, onRequestSave, pendingImages, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {
@@ -289,12 +289,12 @@ export function useStoryEditorActions({
 
   const handleInsertPhotoMarkdown = useCallback((photo: PhotoDto) => {
     insertDirective(buildStoryMarkdownImage({ url: photo.url, alt: photo.title }))
-    notify('已插入 Markdown 图片', 'success')
+    notify('Inserted Markdown image', 'success')
   }, [insertDirective, notify])
 
   const handleInsertGalleryMarkdown = useCallback((photoIds: string[]) => {
     if (photoIds.length === 0) {
-      notify('当前故事还没有可插入的图片', 'info')
+      notify('No photos available to insert', 'info')
       return
     }
 
@@ -303,28 +303,28 @@ export function useStoryEditorActions({
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
     if (photosToInsert.length === 0) {
-      notify('当前故事还没有可插入的图片', 'info')
+      notify('No photos available to insert', 'info')
       return
     }
 
     const markdown = photosToInsert.map((photo) => buildStoryMarkdownImage({ url: photo.url, alt: photo.title }).trim()).join('\n\n')
     insertDirective(`\n${markdown}\n`)
-    notify('已插入 Markdown 图片组', 'success')
+    notify('Inserted Markdown gallery', 'success')
   }, [currentStory?.photos, insertDirective, notify])
 
   const handleInsertExternalPhotoMarkdown = useCallback(() => {
-    const url = window.prompt('请输入外链图片 URL（https）')
+    const url = window.prompt('Enter external image URL (https)')
     if (!url) return
 
     const trimmedUrl = url.trim()
     if (!/^https:\/\//i.test(trimmedUrl)) {
-      notify('外链图片仅支持 https URL', 'error')
+      notify('External images must use an https URL', 'error')
       return
     }
 
-    const caption = window.prompt('请输入图片说明（可留空）')?.trim() || ''
+    const caption = window.prompt('Enter image caption (optional)')?.trim() || ''
     insertDirective(buildStoryMarkdownImage({ url: trimmedUrl, alt: caption }))
-    notify('已插入 Markdown 外链图片', 'success')
+    notify('Inserted external Markdown image', 'success')
   }, [insertDirective, notify])
 
   return {
@@ -351,3 +351,4 @@ export function useStoryEditorActions({
     restorePasteUploadSettings,
   }
 }
+
