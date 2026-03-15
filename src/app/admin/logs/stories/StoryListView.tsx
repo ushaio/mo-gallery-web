@@ -42,9 +42,9 @@ export function StoryListView({
   t,
 }: StoryListViewProps) {
   const statusOptions: SelectOption[] = [
-    { value: '', label: t('admin.all_status') || '全部状态' },
-    { value: 'published', label: t('admin.published') || '已发布' },
-    { value: 'draft', label: t('admin.draft') || '草稿' },
+    { value: '', label: t('admin.all_status') },
+    { value: 'published', label: t('admin.published') },
+    { value: 'draft', label: t('admin.draft') },
   ]
 
   const filteredStories = stories.filter((story) => {
@@ -60,14 +60,14 @@ export function StoryListView({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <input
             type="text"
-            placeholder={t('admin.search_placeholder') || '搜索...'}
+            placeholder={t('admin.search_placeholder')}
             className="w-48 border border-border bg-background px-3 py-2 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
           />
           <AdminSelect
             value={statusFilter}
             options={statusOptions}
             onChange={onStatusFilterChange}
-            placeholder={t('admin.all_status') || '全部状态'}
+            placeholder={t('admin.all_status')}
             className="w-32"
           />
         </div>

@@ -255,7 +255,7 @@ export function useStoryEditorActions({
       return
     }
 
-    notify(t('admin.some_uploads_failed') || (String(failedCount) + ' uploads failed'), 'error')
+    notify(`${failedCount} ${t('admin.upload_failed_count')}`, 'error')
   }, [currentStory, notify, onRequestSave, pendingImages, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {

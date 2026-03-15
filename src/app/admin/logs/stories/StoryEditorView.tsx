@@ -143,7 +143,7 @@ export function StoryEditorView({
             <ChevronLeft className="h-4 w-4" /> {t('admin.back_list')}
           </AdminButton>
           <AdminInput type="text" value={currentStory.title || ''} onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, title: event.target.value } : prev))} placeholder={t('story.title_placeholder')} className="min-w-0 flex-1 border-0 border-b border-border/60 bg-transparent px-0 py-0 font-serif text-4xl font-light leading-[0.92] tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-6xl" />
-          {draftSaved ? <span className="flex items-center gap-1 text-[10px] text-green-500"><Check className="h-3 w-3" />{t('story.draft_saved') || 'Saved'}</span> : null}
+          {draftSaved ? <span className="flex items-center gap-1 text-[10px] text-green-500"><Check className="h-3 w-3" />{t('story.draft_saved')}</span> : null}
           {!draftSaved && lastSavedAt ? <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><Clock className="h-3 w-3" />{new Date(lastSavedAt).toLocaleTimeString()}</span> : null}
         </div>
         <AdminButton onClick={onSave} disabled={saving} adminVariant="primary" size="lg" className="flex h-10 items-center gap-2 px-5 shadow-none"><Save className="h-4 w-4" /><span>{saving ? t('ui.saving') : t('admin.save')}</span></AdminButton>
@@ -163,10 +163,10 @@ export function StoryEditorView({
                 {useCustomDate ? (
                   <div className="flex items-center gap-1">
                     <input type="datetime-local" value={new Date(currentStory.createdAt).toISOString().slice(0, 16)} onChange={(event) => { const value = event.target.value; setCurrentStory((prev) => prev ? { ...prev, createdAt: value ? new Date(value).toISOString() : new Date().toISOString() } : prev) }} className="border border-border bg-background px-2 py-1 text-xs outline-none transition-all focus:border-primary" />
-                    <button type="button" onClick={() => setUseCustomDate(false)} className="p-1 text-primary transition-colors hover:bg-primary/10" title={t('admin.confirm') || '确认'}><Check className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => setUseCustomDate(false)} className="p-1 text-primary transition-colors hover:bg-primary/10" title={t('common.confirm')}><Check className="h-4 w-4" /></button>
                   </div>
                 ) : (
-                  <span onClick={() => setUseCustomDate(true)} className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed" title={t('admin.custom_date') || '点击编辑日期'}>{new Date(currentStory.createdAt).toLocaleString()}</span>
+                  <span onClick={() => setUseCustomDate(true)} className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed" title={t('admin.custom_date')}>{new Date(currentStory.createdAt).toLocaleString()}</span>
                 )}
               </div>
               <div className="hidden h-4 w-px bg-border/60 sm:block" />
@@ -174,8 +174,8 @@ export function StoryEditorView({
               <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground"><ImageIcon className="h-4 w-4" />{relatedPhotoCount} {t('story.related_photos')}</span>
             </div>
             <div className="flex items-center gap-2">
-              <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground">{isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}{t('ui.immersive') || '沉浸'}</AdminButton>
-              <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"><Eye className="h-3.5 w-3.5" />{t('admin.preview') || '预览'}</AdminButton>
+              <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground">{isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}{t('ui.immersive')}</AdminButton>
+              <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"><Eye className="h-3.5 w-3.5" />{t('admin.preview')}</AdminButton>
             </div>
           </div>
 
@@ -189,7 +189,7 @@ export function StoryEditorView({
             type="button"
             onClick={togglePhotoPanelCollapse}
             className="absolute left-1/2 top-1/2 z-10 flex h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none"
-            aria-label={isPhotoPanelCollapsed ? (t('common.expand') || 'Expand related photos') : (t('common.collapse') || 'Collapse related photos')}
+            aria-label={isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse')}
             aria-pressed={isPhotoPanelCollapsed}
           >
             <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
