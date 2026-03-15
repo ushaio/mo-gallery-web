@@ -116,7 +116,7 @@ export function StoryPhotoPanel({
     return (
       <div
         className={cn(
-          'flex w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
+          'flex h-full w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
           isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
         )}
         onDragOver={onPhotoPanelDragOver}
@@ -151,7 +151,7 @@ export function StoryPhotoPanel({
   return (
     <div
       className={cn(
-        'flex-[3] flex min-w-[320px] flex-col overflow-hidden border border-border bg-card transition-[flex-basis] duration-300',
+        'flex h-full min-w-[320px] flex-col overflow-hidden border border-border bg-card',
         isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
       )}
       onDragOver={onPhotoPanelDragOver}

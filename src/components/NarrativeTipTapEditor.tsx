@@ -556,7 +556,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     return (
       <div className={`tiptap-editor h-full flex flex-col ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
-        <div className="custom-scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border bg-muted/30 p-2 whitespace-nowrap">
+        <div className="scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border bg-muted/30 px-2 py-1.5 whitespace-nowrap">
           <ToolbarButton onClick={toggleH1} isActive={editor.isActive('heading', { level: 1 })} title="标题1">
             <span className="text-xs font-bold">H1</span>
           </ToolbarButton>

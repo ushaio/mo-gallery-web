@@ -1294,9 +1294,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                     <BookOpen className="w-8 h-8 text-muted-foreground/50" />
                   </div>
                   <h3 className="text-sm font-semibold text-foreground mb-1">{t('ui.no_story')}</h3>
-                  <p className="text-xs text-muted-foreground max-w-sm">
-                    {t('admin.no_story_desc') || '目前还没有任何故事，点击上方“创建故事”按钮开始你的创作。'}
-                  </p>
                 </div>
               )}
               </div>
@@ -1304,9 +1301,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-2 overflow-hidden">
           {/* 头部 - 返回按钮、草稿状态、保存按钮 */}
-          <div className="flex items-center justify-between gap-3 border-b border-border pb-3 flex-shrink-0">
+          <div className="flex items-center justify-between gap-3 border-b border-border pb-2 flex-shrink-0">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <AdminButton
                 onClick={() => {
@@ -1367,13 +1364,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           {/* 主内容区 - 左右布局 */}
           <div className="relative flex flex-1 min-h-0 overflow-hidden gap-4">
             {/* 左侧：编辑器 (70%) */}
-            <div className="flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden border border-border bg-card">
+            <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden border border-border bg-card">
               {/* 标题输入 */}
               
               
               
               {/* 发布勾选、日期、字数统计、预览按钮 */}
-              <div className="flex flex-col gap-3 border-y border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 border-b border-border bg-muted/20 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
                 {/* 左侧：发布勾选、日期、字数 */}
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer group">
@@ -1453,7 +1450,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               </div>
               
               {/* 内容区 - 所见即所得编辑器 */}
-              <div className="relative flex-1 min-h-0 overflow-hidden border border-border bg-background">
+              <div className="relative flex-1 min-h-0 overflow-hidden bg-background">
                 {currentStory && (
                       <NarrativeTipTapEditor
                         key={`${currentStory.id}:${editorInsertVersionRef.current}`}
@@ -1487,7 +1484,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
             <div
               className={cn(
-                'min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none',
+                'h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none',
                 isPhotoPanelCollapsed ? 'w-20' : 'w-[320px] xl:w-[360px]'
               )}
             >
