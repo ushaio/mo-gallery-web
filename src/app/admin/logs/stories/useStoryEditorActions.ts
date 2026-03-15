@@ -5,6 +5,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { DragEvent } from 'react'
 import ExifReader from 'exifreader'
 import { compressImage } from '@/lib/image-compress'
+import { stripGpsData } from '@/lib/privacy-strip'
 import {
   addPhotosToAlbum,
   addPhotosToStory,
@@ -16,7 +17,7 @@ import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
-import { STORY_PASTE_UPLOAD_SETTINGS_KEY } from './constants'
+import { STORY_PASTE_UPLOAD_SETTINGS_KEY, STORY_UPLOAD_SETTINGS_KEY } from './constants'
 import type { UploadProgressState } from './types'
 import { useStoryPasteUploads } from './useStoryPasteUploads'
 
@@ -26,6 +27,7 @@ interface UseStoryEditorActionsParams {
   allPhotos: PhotoDto[]
   stories: StoryDto[]
   pendingImages: PendingImage[]
+  initialUploadSettings: UploadSettings
   initialPasteUploadSettings: UploadSettings
   setCurrentStory: Dispatch<SetStateAction<StoryDto | null>>
   setAllPhotos: Dispatch<SetStateAction<PhotoDto[]>>
@@ -45,6 +47,7 @@ interface UseStoryEditorActionsResult {
   isUploading: boolean
   uploadProgress: UploadProgressState
   pendingPasteFilesRef: MutableRefObject<File[] | null>
+  uploadSettings: UploadSettings
   pasteUploadSettings: UploadSettings
   hasConfirmedPasteSettings: boolean
   handlePhotoPanelDrop: (event: DragEvent) => Promise<void>
@@ -56,6 +59,7 @@ interface UseStoryEditorActionsResult {
   handleInsertPhotoMarkdown: (photo: PhotoDto) => void
   handleInsertGalleryMarkdown: (photoIds: string[]) => void
   handleInsertExternalPhotoMarkdown: () => void
+  restoreUploadSettings: (settings: UploadSettings) => void
   restorePasteUploadSettings: (settings: UploadSettings) => void
 }
 
@@ -81,6 +85,7 @@ export function useStoryEditorActions({
   allPhotos,
   stories,
   pendingImages,
+  initialUploadSettings,
   initialPasteUploadSettings,
   setCurrentStory,
   setAllPhotos,
@@ -98,7 +103,20 @@ export function useStoryEditorActions({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState>({ current: 0, total: 0, currentFile: '' })
   const [hasConfirmedPasteSettings, setHasConfirmedPasteSettings] = useState(false)
+  const [uploadSettings, setUploadSettings] = useState<UploadSettings>(initialUploadSettings)
   const [pasteUploadSettings, setPasteUploadSettings] = useState<UploadSettings>(initialPasteUploadSettings)
+
+  const persistUploadSettings = useCallback((settings: UploadSettings) => {
+    setUploadSettings(settings)
+
+    if (typeof window === 'undefined') return
+
+    try {
+      window.localStorage.setItem(STORY_UPLOAD_SETTINGS_KEY, JSON.stringify(settings))
+    } catch (error) {
+      console.error('Failed to persist upload settings:', error)
+    }
+  }, [])
 
   const persistPasteUploadSettings = useCallback((settings: UploadSettings) => {
     setPasteUploadSettings(settings)
@@ -116,6 +134,10 @@ export function useStoryEditorActions({
   const restorePasteUploadSettings = useCallback((settings: UploadSettings) => {
     setPasteUploadSettings(settings)
     setHasConfirmedPasteSettings(true)
+  }, [])
+
+  const restoreUploadSettings = useCallback((settings: UploadSettings) => {
+    setUploadSettings(settings)
   }, [])
 
   const insertDirective = useCallback((markdown: string) => {
@@ -188,6 +210,7 @@ export function useStoryEditorActions({
   const handleConfirmUpload = useCallback(async (settings: UploadSettings) => {
     if (!token || !currentStory) return
 
+    persistUploadSettings(settings)
     setShowUploadSettings(false)
     setIsUploading(true)
     const toUpload = pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed')
@@ -202,16 +225,28 @@ export function useStoryEditorActions({
       setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'uploading' as const, progress: 0 } : image))
 
       try {
-        const fileToUpload = settings.maxSizeMB
-          ? await compressImage(pending.file, { maxSizeMB: settings.maxSizeMB, maxWidthOrHeight: 4096 })
-          : pending.file
+        let fileToUpload = pending.file
+
+        if (settings.stripGps) {
+          fileToUpload = await stripGpsData(fileToUpload)
+        }
+
+        if (settings.compressionMode && settings.compressionMode !== 'none' && settings.maxSizeMB) {
+          fileToUpload = await compressImage(fileToUpload, {
+            mode: settings.compressionMode,
+            maxSizeMB: settings.maxSizeMB,
+            maxWidthOrHeight: 4096,
+          })
+        }
 
         const photo = await uploadPhotoWithProgress({
           token,
           file: fileToUpload,
           title: pending.file.name.replace(/\.[^/.]+$/, ''),
-          category: settings.category,
+          category: settings.categories?.length ? settings.categories : settings.category,
           storage_provider: settings.storageProvider,
+          storage_path: settings.storagePath,
+          storage_path_full: settings.storagePathFull,
           onProgress: (progress) => {
             setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, progress } : image))
           },
@@ -225,7 +260,13 @@ export function useStoryEditorActions({
       }
     }
 
-    if (settings.albumId && uploadedPhotoIds.length > 0) {
+    if (settings.albumIds?.length && uploadedPhotoIds.length > 0) {
+      for (const albumId of settings.albumIds) {
+        try {
+          await addPhotosToAlbum(token, albumId, uploadedPhotoIds)
+        } catch {}
+      }
+    } else if (settings.albumId && uploadedPhotoIds.length > 0) {
       try {
         await addPhotosToAlbum(token, settings.albumId, uploadedPhotoIds)
       } catch {}
@@ -255,8 +296,8 @@ export function useStoryEditorActions({
       return
     }
 
-    notify(t('admin.some_uploads_failed') || (String(failedCount) + ' uploads failed'), 'error')
-  }, [currentStory, notify, onRequestSave, pendingImages, setCurrentStory, setPendingImages, stories, t, token])
+    notify(`${failedCount} ${t('admin.upload_failed_count')}`, 'error')
+  }, [currentStory, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {
     setPendingImages((prev) => prev.map((image) => image.status === 'failed' ? { ...image, status: 'pending' as const, error: undefined, progress: 0 } : image))
@@ -337,6 +378,7 @@ export function useStoryEditorActions({
     isUploading,
     uploadProgress,
     pendingPasteFilesRef,
+    uploadSettings,
     pasteUploadSettings,
     hasConfirmedPasteSettings,
     handlePhotoPanelDrop,
@@ -348,6 +390,7 @@ export function useStoryEditorActions({
     handleInsertPhotoMarkdown,
     handleInsertGalleryMarkdown,
     handleInsertExternalPhotoMarkdown,
+    restoreUploadSettings,
     restorePasteUploadSettings,
   }
 }

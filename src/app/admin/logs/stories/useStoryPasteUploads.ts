@@ -3,6 +3,7 @@
 import { useCallback } from 'react'
 import { compressImage } from '@/lib/image-compress'
 import { calculateFileHash } from '@/lib/file-hash'
+import { stripGpsData } from '@/lib/privacy-strip'
 import {
   addPhotosToAlbum,
   checkDuplicatePhoto,
@@ -58,7 +59,7 @@ export function useStoryPasteUploads({
 
     const nextSettings: UploadSettings = {
       ...settings,
-      category: settings.category?.trim() || 'story-inline',
+      categories: settings.categories?.length ? settings.categories : [settings.category?.trim() || 'story-inline'],
     }
 
     const placeholders = files.map((file) => {
@@ -103,23 +104,43 @@ export function useStoryPasteUploads({
           }
         }
 
-        const fileToUpload = nextSettings.maxSizeMB
-          ? await compressImage(file, { maxSizeMB: nextSettings.maxSizeMB, maxWidthOrHeight: 4096 })
-          : file
+        let fileToUpload = file
+
+        if (nextSettings.stripGps) {
+          fileToUpload = await stripGpsData(fileToUpload)
+        }
+
+        if (nextSettings.compressionMode && nextSettings.compressionMode !== 'none' && nextSettings.maxSizeMB) {
+          fileToUpload = await compressImage(fileToUpload, {
+            mode: nextSettings.compressionMode,
+            maxSizeMB: nextSettings.maxSizeMB,
+            maxWidthOrHeight: 4096,
+          })
+        }
 
         const uploadedPhoto = await uploadPhotoWithProgress({
           token,
           file: fileToUpload,
           title: file.name.replace(/\.[^/.]+$/, ''),
-          category: nextSettings.category,
+          category: nextSettings.categories,
           storage_provider: nextSettings.storageProvider,
+          storage_path: nextSettings.storagePath,
+          storage_path_full: nextSettings.storagePathFull,
           file_hash: fileHash,
           onProgress: (progress) => {
             setUploadProgress({ current: index + 1, total: files.length, currentFile: `${file.name} ${progress}%` })
           },
         })
 
-        if (nextSettings.albumId) {
+        if (nextSettings.albumIds?.length) {
+          for (const albumId of nextSettings.albumIds) {
+            try {
+              await addPhotosToAlbum(token, albumId, [uploadedPhoto.id])
+            } catch (error) {
+              console.error('Failed to add pasted upload to album:', error)
+            }
+          }
+        } else if (nextSettings.albumId) {
           try {
             await addPhotosToAlbum(token, nextSettings.albumId, [uploadedPhoto.id])
           } catch (error) {

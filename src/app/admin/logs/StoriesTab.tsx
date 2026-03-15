@@ -15,7 +15,6 @@ import {
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
-import { useSettings } from '@/contexts/SettingsContext'
 import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -26,6 +25,7 @@ import { getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
 import { useAdmin } from '../layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
+  STORY_UPLOAD_SETTINGS_KEY,
   STORY_PASTE_UPLOAD_SETTINGS_KEY,
 } from './stories/constants'
 import { StoryEditorView } from './stories/StoryEditorView'
@@ -36,12 +36,27 @@ import { useStoryEditorActions } from './stories/useStoryEditorActions'
 import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
 import { applySavedOrder, savePhotoOrder } from './stories/utils'
 
-const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = { category: 'story-inline' }
+const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
+  maxSizeMB: 2,
+  compressionMode: 'size',
+  storageProvider: 'local',
+  categories: [],
+  albumIds: [],
+  stripGps: false,
+}
+
+const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
+  maxSizeMB: 2,
+  compressionMode: 'size',
+  storageProvider: 'local',
+  categories: ['story-inline'],
+  albumIds: [],
+  stripGps: false,
+}
 
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
-  const { settings } = useSettings()
-  const { isImmersiveMode, setIsImmersiveMode } = useAdmin()
+  const { settings, categories, isImmersiveMode, setIsImmersiveMode } = useAdmin()
 
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,6 +196,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     isUploading,
     uploadProgress,
     pendingPasteFilesRef,
+    uploadSettings,
     pasteUploadSettings,
     handlePhotoPanelDrop,
     handleRemovePendingImage,
@@ -192,12 +208,14 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleInsertGalleryMarkdown,
     handleInsertExternalPhotoMarkdown,
     restorePasteUploadSettings,
+    restoreUploadSettings,
   } = useStoryEditorActions({
     token,
     currentStory,
     allPhotos,
     stories,
     pendingImages,
+    initialUploadSettings: DEFAULT_UPLOAD_SETTINGS,
     initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
     setCurrentStory,
     setAllPhotos,
@@ -273,14 +291,25 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     await doSaveStory()
   }, [currentStory, doSaveStory, notify, pendingImages, setShowUploadSettings, t, token])
 
-  const handleUpdatePhotos = useCallback((selectedPhotoIds: string[]) => {
+  const handleUpdatePhotos = useCallback(async (selectedPhotoIds: string[]) => {
+    let sourcePhotos = allPhotos
+
+    if (selectedPhotoIds.some((id) => !sourcePhotos.find((photo) => photo.id === id))) {
+      try {
+        sourcePhotos = await getPhotos({ all: true })
+        setAllPhotos(sourcePhotos)
+      } catch (error) {
+        console.error('Failed to refresh photos for selector:', error)
+      }
+    }
+
     const selectedPhotos = selectedPhotoIds
-      .map((id) => allPhotos.find((photo) => photo.id === id))
+      .map((id) => sourcePhotos.find((photo) => photo.id === id) || currentStory?.photos?.find((photo) => photo.id === id))
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
     setCurrentStory((prev) => (prev ? { ...prev, photos: selectedPhotos } : prev))
     setShowPhotoSelector(false)
-  }, [allPhotos])
+  }, [allPhotos, currentStory?.photos])
 
   const handleRemovePhoto = useCallback((photoId: string) => {
     setCurrentStory((prev) => (prev ? { ...prev, photos: prev.photos?.filter((photo) => photo.id !== photoId) || [] } : prev))
@@ -380,15 +409,25 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setIsPhotoPanelCollapsed(window.localStorage.getItem(STORY_PHOTO_PANEL_COLLAPSED_KEY) === 'true')
 
     const raw = window.localStorage.getItem(STORY_PASTE_UPLOAD_SETTINGS_KEY)
-    if (!raw) return
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as UploadSettings
+        restorePasteUploadSettings({ ...DEFAULT_PASTE_UPLOAD_SETTINGS, ...parsed })
+      } catch (error) {
+        console.error('Failed to restore paste upload settings:', error)
+      }
+    }
+
+    const uploadRaw = window.localStorage.getItem(STORY_UPLOAD_SETTINGS_KEY)
+    if (!uploadRaw) return
 
     try {
-      const parsed = JSON.parse(raw) as UploadSettings
-      restorePasteUploadSettings({ ...DEFAULT_PASTE_UPLOAD_SETTINGS, ...parsed })
+      const parsed = JSON.parse(uploadRaw) as UploadSettings
+      restoreUploadSettings({ ...DEFAULT_UPLOAD_SETTINGS, ...parsed })
     } catch (error) {
-      console.error('Failed to restore paste upload settings:', error)
+      console.error('Failed to restore upload settings:', error)
     }
-  }, [restorePasteUploadSettings])
+  }, [restorePasteUploadSettings, restoreUploadSettings])
 
   useEffect(() => {
     if (editStoryId && stories.length > 0) {
@@ -483,7 +522,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       )}
 
       <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
-      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} />
+      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}
         onClose={() => {
@@ -495,7 +534,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         t={t}
         token={token}
         initialSettings={pasteUploadSettings}
-        confirmLabel="保存并处理粘贴图片"
+        settings={settings}
+        categories={categories}
+        confirmLabel={t('admin.save_and_process_pasted_images')}
       />
       <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
       <DraftRestoreDialog isOpen={draftRestoreDialog.isOpen} draftTime={draftRestoreDialog.draft?.savedAt || 0} onRestore={handleDraftRestore} onDiscard={handleDraftDiscard} onCancel={handleDraftCancel} t={t} />

@@ -258,7 +258,7 @@ export function useStoryDraftState({
       setPendingCoverId(editFromDraft.pendingCoverId || null)
       setLastSavedAt(editFromDraft.savedAt)
       setStoryEditMode('editor')
-      notify(t('admin.restored_from_draft') || '已从草稿恢复', 'info')
+      notify(t('admin.restored_from_draft'), 'info')
       onDraftConsumed?.()
     })
   }, [allPhotos, editFromDraft, notify, onDraftConsumed, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode, t])

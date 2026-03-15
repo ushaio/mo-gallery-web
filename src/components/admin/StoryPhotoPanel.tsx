@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React from 'react'
 import {
@@ -169,7 +169,7 @@ export function StoryPhotoPanel({
           </span>
           {pendingImages.length > 0 ? (
             <span className="border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">
-              {pendingImages.length} 待上传
+              {pendingImages.length} {t('admin.pending_uploads')}
             </span>
           ) : null}
         </div>
@@ -181,7 +181,7 @@ export function StoryPhotoPanel({
             size="xs"
             className="h-7 border-border/70 bg-background/70"
           >
-            外链图
+            {t('admin.external_photo')}
           </AdminButton>
           <AdminButton
             type="button"
@@ -190,7 +190,7 @@ export function StoryPhotoPanel({
             size="xs"
             className="h-7 border-border/70 bg-background/70"
           >
-            上传设置
+            {t('admin.upload_settings')}
           </AdminButton>
           <AdminButton
             onClick={onAddPhotos}
@@ -226,7 +226,7 @@ export function StoryPhotoPanel({
       {!isUploading && pendingImages.some((image) => image.status === 'failed') ? (
         <div className="flex items-center justify-between border-b border-destructive/20 bg-destructive/10 px-4 py-2">
           <span className="text-xs text-destructive">
-            {pendingImages.filter((image) => image.status === 'failed').length} 张上传失败
+            {pendingImages.filter((image) => image.status === 'failed').length} {t('admin.upload_failed_count')}
           </span>
           <AdminButton
             onClick={onRetryFailedUploads}
@@ -234,7 +234,7 @@ export function StoryPhotoPanel({
             className="flex items-center gap-1 text-xs text-destructive"
           >
             <RefreshCw className="h-3 w-3" />
-            重试
+            {t('admin.retry')}
           </AdminButton>
         </div>
       ) : null}
@@ -243,7 +243,7 @@ export function StoryPhotoPanel({
         {currentStory?.photos && currentStory.photos.length >= 2 ? (
           <div className="mb-4 border border-border/70 bg-gradient-to-b from-card via-card/80 to-background p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              混排快捷插入
+              {t('admin.insert_photo')}
             </div>
             <AdminButton
               type="button"
@@ -253,7 +253,7 @@ export function StoryPhotoPanel({
               className="flex w-full items-center justify-center gap-2 border-border/70 bg-background/70 font-medium"
             >
               <LayoutGrid className="h-4 w-4" />
-              插入当前故事 Markdown 图片组
+              {t('admin.insert_story_gallery_markdown')}
             </AdminButton>
           </div>
         ) : null}
@@ -323,7 +323,7 @@ export function StoryPhotoPanel({
                             adminVariant="ghost"
                             className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
                           >
-                            Cover
+                            {t('admin.cover')}
                           </AdminButton>
                         ) : null}
                         <AdminButton
@@ -334,7 +334,7 @@ export function StoryPhotoPanel({
                           adminVariant="ghost"
                           className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
                         >
-                          插入
+                          {t('admin.insert_photo')}
                         </AdminButton>
                         <AdminButton
                           onClick={(event) => {
@@ -471,7 +471,7 @@ export function StoryPhotoPanel({
                             adminVariant="ghost"
                             className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
                           >
-                            Cover
+                            {t('admin.cover')}
                           </AdminButton>
                         ) : null}
                         <AdminButton
@@ -528,10 +528,10 @@ export function StoryPhotoPanel({
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
             <Upload className="mb-3 h-12 w-12 opacity-20" />
-            <p className="mb-1 text-center text-xs">拖拽图片到这里</p>
-            <p className="mb-3 text-center text-[10px] opacity-60">或先关联图片，再插入到正文</p>
+            <p className="mb-1 text-center text-xs">{t('admin.drag_images_here')}</p>
+            <p className="mb-3 text-center text-[10px] opacity-60">{t('admin.drag_images_insert_hint')}</p>
             <AdminButton onClick={onAddPhotos} adminVariant="link" className="text-xs text-primary">
-              从图库选择
+              {t('admin.select_from_library')}
             </AdminButton>
           </div>
         )}
