@@ -133,6 +133,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const AUTO_SAVE_DELAY = 2000
+  const editorCharacterCount = (currentStory?.content || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim().length
+  const relatedPhotoCount = currentStory?.photos?.length || 0
+  const pendingPhotoCount = pendingImages.length
 
   // 照片排序持久化键名
   const photoOrderKey = 'story_photo_order'
@@ -1301,10 +1308,26 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground md:px-6">
+            <span>{t('nav.story') || '叙事'}</span>
+            <span className="hidden h-3 w-px bg-border/70 sm:block" />
+            <span>{currentStory?.isPublished ? 'Published draft' : 'Working draft'}</span>
+            <span className="hidden h-3 w-px bg-border/70 sm:block" />
+            <span>{currentStory?.createdAt ? new Date(currentStory.createdAt).toLocaleDateString() : '-'}</span>
+            <span className="hidden h-3 w-px bg-border/70 lg:block" />
+            <span>{editorCharacterCount} {t('admin.characters')}</span>
+            <span className="hidden h-3 w-px bg-border/70 lg:block" />
+            <span>{relatedPhotoCount} {t('story.related_photos')}</span>
+            {pendingPhotoCount > 0 ? (
+              <span className="border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-400">
+                {pendingPhotoCount} pending
+              </span>
+            ) : null}
+          </div>
           {/* 头部 - 返回按钮、草稿状态、保存按钮 */}
-          <div className="flex items-center justify-between gap-3 border-b border-border pb-2 flex-shrink-0">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex flex-col gap-4 border-b border-border/70 pb-4 flex-shrink-0 md:flex-row md:items-end md:justify-between">
+            <div className="flex min-w-0 flex-1 items-end gap-3">
               <AdminButton
                 onClick={() => {
                   setStoryEditMode('list')
@@ -1319,7 +1342,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   }
                 }}
                 adminVariant="link"
-                className="shrink-0 flex items-center gap-1.5 whitespace-nowrap hover:no-underline"
+                className="shrink-0 self-start flex items-center gap-1.5 whitespace-nowrap px-0 text-[10px] tracking-[0.24em] hover:no-underline"
               >
                 <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
               </AdminButton>
@@ -1333,7 +1356,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   }))
                 }
                 placeholder={t('story.title_placeholder')}
-                className="min-w-0 flex-1 border border-transparent bg-transparent px-3 py-2 text-lg font-semibold leading-tight shadow-none transition-all hover:bg-accent/50 focus:bg-background focus:border-primary focus:ring-1 focus:ring-primary md:text-xl"
+                className="min-w-0 flex-1 border-0 border-b border-border/60 bg-transparent px-0 py-0 font-serif text-4xl font-light leading-[0.92] tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-6xl"
               />
               {/* 草稿状态指示器 */}
               {draftSaved && (
@@ -1354,7 +1377,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               disabled={saving}
               adminVariant="primary"
               size="lg"
-              className="flex items-center gap-2"
+              className="flex h-10 items-center gap-2 px-5 shadow-none"
             >
               <Save className="w-4 h-4" />
               <span>{saving ? t('ui.saving') : t('admin.save')}</span>
@@ -1364,13 +1387,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           {/* 主内容区 - 左右布局 */}
           <div className="relative flex flex-1 min-h-0 overflow-hidden gap-4">
             {/* 左侧：编辑器 (70%) */}
-            <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden border border-border bg-card">
+            <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]">
               {/* 标题输入 */}
               
               
               
               {/* 发布勾选、日期、字数统计、预览按钮 */}
-              <div className="flex flex-col gap-2 border-b border-border bg-muted/20 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
                 {/* 左侧：发布勾选、日期、字数 */}
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer group">
@@ -1431,9 +1454,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   
                   <div className="h-4 w-px bg-border/60 hidden sm:block"></div>
 
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
                     <FileText className="w-4 h-4" />
-                    {currentStory?.content?.length || 0} {t('admin.characters')}
+                    {editorCharacterCount} {t('admin.characters')}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    <ImageIcon className="w-4 h-4" />
+                    {relatedPhotoCount} {t('story.related_photos')}
                   </span>
                 </div>
                 {/* 右侧：预览按钮 */}
@@ -1441,7 +1468,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   <AdminButton
                     onClick={() => setShowPreview(true)}
                     adminVariant="outline"
-                    className="flex items-center gap-2 h-8 px-3 text-xs bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-all"
+                    className="flex items-center gap-2 h-8 border border-border/80 bg-background/80 px-3 text-xs shadow-none hover:bg-accent hover:text-accent-foreground transition-all"
                   >
                     <Eye className="w-3.5 h-3.5" />
                     {t('admin.preview') || '预览'}
@@ -1459,7 +1486,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                         onChange={handleContentChange}
                         onPasteFiles={handlePasteFiles}
                         placeholder={t('ui.markdown_placeholder')}
-                        className="overflow-hidden"
+                        className="overflow-hidden bg-background"
                       />
                 )}
               </div>
@@ -1485,7 +1512,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             <div
               className={cn(
                 'h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none',
-                isPhotoPanelCollapsed ? 'w-20' : 'w-[320px] xl:w-[360px]'
+                isPhotoPanelCollapsed ? 'w-20' : 'w-[340px] xl:w-[390px]'
               )}
             >
               <StoryPhotoPanel

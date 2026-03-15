@@ -174,11 +174,11 @@ function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, childr
       onMouseDown={onMouseDown}
       disabled={disabled}
       title={title}
-      className={`p-1.5 sm:p-2 transition-all ${
+      className={`flex h-8 min-w-8 items-center justify-center border px-2 text-[11px] transition-all duration-200 ${
         isActive
-          ? 'bg-primary/15 text-primary shadow-sm'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-      } disabled:opacity-50 disabled:cursor-not-allowed`}
+          ? 'border-primary/30 bg-primary/10 text-primary shadow-sm'
+          : 'border-transparent text-muted-foreground hover:border-border hover:bg-background hover:text-accent-foreground'
+      } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       {children}
     </button>
@@ -186,7 +186,7 @@ function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, childr
 }
 
 function ToolbarDivider() {
-  return <div className="w-px h-5 bg-border mx-1" />
+  return <div className="mx-2 h-4 w-px bg-border/80" />
 }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
@@ -555,8 +555,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }
 
     return (
-      <div className={`tiptap-editor h-full flex flex-col ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
-        <div className="scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border bg-muted/30 px-2 py-1.5 whitespace-nowrap">
+      <div className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
+        <div className="flex items-center justify-between border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          <span>Editorial Layout</span>
+          <span className="hidden md:inline">Headline · Body · Pull quote · Image</span>
+        </div>
+        <div className="scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-3 py-2 whitespace-nowrap">
           <ToolbarButton onClick={toggleH1} isActive={editor.isActive('heading', { level: 1 })} title="标题1">
             <span className="text-xs font-bold">H1</span>
           </ToolbarButton>
@@ -681,8 +685,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           </ToolbarButton>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <EditorContent editor={editor} className="h-full" />
+        <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
+          <EditorContent editor={editor} className="h-full custom-scrollbar" />
         </div>
       </div>
     )
