@@ -69,6 +69,8 @@ interface AdminContextType {
   selectedPhoto: PhotoDto | null
   setSelectedPhoto: (photo: PhotoDto | null) => void
   handleUnauthorized: () => void
+  isImmersiveMode: boolean
+  setIsImmersiveMode: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 const AdminContext = createContext<AdminContextType | null>(null)
@@ -94,11 +96,18 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isImmersiveMode, setIsImmersiveMode] = useState(false)
 
   useEffect(() => {
     const savedValue = window.localStorage.getItem(ADMIN_SIDEBAR_COLLAPSED_KEY)
     setIsSidebarCollapsed(savedValue === 'true')
   }, [])
+
+  useEffect(() => {
+    if (!pathname.startsWith('/admin/logs')) {
+      setIsImmersiveMode(false)
+    }
+  }, [pathname])
 
   const toggleSidebarCollapse = useCallback(() => {
     setIsSidebarCollapsed((prev) => {
@@ -455,6 +464,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     selectedPhoto,
     setSelectedPhoto,
     handleUnauthorized,
+    isImmersiveMode,
+    setIsImmersiveMode,
   }
 
   const handleUploadComplete = useCallback(async (photoIds: string[], storyId?: string) => {
@@ -480,24 +491,27 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             }
           />
 
-          <AdminSidebar
-            siteTitle={siteTitle}
-            isSiteTitleLoading={globalSettingsLoading}
-            isMobileMenuOpen={isMobileMenuOpen}
-            isCollapsed={isSidebarCollapsed}
-            activeItemId={activeSidebarItem.id}
-            user={user}
-            locale={locale}
-            mounted={mounted}
-            theme={theme}
-            onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
-            onToggleTheme={toggleTheme}
-            onToggleLanguage={toggleLanguage}
-            onLogout={() => setShowLogoutConfirm(true)}
-            t={t}
-            items={sidebarItems}
-          />
+          {!isImmersiveMode ? (
+            <AdminSidebar
+              siteTitle={siteTitle}
+              isSiteTitleLoading={globalSettingsLoading}
+              isMobileMenuOpen={isMobileMenuOpen}
+              isCollapsed={isSidebarCollapsed}
+              activeItemId={activeSidebarItem.id}
+              user={user}
+              locale={locale}
+              mounted={mounted}
+              theme={theme}
+              onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+              onToggleTheme={toggleTheme}
+              onToggleLanguage={toggleLanguage}
+              onLogout={() => setShowLogoutConfirm(true)}
+              t={t}
+              items={sidebarItems}
+            />
+          ) : null}
 
+          {!isImmersiveMode ? (
           <button
             type="button"
             onClick={toggleSidebarCollapse}
@@ -515,11 +529,13 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               )}
             </div>
           </button>
+          ) : null}
 
           {/* Main Content */}
           <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${
-            isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
+            isImmersiveMode ? 'md:ml-0' : isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
           }`}>
+            {!isImmersiveMode ? (
             <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
             <div className="flex items-center">
               <AdminButton
@@ -546,8 +562,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               </a>
             </div>
           </header>
+            ) : null}
 
-           <div className="p-8 flex-1 overflow-y-auto">
+           <div className={isImmersiveMode ? 'flex-1 overflow-hidden' : 'p-8 flex-1 overflow-y-auto'}>
             {children}
           </div>
         </main>

@@ -25,6 +25,8 @@ import {
   Calendar,
   Clock,
   Check,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import {
   getAdminStories,
@@ -55,6 +57,7 @@ import { AdminLoading } from '@/components/admin/AdminLoading'
 import { calculateFileHash } from '@/lib/file-hash'
 import { buildStoryMarkdownImage, getStoryMarkdownImageUrls, normalizeStoryContentImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
+import { useAdmin } from '../layout'
 
 const PASTE_UPLOAD_PLACEHOLDER_PREFIX = '<!-- story-paste-upload:'
 const STORY_PHOTO_PANEL_COLLAPSED_KEY = 'admin-story-photo-panel-collapsed'
@@ -86,6 +89,7 @@ interface StoriesTabProps {
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { isImmersiveMode, setIsImmersiveMode } = useAdmin()
   const { settings } = useSettings()
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -256,6 +260,18 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   useEffect(() => {
     onEditingChange?.(storyEditMode === 'editor')
   }, [onEditingChange, storyEditMode])
+
+  useEffect(() => {
+    if (storyEditMode !== 'editor') {
+      setIsImmersiveMode(false)
+    }
+  }, [setIsImmersiveMode, storyEditMode])
+
+  useEffect(() => {
+    return () => {
+      setIsImmersiveMode(false)
+    }
+  }, [setIsImmersiveMode])
   
   // refreshKey 变化时刷新 - 同时重置到列表模式
   useEffect(() => {
@@ -1309,7 +1325,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         </div>
       ) : (
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground md:px-6">
+          <div className={cn(
+            'flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground md:px-6',
+            isImmersiveMode && 'hidden'
+          )}>
             <span>{t('nav.story') || '叙事'}</span>
             <span className="hidden h-3 w-px bg-border/70 sm:block" />
             <span>{currentStory?.isPublished ? 'Published draft' : 'Working draft'}</span>
@@ -1326,7 +1345,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             ) : null}
           </div>
           {/* 头部 - 返回按钮、草稿状态、保存按钮 */}
-          <div className="flex flex-col gap-4 border-b border-border/70 pb-4 flex-shrink-0 md:flex-row md:items-end md:justify-between">
+          <div className={cn(
+            'flex flex-col gap-4 border-b border-border/70 pb-4 flex-shrink-0 md:flex-row md:items-end md:justify-between',
+            isImmersiveMode && 'hidden'
+          )}>
             <div className="flex min-w-0 flex-1 items-end gap-3">
               <AdminButton
                 onClick={() => {
@@ -1385,15 +1407,24 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           </div>
 
           {/* 主内容区 - 左右布局 */}
-          <div className="relative flex flex-1 min-h-0 overflow-hidden gap-4">
+          <div className={cn(
+            'relative flex flex-1 min-h-0 overflow-hidden gap-4',
+            isImmersiveMode && 'gap-0'
+          )}>
             {/* 左侧：编辑器 (70%) */}
-            <div className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]">
+            <div className={cn(
+              'flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]',
+              isImmersiveMode && 'border-y-0 border-l-0 shadow-none'
+            )}>
               {/* 标题输入 */}
               
               
               
               {/* 发布勾选、日期、字数统计、预览按钮 */}
-              <div className="flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className={cn(
+                'flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between',
+                isImmersiveMode && 'hidden'
+              )}>
                 {/* 左侧：发布勾选、日期、字数 */}
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer group">
@@ -1464,7 +1495,19 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
                   </span>
                 </div>
                 {/* 右侧：预览按钮 */}
-                <div className="flex items-center">
+                <div className="flex items-center gap-2">
+                  <AdminButton
+                    onClick={() => setIsImmersiveMode((prev) => !prev)}
+                    adminVariant="outline"
+                    className="flex items-center gap-2 h-8 border border-border/80 bg-background/80 px-3 text-xs shadow-none hover:bg-accent hover:text-accent-foreground transition-all"
+                  >
+                    {isImmersiveMode ? (
+                      <Minimize2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    )}
+                    {t('ui.immersive') || '沉浸'}
+                  </AdminButton>
                   <AdminButton
                     onClick={() => setShowPreview(true)}
                     adminVariant="outline"
@@ -1477,7 +1520,23 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
               </div>
               
               {/* 内容区 - 所见即所得编辑器 */}
-              <div className="relative flex-1 min-h-0 overflow-hidden bg-background">
+              <div className={cn(
+                'relative flex-1 min-h-0 overflow-hidden bg-background',
+                isImmersiveMode && 'border-r border-border/60'
+              )}>
+                {isImmersiveMode ? (
+                  <div className="pointer-events-none absolute right-4 top-4 z-20">
+                    <AdminButton
+                      type="button"
+                      onClick={() => setIsImmersiveMode(false)}
+                      adminVariant="outline"
+                      className="pointer-events-auto flex h-9 items-center gap-2 border-border/80 bg-background/90 px-3 text-[11px] shadow-sm backdrop-blur-sm"
+                    >
+                      <Minimize2 className="h-3.5 w-3.5" />
+                      {t('ui.immersive') || '沉浸'}
+                    </AdminButton>
+                  </div>
+                ) : null}
                 {currentStory && (
                       <NarrativeTipTapEditor
                         key={`${currentStory.id}:${editorInsertVersionRef.current}`}
@@ -1493,7 +1552,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             </div>
 
             {/* 折叠切换按钮 (独立于两者之间) */}
-            <div className="flex flex-col justify-center -mx-2 z-10 hidden md:flex">
+            <div className={cn('flex flex-col justify-center -mx-2 z-10 hidden md:flex', isImmersiveMode && 'mr-2')}>
               <button
                 type="button"
                 onClick={togglePhotoPanelCollapse}
@@ -1512,7 +1571,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             <div
               className={cn(
                 'h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none',
-                isPhotoPanelCollapsed ? 'w-20' : 'w-[340px] xl:w-[390px]'
+                isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]'
               )}
             >
               <StoryPhotoPanel
