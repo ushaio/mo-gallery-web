@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { cn } from '@/lib/utils'
 
 export interface PendingImage {
   id: string
@@ -27,6 +28,7 @@ export interface PendingImage {
 }
 
 interface StoryPhotoPanelProps {
+  isCollapsed: boolean
   currentStory: StoryDto | null
   pendingImages: PendingImage[]
   pendingCoverId: string | null
@@ -65,6 +67,7 @@ interface StoryPhotoPanelProps {
 }
 
 export function StoryPhotoPanel({
+  isCollapsed,
   currentStory,
   pendingImages,
   pendingCoverId,
@@ -101,17 +104,56 @@ export function StoryPhotoPanel({
   onOpenMenuPending,
   onOpenPasteUploadSettings,
 }: StoryPhotoPanelProps) {
+  const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
+
   const getCombinedItems = () => {
     const photoItems = (currentStory?.photos || []).map((photo) => ({ id: photo.id, type: 'photo' as const }))
     const pendingItems = pendingImages.map((image) => ({ id: image.id, type: 'pending' as const }))
     return [...photoItems, ...pendingItems]
   }
 
+  if (isCollapsed) {
+    return (
+      <div
+        className={cn(
+          'flex w-20 shrink-0 flex-col overflow-hidden border border-l-0 border-border bg-muted/20 transition-colors duration-300 md:rounded-r-lg md:rounded-l-none',
+          isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
+        )}
+        onDragOver={onPhotoPanelDragOver}
+        onDragLeave={onPhotoPanelDragLeave}
+        onDrop={onPhotoPanelDrop}
+      >
+        <div className="flex h-full flex-col items-center justify-between bg-background/60 px-2 py-4">
+          <div className="flex flex-col items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-primary" />
+            <span
+              className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground [writing-mode:vertical-rl]"
+              aria-hidden="true"
+            >
+              {t('story.related_photos')}
+            </span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <span className="rounded-sm bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
+              {totalPhotos}
+            </span>
+            {pendingImages.length > 0 ? (
+              <span className="rounded-sm bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-600">
+                {pendingImages.length}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
-      className={`flex-[3] flex min-w-[320px] flex-col overflow-hidden rounded-lg border transition-colors ${
-        isDraggingOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/20'
-      }`}
+      className={cn(
+        'flex-[3] flex min-w-[320px] flex-col overflow-hidden border border-l-0 bg-muted/20 transition-[flex-basis] duration-300 md:rounded-r-lg md:rounded-l-none',
+        isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
+      )}
       onDragOver={onPhotoPanelDragOver}
       onDragLeave={onPhotoPanelDragLeave}
       onDrop={onPhotoPanelDrop}
@@ -123,7 +165,7 @@ export function StoryPhotoPanel({
             {t('story.related_photos')}
           </span>
           <span className="text-xs text-muted-foreground">
-            ({(currentStory?.photos?.length || 0) + pendingImages.length})
+            ({totalPhotos})
           </span>
           {pendingImages.length > 0 ? (
             <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
