@@ -16,7 +16,7 @@ import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
-import { STORY_PASTE_UPLOAD_SETTINGS_KEY } from './constants'
+import { STORY_PASTE_UPLOAD_SETTINGS_KEY, STORY_UPLOAD_SETTINGS_KEY } from './constants'
 import type { UploadProgressState } from './types'
 import { useStoryPasteUploads } from './useStoryPasteUploads'
 
@@ -26,6 +26,7 @@ interface UseStoryEditorActionsParams {
   allPhotos: PhotoDto[]
   stories: StoryDto[]
   pendingImages: PendingImage[]
+  initialUploadSettings: UploadSettings
   initialPasteUploadSettings: UploadSettings
   setCurrentStory: Dispatch<SetStateAction<StoryDto | null>>
   setAllPhotos: Dispatch<SetStateAction<PhotoDto[]>>
@@ -45,6 +46,7 @@ interface UseStoryEditorActionsResult {
   isUploading: boolean
   uploadProgress: UploadProgressState
   pendingPasteFilesRef: MutableRefObject<File[] | null>
+  uploadSettings: UploadSettings
   pasteUploadSettings: UploadSettings
   hasConfirmedPasteSettings: boolean
   handlePhotoPanelDrop: (event: DragEvent) => Promise<void>
@@ -56,6 +58,7 @@ interface UseStoryEditorActionsResult {
   handleInsertPhotoMarkdown: (photo: PhotoDto) => void
   handleInsertGalleryMarkdown: (photoIds: string[]) => void
   handleInsertExternalPhotoMarkdown: () => void
+  restoreUploadSettings: (settings: UploadSettings) => void
   restorePasteUploadSettings: (settings: UploadSettings) => void
 }
 
@@ -81,6 +84,7 @@ export function useStoryEditorActions({
   allPhotos,
   stories,
   pendingImages,
+  initialUploadSettings,
   initialPasteUploadSettings,
   setCurrentStory,
   setAllPhotos,
@@ -98,7 +102,20 @@ export function useStoryEditorActions({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgressState>({ current: 0, total: 0, currentFile: '' })
   const [hasConfirmedPasteSettings, setHasConfirmedPasteSettings] = useState(false)
+  const [uploadSettings, setUploadSettings] = useState<UploadSettings>(initialUploadSettings)
   const [pasteUploadSettings, setPasteUploadSettings] = useState<UploadSettings>(initialPasteUploadSettings)
+
+  const persistUploadSettings = useCallback((settings: UploadSettings) => {
+    setUploadSettings(settings)
+
+    if (typeof window === 'undefined') return
+
+    try {
+      window.localStorage.setItem(STORY_UPLOAD_SETTINGS_KEY, JSON.stringify(settings))
+    } catch (error) {
+      console.error('Failed to persist upload settings:', error)
+    }
+  }, [])
 
   const persistPasteUploadSettings = useCallback((settings: UploadSettings) => {
     setPasteUploadSettings(settings)
@@ -116,6 +133,10 @@ export function useStoryEditorActions({
   const restorePasteUploadSettings = useCallback((settings: UploadSettings) => {
     setPasteUploadSettings(settings)
     setHasConfirmedPasteSettings(true)
+  }, [])
+
+  const restoreUploadSettings = useCallback((settings: UploadSettings) => {
+    setUploadSettings(settings)
   }, [])
 
   const insertDirective = useCallback((markdown: string) => {
@@ -188,6 +209,7 @@ export function useStoryEditorActions({
   const handleConfirmUpload = useCallback(async (settings: UploadSettings) => {
     if (!token || !currentStory) return
 
+    persistUploadSettings(settings)
     setShowUploadSettings(false)
     setIsUploading(true)
     const toUpload = pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed')
@@ -256,7 +278,7 @@ export function useStoryEditorActions({
     }
 
     notify(`${failedCount} ${t('admin.upload_failed_count')}`, 'error')
-  }, [currentStory, notify, onRequestSave, pendingImages, setCurrentStory, setPendingImages, stories, t, token])
+  }, [currentStory, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {
     setPendingImages((prev) => prev.map((image) => image.status === 'failed' ? { ...image, status: 'pending' as const, error: undefined, progress: 0 } : image))
@@ -337,6 +359,7 @@ export function useStoryEditorActions({
     isUploading,
     uploadProgress,
     pendingPasteFilesRef,
+    uploadSettings,
     pasteUploadSettings,
     hasConfirmedPasteSettings,
     handlePhotoPanelDrop,
@@ -348,6 +371,7 @@ export function useStoryEditorActions({
     handleInsertPhotoMarkdown,
     handleInsertGalleryMarkdown,
     handleInsertExternalPhotoMarkdown,
+    restoreUploadSettings,
     restorePasteUploadSettings,
   }
 }

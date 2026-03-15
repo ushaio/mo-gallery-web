@@ -33,7 +33,7 @@ export function ImageUploadSettingsModal({
   initialSettings,
   confirmLabel,
 }: ImageUploadSettingsModalProps) {
-  const [maxSizeMB, setMaxSizeMB] = useState('')
+  const [maxSizeMB, setMaxSizeMB] = useState('2')
   const [storageProvider, setStorageProvider] = useState('')
   const [category, setCategory] = useState('')
   const [albumId, setAlbumId] = useState('')
@@ -48,14 +48,14 @@ export function ImageUploadSettingsModal({
 
   useEffect(() => {
     if (isOpen) {
-      setMaxSizeMB(initialSettings?.maxSizeMB ? String(initialSettings.maxSizeMB) : '')
+      setMaxSizeMB(initialSettings?.maxSizeMB ? String(initialSettings.maxSizeMB) : '2')
       setStorageProvider(initialSettings?.storageProvider || '')
       setCategory(initialSettings?.category || '')
       setAlbumId(initialSettings?.albumId || '')
       return
     }
 
-    setMaxSizeMB('')
+    setMaxSizeMB('2')
     setStorageProvider('')
     setCategory('')
     setAlbumId('')
@@ -104,7 +104,7 @@ export function ImageUploadSettingsModal({
         <div className="flex items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-3">
             <Settings className="h-5 w-5 text-primary" />
-            <h3 className="font-bold">{t('admin.upload_settings') || 'Upload Settings'}</h3>
+            <h3 className="font-bold">{t('admin.upload_settings')}</h3>
           </div>
           <AdminButton
             onClick={onClose}
@@ -123,7 +123,7 @@ export function ImageUploadSettingsModal({
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('admin.compression_size') || 'Compression Size (MB)'}
+                {t('admin.compression_size')}
               </label>
               <input
                 type="number"
@@ -132,42 +132,42 @@ export function ImageUploadSettingsModal({
                 step="0.5"
                 value={maxSizeMB}
                 onChange={(event) => setMaxSizeMB(event.target.value)}
-                placeholder={t('admin.optional') || 'Optional'}
+                placeholder={t('common.optional')}
                 className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('admin.storage_provider') || 'Storage Provider'}
+                {t('admin.storage_provider')}
               </label>
               <select
                 value={storageProvider}
                 onChange={(event) => setStorageProvider(event.target.value)}
                 className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
-                <option value="local">Local Storage</option>
-                <option value="r2">Cloudflare R2</option>
-                <option value="github">GitHub</option>
+                <option value="local">{t('admin.storage_provider_local')}</option>
+                <option value="r2">{t('admin.storage_provider_r2')}</option>
+                <option value="github">{t('admin.storage_provider_github')}</option>
               </select>
             </div>
 
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('admin.category') || 'Category'}
+                {t('admin.category')}
               </label>
               <input
                 type="text"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-                placeholder={t('admin.optional') || 'Optional'}
+                placeholder={t('common.optional')}
                 className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
 
             <div>
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('admin.album') || 'Album'}
+                {t('admin.album')}
               </label>
               <select
                 value={albumId}
@@ -175,7 +175,7 @@ export function ImageUploadSettingsModal({
                 disabled={loadingAlbums}
                 className="w-full rounded-md border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
               >
-                <option value="">{t('admin.none') || 'Do not add to album'}</option>
+                <option value="">{t('admin.none')}</option>
                 {albums.map((album) => (
                   <option key={album.id} value={album.id}>
                     {album.name}
@@ -192,7 +192,7 @@ export function ImageUploadSettingsModal({
             adminVariant="link"
             className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
-            {t('common.cancel') || 'Cancel'}
+            {t('common.cancel')}
           </AdminButton>
           <AdminButton
             onClick={handleConfirm}
@@ -201,7 +201,7 @@ export function ImageUploadSettingsModal({
             className="flex items-center gap-2 rounded-md text-sm"
           >
             <Upload className="h-4 w-4" />
-            {confirmLabel || t('admin.start_upload') || 'Start Upload'}
+            {confirmLabel || t('admin.start_upload')}
           </AdminButton>
         </div>
       </div>
