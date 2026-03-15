@@ -222,7 +222,7 @@ export function StoryPreviewModal({
               className="group inline-flex flex-col items-center gap-6"
             >
               <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-muted-foreground group-hover:text-primary transition-colors">
-                返回编辑
+                杩斿洖缂栬緫
               </span>
               <span className="text-4xl md:text-6xl font-serif font-light italic tracking-tight hover:text-primary transition-colors">
                 Close Preview

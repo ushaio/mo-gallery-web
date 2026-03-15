@@ -1,0 +1,263 @@
+﻿.story-rich-content {
+  color: var(--foreground);
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-size: 1.125rem;
+  line-height: 1.95;
+}
+
+.story-rich-content,
+.story-rich-content .story-rich-html {
+  max-width: 100%;
+}
+
+.story-rich-content > :first-child,
+.story-rich-content .story-rich-html > :first-child {
+  margin-top: 0;
+}
+
+.story-rich-content p,
+.story-rich-content .story-rich-html p {
+  margin: 1.2rem 0;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
+
+.story-rich-content > p:first-of-type::first-letter,
+.story-rich-content .story-rich-html > p:first-of-type::first-letter {
+  float: left;
+  margin-right: 0.12em;
+  margin-top: 0.08em;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-size: 4.5rem;
+  line-height: 0.8;
+}
+
+.story-rich-content h1,
+.story-rich-content h2,
+.story-rich-content h3,
+.story-rich-content h4,
+.story-rich-content h5,
+.story-rich-content h6,
+.story-rich-content .story-rich-html h1,
+.story-rich-content .story-rich-html h2,
+.story-rich-content .story-rich-html h3,
+.story-rich-content .story-rich-html h4,
+.story-rich-content .story-rich-html h5,
+.story-rich-content .story-rich-html h6 {
+  color: var(--foreground);
+  line-height: 1.1;
+  text-wrap: pretty;
+}
+
+.story-rich-content h1,
+.story-rich-content .story-rich-html h1 {
+  margin: 3.5rem 0 1.75rem;
+  font-size: clamp(2.5rem, 4vw, 4.5rem);
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+}
+
+.story-rich-content h2,
+.story-rich-content .story-rich-html h2 {
+  margin: 3.5rem 0 1.5rem;
+  font-size: clamp(1.65rem, 2vw, 2.3rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.story-rich-content h3,
+.story-rich-content .story-rich-html h3 {
+  margin: 2.5rem 0 1rem;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.story-rich-content h4,
+.story-rich-content h5,
+.story-rich-content h6,
+.story-rich-content .story-rich-html h4,
+.story-rich-content .story-rich-html h5,
+.story-rich-content .story-rich-html h6 {
+  margin: 2rem 0 0.8rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.story-rich-content ul,
+.story-rich-content ol,
+.story-rich-content .story-rich-html ul,
+.story-rich-content .story-rich-html ol {
+  margin: 1.25rem 1rem 1.25rem 0.4rem;
+  padding: 0 1rem;
+}
+
+.story-rich-content ul,
+.story-rich-content .story-rich-html ul {
+  list-style: disc;
+}
+
+.story-rich-content ol,
+.story-rich-content .story-rich-html ol {
+  list-style: decimal;
+}
+
+.story-rich-content li,
+.story-rich-content .story-rich-html li {
+  margin: 0.25rem 0;
+}
+
+.story-rich-content li p,
+.story-rich-content .story-rich-html li p {
+  margin: 0.25em 0;
+}
+
+.story-rich-content blockquote,
+.story-rich-content .story-rich-html blockquote {
+  margin: 2.5rem 0;
+  border-left: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  padding: 0.25rem 0 0.25rem 1.5rem;
+  font-size: 1.35rem;
+  font-style: italic;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--foreground) 74%, transparent);
+}
+
+.story-rich-content blockquote p,
+.story-rich-content .story-rich-html blockquote p {
+  margin: 0;
+}
+
+.story-rich-content a,
+.story-rich-content .story-rich-html a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  text-underline-offset: 0.18em;
+  transition: color 200ms ease, text-decoration-color 200ms ease;
+}
+
+.story-rich-content a:hover,
+.story-rich-content .story-rich-html a:hover {
+  color: var(--primary);
+  text-decoration-color: var(--primary);
+}
+
+.story-rich-content code,
+.story-rich-content .story-rich-html code {
+  background-color: color-mix(in srgb, var(--muted) 88%, transparent);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  padding: 0.25em 0.3em;
+}
+
+.story-rich-content pre,
+.story-rich-content .story-rich-html pre {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--foreground) 94%, transparent);
+  color: var(--background);
+}
+
+.story-rich-content pre code,
+.story-rich-content .story-rich-html pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.story-rich-content hr,
+.story-rich-content .story-rich-html hr {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--border) 100%, transparent);
+}
+
+.story-rich-content img,
+.story-rich-content .story-rich-html img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+.story-rich-content img[width],
+.story-rich-content .story-rich-html img[width] {
+  width: auto;
+}
+
+.story-rich-content [data-type='image-group'],
+.story-rich-content .story-rich-html [data-type='image-group'] {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 100%;
+  margin: 2rem 0;
+}
+
+.story-rich-content [data-type='image-group'][data-align='center'],
+.story-rich-content .story-rich-html [data-type='image-group'][data-align='center'] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.story-rich-content [data-type='image-group'][data-align='right'],
+.story-rich-content .story-rich-html [data-type='image-group'][data-align='right'] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.story-rich-content [data-type='image-group'] > *,
+.story-rich-content .story-rich-html [data-type='image-group'] > * {
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.story-rich-content [data-type='image-group'] img,
+.story-rich-content .story-rich-html [data-type='image-group'] img {
+  margin: 0;
+  width: 100% !important;
+  border-radius: 0;
+}
+
+.story-rich-content table,
+.story-rich-content .story-rich-html table {
+  width: 100%;
+  margin: 1.75rem 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.story-rich-content th,
+.story-rich-content td,
+.story-rich-content .story-rich-html th,
+.story-rich-content .story-rich-html td {
+  border: 1px solid color-mix(in srgb, var(--border) 100%, transparent);
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.story-rich-content th,
+.story-rich-content .story-rich-html th {
+  background-color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .story-rich-content {
+    font-size: 1rem;
+    line-height: 1.85;
+  }
+
+  .story-rich-content > p:first-of-type::first-letter,
+  .story-rich-content .story-rich-html > p:first-of-type::first-letter {
+    font-size: 3.6rem;
+  }
+
+  .story-rich-content [data-type='image-group'],
+  .story-rich-content .story-rich-html [data-type='image-group'] {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

@@ -3,681 +3,126 @@
  */
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import dynamic from 'next/dynamic'
-import { compressImage } from '@/lib/image-compress'
-import ExifReader from 'exifreader'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
-  BookOpen,
-  Plus,
-  History,
-  FileText,
-  Edit3,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  Save,
-  Eye,
-  EyeOff,
-  Image as ImageIcon,
-  Loader2,
-  Calendar,
-  Clock,
-  Check,
-  Maximize2,
-  Minimize2,
-} from 'lucide-react'
-import {
-  getAdminStories,
   createStory,
-  updateStory,
   deleteStory,
-  addPhotosToStory,
-  reorderStoryPhotos,
+  getAdminStories,
   getPhotos,
-  checkDuplicatePhoto,
-  uploadPhotoWithProgress,
-  addPhotosToAlbum,
-  type StoryDto,
+  reorderStoryPhotos,
+  updateStory,
   type PhotoDto,
+  type StoryDto,
 } from '@/lib/api'
 import { useSettings } from '@/contexts/SettingsContext'
-import { AdminInput, AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
-import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
-import { saveStoryEditorDraftToDB, getStoryEditorDraftFromDB, clearStoryEditorDraftFromDB, type StoryEditorDraftData } from '@/lib/client-db'
-import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
-import { calculateFileHash } from '@/lib/file-hash'
-import { buildStoryMarkdownImage, getStoryMarkdownImageUrls, normalizeStoryContentImages } from '@/lib/story-rich-content'
-import { cn } from '@/lib/utils'
+import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
+import { getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
 import { useAdmin } from '../layout'
+import {
+  STORY_PHOTO_PANEL_COLLAPSED_KEY,
+  STORY_PASTE_UPLOAD_SETTINGS_KEY,
+} from './stories/constants'
+import { StoryEditorView } from './stories/StoryEditorView'
+import { StoryListView } from './stories/StoryListView'
+import type { StoriesTabProps } from './stories/types'
+import { useStoryDraftState } from './stories/useStoryDraftState'
+import { useStoryEditorActions } from './stories/useStoryEditorActions'
+import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
+import { applySavedOrder, savePhotoOrder } from './stories/utils'
 
-const PASTE_UPLOAD_PLACEHOLDER_PREFIX = '<!-- story-paste-upload:'
-const STORY_PHOTO_PANEL_COLLAPSED_KEY = 'admin-story-photo-panel-collapsed'
-
-// 动态导入 NarrativeTipTapEditor，避免 SSR 问题
-const NarrativeTipTapEditor = dynamic(
-  () => import('@/components/NarrativeTipTapEditor'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex-1 flex items-center justify-center border border-border bg-card/30">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-)
-
-interface StoriesTabProps {
-  token: string | null
-  t: (key: string) => string
-  notify: (message: string, type?: 'success' | 'error' | 'info') => void
-  editStoryId?: string
-  editFromDraft?: StoryEditorDraftData | null
-  onDraftConsumed?: () => void
-  refreshKey?: number
-  onEditingChange?: (isEditing: boolean) => void
-}
+const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = { category: 'story-inline' }
 
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const { isImmersiveMode, setIsImmersiveMode } = useAdmin()
   const { settings } = useSettings()
+  const { isImmersiveMode, setIsImmersiveMode } = useAdmin()
+
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentStory, setCurrentStory] = useState<StoryDto | null>(null)
   const [storyEditMode, setStoryEditMode] = useState<'list' | 'editor'>('list')
   const [saving, setSaving] = useState(false)
-  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
-  const editorInsertVersionRef = useRef(0)
-  // 照片管理
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([])
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
-  
-  // 拖拽排序状态（支持已上传照片和待上传图片）
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
-  const [draggedItemType, setDraggedItemType] = useState<'photo' | 'pending' | null>(null)
-  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null)
-  
-  // 照片/待上传图片的菜单状态
-  const [openMenuPhotoId, setOpenMenuPhotoId] = useState<string | null>(null)
-  const [openMenuPendingId, setOpenMenuPendingId] = useState<string | null>(null)
-  
-  // 待上传图片的封面状态
   const [pendingCoverId, setPendingCoverId] = useState<string | null>(null)
-  
-  // 预览弹窗状态
+  const [deleteStoryId, setDeleteStoryId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [useCustomDate, setUseCustomDate] = useState(false)
+  const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [previewPhotoIndex, setPreviewPhotoIndex] = useState<number | null>(null)
-  
-  // 待上传图片（延迟上传）
-  const [pendingImages, setPendingImages] = useState<PendingImage[]>([])
-  const [showUploadSettings, setShowUploadSettings] = useState(false)
-  const [showPasteUploadSettings, setShowPasteUploadSettings] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, currentFile: '' })
-  const [isDraggingOver, setIsDraggingOver] = useState(false)
-  const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(false)
-  const [pasteUploadSettings, setPasteUploadSettings] = useState<UploadSettings>({
-    category: 'story-inline',
-  })
-  const [hasConfirmedPasteSettings, setHasConfirmedPasteSettings] = useState(false)
-  const pendingPasteFilesRef = useRef<File[] | null>(null)
-  
-  // 草稿自动保存状态
-  const [draftSaved, setDraftSaved] = useState(false)
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const AUTO_SAVE_DELAY = 2000
-  const editorCharacterCount = (currentStory?.content || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim().length
-  const relatedPhotoCount = currentStory?.photos?.length || 0
-  const pendingPhotoCount = pendingImages.length
-
-  // 照片排序持久化键名
-  const photoOrderKey = 'story_photo_order'
-
-  // 从 localStorage 获取已保存的照片排序
-  function getSavedPhotoOrder(storyId: string): Record<string, string[]> {
-    if (typeof window === 'undefined') return {}
-    try {
-      const stored = localStorage.getItem(photoOrderKey)
-      return stored ? JSON.parse(stored) : {}
-    } catch {
-      return {}
-    }
-  }
-
-  // 保存照片排序到 localStorage
-  function savePhotoOrder(storyId: string, photoIds: string[]) {
-    if (typeof window === 'undefined') return
-    try {
-      const all = getSavedPhotoOrder(storyId)
-      all[storyId] = photoIds
-      localStorage.setItem(photoOrderKey, JSON.stringify(all))
-    } catch (e) {
-      console.error('Failed to save photo order:', e)
-    }
-  }
-
-  // 将已保存的排序应用到故事列表
-  function applySavedOrder(stories: StoryDto[]): StoryDto[] {
-    const photoOrders = getSavedPhotoOrder('')
-    return stories.map(story => {
-      const order = photoOrders[story.id]
-      if (order && story.photos) {
-        const photoMap = new Map(story.photos.map(p => [p.id, p]))
-        const sortedPhotos = order.map((id: string) => photoMap.get(id)).filter((p): p is PhotoDto => !!p)
-        // 仅当所有排序照片都存在时才应用
-        if (sortedPhotos.length === story.photos.length) {
-          return { ...story, photos: sortedPhotos }
-        }
-      }
-      return story
-    })
-  }
-  
-  // 记录初始状态，用于脏检查
-  const [isDirty, setIsDirty] = useState(false)
-  const initialStoryRef = useRef<{
-    title: string
-    content: string
-    isPublished: boolean
-    createdAt: string
-    photoIds: string[]
-    coverPhotoId?: string
-  } | null>(null)
-  
-  // 删除确认对话框状态
-  const [deleteStoryId, setDeleteStoryId] = useState<string | null>(null)
-  
-  // 发布状态筛选
-  const [statusFilter, setStatusFilter] = useState('')
-  
-  // 自定义日期开关状态
-  const [useCustomDate, setUseCustomDate] = useState(false)
-  
-  // 草稿恢复对话框状态
-  const [draftRestoreDialog, setDraftRestoreDialog] = useState<{
-    isOpen: boolean
-    draft: StoryEditorDraftData | null
-    story: StoryDto | null
-  }>({ isOpen: false, draft: null, story: null })
 
   const initialLoadRef = useRef(false)
-  
-  useEffect(() => {
-    if (!initialLoadRef.current) {
-      loadStories()
-      initialLoadRef.current = true
-    }
-  }, [token])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const raw = window.localStorage.getItem('story_paste_upload_settings')
-    if (!raw) return
-
-    try {
-      const parsed = JSON.parse(raw) as UploadSettings
-      setPasteUploadSettings((prev) => ({
-        ...prev,
-        ...parsed,
-      }))
-      setHasConfirmedPasteSettings(true)
-    } catch (error) {
-      console.error('Failed to restore paste upload settings:', error)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setIsPhotoPanelCollapsed(window.localStorage.getItem(STORY_PHOTO_PANEL_COLLAPSED_KEY) === 'true')
-  }, [])
-
-  const togglePhotoPanelCollapse = useCallback(() => {
-    setIsPhotoPanelCollapsed((prev) => {
-      const next = !prev
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(STORY_PHOTO_PANEL_COLLAPSED_KEY, String(next))
-      }
-      return next
-    })
-  }, [])
-
-  useEffect(() => {
-    onEditingChange?.(storyEditMode === 'editor')
-  }, [onEditingChange, storyEditMode])
-
-  useEffect(() => {
-    if (storyEditMode !== 'editor') {
-      setIsImmersiveMode(false)
-    }
-  }, [setIsImmersiveMode, storyEditMode])
-
-  useEffect(() => {
-    return () => {
-      setIsImmersiveMode(false)
-    }
-  }, [setIsImmersiveMode])
-  
-  // refreshKey 变化时刷新 - 同时重置到列表模式
-  useEffect(() => {
-    if (refreshKey && refreshKey > 0) {
-      loadStories()
-      setStoryEditMode('list')
-      setCurrentStory(null)
-      setPendingImages([])
-      initialStoryRef.current = null
-      setIsDirty(false)
-      setUseCustomDate(false)
-    }
-  }, [refreshKey])
-
-  // 处理 editStoryId - 自动打开指定故事的编辑器
-  useEffect(() => {
-    if (editStoryId && stories.length > 0) {
-      const storyToEdit = stories.find(s => s.id === editStoryId)
-      if (storyToEdit) {
-        setCurrentStory({ ...storyToEdit })
-        setStoryEditMode('editor')
-      }
-    }
-  }, [editStoryId, stories])
-
-  // 处理 editFromDraft - 从草稿数据打开编辑器（无需数据库调用）
-  useEffect(() => {
-    if (editFromDraft && allPhotos.length > 0) {
-      const restoredPhotos = editFromDraft.photoIds
-        .map(id => allPhotos.find(p => p.id === id))
-        .filter((p): p is PhotoDto => !!p)
-      
-      setCurrentStory({
-        id: editFromDraft.storyId || crypto.randomUUID(),
-        title: editFromDraft.title,
-        content: editFromDraft.content,
-        isPublished: editFromDraft.isPublished,
-        createdAt: editFromDraft.createdAt,
-        updatedAt: new Date().toISOString(),
-        coverPhotoId: editFromDraft.coverPhotoId ?? undefined,
-        photos: restoredPhotos,
-      })
-      
-      if (editFromDraft.files?.length > 0) {
-        const restoredPending = editFromDraft.files.map(f => ({
-          id: f.id,
-          file: f.file,
-          previewUrl: URL.createObjectURL(f.file),
-          status: 'pending' as const,
-          progress: 0,
-          takenAt: f.takenAt
-        }))
-        setPendingImages(restoredPending)
-      }
-      
-      // 从草稿恢复待上传封面 ID
-      if (editFromDraft.pendingCoverId) {
-        setPendingCoverId(editFromDraft.pendingCoverId)
-      }
-      
-      setLastSavedAt(editFromDraft.savedAt)
-      setStoryEditMode('editor')
-      notify(t('admin.restored_from_draft') || '已从草稿恢复', 'info')
-      onDraftConsumed?.()
-    }
-  }, [editFromDraft, allPhotos, onDraftConsumed])
-
-  // 提供 editFromDraft 时先加载照片
-  useEffect(() => {
-    if (editFromDraft && allPhotos.length === 0) {
-      loadAllPhotos()
-    }
-  }, [editFromDraft])
-
-  // 进入编辑模式时加载所有照片
-  useEffect(() => {
-    if (storyEditMode === 'editor' && allPhotos.length === 0) {
-      loadAllPhotos()
-    }
-  }, [storyEditMode])
-
-  // 注意：草稿加载现在在 handleEditStory 和 handleCreateStory 中处理
-  // 以便用户选择是否恢复草稿
-
-  // 检查内容是否变更（脏检查）
-  useEffect(() => {
-    if (storyEditMode !== 'editor' || !currentStory || !initialStoryRef.current) {
-      setIsDirty(false)
-      return
-    }
-    
-    const initial = initialStoryRef.current
-    const currentPhotoIds = currentStory.photos?.map(p => p.id) || []
-    
-    const hasChanged =
-      currentStory.title !== initial.title ||
-      currentStory.content !== initial.content ||
-      currentStory.isPublished !== initial.isPublished ||
-      currentStory.createdAt !== initial.createdAt ||
-      currentStory.coverPhotoId !== initial.coverPhotoId ||
-      JSON.stringify(currentPhotoIds) !== JSON.stringify(initial.photoIds) ||
-      pendingImages.length > 0 ||
-      pendingCoverId !== null
-    
-    setIsDirty(hasChanged)
-  }, [storyEditMode, currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.createdAt, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId])
-
-  // 故事数据变更时自动保存草稿（仅在有修改时）
-  useEffect(() => {
-    if (storyEditMode !== 'editor' || !currentStory || !isDirty) return
-    if (!currentStory.title && !currentStory.content && pendingImages.length === 0) return
-
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
-    autoSaveTimerRef.current = setTimeout(() => saveDraft(), AUTO_SAVE_DELAY)
-
-    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
-  }, [currentStory?.title, currentStory?.content, currentStory?.isPublished, currentStory?.createdAt, currentStory?.coverPhotoId, currentStory?.photos, pendingImages, pendingCoverId, isDirty])
-
-  // 将草稿应用到当前故事
-  const applyDraft = useCallback((draft: StoryEditorDraftData, baseStory: StoryDto) => {
-    // 直接使用草稿的 photoIds - 若为空表示用户已删除所有照片
-    const restoredPhotos = draft.photoIds
-      .map(id => allPhotos.find(p => p.id === id) || baseStory.photos?.find(p => p.id === id))
-      .filter((p): p is PhotoDto => !!p)
-    
-    setCurrentStory({
-      ...baseStory,
-      title: draft.title || baseStory.title,
-      content: draft.content || baseStory.content,
-      isPublished: draft.isPublished,
-      createdAt: draft.createdAt || baseStory.createdAt,
-      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
-      photos: restoredPhotos,
-    })
-    
-    if (draft.files?.length > 0) {
-      const restoredPending = draft.files.map(f => ({
-        id: f.id,
-        file: f.file,
-        previewUrl: URL.createObjectURL(f.file),
-        status: 'pending' as const,
-        progress: 0,
-        takenAt: f.takenAt
-      }))
-      setPendingImages(restoredPending)
-    }
-    
-    // 从草稿恢复待上传封面 ID
-    if (draft.pendingCoverId) {
-      setPendingCoverId(draft.pendingCoverId)
-    }
-    
-    setLastSavedAt(draft.savedAt)
-    // 更新初始引用以匹配恢复的草稿（不视为脏数据）
-    initialStoryRef.current = {
-      title: draft.title || baseStory.title,
-      content: draft.content || baseStory.content,
-      isPublished: draft.isPublished,
-      createdAt: draft.createdAt || baseStory.createdAt,
-      photoIds: draft.photoIds,
-      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
-    }
-    notify(t('admin.restored_from_draft'), 'info')
-  }, [allPhotos, notify, t])
-
-  // 草稿恢复对话框 - 确认恢复
-  const handleDraftRestore = useCallback(() => {
-    if (draftRestoreDialog.draft && draftRestoreDialog.story) {
-      applyDraft(draftRestoreDialog.draft, draftRestoreDialog.story)
-    }
-    setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
-    setStoryEditMode('editor')
-  }, [draftRestoreDialog, applyDraft])
-
-  // 草稿恢复对话框 - 丢弃草稿
-  const handleDraftDiscard = useCallback(() => {
-    if (draftRestoreDialog.story) {
-      setCurrentStory({ ...draftRestoreDialog.story })
-    }
-    setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
-    setStoryEditMode('editor')
-  }, [draftRestoreDialog])
-
-  // 草稿恢复对话框 - 取消（关闭不操作）
-  const handleDraftCancel = useCallback(() => {
-    setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
-    setCurrentStory(null)
-  }, [])
-
-  const saveDraft = useCallback(async () => {
-    if (!currentStory) return
-    const existingStory = stories.find(s => s.id === currentStory.id)
-    
-    try {
-      await saveStoryEditorDraftToDB({
-        storyId: existingStory ? currentStory.id : undefined,
-        title: currentStory.title,
-        content: currentStory.content,
-        isPublished: currentStory.isPublished,
-        createdAt: currentStory.createdAt,
-        coverPhotoId: currentStory.coverPhotoId,
-        pendingCoverId: pendingCoverId,
-        photoIds: currentStory.photos?.map(p => p.id) || [],
-        files: pendingImages.map(p => ({ id: p.id, file: p.file, takenAt: p.takenAt }))
-      })
-      setLastSavedAt(Date.now())
-      setDraftSaved(true)
-      setTimeout(() => setDraftSaved(false), 2000)
-    } catch (e) {
-      console.error('Failed to save draft:', e)
-    }
-  }, [currentStory, stories, pendingImages, pendingCoverId])
-
-  const clearDraft = useCallback(async (storyId?: string) => {
-    try {
-      await clearStoryEditorDraftFromDB(storyId)
-      setLastSavedAt(null)
-    } catch (e) {
-      console.error('Failed to clear draft:', e)
-    }
-  }, [])
-
-  async function loadStories() {
+  const loadStories = useCallback(async () => {
     if (!token) return
+
     try {
       setLoading(true)
       const data = await getAdminStories(token)
-      // 从 localStorage 应用已保存的照片排序
       setStories(applySavedOrder(data))
-    } catch (err) {
-      console.error('Failed to load stories:', err)
+    } catch (error) {
+      console.error('Failed to load stories:', error)
       notify(t('story.load_failed'), 'error')
     } finally {
       setLoading(false)
     }
-  }
+  }, [notify, t, token])
 
-  async function loadAllPhotos() {
+  const loadAllPhotos = useCallback(async () => {
     try {
       const data = await getPhotos({ all: true })
       setAllPhotos(data)
-    } catch (err) {
-      console.error('Failed to load photos:', err)
+    } catch (error) {
+      console.error('Failed to load photos:', error)
     }
-  }
+  }, [])
 
-  async function handleCreateStory() {
-    const newStory: StoryDto = {
-      id: crypto.randomUUID(),
-      title: '',
-      content: '',
-      isPublished: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      photos: [],
-    }
-    
-    // 设置脏检查的初始状态
-    initialStoryRef.current = {
-      title: '',
-      content: '',
-      isPublished: false,
-      createdAt: newStory.createdAt,
-      photoIds: [],
-      coverPhotoId: undefined,
-    }
-    
-    // 检查是否存在新故事的草稿
-    try {
-      const draft = await getStoryEditorDraftFromDB(undefined)
-      if (draft && draft.savedAt && (draft.title || draft.content || (draft.files && draft.files.length > 0))) {
-        // 弹出对话框询问用户是否恢复草稿
-        setCurrentStory(newStory)
-        setDraftRestoreDialog({ isOpen: true, draft, story: newStory })
-        return
-      }
-    } catch (e) {
-      console.error('Failed to check draft:', e)
-    }
-    
-    setCurrentStory(newStory)
-    setStoryEditMode('editor')
-  }
+  const {
+    draftSaved,
+    lastSavedAt,
+    initialStory,
+    draftRestoreDialog,
+    createStoryWithDraftCheck,
+    editStoryWithDraftCheck,
+    handleDraftRestore,
+    handleDraftDiscard,
+    handleDraftCancel,
+    clearDraft,
+    resetDraftState,
+  } = useStoryDraftState({
+    allPhotos,
+    currentStory,
+    pendingImages,
+    pendingCoverId,
+    stories,
+    storyEditMode,
+    editFromDraft,
+    onDraftConsumed,
+    notify,
+    t,
+    loadAllPhotos,
+    setCurrentStory,
+    setPendingImages,
+    setPendingCoverId,
+    setStoryEditMode,
+  })
 
-  async function handleEditStory(story: StoryDto) {
-    // 设置脏检查的初始状态
-    initialStoryRef.current = {
-      title: story.title,
-      content: story.content,
-      isPublished: story.isPublished,
-      createdAt: story.createdAt,
-      photoIds: story.photos?.map(p => p.id) || [],
-      coverPhotoId: story.coverPhotoId,
-    }
-    
-    // 检查是否存在该故事的草稿
-    try {
-      const draft = await getStoryEditorDraftFromDB(story.id)
-      if (draft && draft.savedAt && draft.savedAt > new Date(story.updatedAt).getTime()) {
-        // 草稿比已保存版本更新，弹出对话框
-        setCurrentStory({ ...story })
-        setDraftRestoreDialog({ isOpen: true, draft, story })
-        return
-      }
-    } catch (e) {
-      console.error('Failed to check draft:', e)
-    }
-    
-    setCurrentStory({ ...story })
-    setStoryEditMode('editor')
-  }
-
-  async function confirmDeleteStory() {
-    if (!token || !deleteStoryId) return
-    try {
-      await deleteStory(token, deleteStoryId)
-      notify(t('story.deleted'), 'success')
-      await loadStories()
-    } catch (err) {
-      console.error('Failed to delete story:', err)
-      notify(t('story.delete_failed'), 'error')
-    } finally {
-      setDeleteStoryId(null)
-    }
-  }
-
-  function handlePhotoPanelDragOver(e: React.DragEvent) {
-    e.preventDefault()
-    setIsDraggingOver(true)
-  }
-
-  function handlePhotoPanelDragLeave(e: React.DragEvent) {
-    e.preventDefault()
-    setIsDraggingOver(false)
-  }
-
-  async function handlePhotoPanelDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setIsDraggingOver(false)
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-    if (files.length === 0) return
-    
-    const newPending: PendingImage[] = await Promise.all(files.map(async file => {
-      let takenAt: string | undefined
-      try {
-        const tags = await ExifReader.load(file)
-        const dateTime = tags['DateTimeOriginal'] || tags['DateTime']
-        if (dateTime?.description) {
-          const match = dateTime.description.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
-          if (match) {
-            const [, year, month, day, hour, minute, second] = match
-            takenAt = `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`
-          }
-        }
-      } catch {}
-      return {
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        status: 'pending' as const,
-        progress: 0,
-        takenAt
-      }
-    }))
-    setPendingImages(prev => [...prev, ...newPending])
-  }
-
-  function handleRemovePendingImage(id: string) {
-    setPendingImages(prev => {
-      const item = prev.find(p => p.id === id)
-      if (item) URL.revokeObjectURL(item.previewUrl)
-      return prev.filter(p => p.id !== id)
-    })
-  }
-
-  async function handleSaveStory() {
+  const doSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
-    if (!currentStory.title.trim() || !currentStory.content.trim()) {
-      notify(t('story.fill_title_content'), 'error')
-      return
-    }
-    const usedImageUrls = getStoryMarkdownImageUrls(currentStory.content)
-    const availablePhotoUrls = new Set(
-      (currentStory.photos || []).flatMap((photo) => [photo.url, photo.thumbnailUrl].filter((url): url is string => Boolean(url)))
-    )
-    const invalidImageUrls = Array.from(usedImageUrls).filter((url) => !availablePhotoUrls.has(url))
-    if (invalidImageUrls.length > 0) {
-      notify(`正文中引用了未关联的图片：${invalidImageUrls.slice(0, 3).join(', ')}`, 'error')
-      return
-    }
-    const pendingToUpload = pendingImages.filter(p => p.status === 'pending' || p.status === 'failed')
-    if (pendingToUpload.length > 0) {
-      setShowUploadSettings(true)
-      return
-    }
-    await doSaveStory()
-  }
 
-  async function doSaveStory() {
-    if (!token || !currentStory) return
     try {
       setSaving(true)
-      const isNew = !stories.find((s) => s.id === currentStory.id)
-      const photoIds = currentStory.photos?.map(p => p.id) || []
-
-      const dateChanged = initialStoryRef.current && currentStory.createdAt !== initialStoryRef.current.createdAt
+      const isNew = !stories.find((story) => story.id === currentStory.id)
+      const photoIds = currentStory.photos?.map((photo) => photo.id) || []
+      const dateChanged = initialStory && currentStory.createdAt !== initialStory.createdAt
 
       if (isNew) {
         await createStory(token, {
@@ -690,7 +135,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         })
         notify(t('story.created'), 'success')
       } else {
-        // 更新故事并同步照片排序
         await updateStory(token, currentStory.id, {
           title: currentStory.title,
           content: currentStory.content,
@@ -698,927 +142,348 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           coverPhotoId: currentStory.coverPhotoId ?? null,
           ...(dateChanged ? { createdAt: currentStory.createdAt } : {}),
         })
-        // 同步照片排序到服务端
         if (photoIds.length > 0) {
           await reorderStoryPhotos(token, currentStory.id, photoIds)
         }
-        // 持久化照片排序到 localStorage
         savePhotoOrder(currentStory.id, photoIds)
         notify(t('story.updated'), 'success')
       }
-      // 保存成功后清除草稿
-      const isNewStory = !stories.find((s) => s.id === currentStory.id)
-      await clearDraft(isNewStory ? undefined : currentStory.id)
 
-      pendingImages.forEach(p => URL.revokeObjectURL(p.previewUrl))
+      await clearDraft(isNew ? undefined : currentStory.id)
+      pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
       setPendingImages([])
+      setPendingCoverId(null)
+      setUseCustomDate(false)
+      setPreviewPhotoIndex(null)
+      setShowPreview(false)
+      resetDraftState()
       setStoryEditMode('list')
       setCurrentStory(null)
       await loadStories()
-
-      // 保存成功后清除 URL 参数
       if (window.location.search.includes('editStory=')) {
         router.replace('/admin/logs', { scroll: false })
       }
-    } catch (err) {
-      console.error('Failed to save story:', err)
+    } catch (error) {
+      console.error('Failed to save story:', error)
       notify(t('story.save_failed'), 'error')
     } finally {
       setSaving(false)
     }
-  }
+  }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, router, stories, t, token])
 
-  async function handleConfirmUpload(settings: UploadSettings) {
+  const {
+    editorRef,
+    editorVersion,
+    showUploadSettings,
+    setShowUploadSettings,
+    showPasteUploadSettings,
+    setShowPasteUploadSettings,
+    isUploading,
+    uploadProgress,
+    pendingPasteFilesRef,
+    pasteUploadSettings,
+    handlePhotoPanelDrop,
+    handleRemovePendingImage,
+    handleConfirmUpload,
+    handleRetryFailedUploads,
+    handlePasteFiles,
+    handleConfirmPasteUpload,
+    handleInsertPhotoMarkdown,
+    handleInsertGalleryMarkdown,
+    handleInsertExternalPhotoMarkdown,
+    restorePasteUploadSettings,
+  } = useStoryEditorActions({
+    token,
+    currentStory,
+    allPhotos,
+    stories,
+    pendingImages,
+    initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
+    setCurrentStory,
+    setAllPhotos,
+    setPendingImages,
+    notify,
+    t,
+    onRequestSave: doSaveStory,
+  })
+
+  const {
+    draggedItemId,
+    draggedItemType,
+    dragOverItemId,
+    isDraggingOver,
+    openMenuPhotoId,
+    openMenuPendingId,
+    setOpenMenuPhotoId,
+    setOpenMenuPendingId,
+    handlePhotoPanelDragOver,
+    handlePhotoPanelDragLeave,
+    handleItemDragStart,
+    handleItemDragEnd,
+    handleItemDragOver,
+    handleItemDragLeave,
+    handleItemDrop,
+    setIsDraggingOver,
+  } = useStoryPhotoDnD({
+    currentStory,
+    pendingImages,
+    setCurrentStory,
+    setPendingImages,
+  })
+
+  const resetEditorState = useCallback(() => {
+    pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+    setPendingImages([])
+    setPendingCoverId(null)
+    setUseCustomDate(false)
+    setPreviewPhotoIndex(null)
+    setShowPreview(false)
+    setStoryEditMode('list')
+    setCurrentStory(null)
+    resetDraftState()
+    setIsDraggingOver(false)
+    if (window.location.search.includes('editStory=')) {
+      router.replace('/admin/logs', { scroll: false })
+    }
+  }, [pendingImages, resetDraftState, router, setIsDraggingOver])
+
+  const handleSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
-    setShowUploadSettings(false)
-    setIsUploading(true)
-    const toUpload = pendingImages.filter(p => p.status === 'pending' || p.status === 'failed')
-    setUploadProgress({ current: 0, total: toUpload.length, currentFile: '' })
-    const uploadedPhotoIds: string[] = []
-    const uploadedPhotos: PhotoDto[] = []
-    
-    for (let i = 0; i < toUpload.length; i++) {
-      const pending = toUpload[i]
-      setUploadProgress({ current: i + 1, total: toUpload.length, currentFile: pending.file.name })
-      setPendingImages(prev => prev.map(p => p.id === pending.id ? { ...p, status: 'uploading' as const, progress: 0 } : p))
-      try {
-        const fileToUpload = settings.maxSizeMB
-          ? await compressImage(pending.file, { maxSizeMB: settings.maxSizeMB, maxWidthOrHeight: 4096 })
-          : pending.file
-        const photo = await uploadPhotoWithProgress({
-          token,
-          file: fileToUpload,
-          title: pending.file.name.replace(/\.[^/.]+$/, ''),
-          category: settings.category,
-          storage_provider: settings.storageProvider,
-          onProgress: (progress) => setPendingImages(prev => prev.map(p => p.id === pending.id ? { ...p, progress } : p))
-        })
-        uploadedPhotoIds.push(photo.id)
-        uploadedPhotos.push(photo)
-        setPendingImages(prev => prev.map(p => p.id === pending.id ? { ...p, status: 'success' as const, progress: 100, photoId: photo.id } : p))
-      } catch (err) {
-        setPendingImages(prev => prev.map(p => p.id === pending.id ? { ...p, status: 'failed' as const, error: err instanceof Error ? err.message : 'Upload failed' } : p))
-      }
+    if (!currentStory.title.trim() || !currentStory.content.trim()) {
+      notify(t('story.fill_title_content'), 'error')
+      return
     }
-    
-    if (settings.albumId && uploadedPhotoIds.length > 0) {
-      try { await addPhotosToAlbum(token, settings.albumId, uploadedPhotoIds) } catch {}
-    }
-    
-    if (uploadedPhotos.length > 0) {
-      const isNew = !stories.find((s) => s.id === currentStory.id)
-      if (isNew) {
-        setCurrentStory(prev => ({ ...prev!, photos: [...(prev?.photos || []), ...uploadedPhotos] }))
-      } else {
-        try {
-          await addPhotosToStory(token, currentStory.id, uploadedPhotoIds)
-          setCurrentStory(prev => ({ ...prev!, photos: [...(prev?.photos || []), ...uploadedPhotos] }))
-        } catch {}
-      }
-    }
-    
-    setPendingImages(prev => {
-      prev.filter(p => p.status === 'success').forEach(p => URL.revokeObjectURL(p.previewUrl))
-      return prev.filter(p => p.status !== 'success')
-    })
-    setIsUploading(false)
-    
-    const failedCount = pendingImages.filter(p => p.status === 'failed').length
-    if (failedCount === 0) {
-      await doSaveStory()
-    } else {
-      notify(t('admin.some_uploads_failed') || `${failedCount} 张图片上传失败`, 'error')
-    }
-  }
 
-  function handleRetryFailedUploads() {
-    setPendingImages(prev => prev.map(p => p.status === 'failed' ? { ...p, status: 'pending' as const, error: undefined, progress: 0 } : p))
-    setShowUploadSettings(true)
-  }
+    const usedImageUrls = getStoryMarkdownImageUrls(currentStory.content)
+    const availablePhotoUrls = new Set(
+      (currentStory.photos || []).flatMap((photo) => [photo.url, photo.thumbnailUrl].filter((url): url is string => Boolean(url)))
+    )
+    const invalidImageUrls = Array.from(usedImageUrls).filter((url) => !availablePhotoUrls.has(url))
+    if (invalidImageUrls.length > 0) {
+      notify(`正文中引用了未关联的图片：${invalidImageUrls.slice(0, 3).join(', ')}`, 'error')
+      return
+    }
 
-  async function handleTogglePublish(story: StoryDto) {
+    const pendingToUpload = pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed')
+    if (pendingToUpload.length > 0) {
+      setShowUploadSettings(true)
+      return
+    }
+
+    await doSaveStory()
+  }, [currentStory, doSaveStory, notify, pendingImages, setShowUploadSettings, t, token])
+
+  const handleUpdatePhotos = useCallback((selectedPhotoIds: string[]) => {
+    const selectedPhotos = selectedPhotoIds
+      .map((id) => allPhotos.find((photo) => photo.id === id))
+      .filter((photo): photo is PhotoDto => Boolean(photo))
+
+    setCurrentStory((prev) => (prev ? { ...prev, photos: selectedPhotos } : prev))
+    setShowPhotoSelector(false)
+  }, [allPhotos])
+
+  const handleRemovePhoto = useCallback((photoId: string) => {
+    setCurrentStory((prev) => (prev ? { ...prev, photos: prev.photos?.filter((photo) => photo.id !== photoId) || [] } : prev))
+  }, [])
+
+  const handleSetCover = useCallback((photoId: string) => {
+    setCurrentStory((prev) => (prev ? { ...prev, coverPhotoId: photoId } : prev))
+    setPendingCoverId(null)
+  }, [])
+
+  const handleSetPendingCover = useCallback((id: string) => {
+    setPendingCoverId(id)
+    setCurrentStory((prev) => (prev ? { ...prev, coverPhotoId: undefined } : prev))
+  }, [])
+
+  const handleSetPhotoDate = useCallback((takenAt: string) => {
+    setCurrentStory((prev) => (prev ? { ...prev, createdAt: takenAt } : prev))
+    setUseCustomDate(true)
+  }, [])
+
+  const handleTogglePublish = useCallback(async (story: StoryDto) => {
     if (!token) return
 
     try {
-      await updateStory(token, story.id, {
-        isPublished: !story.isPublished,
-      })
+      await updateStory(token, story.id, { isPublished: !story.isPublished })
       notify(story.isPublished ? t('story.unpublished') : t('story.published'), 'success')
       await loadStories()
-    } catch (err) {
-      console.error('Failed to toggle publish:', err)
+    } catch (error) {
+      console.error('Failed to toggle publish:', error)
       notify(t('story.operation_failed'), 'error')
     }
-  }
+  }, [loadStories, notify, t, token])
 
-  function handleUpdatePhotos(selectedPhotoIds: string[]) {
-    if (!currentStory) return
-    
-    // 按选中的顺序获取照片
-    const selectedPhotos = selectedPhotoIds
-      .map(id => allPhotos.find(p => p.id === id))
-      .filter((p): p is PhotoDto => p !== undefined)
-    
-    // 仅更新本地状态 - 点击保存按钮时才提交到服务端
-    setCurrentStory(prev => ({
-      ...prev!,
-      photos: selectedPhotos
-    }))
-    
-    setShowPhotoSelector(false)
-  }
-
-  function handleRemovePhoto(photoId: string) {
-    if (!currentStory) return
-    setCurrentStory(prev => ({
-      ...prev!,
-      photos: prev?.photos?.filter(p => p.id !== photoId) || []
-    }))
-  }
-
-  function handleSetCover(photoId: string) {
-    if (!currentStory) return
-    setCurrentStory(prev => ({
-      ...prev!,
-      coverPhotoId: photoId
-    }))
-  }
-
-  function insertDirective(markdown: string) {
-    editorInsertVersionRef.current += 1
-    editorRef.current?.insertValue(markdown)
-    const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
-    setCurrentStory(prev => (prev ? { ...prev, content: nextValue } : prev))
-  }
-
-  function buildPasteUploadPlaceholder(id: string, fileName: string) {
-    return `\n${PASTE_UPLOAD_PLACEHOLDER_PREFIX}${id} -->\n![正在上传 ${fileName}...](uploading://${id})\n`
-  }
-
-  function replaceEditorText(searchValue: string, nextValue: string) {
-    const replaced = editorRef.current?.replaceText(searchValue, nextValue) ?? false
-    const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
-    setCurrentStory(prev => (prev ? { ...prev, content: latestValue } : prev))
-    return replaced
-  }
-
-  function handleScaleLastImage(mode: 'sm' | 'md' | 'lg') {
-    const scaled = editorRef.current?.scaleLastImage(mode) ?? false
-    if (!scaled) {
-      notify('当前正文中没有可调整的图片', 'info')
-      return
-    }
-
-    const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
-    setCurrentStory(prev => (prev ? { ...prev, content: latestValue } : prev))
-    notify(
-      mode === 'sm'
-        ? '已将最后一张图片调整为小尺寸'
-        : mode === 'lg'
-          ? '已将最后一张图片调整为大尺寸'
-          : '已将最后一张图片调整为标准尺寸',
-      'success'
-    )
-  }
-
-  function persistPasteUploadSettings(settings: UploadSettings) {
-    setPasteUploadSettings(settings)
-    setHasConfirmedPasteSettings(true)
-
-    if (typeof window === 'undefined') return
+  const confirmDeleteStory = useCallback(async () => {
+    if (!token || !deleteStoryId) return
 
     try {
-      window.localStorage.setItem('story_paste_upload_settings', JSON.stringify(settings))
+      await deleteStory(token, deleteStoryId)
+      notify(t('story.deleted'), 'success')
+      await loadStories()
     } catch (error) {
-      console.error('Failed to persist paste upload settings:', error)
-    }
-  }
-
-  function addPhotoToCurrentStory(photo: PhotoDto) {
-    setCurrentStory((prev) => {
-      if (!prev) return prev
-      if (prev.photos.some((item) => item.id === photo.id)) {
-        return prev
-      }
-      return {
-        ...prev,
-        photos: [...prev.photos, photo],
-      }
-    })
-  }
-
-  function addPhotoToCache(photo: PhotoDto) {
-    setAllPhotos((prev) => {
-      if (prev.some((item) => item.id === photo.id)) {
-        return prev
-      }
-      return [photo, ...prev]
-    })
-  }
-
-  async function uploadAndInsertFiles(files: File[], settings: UploadSettings) {
-    if (!token || !currentStory || files.length === 0) return
-
-    const nextSettings: UploadSettings = {
-      ...settings,
-      category: settings.category?.trim() || 'story-inline',
-    }
-
-    const placeholders = files.map((file) => {
-      const placeholderId = crypto.randomUUID()
-      return {
-        id: placeholderId,
-        file,
-        text: buildPasteUploadPlaceholder(placeholderId, file.name),
-      }
-    })
-
-    placeholders.forEach((item) => {
-      insertDirective(item.text)
-    })
-
-    persistPasteUploadSettings(nextSettings)
-    setShowPasteUploadSettings(false)
-    pendingPasteFilesRef.current = null
-    setIsUploading(true)
-    setUploadProgress({ current: 0, total: files.length, currentFile: '' })
-
-    try {
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index]
-        const placeholder = placeholders[index]
-        setUploadProgress({
-          current: index + 1,
-          total: files.length,
-          currentFile: file.name,
-        })
-
-        const fileHash = await calculateFileHash(file)
-        const duplicate = await checkDuplicatePhoto(token, fileHash)
-
-        if (duplicate.isDuplicate && duplicate.existingPhoto) {
-          const existingPhotoId = duplicate.existingPhoto.id
-          let existingPhoto =
-            currentStory.photos.find((photo) => photo.id === existingPhotoId) ||
-            allPhotos.find((photo) => photo.id === existingPhotoId)
-
-          if (!existingPhoto) {
-            const photos = await getPhotos({ all: true })
-            existingPhoto = photos.find((photo) => photo.id === existingPhotoId)
-            setAllPhotos(photos)
-          }
-
-          if (existingPhoto) {
-            addPhotoToCache(existingPhoto)
-            addPhotoToCurrentStory(existingPhoto)
-            replaceEditorText(placeholder.text, buildStoryMarkdownImage({
-              url: existingPhoto.url,
-              alt: existingPhoto.title,
-            }))
-            notify(`复用重复图片：${existingPhoto.title}`, 'info')
-            continue
-          }
-        }
-
-        const fileToUpload = nextSettings.maxSizeMB
-          ? await compressImage(file, { maxSizeMB: nextSettings.maxSizeMB, maxWidthOrHeight: 4096 })
-          : file
-
-        const uploadedPhoto = await uploadPhotoWithProgress({
-          token,
-          file: fileToUpload,
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          category: nextSettings.category,
-          storage_provider: nextSettings.storageProvider,
-          file_hash: fileHash,
-          onProgress: (progress) => {
-            setUploadProgress({
-              current: index + 1,
-              total: files.length,
-              currentFile: `${file.name} ${progress}%`,
-            })
-          },
-        })
-
-        if (nextSettings.albumId) {
-          try {
-            await addPhotosToAlbum(token, nextSettings.albumId, [uploadedPhoto.id])
-          } catch (error) {
-            console.error('Failed to add pasted upload to album:', error)
-          }
-        }
-
-        addPhotoToCache(uploadedPhoto)
-        addPhotoToCurrentStory(uploadedPhoto)
-        replaceEditorText(placeholder.text, buildStoryMarkdownImage({
-          url: uploadedPhoto.url,
-          alt: uploadedPhoto.title,
-        }))
-      }
-
-      notify('粘贴图片已处理并插入正文', 'success')
-    } catch (error) {
-      console.error('Failed to handle pasted files:', error)
-      notify(error instanceof Error ? error.message : '粘贴图片处理失败', 'error')
+      console.error('Failed to delete story:', error)
+      notify(t('story.delete_failed'), 'error')
     } finally {
-      setIsUploading(false)
-      setUploadProgress({ current: 0, total: 0, currentFile: '' })
+      setDeleteStoryId(null)
     }
-  }
+  }, [deleteStoryId, loadStories, notify, t, token])
 
-  function handlePasteFiles(files: File[]) {
-    if (!token || !currentStory) return
+  const handleCreateStory = useCallback(async () => {
+    await createStoryWithDraftCheck()
+  }, [createStoryWithDraftCheck])
 
-    if (!hasConfirmedPasteSettings) {
-      pendingPasteFilesRef.current = files
-      setShowPasteUploadSettings(true)
-      return
-    }
+  const handleEditStory = useCallback(async (story: StoryDto) => {
+    await editStoryWithDraftCheck(story)
+  }, [editStoryWithDraftCheck])
 
-    void uploadAndInsertFiles(files, pasteUploadSettings)
-  }
+  const currentPhotoIds = currentStory?.photos?.map((photo) => photo.id) || []
 
-  async function handleConfirmPasteUpload(settings: UploadSettings) {
-    persistPasteUploadSettings({
-      ...settings,
-      category: settings.category?.trim() || 'story-inline',
-    })
-
-    const files = pendingPasteFilesRef.current
-    if (!files || files.length === 0) {
-      setShowPasteUploadSettings(false)
-      return
-    }
-
-    await uploadAndInsertFiles(files, settings)
-  }
-
-  function handleInsertPhotoMarkdown(photo: PhotoDto) {
-    insertDirective(buildStoryMarkdownImage({
-      url: photo.url,
-      alt: photo.title,
-    }))
-    notify('已插入 Markdown 图片', 'success')
-  }
-
-  function handleInsertGalleryMarkdown(photoIds: string[]) {
-    if (photoIds.length === 0) {
-      notify('当前故事还没有可插入的图片', 'info')
-      return
-    }
-
-    const photosToInsert = photoIds
-      .map((photoId) => currentStory?.photos?.find((photo) => photo.id === photoId))
-      .filter((photo): photo is PhotoDto => Boolean(photo))
-
-    if (photosToInsert.length === 0) {
-      notify('当前故事还没有可插入的图片', 'info')
-      return
-    }
-
-    const markdown = photosToInsert
-      .map((photo) => buildStoryMarkdownImage({
-        url: photo.url,
-        alt: photo.title,
-      }).trim())
-      .join('\n\n')
-
-    insertDirective(`\n${markdown}\n`)
-    notify('已插入 Markdown 图片组', 'success')
-  }
-
-  function handleInsertExternalPhotoMarkdown() {
-    const url = window.prompt('请输入外链图片 URL（https）')
-    if (!url) return
-
-    const trimmedUrl = url.trim()
-    if (!/^https:\/\//i.test(trimmedUrl)) {
-      notify('外链图片仅支持 https URL', 'error')
-      return
-    }
-
-    const caption = window.prompt('请输入图片说明（可留空）')?.trim() || ''
-    insertDirective(buildStoryMarkdownImage({
-      url: trimmedUrl,
-      alt: caption,
-    }))
-    notify('已插入 Markdown 外链图片', 'success')
-  }
-
-  // 统一的拖拽处理（照片和待上传图片）
-  function handleItemDragStart(e: React.DragEvent, itemId: string, type: 'photo' | 'pending') {
-    setDraggedItemId(itemId)
-    setDraggedItemType(type)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', `${type}:${itemId}`)
-    setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5' }, 0)
-  }
-
-  function handleItemDragEnd(e: React.DragEvent) {
-    (e.target as HTMLElement).style.opacity = '1'
-    setDraggedItemId(null)
-    setDraggedItemType(null)
-    setDragOverItemId(null)
-  }
-
-  function handleItemDragOver(e: React.DragEvent, itemId: string) {
-    e.preventDefault()
-    e.stopPropagation()
-    e.dataTransfer.dropEffect = 'move'
-    if (itemId !== draggedItemId) setDragOverItemId(itemId)
-  }
-
-  function handleItemDragLeave() {
-    setDragOverItemId(null)
-  }
-
-  // 构建合并列表用于排序：已上传照片在前，待上传图片在后
-  function getCombinedItems() {
-    const photoItems = (currentStory?.photos || []).map(p => ({ id: p.id, type: 'photo' as const }))
-    const pendingItems = pendingImages.map(p => ({ id: p.id, type: 'pending' as const }))
-    return [...photoItems, ...pendingItems]
-  }
-
-  function handleItemDrop(e: React.DragEvent, targetId: string, targetType: 'photo' | 'pending') {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragOverItemId(null)
-    if (!draggedItemId || !draggedItemType || (draggedItemId === targetId && draggedItemType === targetType)) return
-
-    const combined = getCombinedItems()
-    const draggedIdx = combined.findIndex(i => i.id === draggedItemId && i.type === draggedItemType)
-    const targetIdx = combined.findIndex(i => i.id === targetId && i.type === targetType)
-    if (draggedIdx === -1 || targetIdx === -1) return
-
-    const [dragged] = combined.splice(draggedIdx, 1)
-    combined.splice(targetIdx, 0, dragged)
-
-    // 拆分回照片和待上传列表 - 仅更新本地状态
-    const newPhotoIds = combined.filter(i => i.type === 'photo').map(i => i.id)
-    const newPendingIds = combined.filter(i => i.type === 'pending').map(i => i.id)
-
-    const reorderedPhotos = newPhotoIds.map(id => currentStory?.photos?.find(p => p.id === id)).filter((p): p is PhotoDto => !!p)
-    setCurrentStory(prev => prev ? { ...prev, photos: reorderedPhotos } : prev)
-
-    const reorderedPending = newPendingIds.map(id => pendingImages.find(p => p.id === id)).filter((p): p is PendingImage => !!p)
-    setPendingImages(reorderedPending)
-  }
-
-  const handleContentChange = useCallback((content: string) => {
-    setCurrentStory(prev => prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev)
-  }, [])
-
-  // 获取当前照片 ID（用于弹窗中的初始选中状态）
-  const currentPhotoIds = currentStory?.photos?.map(p => p.id) || []
-
-  const handlePrevPhoto = () => {
+  const handlePrevPhoto = useCallback(() => {
     if (previewPhotoIndex === null || !currentStory?.photos) return
     setPreviewPhotoIndex(previewPhotoIndex > 0 ? previewPhotoIndex - 1 : currentStory.photos.length - 1)
-  }
+  }, [currentStory?.photos, previewPhotoIndex])
 
-  const handleNextPhoto = () => {
+  const handleNextPhoto = useCallback(() => {
     if (previewPhotoIndex === null || !currentStory?.photos) return
     setPreviewPhotoIndex(previewPhotoIndex < currentStory.photos.length - 1 ? previewPhotoIndex + 1 : 0)
-  }
+  }, [currentStory?.photos, previewPhotoIndex])
 
+  useEffect(() => {
+    if (!initialLoadRef.current) {
+      void loadStories()
+      initialLoadRef.current = true
+    }
+  }, [loadStories])
 
-  // 故事发布状态筛选选项
-  const statusOptions: SelectOption[] = [
-    { value: '', label: t('admin.all_status') || '全部状态' },
-    { value: 'published', label: t('admin.published') || '已发布' },
-    { value: 'draft', label: t('admin.draft') || '草稿' },
-  ]
+  useEffect(() => {
+    onEditingChange?.(storyEditMode === 'editor')
+  }, [onEditingChange, storyEditMode])
+
+  useEffect(() => {
+    if (storyEditMode !== 'editor') {
+      setIsImmersiveMode(false)
+    }
+  }, [setIsImmersiveMode, storyEditMode])
+
+  useEffect(() => () => setIsImmersiveMode(false), [setIsImmersiveMode])
+
+  useEffect(() => {
+    if (refreshKey && refreshKey > 0) {
+      void loadStories()
+      resetEditorState()
+    }
+  }, [loadStories, refreshKey, resetEditorState])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setIsPhotoPanelCollapsed(window.localStorage.getItem(STORY_PHOTO_PANEL_COLLAPSED_KEY) === 'true')
+
+    const raw = window.localStorage.getItem(STORY_PASTE_UPLOAD_SETTINGS_KEY)
+    if (!raw) return
+
+    try {
+      const parsed = JSON.parse(raw) as UploadSettings
+      restorePasteUploadSettings({ ...DEFAULT_PASTE_UPLOAD_SETTINGS, ...parsed })
+    } catch (error) {
+      console.error('Failed to restore paste upload settings:', error)
+    }
+  }, [restorePasteUploadSettings])
+
+  useEffect(() => {
+    if (editStoryId && stories.length > 0) {
+      const story = stories.find((item) => item.id === editStoryId)
+      if (story) {
+        void editStoryWithDraftCheck(story)
+      }
+    }
+  }, [editStoryId, editStoryWithDraftCheck, stories])
+
+  const togglePhotoPanelCollapse = useCallback(() => {
+    setIsPhotoPanelCollapsed((prev) => {
+      const next = !prev
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(STORY_PHOTO_PANEL_COLLAPSED_KEY, String(next))
+      }
+      return next
+    })
+  }, [])
 
   return (
-    <div className="h-full flex flex-col gap-6 overflow-hidden">
-      {storyEditMode === 'list' ? (
-        <div className="space-y-8 flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <input
-                type="text"
-                placeholder={t('admin.search_placeholder') || '搜索...'}
-                className="px-3 py-2 text-sm bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all w-48"
-              />
-              <AdminSelect
-                value={statusFilter}
-                options={statusOptions}
-                onChange={setStatusFilter}
-                placeholder={t('admin.all_status') || '全部状态'}
-                className="w-32"
-              />
-            </div>
-            <AdminButton
-              onClick={handleCreateStory}
-              adminVariant="primary"
-              size="lg"
-              className="flex items-center"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {t('ui.create_story')}
-            </AdminButton>
-          </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {loading ? (
-              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
-            ) : (
-              <div className="grid grid-cols-1 gap-4">
-              {stories
-                .filter((story) => {
-                  if (!statusFilter) return true
-                  if (statusFilter === 'published') return story.isPublished
-                  if (statusFilter === 'draft') return !story.isPublished
-                  return true
-                })
-                .map((story) => (
-                <div
-                  key={story.id}
-                  className="flex items-center justify-between border border-border bg-card px-5 py-5 transition-colors group hover:border-primary/50"
-                >
-                  <div
-                    className="flex-1 min-w-0"
-                    onClick={() => handleEditStory(story)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <h4 className="text-lg font-semibold group-hover:text-primary transition-colors truncate">
-                        {story.title || t('story.untitled')}
-                      </h4>
-                      <span
-                        className={`text-[10px] font-bold uppercase px-2 py-0.5 border shrink-0 ${
-                          story.isPublished
-                            ? 'border-green-500/30 text-green-600 bg-green-500/10 dark:text-green-400'
-                            : 'border-slate-500/30 text-slate-600 bg-slate-500/10 dark:text-slate-400'
-                        }`}
-                      >
-                        {story.isPublished ? 'PUBLISHED' : 'DRAFT'}
-                      </span>
-                    </div>
-                    <div className="flex items-center flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5" title="Created At">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {new Date(story.createdAt).toLocaleDateString()}
-                      </span>
-                      <span className="flex items-center gap-1.5" title="Updated At">
-                        <History className="w-3.5 h-3.5" />
-                        {new Date(story.updatedAt).toLocaleString()}
-                      </span>
-                      <span className="flex items-center gap-1.5" title="Word Count">
-                        <FileText className="w-3.5 h-3.5" />
-                        {story.content.length} {t('admin.characters')}
-                      </span>
-                      {story.photos && story.photos.length > 0 && (
-                        <span className="flex items-center gap-1.5" title="Photos">
-                          <ImageIcon className="w-3.5 h-3.5" />
-                          {story.photos.length} {t('ui.photos_count')}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 shrink-0">
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleTogglePublish(story)
-                      }}
-                      adminVariant="iconPrimary"
-                      title={story.isPublished ? t('story.unpublish') : t('story.publish')}
-                    >
-                      {story.isPublished ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </AdminButton>
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleEditStory(story)
-                      }}
-                      adminVariant="iconPrimary"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </AdminButton>
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setDeleteStoryId(story.id)
-                      }}
-                      adminVariant="iconDestructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </AdminButton>
-                  </div>
-                </div>
-              ))}
-              {stories.length === 0 && (
-                <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 py-20 px-4 text-center">
-                  <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
-                    <BookOpen className="w-8 h-8 text-muted-foreground/50" />
-                  </div>
-                  <h3 className="text-sm font-semibold text-foreground mb-1">{t('ui.no_story')}</h3>
-                </div>
-              )}
-              </div>
-            )}
-          </div>
-        </div>
+    <div className="flex h-full flex-col gap-6 overflow-hidden">
+      {storyEditMode === 'list' || !currentStory ? (
+        <StoryListView
+          stories={stories}
+          loading={loading}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          onCreateStory={() => void handleCreateStory()}
+          onEditStory={(story) => void handleEditStory(story)}
+          onTogglePublish={(story) => void handleTogglePublish(story)}
+          onRequestDelete={setDeleteStoryId}
+          t={t}
+        />
       ) : (
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          <div className={cn(
-            'flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground md:px-6',
-            isImmersiveMode && 'hidden'
-          )}>
-            <span>{t('nav.story') || '叙事'}</span>
-            <span className="hidden h-3 w-px bg-border/70 sm:block" />
-            <span>{currentStory?.isPublished ? 'Published draft' : 'Working draft'}</span>
-            <span className="hidden h-3 w-px bg-border/70 sm:block" />
-            <span>{currentStory?.createdAt ? new Date(currentStory.createdAt).toLocaleDateString() : '-'}</span>
-            <span className="hidden h-3 w-px bg-border/70 lg:block" />
-            <span>{editorCharacterCount} {t('admin.characters')}</span>
-            <span className="hidden h-3 w-px bg-border/70 lg:block" />
-            <span>{relatedPhotoCount} {t('story.related_photos')}</span>
-            {pendingPhotoCount > 0 ? (
-              <span className="border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-400">
-                {pendingPhotoCount} pending
-              </span>
-            ) : null}
-          </div>
-          {/* 头部 - 返回按钮、草稿状态、保存按钮 */}
-          <div className={cn(
-            'flex flex-col gap-4 border-b border-border/70 pb-4 flex-shrink-0 md:flex-row md:items-end md:justify-between',
-            isImmersiveMode && 'hidden'
-          )}>
-            <div className="flex min-w-0 flex-1 items-end gap-3">
-              <AdminButton
-                onClick={() => {
-                  setStoryEditMode('list')
-                  setCurrentStory(null)
-                  setPendingImages([])
-                  initialStoryRef.current = null
-                  setIsDirty(false)
-                  setUseCustomDate(false)
-                  // 返回列表时清除 URL 参数
-                  if (window.location.search.includes('editStory=')) {
-                    router.replace('/admin/logs', { scroll: false })
-                  }
-                }}
-                adminVariant="link"
-                className="shrink-0 self-start flex items-center gap-1.5 whitespace-nowrap px-0 text-[10px] tracking-[0.24em] hover:no-underline"
-              >
-                <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
-              </AdminButton>
-              <AdminInput
-                type="text"
-                value={currentStory?.title || ''}
-                onChange={(e) =>
-                  setCurrentStory((prev) => ({
-                    ...prev!,
-                    title: e.target.value,
-                  }))
-                }
-                placeholder={t('story.title_placeholder')}
-                className="min-w-0 flex-1 border-0 border-b border-border/60 bg-transparent px-0 py-0 font-serif text-4xl font-light leading-[0.92] tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-6xl"
-              />
-              {/* 草稿状态指示器 */}
-              {draftSaved && (
-                <span className="flex items-center gap-1 text-[10px] text-green-500">
-                  <Check className="w-3 h-3" />
-                  {t('story.draft_saved') || 'Saved'}
-                </span>
-              )}
-              {!draftSaved && lastSavedAt && (
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                  <Clock className="w-3 h-3" />
-                  {new Date(lastSavedAt).toLocaleTimeString()}
-                </span>
-              )}
-            </div>
-            <AdminButton
-              onClick={handleSaveStory}
-              disabled={saving}
-              adminVariant="primary"
-              size="lg"
-              className="flex h-10 items-center gap-2 px-5 shadow-none"
-            >
-              <Save className="w-4 h-4" />
-              <span>{saving ? t('ui.saving') : t('admin.save')}</span>
-            </AdminButton>
-          </div>
-
-          {/* 主内容区 - 左右布局 */}
-          <div className={cn(
-            'relative flex flex-1 min-h-0 overflow-hidden gap-4',
-            isImmersiveMode && 'gap-0'
-          )}>
-            {/* 左侧：编辑器 (70%) */}
-            <div className={cn(
-              'flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]',
-              isImmersiveMode && 'border-y-0 border-l-0 shadow-none'
-            )}>
-              {/* 标题输入 */}
-              
-              
-              
-              {/* 发布勾选、日期、字数统计、预览按钮 */}
-              <div className={cn(
-                'flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between',
-                isImmersiveMode && 'hidden'
-              )}>
-                {/* 左侧：发布勾选、日期、字数 */}
-                <div className="flex flex-wrap items-center gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={currentStory?.isPublished || false}
-                      onChange={(e) =>
-                        setCurrentStory((prev) => ({
-                          ...prev!,
-                          isPublished: e.target.checked,
-                        }))
-                      }
-                      className="w-4 h-4 cursor-pointer accent-primary transition-all"
-                    />
-                    <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
-                      {t('ui.publish_now')}
-                    </span>
-                  </label>
-                  
-                  <div className="h-4 w-px bg-border/60 hidden sm:block"></div>
-
-                  {/* 发布日期 - 点击编辑 */}
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    {useCustomDate ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="datetime-local"
-                          value={currentStory?.createdAt ? new Date(currentStory.createdAt).toISOString().slice(0, 16) : ''}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setCurrentStory((prev) => ({
-                              ...prev!,
-                              createdAt: value ? new Date(value).toISOString() : new Date().toISOString(),
-                            }))
-                          }}
-                          className="px-2 py-1 text-xs bg-background border border-border focus:border-primary outline-none transition-all"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setUseCustomDate(false)}
-                          className="p-1 text-primary hover:bg-primary/10 transition-colors"
-                          title={t('admin.confirm') || '确认'}
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <span
-                        onClick={() => setUseCustomDate(true)}
-                        className="text-xs text-muted-foreground cursor-pointer hover:text-foreground hover:underline decoration-dashed underline-offset-4 transition-all"
-                        title={t('admin.custom_date') || '点击编辑日期'}
-                      >
-                        {currentStory?.createdAt ? new Date(currentStory.createdAt).toLocaleString() : '-'}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="h-4 w-px bg-border/60 hidden sm:block"></div>
-
-                  <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                    <FileText className="w-4 h-4" />
-                    {editorCharacterCount} {t('admin.characters')}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                    <ImageIcon className="w-4 h-4" />
-                    {relatedPhotoCount} {t('story.related_photos')}
-                  </span>
-                </div>
-                {/* 右侧：预览按钮 */}
-                <div className="flex items-center gap-2">
-                  <AdminButton
-                    onClick={() => setIsImmersiveMode((prev) => !prev)}
-                    adminVariant="outline"
-                    className="flex items-center gap-2 h-8 border border-border/80 bg-background/80 px-3 text-xs shadow-none hover:bg-accent hover:text-accent-foreground transition-all"
-                  >
-                    {isImmersiveMode ? (
-                      <Minimize2 className="w-3.5 h-3.5" />
-                    ) : (
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    )}
-                    {t('ui.immersive') || '沉浸'}
-                  </AdminButton>
-                  <AdminButton
-                    onClick={() => setShowPreview(true)}
-                    adminVariant="outline"
-                    className="flex items-center gap-2 h-8 border border-border/80 bg-background/80 px-3 text-xs shadow-none hover:bg-accent hover:text-accent-foreground transition-all"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    {t('admin.preview') || '预览'}
-                  </AdminButton>
-                </div>
-              </div>
-              
-              {/* 内容区 - 所见即所得编辑器 */}
-              <div className={cn(
-                'relative flex-1 min-h-0 overflow-hidden bg-background',
-                isImmersiveMode && 'border-r border-border/60'
-              )}>
-                {isImmersiveMode ? (
-                  <div className="pointer-events-none absolute right-4 top-4 z-20">
-                    <AdminButton
-                      type="button"
-                      onClick={() => setIsImmersiveMode(false)}
-                      adminVariant="outline"
-                      className="pointer-events-auto flex h-9 items-center gap-2 border-border/80 bg-background/90 px-3 text-[11px] shadow-sm backdrop-blur-sm"
-                    >
-                      <Minimize2 className="h-3.5 w-3.5" />
-                      {t('ui.immersive') || '沉浸'}
-                    </AdminButton>
-                  </div>
-                ) : null}
-                {currentStory && (
-                      <NarrativeTipTapEditor
-                        key={`${currentStory.id}:${editorInsertVersionRef.current}`}
-                        ref={editorRef}
-                        value={currentStory.content}
-                        onChange={handleContentChange}
-                        onPasteFiles={handlePasteFiles}
-                        placeholder={t('ui.markdown_placeholder')}
-                        className="overflow-hidden bg-background"
-                      />
-                )}
-              </div>
-            </div>
-
-            {/* 折叠切换按钮 (独立于两者之间) */}
-            <div className={cn('flex flex-col justify-center -mx-2 z-10 hidden md:flex', isImmersiveMode && 'mr-2')}>
-              <button
-                type="button"
-                onClick={togglePhotoPanelCollapse}
-                className="relative flex h-14 w-6 shrink-0 items-center justify-center border border-border bg-background hover:border-primary/40 hover:text-primary transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                aria-label={isPhotoPanelCollapsed ? (t('common.expand') || 'Expand related photos') : (t('common.collapse') || 'Collapse related photos')}
-                aria-pressed={isPhotoPanelCollapsed}
-              >
-                {isPhotoPanelCollapsed ? (
-                  <ChevronLeft className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-
-            <div
-              className={cn(
-                'h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none',
-                isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]'
-              )}
-            >
-              <StoryPhotoPanel
-                isCollapsed={isPhotoPanelCollapsed}
-                currentStory={currentStory}
-                pendingImages={pendingImages}
-                pendingCoverId={pendingCoverId}
-                cdnDomain={settings?.cdn_domain}
-                isUploading={isUploading}
-                uploadProgress={uploadProgress}
-                isDraggingOver={isDraggingOver}
-                draggedItemId={draggedItemId}
-                draggedItemType={draggedItemType}
-                dragOverItemId={dragOverItemId}
-                openMenuPhotoId={openMenuPhotoId}
-                openMenuPendingId={openMenuPendingId}
-                t={t}
-                notify={notify}
-                onAddPhotos={() => setShowPhotoSelector(true)}
-                onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
-                onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
-                onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
-                onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
-                onRemovePhoto={handleRemovePhoto}
-                onRemovePendingImage={handleRemovePendingImage}
-                onSetCover={(photoId) => { handleSetCover(photoId); setPendingCoverId(null) }}
-                onSetPendingCover={(id) => { setPendingCoverId(id); setCurrentStory(prev => ({ ...prev!, coverPhotoId: undefined })) }}
-                onSetPhotoDate={(takenAt) => { setCurrentStory(prev => ({ ...prev!, createdAt: takenAt })); setUseCustomDate(true) }}
-                onRetryFailedUploads={handleRetryFailedUploads}
-                onPhotoPanelDragOver={handlePhotoPanelDragOver}
-                onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
-                onPhotoPanelDrop={handlePhotoPanelDrop}
-                onItemDragStart={handleItemDragStart}
-                onItemDragEnd={handleItemDragEnd}
-                onItemDragOver={handleItemDragOver}
-                onItemDragLeave={handleItemDragLeave}
-                onItemDrop={handleItemDrop}
-                onOpenMenuPhoto={setOpenMenuPhotoId}
-                onOpenMenuPending={setOpenMenuPendingId}
-              />
-            </div>
-          </div>
-        </div>
+        <StoryEditorView
+          currentStory={currentStory}
+          pendingImages={pendingImages}
+          pendingCoverId={pendingCoverId}
+          saving={saving}
+          draftSaved={draftSaved}
+          lastSavedAt={lastSavedAt}
+          isImmersiveMode={isImmersiveMode}
+          setIsImmersiveMode={setIsImmersiveMode}
+          useCustomDate={useCustomDate}
+          setUseCustomDate={setUseCustomDate}
+          isPhotoPanelCollapsed={isPhotoPanelCollapsed}
+          togglePhotoPanelCollapse={togglePhotoPanelCollapse}
+          settingsCdnDomain={settings?.cdn_domain}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
+          isDraggingOver={isDraggingOver}
+          draggedItemId={draggedItemId}
+          draggedItemType={draggedItemType}
+          dragOverItemId={dragOverItemId}
+          openMenuPhotoId={openMenuPhotoId}
+          openMenuPendingId={openMenuPendingId}
+          showPreview={() => setShowPreview(true)}
+          onBack={resetEditorState}
+          onSave={() => void handleSaveStory()}
+          onPasteFiles={handlePasteFiles}
+          onOpenPhotoSelector={() => setShowPhotoSelector(true)}
+          onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
+          onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
+          onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
+          onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
+          onRemovePhoto={handleRemovePhoto}
+          onRemovePendingImage={handleRemovePendingImage}
+          onSetCover={handleSetCover}
+          onSetPendingCover={handleSetPendingCover}
+          onSetPhotoDate={handleSetPhotoDate}
+          onRetryFailedUploads={handleRetryFailedUploads}
+          onPhotoPanelDragOver={handlePhotoPanelDragOver}
+          onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
+          onPhotoPanelDrop={async (event) => {
+            handlePhotoPanelDragLeave(event)
+            await handlePhotoPanelDrop(event)
+          }}
+          onItemDragStart={handleItemDragStart}
+          onItemDragEnd={handleItemDragEnd}
+          onItemDragOver={handleItemDragOver}
+          onItemDragLeave={handleItemDragLeave}
+          onItemDrop={handleItemDrop}
+          onOpenMenuPhoto={setOpenMenuPhotoId}
+          onOpenMenuPending={setOpenMenuPendingId}
+          editorRef={editorRef}
+          editorVersion={editorVersion}
+          t={t}
+          notify={notify}
+          setCurrentStory={setCurrentStory}
+        />
       )}
 
       <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
-      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter(p => p.status === 'pending' || p.status === 'failed').length} t={t} token={token} />
+      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}
         onClose={() => {
@@ -1633,17 +498,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         confirmLabel="保存并处理粘贴图片"
       />
       <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
-      <DraftRestoreDialog
-        isOpen={draftRestoreDialog.isOpen}
-        draftTime={draftRestoreDialog.draft?.savedAt || 0}
-        onRestore={handleDraftRestore}
-        onDiscard={handleDraftDiscard}
-        onCancel={handleDraftCancel}
-        t={t}
-      />
-
-      {/* 预览弹窗 */}
-      {showPreview && currentStory && (
+      <DraftRestoreDialog isOpen={draftRestoreDialog.isOpen} draftTime={draftRestoreDialog.draft?.savedAt || 0} onRestore={handleDraftRestore} onDiscard={handleDraftDiscard} onCancel={handleDraftCancel} t={t} />
+      {showPreview && currentStory ? (
         <StoryPreviewModal
           story={currentStory}
           cdnDomain={settings?.cdn_domain}
@@ -1655,8 +511,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onNextPhoto={handleNextPhoto}
           t={t}
         />
-      )}
+      ) : null}
     </div>
   )
 }
-
