@@ -235,6 +235,7 @@ export const dictionaries = {
     ui: {
       select_placeholder: '请选择',
       edit: '编辑',
+      immersive: '沉浸',
       saving: '保存中...',
       publish_now: '立即发布',
       photo_story: '照片叙事',
@@ -802,6 +803,7 @@ export const dictionaries = {
     ui: {
       select_placeholder: 'Select',
       edit: 'Edit',
+      immersive: 'Immersive',
       saving: 'Saving...',
       publish_now: 'Publish Now',
       photo_story: 'Photo Story',
