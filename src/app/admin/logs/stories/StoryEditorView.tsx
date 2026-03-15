@@ -137,20 +137,7 @@ export function StoryEditorView({
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-hidden">
-      <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/10 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground md:px-6', isImmersiveMode && 'hidden')}>
-        <span>{t('nav.story') || '叙事'}</span>
-        <span className="hidden h-3 w-px bg-border/70 sm:block" />
-        <span>{currentStory.isPublished ? 'Published draft' : 'Working draft'}</span>
-        <span className="hidden h-3 w-px bg-border/70 sm:block" />
-        <span>{new Date(currentStory.createdAt).toLocaleDateString()}</span>
-        <span className="hidden h-3 w-px bg-border/70 lg:block" />
-        <span>{editorCharacterCount} {t('admin.characters')}</span>
-        <span className="hidden h-3 w-px bg-border/70 lg:block" />
-        <span>{relatedPhotoCount} {t('story.related_photos')}</span>
-        {pendingPhotoCount > 0 ? <span className="border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-400">{pendingPhotoCount} pending</span> : null}
-      </div>
-
-      <div className={cn('flex shrink-0 flex-col gap-4 border-b border-border/70 pb-4 md:flex-row md:items-end md:justify-between', isImmersiveMode && 'hidden')}>
+      <div className={cn('flex shrink-0 flex-col gap-4 border-b border-border/70 pb-4 md:flex-row md:items-end md:justify-between')}>
         <div className="flex min-w-0 flex-1 items-end gap-3">
           <AdminButton onClick={onBack} adminVariant="link" className="shrink-0 self-start whitespace-nowrap px-0 text-[10px] tracking-[0.24em] hover:no-underline">
             <ChevronLeft className="h-4 w-4" /> {t('admin.back_list')}
@@ -164,7 +151,7 @@ export function StoryEditorView({
 
       <div className={cn('relative flex min-h-0 flex-1 gap-4 overflow-hidden', isImmersiveMode && 'gap-0')}>
         <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
-          <div className={cn('flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between', isImmersiveMode && 'hidden')}>
+          <div className={cn('flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between')}>
             <div className="flex flex-wrap items-center gap-4">
               <label className="group flex cursor-pointer items-center gap-2">
                 <input type="checkbox" checked={currentStory.isPublished || false} onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, isPublished: event.target.checked } : prev))} className="h-4 w-4 cursor-pointer accent-primary transition-all" />
@@ -193,7 +180,6 @@ export function StoryEditorView({
           </div>
 
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
-            {isImmersiveMode ? <div className="pointer-events-none absolute right-4 top-4 z-20"><AdminButton type="button" onClick={() => setIsImmersiveMode(false)} adminVariant="outline" className="pointer-events-auto flex h-9 items-center gap-2 border-border/80 bg-background/90 px-3 text-[11px] shadow-sm backdrop-blur-sm"><Minimize2 className="h-3.5 w-3.5" />{t('ui.immersive') || '沉浸'}</AdminButton></div> : null}
             <NarrativeTipTapEditor key={`${currentStory.id}:${editorVersion}`} ref={editorRef} value={currentStory.content} onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))} onPasteFiles={onPasteFiles} placeholder={t('ui.markdown_placeholder')} className="overflow-hidden bg-background" />
           </div>
         </div>

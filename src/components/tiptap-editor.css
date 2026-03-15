@@ -24,6 +24,19 @@
   line-height: 1.95;
 }
 
+/* Dark mode: override the default black text color */
+.tiptap-editor.tiptap-dark .tiptap {
+  color: hsl(var(--foreground));
+}
+
+.tiptap-editor.tiptap-dark .tiptap code {
+  color: hsl(var(--foreground));
+}
+
+.tiptap-editor.tiptap-dark .tiptap table th {
+  background-color: hsl(var(--muted));
+}
+
 .tiptap-editor .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
@@ -254,7 +267,7 @@
 }
 
 .tiptap-dark .tiptap {
-  color: var(--tiptap-black);
+  color: hsl(var(--foreground));
 }
 
 .tiptap-dark .tiptap code,
