@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useCallback } from 'react'
 import { compressImage } from '@/lib/image-compress'
@@ -98,7 +98,7 @@ export function useStoryPasteUploads({
             addPhotoToCache(existingPhoto)
             addPhotoToCurrentStory(existingPhoto)
             replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: existingPhoto.url, alt: existingPhoto.title }))
-            notify(`复用重复图片�?{existingPhoto.title}`, 'info')
+            notify(`复用重复图片：${existingPhoto.title}`, 'info')
             continue
           }
         }
@@ -160,4 +160,3 @@ export function useStoryPasteUploads({
 
   return { uploadAndInsertFiles }
 }
-
