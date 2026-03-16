@@ -17,6 +17,7 @@ import {
   ImageIcon,
   Palette,
   RefreshCw,
+  Copy,
 } from 'lucide-react'
 import {
   PhotoDto,
@@ -140,6 +141,16 @@ export function PhotoDetailPanel({
     const storyPhotoIds = new Set(story.photos.map(p => p.id))
     return allPhotos.filter(p => !storyPhotoIds.has(p.id))
   }, [allPhotos, story])
+
+  const handleCopyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      notify(t('common.copied'), 'success')
+    } catch (error) {
+      console.error('Failed to copy text:', error)
+      notify(t('common.error'), 'error')
+    }
+  }
 
   const handleSave = async () => {
     if (!photo || !token) return
@@ -319,7 +330,7 @@ export function PhotoDetailPanel({
             className="fixed top-0 right-0 h-full w-full max-w-2xl z-[101] bg-background border-l border-border shadow-2xl overflow-hidden flex flex-col"
           >
             {/* Header - Refined with glass effect */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-20 flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background z-20 flex-shrink-0">
               <div className="flex items-center gap-4">
                 <div className="w-8 h-8 rounded-sm bg-primary/5 flex items-center justify-center">
                   <FileText className="w-4 h-4 text-primary" />
@@ -343,7 +354,7 @@ export function PhotoDetailPanel({
               </AdminButton>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="flex flex-1 min-h-0 flex-col">
               {/* Hero Image Section */}
               <div className="relative w-full aspect-video bg-muted/50 group overflow-hidden flex-shrink-0">
                 <img
@@ -399,7 +410,7 @@ export function PhotoDetailPanel({
               </div>
 
               {/* Navigation Tabs - Editorial Style */}
-              <div className="flex px-8 border-b border-border bg-background sticky top-0 z-10">
+              <div className="flex px-8 border-b border-border bg-background z-10 flex-shrink-0">
                 <AdminButton
                   onClick={() => setActiveTab('info')}
                   adminVariant="tab"
@@ -419,7 +430,7 @@ export function PhotoDetailPanel({
               </div>
 
               {/* Content Area */}
-              <div className="p-8 pb-32">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-8 pb-32">
                 <AnimatePresence mode="wait">
                   {activeTab === 'info' ? (
                     <motion.div
@@ -543,8 +554,7 @@ export function PhotoDetailPanel({
                                 whileHover={{ y: -2 }}
                                 className="relative group cursor-pointer"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(color)
-                                  notify(t('common.copied'), 'success')
+                                  handleCopyText(color)
                                 }}
                               >
                                 <div
@@ -601,9 +611,43 @@ export function PhotoDetailPanel({
                                 className="flex-1 border-l-0"
                               />
                             </div>
-                            <p className="text-xs text-muted-foreground font-mono opacity-60 pl-1">
-                              Filename: {(photo.storageKey || photo.url).split('/').pop()}
-                            </p>
+                            <div className="space-y-2 pl-1">
+                              {[
+                                {
+                                  label: 'Thumbnail URL',
+                                  value: photo.thumbnailUrl
+                                    ? resolveAssetUrl(photo.thumbnailUrl, cdnDomain)
+                                    : '',
+                                },
+                                {
+                                  label: 'Original URL',
+                                  value: resolveAssetUrl(photo.url, cdnDomain),
+                                },
+                              ].map((item) => (
+                                <div key={item.label} className="space-y-1">
+                                  <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                                    {item.label}
+                                  </p>
+                                  {item.value ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyText(item.value)}
+                                      className="flex w-full items-start gap-2 rounded-md border border-border/50 bg-background/60 px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
+                                      title="Click to copy link"
+                                    >
+                                      <Copy className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                      <span className="min-w-0 break-all text-xs font-mono text-muted-foreground">
+                                        {item.value}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <p className="text-xs font-mono text-muted-foreground opacity-60">
+                                      Not available
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </section>
