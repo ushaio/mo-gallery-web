@@ -52,6 +52,7 @@ export const ImageGroup = Node.create({
         props: {
           handleDrop(view, event, slice, moved) {
             if (!event) return false
+            if (moved) return false
 
             // Only handle if we're dragging an image
             const draggingImage = slice?.content?.firstChild?.type.name === 'image'

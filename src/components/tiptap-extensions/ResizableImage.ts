@@ -93,6 +93,8 @@ function applyImageDimensions(imageElement: HTMLElement, width: number | null) {
 }
 
 export const ResizableImage = Image.extend({
+  draggable: true,
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -248,7 +250,6 @@ export const ResizableImage = Image.extend({
       }
 
       const handleSelect = (event: MouseEvent) => {
-        event.preventDefault()
         event.stopPropagation()
         selectImageNode(editor, getPos)
         requestAnimationFrame(syncSelectionState)
