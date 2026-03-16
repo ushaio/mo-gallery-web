@@ -188,7 +188,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const {
     editorRef,
-    editorVersion,
     showUploadSettings,
     setShowUploadSettings,
     showPasteUploadSettings,
@@ -514,7 +513,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onOpenMenuPhoto={setOpenMenuPhotoId}
           onOpenMenuPending={setOpenMenuPendingId}
           editorRef={editorRef}
-          editorVersion={editorVersion}
           t={t}
           notify={notify}
           setCurrentStory={setCurrentStory}

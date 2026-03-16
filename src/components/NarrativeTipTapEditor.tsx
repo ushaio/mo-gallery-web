@@ -130,7 +130,23 @@ function convertMarkdownImageToHtmlAttrs(markdown: string): { src: string; alt?:
   const widthMatch = urlPart.match(/\s*=\s*(\d+)x\s*$/)
   const src = widthMatch ? urlPart.replace(/\s*=\s*\d+x\s*$/, '').trim() : urlPart.trim()
   const width = widthMatch ? parseInt(widthMatch[1], 10) : undefined
-  
+
+  return { src, alt, width }
+}
+
+function convertHtmlImageToAttrs(content: string): { src: string; alt?: string; width?: number } | null {
+  const trimmed = content.trim()
+  const match = trimmed.match(/^<img\s+([^>]*?)\/?>$/i)
+  if (!match) return null
+
+  const attrs = match[1]
+  const src = attrs.match(/\bsrc=(['"])(.*?)\1/i)?.[2]?.trim()
+  if (!src) return null
+
+  const alt = attrs.match(/\balt=(['"])(.*?)\1/i)?.[2] || ''
+  const widthValue = attrs.match(/\bwidth=(['"])?(\d+)\1?/i)?.[2]
+  const width = widthValue ? Number.parseInt(widthValue, 10) : undefined
+
   return { src, alt, width }
 }
 
@@ -347,6 +363,31 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor?.commands.focus()
     }, [editor])
 
+    const insertImageWithTrailingParagraph = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
+      if (!editor) return
+
+      editor
+        .chain()
+        .focus()
+        .insertContent([
+          {
+            type: 'image',
+            attrs: {
+              src: attrs.src,
+              alt: attrs.alt || '',
+              align: 'center',
+              ...(attrs.width ? { width: attrs.width } : {}),
+            },
+          },
+          {
+            type: 'paragraph',
+          },
+        ])
+        .run()
+
+      focusEditor()
+    }, [editor, focusEditor])
+
     const imperativeHandle = useMemo<NarrativeTipTapEditorHandle>(() => ({
       getValue: () => {
         return editor?.getHTML() || currentValueRef.current || ''
@@ -360,6 +401,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       },
       insertValue: (content: string) => {
         if (editor) {
+          const imageAttrs = convertMarkdownImageToHtmlAttrs(content) || convertHtmlImageToAttrs(content)
+          if (imageAttrs) {
+            insertImageWithTrailingParagraph(imageAttrs)
+            return
+          }
+
           // Convert Markdown images to HTML images for TipTap
           let processedContent = content
           if (isMarkdownImageSyntax(content)) {
@@ -369,17 +416,21 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               processedContent = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${widthAttr} />`
             }
           }
-          
-          const separator = currentValueRef.current && !currentValueRef.current.endsWith('<p>') ? '<p><br></p>' : ''
-          editor.commands.insertContent(separator + processedContent)
+
+          editor.commands.insertContent(processedContent)
           focusEditor()
         }
       },
       insertMarkdown: (markdown: string) => {
         if (editor) {
+          const imageAttrs = convertMarkdownImageToHtmlAttrs(markdown)
+          if (imageAttrs) {
+            insertImageWithTrailingParagraph(imageAttrs)
+            return
+          }
+
           const html = convertMarkdownToHtml(markdown)
-          const separator = currentValueRef.current && !currentValueRef.current.endsWith('<p>') ? '<p><br></p>' : ''
-          editor.commands.insertContent(separator + html)
+          editor.commands.insertContent(html)
           focusEditor()
         }
       },
@@ -446,7 +497,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         return false
       },
       focus: focusEditor,
-    }), [editor, focusEditor, onChange])
+    }), [editor, focusEditor, insertImageWithTrailingParagraph, onChange])
 
     useImperativeHandle(ref, () => imperativeHandle, [imperativeHandle])
 
@@ -483,7 +534,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       if (!editor) return
       if (showImageInput) {
         if (imageUrl) {
-          editor.chain().focus().setImage({ src: imageUrl }).run()
+          editor.chain().focus().setImage({ src: imageUrl, align: 'center' }).run()
         }
         setShowImageInput(false)
         setImageUrl('')

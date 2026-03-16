@@ -31,7 +31,6 @@ interface StoryEditorViewProps {
   saving: boolean
   draftSaved: boolean
   lastSavedAt: number | null
-  editorVersion: number
   editorRef: React.RefObject<NarrativeTipTapEditorHandle | null>
   isImmersiveMode: boolean
   setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
@@ -85,7 +84,6 @@ export function StoryEditorView({
   saving,
   draftSaved,
   lastSavedAt,
-  editorVersion,
   editorRef,
   isImmersiveMode,
   setIsImmersiveMode,
@@ -133,7 +131,6 @@ export function StoryEditorView({
 }: StoryEditorViewProps) {
   const editorCharacterCount = countStoryCharacters(currentStory.content)
   const relatedPhotoCount = currentStory.photos?.length || 0
-  const pendingPhotoCount = pendingImages.length
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-hidden">
@@ -180,7 +177,7 @@ export function StoryEditorView({
           </div>
 
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
-            <NarrativeTipTapEditor key={`${currentStory.id}:${editorVersion}`} ref={editorRef} value={currentStory.content} onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))} onPasteFiles={onPasteFiles} placeholder={t('ui.markdown_placeholder')} className="overflow-hidden bg-background" />
+            <NarrativeTipTapEditor ref={editorRef} value={currentStory.content} onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))} onPasteFiles={onPasteFiles} placeholder={t('ui.markdown_placeholder')} className="overflow-hidden bg-background" />
           </div>
         </div>
 

@@ -39,7 +39,6 @@ interface UseStoryEditorActionsParams {
 
 interface UseStoryEditorActionsResult {
   editorRef: MutableRefObject<NarrativeTipTapEditorHandle | null>
-  editorVersion: number
   showUploadSettings: boolean
   setShowUploadSettings: Dispatch<SetStateAction<boolean>>
   showPasteUploadSettings: boolean
@@ -95,7 +94,6 @@ export function useStoryEditorActions({
   onRequestSave,
 }: UseStoryEditorActionsParams): UseStoryEditorActionsResult {
   const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
-  const [editorVersion, setEditorVersion] = useState(0)
   const pendingPasteFilesRef = useRef<File[] | null>(null)
 
   const [showUploadSettings, setShowUploadSettings] = useState(false)
@@ -141,7 +139,6 @@ export function useStoryEditorActions({
   }, [])
 
   const insertDirective = useCallback((markdown: string) => {
-    setEditorVersion((prev) => prev + 1)
     editorRef.current?.insertValue(markdown)
     const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
     setCurrentStory((prev) => (prev ? { ...prev, content: nextValue } : prev))
@@ -370,7 +367,6 @@ export function useStoryEditorActions({
 
   return {
     editorRef,
-    editorVersion,
     showUploadSettings,
     setShowUploadSettings,
     showPasteUploadSettings,
