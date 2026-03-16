@@ -19,7 +19,7 @@ import { AdminInput } from '@/components/admin/AdminFormControls'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api'
-import { normalizeStoryContentImages } from '@/lib/story-rich-content'
+import { countStoryCharacters, normalizeStoryContentImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
 import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
@@ -131,7 +131,7 @@ export function StoryEditorView({
   notify,
   setCurrentStory,
 }: StoryEditorViewProps) {
-  const editorCharacterCount = (currentStory.content || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().length
+  const editorCharacterCount = countStoryCharacters(currentStory.content)
   const relatedPhotoCount = currentStory.photos?.length || 0
   const pendingPhotoCount = pendingImages.length
 

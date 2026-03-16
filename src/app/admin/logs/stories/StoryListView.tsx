@@ -17,6 +17,7 @@ import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import type { StoryDto } from '@/lib/api'
+import { countStoryCharacters } from '@/lib/story-rich-content'
 
 interface StoryListViewProps {
   stories: StoryDto[]
@@ -113,7 +114,7 @@ export function StoryListView({
                     </span>
                     <span className="flex items-center gap-1.5" title="Word Count">
                       <FileText className="h-3.5 w-3.5" />
-                      {story.content.length} {t('admin.characters')}
+                      {countStoryCharacters(story.content)} {t('admin.characters')}
                     </span>
                     {story.photos && story.photos.length > 0 ? (
                       <span className="flex items-center gap-1.5" title="Photos">

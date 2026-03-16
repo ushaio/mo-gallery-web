@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
+import { countStoryCharacters } from '@/lib/story-rich-content'
 
 // 扩展类型：为故事草稿文件添加预览 URL
 interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
@@ -469,6 +470,9 @@ export default function LogsPage() {
                                       <Clock className="w-3 h-3" />
                                       {formatRelativeTime(draft.savedAt)}
                                     </span>
+                                    {draft.content && (
+                                      <span>{countStoryCharacters(draft.content)} {t('admin.characters')}</span>
+                                    )}
                                     {draft.photoIds?.length > 0 && (
                                       <span>{draft.photoIds.length} {t('admin.photos')}</span>
                                     )}

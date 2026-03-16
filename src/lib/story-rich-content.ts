@@ -75,6 +75,15 @@ export function normalizeStoryContentImages(content: string) {
   )
 }
 
+export function countStoryCharacters(content?: string | null) {
+  return (content || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length
+}
+
 export function findStoryPhotoById(photos: PhotoDto[], photoId?: string) {
   if (!photoId) return null
   return photos.find((photo) => photo.id === photoId) ?? null

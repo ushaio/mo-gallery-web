@@ -34,6 +34,7 @@ import {
 } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
+import { countStoryCharacters } from '@/lib/story-rich-content'
 
 interface PhotoDetailPanelProps {
   photo: PhotoDto | null
@@ -693,7 +694,7 @@ export function PhotoDetailPanel({
                               />
                               <div className="flex justify-end">
                                 <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest opacity-60">
-                                  {storyData.content.length} Characters
+                                  {countStoryCharacters(storyData.content)} Characters
                                 </span>
                               </div>
                             </div>
