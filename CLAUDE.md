@@ -30,10 +30,10 @@ pnpm run prisma:studio   # Open Prisma Studio for database inspection
 - **Backend**: Hono.js mounted as Next.js API route
 - **Database**: Prisma ORM with PostgreSQL
 - **Storage**: Pluggable providers (local/GitHub/R2) via factory pattern
-- **Editors**: Milkdown (Crepe) for markdown, Tiptap for rich HTML stories
+- **Editor**: Tiptap for rich HTML story editing, react-markdown for story rendering
 - **Icons**: `@iconify/react` and `lucide-react`
 - **Validation**: Zod (server-side)
-- **Auth**: JWT-based, Linux DO OAuth for comments
+- **Auth**: JWT-based admin auth, Linux DO OAuth for comments
 
 ## Architecture
 
@@ -41,19 +41,25 @@ pnpm run prisma:studio   # Open Prisma Studio for database inspection
 
 All API routes live in `hono/` as Hono routers. They are aggregated in `hono/index.ts` and mounted at `/api` via a single Next.js catch-all route at `src/app/api/[[...route]]/route.ts` using `hono/vercel`'s `handle()`. Each HTTP method (GET, POST, PUT, PATCH, DELETE) is exported from that file.
 
+Middleware applied in the catch-all route: `logger()`, `cors()`. An additional `originCheckMiddleware` is applied in `hono/index.ts` to all routes.
+
+Most domain routers (photos, stories, blogs, albums, etc.) are mounted at root (`route.route('/', subRouter)`) — they define their own path prefixes internally. Only `auth` and `settings` are mounted with explicit prefixes.
+
 ### Frontend API Client (`src/lib/api/`)
 
-The API client is split into domain modules (`photos.ts`, `stories.ts`, `albums.ts`, etc.) that import from `core.ts`. Key patterns:
+The API client is split into domain modules (`photos.ts`, `stories.ts`, `albums.ts`, `blogs.ts`, `comments.ts`, `equipment.ts`, `friends.ts`, `auth.ts`, `settings.ts`, `storage.ts`) that import from `core.ts`. Key patterns:
 - **Envelope pattern**: All API responses are wrapped as `{ success: true, data: T, meta?: M }` or `{ success: false, message: string }`
 - `apiRequestData<T>()` — returns typed data directly
 - `apiRequestWithMeta<T, M>()` — returns data + pagination metadata
+- `buildQuery()` — builds URL query strings from param objects
+- `resolveAssetUrl()` — resolves asset paths with optional CDN domain
 - Bearer token is injected automatically when passed to these functions
 - 401 responses throw `ApiUnauthorizedError`
 - DTOs are defined in `types.ts` with `Dto` suffix convention (e.g., `PhotoDto`, `StoryDto`)
 
 ### Storage Abstraction (`server/lib/storage/`)
 
-`StorageProvider` interface defines `upload()`, `delete()`, `download()`, `getUrl()`, `move()`, `list()`. `StorageProviderFactory.create(config)` returns the appropriate provider based on config loaded from the database `Setting` table at request time.
+`StorageProvider` interface defines `upload()`, `delete()`, `download()`, `getUrl()`, `move()`, `list()`, `validateConfig()`. `StorageProviderFactory.create(config)` returns the appropriate provider based on config loaded from the database `Setting` table at request time.
 
 ### State Management
 
@@ -64,13 +70,13 @@ React Context API only (no Redux). Key contexts in `src/contexts/`:
 - **LanguageContext**: i18n with `t()` function using dot-notation paths into `src/lib/i18n.ts` dictionaries
 - **UploadQueueContext**: Manages concurrent photo uploads (up to 4 parallel) with compression
 
-### Rich Text Editors
+### Rich Text Editor
 
-Two editor systems coexist for stories:
-- **MilkdownEditor** (`src/components/MilkdownEditor.tsx`): Markdown-native WYSIWYG using Milkdown/Crepe. Uses `useImperativeHandle` to expose `getValue()`, `setValue()`, `insertValue()`. Outputs markdown.
-- **NarrativeTipTapEditor** (`src/components/NarrativeTipTapEditor.tsx`): HTML-based rich editor using Tiptap. Accepts markdown input (converts to HTML), outputs HTML. Has custom extensions for resizable images, toolbar formatting, tables, and alignment.
+**NarrativeTipTapEditor** (`src/components/NarrativeTipTapEditor.tsx`): The sole editor, used for stories and blogs. HTML-based rich editor using Tiptap. Accepts markdown input (converts to HTML), outputs HTML. Has custom extensions in `src/components/tiptap-extensions/` for resizable images, image groups, pasted style handling, toolbar formatting, tables, and alignment. Exposes imperative handle with `getValue()`, `setValue()`, `insertValue()`, `insertMarkdown()`.
 
-Both handle image pasting via callbacks to parent components and support width modifiers in markdown image syntax: `![alt](url =480x)`.
+Story rendering on the public side uses **react-markdown** with remark-gfm in `StoryRichContent.tsx`.
+
+Note: Milkdown and Vditor were previously used but have been removed. References to them in comments or old code are stale.
 
 ### i18n
 
@@ -97,6 +103,17 @@ Flat dictionary structure in `src/lib/i18n.ts` with `zh` and `en` locales. `Lang
 - `Photo → Camera/Lens`: Optional foreign keys
 - `Comment → Photo`: Cascade delete
 - `Setting`: Key-value store for app configuration (storage provider settings, site config)
+
+## App Router Structure
+
+- `src/app/admin/` — Admin panel with layout (`layout.tsx` contains sidebar + admin shell)
+  - `photos/`, `albums/`, `friends/`, `settings/`, `storage/`, `upload/` — CRUD admin pages
+  - `logs/` — Stories editor, blog editor, story upload, and operational logs
+- `src/app/gallery/` — Public gallery pages
+- `src/app/story/` — Public story pages
+- `src/app/blog/` — Public blog pages
+- `src/app/they/` — Friend links page
+- `src/app/login/` — Admin login and OAuth callback
 
 ## Conventions
 

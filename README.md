@@ -4,7 +4,7 @@
 
 **一个现代化的图片画廊应用，前后端集成，支持多种部署方式和存储后端**
 
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![Hono](https://img.shields.io/badge/Hono-API-orange?style=flat-square)](https://hono.dev/)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
@@ -31,16 +31,15 @@
 
 ### 📖 故事/叙事
 - 将多张照片组合成故事
-- **Milkdown 所见即所得编辑器** - 类似 Typora 的 Markdown 编辑体验
+- **Tiptap 富文本编辑器** - 所见即所得的编辑体验，支持图片缩放、表格、对齐等
 - 精美的故事展示布局
 - 故事内照片管理（添加/移除/排序照片）
 - 支持设置封面照片
 
 ### ✍️ 博客系统
-- **Milkdown WYSIWYG 编辑器** - 所见即所得的 Markdown 编辑
-- 支持 Slash 命令菜单（输入 "/" 快速插入内容）
-- 支持拖拽手柄重排段落
+- **Tiptap WYSIWYG 编辑器** - 所见即所得的富文本编辑
 - 支持工具栏格式化
+- 支持可调整大小的图片和图片组
 - 一键插入图库照片
 - 发布/草稿状态管理
 
@@ -62,7 +61,7 @@
 - **相册管理** - 创建、编辑和组织相册
 - **故事管理** - 创建和管理照片故事，支持照片选择和排序
 - **友链管理** - 添加、编辑和删除友链
-- **博客编辑器** - Milkdown 所见即所得编辑器
+- **博客编辑器** - Tiptap 所见即所得编辑器
 - **系统设置** - 配置站点标题、描述、社交链接等
 - **评论审核** - 审核和管理用户评论
 - **操作日志** - 追踪管理员操作和系统事件
@@ -95,15 +94,15 @@
 
 | 分类 | 技术 |
 |------|------|
-| **框架** | Next.js 15 (App Router) |
+| **框架** | Next.js 16 (App Router) |
 | **语言** | TypeScript 5 |
 | **API** | Hono.js |
 | **数据库 ORM** | Prisma |
 | **样式** | Tailwind CSS 4 |
 | **动画** | Framer Motion |
-| **数据库** |PostgreSQL |
+| **数据库** | PostgreSQL |
 | **图片处理** | Sharp, ExifReader |
-| **Markdown 编辑器** | Milkdown (Crepe) |
+| **富文本编辑器** | Tiptap |
 | **认证** | JWT, Linux DO OAuth |
 | **状态管理** | React Context |
 
@@ -268,15 +267,18 @@ mo-gallery-web/
 │   │   │   ├── albums/      # 相册管理
 │   │   │   ├── friends/     # 友链管理
 │   │   │   ├── settings/    # 系统设置
-│   │   │   └── logs/        # 操作日志
+│   │   │   ├── upload/      # 照片上传
+│   │   │   ├── storage/     # 存储管理
+│   │   │   └── logs/        # 故事编辑器、博客编辑器、操作日志
 │   │   ├── gallery/         # 公开画廊页面
 │   │   ├── story/           # 故事页面
 │   │   ├── blog/            # 博客页面
 │   │   ├── they/            # 友链页面
 │   │   └── login/           # 登录页面（管理员 & OAuth 回调）
 │   ├── components/          # React 组件
-│   │   ├── MilkdownEditor.tsx    # 所见即所得 Markdown 编辑器
-│   │   ├── MilkdownViewer.tsx    # 只读 Markdown 渲染器
+│   │   ├── NarrativeTipTapEditor.tsx  # Tiptap 富文本编辑器
+│   │   ├── StoryRichContent.tsx       # 故事内容渲染
+│   │   ├── tiptap-extensions/         # Tiptap 自定义扩展
 │   │   ├── admin/           # 后台专用组件
 │   │   │   ├── PhotoSelectorModal.tsx  # 可复用照片选择器
 │   │   │   ├── PhotoDetailPanel.tsx    # 照片详情编辑
@@ -293,7 +295,7 @@ mo-gallery-web/
 │   │   ├── SettingsContext.tsx      # 站点设置
 │   │   └── UploadQueueContext.tsx   # 上传队列管理
 │   └── lib/                 # 前端工具
-│       ├── api.ts           # API 客户端（含认证）
+│       ├── api/             # API 客户端模块（按领域拆分）
 │       ├── i18n.ts          # 国际化字符串
 │       └── utils.ts         # 辅助函数
 └── public/                  # 静态资源
@@ -322,7 +324,12 @@ pnpm run prisma:studio   # 打开 Prisma Studio
 
 ## 🔄 最近更新
 
-### 2026-01-01
+### 2026-03
+- ✏️ **编辑器迁移** - 从 Milkdown/Vditor 迁移到 Tiptap 富文本编辑器
+- 🖼️ **可调整大小的图片** - Tiptap 自定义扩展，支持图片缩放和图片组
+- 📦 **依赖清理** - 移除 Milkdown 和 Vditor 相关包
+
+### 2026-01
 - ✨ **Milkdown 编辑器** - 集成所见即所得 Markdown 编辑器，支持 Slash 命令、拖拽手柄、工具栏
 - 📖 **MilkdownViewer** - 新增只读 Markdown 渲染组件，展示页面样式与编辑器一致
 - 📸 **照片选择器** - 可复用的照片选择模态框，支持筛选和相册过滤
