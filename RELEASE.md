@@ -323,3 +323,25 @@
 #### 部署配置
 - Docker 配置添加中国镜像仓库支持
 - 简化并重组 .env.example 配置文件
+## v0.5.1 - 2026-03-17
+
+### ✨ 编辑器栈精简
+
+#### 移除 Milkdown 与 Vditor
+- 完全移除 `milkdown` 与 `vditor` 相关依赖、组件与样式文件
+- 统一博客编辑体验，改为复用现有 `NarrativeTipTapEditor`
+- 清理旧的 Markdown 编辑器实现，减少重复维护成本与前端包体积
+
+#### 统一内容渲染链路
+- 博客详情页改为使用 `StoryRichContent` 渲染内容
+- StoryTab 侧栏内容与后台预览统一复用同一套内容渲染能力
+- 统一 Markdown / HTML 混合内容的展示行为，减少编辑态与展示态不一致问题
+
+### 🛠 Release 工作流修正
+
+#### 发布分支兼容性增强
+- Release workflow 现已同时支持 `main` 与 `master` 触发
+- 推送 tag 与版本提交时不再写死 `master`，改为回推当前触发分支
+- 保留从 `RELEASE.md` 自动提取版本号与 changelog 创建 GitHub Release 的能力
+
+---
