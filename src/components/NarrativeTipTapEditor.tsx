@@ -534,14 +534,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       if (!editor) return
       if (showImageInput) {
         if (imageUrl) {
-          editor.chain().focus().setImage({ src: imageUrl, align: 'center' }).run()
+          insertImageWithTrailingParagraph({ src: imageUrl })
         }
         setShowImageInput(false)
         setImageUrl('')
       } else {
         setShowImageInput(true)
       }
-    }, [editor, imageUrl, showImageInput])
+    }, [editor, imageUrl, insertImageWithTrailingParagraph, showImageInput])
 
     const addTable = useCallback(() => {
       if (!editor) return
