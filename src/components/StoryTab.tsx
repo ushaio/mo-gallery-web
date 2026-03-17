@@ -10,27 +10,13 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { Toast, type Notification } from '@/components/Toast'
+import { StoryRichContent } from '@/components/StoryRichContent'
 
 const WalineCommentsWrapper = dynamic(
   () => import('./WalineComments').then(mod => mod.WalineComments),
   {
     ssr: false,
     loading: () => <div className="space-y-5 animate-pulse"><div className="h-4 bg-muted rounded-none w-1/4"></div><div className="h-4 bg-muted rounded-none w-full"></div></div>
-  }
-)
-
-// Dynamically import MilkdownViewer to avoid SSR issues
-const MilkdownViewer = dynamic(
-  () => import('@/components/MilkdownViewer'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="animate-pulse space-y-4">
-        <div className="h-4 bg-muted rounded w-full"></div>
-        <div className="h-4 bg-muted rounded w-5/6"></div>
-        <div className="h-4 bg-muted rounded w-4/6"></div>
-      </div>
-    )
   }
 )
 
@@ -380,9 +366,12 @@ export function StoryTab({
           )}
 
           {/* Story Content */}
-          <div className="milkdown-article-compact">
-            <MilkdownViewer content={story.content} />
-          </div>
+          <StoryRichContent
+            content={story.content}
+            photos={story.photos || []}
+            cdnDomain={settings?.cdn_domain}
+            className="story-rich-content--compact"
+          />
         </div>
       )}
 
