@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
+import { countStoryCharacters } from '@/lib/story-rich-content'
 
 // 扩展类型：为故事草稿文件添加预览 URL
 interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
@@ -39,6 +40,7 @@ export default function LogsPage() {
     settings,
     t,
     notify,
+    isImmersiveMode,
   } = useAdmin()
 
   // 当前激活的子标签页（默认为故事标签）
@@ -68,6 +70,7 @@ export default function LogsPage() {
   const lastClickRef = useRef<{ tab: string; time: number }>({ tab: '', time: 0 })
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0) // 故事标签页刷新键
   const [blogRefreshKey, setBlogRefreshKey] = useState(0) // 博客标签页刷新键
+  const [isStoriesEditing, setIsStoriesEditing] = useState(false)
 
   // 草稿筛选状态
   const [draftTypeFilter, setDraftTypeFilter] = useState('') // 类型筛选（story/blog/all）
@@ -260,7 +263,7 @@ export default function LogsPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 子标签页导航 */}
-      <div className="flex space-x-1 border-b border-border flex-shrink-0">
+      <div className={`${(isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'} space-x-1 border-b border-border px-8 flex-shrink-0`}>
         <AdminButton
           onClick={() => handleTabClick('stories')}
           adminVariant="tab"
@@ -299,7 +302,7 @@ export default function LogsPage() {
       </div>
 
       {/* 子标签页内容 */}
-      <div className="flex-1 overflow-hidden pt-6">
+      <div className={`flex-1 overflow-hidden ${isImmersiveMode ? 'pt-0' : isStoriesEditing && activeSubTab === 'stories' ? 'pt-0' : 'px-8 pb-8 pt-6'}`}>
         <div className={activeSubTab === 'blog' ? 'h-full' : 'hidden'}>
           <BlogTab
             photos={photos}
@@ -318,6 +321,7 @@ export default function LogsPage() {
             editFromDraft={editFromDraft}
             onDraftConsumed={() => setEditFromDraft(null)}
             refreshKey={storiesRefreshKey}
+            onEditingChange={setIsStoriesEditing}
           />
         </div>
         {activeSubTab === 'drafts' ? (
@@ -466,6 +470,9 @@ export default function LogsPage() {
                                       <Clock className="w-3 h-3" />
                                       {formatRelativeTime(draft.savedAt)}
                                     </span>
+                                    {draft.content && (
+                                      <span>{countStoryCharacters(draft.content)} {t('admin.characters')}</span>
+                                    )}
                                     {draft.photoIds?.length > 0 && (
                                       <span>{draft.photoIds.length} {t('admin.photos')}</span>
                                     )}

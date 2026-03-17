@@ -283,10 +283,6 @@ export default function FriendsPage() {
     }
   }
 
-  if (loading) {
-    return <AdminLoading text={t('common.loading')} />
-  }
-
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
       {/* 页面头部 */}
@@ -313,7 +309,9 @@ export default function FriendsPage() {
 
       {/* 友链列表 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {friends.length === 0 ? (
+        {loading ? (
+          <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+        ) : friends.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-border">
             <Users className="w-12 h-12 mx-auto mb-4 opacity-10" />
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">

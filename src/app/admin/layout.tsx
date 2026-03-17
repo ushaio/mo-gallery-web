@@ -3,20 +3,11 @@
 import React, { useEffect, useState, createContext, useContext, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Upload as UploadIcon,
-  Image as ImageIcon,
-  Settings,
-  BookText,
+  ChevronLeft,
+  ChevronRight,
   Menu,
   ExternalLink,
   LogOut,
-  LucideIcon,
-  Moon,
-  Sun,
-  Monitor,
-  FolderOpen,
-  Users,
-  HardDrive,
 } from 'lucide-react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
@@ -24,7 +15,6 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
@@ -47,6 +37,8 @@ import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminSidebar } from '@/components/admin/AdminSidebar'
+import { getActiveAdminSidebarItem, getAdminSidebarItems } from '@/components/admin/admin-sidebar-config'
 
 // Admin Context for shared state
 interface AdminContextType {
@@ -77,6 +69,8 @@ interface AdminContextType {
   selectedPhoto: PhotoDto | null
   setSelectedPhoto: (photo: PhotoDto | null) => void
   handleUnauthorized: () => void
+  isImmersiveMode: boolean
+  setIsImmersiveMode: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 const AdminContext = createContext<AdminContextType | null>(null)
@@ -89,12 +83,7 @@ export function useAdmin() {
   return context
 }
 
-interface SidebarItem {
-  id: string
-  href: string
-  label: string
-  icon: LucideIcon
-}
+const ADMIN_SIDEBAR_COLLAPSED_KEY = 'admin-sidebar-collapsed'
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const { logout, token, user } = useAuth()
@@ -106,6 +95,27 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isImmersiveMode, setIsImmersiveMode] = useState(false)
+
+  useEffect(() => {
+    const savedValue = window.localStorage.getItem(ADMIN_SIDEBAR_COLLAPSED_KEY)
+    setIsSidebarCollapsed(savedValue === 'true')
+  }, [])
+
+  useEffect(() => {
+    if (!pathname.startsWith('/admin/logs')) {
+      setIsImmersiveMode(false)
+    }
+  }, [pathname])
+
+  const toggleSidebarCollapse = useCallback(() => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev
+      window.localStorage.setItem(ADMIN_SIDEBAR_COLLAPSED_KEY, String(next))
+      return next
+    })
+  }, [])
 
   const toggleTheme = () => {
     if (theme === 'system') setTheme('light')
@@ -337,29 +347,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, [])
 
   // --- Settings Handlers ---
-  const handleSaveSettings = useCallback(async () => {
-    if (!token || !settings || !originalSettings) return
-
-    // Check if R2 Public URL has changed
-    const r2UrlChanged = settings.storage_provider === 'r2' &&
-      settings.r2_public_url !== originalSettings.r2_public_url &&
-      originalSettings.r2_public_url?.trim()
-
-    // If URL changed, show confirmation dialog
-    if (r2UrlChanged) {
-      setUrlUpdateParams({
-        storageProvider: 'r2',
-        oldPublicUrl: originalSettings.r2_public_url,
-        newPublicUrl: settings.r2_public_url,
-      })
-      setShowUrlUpdateDialog(true)
-      return
-    }
-
-    // Save settings normally
-    await saveSettingsWithoutUrlUpdate()
-  }, [token, settings, originalSettings])
-
   const saveSettingsWithoutUrlUpdate = useCallback(async () => {
     if (!token || !settings) return
     setSettingsError('')
@@ -381,6 +368,30 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       setSettingsSaving(false)
     }
   }, [token, settings, refreshGlobalSettings, notify, t, handleUnauthorized])
+
+  const handleSaveSettings = useCallback(async () => {
+    if (!token || !settings || !originalSettings) return
+
+    // Check if R2 Public URL has changed
+    const r2UrlChanged =
+      settings.storage_provider === 'r2' &&
+      settings.r2_public_url !== originalSettings.r2_public_url &&
+      originalSettings.r2_public_url?.trim()
+
+    // If URL changed, show confirmation dialog
+    if (r2UrlChanged) {
+      setUrlUpdateParams({
+        storageProvider: 'r2',
+        oldPublicUrl: originalSettings.r2_public_url,
+        newPublicUrl: settings.r2_public_url,
+      })
+      setShowUrlUpdateDialog(true)
+      return
+    }
+
+    // Save settings normally
+    await saveSettingsWithoutUrlUpdate()
+  }, [token, settings, originalSettings, saveSettingsWithoutUrlUpdate])
 
   const handleConfirmUrlUpdate = useCallback(async (updateUrls: boolean) => {
     if (!token || !settings) return
@@ -421,44 +432,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [token, settings, urlUpdateParams, refreshGlobalSettings, refreshPhotos, notify, t, handleUnauthorized])
 
-  // --- Sidebar Items ---
-  const sidebarItems: SidebarItem[] = [
-    { id: 'photos', href: '/admin/photos', label: t('admin.library'), icon: ImageIcon },
-    { id: 'albums', href: '/admin/albums', label: t('admin.albums'), icon: FolderOpen },
-    { id: 'upload', href: '/admin/upload', label: t('admin.upload'), icon: UploadIcon },
-    { id: 'logs', href: '/admin/logs', label: t('admin.logs'), icon: BookText },
-    { id: 'storage', href: '/admin/storage', label: t('admin.storage_cleanup'), icon: HardDrive },
-    { id: 'settings', href: '/admin/settings', label: t('admin.config'), icon: Settings },
-    { id: 'friends', href: '/admin/friends', label: t('admin.friends'), icon: Users },
-  ]
-
-  // Get current active tab from pathname
-  const getActiveTab = () => {
-    if (pathname.startsWith('/admin/photos')) return 'photos'
-    if (pathname.startsWith('/admin/albums')) return 'albums'
-    if (pathname.startsWith('/admin/upload')) return 'upload'
-    if (pathname.startsWith('/admin/friends')) return 'friends'
-    if (pathname.startsWith('/admin/logs')) return 'logs'
-    if (pathname.startsWith('/admin/storage')) return 'storage'
-    if (pathname.startsWith('/admin/settings')) return 'settings'
-    return 'photos'
-  }
-
-  const activeTab = getActiveTab()
-
-  // Get page title
-  const getPageTitle = () => {
-    switch (activeTab) {
-      case 'photos': return t('admin.library')
-      case 'albums': return t('admin.albums')
-      case 'upload': return t('admin.upload')
-      case 'friends': return t('admin.friends')
-      case 'logs': return t('admin.logs')
-      case 'storage': return t('admin.storage_cleanup')
-      case 'settings': return t('admin.config')
-      default: return t('admin.library')
-    }
-  }
+  const sidebarItems = getAdminSidebarItems(t)
+  const activeSidebarItem = getActiveAdminSidebarItem(pathname)
+  const pageTitle = t(activeSidebarItem.labelKey)
 
   const contextValue: AdminContextType = {
     token,
@@ -488,6 +464,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     selectedPhoto,
     setSelectedPhoto,
     handleUnauthorized,
+    isImmersiveMode,
+    setIsImmersiveMode,
   }
 
   const handleUploadComplete = useCallback(async (photoIds: string[], storyId?: string) => {
@@ -513,114 +491,52 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             }
           />
 
-        {/* Sidebar */}
-        <aside
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-background border-r border-border transform transition-transform duration-300 md:translate-x-0 ${
-            isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-        >
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="p-6 border-b border-border">
-              <h2 className={`font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 ${globalSettingsLoading ? 'opacity-0' : 'opacity-100'}`}>
-                {siteTitle || '\u00A0'}
-              </h2>
-              <p className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground mt-1">
-                {t('admin.console')}
-              </p>
+          {!isImmersiveMode ? (
+            <AdminSidebar
+              siteTitle={siteTitle}
+              isSiteTitleLoading={globalSettingsLoading}
+              isMobileMenuOpen={isMobileMenuOpen}
+              isCollapsed={isSidebarCollapsed}
+              activeItemId={activeSidebarItem.id}
+              user={user}
+              locale={locale}
+              mounted={mounted}
+              theme={theme}
+              onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
+              onToggleTheme={toggleTheme}
+              onToggleLanguage={toggleLanguage}
+              onLogout={() => setShowLogoutConfirm(true)}
+              t={t}
+              items={sidebarItems}
+            />
+          ) : null}
+
+          {!isImmersiveMode ? (
+          <button
+            type="button"
+            onClick={toggleSidebarCollapse}
+            className={`fixed top-1/2 z-50 hidden h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none md:flex ${
+              isSidebarCollapsed ? 'left-20' : 'left-64'
+            }`}
+            aria-label={locale === 'zh' ? (isSidebarCollapsed ? '灞曞紑渚ц竟鏍?' : '鏀惰捣渚ц竟鏍?') : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
+            aria-pressed={isSidebarCollapsed}
+          >
+            <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
+              {isSidebarCollapsed ? (
+                <ChevronRight className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronLeft className="h-3.5 w-3.5" />
+              )}
             </div>
+          </button>
+          ) : null}
 
-            {/* Navigation */}
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-              {sidebarItems.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 text-xs font-bold tracking-widest uppercase transition-all rounded-sm ${
-                    activeTab === item.id
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
-                >
-                  <item.icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-            </nav>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-border space-y-3">
-              {/* Settings Row */}
-              <div className="flex items-center gap-2">
-                {/* Theme Toggle */}
-                <AdminButton
-                  onClick={toggleTheme}
-                  adminVariant="outline"
-                  size="sm"
-                  className="flex-1 flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm"
-                  title={t('nav.toggle_theme')}
-                >
-                  {!mounted ? (
-                    <Monitor className="w-4 h-4" />
-                  ) : theme === 'system' ? (
-                    <Monitor className="w-4 h-4" />
-                  ) : theme === 'light' ? (
-                    <Sun className="w-4 h-4" />
-                  ) : (
-                    <Moon className="w-4 h-4" />
-                  )}
-                  <span className="text-[10px] font-bold uppercase tracking-widest">
-                    {theme === 'system' ? t('nav.system') : theme === 'light' ? t('nav.light') : t('nav.dark')}
-                  </span>
-                </AdminButton>
-
-                {/* Language Toggle */}
-                <AdminButton
-                  onClick={toggleLanguage}
-                  adminVariant="outline"
-                  size="sm"
-                  className="flex-1 flex items-center justify-center px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-sm"
-                >
-                  {locale === 'zh' ? 'EN' : '中'}
-                </AdminButton>
-              </div>
-
-              {/* Divider */}
-              <div className="-mx-4 border-t border-border" />
-
-              {/* User Info */}
-              <div className="flex items-center space-x-3 px-2">
-                <div className="w-8 h-8 bg-primary rounded-sm flex items-center justify-center text-xs text-primary-foreground font-bold">
-                  {user?.username?.substring(0, 1).toUpperCase() || 'A'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold truncate uppercase tracking-wider">
-                    {user?.username || 'ADMIN'}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground truncate uppercase tracking-widest">
-                    {t('admin.super_user')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Logout Button */}
-              <AdminButton
-                onClick={() => setShowLogoutConfirm(true)}
-                adminVariant="destructiveOutline"
-                size="lg"
-                className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-bold uppercase tracking-widest rounded-sm"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>{t('nav.logout')}</span>
-              </AdminButton>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden">
-          <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
+          {/* Main Content */}
+          <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${
+            isImmersiveMode ? 'md:ml-0' : isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
+          }`}>
+            {!isImmersiveMode ? (
+            <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
             <div className="flex items-center">
               <AdminButton
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -631,7 +547,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                 <Menu className="w-5 h-5" />
               </AdminButton>
               <h1 className="font-serif text-2xl font-light tracking-tight uppercase">
-                {getPageTitle()}
+                {pageTitle}
               </h1>
             </div>
             <div className="flex items-center space-x-4">
@@ -646,8 +562,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               </a>
             </div>
           </header>
+            ) : null}
 
-          <div className="p-8 flex-1 overflow-y-auto">
+           <div className={isImmersiveMode ? 'flex-1 overflow-hidden' : 'p-8 flex-1 overflow-y-auto'}>
             {children}
           </div>
         </main>

@@ -5,24 +5,9 @@ import { motion } from 'framer-motion'
 import { Calendar, ArrowLeft, BookText } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import dynamic from 'next/dynamic'
 import { getBlog, type BlogDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
-
-// Dynamically import MilkdownViewer to avoid SSR issues
-const MilkdownViewer = dynamic(
-  () => import('@/components/MilkdownViewer'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="animate-pulse space-y-4">
-        <div className="h-4 bg-muted rounded w-full"></div>
-        <div className="h-4 bg-muted rounded w-5/6"></div>
-        <div className="h-4 bg-muted rounded w-4/6"></div>
-      </div>
-    )
-  }
-)
+import { StoryRichContent } from '@/components/StoryRichContent'
 
 export default function BlogDetailPage() {
   const params = useParams()
@@ -44,6 +29,7 @@ export default function BlogDetailPage() {
         setLoading(false)
       }
     }
+
     if (id) {
       fetchBlog()
     }
@@ -89,7 +75,6 @@ export default function BlogDetailPage() {
   return (
     <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
       <div className="max-w-4xl mx-auto">
-        {/* Back Button */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -104,7 +89,6 @@ export default function BlogDetailPage() {
           </Link>
         </motion.div>
 
-        {/* Article Header */}
         <header className="mb-12 pb-8 border-b border-border">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -139,17 +123,14 @@ export default function BlogDetailPage() {
           </motion.div>
         </header>
 
-        {/* Article Content */}
         <motion.article
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="milkdown-article"
         >
-          <MilkdownViewer content={blog.content} />
+          <StoryRichContent content={blog.content} photos={[]} className="story-rich-content--article" />
         </motion.article>
 
-        {/* Footer Navigation */}
         <motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

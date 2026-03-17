@@ -190,9 +190,7 @@ export function SettingsTab({
     }
   }, [settingsTab, token, page]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading || !settings) {
-    return <AdminLoading text={t('common.loading')} />
-  }
+  const isSettingsReady = !loading && !!settings
 
   return (
     <div className="max-w-[1920px]">
@@ -233,6 +231,10 @@ export function SettingsTab({
           )}
 
           <div className="flex-1 space-y-12">
+            {!isSettingsReady ? (
+              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+            ) : (
+              <>
             {settingsTab === 'site' && (
               <div className="max-w-2xl space-y-8">
                 <div className="pb-4 border-b border-border">
@@ -1033,10 +1035,11 @@ export function SettingsTab({
                 </AdminButton>
               </div>
             )}
+              </>
+            )}
           </div>
         </div>
       </div>
     </div>
   )
 }
-

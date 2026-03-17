@@ -6,6 +6,13 @@ import { StorageProviderFactory, StorageConfig } from '~/server/lib/storage'
 import path from 'path'
 
 const storage = new Hono<{ Variables: AuthVariables }>()
+const THUMBNAIL_EXTENSION = '.webp'
+
+function buildThumbnailKey(originalKey: string): string {
+  const parsed = path.posix.parse(originalKey)
+  const thumbnailFilename = `thumb-${parsed.name}${THUMBNAIL_EXTENSION}`
+  return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
+}
 
 storage.use('/admin/storage/*', authMiddleware)
 
@@ -78,8 +85,8 @@ storage.get('/admin/storage/scan', async (c) => {
   const getThumbnailKeyFromUrl = (thumbnailUrl: string | null) => {
     if (!thumbnailUrl) return null
     // Extract key from URL - handle different URL formats
-    // e.g., /uploads/thumb-xxx.jpg -> thumb-xxx.jpg
-    // e.g., https://cdn.example.com/path/thumb-xxx.jpg -> path/thumb-xxx.jpg
+    // e.g., /uploads/thumb-xxx.webp -> thumb-xxx.webp
+    // e.g., https://cdn.example.com/path/thumb-xxx.webp -> path/thumb-xxx.webp
     const match = thumbnailUrl.match(/(?:\/uploads\/|\/)?([^/]*thumb-[^/]+)$/)
     if (match) return match[1]
     // For full paths like path/to/thumb-xxx.jpg
@@ -189,10 +196,7 @@ storage.post('/admin/storage/cleanup', async (c) => {
 
   for (const key of keys) {
     try {
-      const lastSlash = key.lastIndexOf('/')
-      const thumbKey = lastSlash >= 0
-        ? `${key.substring(0, lastSlash + 1)}thumb-${key.substring(lastSlash + 1)}`
-        : `thumb-${key}`
+      const thumbKey = buildThumbnailKey(key)
       await storageProvider.delete(key, thumbKey)
       deleted++
     } catch (error: unknown) {

@@ -34,7 +34,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { useRouter } from 'next/navigation'
-import type { MilkdownEditorHandle } from '@/components/MilkdownEditor'
+import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import {
   saveBlogDraftToDB,
   getBlogDraftFromDB,
@@ -48,8 +48,8 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 
 // 动态导入 MilkdownEditor，避免 SSR 问题
-const MilkdownEditor = dynamic(
-  () => import('@/components/MilkdownEditor'),
+const NarrativeTipTapEditor = dynamic(
+  () => import('@/components/NarrativeTipTapEditor'),
   { 
     ssr: false,
     loading: () => (
@@ -88,7 +88,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const [editMode, setEditMode] = useState<'list' | 'editor'>('list')
   const [isInsertingPhoto, setIsInsertingPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
-  const editorRef = useRef<MilkdownEditorHandle>(null)
+  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   
   // 自动保存状态
   const [draftSaved, setDraftSaved] = useState(false)
@@ -463,7 +463,11 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       photo.url,
       settings?.cdn_domain
     )})\n`
-    if (currentBlog) {
+    if (editorRef.current) {
+      editorRef.current.insertMarkdown(markdown)
+      const nextValue = editorRef.current.getValue()
+      setCurrentBlog((prev) => (prev ? { ...prev, content: nextValue } : prev))
+    } else if (currentBlog) {
       setCurrentBlog({ ...currentBlog, content: currentBlog.content + markdown })
     }
     setIsInsertingPhoto(false)
@@ -478,9 +482,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
 
-  if (loading) {
-    return <AdminLoading text={t('common.loading')} />
-  }
 
   // 博客发布状态筛选选项
   const statusOptions: SelectOption[] = [
@@ -519,7 +520,10 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
             </AdminButton>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <div className="grid grid-cols-1 gap-4">
+            {loading ? (
+              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
               {blogs
                 .filter((blog) => {
                   if (!statusFilter) return true
@@ -586,7 +590,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                   </p>
                 </div>
               )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -693,12 +698,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               </div>
               <div className="flex-1 relative border border-border bg-card/30 overflow-visible">
                 {currentBlog && (
-                  <MilkdownEditor
+                  <NarrativeTipTapEditor
                     key={currentBlog.id || 'new'}
                     ref={editorRef}
                     value={currentBlog.content}
                     onChange={handleContentChange}
                     placeholder={t('ui.markdown_placeholder')}
+                    className="overflow-hidden bg-background"
                   />
                 )}
                 <AdminButton
@@ -769,4 +775,3 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     </div>
   )
 }
-
