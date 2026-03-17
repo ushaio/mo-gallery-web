@@ -1,149 +1,40 @@
-# AGENTS.md
+# Repository Guidelines
 
-This file provides guidance to AI agents working with this codebase.
+## Project Structure & Module Organization
+- `src/app/`: Next.js App Router pages and admin screens.
+- `src/components/`: reusable UI, editors, gallery views, and admin widgets.
+- `src/lib/`: shared utilities, API clients, i18n, and content helpers.
+- `hono/`: Hono API route handlers and middleware.
+- `server/`: server-side storage, EXIF, and infrastructure helpers.
+- `prisma/`: schema, migrations, and seed script.
+- `public/` and `weixin/`: static assets and exportable article templates.
 
-## Development Commands
+## Build, Test, and Development Commands
+- `pnpm run dev`: start the local Next.js dev server on `http://localhost:3000`.
+- `pnpm run build`: production build for the web app.
+- `pnpm run build:vercel`: deploy-oriented build with Prisma deploy, generate, and seed.
+- `pnpm run build:node`: Node deployment build without seeding.
+- `pnpm run start`: run the production build locally.
+- `pnpm run lint`: run ESLint across the repository.
+- `pnpm run prisma:generate`, `pnpm run prisma:dev`, `pnpm run prisma:deploy`, `pnpm run prisma:seed`: manage Prisma client, migrations, and seed data.
 
-```bash
-# Development
-pnpm run dev              # Start dev server (http://localhost:3000)
-pnpm run build            # Production build
-pnpm run build:vercel     # Build for Vercel (includes database)
-pnpm run build:node       # Build for Node.js server
-pnpm run start            # Start production server
-pnpm run lint             # Run ESLint (fix with --fix)
+## Coding Style & Naming Conventions
+- Use TypeScript with strict mode; prefer `unknown` over `any`.
+- Use 2-space indentation and keep imports grouped: third-party, `@/*`, then type imports.
+- Components use PascalCase, functions and variables use camelCase, constants use `UPPER_SNAKE_CASE`.
+- Client components must start with `'use client'`; server-only modules should import `'server-only'`.
+- Styling is Tailwind CSS 4 first; prefer utilities over custom CSS unless shared editor/content styling is required.
 
-# Database
-pnpm run prisma:dev       # Create and apply migration (dev)
-pnpm run prisma:deploy    # Apply migrations (prod)
-pnpm run prisma:generate  # Generate Prisma client
-pnpm run prisma:seed      # Seed admin user
+## Testing Guidelines
+- No formal test framework is configured yet. Treat `pnpm run lint` and a successful local build as the minimum verification bar.
+- For UI changes, verify the affected page in the browser and note the flows checked in the PR.
+- If you add tests later, place them near the feature or under a dedicated `tests/` directory and use descriptive names such as `blog-editor.render.test.ts`.
 
-# Testing (no test framework configured)
-```
+## Commit & Pull Request Guidelines
+- Follow the existing history style: Conventional Commits such as `feat:`, `fix:`, `refactor:`, `build:`, and `chore(release):`.
+- Keep commits focused; do not mix refactors, dependency changes, and release edits unless they are tightly coupled.
+- PRs should include: purpose, key files changed, manual verification steps, related issue or context, and screenshots for visible UI updates.
 
-## Code Style Guidelines
-
-### File Structure
-- **Client components**: Start with `'use client'`
-- **Server-only code**: Import `'server-only'` at top
-- **API routes**: In `hono/` directory using Hono.js
-- **Components**: In `src/components/` or subdirectories
-- **Pages**: In `src/app/` following Next.js App Router
-- **Libraries**: In `src/lib/` for shared utilities
-
-### Imports
-```typescript
-// 1. React and third-party libraries
-import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-
-// 2. Local imports with @/* alias
-import { PhotoDto } from '@/lib/api'
-import { useAuth } from '@/contexts/AuthContext'
-
-// 3. Type imports (use `type` keyword)
-import type { PhotoDto } from '@/lib/api'
-```
-
-### TypeScript
-- Strict mode enabled in `tsconfig.json`
-- Use interfaces for DTOs (Data Transfer Objects)
-- Use type for unions, primitives, or when extending interfaces
-- Define types in `src/lib/api.ts` for API contracts
-- Use `unknown` over `any` for type-safe error handling
-
-### Naming Conventions
-- **Components**: PascalCase (`PhotoCard`, `GalleryHeader`)
-- **Functions**: camelCase (`getPhotos`, `handleClick`)
-- **Variables**: camelCase (`photoList`, `isLoading`)
-- **Types/Interfaces**: PascalCase with `Dto` suffix for API types (`PhotoDto`, `AdminSettingsDto`)
-- **Constants**: UPPER_SNAKE_CASE (`PAGE_SIZE`, `API_BASE`)
-- **CSS classes**: kebab-case using Tailwind utilities
-
-### Component Patterns
-```typescript
-'use client'
-
-import { useState, useMemo } from 'react'
-
-interface Props {
-  photos: PhotoDto[]
-  onClick: (id: string) => void
-}
-
-export function MyComponent({ photos, onClick }: Props) {
-  const [state, setState] = useState(null)
-
-  const processed = useMemo(() => {
-    return photos.map(p => ({ ...p, id: p.id }))
-  }, [photos])
-
-  return (
-    <div className="flex gap-4">
-      {processed.map(item => (
-        <button key={item.id} onClick={() => onClick(item.id)}>
-          {item.title}
-        </button>
-      ))}
-    </div>
-  )
-}
-```
-
-### API Integration
-- All API calls go through `src/lib/api.ts`
-- Use typed DTOs defined in `api.ts`
-- Follow envelope pattern: `{ success: true, data: T, meta?: M }` or `{ success: false, error: string }`
-- Handle 401 with `ApiUnauthorizedError`
-- Client-side functions: `getPhotos()`, `createPhoto()`, etc.
-- Auth required: Pass `token` param or use context
-
-### Error Handling
-```typescript
-try {
-  const result = await apiCall()
-} catch (error) {
-  if (error instanceof ApiUnauthorizedError) {
-    // Handle auth error (redirect to login)
-  } else {
-    console.error('Operation failed:', error)
-    // Show user-friendly error message
-  }
-}
-```
-
-### React Hooks
-- Use `useMemo` for expensive computations
-- Use `useCallback` for event handlers passed to children
-- Use `useEffect` for side effects (API calls, subscriptions)
-- Use `useRef` for DOM references or preserving values
-- Always include dependency arrays
-
-### Styling
-- Use Tailwind CSS 4 utility classes
-- Prefer atomic utilities over custom CSS
-- Use `cn()` helper from `@/lib/utils` for conditional classes
-- Framer Motion for animations (initial, animate, whileInView)
-- Responsive: `sm:`, `md:`, `lg:`, `xl:` breakpoints
-
-### Path Aliases
-- `@/*` → `./src/*` (e.g., `@/lib/api` → `src/lib/api`)
-- `~/*` → `./*` (root, e.g., `~/hono/photos` → `hono/photos`)
-
-### Prisma
-- Single instance: Import from `~/server/lib/db`
-- Always use `include` for relations
-- Use transactions for multi-table operations
-- Run `pnpm run prisma:generate` after schema changes
-
-### Security
-- Never commit `.env` files or secrets
-- Admin routes protected by `authMiddleware` in Hono
-- Validate all inputs (use Zod schemas in API routes)
-- Storage config retrieved from database, not env vars (except defaults)
-
-### Git Workflow
-- Branch: Create feature branches from main
-- Commits: Conventional commits format (`feat:`, `fix:`, `refactor:`)
-- Never commit node_modules, .next, or build artifacts
+## Release & Configuration Notes
+- Release automation is defined in `.github/workflows/release.yml` and reads version notes from `RELEASE.md`.
+- Never commit secrets from `.env`; update `.env.example` when configuration requirements change.
