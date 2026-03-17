@@ -3,26 +3,12 @@ import { ResizableNodeView } from '@tiptap/core'
 import { NodeSelection } from '@tiptap/pm/state'
 import Image from '@tiptap/extension-image'
 
-function applyImageAlignmentStyles(element: HTMLElement, align: string | null | undefined) {
-  const normalizedAlign = align || null
-  element.setAttribute('data-align', normalizedAlign ?? 'left')
-
-  if (normalizedAlign === 'center') {
-    element.style.marginLeft = 'auto'
-    element.style.marginRight = 'auto'
-  } else if (normalizedAlign === 'right') {
-    element.style.marginLeft = 'auto'
-    element.style.marginRight = '0'
-  } else {
-    element.style.marginLeft = '0'
-    element.style.marginRight = '0'
-  }
-}
-
-function applyImageContainerStyles(element: HTMLElement, align: string | null | undefined) {
+function applyImageContainerStyles(element: HTMLElement) {
+  element.style.display = 'inline-flex'
+  element.style.verticalAlign = 'top'
+  element.style.margin = '0 0.75rem 0.75rem 0'
   element.style.width = 'fit-content'
   element.style.maxWidth = '100%'
-  applyImageAlignmentStyles(element, align)
 }
 
 function parsePixelValue(value: string | null): number | null {
@@ -95,6 +81,12 @@ function applyImageDimensions(imageElement: HTMLElement, width: number | null) {
 export const ResizableImage = Image.extend({
   draggable: true,
 
+  inline() {
+    return true
+  },
+
+  group: 'inline',
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -138,20 +130,6 @@ export const ResizableImage = Image.extend({
           }
         },
       },
-      align: {
-        default: null,
-        parseHTML: (element) => {
-          return element.getAttribute('data-align') || null
-        },
-        renderHTML: (attributes) => {
-          if (!attributes.align) {
-            return {}
-          }
-          return {
-            'data-align': attributes.align,
-          }
-        },
-      },
     }
   },
 
@@ -177,16 +155,14 @@ export const ResizableImage = Image.extend({
 
       const syncImageState = (attrs: Record<string, unknown>, container?: HTMLElement) => {
         const width = typeof attrs.width === 'number' ? attrs.width : null
-        const align = typeof attrs.align === 'string' ? attrs.align : null
 
         applyImageDimensions(imageElement, width)
-        applyImageAlignmentStyles(imageElement, align)
 
         if (container) {
-          applyImageContainerStyles(container, align)
+          applyImageContainerStyles(container)
           const wrapper = container.querySelector('[data-resize-wrapper]')
           if (wrapper instanceof HTMLElement) {
-            applyImageContainerStyles(wrapper, align)
+            applyImageContainerStyles(wrapper)
           }
         }
       }
@@ -311,15 +287,6 @@ export const ResizableImage = Image.extend({
   addCommands() {
     return {
       ...this.parent?.(),
-      setImageAlign: (align: string) => ({
-        commands,
-      }: {
-        commands: {
-          updateAttributes: (typeOrName: string, attributes: Record<string, unknown>) => boolean
-        }
-      }) => {
-        return commands.updateAttributes('image', { align })
-      },
     }
   },
 })

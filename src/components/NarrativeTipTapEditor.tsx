@@ -14,7 +14,6 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
 import { ResizableImage } from '@/components/tiptap-extensions/ResizableImage'
-import { ImageGroup } from '@/components/tiptap-extensions/ImageGroup'
 import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import Underline from '@tiptap/extension-underline'
@@ -258,7 +257,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             alwaysPreserveAspectRatio: true,
           },
         }),
-        ImageGroup,
         Underline,
         PastedStyleMark,
         TextAlign.configure({
@@ -327,7 +325,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             isAlignCenter: false,
             isAlignRight: false,
             isImageSelected: false,
-            isImageGroupSelected: false,
           }
         }
 
@@ -344,17 +341,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isOrderedList: currentEditor.isActive('orderedList'),
           isBlockquote: currentEditor.isActive('blockquote'),
           isLink: currentEditor.isActive('link'),
-          isAlignLeft: currentEditor.isActive({ textAlign: 'left' })
-            || currentEditor.isActive('image', { align: null })
-            || currentEditor.isActive('imageGroup', { align: null }),
-          isAlignCenter: currentEditor.isActive({ textAlign: 'center' })
-            || currentEditor.isActive('image', { align: 'center' })
-            || currentEditor.isActive('imageGroup', { align: 'center' }),
-          isAlignRight: currentEditor.isActive({ textAlign: 'right' })
-            || currentEditor.isActive('image', { align: 'right' })
-            || currentEditor.isActive('imageGroup', { align: 'right' }),
+          isAlignLeft: currentEditor.isActive({ textAlign: 'left' }),
+          isAlignCenter: currentEditor.isActive({ textAlign: 'center' }),
+          isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
           isImageSelected: currentEditor.isActive('image'),
-          isImageGroupSelected: currentEditor.isActive('imageGroup'),
         }
       },
     })
@@ -363,26 +353,20 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor?.commands.focus()
     }, [editor])
 
-    const insertImageWithTrailingParagraph = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
+    const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
       if (!editor) return
 
       editor
         .chain()
         .focus()
-        .insertContent([
-          {
-            type: 'image',
-            attrs: {
-              src: attrs.src,
-              alt: attrs.alt || '',
-              align: 'center',
-              ...(attrs.width ? { width: attrs.width } : {}),
-            },
+        .insertContent({
+          type: 'image',
+          attrs: {
+            src: attrs.src,
+            alt: attrs.alt || '',
+            ...(attrs.width ? { width: attrs.width } : {}),
           },
-          {
-            type: 'paragraph',
-          },
-        ])
+        })
         .run()
 
       focusEditor()
@@ -403,7 +387,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         if (editor) {
           const imageAttrs = convertMarkdownImageToHtmlAttrs(content) || convertHtmlImageToAttrs(content)
           if (imageAttrs) {
-            insertImageWithTrailingParagraph(imageAttrs)
+            insertInlineImage(imageAttrs)
             return
           }
 
@@ -425,7 +409,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         if (editor) {
           const imageAttrs = convertMarkdownImageToHtmlAttrs(markdown)
           if (imageAttrs) {
-            insertImageWithTrailingParagraph(imageAttrs)
+            insertInlineImage(imageAttrs)
             return
           }
 
@@ -497,7 +481,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         return false
       },
       focus: focusEditor,
-    }), [editor, focusEditor, insertImageWithTrailingParagraph, onChange])
+    }), [editor, focusEditor, insertInlineImage, onChange])
 
     useImperativeHandle(ref, () => imperativeHandle, [imperativeHandle])
 
@@ -534,14 +518,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       if (!editor) return
       if (showImageInput) {
         if (imageUrl) {
-          insertImageWithTrailingParagraph({ src: imageUrl })
+          insertInlineImage({ src: imageUrl })
         }
         setShowImageInput(false)
         setImageUrl('')
       } else {
         setShowImageInput(true)
       }
-    }, [editor, imageUrl, insertImageWithTrailingParagraph, showImageInput])
+    }, [editor, imageUrl, insertInlineImage, showImageInput])
 
     const addTable = useCallback(() => {
       if (!editor) return
@@ -550,44 +534,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const setTextAlign = (align: 'left' | 'center' | 'right') => {
       if (!editor) return
-
-      const alignValue = align === 'left' ? null : align
-
-      if (editorUiState?.isImageSelected) {
-        editor.chain().focus().updateAttributes('image', { align: alignValue }).run()
-        return
-      }
-
-      if (editorUiState?.isImageGroupSelected) {
-        editor.chain().focus().updateAttributes('imageGroup', { align: alignValue }).run()
-        return
-      }
-
-      editor
-        .chain()
-        .focus()
-        .command(({ state, tr }) => {
-          const { from, to, empty } = state.selection
-
-          if (empty) {
-            return true
-          }
-
-          state.doc.nodesBetween(from, to, (node, pos) => {
-            if (node.type.name !== 'image' && node.type.name !== 'imageGroup') {
-              return
-            }
-
-            tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              align: alignValue,
-            })
-          })
-
-          return true
-        })
-        .setTextAlign(align)
-        .run()
+      editor.chain().focus().setTextAlign(align).run()
     }
 
     const preserveSelectionOnToolbarMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
@@ -650,13 +597,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
           <ToolbarDivider />
 
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' }) || editor.isActive('image', { align: null }) || editor.isActive('imageGroup', { align: null })} title="左对齐">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' })} title="左对齐">
             <AlignLeft className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' }) || editor.isActive('image', { align: 'center' }) || editor.isActive('imageGroup', { align: 'center' })} title="居中">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' })} title="居中">
             <AlignCenter className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' }) || editor.isActive('image', { align: 'right' }) || editor.isActive('imageGroup', { align: 'right' })} title="右对齐">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' })} title="右对齐">
             <AlignRight className="w-4 h-4" />
           </ToolbarButton>
 

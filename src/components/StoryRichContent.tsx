@@ -57,6 +57,9 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
   const styleParts: string[] = []
   if (styleMatch?.[2]) styleParts.push(styleMatch[2].trim().replace(/;?$/, ';'))
   if (normalizedWidth) styleParts.push(`width:${normalizedWidth}px;`)
+  styleParts.push('display:inline-block;')
+  styleParts.push('vertical-align:top;')
+  styleParts.push('margin:0 0.75rem 0.75rem 0;')
   styleParts.push('max-width:100%;')
   styleParts.push('height:auto;')
 
@@ -108,7 +111,20 @@ function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {
           src={resolvedSrc}
           alt={alt ?? matchedPhoto?.title ?? ''}
           width={normalizedWidth}
-          style={normalizedWidth ? { width: `${normalizedWidth}px`, maxWidth: '100%', height: 'auto' } : { maxWidth: '100%', height: 'auto' }}
+          style={normalizedWidth ? {
+            display: 'inline-block',
+            verticalAlign: 'top',
+            margin: '0 0.75rem 0.75rem 0',
+            width: `${normalizedWidth}px`,
+            maxWidth: '100%',
+            height: 'auto',
+          } : {
+            display: 'inline-block',
+            verticalAlign: 'top',
+            margin: '0 0.75rem 0.75rem 0',
+            maxWidth: '100%',
+            height: 'auto',
+          }}
         />
       )
     },

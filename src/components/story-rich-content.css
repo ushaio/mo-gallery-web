@@ -177,14 +177,16 @@
 
 .story-rich-content img,
 .story-rich-content .story-rich-html img {
-  display: block;
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 0.75rem 0.75rem 0;
   height: auto;
   max-width: 100%;
 }
 
 .story-rich-content img[width],
 .story-rich-content .story-rich-html img[width] {
-  width: auto;
+  max-width: 100%;
 }
 
 .story-rich-content [data-type='image-group'],
