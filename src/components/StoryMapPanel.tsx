@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapPinned, Maximize2, Minimize2 } from 'lucide-react'
 import Map, { Marker, NavigationControl, Popup, type MapRef } from 'react-map-gl/maplibre'
+import type { StyleSpecification } from 'maplibre-gl'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 
-const MAP_STYLE = {
+const MAP_STYLE: StyleSpecification = {
   version: 8,
   sources: {
     osm: {
@@ -22,7 +23,7 @@ const MAP_STYLE = {
       source: 'osm',
     },
   ],
-} as const
+}
 
 type GeotaggedPhoto = PhotoDto & {
   latitude: number
@@ -371,20 +372,12 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
           : 'rounded-[28px]'
       }`}
     >
-      <div className="border-b border-border/60 px-6 pb-5 pt-6">
+      <div className="relative border-b border-border/60 px-6 pb-5 pt-6">
         <div className="mb-3 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] text-primary/75">
           <div className="h-px w-6 bg-primary/45" />
           <span>Map</span>
         </div>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-serif font-light tracking-tight text-foreground">Photo Locations</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {geotaggedPhotos.length > 0
-                ? `${geotaggedPhotos.length} frame${geotaggedPhotos.length > 1 ? 's' : ''} with GPS coordinates in this narrative.`
-                : 'This narrative does not include published GPS coordinates yet.'}
-            </p>
-          </div>
+        <div className="absolute right-6 top-4">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/80 text-primary">
             <MapPinned className="size-4" />
           </div>

@@ -317,7 +317,7 @@ export default function StoryDetailPage() {
                   <div className="h-px w-6 bg-primary/45" />
                   <span>Discussion</span>
                 </div>
-                <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} />
+                <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} compact />
               </section>
             ) : null}
           </aside>

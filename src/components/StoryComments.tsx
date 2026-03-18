@@ -21,9 +21,10 @@ const WalineCommentsWrapper = dynamic(
 interface StoryCommentsProps {
   storyId: string
   targetPhotoId: string
+  compact?: boolean
 }
 
-export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
+export function StoryComments({ storyId, targetPhotoId, compact = false }: StoryCommentsProps) {
   const { t, locale } = useLanguage()
   const { user, token } = useAuth()
   const { settings, isLoading: settingsLoading } = useSettings()
@@ -48,6 +49,21 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
   const commentsStorage = settings?.comments_storage?.toUpperCase() || ''
   const isWaline = commentsStorage === 'LEANCLOUD'
   const walineServerUrl = settings?.waline_server_url || ''
+  const shellClassName = compact
+    ? 'relative'
+    : 'max-w-screen-md mx-auto mt-32 mb-24 px-6 md:px-0 relative'
+  const innerClassName = compact
+    ? ''
+    : 'pt-16 border-t border-border/50'
+  const headerClassName = compact
+    ? 'flex items-center justify-between mb-6'
+    : 'flex items-center justify-between mb-12'
+  const composerClassName = compact
+    ? 'relative group mb-8'
+    : 'relative group mb-16'
+  const commentsListClassName = compact
+    ? 'space-y-8'
+    : 'space-y-12'
 
   useEffect(() => {
     if (!isWaline) {
@@ -139,10 +155,10 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
 
   if (isWaline) {
     return (
-      <div className="max-w-screen-md mx-auto mt-32 mb-24 px-6 md:px-0 relative">
+      <div className={shellClassName}>
         <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
-        <div className="pt-16 border-t border-border/50">
-          <div className="flex items-center justify-between mb-12">
+        <div className={innerClassName}>
+          <div className={headerClassName}>
             <div className="flex items-center gap-4">
               <MessageSquare className="w-5 h-5 text-primary/40" />
               <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase text-primary/80">
@@ -167,10 +183,10 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
   }
 
   return (
-    <div className="max-w-screen-md mx-auto mt-32 mb-24 px-6 md:px-0 relative">
+    <div className={shellClassName}>
       <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
-      <div className="pt-16 border-t border-border/50">
-        <div className="flex items-center justify-between mb-12">
+      <div className={innerClassName}>
+        <div className={headerClassName}>
           <div className="flex items-center gap-4">
             <MessageSquare className="w-5 h-5 text-primary/40" />
             <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase text-primary/80">
@@ -179,7 +195,7 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
           </div>
         </div>
 
-        <div className="relative group mb-16">
+        <div className={composerClassName}>
           <div className="absolute -inset-4 bg-muted/5 opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none" />
           {!canComment ? (
             <div className="text-center py-8 border border-dashed border-border/50">
@@ -287,7 +303,7 @@ export function StoryComments({ storyId, targetPhotoId }: StoryCommentsProps) {
             <p className="text-xs font-serif italic text-muted-foreground/60">{t('gallery.no_comments')}</p>
           </motion.div>
         ) : (
-          <motion.div layout className="space-y-12">
+          <motion.div layout className={commentsListClassName}>
             <AnimatePresence mode="popLayout">
               {comments.map((comment) => (
                 <motion.div
