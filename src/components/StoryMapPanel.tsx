@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MapPinned } from 'lucide-react'
+import { MapPinned, Maximize2, Minimize2 } from 'lucide-react'
 import Map, { Marker, NavigationControl, Popup, type MapRef } from 'react-map-gl/maplibre'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 
@@ -29,9 +29,83 @@ type GeotaggedPhoto = PhotoDto & {
   longitude: number
 }
 
+type PopupAnchor = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
 interface StoryMapPanelProps {
   photos: PhotoDto[]
   cdnDomain?: string
+  expanded?: boolean
+  onToggleExpanded?: () => void
+}
+
+interface PopupLayout {
+  width: number
+  imageHeight: number
+  edgePadding: number
+}
+
+interface PopupPlacement {
+  anchor: PopupAnchor
+  offsetX: number
+  offsetY: number
+}
+
+const POPUP_GAP = 14
+const POPUP_MARGIN = 12
+const POPUP_TEXT_HEIGHT = 42
+
+function getPopupRect(
+  anchor: PopupAnchor,
+  pointX: number,
+  pointY: number,
+  popupWidth: number,
+  popupHeight: number
+) {
+  switch (anchor) {
+    case 'top':
+      return { left: pointX - popupWidth / 2, right: pointX + popupWidth / 2, top: pointY + POPUP_GAP, bottom: pointY + POPUP_GAP + popupHeight }
+    case 'bottom':
+      return { left: pointX - popupWidth / 2, right: pointX + popupWidth / 2, top: pointY - POPUP_GAP - popupHeight, bottom: pointY - POPUP_GAP }
+    case 'left':
+      return { left: pointX + POPUP_GAP, right: pointX + POPUP_GAP + popupWidth, top: pointY - popupHeight / 2, bottom: pointY + popupHeight / 2 }
+    case 'right':
+      return { left: pointX - POPUP_GAP - popupWidth, right: pointX - POPUP_GAP, top: pointY - popupHeight / 2, bottom: pointY + popupHeight / 2 }
+    case 'top-left':
+      return { left: pointX, right: pointX + popupWidth, top: pointY + POPUP_GAP, bottom: pointY + POPUP_GAP + popupHeight }
+    case 'top-right':
+      return { left: pointX - popupWidth, right: pointX, top: pointY + POPUP_GAP, bottom: pointY + POPUP_GAP + popupHeight }
+    case 'bottom-left':
+      return { left: pointX, right: pointX + popupWidth, top: pointY - POPUP_GAP - popupHeight, bottom: pointY - POPUP_GAP }
+    case 'bottom-right':
+      return { left: pointX - popupWidth, right: pointX, top: pointY - POPUP_GAP - popupHeight, bottom: pointY - POPUP_GAP }
+  }
+}
+
+function getOverflowScore(
+  rect: { left: number; right: number; top: number; bottom: number },
+  containerWidth: number,
+  containerHeight: number
+) {
+  const overflowLeft = Math.max(0, POPUP_MARGIN - rect.left)
+  const overflowRight = Math.max(0, rect.right - (containerWidth - POPUP_MARGIN))
+  const overflowTop = Math.max(0, POPUP_MARGIN - rect.top)
+  const overflowBottom = Math.max(0, rect.bottom - (containerHeight - POPUP_MARGIN))
+
+  return {
+    total: overflowLeft + overflowRight + overflowTop + overflowBottom,
+    dx:
+      overflowLeft > 0
+        ? overflowLeft
+        : overflowRight > 0
+          ? -overflowRight
+          : 0,
+    dy:
+      overflowTop > 0
+        ? overflowTop
+        : overflowBottom > 0
+          ? -overflowBottom
+          : 0,
+  }
 }
 
 function isFiniteCoordinate(value: number | undefined): value is number {
@@ -42,19 +116,26 @@ function hasCoordinates(photo: PhotoDto): photo is GeotaggedPhoto {
   return isFiniteCoordinate(photo.latitude) && isFiniteCoordinate(photo.longitude)
 }
 
-function formatCoordinate(value: number, positive: string, negative: string) {
-  const direction = value >= 0 ? positive : negative
-  return `${Math.abs(value).toFixed(6)} deg ${direction}`
-}
-
-export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
+export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
   const mapRef = useRef<MapRef | null>(null)
   const geotaggedPhotos = useMemo(() => photos.filter(hasCoordinates), [photos])
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null)
+  const [popupPhotoId, setPopupPhotoId] = useState<string | null>(null)
+  const [popupAnchor, setPopupAnchor] = useState<PopupAnchor>('top')
+  const [popupLayout, setPopupLayout] = useState<PopupLayout>({
+    width: 176,
+    imageHeight: 112,
+    edgePadding: 96,
+  })
 
   const selectedPhoto = useMemo(
     () => geotaggedPhotos.find((photo) => photo.id === selectedPhotoId) ?? null,
     [geotaggedPhotos, selectedPhotoId]
+  )
+
+  const popupPhoto = useMemo(
+    () => geotaggedPhotos.find((photo) => photo.id === popupPhotoId) ?? null,
+    [geotaggedPhotos, popupPhotoId]
   )
 
   const fitMapToPhotos = useCallback(() => {
@@ -88,13 +169,14 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
 
     const lngSpan = maxLng - minLng
     const latSpan = maxLat - minLat
-    const lngPadding = Math.max(lngSpan * 0.18, 0.01)
-    const latPadding = Math.max(latSpan * 0.18, 0.01)
+    const isTightCluster = lngSpan < 0.01 && latSpan < 0.01
+    const lngPadding = Math.max(lngSpan * 0.08, isTightCluster ? 0.0012 : 0.003)
+    const latPadding = Math.max(latSpan * 0.08, isTightCluster ? 0.0012 : 0.003)
     const container = map.getContainer()
     const width = container.clientWidth || 320
     const height = container.clientHeight || 320
-    const horizontalPadding = Math.max(32, Math.min(72, Math.round(width * 0.1)))
-    const verticalPadding = Math.max(28, Math.min(64, Math.round(height * 0.1)))
+    const horizontalPadding = Math.max(18, Math.min(48, Math.round(width * 0.06)))
+    const verticalPadding = Math.max(18, Math.min(40, Math.round(height * 0.06)))
 
     map.fitBounds(
       [
@@ -109,27 +191,186 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
           left: horizontalPadding,
         },
         duration: 0,
-        maxZoom: 14,
+        maxZoom: isTightCluster ? 16 : 15,
       }
     )
   }, [geotaggedPhotos])
 
+  const updatePopupLayout = useCallback((photo?: GeotaggedPhoto | null) => {
+    const map = mapRef.current
+    if (!map) {
+      return
+    }
+
+    const container = map.getContainer()
+    const width = container.clientWidth || 320
+    const height = container.clientHeight || 320
+    const targetPhoto = photo ?? popupPhoto ?? selectedPhoto ?? geotaggedPhotos[0] ?? null
+    const aspectRatio = targetPhoto && targetPhoto.width > 0 && targetPhoto.height > 0
+      ? targetPhoto.width / targetPhoto.height
+      : 4 / 3
+
+    const minWidth = expanded ? 176 : 144
+    const maxWidth = expanded
+      ? Math.min(320, Math.round(width * 0.34))
+      : Math.min(214, Math.round(width * 0.8))
+    const minHeight = expanded ? 132 : 102
+    const maxHeight = expanded
+      ? Math.min(276, Math.round(height * 0.46))
+      : Math.min(176, Math.round(height * 0.5))
+
+    let imageWidth = maxWidth
+    let imageHeight = imageWidth / aspectRatio
+
+    if (imageHeight > maxHeight) {
+      imageHeight = maxHeight
+      imageWidth = imageHeight * aspectRatio
+    }
+    if (imageWidth < minWidth) {
+      imageWidth = minWidth
+      imageHeight = imageWidth / aspectRatio
+    }
+    if (imageHeight < minHeight) {
+      imageHeight = minHeight
+      imageWidth = imageHeight * aspectRatio
+    }
+    if (imageWidth > maxWidth) {
+      imageWidth = maxWidth
+    }
+    if (imageHeight > maxHeight) {
+      imageHeight = maxHeight
+    }
+
+    const popupWidth = Math.round(Math.max(minWidth, Math.min(maxWidth, imageWidth)))
+    const finalImageHeight = Math.round(Math.max(minHeight, Math.min(maxHeight, imageHeight)))
+    const edgePadding = Math.max(80, Math.min(132, Math.round(popupWidth * 0.58)))
+
+    setPopupLayout((current) => {
+      if (
+        current.width === popupWidth &&
+        current.imageHeight === finalImageHeight &&
+        current.edgePadding === edgePadding
+      ) {
+        return current
+      }
+
+      return {
+        width: popupWidth,
+        imageHeight: finalImageHeight,
+        edgePadding,
+      }
+    })
+  }, [expanded, geotaggedPhotos, popupPhoto, selectedPhoto])
+
   useEffect(() => {
-    fitMapToPhotos()
+    const frame = window.requestAnimationFrame(() => {
+      fitMapToPhotos()
+      updatePopupLayout()
+    })
 
     const handleResize = () => {
       const map = mapRef.current
       if (!map) return
       map.resize()
       fitMapToPhotos()
+      updatePopupLayout()
     }
 
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [fitMapToPhotos])
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [fitMapToPhotos, updatePopupLayout])
+
+  useEffect(() => {
+    if (!geotaggedPhotos.length) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const map = mapRef.current
+      if (!map) return
+      map.resize()
+      fitMapToPhotos()
+      updatePopupLayout()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [expanded, fitMapToPhotos, geotaggedPhotos.length, updatePopupLayout])
+
+  const getPopupPlacement = useCallback((photo: GeotaggedPhoto): PopupPlacement => {
+    const map = mapRef.current
+    if (!map) {
+      return { anchor: 'bottom', offsetX: 0, offsetY: 0 }
+    }
+
+    const point = map.project([photo.longitude, photo.latitude])
+    const container = map.getContainer()
+    const width = container.clientWidth || 320
+    const height = container.clientHeight || 320
+    const popupHeight = popupLayout.imageHeight + POPUP_TEXT_HEIGHT
+    const anchors: PopupAnchor[] = ['bottom', 'top', 'left', 'right', 'bottom-left', 'bottom-right', 'top-left', 'top-right']
+
+    let bestPlacement: PopupPlacement = { anchor: 'bottom', offsetX: 0, offsetY: 0 }
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (const anchor of anchors) {
+      const rect = getPopupRect(anchor, point.x, point.y, popupLayout.width, popupHeight)
+      const overflow = getOverflowScore(rect, width, height)
+
+      if (overflow.total < bestScore) {
+        bestScore = overflow.total
+        bestPlacement = {
+          anchor,
+          offsetX: point.x + overflow.dx - width / 2,
+          offsetY: point.y + overflow.dy - height / 2,
+        }
+      }
+    }
+
+    return bestPlacement
+  }, [popupLayout.imageHeight, popupLayout.width])
+
+  const focusPhotoOnMap = useCallback((photo: GeotaggedPhoto) => {
+    setSelectedPhotoId(photo.id)
+    setPopupPhotoId(null)
+
+    const map = mapRef.current
+    if (!map) {
+      window.requestAnimationFrame(() => {
+        setPopupAnchor('bottom')
+        setPopupPhotoId(photo.id)
+      })
+      return
+    }
+
+    updatePopupLayout(photo)
+    const placement = getPopupPlacement(photo)
+
+    map.once('moveend', () => {
+      updatePopupLayout(photo)
+      setPopupAnchor(placement.anchor)
+      setPopupPhotoId(photo.id)
+    })
+
+    map.flyTo({
+      center: [photo.longitude, photo.latitude],
+      zoom: Math.max(map.getZoom(), expanded ? 14.5 : 13.5),
+      offset: [placement.offsetX, placement.offsetY],
+      duration: 450,
+      essential: true,
+    })
+  }, [expanded, getPopupPlacement, updatePopupLayout])
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-border/60 bg-card/80 shadow-[0_24px_60px_-48px_rgba(0,0,0,0.4)]">
+    <section
+      className={`overflow-hidden border border-border/60 bg-card/80 shadow-[0_24px_60px_-48px_rgba(0,0,0,0.4)] ${
+        expanded
+          ? 'rounded-[32px] bg-card/95'
+          : 'rounded-[28px]'
+      }`}
+    >
       <div className="border-b border-border/60 px-6 pb-5 pt-6">
         <div className="mb-3 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] text-primary/75">
           <div className="h-px w-6 bg-primary/45" />
@@ -161,18 +402,31 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
         </div>
       ) : (
         <>
-          <div className="relative h-[320px] overflow-hidden border-b border-border/60 bg-muted/20">
+          <div className={`relative overflow-hidden border-b border-border/60 bg-muted/20 ${expanded ? 'h-[min(72vh,720px)] min-h-[420px]' : 'h-[320px]'}`}>
+            <div className="pointer-events-none absolute right-3 top-[84px] z-10">
+              <div className="pointer-events-auto flex overflow-hidden rounded-md border border-black/15 bg-white shadow-sm dark:border-white/10 dark:bg-[#0f0f0f]">
+                <button
+                  type="button"
+                  onClick={onToggleExpanded}
+                  className="flex h-[29px] w-[29px] cursor-pointer items-center justify-center text-[#1f1f1f] transition-colors hover:bg-black/5 dark:text-[#d4af37] dark:hover:bg-white/8"
+                  aria-label={expanded ? 'Collapse map panel' : 'Expand map panel'}
+                  title={expanded ? 'Collapse map panel' : 'Expand map panel'}
+                >
+                  {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                </button>
+              </div>
+            </div>
             <Map
               ref={mapRef}
               initialViewState={{
                 longitude: selectedPhoto?.longitude ?? geotaggedPhotos[0].longitude,
                 latitude: selectedPhoto?.latitude ?? geotaggedPhotos[0].latitude,
-                zoom: geotaggedPhotos.length === 1 ? 11 : 2.5,
+                zoom: geotaggedPhotos.length === 1 ? 13.5 : 2.5,
               }}
               mapStyle={MAP_STYLE}
               attributionControl={false}
               reuseMaps
-              scrollZoom={false}
+              scrollZoom={expanded}
               closeOnClick={false}
               onLoad={fitMapToPhotos}
             >
@@ -190,7 +444,7 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
                   >
                     <button
                       type="button"
-                      onClick={() => setSelectedPhotoId(photo.id)}
+                      onClick={() => focusPhotoOnMap(photo)}
                       className={`flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
                         isSelected
                           ? 'border-primary bg-primary shadow-[0_0_0_6px_rgba(212,175,55,0.18)]'
@@ -204,29 +458,32 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
                 )
               })}
 
-              {selectedPhoto ? (
+              {popupPhoto ? (
                 <Popup
-                  longitude={selectedPhoto.longitude}
-                  latitude={selectedPhoto.latitude}
-                  anchor="top"
-                  offset={20}
+                  key={popupPhoto.id}
+                  longitude={popupPhoto.longitude}
+                  latitude={popupPhoto.latitude}
+                  anchor={popupAnchor}
+                  offset={12}
                   closeButton={false}
-                  className="[&_.maplibregl-popup-content]:rounded-[18px] [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-border/70 [&_.maplibregl-popup-content]:bg-card/95 [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-xl [&_.maplibregl-popup-tip]:border-t-card/95 [&_.maplibregl-popup-tip]:border-r-card/95"
+                  onClose={() => setPopupPhotoId(null)}
+                  maxWidth={`${popupLayout.width}px`}
+                  style={{ ['--story-popup-width' as string]: `${popupLayout.width}px` }}
+                  className="[&_.maplibregl-popup-content]:w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:max-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:min-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:box-border [&_.maplibregl-popup-content]:overflow-hidden [&_.maplibregl-popup-content]:rounded-[18px] [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-border/70 [&_.maplibregl-popup-content]:bg-card/95 [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-xl"
                 >
-                  <div className="w-[220px] overflow-hidden rounded-[18px]">
-                    <div className="aspect-[4/3] bg-muted/30">
+                  <div className="w-full overflow-hidden rounded-[18px]">
+                    <div
+                      className="flex items-center justify-center bg-muted/30"
+                      style={{ height: popupLayout.imageHeight }}
+                    >
                       <img
-                        src={resolveAssetUrl(selectedPhoto.thumbnailUrl || selectedPhoto.url, cdnDomain)}
-                        alt={selectedPhoto.title}
-                        className="h-full w-full object-cover"
+                        src={resolveAssetUrl(popupPhoto.thumbnailUrl || popupPhoto.url, cdnDomain)}
+                        alt={popupPhoto.title}
+                        className="block h-full w-full object-contain"
                       />
                     </div>
-                    <div className="space-y-2 px-4 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-primary/70">Selected Frame</p>
-                      <h3 className="text-sm font-medium text-foreground">{selectedPhoto.title}</h3>
-                      <p className="text-xs leading-5 text-muted-foreground">
-                        {selectedPhoto.latitude.toFixed(6)}, {selectedPhoto.longitude.toFixed(6)}
-                      </p>
+                    <div className="space-y-1 px-2.5 py-2">
+                      <h3 className="text-xs font-medium text-foreground">{popupPhoto.title}</h3>
                     </div>
                   </div>
                 </Popup>
@@ -234,32 +491,6 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
             </Map>
           </div>
 
-          {selectedPhoto ? (
-            <div className="space-y-4 px-6 py-5">
-              <div className="flex items-start gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary/70">Selected Coordinate</p>
-                  <h3 className="mt-2 text-lg font-medium text-foreground">{selectedPhoto.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {formatCoordinate(selectedPhoto.latitude, 'N', 'S')}
-                    {' / '}
-                    {formatCoordinate(selectedPhoto.longitude, 'E', 'W')}
-                  </p>
-                </div>
-                <a
-                  href={`https://www.openstreetmap.org/?mlat=${selectedPhoto.latitude}&mlon=${selectedPhoto.longitude}#map=13/${selectedPhoto.latitude}/${selectedPhoto.longitude}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex shrink-0 items-center rounded-full border border-border/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.24em] text-foreground/75 transition-colors hover:border-primary/40 hover:text-primary"
-                >
-                  Open
-                </a>
-              </div>
-              <p className="text-xs leading-5 text-muted-foreground">
-                Tap markers on the map to switch between photo coordinates.
-              </p>
-            </div>
-          ) : null}
         </>
       )}
     </section>
