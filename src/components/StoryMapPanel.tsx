@@ -50,19 +50,12 @@ function formatCoordinate(value: number, positive: string, negative: string) {
 export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
   const mapRef = useRef<MapRef | null>(null)
   const geotaggedPhotos = useMemo(() => photos.filter(hasCoordinates), [photos])
-  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(geotaggedPhotos[0]?.id ?? null)
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null)
 
   const selectedPhoto = useMemo(
-    () => geotaggedPhotos.find((photo) => photo.id === selectedPhotoId) ?? geotaggedPhotos[0] ?? null,
+    () => geotaggedPhotos.find((photo) => photo.id === selectedPhotoId) ?? null,
     [geotaggedPhotos, selectedPhotoId]
   )
-
-  useEffect(() => {
-    setSelectedPhotoId((current) => {
-      if (!current) return geotaggedPhotos[0]?.id ?? null
-      return geotaggedPhotos.some((photo) => photo.id === current) ? current : geotaggedPhotos[0]?.id ?? null
-    })
-  }, [geotaggedPhotos])
 
   const fitMapToPhotos = useCallback(() => {
     const map = mapRef.current
@@ -180,6 +173,7 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
               attributionControl={false}
               reuseMaps
               scrollZoom={false}
+              closeOnClick={false}
               onLoad={fitMapToPhotos}
             >
               <NavigationControl position="top-right" showCompass={false} />
@@ -217,7 +211,6 @@ export function StoryMapPanel({ photos, cdnDomain }: StoryMapPanelProps) {
                   anchor="top"
                   offset={20}
                   closeButton={false}
-                  onClose={() => setSelectedPhotoId(null)}
                   className="[&_.maplibregl-popup-content]:rounded-[18px] [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-border/70 [&_.maplibregl-popup-content]:bg-card/95 [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-xl [&_.maplibregl-popup-tip]:border-t-card/95 [&_.maplibregl-popup-tip]:border-r-card/95"
                 >
                   <div className="w-[220px] overflow-hidden rounded-[18px]">
