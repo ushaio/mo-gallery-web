@@ -7,6 +7,7 @@ import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Clock, Image as ImageIc
 import Link from 'next/link'
 import { getStory, resolveAssetUrl, type PhotoDto, type StoryDto } from '@/lib/api'
 import { StoryComments } from '@/components/StoryComments'
+import { StoryMapPanel } from '@/components/StoryMapPanel'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { Toast, type Notification } from '@/components/Toast'
@@ -290,6 +291,7 @@ export default function StoryDetailPage() {
         </main>
 
         <aside className="space-y-8 lg:sticky lg:top-28 lg:self-start">
+          <StoryMapPanel photos={story.photos} cdnDomain={settings?.cdn_domain} />
           {targetPhotoId ? (
             <section className="rounded-[28px] border border-border/60 bg-card/80 p-6 shadow-[0_24px_60px_-48px_rgba(0,0,0,0.4)]">
               <div className="mb-5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] text-primary/75">
