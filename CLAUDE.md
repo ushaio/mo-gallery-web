@@ -4,131 +4,89 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MO Gallery is a photo gallery application with integrated frontend and backend. It supports photo management, albums, stories (photo narratives), blogs, friend links, and comments with multiple storage backends (local, GitHub, Cloudflare R2).
+MO Gallery is a photography gallery and narrative blog platform built with **Next.js 16** (App Router), **Hono** API backend, **Prisma** ORM on PostgreSQL, and **Tailwind CSS 4**. React 19 with React Compiler enabled.
 
-## Development Commands
+## Commands
 
 ```bash
-pnpm install            # Install dependencies
-pnpm run dev            # Start development server
-pnpm run build          # Build for production
-pnpm run build:vercel   # Build for Vercel (includes migrations + seed)
-pnpm run build:node     # Build for Node.js deployment
-pnpm run lint           # Run ESLint
-
-# Database
-pnpm run prisma:dev      # Create migration and apply (development)
-pnpm run prisma:deploy   # Apply migrations (production)
-pnpm run prisma:generate # Generate Prisma client
-pnpm run prisma:seed     # Seed database with admin user
-pnpm run prisma:studio   # Open Prisma Studio for database inspection
+pnpm run dev              # Dev server at localhost:3000
+pnpm run build            # Production build
+pnpm run lint             # ESLint
+pnpm run prisma:generate  # Generate Prisma client after schema changes
+pnpm run prisma:dev       # Create and apply migrations in development
+pnpm run prisma:deploy    # Apply migrations to production
+pnpm run prisma:seed      # Seed database (uses tsx prisma/seed.ts)
 ```
 
-## Tech Stack
-
-- **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS 4, Framer Motion
-- **Backend**: Hono.js mounted as Next.js API route
-- **Database**: Prisma ORM with PostgreSQL
-- **Storage**: Pluggable providers (local/GitHub/R2) via factory pattern
-- **Editor**: Tiptap for rich HTML story editing, react-markdown for story rendering
-- **Icons**: `@iconify/react` and `lucide-react`
-- **Validation**: Zod (server-side)
-- **Auth**: JWT-based admin auth, Linux DO OAuth for comments
+No test framework is configured. Minimum verification: `pnpm run lint` + successful build.
 
 ## Architecture
 
-### Hono ↔ Next.js Adapter
+### API Layer (Hono embedded in Next.js)
 
-All API routes live in `hono/` as Hono routers. They are aggregated in `hono/index.ts` and mounted at `/api` via a single Next.js catch-all route at `src/app/api/[[...route]]/route.ts` using `hono/vercel`'s `handle()`. Each HTTP method (GET, POST, PUT, PATCH, DELETE) is exported from that file.
+The backend is a Hono v4 router mounted at `/api/*` via a Next.js catch-all route:
+- **Entry**: `src/app/api/[[...route]]/route.ts` — mounts Hono with CORS and logging middleware
+- **Router**: `hono/index.ts` — registers all route modules and origin-check middleware
+- **Route modules**: `hono/{photos,stories,blogs,albums,comments,auth,storage,equipment,friends,settings}.ts`
+- **Auth middleware**: `hono/middleware/auth.ts` — JWT verification via Bearer token
 
-Middleware applied in the catch-all route: `logger()`, `cors()`. An additional `originCheckMiddleware` is applied in `hono/index.ts` to all routes.
+The frontend API client lives in `src/lib/api/`:
+- `core.ts` — `apiRequest()`, `apiRequestData<T>()`, `buildApiUrl()`, `resolveAssetUrl()`
+- Module files (`photos.ts`, `auth.ts`, etc.) export typed functions
+- Re-exported from `src/lib/api.ts`
+- Responses use a `{ success, data, meta }` envelope pattern
 
-Most domain routers (photos, stories, blogs, albums, etc.) are mounted at root (`route.route('/', subRouter)`) — they define their own path prefixes internally. Only `auth` and `settings` are mounted with explicit prefixes.
+### Database
 
-### Frontend API Client (`src/lib/api/`)
+- **ORM**: Prisma 6 with PostgreSQL
+- **Schema**: `prisma/schema.prisma` — models: User, Photo, Album, Story, Blog, Comment, Category, Camera, Lens, Setting, FriendLink
+- **Client singleton**: `server/lib/db.ts` — includes a Prisma extension that adjusts UTC+8 timezone offsets on all DateTime fields
+- Import as `import { db } from '~/server/lib/db'` (server-only)
 
-The API client is split into domain modules (`photos.ts`, `stories.ts`, `albums.ts`, `blogs.ts`, `comments.ts`, `equipment.ts`, `friends.ts`, `auth.ts`, `settings.ts`, `storage.ts`) that import from `core.ts`. Key patterns:
-- **Envelope pattern**: All API responses are wrapped as `{ success: true, data: T, meta?: M }` or `{ success: false, message: string }`
-- `apiRequestData<T>()` — returns typed data directly
-- `apiRequestWithMeta<T, M>()` — returns data + pagination metadata
-- `buildQuery()` — builds URL query strings from param objects
-- `resolveAssetUrl()` — resolves asset paths with optional CDN domain
-- Bearer token is injected automatically when passed to these functions
-- 401 responses throw `ApiUnauthorizedError`
-- DTOs are defined in `types.ts` with `Dto` suffix convention (e.g., `PhotoDto`, `StoryDto`)
+### Provider Hierarchy
 
-### Storage Abstraction (`server/lib/storage/`)
+Root layout (`src/app/layout.tsx`) nests providers in this order:
+```
+ThemeProvider → SettingsProvider → LanguageProvider → AuthProvider
+```
 
-`StorageProvider` interface defines `upload()`, `delete()`, `download()`, `getUrl()`, `move()`, `list()`, `validateConfig()`. `StorageProviderFactory.create(config)` returns the appropriate provider based on config loaded from the database `Setting` table at request time.
+- **ThemeProvider** — light/dark/system, persisted to localStorage
+- **SettingsProvider** — site config from env vars via `getBootConfig()`, plus DB settings
+- **LanguageProvider** — zh/en i18n with `t()` function, dictionaries in `src/lib/i18n.ts`
+- **AuthProvider** — JWT auth state, login/logout, token in localStorage
 
-### State Management
+### Path Aliases
 
-React Context API only (no Redux). Key contexts in `src/contexts/`:
-- **AuthContext**: JWT token + user state with localStorage persistence, exposes `useAuth()` hook
-- **ThemeContext**: Dark/light mode with system preference detection
-- **SettingsContext**: Site-wide settings (title, CDN domain), loaded server-side as initial props
-- **LanguageContext**: i18n with `t()` function using dot-notation paths into `src/lib/i18n.ts` dictionaries
-- **UploadQueueContext**: Manages concurrent photo uploads (up to 4 parallel) with compression
+- `@/*` → `./src/*` (components, hooks, lib, contexts, types)
+- `~/*` → `./*` (root-level: hono/, server/, prisma/)
+
+### Storage
+
+Multiple storage backends configured via `STORAGE_PROVIDER` env var: local filesystem, AWS S3/Cloudflare R2, or GitHub. Abstracted in `server/lib/storage/`.
 
 ### Rich Text Editor
 
-**NarrativeTipTapEditor** (`src/components/NarrativeTipTapEditor.tsx`): The sole editor, used for stories and blogs. HTML-based rich editor using Tiptap. Accepts markdown input (converts to HTML), outputs HTML. Has custom extensions in `src/components/tiptap-extensions/` for resizable images, image groups, pasted style handling, toolbar formatting, tables, and alignment. Exposes imperative handle with `getValue()`, `setValue()`, `insertValue()`, `insertMarkdown()`.
+TipTap v3 with extensions (table, image, link, text-align, underline). Editor component: `src/components/NarrativeTipTapEditor.tsx`. Custom styles in `src/app/tiptap-editor.css`.
 
-Story rendering on the public side uses **react-markdown** with remark-gfm in `StoryRichContent.tsx`.
+### Comments
 
-Note: Milkdown and Vditor were previously used but have been removed. References to them in comments or old code are stale.
-
-### i18n
-
-Flat dictionary structure in `src/lib/i18n.ts` with `zh` and `en` locales. `LanguageContext` provides `t('nav.home')` style lookups. Locale persisted in localStorage, defaults to `zh`.
-
-## Path Aliases
-
-- `@/*` → `./src/*`
-- `~/*` → `./*` (project root, used for `~/hono`, `~/server/lib`, `~/prisma`)
-
-## Key Configuration
-
-- **React Compiler** enabled (`reactCompiler: true` in next.config.ts)
-- **Strict mode** disabled (`reactStrictMode: false`)
-- **Standalone output** for containerized deployment
-- **Image optimization** disabled (`unoptimized: true`)
-- Server external packages: `sharp`, `@waline/vercel`
-
-## Database Schema (Key Relationships)
-
-- `Photo ↔ Story`: Many-to-many via `@relation("PhotoStories")`
-- `Photo ↔ Album`: Many-to-many via `@relation("AlbumPhotos")`
-- `Photo ↔ Category`: Many-to-many (implicit)
-- `Photo → Camera/Lens`: Optional foreign keys
-- `Comment → Photo`: Cascade delete
-- `Setting`: Key-value store for app configuration (storage provider settings, site config)
-
-## App Router Structure
-
-- `src/app/admin/` — Admin panel with layout (`layout.tsx` contains sidebar + admin shell)
-  - `photos/`, `albums/`, `friends/`, `settings/`, `storage/`, `upload/` — CRUD admin pages
-  - `logs/` — Stories editor, blog editor, story upload, and operational logs
-- `src/app/gallery/` — Public gallery pages
-- `src/app/story/` — Public story pages
-- `src/app/blog/` — Public blog pages
-- `src/app/they/` — Friend links page
-- `src/app/login/` — Admin login and OAuth callback
+Dual system: local DB comments or Waline (LeanCloud). Controlled by `COMMENTS_STORAGE` env var. When `LEANCLOUD` without external `WALINE_SERVER_URL`, a local Waline handler is registered in the Hono router.
 
 ## Conventions
 
-- **Component exports**: Default exports for page/component files
-- **Client vs Server**: `'use client'` directive for client components; `import 'server-only'` in Hono routes and server utilities
-- **Styling**: Tailwind CSS 4 with `cn()` utility from `src/lib/utils.ts` for class merging
-- **Error handling (server)**: Hono routes return `c.json({ error: message }, statusCode)`; global error handler in `hono/index.ts` catches `HTTPException`
-- **Error handling (client)**: Try-catch with custom error classes (`ApiUnauthorizedError`); `extractErrorMessage()` for consistent error extraction
-- **Auth protection**: `authMiddleware` from `hono/middleware/auth.ts` guards admin routes, sets `c.set('user', payload)`
-- **API route registration**: Sub-routers mounted in `hono/index.ts` with `route.route('/path', subRouter)`
+- TypeScript strict mode; prefer `unknown` over `any`
+- 2-space indentation; imports grouped: third-party, `@/*` aliases, type imports
+- Client components must have `'use client'` directive; server modules import `'server-only'`
+- Tailwind utilities first; custom CSS only for shared editor/content styling
+- Components: PascalCase. Functions/variables: camelCase. Constants: `UPPER_SNAKE_CASE`
+- Commits: Conventional Commits (`feat:`, `fix:`, `refactor:`, `build:`, `chore(release):`)
+- Styling uses CVA (class-variance-authority) for component variants, Radix UI for primitives
+- Animations via Framer Motion
 
-## Environment Setup
+## Key Directories
 
-Copy `.env.example` to `.env` and configure:
-- `DATABASE_URL` / `DIRECT_URL`: PostgreSQL connection strings
-- `JWT_SECRET`: Token signing key
-- `ADMIN_USERNAME` / `ADMIN_PASSWORD`: Initial admin credentials
-- Storage provider settings (R2, GitHub) are configured via admin UI after initial setup
+- `src/app/admin/` — protected admin dashboard (upload, photo/album/story/blog management)
+- `src/components/gallery/` — GridView, MasonryView, TimelineView, AlbumGrid
+- `src/components/ui/` — base UI primitives (button, input, select, etc.)
+- `server/lib/` — server utilities (EXIF extraction, color quantization, JWT, storage providers)
+- `hono/middleware/` — auth and origin-check middleware
