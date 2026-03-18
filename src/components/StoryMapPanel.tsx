@@ -420,7 +420,6 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
               attributionControl={false}
               reuseMaps
               scrollZoom={expanded}
-              closeOnClick={false}
               onLoad={fitMapToPhotos}
             >
               <NavigationControl position="top-right" showCompass={false} />
