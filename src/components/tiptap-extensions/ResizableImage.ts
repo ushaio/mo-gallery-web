@@ -3,12 +3,16 @@ import { ResizableNodeView } from '@tiptap/core'
 import { NodeSelection } from '@tiptap/pm/state'
 import Image from '@tiptap/extension-image'
 
-function applyImageContainerStyles(element: HTMLElement) {
+function applyImageContainerStyles(element: HTMLElement, includeMargin = true) {
   element.style.display = 'inline-flex'
   element.style.verticalAlign = 'top'
-  element.style.margin = '0 0.75rem 0.75rem 0'
   element.style.width = 'fit-content'
   element.style.maxWidth = '100%'
+  if (includeMargin) {
+    element.style.margin = '0 0.75rem 0.75rem 0'
+  } else {
+    element.style.margin = '0'
+  }
 }
 
 function parsePixelValue(value: string | null): number | null {
@@ -162,7 +166,7 @@ export const ResizableImage = Image.extend({
           applyImageContainerStyles(container)
           const wrapper = container.querySelector('[data-resize-wrapper]')
           if (wrapper instanceof HTMLElement) {
-            applyImageContainerStyles(wrapper)
+            applyImageContainerStyles(wrapper, false)
           }
         }
       }

@@ -9,8 +9,31 @@ import { getStory, resolveAssetUrl, type PhotoDto, type StoryDto } from '@/lib/a
 import { StoryComments } from '@/components/StoryComments'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { StoryRichContent } from '@/components/StoryRichContent'
+import { Toast, type Notification } from '@/components/Toast'
+import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
+
+function WechatIcon(props: React.ComponentProps<'svg'>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M9.05 4C5.16 4 2 6.6 2 9.8c0 1.9 1.13 3.58 2.88 4.66L4.1 17.2l2.92-1.47c.65.14 1.33.22 2.03.22 3.89 0 7.05-2.6 7.05-5.8S12.94 4 9.05 4Z"
+        fill="currentColor"
+        fillOpacity="0.92"
+      />
+      <path
+        d="M15.72 9.53c-3.46 0-6.28 2.3-6.28 5.13 0 1.54.83 2.91 2.14 3.85l-.51 2.2 2.26-1.13c.75.19 1.55.29 2.39.29 3.47 0 6.28-2.3 6.28-5.13s-2.81-5.21-6.28-5.21Z"
+        fill="currentColor"
+      />
+      <circle cx="6.98" cy="9.48" r="1.02" fill="#fff" />
+      <circle cx="11.01" cy="9.48" r="1.02" fill="#fff" />
+      <circle cx="13.92" cy="14.54" r="0.92" fill="#fff" />
+      <circle cx="17.46" cy="14.54" r="0.92" fill="#fff" />
+    </svg>
+  )
+}
 
 function estimateReadingMinutes(content: string) {
   const plainText = content
@@ -27,12 +50,22 @@ export default function StoryDetailPage() {
   const reduceMotion = useReducedMotion()
   const { t } = useLanguage()
   const { settings } = useSettings()
+  const { isReady, user } = useAuth()
 
   const [story, setStory] = useState<StoryDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+
+  const notify = (message: string, type: Notification['type'] = 'success') => {
+    const id = Math.random().toString(36).slice(2, 9)
+    setNotifications((prev) => [...prev, { id, message, type }])
+    window.setTimeout(() => {
+      setNotifications((prev) => prev.filter((item) => item.id !== id))
+    }, 2200)
+  }
 
   useEffect(() => {
     async function fetchStory() {
@@ -69,6 +102,22 @@ export default function StoryDetailPage() {
   const targetPhotoId = story?.coverPhotoId || story?.photos[0]?.id
   const readingMinutes = story ? estimateReadingMinutes(story.content || '') : 1
   const activePhoto = story?.photos?.[activePhotoIndex] || null
+  const isAdmin = isReady && user?.isAdmin === true
+
+  const handleCopyWechatArticle = async () => {
+    if (!story) {
+      notify('No article content available to copy', 'info')
+      return
+    }
+
+    try {
+      await copyStoryAsWechatArticle(story, settings?.cdn_domain)
+      notify('Copied as WeChat article text')
+    } catch (copyError) {
+      console.error('Failed to copy wechat article text:', copyError)
+      notify('Copy failed, please check clipboard permission', 'error')
+    }
+  }
 
   if (loading) {
     return (
@@ -158,6 +207,19 @@ export default function StoryDetailPage() {
             <div className="mb-8 flex items-center gap-4 border-b border-border/50 pb-5">
               <span className="text-[10px] font-bold uppercase tracking-[0.34em] text-primary/75">Article</span>
               <div className="h-px flex-1 bg-border/50" />
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleCopyWechatArticle}
+                  className="inline-flex size-10 items-center justify-center rounded-full border border-[#07c160]/25 bg-[#07c160]/10 text-[#0a8f49] transition-all hover:border-[#07c160]/45 hover:bg-[#07c160]/16"
+                  aria-label="Copy as WeChat article text"
+                  title="Copy as WeChat article text"
+                >
+                  <span className="flex size-6 items-center justify-center rounded-full bg-[#07c160] text-white">
+                    <WechatIcon className="size-3.5" />
+                  </span>
+                </button>
+              ) : null}
             </div>
             <article className="max-w-none">
               <StoryRichContent
@@ -241,6 +303,7 @@ export default function StoryDetailPage() {
       </div>
 
       <PhotoDetailModal photo={selectedPhoto} isOpen={!!selectedPhoto} onClose={() => setSelectedPhoto(null)} onPhotoChange={setSelectedPhoto} allPhotos={story.photos} hideStoryTab />
+      <Toast notifications={notifications} remove={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))} />
     </div>
   )
 }
