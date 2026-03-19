@@ -7,6 +7,7 @@ import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Clock, Image as ImageIc
 import Link from 'next/link'
 import { getStory, resolveAssetUrl, type PhotoDto, type StoryDto } from '@/lib/api'
 import { StoryComments } from '@/components/StoryComments'
+import { StoryMapPanel } from '@/components/StoryMapPanel'
 import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { Toast, type Notification } from '@/components/Toast'
@@ -57,6 +58,7 @@ export default function StoryDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
+  const [isMapExpanded, setIsMapExpanded] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
 
   const notify = (message: string, type: Notification['type'] = 'success') => {
@@ -201,8 +203,20 @@ export default function StoryDetailPage() {
         </div>
       </section>
 
-      <div className="mx-auto grid max-w-7xl gap-16 px-5 py-14 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-12 lg:py-20">
-        <main className="min-w-0">
+      <div className="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-12 lg:py-20">
+        {isMapExpanded ? (
+          <section className="mb-12">
+            <StoryMapPanel
+              photos={story.photos}
+              cdnDomain={settings?.cdn_domain}
+              expanded
+              onToggleExpanded={() => setIsMapExpanded(false)}
+            />
+          </section>
+        ) : null}
+
+        <div className="grid gap-16 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <main className="min-w-0">
           <section className="mb-12 rounded-[32px] border border-border/60 bg-gradient-to-b from-card via-card to-card/70 p-6 shadow-[0_28px_90px_-56px_rgba(0,0,0,0.45)] sm:p-8 lg:p-10">
             <div className="mb-8 flex items-center gap-4 border-b border-border/50 pb-5">
               <span className="text-[10px] font-bold uppercase tracking-[0.34em] text-primary/75">Article</span>
@@ -287,19 +301,27 @@ export default function StoryDetailPage() {
               </div>
             </section>
           ) : null}
-        </main>
+          </main>
 
-        <aside className="space-y-8 lg:sticky lg:top-28 lg:self-start">
-          {targetPhotoId ? (
-            <section className="rounded-[28px] border border-border/60 bg-card/80 p-6 shadow-[0_24px_60px_-48px_rgba(0,0,0,0.4)]">
-              <div className="mb-5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] text-primary/75">
-                <div className="h-px w-6 bg-primary/45" />
-                <span>Discussion</span>
-              </div>
-              <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} />
-            </section>
-          ) : null}
-        </aside>
+          <aside className="space-y-8 lg:sticky lg:top-28 lg:self-start">
+            {!isMapExpanded ? (
+              <StoryMapPanel
+                photos={story.photos}
+                cdnDomain={settings?.cdn_domain}
+                onToggleExpanded={() => setIsMapExpanded(true)}
+              />
+            ) : null}
+            {targetPhotoId ? (
+              <section className="rounded-[28px] border border-border/60 bg-card/80 p-6 shadow-[0_24px_60px_-48px_rgba(0,0,0,0.4)]">
+                <div className="mb-5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] text-primary/75">
+                  <div className="h-px w-6 bg-primary/45" />
+                  <span>Discussion</span>
+                </div>
+                <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} compact />
+              </section>
+            ) : null}
+          </aside>
+        </div>
       </div>
 
       <PhotoDetailModal photo={selectedPhoto} isOpen={!!selectedPhoto} onClose={() => setSelectedPhoto(null)} onPhotoChange={setSelectedPhoto} allPhotos={story.photos} hideStoryTab />
