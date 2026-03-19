@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MapPin, Maximize2, Minimize2, Camera } from 'lucide-react'
+import { MapPin, Maximize2, Minimize2, Camera, Images } from 'lucide-react'
 import Map, { Marker, NavigationControl, Popup, type MapRef } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { clusterMarkers, type ClusterPoint } from '@/lib/map-clustering'
 
 // High-contrast dark map style
 const MAP_STYLE: StyleSpecification = {
@@ -121,6 +122,94 @@ function hasCoordinates(photo: PhotoDto): photo is GeotaggedPhoto {
   return isFiniteCoordinate(photo.latitude) && isFiniteCoordinate(photo.longitude)
 }
 
+// Cluster marker component
+interface ClusterMarkerProps {
+  point: ClusterPoint
+  onFocusPhoto: (photo: GeotaggedPhoto) => void
+}
+
+function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const photos = point.properties.clusteredPhotos ?? []
+  const count = point.properties.point_count ?? 0
+
+  const handleClick = () => {
+    setIsExpanded(!isExpanded)
+  }
+
+  return (
+    <Marker
+      longitude={point.geometry.coordinates[0]}
+      latitude={point.geometry.coordinates[1]}
+      anchor="center"
+    >
+      <div className="relative">
+        {/* Expanded cluster grid */}
+        {isExpanded && photos.length > 0 && (
+          <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 overflow-hidden rounded-xl border border-white/20 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur-md">
+            <div className="grid grid-cols-3 gap-1.5">
+              {photos.slice(0, 9).map((photo) => (
+                <button
+                  key={photo.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsExpanded(false)
+                    onFocusPhoto(photo)
+                  }}
+                  className="size-10 overflow-hidden rounded-lg transition-transform hover:scale-110"
+                >
+                  <img
+                    src={resolveAssetUrl(photo.thumbnailUrl || photo.url)}
+                    alt={photo.title}
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+            {count > 9 && (
+              <p className="mt-1.5 text-center text-[9px] text-zinc-400">
+                +{count - 9} more
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Cluster pin */}
+        <button
+          type="button"
+          onClick={handleClick}
+          className="group relative cursor-pointer transition-all hover:scale-110"
+          aria-label={`${count} photos at this location`}
+        >
+          {/* Background preview */}
+          {photos[0] && (
+            <div className="absolute inset-0 overflow-hidden rounded-full">
+              <img
+                src={resolveAssetUrl(photos[0].thumbnailUrl || photos[0].url)}
+                alt=""
+                className="h-full w-full object-cover opacity-40"
+              />
+              <div className="absolute inset-0 bg-zinc-900/60" />
+            </div>
+          )}
+
+          {/* Cluster count */}
+          <div className="relative flex size-9 items-center justify-center rounded-full border-2 border-white/80 bg-zinc-800/95 shadow-lg">
+            <Images className="mr-0.5 size-3.5 text-zinc-300" />
+            <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-bold text-zinc-900 shadow-md">
+              {count > 99 ? '99+' : count}
+            </span>
+          </div>
+
+          {/* Pin tail */}
+          <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-zinc-800/95" />
+        </button>
+      </div>
+    </Marker>
+  )
+}
+
 export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
   const { locale } = useLanguage()
   const mapRef = useRef<MapRef | null>(null)
@@ -133,6 +222,13 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     imageHeight: 112,
     edgePadding: 96,
   })
+  const [currentZoom, setCurrentZoom] = useState(expanded ? 14.5 : 13.5)
+
+  // Clustered markers based on zoom level
+  const clusteredMarkers = useMemo(
+    () => clusterMarkers(geotaggedPhotos, currentZoom),
+    [geotaggedPhotos, currentZoom]
+  )
 
   const selectedPhoto = useMemo(
     () => geotaggedPhotos.find((photo) => photo.id === selectedPhotoId) ?? null,
@@ -433,54 +529,68 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
             reuseMaps
             scrollZoom={expanded}
             onLoad={fitMapToPhotos}
+            onMove={(evt) => setCurrentZoom(evt.viewState.zoom)}
           >
             <NavigationControl position="top-right" showCompass={false} />
 
-            {geotaggedPhotos.map((photo) => {
-              const isSelected = photo.id === selectedPhoto?.id
+            {clusteredMarkers.map((clusterPoint) => {
+              if (clusterPoint.properties.cluster) {
+                // Render cluster marker
+                return (
+                  <ClusterMarker
+                    key={`cluster-${clusterPoint.geometry.coordinates[0]}-${clusterPoint.geometry.coordinates[1]}`}
+                    point={clusterPoint}
+                    onFocusPhoto={focusPhotoOnMap}
+                  />
+                )
+              } else {
+                // Render individual marker
+                const photo = clusterPoint.properties.marker!
+                const isSelected = photo.id === selectedPhoto?.id
 
-              return (
-                <Marker
-                  key={photo.id}
-                  longitude={photo.longitude}
-                  latitude={photo.latitude}
-                  anchor="bottom"
-                >
-                  <button
-                    type="button"
-                    onClick={() => focusPhotoOnMap(photo)}
-                    className={`group relative cursor-pointer transition-all ${
-                      isSelected ? 'scale-110' : 'hover:scale-110'
-                    }`}
-                    aria-label={`View ${photo.title} on map`}
+                return (
+                  <Marker
+                    key={photo.id}
+                    longitude={photo.longitude}
+                    latitude={photo.latitude}
+                    anchor="bottom"
                   >
-                    {/* Marker Pin */}
-                    <div
-                      className={`flex size-7 items-center justify-center rounded-full border-[2.5px] shadow-lg transition-all ${
-                        isSelected
-                          ? 'border-zinc-900 bg-white'
-                          : 'border-white/80 bg-zinc-100/95'
+                    <button
+                      type="button"
+                      onClick={() => focusPhotoOnMap(photo)}
+                      className={`group relative cursor-pointer transition-all ${
+                        isSelected ? 'scale-110' : 'hover:scale-110'
                       }`}
+                      aria-label={`View ${photo.title} on map`}
                     >
-                      <Camera
-                        className={`size-3 ${
-                          isSelected ? 'text-zinc-900' : 'text-zinc-500'
+                      {/* Marker Pin */}
+                      <div
+                        className={`flex size-7 items-center justify-center rounded-full border-[2.5px] shadow-lg transition-all ${
+                          isSelected
+                            ? 'border-zinc-900 bg-white'
+                            : 'border-white/80 bg-zinc-100/95'
+                        }`}
+                      >
+                        <Camera
+                          className={`size-3 ${
+                            isSelected ? 'text-zinc-900' : 'text-zinc-500'
+                          }`}
+                        />
+                      </div>
+                      {/* Pin Tail */}
+                      <div
+                        className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
+                          isSelected ? 'bg-white' : 'bg-zinc-100/95'
                         }`}
                       />
-                    </div>
-                    {/* Pin Tail */}
-                    <div
-                      className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
-                        isSelected ? 'bg-white' : 'bg-zinc-100/95'
-                      }`}
-                    />
-                    {/* Selection Ring */}
-                    {isSelected && (
-                      <div className="absolute -inset-2 rounded-full border-2 border-white/40" />
-                    )}
-                  </button>
-                </Marker>
-              )
+                      {/* Selection Ring */}
+                      {isSelected && (
+                        <div className="absolute -inset-2 rounded-full border-2 border-white/40" />
+                      )}
+                    </button>
+                  </Marker>
+                )
+              }
             })}
 
             {popupPhoto ? (
