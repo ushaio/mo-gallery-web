@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, LogIn, Send, CornerDownRight } from 'lucide-react'
+import { MessageSquare, LogIn, Send, User } from 'lucide-react'
 import { getStoryComments, submitPhotoComment, type PublicCommentDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -15,7 +15,18 @@ const WalineCommentsWrapper = dynamic(
   () => import('./WalineComments').then(mod => mod.WalineComments),
   { 
     ssr: false, 
-    loading: () => <div className="space-y-8 animate-pulse"><div className="space-y-3"><div className="h-4 bg-muted rounded-none w-1/4"></div><div className="h-4 bg-muted rounded-none w-full"></div></div></div> }
+    loading: () => (
+      <div className="space-y-4 animate-pulse">
+        <div className="flex gap-3">
+          <div className="size-8 rounded-full bg-zinc-200 dark:bg-zinc-700" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-1/4" />
+            <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-full" />
+          </div>
+        </div>
+      </div>
+    )
+  }
 )
 
 interface StoryCommentsProps {
@@ -49,21 +60,6 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
   const commentsStorage = settings?.comments_storage?.toUpperCase() || ''
   const isWaline = commentsStorage === 'LEANCLOUD'
   const walineServerUrl = settings?.waline_server_url || ''
-  const shellClassName = compact
-    ? 'relative'
-    : 'max-w-screen-md mx-auto mt-32 mb-24 px-6 md:px-0 relative'
-  const innerClassName = compact
-    ? ''
-    : 'pt-16 border-t border-border/50'
-  const headerClassName = compact
-    ? 'flex items-center justify-between mb-6'
-    : 'flex items-center justify-between mb-12'
-  const composerClassName = compact
-    ? 'relative group mb-8'
-    : 'relative group mb-16'
-  const commentsListClassName = compact
-    ? 'space-y-8'
-    : 'space-y-12'
 
   useEffect(() => {
     if (!isWaline) {
@@ -155,209 +151,198 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
 
   if (isWaline) {
     return (
-      <div className={shellClassName}>
+      <div className="relative">
         <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
-        <div className={innerClassName}>
-          <div className={headerClassName}>
-            <div className="flex items-center gap-4">
-              <MessageSquare className="w-5 h-5 text-primary/40" />
-              <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase text-primary/80">
-                {t('gallery.comments')}
-              </h3>
-            </div>
-          </div>
-          {walineServerUrl ? (
-            <WalineCommentsWrapper
-              serverURL={walineServerUrl}
-              path={`/stories/${storyId}`}
-              lang={locale === 'zh' ? 'zh-CN' : 'en'}
-            />
-          ) : (
-            <div className="text-center py-12 bg-muted/5 border border-border/50">
-              <p className="text-xs font-serif italic text-muted-foreground/60">Waline server not configured</p>
-            </div>
-          )}
-        </div>
+        {walineServerUrl ? (
+          <WalineCommentsWrapper
+            serverURL={walineServerUrl}
+            path={`/stories/${storyId}`}
+            lang={locale === 'zh' ? 'zh-CN' : 'en'}
+          />
+        ) : (
+          <p className="text-center text-xs text-zinc-400 dark:text-zinc-500 py-4">
+            Comments not configured
+          </p>
+        )}
       </div>
     )
   }
 
   return (
-    <div className={shellClassName}>
+    <div className="relative">
       <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
-      <div className={innerClassName}>
-        <div className={headerClassName}>
-          <div className="flex items-center gap-4">
-            <MessageSquare className="w-5 h-5 text-primary/40" />
-            <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase text-primary/80">
-              {t('gallery.comments')} {comments.length > 0 && `(${comments.length})`}
-            </h3>
+      
+      {/* Comment Form */}
+      <div className="mb-6">
+        {!canComment ? (
+          <div className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-600 p-4 text-center">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+              {t('gallery.comment_linuxdo_only')}
+            </p>
+            <button
+              type="button"
+              onClick={handleLoginClick}
+              className="inline-flex items-center gap-2 rounded-full bg-[#f8d568] px-4 py-2 text-[11px] font-semibold text-[#1a1a1a] transition-colors hover:bg-[#f5c842] cursor-pointer"
+            >
+              <LogIn className="size-3.5" />
+              {t('gallery.comment_login_to_comment')}
+            </button>
           </div>
-        </div>
-
-        <div className={composerClassName}>
-          <div className="absolute -inset-4 bg-muted/5 opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none" />
-          {!canComment ? (
-            <div className="text-center py-8 border border-dashed border-border/50">
-              <p className="text-xs text-muted-foreground mb-6">
-                {t('gallery.comment_linuxdo_only')}
-              </p>
-              <button
-                type="button"
-                onClick={handleLoginClick}
-                className="inline-flex items-center gap-3 px-6 py-3 bg-[#f8d568] text-[#1a1a1a] font-bold tracking-[0.15em] text-xs uppercase hover:bg-[#f5c842] transition-all"
-              >
-                <LogIn className="w-4 h-4" />
-                {t('gallery.comment_login_to_comment')}
-              </button>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Author Field */}
+            <div>
+              <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                {t('gallery.comment_author')}
+              </label>
+              <input
+                type="text"
+                value={formData.author}
+                onChange={(e) => setFormData({ ...formData, author: e.target.value })}
+                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:border-zinc-500"
+                required
+                disabled={submitting || isLinuxDoUser || isAdmin}
+              />
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="relative space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
-                    {t('gallery.comment_author')}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.author}
-                    onChange={(e) => setFormData({ ...formData, author: e.target.value })}
-                    className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-sm font-serif"
-                    required
-                    disabled={submitting || isLinuxDoUser || isAdmin}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
-                    {(linuxdoOnly && isLinuxDoUser) || isAdmin ? t('gallery.comment_username') : t('gallery.comment_email')}
-                  </label>
-                  {isAdmin && !isLinuxDoUser ? (
-                    <div className="flex items-center gap-2 py-3 bg-primary/10 border-b border-primary/30 px-2">
-                      <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-                      </svg>
-                      <span className="text-sm text-primary font-medium">{t('admin.admin')}</span>
-                    </div>
-                  ) : linuxdoOnly && isLinuxDoUser ? (
-                    <div className="flex items-center gap-2 py-3 bg-[#f8d568]/10 border-b border-[#f8d568]/30 px-2">
-                      <svg className="w-4 h-4 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                      </svg>
-                      <span className="text-sm text-[#f8d568] font-medium">Linux DO</span>
-                    </div>
-                  ) : (
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full py-3 bg-transparent border-b border-border focus:border-primary outline-none transition-all text-sm font-serif placeholder:italic placeholder:text-muted-foreground/30"
-                      placeholder="Optional"
-                      disabled={submitting}
-                    />
-                  )}
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-[0.3em]">
-                  {t('gallery.comment_content')}
+            {/* Email Field */}
+            {isAdmin && !isLinuxDoUser ? (
+              <div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-2 dark:bg-zinc-800">
+                <svg className="size-4 text-zinc-500" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                </svg>
+                <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">{t('admin.admin')}</span>
+              </div>
+            ) : linuxdoOnly && isLinuxDoUser ? (
+              <div className="flex items-center gap-2 rounded-lg bg-[#f8d568]/10 px-3 py-2">
+                <svg className="size-4 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                </svg>
+                <span className="text-sm font-medium text-[#c9a227]">Linux DO</span>
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                  {t('gallery.comment_email')} <span className="normal-case font-normal">(optional)</span>
                 </label>
-                <textarea
-                  value={formData.content}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="w-full py-4 bg-transparent border border-border focus:border-primary p-4 outline-none transition-all text-sm font-serif min-h-[120px] resize-none"
-                  required
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:border-zinc-500"
                   disabled={submitting}
                 />
               </div>
+            )}
 
-              <button
-                type="submit"
-                disabled={submitting || !formData.author.trim() || !formData.content.trim()}
-                className="group/btn flex items-center gap-4 text-[10px] font-bold uppercase tracking-[0.4em] text-primary disabled:opacity-20"
-              >
-                <span>{submitting ? t('gallery.comment_submitting') : t('gallery.comment_submit')}</span>
-                <div className="w-8 h-8 flex items-center justify-center border border-primary/20 rounded-full group-hover/btn:bg-primary group-hover/btn:text-primary-foreground transition-all">
-                  <Send className="w-3 h-3" />
-                </div>
-              </button>
-            </form>
-          )}
-        </div>
+            {/* Content Field */}
+            <div>
+              <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                {t('gallery.comment_content')}
+              </label>
+              <textarea
+                value={formData.content}
+                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:border-zinc-500"
+                rows={3}
+                required
+                disabled={submitting}
+              />
+            </div>
 
-        {loading ? (
-          <div className="space-y-8 animate-pulse">
-            {[...Array(2)].map((_, i) => (
-              <div key={i} className="space-y-3">
-                <div className="h-4 bg-muted rounded-none w-1/4"></div>
-                <div className="h-4 bg-muted rounded-none w-full"></div>
-              </div>
-            ))}
-          </div>
-        ) : comments.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-12 bg-muted/5 border border-border/50"
-          >
-            <p className="text-xs font-serif italic text-muted-foreground/60">{t('gallery.no_comments')}</p>
-          </motion.div>
-        ) : (
-          <motion.div layout className={commentsListClassName}>
-            <AnimatePresence mode="popLayout">
-              {comments.map((comment) => (
-                <motion.div
-                  key={comment.id}
-                  layout
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
-                  className="relative"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      {comment.avatarUrl ? (
-                        <img
-                          src={comment.avatarUrl}
-                          alt={comment.author}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                          <span className="text-sm font-bold text-muted-foreground">
-                            {comment.author.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-xs font-bold text-foreground tracking-tight">
-                          {comment.author}
-                        </span>
-                        <div className="w-1 h-1 rounded-full bg-border" />
-                        <span className="text-[9px] font-mono text-muted-foreground/60 uppercase tracking-widest">
-                          {new Date(comment.createdAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      </div>
-                      <p className="text-sm font-serif leading-relaxed text-foreground/70">
-                        {comment.content}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={submitting || !formData.author.trim() || !formData.content.trim()}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 cursor-pointer"
+            >
+              {submitting ? (
+                <>
+                  <div className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  {t('gallery.comment_submitting')}
+                </>
+              ) : (
+                <>
+                  <Send className="size-3" />
+                  {t('gallery.comment_submit')}
+                </>
+              )}
+            </button>
+          </form>
         )}
       </div>
+
+      {/* Comments List */}
+      {loading ? (
+        <div className="space-y-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="flex gap-3 animate-pulse">
+              <div className="size-8 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-700" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-1/3 rounded bg-zinc-200 dark:bg-zinc-700" />
+                <div className="h-3 w-full rounded bg-zinc-200 dark:bg-zinc-700" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : comments.length === 0 ? (
+        <div className="flex flex-col items-center py-6 text-center">
+          <MessageSquare className="mb-2 size-5 text-zinc-300 dark:text-zinc-600" />
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            {t('gallery.no_comments')}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <AnimatePresence mode="popLayout">
+            {comments.map((comment) => (
+              <motion.div
+                key={comment.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="group"
+              >
+                <div className="flex gap-3">
+                  {/* Avatar */}
+                  <div className="shrink-0">
+                    {comment.avatarUrl ? (
+                      <img
+                        src={comment.avatarUrl}
+                        alt={comment.author}
+                        className="size-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-8 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <User className="size-4 text-zinc-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                        {comment.author}
+                      </span>
+                      <time className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                        {new Date(comment.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </time>
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                      {comment.content}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   )
 }
