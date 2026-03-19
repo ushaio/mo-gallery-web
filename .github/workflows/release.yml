@@ -58,7 +58,7 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         run: |
           TAG="${{ steps.version.outputs.TAG }}"
-          awk "/^## ${TAG}( |$)/,/^## v[0-9]/{if(/^## v[0-9]/ && !/^## ${TAG}( |$)/)exit; print}" RELEASE.md > release_notes.md
+          awk -v tag="$TAG" 'BEGIN{p=0} index($0,"## "tag)==1{p=1} p && /^## v[0-9]/ && index($0,"## "tag)!=1{exit} p{print}' RELEASE.md > release_notes.md
 
       - name: Create GitHub Release
         if: steps.check_tag.outputs.exists == 'false'
