@@ -82,6 +82,7 @@ model Photo {
   orientation  Int?
   software     String?
   exifRaw      String?
+  gps          String?  // JSON: tags.gps raw data { latitude, longitude, altitude, dateStamp }
 
   categories Category[]
   stories    Story[]    @relation("PhotoStories")
@@ -128,12 +129,14 @@ model Story {
   content      String // Markdown content
   coverPhotoId String?
   isPublished  Boolean  @default(false)
+  storyDate    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   photos Photo[] @relation("PhotoStories")
 
   @@index([isPublished])
+  @@index([storyDate])
   @@index([createdAt])
   @@index([coverPhotoId])
 }

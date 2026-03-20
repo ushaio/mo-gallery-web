@@ -1,8 +1,8 @@
 import type { PhotoDto } from '@/lib/api'
+import type { PhotoCoordinates } from '@/lib/photo-location'
 
 type GeotaggedPhoto = PhotoDto & {
-  latitude: number
-  longitude: number
+  coordinates: PhotoCoordinates
 }
 
 export interface ClusterPoint {
@@ -36,7 +36,7 @@ export function clusterMarkers(markers: GeotaggedPhoto[], zoom: number): Cluster
       properties: { marker },
       geometry: {
         type: 'Point' as const,
-        coordinates: [marker.longitude, marker.latitude],
+        coordinates: [marker.coordinates.lng, marker.coordinates.lat],
       },
     }))
   }
@@ -58,7 +58,8 @@ export function clusterMarkers(markers: GeotaggedPhoto[], zoom: number): Cluster
       if (processed.has(other.id)) continue
 
       const distance = Math.sqrt(
-        Math.pow(marker.longitude - other.longitude, 2) + Math.pow(marker.latitude - other.latitude, 2),
+        Math.pow(marker.coordinates.lng - other.coordinates.lng, 2) +
+          Math.pow(marker.coordinates.lat - other.coordinates.lat, 2),
       )
 
       if (distance < threshold) {
@@ -74,13 +75,13 @@ export function clusterMarkers(markers: GeotaggedPhoto[], zoom: number): Cluster
         properties: { marker },
         geometry: {
           type: 'Point',
-          coordinates: [marker.longitude, marker.latitude],
+          coordinates: [marker.coordinates.lng, marker.coordinates.lat],
         },
       })
     } else {
       // Cluster
-      const centerLng = nearby.reduce((sum, m) => sum + m.longitude, 0) / nearby.length
-      const centerLat = nearby.reduce((sum, m) => sum + m.latitude, 0) / nearby.length
+      const centerLng = nearby.reduce((sum, m) => sum + m.coordinates.lng, 0) / nearby.length
+      const centerLat = nearby.reduce((sum, m) => sum + m.coordinates.lat, 0) / nearby.length
 
       clusters.push({
         type: 'Feature',

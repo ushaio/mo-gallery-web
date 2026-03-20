@@ -451,6 +451,7 @@ photos.post('/admin/photos', async (c) => {
         takenAt: exifData.takenAt,
         latitude: exifData.latitude,
         longitude: exifData.longitude,
+        gps: exifData.gps,
         orientation: exifData.orientation,
         software: exifData.software,
         exifRaw: exifData.exifRaw,
@@ -916,6 +917,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
         updateData.takenAt = exifData.takenAt
         updateData.latitude = exifData.latitude
         updateData.longitude = exifData.longitude
+        updateData.gps = exifData.gps
         updateData.orientation = exifData.orientation
         updateData.software = exifData.software
         updateData.exifRaw = exifData.exifRaw

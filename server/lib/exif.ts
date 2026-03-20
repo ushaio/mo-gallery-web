@@ -15,6 +15,25 @@ export interface ExifData {
   orientation?: number
   software?: string
   exifRaw?: string
+  gps?: string
+}
+
+function isFiniteCoordinate(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function getGpsDateStampDescription(tags: unknown): string | undefined {
+  if (!tags || typeof tags !== 'object') {
+    return undefined
+  }
+
+  const maybeDateStamp = (tags as Record<string, unknown>).GPSDateStamp
+  if (!maybeDateStamp || typeof maybeDateStamp !== 'object') {
+    return undefined
+  }
+
+  const description = (maybeDateStamp as Record<string, unknown>).description
+  return typeof description === 'string' ? description : undefined
 }
 
 /**
@@ -69,9 +88,22 @@ export async function extractExifData(buffer: Buffer): Promise<ExifData> {
     }
 
     // GPS location
-    if (tags.gps?.Latitude && tags.gps?.Longitude) {
+    if (tags.gps?.Latitude !== undefined && tags.gps?.Longitude !== undefined) {
       exifData.latitude = tags.gps.Latitude
       exifData.longitude = tags.gps.Longitude
+    }
+    if (tags.gps) {
+      const gps: Record<string, unknown> = {}
+      const gpsDateStamp = getGpsDateStampDescription(tags.gps)
+
+      if (tags.gps.Latitude !== undefined) gps.latitude = tags.gps.Latitude
+      if (tags.gps.Longitude !== undefined) gps.longitude = tags.gps.Longitude
+      if (tags.gps.Altitude !== undefined) gps.altitude = tags.gps.Altitude
+      if (gpsDateStamp) gps.dateStamp = gpsDateStamp
+
+      if (Object.keys(gps).length > 0) {
+        exifData.gps = JSON.stringify(gps)
+      }
     }
 
     // Orientation
@@ -162,7 +194,7 @@ export function formatExifForDisplay(exif: ExifData): Record<string, string> {
     formatted['拍摄时间'] = exif.takenAt.toLocaleString('zh-CN')
   }
 
-  if (exif.latitude && exif.longitude) {
+  if (isFiniteCoordinate(exif.latitude) && isFiniteCoordinate(exif.longitude)) {
     formatted['位置'] = `${exif.latitude.toFixed(6)}, ${exif.longitude.toFixed(6)}`
   }
 

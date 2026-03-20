@@ -42,6 +42,7 @@ export interface PhotoDto {
   takenAt?: string
   latitude?: number
   longitude?: number
+  gps?: string
   orientation?: number
   software?: string
   exifRaw?: string

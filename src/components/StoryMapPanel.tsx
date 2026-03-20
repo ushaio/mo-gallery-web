@@ -7,6 +7,7 @@ import type { StyleSpecification } from 'maplibre-gl'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { clusterMarkers, type ClusterPoint } from '@/lib/map-clustering'
+import { getPhotoCoordinates, type PhotoCoordinates } from '@/lib/photo-location'
 
 // High-contrast dark map style
 const MAP_STYLE: StyleSpecification = {
@@ -31,8 +32,7 @@ const MAP_STYLE: StyleSpecification = {
 }
 
 type GeotaggedPhoto = PhotoDto & {
-  latitude: number
-  longitude: number
+  coordinates: PhotoCoordinates
 }
 
 type PopupAnchor = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -114,12 +114,16 @@ function getOverflowScore(
   }
 }
 
-function isFiniteCoordinate(value: number | undefined): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
-}
+function toGeotaggedPhoto(photo: PhotoDto): GeotaggedPhoto | null {
+  const coordinates = getPhotoCoordinates(photo)
+  if (!coordinates) {
+    return null
+  }
 
-function hasCoordinates(photo: PhotoDto): photo is GeotaggedPhoto {
-  return isFiniteCoordinate(photo.latitude) && isFiniteCoordinate(photo.longitude)
+  return {
+    ...photo,
+    coordinates,
+  }
 }
 
 // Cluster marker component
@@ -213,7 +217,10 @@ function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
 export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
   const { locale } = useLanguage()
   const mapRef = useRef<MapRef | null>(null)
-  const geotaggedPhotos = useMemo(() => photos.filter(hasCoordinates), [photos])
+  const geotaggedPhotos = useMemo(
+    () => photos.map(toGeotaggedPhoto).filter((photo): photo is GeotaggedPhoto => photo !== null),
+    [photos]
+  )
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null)
   const [popupPhotoId, setPopupPhotoId] = useState<string | null>(null)
   const [popupAnchor, setPopupAnchor] = useState<PopupAnchor>('top')
@@ -250,23 +257,23 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     if (geotaggedPhotos.length === 1) {
       const photo = geotaggedPhotos[0]
       map.flyTo({
-        center: [photo.longitude, photo.latitude],
+        center: [photo.coordinates.lng, photo.coordinates.lat],
         zoom: 13.5,
         duration: 0,
       })
       return
     }
 
-    let minLng = geotaggedPhotos[0].longitude
-    let maxLng = geotaggedPhotos[0].longitude
-    let minLat = geotaggedPhotos[0].latitude
-    let maxLat = geotaggedPhotos[0].latitude
+    let minLng = geotaggedPhotos[0].coordinates.lng
+    let maxLng = geotaggedPhotos[0].coordinates.lng
+    let minLat = geotaggedPhotos[0].coordinates.lat
+    let maxLat = geotaggedPhotos[0].coordinates.lat
 
     for (const photo of geotaggedPhotos) {
-      minLng = Math.min(minLng, photo.longitude)
-      maxLng = Math.max(maxLng, photo.longitude)
-      minLat = Math.min(minLat, photo.latitude)
-      maxLat = Math.max(maxLat, photo.latitude)
+      minLng = Math.min(minLng, photo.coordinates.lng)
+      maxLng = Math.max(maxLng, photo.coordinates.lng)
+      minLat = Math.min(minLat, photo.coordinates.lat)
+      maxLat = Math.max(maxLat, photo.coordinates.lat)
     }
 
     const lngSpan = maxLng - minLng
@@ -407,7 +414,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
       return { anchor: 'bottom', offsetX: 0, offsetY: 0 }
     }
 
-    const point = map.project([photo.longitude, photo.latitude])
+    const point = map.project([photo.coordinates.lng, photo.coordinates.lat])
     const container = map.getContainer()
     const width = container.clientWidth || 320
     const height = container.clientHeight || 320
@@ -457,7 +464,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     })
 
     map.flyTo({
-      center: [photo.longitude, photo.latitude],
+      center: [photo.coordinates.lng, photo.coordinates.lat],
       zoom: Math.max(map.getZoom(), expanded ? 14.5 : 13.5),
       offset: [placement.offsetX, placement.offsetY],
       duration: 450,
@@ -520,8 +527,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
           <Map
             ref={mapRef}
             initialViewState={{
-              longitude: selectedPhoto?.longitude ?? geotaggedPhotos[0].longitude,
-              latitude: selectedPhoto?.latitude ?? geotaggedPhotos[0].latitude,
+              longitude: selectedPhoto?.coordinates.lng ?? geotaggedPhotos[0].coordinates.lng,
+              latitude: selectedPhoto?.coordinates.lat ?? geotaggedPhotos[0].coordinates.lat,
               zoom: geotaggedPhotos.length === 1 ? 13.5 : 2.5,
             }}
             mapStyle={MAP_STYLE}
@@ -551,8 +558,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                 return (
                   <Marker
                     key={photo.id}
-                    longitude={photo.longitude}
-                    latitude={photo.latitude}
+                    longitude={photo.coordinates.lng}
+                    latitude={photo.coordinates.lat}
                     anchor="bottom"
                   >
                     <button
@@ -596,8 +603,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
             {popupPhoto ? (
               <Popup
                 key={popupPhoto.id}
-                longitude={popupPhoto.longitude}
-                latitude={popupPhoto.latitude}
+                longitude={popupPhoto.coordinates.lng}
+                latitude={popupPhoto.coordinates.lat}
                 anchor={popupAnchor}
                 offset={16}
                 closeButton={false}
