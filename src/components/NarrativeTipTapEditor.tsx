@@ -196,7 +196,7 @@ function ensureFirstParagraphHasDropCap(currentEditor: Editor) {
 
 function convertMarkdownToHtml(input: string): string {
   if (!input) return ''
-  
+
   let result = input.replace(
     /!\[([^\]]*)\]\(([^)\s]+)(?:\s+=(\d+)x(\d+))?\)/g,
     (_match, alt, url, width) => {
@@ -207,7 +207,7 @@ function convertMarkdownToHtml(input: string): string {
       return `<img src="${url}" alt="${alt}"${widthAttr} />`
     }
   )
-  
+
   result = result.replace(
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     '<a href="$2">$1</a>'
@@ -224,7 +224,7 @@ function convertMarkdownToHtml(input: string): string {
       return `<blockquote><p>${quoteContent}</p></blockquote>`
     }
   )
-  
+
   result = result
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -236,11 +236,11 @@ function convertMarkdownToHtml(input: string): string {
     .replace(/^\s*[-*]\s+/gm, '<li>')
     .replace(/^\s*\d+\.\s+/gm, '<li>')
     .replace(/\n/g, '<br>')
-  
+
   if (!/<[a-z][\s\S]*>/i.test(result)) {
     result = result.split('<br>').map(p => `<p>${p}</p>`).join('')
   }
-  
+
   return result
 }
 
@@ -248,10 +248,10 @@ function convertMarkdownImageToHtmlAttrs(markdown: string): { src: string; alt?:
   const trimmed = markdown.trim()
   const match = trimmed.match(/!\[([^\]]*)\]\(([^)]+)\)/)
   if (!match) return null
-  
+
   const alt = match[1] || ''
   const urlPart = match[2]
-  
+
   // Extract URL and optional width: "url =480x" or just "url"
   const widthMatch = urlPart.match(/\s*=\s*(\d+)x\s*$/)
   const src = widthMatch ? urlPart.replace(/\s*=\s*\d+x\s*$/, '').trim() : urlPart.trim()
@@ -318,11 +318,10 @@ function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, childr
       onMouseDown={onMouseDown}
       disabled={disabled}
       title={title}
-      className={`flex h-7 min-w-7 items-center justify-center border px-1.5 text-[11px] transition-all duration-200 ${
-        isActive
+      className={`flex h-7 min-w-7 items-center justify-center border px-1.5 text-[11px] transition-all duration-200 ${isActive
           ? 'border-border bg-background text-accent-foreground'
           : 'border-transparent text-muted-foreground hover:border-border hover:bg-background hover:text-accent-foreground'
-      } disabled:cursor-not-allowed disabled:opacity-50`}
+        } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       {children}
     </button>
@@ -721,7 +720,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         if (!searchValue || !editor) return false
         const currentHtml = editor.getHTML()
         if (!currentHtml.includes(searchValue)) return false
-        
+
         // Convert Markdown images to HTML for TipTap
         let processedNext = nextValue
         if (isMarkdownImageSyntax(nextValue)) {
@@ -731,7 +730,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             processedNext = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${widthAttr} />`
           }
         }
-        
+
         const newHtml = currentHtml.replace(searchValue, processedNext)
         editor.commands.setContent(newHtml)
         ensureFirstParagraphHasDropCap(editor)
@@ -743,19 +742,19 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       scaleLastImage: (mode: 'sm' | 'md' | 'lg') => {
         if (!editor) return false
         const width = IMAGE_WIDTH_PRESETS[mode]
-        
+
         // Find the last image node and update its width
         const { state } = editor
         let found = false
         let imagePos = -1
-        
+
         state.doc.descendants((node, pos) => {
           if (node.type.name === 'image' && !found) {
             imagePos = pos
             found = true
           }
         })
-        
+
         if (imagePos >= 0) {
           // Use TipTap's chain command to update image attributes
           editor
@@ -770,14 +769,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               return true
             })
             .run()
-          
+
           // Trigger onChange to save
           const latestHtml = editor.getHTML()
           currentValueRef.current = latestHtml
           onChange(latestHtml)
           return true
         }
-        
+
         return false
       },
       focus: focusEditor,
@@ -1336,11 +1335,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   type="button"
                   onMouseDown={preserveSelectionOnToolbarMouseDown}
                   onClick={() => setBackgroundColor('')}
-                  className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${
-                    resolvedEditorUiState.backgroundColor
+                  className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${resolvedEditorUiState.backgroundColor
                       ? 'border-border hover:border-foreground/30'
                       : 'border-foreground/60'
-                  }`}
+                    }`}
                   title={t('editor.background_color_clear')}
                 />
                 {recentBackgroundColors.map((color) => (
@@ -1349,11 +1347,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                     type="button"
                     onMouseDown={preserveSelectionOnToolbarMouseDown}
                     onClick={() => setBackgroundColor(color)}
-                    className={`h-8 w-8 rounded-sm border transition-colors ${
-                      resolvedEditorUiState.backgroundColor === color
+                    className={`h-8 w-8 rounded-sm border transition-colors ${resolvedEditorUiState.backgroundColor === color
                         ? 'border-foreground/60'
                         : 'border-border hover:border-foreground/30'
-                    }`}
+                      }`}
                     title={color}
                     style={{ backgroundColor: color }}
                   />
@@ -1367,11 +1364,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   type="button"
                   onMouseDown={preserveSelectionOnToolbarMouseDown}
                   onClick={() => setBackgroundColorTab('basic')}
-                  className={`text-sm transition-colors ${
-                    backgroundColorTab === 'basic'
+                  className={`text-sm transition-colors ${backgroundColorTab === 'basic'
                       ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {t('editor.background_color_basic')}
                 </button>
@@ -1382,11 +1378,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                     setBackgroundColorTab('more')
                     backgroundColorPickerRef.current?.click()
                   }}
-                  className={`text-sm transition-colors ${
-                    backgroundColorTab === 'more'
+                  className={`text-sm transition-colors ${backgroundColorTab === 'more'
                       ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {t('editor.background_color_more')}
                 </button>
@@ -1417,11 +1412,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                       setCustomBackgroundColor(color)
                       setBackgroundColor(color)
                     }}
-                    className={`h-7 w-7 rounded-sm border transition-colors ${
-                      resolvedEditorUiState.backgroundColor === color
+                    className={`h-7 w-7 rounded-sm border transition-colors ${resolvedEditorUiState.backgroundColor === color
                         ? 'border-foreground/60'
                         : 'border-border hover:border-foreground/30'
-                    }`}
+                      }`}
                     title={color}
                     style={{ backgroundColor: color }}
                   />
@@ -1479,11 +1473,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   type="button"
                   onMouseDown={preserveSelectionOnToolbarMouseDown}
                   onClick={() => setTextColor('')}
-                  className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${
-                    resolvedEditorUiState.color
+                  className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${resolvedEditorUiState.color
                       ? 'border-border hover:border-foreground/30'
                       : 'border-foreground/60'
-                  }`}
+                    }`}
                   title={t('editor.text_color_clear')}
                 />
                 {recentTextColors.map((color) => (
@@ -1492,11 +1485,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                     type="button"
                     onMouseDown={preserveSelectionOnToolbarMouseDown}
                     onClick={() => setTextColor(color)}
-                    className={`h-8 w-8 rounded-sm border transition-colors ${
-                      resolvedEditorUiState.color === color
+                    className={`h-8 w-8 rounded-sm border transition-colors ${resolvedEditorUiState.color === color
                         ? 'border-foreground/60'
                         : 'border-border hover:border-foreground/30'
-                    }`}
+                      }`}
                     title={color}
                     style={{ backgroundColor: color }}
                   />
@@ -1510,11 +1502,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   type="button"
                   onMouseDown={preserveSelectionOnToolbarMouseDown}
                   onClick={() => setTextColorTab('basic')}
-                  className={`text-sm transition-colors ${
-                    textColorTab === 'basic'
+                  className={`text-sm transition-colors ${textColorTab === 'basic'
                       ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {t('editor.text_color_basic')}
                 </button>
@@ -1525,11 +1516,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                     setTextColorTab('more')
                     textColorPickerRef.current?.click()
                   }}
-                  className={`text-sm transition-colors ${
-                    textColorTab === 'more'
+                  className={`text-sm transition-colors ${textColorTab === 'more'
                       ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   {t('editor.text_color_more')}
                 </button>
@@ -1560,11 +1550,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                       setCustomTextColor(color)
                       setTextColor(color)
                     }}
-                    className={`h-7 w-7 rounded-sm border transition-colors ${
-                      resolvedEditorUiState.color === color
+                    className={`h-7 w-7 rounded-sm border transition-colors ${resolvedEditorUiState.color === color
                         ? 'border-foreground/60'
                         : 'border-border hover:border-foreground/30'
-                    }`}
+                      }`}
                     title={color}
                     style={{ backgroundColor: color }}
                   />

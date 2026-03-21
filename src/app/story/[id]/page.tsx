@@ -477,48 +477,6 @@ export default function StoryDetailPage() {
 
           {/* Sidebar - 4 Columns */}
           <aside className="space-y-8 lg:col-span-4 lg:sticky lg:top-8 lg:self-start">
-            {/* Story Info Card */}
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6 dark:border-zinc-800 dark:bg-zinc-900/50">
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-400 dark:text-zinc-500">
-                About This Story
-              </h3>
-              <div className="mt-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                    <Calendar className="size-3.5 text-zinc-500" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Published</p>
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                      {new Date(story.createdAt).toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                    <Clock className="size-3.5 text-zinc-500" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Reading Time</p>
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{readingMinutes} minutes</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                    <ImageIcon className="size-3.5 text-zinc-500" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Photographs</p>
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{story.photos.length} images</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Map Panel */}
             {!isMapExpanded ? (
               <StoryMapPanel
