@@ -11,6 +11,7 @@ import type {
 export interface StoryAiStreamHandlers {
   onChunk: (chunk: string) => void
   onDone?: () => void
+  signal?: AbortSignal
 }
 
 function parseServerSentEvents(
@@ -58,6 +59,7 @@ export async function streamStoryAiGenerate(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(input),
+    signal: handlers.signal,
   })
 
   if (!response.ok) {
@@ -72,35 +74,55 @@ export async function streamStoryAiGenerate(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   const streamState = { buffer: '' }
+  const abortSignal = handlers.signal
+  const handleAbort = () => {
+    void reader.cancel().catch(() => {})
+  }
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
+  if (abortSignal) {
+    if (abortSignal.aborted) {
+      handleAbort()
+      throw new DOMException('The operation was aborted.', 'AbortError')
     }
+    abortSignal.addEventListener('abort', handleAbort, { once: true })
+  }
 
-    parseServerSentEvents(
-      decoder.decode(value, { stream: true }),
-      (eventName, data) => {
-        if (eventName === 'chunk' && data) {
-          try {
-            handlers.onChunk(JSON.parse(data) as string)
-          } catch {
-            handlers.onChunk(data)
+  try {
+    while (true) {
+      if (abortSignal?.aborted) {
+        throw new DOMException('The operation was aborted.', 'AbortError')
+      }
+
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      parseServerSentEvents(
+        decoder.decode(value, { stream: true }),
+        (eventName, data) => {
+          if (eventName === 'chunk' && data) {
+            try {
+              handlers.onChunk(JSON.parse(data) as string)
+            } catch {
+              handlers.onChunk(data)
+            }
+            return
           }
-          return
-        }
 
-        if (eventName === 'error' && data) {
-          throw new Error(data)
-        }
+          if (eventName === 'error' && data) {
+            throw new Error(data)
+          }
 
-        if (eventName === 'done') {
-          handlers.onDone?.()
-        }
-      },
-      streamState,
-    )
+          if (eventName === 'done') {
+            handlers.onDone?.()
+          }
+        },
+        streamState,
+      )
+    }
+  } finally {
+    abortSignal?.removeEventListener('abort', handleAbort)
   }
 }
 

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2, X } from 'lucide-react'
+import { Check, ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Square, Trash2, Wand2, X } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 import {
   clearEditorAiConversation,
@@ -101,9 +101,9 @@ function buildMessageId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function resolveActionLabel(action: StoryAiAction | undefined, locale: string, t: (key: string) => string) {
+function resolveActionLabel(action: StoryAiAction | undefined, t: (key: string) => string) {
   if (!action) return ''
-  if (action === 'custom') return locale === 'zh' ? '对话' : 'Chat'
+  if (action === 'custom') return t('editor.ai_action_chat')
   const preset = AI_PRESET_ACTIONS.find((item) => item.action === action)
   return preset ? t(`editor.ai_action_${preset.key}`) : action
 }
@@ -206,6 +206,8 @@ export function TipTapAiAssistant({
   } | null>(null)
   const aiSuppressClickRef = useRef(false)
   const aiZoomSignatureRef = useRef<string | null>(null)
+  const activeStreamAbortRef = useRef<AbortController | null>(null)
+  const activeStreamMessageRef = useRef<string | null>(null)
 
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [showAiModelMenu, setShowAiModelMenu] = useState(false)
@@ -231,7 +233,7 @@ export function TipTapAiAssistant({
   const [sessionMessages, setSessionMessages] = useState<AiSessionMessage[]>([])
   const [isDesktopViewport, setIsDesktopViewport] = useState(true)
 
-  const { locale, t } = useLanguage()
+  const { t } = useLanguage()
   const aiModelMenuId = useId()
   const conversationMenuId = useId()
   const isEnabled = options?.enabled === true
@@ -260,11 +262,9 @@ export function TipTapAiAssistant({
   const slashCommands = useMemo<AiSlashCommand[]>(() => ([
     {
       command: AI_SLASH_CLEAR_COMMAND,
-      description: locale === 'zh'
-        ? '清除上下文，删除会话内容，但保留会话'
-        : 'Clear the current context and delete chat messages while keeping the chat itself.',
+      description: t('editor.ai_slash_clear_description'),
     },
-  ]), [locale])
+  ]), [t])
 
   const aiPromptTrimmed = aiPrompt.trim()
 
@@ -277,25 +277,25 @@ export function TipTapAiAssistant({
   const showSlashCommandMenu = aiPromptTrimmed.startsWith('/') && matchedSlashCommands.length > 0
 
   const composerPlaceholder = useMemo(() => {
-    if (locale === 'zh') {
-      return '和 MO 助手说说你想怎么改，输入 / 可查看指令；不选上方动作时，就是普通对话。'
-    }
-    return 'Tell MO Assistant what you want to refine, or enter / for commands. With no action selected, this works as a normal chat.'
-  }, [locale])
+    return t('editor.ai_composer_chat_placeholder')
+  }, [t])
 
   const composerHint = useMemo(() => {
     if (aiPromptTrimmed === AI_SLASH_CLEAR_COMMAND) {
-      return locale === 'zh'
-        ? '执行 /clear 后，会清空当前会话消息内容，但保留会话本身。'
-        : 'Running /clear removes the current chat messages while keeping the chat itself.'
+      return t('editor.ai_slash_clear_hint')
     }
 
     return ''
-  }, [aiPromptTrimmed, locale])
+  }, [aiPromptTrimmed, t])
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
     [activeConversationId, conversations],
+  )
+
+  const isAiGenerating = useMemo(
+    () => aiLoading || sessionMessages.some((message) => message.role === 'assistant' && message.status === 'streaming'),
+    [aiLoading, sessionMessages],
   )
 
   const activeConversationLabel = useMemo(() => {
@@ -431,6 +431,21 @@ export function TipTapAiAssistant({
       setConversationClearing(false)
     }
   }, [activeConversationId, options?.token, t])
+
+  const stopAiGeneration = useCallback(() => {
+    activeStreamAbortRef.current?.abort()
+    activeStreamAbortRef.current = null
+    const targetMessageId = activeStreamMessageRef.current
+    if (targetMessageId) {
+      updateSessionMessage(targetMessageId, (currentMessage) => ({
+        ...currentMessage,
+        status: currentMessage.content.trim() ? 'done' : 'error',
+        error: currentMessage.content.trim() ? undefined : t('editor.ai_generation_stopped'),
+      }))
+    }
+    activeStreamMessageRef.current = null
+    setAiLoading(false)
+  }, [t, updateSessionMessage])
 
   const refreshAiModels = useCallback(async () => {
     if (!isEnabled || !options?.token) {
@@ -624,6 +639,21 @@ export function TipTapAiAssistant({
 
     const effectiveAction = action ?? (prompt ? 'custom' : undefined)
     const hasSelection = context.hasSelection && Boolean(context.selectedText.trim())
+    const editorContextPayload = hasSelection
+      ? {
+          title: options.title,
+          selectedText: context.selectedText || undefined,
+          currentParagraph: context.currentParagraph || undefined,
+          contextBefore: context.contextBefore || undefined,
+          contextAfter: context.contextAfter || undefined,
+        }
+      : {
+          title: undefined,
+          selectedText: undefined,
+          currentParagraph: undefined,
+          contextBefore: undefined,
+          contextAfter: undefined,
+        }
 
     let conversationId = activeConversationId
     if (!conversationId) {
@@ -652,7 +682,7 @@ export function TipTapAiAssistant({
       role: 'user',
       action: effectiveAction,
       prompt,
-      content: prompt || resolveActionLabel(effectiveAction, locale, t),
+      content: prompt || resolveActionLabel(effectiveAction, t),
       hasSelection,
       selectionPreview: aiSelectionPreview,
       paragraphPreview,
@@ -672,6 +702,9 @@ export function TipTapAiAssistant({
       appliedModes: [],
     }
 
+    const abortController = new AbortController()
+    activeStreamAbortRef.current = abortController
+    activeStreamMessageRef.current = assistantMessageId
     setAiLoading(true)
     setAiError('')
     setSessionMessages((current) => [...current, userMessage, assistantMessage])
@@ -682,11 +715,7 @@ export function TipTapAiAssistant({
         action: effectiveAction,
         model: aiSelectedModel || undefined,
         prompt: prompt || undefined,
-        title: options.title,
-        selectedText: context.selectedText || undefined,
-        currentParagraph: context.currentParagraph || undefined,
-        contextBefore: context.contextBefore || undefined,
-        contextAfter: context.contextAfter || undefined,
+        ...editorContextPayload,
       }, {
         onChunk: (chunk) => {
           updateSessionMessage(assistantMessageId, (message) => ({
@@ -694,8 +723,11 @@ export function TipTapAiAssistant({
             content: message.content + chunk,
           }))
         },
+        signal: abortController.signal,
       })
 
+      activeStreamAbortRef.current = null
+      activeStreamMessageRef.current = null
       updateSessionMessage(assistantMessageId, (currentMessage) => ({
         ...currentMessage,
         status: 'done',
@@ -712,6 +744,16 @@ export function TipTapAiAssistant({
       )))
       setAiPrompt('')
     } catch (error) {
+      activeStreamAbortRef.current = null
+      activeStreamMessageRef.current = null
+      if (error instanceof Error && error.name === 'AbortError') {
+        updateSessionMessage(assistantMessageId, (currentMessage) => ({
+          ...currentMessage,
+          status: currentMessage.content.trim() ? 'done' : 'error',
+          error: currentMessage.content.trim() ? undefined : t('editor.ai_generation_stopped'),
+        }))
+        return
+      }
       const message = error instanceof Error ? error.message : t('editor.ai_failed')
       setAiError(message)
       updateSessionMessage(assistantMessageId, (currentMessage) => ({
@@ -739,7 +781,6 @@ export function TipTapAiAssistant({
     options?.token,
     paragraphPreview,
     t,
-    locale,
     handleClearConversation,
     updateSessionMessage,
   ])
@@ -779,13 +820,13 @@ export function TipTapAiAssistant({
     if (event.key !== 'Enter' || !event.ctrlKey) return
     event.preventDefault()
 
-    if (aiLoading || aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing) {
+    if (isAiGenerating || aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing) {
       return
     }
 
     void runAiAction(aiMode ?? undefined)
   }, [
-    aiLoading,
+    isAiGenerating,
     aiMode,
     aiPromptPolishing,
     conversationClearing,
@@ -793,6 +834,15 @@ export function TipTapAiAssistant({
     conversationLoading,
     runAiAction,
   ])
+
+  const handlePrimaryAiButtonAction = useCallback(() => {
+    if (isAiGenerating) {
+      stopAiGeneration()
+      return
+    }
+
+    void runAiAction(aiMode ?? undefined)
+  }, [aiMode, isAiGenerating, runAiAction, stopAiGeneration])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1006,6 +1056,12 @@ export function TipTapAiAssistant({
     conversationViewportRef.current.scrollTop = conversationViewportRef.current.scrollHeight
   }, [sessionMessages])
 
+  useEffect(() => {
+    return () => {
+      activeStreamAbortRef.current?.abort()
+    }
+  }, [])
+
   if (!isEnabled || typeof document === 'undefined') {
     return null
   }
@@ -1187,7 +1243,7 @@ export function TipTapAiAssistant({
               </div>
             ) : (
               sessionMessages.map((message) => {
-                const actionLabel = resolveActionLabel(message.action, locale, t)
+                const actionLabel = resolveActionLabel(message.action, t)
                 const appliedModes = message.appliedModes ?? []
                 const canReplace = Boolean(message.content.trim()) && Boolean(message.selectionRange)
                 const canApply = Boolean(message.content.trim())
@@ -1284,7 +1340,7 @@ export function TipTapAiAssistant({
                       {message.status === 'error' ? (
                         <button
                           type="button"
-                          disabled={aiLoading}
+                          disabled={isAiGenerating}
                           onClick={() => void runAiAction(message.action === 'custom' ? 'custom' : message.action, message.prompt)}
                           className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -1306,7 +1362,7 @@ export function TipTapAiAssistant({
                     key={item.action}
                     type="button"
                     onClick={() => setAiMode((current) => (current === item.action ? null : item.action))}
-                    disabled={aiLoading}
+                    disabled={isAiGenerating}
                     className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                       aiMode === item.action
                       ? 'border-primary bg-primary/10 text-primary'
@@ -1323,7 +1379,7 @@ export function TipTapAiAssistant({
                 <div className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+10px)] z-20">
                   <div className="pointer-events-auto rounded-2xl border border-border/70 bg-background/95 p-2 shadow-[0_16px_40px_rgba(15,23,42,0.14)] backdrop-blur">
                     <div className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                      {locale === 'zh' ? '指令' : 'Commands'}
+                      {t('editor.ai_commands')}
                     </div>
                     <div className="space-y-1">
                       {matchedSlashCommands.map((item) => (
@@ -1363,7 +1419,7 @@ export function TipTapAiAssistant({
                         showAiModelMenu
                           ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
                           : 'border-border/80 bg-background/90 hover:border-primary/30'
-                      } ${aiModelsLoading || aiLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                      } ${aiModelsLoading || isAiGenerating ? 'cursor-not-allowed opacity-60' : ''}`}
                       role="combobox"
                       aria-expanded={showAiModelMenu}
                       aria-haspopup="listbox"
@@ -1379,7 +1435,7 @@ export function TipTapAiAssistant({
                             setShowAiModelMenu(true)
                           }}
                           onClick={() => setShowAiModelMenu(true)}
-                          disabled={aiModelsLoading || aiLoading}
+                          disabled={aiModelsLoading || isAiGenerating}
                           placeholder={aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_model_search_placeholder')}
                           className="block h-5 w-full truncate bg-transparent text-xs font-medium text-foreground outline-none placeholder:text-muted-foreground/70"
                         />
@@ -1387,7 +1443,7 @@ export function TipTapAiAssistant({
                       <button
                         type="button"
                         onClick={() => setShowAiModelMenu((current) => !current)}
-                        disabled={aiModelsLoading || aiLoading}
+                        disabled={aiModelsLoading || isAiGenerating}
                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
                         tabIndex={-1}
                       >
@@ -1438,7 +1494,7 @@ export function TipTapAiAssistant({
                   <button
                     type="button"
                     onClick={() => void refreshAiModels()}
-                    disabled={aiModelsLoading || aiLoading || conversationLoading}
+                    disabled={aiModelsLoading || isAiGenerating || conversationLoading}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     title={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
                     aria-label={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
@@ -1450,7 +1506,7 @@ export function TipTapAiAssistant({
                   <button
                     type="button"
                     onClick={() => void handlePolishPrompt()}
-                    disabled={!aiPrompt.trim() || aiLoading || aiPromptPolishing || conversationClearing}
+                    disabled={!aiPrompt.trim() || isAiGenerating || aiPromptPolishing || conversationClearing}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     title={t('editor.ai_polish_prompt')}
                     aria-label={t('editor.ai_polish_prompt')}
@@ -1459,13 +1515,25 @@ export function TipTapAiAssistant({
                   </button>
                   <button
                     type="button"
-                    onClick={() => void runAiAction(aiMode ?? undefined)}
-                    disabled={aiLoading || aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing}
+                    onPointerDown={(event) => {
+                      if (!isAiGenerating) return
+                      event.preventDefault()
+                      stopAiGeneration()
+                    }}
+                    onClick={handlePrimaryAiButtonAction}
+                    disabled={isAiGenerating ? false : (aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing)}
                     className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={isAiGenerating ? t('editor.ai_stop_generating') : t('editor.ai_generate')}
                   >
-                    {aiLoading || conversationClearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {aiPromptTrimmed === AI_SLASH_CLEAR_COMMAND
-                      ? (locale === 'zh' ? '清除上下文' : 'Clear context')
+                    {isAiGenerating
+                      ? <Square className="h-4 w-4 fill-current" />
+                      : conversationClearing
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Sparkles className="h-4 w-4" />}
+                    {isAiGenerating
+                      ? t('editor.ai_stop')
+                      : aiPromptTrimmed === AI_SLASH_CLEAR_COMMAND
+                      ? t('editor.ai_clear_context')
                       : t('editor.ai_generate')}
                   </button>
                 </div>
