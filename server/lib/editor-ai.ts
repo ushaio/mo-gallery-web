@@ -145,6 +145,22 @@ export async function deleteEditorAiConversation(conversationId: string) {
   })
 }
 
+export async function clearEditorAiConversationMessages(conversationId: string) {
+  await db.aiMessage.deleteMany({
+    where: { conversationId },
+  })
+
+  const conversation = await db.aiConversation.update({
+    where: { id: conversationId },
+    data: {
+      summary: null,
+      lastModel: null,
+    },
+  })
+
+  return toConversationDto(conversation)
+}
+
 export async function listEditorAiMessages(conversationId: string, limit = 50) {
   const messages = await db.aiMessage.findMany({
     where: { conversationId },

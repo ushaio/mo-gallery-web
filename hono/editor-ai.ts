@@ -6,6 +6,7 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 import { fetchStoryAiModels } from '~/server/lib/story-ai'
 import {
   buildEditorAiHistoryMessages,
+  clearEditorAiConversationMessages,
   createEditorAiMessage,
   deleteEditorAiConversation,
   ensureEditorAiConversation,
@@ -130,6 +131,21 @@ editorAi.delete('/admin/editor-ai/conversations/:id', async (c) => {
     })
   } catch (error) {
     console.error('Delete editor AI conversation error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+editorAi.post('/admin/editor-ai/conversations/:id/clear', async (c) => {
+  try {
+    const conversationId = c.req.param('id')
+    const conversation = await clearEditorAiConversationMessages(conversationId)
+
+    return c.json({
+      success: true,
+      data: conversation,
+    })
+  } catch (error) {
+    console.error('Clear editor AI conversation error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

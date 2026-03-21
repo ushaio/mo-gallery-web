@@ -133,6 +133,12 @@ export async function deleteEditorAiConversation(token: string, conversationId: 
   }, token)
 }
 
+export async function clearEditorAiConversation(token: string, conversationId: string): Promise<EditorAiConversationDto> {
+  return apiRequestData<EditorAiConversationDto>(`/api/admin/editor-ai/conversations/${conversationId}/clear`, {
+    method: 'POST',
+  }, token)
+}
+
 export async function polishStoryAiPrompt(
   token: string,
   input: {
