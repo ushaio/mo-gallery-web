@@ -604,7 +604,7 @@ export function TipTapAiAssistant({
     setShowConversationMenu(false)
   }, [])
 
-  const runAiAction = useCallback(async (action: StoryAiAction, promptOverride?: string) => {
+  const runAiAction = useCallback(async (action?: StoryAiAction, promptOverride?: string) => {
     if (!isEnabled) return
     if (!options?.token) {
       setAiError(t('editor.ai_missing_token'))
