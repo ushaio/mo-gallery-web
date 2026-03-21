@@ -52,7 +52,7 @@ type AssistantMessageStatus = 'streaming' | 'done' | 'error'
 interface AiSessionMessage {
   id: string
   role: 'user' | 'assistant'
-  action: StoryAiAction
+  action?: StoryAiAction
   prompt: string
   content: string
   hasSelection: boolean
@@ -93,7 +93,8 @@ function buildMessageId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function resolveActionLabel(action: StoryAiAction, t: (key: string) => string) {
+function resolveActionLabel(action: StoryAiAction | undefined, t: (key: string) => string) {
+  if (!action) return ''
   if (action === 'custom') return t('editor.ai_action_custom')
   const preset = AI_PRESET_ACTIONS.find((item) => item.action === action)
   return preset ? t(`editor.ai_action_${preset.key}`) : action
@@ -208,7 +209,7 @@ export function TipTapAiAssistant({
   const [conversationLoading, setConversationLoading] = useState(false)
   const [conversationSaving, setConversationSaving] = useState(false)
   const [conversationDeleting, setConversationDeleting] = useState(false)
-  const [aiMode, setAiMode] = useState<StoryAiAction>('rewrite')
+  const [aiMode, setAiMode] = useState<StoryAiAction | null>(null)
   const [aiModelsLoading, setAiModelsLoading] = useState(false)
   const [aiModelOptions, setAiModelOptions] = useState<StoryAiModelOption[]>([])
   const [aiSelectedModel, setAiSelectedModel] = useState('')
@@ -305,20 +306,13 @@ export function TipTapAiAssistant({
         return
       }
 
-      setConversations(items)
-      const nextConversationId = items.some((item) => item.id === activeConversationId)
-        ? activeConversationId
-        : items[0]?.id
-
-      if (!nextConversationId) {
-        setActiveConversationId(null)
-        setSessionMessages([])
+      if (activeConversationId && items.some((item) => item.id === activeConversationId)) {
+        await loadConversationDetail(activeConversationId)
         return
       }
 
-      if (nextConversationId !== activeConversationId) {
-        await loadConversationDetail(nextConversationId)
-      }
+      setActiveConversationId(null)
+      setSessionMessages([])
     } catch (error) {
       setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
     } finally {
@@ -327,30 +321,12 @@ export function TipTapAiAssistant({
   }, [activeConversationId, isEnabled, loadConversationDetail, options?.scopeId, options?.token, t])
 
   const handleCreateConversation = useCallback(async () => {
-    if (!options?.token || !options?.scopeId) {
-      setAiError(t('editor.ai_missing_scope'))
-      return
-    }
-
-    setConversationSaving(true)
     setAiError('')
-
-    try {
-      const conversation = await createEditorAiConversation(options.token, {
-        scopeId: options.scopeId,
-        title: options.title,
-      })
-      setConversations((current) => [conversation, ...current])
-      setActiveConversationId(conversation.id)
-      setSessionMessages([])
-      setAiPrompt('')
-      setShowConversationMenu(false)
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
-    } finally {
-      setConversationSaving(false)
-    }
-  }, [options?.scopeId, options?.title, options?.token, t])
+    setActiveConversationId(null)
+    setSessionMessages([])
+    setAiPrompt('')
+    setShowConversationMenu(false)
+  }, [])
 
   const handleDeleteConversation = useCallback(async (conversationId?: string) => {
     const targetConversationId = conversationId ?? activeConversationId
@@ -366,20 +342,15 @@ export function TipTapAiAssistant({
       setShowConversationMenu(false)
 
       if (activeConversationId === targetConversationId) {
-        const nextConversation = remaining[0]
-        if (nextConversation) {
-          await loadConversationDetail(nextConversation.id)
-        } else {
-          setActiveConversationId(null)
-          setSessionMessages([])
-        }
+        setActiveConversationId(null)
+        setSessionMessages([])
       }
     } catch (error) {
       setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
     } finally {
       setConversationDeleting(false)
     }
-  }, [activeConversationId, conversations, loadConversationDetail, options?.token, t])
+  }, [activeConversationId, conversations, options?.token, t])
 
   const refreshAiModels = useCallback(async () => {
     if (!isEnabled || !options?.token) {
@@ -570,7 +541,7 @@ export function TipTapAiAssistant({
     }
 
     const prompt = (promptOverride ?? aiPrompt).trim()
-    const effectiveAction: StoryAiAction = prompt ? 'custom' : action
+    const effectiveAction = action ?? (prompt ? 'custom' : undefined)
     const hasSelection = context.hasSelection && Boolean(context.selectedText.trim())
 
     let conversationId = activeConversationId
@@ -600,7 +571,7 @@ export function TipTapAiAssistant({
       role: 'user',
       action: effectiveAction,
       prompt,
-      content: prompt || resolveActionLabel(action, t),
+      content: prompt || resolveActionLabel(effectiveAction, t),
       hasSelection,
       selectionPreview: aiSelectionPreview,
       paragraphPreview,
@@ -695,7 +666,7 @@ export function TipTapAiAssistant({
     try {
       const response = await polishStoryAiPrompt(options.token, {
         text: prompt,
-        action: aiMode,
+        action: aiMode ?? undefined,
         hasSelection: context.hasSelection,
         model: aiSelectedModel || undefined,
       })
@@ -928,144 +899,108 @@ export function TipTapAiAssistant({
         >
           <div className="border-b border-border/60 px-4 pb-4 pt-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Wand2 className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{t('editor.ai_panel_title')}</div>
-                      <div className="mt-0.5 text-xs font-normal text-muted-foreground">
-                        {t('editor.ai_chat_subtitle')}
-                      </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <div
+                      ref={conversationMenuButtonRef}
+                      className={`flex h-10 min-w-0 items-center justify-between gap-2 rounded-full border px-3 text-left text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow,background-color] ${
+                        showConversationMenu
+                          ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
+                          : 'border-border/80 bg-background/90 hover:border-primary/30'
+                      } ${conversationSaving || conversationLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={showConversationMenu}
+                      aria-haspopup="listbox"
+                      aria-controls={conversationMenuId}
+                      onClick={() => {
+                        if (conversationSaving || conversationLoading) return
+                        setShowConversationMenu((current) => !current)
+                      }}
+                      onKeyDown={(event) => {
+                        if (conversationSaving || conversationLoading) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          setShowConversationMenu((current) => !current)
+                        }
+                      }}
+                    >
+                      <span className="flex min-w-0 items-center gap-2 truncate font-medium text-foreground">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Wand2 className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="truncate">
+                          {conversationLoading ? t('editor.ai_conversation_loading') : activeConversationLabel}
+                        </span>
+                      </span>
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${showConversationMenu ? 'rotate-180' : ''}`} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="relative min-w-0 flex-1">
-                        <div
-                          ref={conversationMenuButtonRef}
-                          className={`flex h-10 min-w-0 items-center justify-between gap-2 rounded-full border px-3 text-left text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow,background-color] ${
-                            showConversationMenu
-                              ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
-                              : 'border-border/80 bg-background/90 hover:border-primary/30'
-                          } ${conversationSaving || conversationLoading ? 'cursor-not-allowed opacity-60' : ''}`}
-                          role="button"
-                          tabIndex={0}
-                          aria-expanded={showConversationMenu}
-                          aria-haspopup="listbox"
-                          aria-controls={conversationMenuId}
-                          onClick={() => {
-                            if (conversationSaving || conversationLoading) return
-                            setShowConversationMenu((current) => !current)
-                          }}
-                          onKeyDown={(event) => {
-                            if (conversationSaving || conversationLoading) return
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              setShowConversationMenu((current) => !current)
-                            }
-                          }}
-                        >
-                          <span className="min-w-0 truncate font-medium text-foreground">
-                            {conversationLoading ? t('editor.ai_conversation_loading') : activeConversationLabel}
-                          </span>
-                          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${showConversationMenu ? 'rotate-180' : ''}`} />
-                        </div>
-                        {showConversationMenu ? (
-                          <div
-                            ref={conversationMenuRef}
-                            id={conversationMenuId}
-                            className="absolute left-0 top-[calc(100%+8px)] z-30 w-full overflow-hidden rounded-2xl border border-border/80 bg-background/98 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur"
-                            role="listbox"
+                    {showConversationMenu ? (
+                      <div
+                        ref={conversationMenuRef}
+                        id={conversationMenuId}
+                        className="absolute left-0 top-[calc(100%+8px)] z-30 w-full overflow-hidden rounded-2xl border border-border/80 bg-background/98 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur"
+                        role="listbox"
+                      >
+                        <div className="border-b border-border/60 p-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateConversation()}
+                            disabled={conversationSaving}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <div className="border-b border-border/60 p-2">
-                              <button
-                                type="button"
-                                onClick={() => void handleCreateConversation()}
-                                disabled={conversationSaving}
-                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Plus className="h-4 w-4" />
-                                {t('editor.ai_conversation_new')}
-                              </button>
+                            <Plus className="h-4 w-4" />
+                            {t('editor.ai_conversation_new')}
+                          </button>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto p-2">
+                          {conversations.length === 0 ? (
+                            <div className="rounded-xl px-3 py-2 text-sm text-muted-foreground">
+                              {t('editor.ai_conversation_empty')}
                             </div>
-                            <div className="max-h-64 overflow-y-auto p-2">
-                              {conversations.length === 0 ? (
-                                <div className="rounded-xl px-3 py-2 text-sm text-muted-foreground">
-                                  {t('editor.ai_conversation_empty')}
+                          ) : (
+                            conversations.map((conversation) => {
+                              const isSelected = conversation.id === activeConversationId
+                              const label = conversation.title?.trim()
+                                || conversation.summary?.trim()
+                                || `${t('editor.ai_conversation_label')} ${conversation.createdAt.slice(0, 10)}`
+                              return (
+                                <div
+                                  key={conversation.id}
+                                  className={`flex items-center gap-2 rounded-xl px-3 py-2 transition-colors ${
+                                    isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void loadConversationDetail(conversation.id)
+                                      setShowConversationMenu(false)
+                                    }}
+                                    className="min-w-0 flex-1 text-left"
+                                  >
+                                    <div className="truncate text-sm font-medium">{label}</div>
+                                    <div className="truncate text-xs text-muted-foreground">{new Date(conversation.updatedAt).toLocaleString()}</div>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteConversation(conversation.id)}
+                                    disabled={conversationDeleting}
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                                    title={t('editor.ai_conversation_delete')}
+                                    aria-label={t('editor.ai_conversation_delete')}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
                                 </div>
-                              ) : (
-                                conversations.map((conversation) => {
-                                  const isSelected = conversation.id === activeConversationId
-                                  const label = conversation.title?.trim()
-                                    || conversation.summary?.trim()
-                                    || `${t('editor.ai_conversation_label')} ${conversation.createdAt.slice(0, 10)}`
-                                  return (
-                                    <div
-                                      key={conversation.id}
-                                      className={`flex items-center gap-2 rounded-xl px-3 py-2 transition-colors ${
-                                        isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'
-                                      }`}
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          void loadConversationDetail(conversation.id)
-                                          setShowConversationMenu(false)
-                                        }}
-                                        className="min-w-0 flex-1 text-left"
-                                      >
-                                        <div className="truncate text-sm font-medium">{label}</div>
-                                        <div className="truncate text-xs text-muted-foreground">{new Date(conversation.updatedAt).toLocaleString()}</div>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDeleteConversation(conversation.id)}
-                                        disabled={conversationDeleting}
-                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
-                                        title={t('editor.ai_conversation_delete')}
-                                        aria-label={t('editor.ai_conversation_delete')}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  )
-                                })
-                              )}
-                            </div>
-                          </div>
-                        ) : null}
+                              )
+                            })
+                          )}
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleCreateConversation()}
-                        disabled={conversationSaving}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                        title={t('editor.ai_conversation_new')}
-                        aria-label={t('editor.ai_conversation_new')}
-                      >
-                        {conversationSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteConversation()}
-                        disabled={!activeConversationId || conversationDeleting}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
-                        title={t('editor.ai_conversation_delete')}
-                        aria-label={t('editor.ai_conversation_delete')}
-                      >
-                        {conversationDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      </button>
-                    </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  <span className="truncate">
-                    {context.hasSelection && aiSelectionPreview
-                      ? `${t('editor.ai_context_selection')}: ${aiSelectionPreview}`
-                      : `${t('editor.ai_context_paragraph')}: ${paragraphPreview || t('editor.ai_scope_paragraph')}`}
-                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1089,7 +1024,24 @@ export function TipTapAiAssistant({
               </div>
             ) : sessionMessages.length === 0 ? (
               <div className="rounded-[24px] border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground">{t('editor.ai_chat_empty_title')}</div>
+                <div className="flex items-center gap-3 text-foreground">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Wand2 className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="font-medium">{t('editor.ai_panel_title')}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{t('editor.ai_chat_subtitle')}</div>
+                  </div>
+                </div>
+                <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <span className="truncate">
+                    {context.hasSelection && aiSelectionPreview
+                      ? `${t('editor.ai_context_selection')}: ${aiSelectionPreview}`
+                      : `${t('editor.ai_context_paragraph')}: ${paragraphPreview || t('editor.ai_scope_paragraph')}`}
+                  </span>
+                </div>
+                <div className="mt-4 font-medium text-foreground">{t('editor.ai_chat_empty_title')}</div>
                 <div className="mt-2 leading-6">{t('editor.ai_chat_empty_description')}</div>
               </div>
             ) : (
@@ -1106,9 +1058,11 @@ export function TipTapAiAssistant({
                         <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                           {t('editor.ai_chat_you')}
                         </div>
-                        <div className="rounded-full bg-background px-2.5 py-1 text-[11px] font-medium text-foreground">
-                          {actionLabel}
-                        </div>
+                        {actionLabel ? (
+                          <div className="rounded-full bg-background px-2.5 py-1 text-[11px] font-medium text-foreground">
+                            {actionLabel}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
                         {message.prompt || t('editor.ai_prompt_empty')}
@@ -1133,7 +1087,9 @@ export function TipTapAiAssistant({
                         </span>
                         {t('editor.ai_panel_title')}
                       </div>
-                      <div className="text-xs text-muted-foreground">{actionLabel}</div>
+                      {actionLabel ? (
+                        <div className="text-xs text-muted-foreground">{actionLabel}</div>
+                      ) : null}
                     </div>
 
                     <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">
@@ -1202,15 +1158,15 @@ export function TipTapAiAssistant({
           </div>
 
           <div className="border-t border-border/60 bg-background/90 px-4 pb-4 pt-4">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {AI_PRESET_ACTIONS.map((item) => (
-                <button
-                  key={item.action}
-                  type="button"
-                  onClick={() => setAiMode(item.action)}
-                  disabled={aiLoading}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                    aiMode === item.action
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {AI_PRESET_ACTIONS.map((item) => (
+                  <button
+                    key={item.action}
+                    type="button"
+                    onClick={() => setAiMode((current) => (current === item.action ? null : item.action))}
+                    disabled={aiLoading}
+                    className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                      aiMode === item.action
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
                   } disabled:cursor-not-allowed disabled:opacity-60`}
@@ -1340,12 +1296,12 @@ export function TipTapAiAssistant({
                   >
                     {aiPromptPolishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                   </button>
-                    <button
-                      type="button"
-                      onClick={() => void runAiAction(aiMode)}
-                      disabled={aiLoading || aiPromptPolishing || conversationLoading || conversationDeleting}
-                      className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
+                  <button
+                    type="button"
+                    onClick={() => void runAiAction(aiMode ?? undefined)}
+                    disabled={aiLoading || aiPromptPolishing || conversationLoading || conversationDeleting}
+                    className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
                     {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     {t('editor.ai_generate')}
                   </button>

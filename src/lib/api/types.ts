@@ -111,7 +111,7 @@ export type StoryAiAction =
   | 'custom'
 
 export interface StoryAiGenerateInput {
-  action: StoryAiAction
+  action?: StoryAiAction
   model?: string
   prompt?: string
   title?: string
@@ -172,7 +172,7 @@ export interface EditorAiConversationsQuery {
   scopeId: string
 }
 
-export interface EditorAiGenerateInput extends StoryAiGenerateInput {
+export type EditorAiGenerateInput = StoryAiGenerateInput & {
   conversationId: string
 }
 

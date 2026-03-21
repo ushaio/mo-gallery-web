@@ -30,7 +30,7 @@ const ConversationListSchema = z.object({
 
 const GenerateEditorAiSchema = z.object({
   conversationId: z.string().min(1),
-  action: z.enum(['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']),
+  action: z.enum(['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']).optional(),
   model: z.string().max(200).optional(),
   prompt: z.string().max(2000).optional(),
   title: z.string().max(200).optional(),
@@ -138,17 +138,19 @@ editorAi.post('/admin/editor-ai/generate', async (c) => {
   try {
     const body = await c.req.json()
     const validated = GenerateEditorAiSchema.parse(body)
+    const resolvedAction = validated.action ?? 'custom'
 
     const historyMessages = await buildEditorAiHistoryMessages(validated.conversationId)
     const userMessage = await createEditorAiMessage({
       conversationId: validated.conversationId,
       role: 'user',
-      content: validated.prompt?.trim() || validated.selectedText?.trim() || validated.currentParagraph?.trim() || validated.action,
+      content: validated.prompt?.trim() || validated.selectedText?.trim() || validated.currentParagraph?.trim() || resolvedAction,
       status: 'completed',
       model: validated.model,
-      action: validated.action,
+      action: resolvedAction,
       metadata: {
         title: validated.title,
+        prompt: validated.prompt,
         selectedText: validated.selectedText,
         currentParagraph: validated.currentParagraph,
         contextBefore: validated.contextBefore,
@@ -162,14 +164,14 @@ editorAi.post('/admin/editor-ai/generate', async (c) => {
       content: '',
       status: 'streaming',
       model: validated.model,
-      action: validated.action,
+      action: resolvedAction,
       metadata: {
         userMessageId: userMessage.id,
       },
     })
 
     const stream = await createEditorAiStream({
-      action: validated.action,
+      action: resolvedAction,
       model: validated.model,
       prompt: validated.prompt,
       title: validated.title,
