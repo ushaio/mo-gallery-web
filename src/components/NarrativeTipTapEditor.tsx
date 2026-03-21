@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, {
   forwardRef,
@@ -43,6 +43,7 @@ import {
   Undo,
   Redo,
 } from 'lucide-react'
+import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import './tiptap-editor.css'
 
@@ -69,51 +70,6 @@ const IMAGE_WIDTH_PRESETS: Record<'sm' | 'md' | 'lg', number> = {
   md: 480,
   lg: 720,
 }
-
-const HEADING_OPTIONS = [
-  { label: '正文', value: '' },
-  { label: '标题 1', value: '1' },
-  { label: '标题 2', value: '2' },
-  { label: '标题 3', value: '3' },
-] as const
-
-const FONT_SIZE_OPTIONS = [
-  { label: '默认字号', value: '' },
-  { label: '12px', value: '12px' },
-  { label: '14px', value: '14px' },
-  { label: '16px', value: '16px' },
-  { label: '18px', value: '18px' },
-  { label: '20px', value: '20px' },
-  { label: '24px', value: '24px' },
-  { label: '28px', value: '28px' },
-] as const
-
-const FONT_FAMILY_OPTIONS = [
-  {
-    label: '默认字体',
-    value: '',
-  },
-  {
-    label: '衬线',
-    value: 'var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-  },
-  {
-    label: '无衬线',
-    value: 'var(--font-sans), ui-sans-serif, system-ui, sans-serif',
-  },
-  {
-    label: '宋体风格',
-    value: '"STSong", "Songti SC", "Noto Serif SC", serif',
-  },
-  {
-    label: '黑体风格',
-    value: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-  },
-  {
-    label: '等宽',
-    value: 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace',
-  },
-] as const
 
 function ensureFirstParagraphHasDropCap(currentEditor: Editor) {
   let offset = 0
@@ -264,7 +220,7 @@ function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, childr
       title={title}
       className={`flex h-8 min-w-8 items-center justify-center border px-2 text-[11px] transition-all duration-200 ${
         isActive
-          ? 'border-primary/30 bg-primary/10 text-primary shadow-sm'
+          ? 'border-border bg-background text-accent-foreground'
           : 'border-transparent text-muted-foreground hover:border-border hover:bg-background hover:text-accent-foreground'
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
@@ -312,7 +268,53 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
+    const { t } = useLanguage()
     const { resolvedTheme } = useTheme()
+
+    const headingOptions = useMemo(() => [
+      { label: t('editor.heading_paragraph'), value: '' },
+      { label: t('editor.heading_1'), value: '1' },
+      { label: t('editor.heading_2'), value: '2' },
+      { label: t('editor.heading_3'), value: '3' },
+    ], [t])
+
+    const fontSizeOptions = useMemo(() => [
+      { label: t('editor.font_size_default'), value: '' },
+      { label: '12px', value: '12px' },
+      { label: '14px', value: '14px' },
+      { label: '16px', value: '16px' },
+      { label: '18px', value: '18px' },
+      { label: '20px', value: '20px' },
+      { label: '24px', value: '24px' },
+      { label: '28px', value: '28px' },
+    ], [t])
+
+    const fontFamilyOptions = useMemo(() => [
+      {
+        label: t('editor.font_family_default'),
+        value: '',
+      },
+      {
+        label: t('editor.font_family_serif'),
+        value: 'var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+      },
+      {
+        label: t('editor.font_family_sans'),
+        value: 'var(--font-sans), ui-sans-serif, system-ui, sans-serif',
+      },
+      {
+        label: t('editor.font_family_song'),
+        value: '"STSong", "Songti SC", "Noto Serif SC", serif',
+      },
+      {
+        label: t('editor.font_family_hei'),
+        value: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
+      },
+      {
+        label: t('editor.font_family_mono'),
+        value: 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace',
+      },
+    ], [t])
 
     useEffect(() => {
       currentValueRef.current = value
@@ -340,7 +342,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           },
         }),
         Placeholder.configure({
-          placeholder: placeholder || '开始编写你的故事...',
+          placeholder: placeholder || t('editor.placeholder'),
           emptyEditorClass: 'is-editor-empty',
         }),
         Link.configure({
@@ -679,20 +681,39 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
     }, [editor])
 
-    const setTextAlign = (align: 'left' | 'center' | 'right') => {
+    const setTextAlign = useCallback((align: 'left' | 'center' | 'right') => {
       if (!editor) return
-      editor.chain().focus().setTextAlign(align).run()
-    }
+
+      const chain = editor.chain().focus()
+
+      if ((align === 'center' || align === 'right') && resolvedEditorUiState.hasDropCap) {
+        chain.setParagraphDropCap(false)
+      }
+
+      chain.setTextAlign(align).run()
+    }, [editor, resolvedEditorUiState.hasDropCap])
 
     const toggleDropCap = useCallback(() => {
       if (!editor) return
 
-      editor
-        .chain()
-        .focus()
-        .setParagraphDropCap(resolvedEditorUiState.hasDropCap ? false : true)
-        .run()
-    }, [editor, resolvedEditorUiState.hasDropCap])
+      const chain = editor.chain().focus()
+
+      if (resolvedEditorUiState.hasDropCap) {
+        chain.setParagraphDropCap(false).run()
+        return
+      }
+
+      if (resolvedEditorUiState.isAlignCenter || resolvedEditorUiState.isAlignRight) {
+        chain.setTextAlign('left')
+      }
+
+      chain.setParagraphDropCap(true).run()
+    }, [
+      editor,
+      resolvedEditorUiState.hasDropCap,
+      resolvedEditorUiState.isAlignCenter,
+      resolvedEditorUiState.isAlignRight,
+    ])
 
     const setHeadingLevel = useCallback((level: string) => {
       if (!editor) return
@@ -777,74 +798,74 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             value={resolvedEditorUiState.headingLevel}
             onChange={setHeadingLevel}
             onMouseDown={preserveSelectionOnSelectMouseDown}
-            title="标题级别"
-            options={HEADING_OPTIONS}
+            title={t('editor.heading_level')}
+            options={headingOptions}
           />
 
           <ToolbarSelect
             value={resolvedEditorUiState.fontFamily}
             onChange={setFontFamily}
             onMouseDown={preserveSelectionOnSelectMouseDown}
-            title="字体"
-            options={FONT_FAMILY_OPTIONS}
+            title={t('editor.font_family')}
+            options={fontFamilyOptions}
           />
           <ToolbarSelect
             value={resolvedEditorUiState.fontSize}
             onChange={setFontSize}
             onMouseDown={preserveSelectionOnSelectMouseDown}
-            title="字号"
-            options={FONT_SIZE_OPTIONS}
+            title={t('editor.font_size')}
+            options={fontSizeOptions}
           />
 
           <ToolbarDivider />
 
-          <ToolbarButton onClick={toggleBold} isActive={editor.isActive('bold')} title="粗体">
+          <ToolbarButton onClick={toggleBold} isActive={resolvedEditorUiState.isBold} title={t('editor.bold')}>
             <Bold className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleItalic} isActive={editor.isActive('italic')} title="斜体">
+          <ToolbarButton onClick={toggleItalic} isActive={resolvedEditorUiState.isItalic} title={t('editor.italic')}>
             <Italic className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleUnderline} isActive={editor.isActive('underline')} title="下划线">
+          <ToolbarButton onClick={toggleUnderline} isActive={resolvedEditorUiState.isUnderline} title={t('editor.underline')}>
             <UnderlineIcon className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleStrike} isActive={editor.isActive('strike')} title="删除线">
+          <ToolbarButton onClick={toggleStrike} isActive={resolvedEditorUiState.isStrike} title={t('editor.strike')}>
             <Strikethrough className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleCode} isActive={editor.isActive('code')} title="行内代码">
+          <ToolbarButton onClick={toggleCode} isActive={resolvedEditorUiState.isCode} title={t('editor.inline_code')}>
             <Code className="w-4 h-4" />
           </ToolbarButton>
 
           <ToolbarDivider />
 
-          <ToolbarButton onClick={toggleBulletList} isActive={editor.isActive('bulletList')} title="无序列表">
+          <ToolbarButton onClick={toggleBulletList} isActive={resolvedEditorUiState.isBulletList} title={t('editor.bullet_list')}>
             <List className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleOrderedList} isActive={editor.isActive('orderedList')} title="有序列表">
+          <ToolbarButton onClick={toggleOrderedList} isActive={resolvedEditorUiState.isOrderedList} title={t('editor.ordered_list')}>
             <ListOrdered className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleBlockquote} isActive={editor.isActive('blockquote')} title="引用">
+          <ToolbarButton onClick={toggleBlockquote} isActive={resolvedEditorUiState.isBlockquote} title={t('editor.blockquote')}>
             <Quote className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={toggleDropCap} isActive={resolvedEditorUiState.hasDropCap} title="首字放大">
+          <ToolbarButton onClick={toggleDropCap} isActive={resolvedEditorUiState.hasDropCap} title={t('editor.drop_cap')}>
             <Pilcrow className="w-4 h-4" />
           </ToolbarButton>
 
           <ToolbarDivider />
 
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('left')} isActive={editor.isActive({ textAlign: 'left' })} title="左对齐">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('left')} isActive={resolvedEditorUiState.isAlignLeft} title={t('editor.align_left')}>
             <AlignLeft className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('center')} isActive={editor.isActive({ textAlign: 'center' })} title="居中">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('center')} isActive={resolvedEditorUiState.isAlignCenter} title={t('editor.align_center')}>
             <AlignCenter className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('right')} isActive={editor.isActive({ textAlign: 'right' })} title="右对齐">
+          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('right')} isActive={resolvedEditorUiState.isAlignRight} title={t('editor.align_right')}>
             <AlignRight className="w-4 h-4" />
           </ToolbarButton>
 
           <ToolbarDivider />
 
           <div className="relative">
-            <ToolbarButton onClick={setLink} isActive={editor.isActive('link')} title="链接">
+            <ToolbarButton onClick={setLink} isActive={resolvedEditorUiState.isLink} title={t('editor.link')}>
               <LinkIcon className="w-4 h-4" />
             </ToolbarButton>
             {showLinkInput && (
@@ -853,7 +874,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   type="url"
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="输入链接 URL"
+                  placeholder={t('editor.link_placeholder')}
                   className="w-40 border border-border px-2 py-1 text-xs focus:border-primary outline-none"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') setLink()
@@ -865,14 +886,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   onClick={setLink}
                   className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
                 >
-                  确认
+                  {t('editor.confirm')}
                 </button>
               </div>
             )}
           </div>
 
           <div className="relative">
-            <ToolbarButton onClick={addImage} title="图片">
+            <ToolbarButton onClick={addImage} title={t('editor.image')}>
               <ImageIcon className="w-4 h-4" />
             </ToolbarButton>
             {showImageInput && (
@@ -881,7 +902,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   type="url"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="输入图片 URL"
+                  placeholder={t('editor.image_placeholder')}
                   className="w-40 border border-border px-2 py-1 text-xs focus:border-primary outline-none"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addImage()
@@ -893,22 +914,22 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   onClick={addImage}
                   className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
                 >
-                  确认
+                  {t('editor.confirm')}
                 </button>
               </div>
             )}
           </div>
 
-          <ToolbarButton onClick={addTable} title="表格">
+          <ToolbarButton onClick={addTable} title={t('editor.table')}>
             <TableIcon className="w-4 h-4" />
           </ToolbarButton>
 
           <ToolbarDivider />
 
-          <ToolbarButton onClick={undo} disabled={!editor.can().undo()} title="撤销">
+          <ToolbarButton onClick={undo} disabled={!editor.can().undo()} title={t('editor.undo')}>
             <Undo className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={redo} disabled={!editor.can().redo()} title="重做">
+          <ToolbarButton onClick={redo} disabled={!editor.can().redo()} title={t('editor.redo')}>
             <Redo className="w-4 h-4" />
           </ToolbarButton>
         </div>

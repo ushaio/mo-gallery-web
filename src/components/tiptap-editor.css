@@ -174,18 +174,6 @@
   line-height: 0.8;
 }
 
-.tiptap-editor .tiptap > p[style*='text-align: center']:first-of-type:not([data-drop-cap='false'])::first-letter,
-.tiptap-editor .tiptap > p[style*='text-align: center'][data-drop-cap='true']::first-letter,
-.tiptap-editor .tiptap > p[style*='text-align: right']:first-of-type:not([data-drop-cap='false'])::first-letter,
-.tiptap-editor .tiptap > p[style*='text-align: right'][data-drop-cap='true']::first-letter {
-  float: none;
-  margin-right: 0;
-  margin-top: 0;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-}
-
 .tiptap-editor .tiptap img {
   display: inline-block;
   vertical-align: top;
