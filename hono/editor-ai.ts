@@ -7,7 +7,10 @@ import { fetchStoryAiModels } from '~/server/lib/story-ai'
 import {
   buildEditorAiHistoryMessages,
   createEditorAiMessage,
+  deleteEditorAiConversation,
   ensureEditorAiConversation,
+  getEditorAiConversationWithMessages,
+  listEditorAiConversations,
   listEditorAiMessages,
   touchEditorAiConversation,
   updateEditorAiMessage,
@@ -19,6 +22,10 @@ const editorAi = new Hono<{ Variables: AuthVariables }>()
 const ConversationScopeSchema = z.object({
   scopeId: z.string().min(1).max(120),
   title: z.string().max(200).optional(),
+})
+
+const ConversationListSchema = z.object({
+  scopeId: z.string().min(1).max(120),
 })
 
 const GenerateEditorAiSchema = z.object({
@@ -58,6 +65,46 @@ editorAi.post('/admin/editor-ai/conversations', async (c) => {
   }
 })
 
+editorAi.get('/admin/editor-ai/conversations', async (c) => {
+  try {
+    const query = ConversationListSchema.parse({
+      scopeId: c.req.query('scopeId'),
+    })
+
+    const conversations = await listEditorAiConversations(query.scopeId)
+
+    return c.json({
+      success: true,
+      data: conversations,
+    })
+  } catch (error) {
+    console.error('List editor AI conversations error:', error)
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+editorAi.get('/admin/editor-ai/conversations/:id', async (c) => {
+  try {
+    const conversationId = c.req.param('id')
+    const conversation = await getEditorAiConversationWithMessages(conversationId)
+
+    if (!conversation) {
+      return c.json({ error: 'Conversation not found' }, 404)
+    }
+
+    return c.json({
+      success: true,
+      data: conversation,
+    })
+  } catch (error) {
+    console.error('Get editor AI conversation error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 editorAi.get('/admin/editor-ai/conversations/:id/messages', async (c) => {
   try {
     const conversationId = c.req.param('id')
@@ -69,6 +116,20 @@ editorAi.get('/admin/editor-ai/conversations/:id/messages', async (c) => {
     })
   } catch (error) {
     console.error('List editor AI messages error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+editorAi.delete('/admin/editor-ai/conversations/:id', async (c) => {
+  try {
+    const conversationId = c.req.param('id')
+    await deleteEditorAiConversation(conversationId)
+
+    return c.json({
+      success: true,
+    })
+  } catch (error) {
+    console.error('Delete editor AI conversation error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

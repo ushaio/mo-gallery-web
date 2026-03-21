@@ -189,6 +189,7 @@ export function StoryEditorView({
               aiOptions={{
                 enabled: true,
                 token,
+                scopeId: currentStory.id,
                 title: currentStory.title,
               }}
             />

@@ -1,5 +1,12 @@
-import { apiRequestData, buildApiUrl, extractErrorMessage } from './core'
-import type { StoryAiGenerateInput, StoryAiModelsResponse } from './types'
+import { apiRequest, apiRequestData, buildApiUrl, buildQuery, extractErrorMessage } from './core'
+import type {
+  EditorAiConversationCreateInput,
+  EditorAiConversationDto,
+  EditorAiConversationWithMessagesDto,
+  EditorAiGenerateInput,
+  StoryAiGenerateInput,
+  StoryAiModelsResponse,
+} from './types'
 
 export interface StoryAiStreamHandlers {
   onChunk: (chunk: string) => void
@@ -41,10 +48,10 @@ function parseServerSentEvents(
 
 export async function streamStoryAiGenerate(
   token: string,
-  input: StoryAiGenerateInput,
+  input: EditorAiGenerateInput,
   handlers: StoryAiStreamHandlers,
 ): Promise<void> {
-  const response = await fetch(buildApiUrl('/api/admin/stories/ai/generate'), {
+  const response = await fetch(buildApiUrl('/api/admin/editor-ai/generate'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -98,7 +105,32 @@ export async function streamStoryAiGenerate(
 }
 
 export async function getStoryAiModels(token: string): Promise<StoryAiModelsResponse> {
-  return apiRequestData<StoryAiModelsResponse>('/api/admin/stories/ai/models', {}, token)
+  return apiRequestData<StoryAiModelsResponse>('/api/admin/editor-ai/models', {}, token)
+}
+
+export async function getEditorAiConversations(token: string, scopeId: string): Promise<EditorAiConversationDto[]> {
+  return apiRequestData<EditorAiConversationDto[]>(
+    `/api/admin/editor-ai/conversations${buildQuery({ scopeId })}`,
+    {},
+    token,
+  )
+}
+
+export async function createEditorAiConversation(token: string, input: EditorAiConversationCreateInput): Promise<EditorAiConversationDto> {
+  return apiRequestData<EditorAiConversationDto>('/api/admin/editor-ai/conversations', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }, token)
+}
+
+export async function getEditorAiConversation(token: string, conversationId: string): Promise<EditorAiConversationWithMessagesDto> {
+  return apiRequestData<EditorAiConversationWithMessagesDto>(`/api/admin/editor-ai/conversations/${conversationId}`, {}, token)
+}
+
+export async function deleteEditorAiConversation(token: string, conversationId: string): Promise<void> {
+  await apiRequest(`/api/admin/editor-ai/conversations/${conversationId}`, {
+    method: 'DELETE',
+  }, token)
 }
 
 export async function polishStoryAiPrompt(

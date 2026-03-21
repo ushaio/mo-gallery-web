@@ -30,17 +30,28 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const t = (path: string): string => {
     const keys = path.split('.')
-    let current: any = dictionaries[locale]
-    
-    for (const key of keys) {
-      if (current[key] === undefined) {
-        console.warn(`Translation key missing: ${path} for locale: ${locale}`)
-        return path
+    const resolve = (source: any) => {
+      let current = source
+      for (const key of keys) {
+        if (current?.[key] === undefined) {
+          return undefined
+        }
+        current = current[key]
       }
-      current = current[key]
+      return typeof current === 'string' ? current : undefined
     }
-    
-    return current as string
+
+    const localized = resolve(dictionaries[locale])
+    if (localized !== undefined) return localized
+
+    const fallback = resolve(dictionaries.en)
+    if (fallback !== undefined) {
+      console.warn(`Translation key missing: ${path} for locale: ${locale}, falling back to en`)
+      return fallback
+    }
+
+    console.warn(`Translation key missing: ${path} for locale: ${locale}`)
+    return path
   }
 
   return (

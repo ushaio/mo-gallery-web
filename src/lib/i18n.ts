@@ -996,6 +996,12 @@ export const dictionaries = {
       ai_applied: 'Applied',
       ai_missing_token: 'AI is unavailable until the admin token is ready.',
       ai_failed: 'AI generation failed.',
+      ai_missing_scope: 'Save this content first so AI conversations can be attached to it.',
+      ai_conversation_new: 'New chat',
+      ai_conversation_delete: 'Delete chat',
+      ai_conversation_empty: 'No saved chats yet',
+      ai_conversation_loading: 'Loading chat...',
+      ai_conversation_label: 'Chat',
     },
     admin: {
       admin: 'Admin',

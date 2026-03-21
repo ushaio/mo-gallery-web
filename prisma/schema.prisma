@@ -33,7 +33,7 @@ model User {
 
 model AiConversation {
   id        String      @id @default(cuid())
-  scopeId   String      @unique
+  scopeId   String
   title     String?
   summary   String?
   lastModel String?
@@ -42,6 +42,7 @@ model AiConversation {
 
   messages AiMessage[]
 
+  @@index([scopeId, updatedAt])
   @@index([updatedAt])
 }
 

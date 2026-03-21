@@ -22,6 +22,10 @@ export interface EditorAiConversationDto {
   updatedAt: string
 }
 
+export interface EditorAiConversationWithMessagesDto extends EditorAiConversationDto {
+  messages: EditorAiMessageDto[]
+}
+
 export interface EditorAiMessageDto {
   id: string
   conversationId: string
@@ -85,22 +89,6 @@ export async function ensureEditorAiConversation(input: {
   scopeId: string
   title?: string
 }) {
-  const existing = await db.aiConversation.findUnique({
-    where: {
-      scopeId: input.scopeId,
-    },
-  })
-
-  if (existing) {
-    const updated = await db.aiConversation.update({
-      where: { id: existing.id },
-      data: {
-        title: input.title ?? existing.title,
-      },
-    })
-    return toConversationDto(updated)
-  }
-
   const created = await db.aiConversation.create({
     data: {
       scopeId: input.scopeId,
@@ -109,6 +97,52 @@ export async function ensureEditorAiConversation(input: {
   })
 
   return toConversationDto(created)
+}
+
+export async function listEditorAiConversations(scopeId: string) {
+  const conversations = await db.aiConversation.findMany({
+    where: { scopeId },
+    orderBy: [
+      { updatedAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
+  })
+
+  return conversations.map(toConversationDto)
+}
+
+export async function getEditorAiConversation(conversationId: string): Promise<EditorAiConversationDto | null> {
+  const conversation = await db.aiConversation.findUnique({
+    where: { id: conversationId },
+  })
+
+  return conversation ? toConversationDto(conversation) : null
+}
+
+export async function getEditorAiConversationWithMessages(conversationId: string): Promise<EditorAiConversationWithMessagesDto | null> {
+  const conversation = await db.aiConversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      messages: {
+        orderBy: {
+          createdAt: 'asc',
+        },
+      },
+    },
+  })
+
+  if (!conversation) return null
+
+  return {
+    ...toConversationDto(conversation),
+    messages: conversation.messages.map(toMessageDto),
+  }
+}
+
+export async function deleteEditorAiConversation(conversationId: string) {
+  await db.aiConversation.delete({
+    where: { id: conversationId },
+  })
 }
 
 export async function listEditorAiMessages(conversationId: string, limit = 50) {

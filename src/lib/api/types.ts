@@ -141,6 +141,10 @@ export interface EditorAiConversationDto {
   updatedAt: string
 }
 
+export interface EditorAiConversationWithMessagesDto extends EditorAiConversationDto {
+  messages: EditorAiMessageDto[]
+}
+
 export interface EditorAiMessageDto {
   id: string
   conversationId: string
@@ -157,6 +161,15 @@ export interface EditorAiMessageDto {
 export interface EditorAiConversationInput {
   scopeId: string
   title?: string
+}
+
+export interface EditorAiConversationCreateInput {
+  scopeId: string
+  title?: string
+}
+
+export interface EditorAiConversationsQuery {
+  scopeId: string
 }
 
 export interface EditorAiGenerateInput extends StoryAiGenerateInput {

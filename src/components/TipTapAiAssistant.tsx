@@ -2,13 +2,26 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Loader2, RotateCcw, Sparkles, Wand2, X } from 'lucide-react'
+import { Check, ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2, X } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { getStoryAiModels, polishStoryAiPrompt, streamStoryAiGenerate, type StoryAiAction, type StoryAiModelOption } from '@/lib/api'
+import {
+  createEditorAiConversation,
+  deleteEditorAiConversation,
+  getEditorAiConversation,
+  getEditorAiConversations,
+  getStoryAiModels,
+  polishStoryAiPrompt,
+  streamStoryAiGenerate,
+  type EditorAiConversationDto,
+  type EditorAiMessageDto,
+  type StoryAiAction,
+  type StoryAiModelOption,
+} from '@/lib/api'
 
 export interface TipTapAiAssistantOptions {
   enabled: boolean
   token?: string | null
+  scopeId?: string
   title?: string
 }
 
@@ -51,11 +64,14 @@ interface AiSessionMessage {
   appliedModes?: TipTapAiApplyMode[]
 }
 
+const VALID_STORY_AI_ACTIONS: StoryAiAction[] = ['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']
+
 const AI_SELECTION_PREVIEW_LIMIT = 28
 const AI_PARAGRAPH_PREVIEW_LIMIT = 72
 const AI_MODELS_STORAGE_KEY = 'tiptap-editor-ai-models'
 const AI_SELECTED_MODEL_STORAGE_KEY = 'tiptap-editor-ai-selected-model'
 const DESKTOP_MEDIA_QUERY = '(min-width: 768px)'
+const AI_FLOATING_BUTTON_INSET = 20
 
 const AI_PRESET_ACTIONS: Array<{ action: StoryAiAction; key: string }> = [
   { action: 'rewrite', key: 'rewrite' },
@@ -83,6 +99,79 @@ function resolveActionLabel(action: StoryAiAction, t: (key: string) => string) {
   return preset ? t(`editor.ai_action_${preset.key}`) : action
 }
 
+function getViewportMetrics() {
+  if (typeof window === 'undefined') {
+    return { width: 0, height: 0, offsetLeft: 0, offsetTop: 0 }
+  }
+
+  const viewport = window.visualViewport
+  if (!viewport) {
+    return {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      offsetLeft: 0,
+      offsetTop: 0,
+    }
+  }
+
+  return {
+    width: viewport.width,
+    height: viewport.height,
+    offsetLeft: viewport.offsetLeft,
+    offsetTop: viewport.offsetTop,
+  }
+}
+
+function getZoomSignature() {
+  if (typeof window === 'undefined') return '0:1'
+  return `${window.devicePixelRatio}:${window.visualViewport?.scale ?? 1}`
+}
+
+function isStoryAiAction(value: unknown): value is StoryAiAction {
+  return typeof value === 'string' && VALID_STORY_AI_ACTIONS.includes(value as StoryAiAction)
+}
+
+function toSessionMessage(
+  message: EditorAiMessageDto,
+  t: (key: string) => string,
+): AiSessionMessage | null {
+  if (message.role !== 'user' && message.role !== 'assistant') return null
+
+  const metadata = message.metadata && typeof message.metadata === 'object'
+    ? message.metadata as Record<string, unknown>
+    : {}
+  const action = isStoryAiAction(message.action) ? message.action : 'custom'
+  const selectedText = typeof metadata.selectedText === 'string' ? metadata.selectedText : ''
+  const currentParagraph = typeof metadata.currentParagraph === 'string' ? metadata.currentParagraph : ''
+  const prompt = typeof metadata.prompt === 'string'
+    ? metadata.prompt
+    : (message.role === 'user' ? message.content : '')
+  const selectionPreview = selectedText ? compactTextPreview(selectedText, AI_SELECTION_PREVIEW_LIMIT) : ''
+  const paragraphPreview = currentParagraph ? compactTextPreview(currentParagraph, AI_PARAGRAPH_PREVIEW_LIMIT) : ''
+  const hasSelection = Boolean(selectedText)
+
+  return {
+    id: message.id,
+    role: message.role,
+    action,
+    prompt,
+    content: message.role === 'user'
+      ? (prompt || message.content || t('editor.ai_prompt_empty'))
+      : message.content,
+    hasSelection,
+    selectionPreview,
+    paragraphPreview,
+    selectionRange: null,
+    status: message.status === 'streaming'
+      ? 'streaming'
+      : message.status === 'failed'
+        ? 'error'
+        : 'done',
+    error: message.error,
+    appliedModes: [],
+  }
+}
+
 export function TipTapAiAssistant({
   options,
   context,
@@ -94,8 +183,11 @@ export function TipTapAiAssistant({
   const aiModelButtonRef = useRef<HTMLDivElement | null>(null)
   const aiModelMenuRef = useRef<HTMLDivElement | null>(null)
   const aiModelListRef = useRef<HTMLDivElement | null>(null)
+  const conversationMenuButtonRef = useRef<HTMLDivElement | null>(null)
+  const conversationMenuRef = useRef<HTMLDivElement | null>(null)
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const aiButtonPositionRef = useRef({ top: 0, left: 0 })
+  const aiButtonDockedRef = useRef(true)
   const aiDragStateRef = useRef<{
     pointerId: number
     startX: number
@@ -104,18 +196,25 @@ export function TipTapAiAssistant({
     originTop: number
   } | null>(null)
   const aiSuppressClickRef = useRef(false)
+  const aiZoomSignatureRef = useRef<string | null>(null)
 
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [showAiModelMenu, setShowAiModelMenu] = useState(false)
+  const [showConversationMenu, setShowConversationMenu] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiError, setAiError] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiPromptPolishing, setAiPromptPolishing] = useState(false)
+  const [conversationLoading, setConversationLoading] = useState(false)
+  const [conversationSaving, setConversationSaving] = useState(false)
+  const [conversationDeleting, setConversationDeleting] = useState(false)
   const [aiMode, setAiMode] = useState<StoryAiAction>('rewrite')
   const [aiModelsLoading, setAiModelsLoading] = useState(false)
   const [aiModelOptions, setAiModelOptions] = useState<StoryAiModelOption[]>([])
   const [aiSelectedModel, setAiSelectedModel] = useState('')
   const [aiModelQuery, setAiModelQuery] = useState('')
+  const [conversations, setConversations] = useState<EditorAiConversationDto[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [aiButtonPosition, setAiButtonPosition] = useState({ top: 0, left: 0 })
   const [aiPanelPosition, setAiPanelPosition] = useState({ top: 0, left: 0 })
   const [sessionMessages, setSessionMessages] = useState<AiSessionMessage[]>([])
@@ -123,6 +222,7 @@ export function TipTapAiAssistant({
 
   const { t } = useLanguage()
   const aiModelMenuId = useId()
+  const conversationMenuId = useId()
   const isEnabled = options?.enabled === true
 
   const aiSelectionPreview = useMemo(() => {
@@ -146,9 +246,140 @@ export function TipTapAiAssistant({
     return aiModelOptions.filter((option) => option.label.toLowerCase().includes(query))
   }, [aiModelOptions, aiModelQuery])
 
+  const activeConversation = useMemo(
+    () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
+    [activeConversationId, conversations],
+  )
+
+  const activeConversationLabel = useMemo(() => {
+    if (!activeConversation) return t('editor.ai_conversation_new')
+    return activeConversation.title?.trim()
+      || activeConversation.summary?.trim()
+      || `${t('editor.ai_conversation_label')} ${activeConversation.createdAt.slice(0, 10)}`
+  }, [activeConversation, t])
+
   const updateSessionMessage = useCallback((id: string, updater: (message: AiSessionMessage) => AiSessionMessage) => {
     setSessionMessages((current) => current.map((message) => (message.id === id ? updater(message) : message)))
   }, [])
+
+  const loadConversationDetail = useCallback(async (conversationId: string) => {
+    if (!options?.token) return
+
+    setConversationLoading(true)
+    setAiError('')
+
+    try {
+      const conversation = await getEditorAiConversation(options.token, conversationId)
+      setActiveConversationId(conversation.id)
+      setConversations((current) => {
+        const next = current.some((item) => item.id === conversation.id)
+          ? current.map((item) => (item.id === conversation.id ? conversation : item))
+          : [conversation, ...current]
+        return next.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      })
+      setSessionMessages(
+        conversation.messages
+          .map((message) => toSessionMessage(message, t))
+          .filter((message): message is AiSessionMessage => Boolean(message)),
+      )
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationLoading(false)
+    }
+  }, [options?.token, t])
+
+  const refreshConversations = useCallback(async () => {
+    if (!isEnabled || !options?.token || !options?.scopeId) return
+
+    setConversationLoading(true)
+    setAiError('')
+
+    try {
+      const items = await getEditorAiConversations(options.token, options.scopeId)
+      setConversations(items)
+
+      if (items.length === 0) {
+        setActiveConversationId(null)
+        setSessionMessages([])
+        return
+      }
+
+      setConversations(items)
+      const nextConversationId = items.some((item) => item.id === activeConversationId)
+        ? activeConversationId
+        : items[0]?.id
+
+      if (!nextConversationId) {
+        setActiveConversationId(null)
+        setSessionMessages([])
+        return
+      }
+
+      if (nextConversationId !== activeConversationId) {
+        await loadConversationDetail(nextConversationId)
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationLoading(false)
+    }
+  }, [activeConversationId, isEnabled, loadConversationDetail, options?.scopeId, options?.token, t])
+
+  const handleCreateConversation = useCallback(async () => {
+    if (!options?.token || !options?.scopeId) {
+      setAiError(t('editor.ai_missing_scope'))
+      return
+    }
+
+    setConversationSaving(true)
+    setAiError('')
+
+    try {
+      const conversation = await createEditorAiConversation(options.token, {
+        scopeId: options.scopeId,
+        title: options.title,
+      })
+      setConversations((current) => [conversation, ...current])
+      setActiveConversationId(conversation.id)
+      setSessionMessages([])
+      setAiPrompt('')
+      setShowConversationMenu(false)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationSaving(false)
+    }
+  }, [options?.scopeId, options?.title, options?.token, t])
+
+  const handleDeleteConversation = useCallback(async (conversationId?: string) => {
+    const targetConversationId = conversationId ?? activeConversationId
+    if (!options?.token || !targetConversationId) return
+
+    setConversationDeleting(true)
+    setAiError('')
+
+    try {
+      await deleteEditorAiConversation(options.token, targetConversationId)
+      const remaining = conversations.filter((item) => item.id !== targetConversationId)
+      setConversations(remaining)
+      setShowConversationMenu(false)
+
+      if (activeConversationId === targetConversationId) {
+        const nextConversation = remaining[0]
+        if (nextConversation) {
+          await loadConversationDetail(nextConversation.id)
+        } else {
+          setActiveConversationId(null)
+          setSessionMessages([])
+        }
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationDeleting(false)
+    }
+  }, [activeConversationId, conversations, loadConversationDetail, options?.token, t])
 
   const refreshAiModels = useCallback(async () => {
     if (!isEnabled || !options?.token) {
@@ -180,15 +411,20 @@ export function TipTapAiAssistant({
   const updateAiPanelPosition = useCallback(() => {
     if (typeof window === 'undefined' || !aiButtonRef.current) return
 
+    const viewport = getViewportMetrics()
     const rect = aiButtonRef.current.getBoundingClientRect()
-    const panelWidth = Math.min(420, window.innerWidth - 24)
-    const panelHeight = Math.min(620, window.innerHeight - 24)
+    const panelWidth = Math.min(420, viewport.width - 24)
+    const panelHeight = Math.min(620, viewport.height - 24)
     const padding = 12
     const preferredLeft = rect.right - panelWidth
-    const left = Math.max(padding, Math.min(preferredLeft, window.innerWidth - panelWidth - padding))
-    const belowTop = Math.min(rect.bottom + 12, window.innerHeight - panelHeight - padding)
-    const aboveTop = Math.max(padding, rect.top - panelHeight - 12)
-    const top = window.innerHeight - rect.bottom > panelHeight * 0.5 ? belowTop : aboveTop
+    const minLeft = viewport.offsetLeft + padding
+    const maxLeft = Math.max(minLeft, viewport.offsetLeft + viewport.width - panelWidth - padding)
+    const left = Math.max(minLeft, Math.min(preferredLeft + viewport.offsetLeft, maxLeft))
+    const minTop = viewport.offsetTop + padding
+    const maxTop = Math.max(minTop, viewport.offsetTop + viewport.height - panelHeight - padding)
+    const belowTop = Math.min(rect.bottom + viewport.offsetTop + 12, maxTop)
+    const aboveTop = Math.max(minTop, rect.top + viewport.offsetTop - panelHeight - 12)
+    const top = viewport.height - rect.bottom > panelHeight * 0.5 ? belowTop : aboveTop
 
     if (aiPanelRef.current) {
       aiPanelRef.current.style.top = `${top}px`
@@ -207,13 +443,35 @@ export function TipTapAiAssistant({
     aiButtonRef.current.style.bottom = 'auto'
   }, [])
 
+  const resetAiButtonToDock = useCallback(() => {
+    const dockedPosition = { top: 0, left: 0 }
+    aiButtonDockedRef.current = true
+    aiButtonPositionRef.current = dockedPosition
+    if (aiButtonRef.current) {
+      aiButtonRef.current.style.top = ''
+      aiButtonRef.current.style.left = ''
+      aiButtonRef.current.style.right = `${AI_FLOATING_BUTTON_INSET}px`
+      aiButtonRef.current.style.bottom = `${AI_FLOATING_BUTTON_INSET}px`
+    }
+    setAiButtonPosition((current) => (
+      current.top === dockedPosition.top && current.left === dockedPosition.left ? current : dockedPosition
+    ))
+  }, [])
+
   const clampAiButtonPosition = useCallback((left: number, top: number) => {
+    const viewport = getViewportMetrics()
     const width = aiButtonRef.current?.offsetWidth || 168
     const height = aiButtonRef.current?.offsetHeight || 52
     const padding = 16
     return {
-      left: Math.min(Math.max(padding, left), Math.max(padding, window.innerWidth - width - padding)),
-      top: Math.min(Math.max(padding, top), Math.max(padding, window.innerHeight - height - padding)),
+      left: Math.min(
+        Math.max(viewport.offsetLeft + padding, left),
+        Math.max(viewport.offsetLeft + padding, viewport.offsetLeft + viewport.width - width - padding),
+      ),
+      top: Math.min(
+        Math.max(viewport.offsetTop + padding, top),
+        Math.max(viewport.offsetTop + padding, viewport.offsetTop + viewport.height - height - padding),
+      ),
     }
   }, [])
 
@@ -244,6 +502,7 @@ export function TipTapAiAssistant({
     const clamped = clampAiButtonPosition(nextLeft, nextTop)
     if (Math.abs(event.clientX - dragState.startX) > 4 || Math.abs(event.clientY - dragState.startY) > 4) {
       aiSuppressClickRef.current = true
+      aiButtonDockedRef.current = false
     }
     applyAiButtonPosition(clamped)
     if (showAiPanel) updateAiPanelPosition()
@@ -289,13 +548,14 @@ export function TipTapAiAssistant({
   }, [onApplyResult, updateSessionMessage])
 
   const clearConversation = useCallback(() => {
-    setSessionMessages([])
-    setAiError('')
-  }, [])
+    setAiPrompt('')
+    void handleCreateConversation()
+  }, [handleCreateConversation])
 
   const closeAssistant = useCallback(() => {
     setShowAiPanel(false)
     setShowAiModelMenu(false)
+    setShowConversationMenu(false)
   }, [])
 
   const runAiAction = useCallback(async (action: StoryAiAction, promptOverride?: string) => {
@@ -304,13 +564,37 @@ export function TipTapAiAssistant({
       setAiError(t('editor.ai_missing_token'))
       return
     }
+    if (!options?.scopeId) {
+      setAiError(t('editor.ai_missing_scope'))
+      return
+    }
 
     const prompt = (promptOverride ?? aiPrompt).trim()
     const effectiveAction: StoryAiAction = prompt ? 'custom' : action
     const hasSelection = context.hasSelection && Boolean(context.selectedText.trim())
+
+    let conversationId = activeConversationId
+    if (!conversationId) {
+      setConversationSaving(true)
+      try {
+        const conversation = await createEditorAiConversation(options.token, {
+          scopeId: options.scopeId,
+          title: options.title,
+        })
+        setConversations((current) => [conversation, ...current])
+        setActiveConversationId(conversation.id)
+        conversationId = conversation.id
+      } catch (error) {
+        setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+        setConversationSaving(false)
+        return
+      } finally {
+        setConversationSaving(false)
+      }
+    }
+
     const userMessageId = buildMessageId('user')
     const assistantMessageId = buildMessageId('assistant')
-
     const userMessage: AiSessionMessage = {
       id: userMessageId,
       role: 'user',
@@ -322,7 +606,6 @@ export function TipTapAiAssistant({
       paragraphPreview,
       selectionRange: context.selectionRange,
     }
-
     const assistantMessage: AiSessionMessage = {
       id: assistantMessageId,
       role: 'assistant',
@@ -343,6 +626,7 @@ export function TipTapAiAssistant({
 
     try {
       await streamStoryAiGenerate(options.token, {
+        conversationId,
         action: effectiveAction,
         model: aiSelectedModel || undefined,
         prompt: prompt || undefined,
@@ -359,10 +643,7 @@ export function TipTapAiAssistant({
           }))
         },
         onDone: () => {
-          updateSessionMessage(assistantMessageId, (message) => ({
-            ...message,
-            status: 'done',
-          }))
+          void loadConversationDetail(conversationId)
         },
       })
 
@@ -375,10 +656,12 @@ export function TipTapAiAssistant({
         status: 'error',
         error: message,
       }))
+      await loadConversationDetail(conversationId)
     } finally {
       setAiLoading(false)
     }
   }, [
+    activeConversationId,
     aiPrompt,
     aiSelectedModel,
     aiSelectionPreview,
@@ -389,6 +672,8 @@ export function TipTapAiAssistant({
     context.selectedText,
     context.selectionRange,
     isEnabled,
+    loadConversationDetail,
+    options?.scopeId,
     options?.title,
     options?.token,
     paragraphPreview,
@@ -436,10 +721,9 @@ export function TipTapAiAssistant({
 
   useEffect(() => {
     if (!isDesktopViewport) {
-      setAiButtonPosition({ top: 0, left: 0 })
-      aiButtonPositionRef.current = { top: 0, left: 0 }
+      resetAiButtonToDock()
     }
-  }, [isDesktopViewport])
+  }, [isDesktopViewport, resetAiButtonToDock])
 
   useEffect(() => {
     if (!isEnabled || typeof window === 'undefined') return
@@ -460,6 +744,11 @@ export function TipTapAiAssistant({
     if (!aiSelectedModel || typeof window === 'undefined') return
     window.localStorage.setItem(AI_SELECTED_MODEL_STORAGE_KEY, aiSelectedModel)
   }, [aiSelectedModel])
+
+  useEffect(() => {
+    if (!isEnabled || !options?.token || !options?.scopeId) return
+    void refreshConversations()
+  }, [isEnabled, options?.scopeId, options?.token, refreshConversations])
 
   useEffect(() => {
     if (!showAiPanel || typeof window === 'undefined') return
@@ -489,6 +778,71 @@ export function TipTapAiAssistant({
       window.removeEventListener('scroll', handleViewportChange, true)
     }
   }, [closeAssistant, showAiModelMenu, showAiPanel, updateAiPanelPosition])
+
+  useEffect(() => {
+    if (!isEnabled || typeof window === 'undefined' || !isDesktopViewport || !aiButtonRef.current) return
+
+    const syncFloatingButtonPosition = () => {
+      if (!aiButtonRef.current) return
+
+      const zoomSignature = getZoomSignature()
+      const hasZoomChanged = aiZoomSignatureRef.current !== null && aiZoomSignatureRef.current !== zoomSignature
+      aiZoomSignatureRef.current = zoomSignature
+
+      if (hasZoomChanged) {
+        resetAiButtonToDock()
+        if (showAiPanel) {
+          requestAnimationFrame(() => {
+            updateAiPanelPosition()
+          })
+        }
+        return
+      }
+
+      if (aiButtonDockedRef.current) {
+        if (showAiPanel) {
+          updateAiPanelPosition()
+        }
+        return
+      }
+
+      const viewport = getViewportMetrics()
+      const rect = aiButtonRef.current.getBoundingClientRect()
+      const basePosition = {
+        top: aiButtonPositionRef.current.top || rect.top + viewport.offsetTop,
+        left: aiButtonPositionRef.current.left || rect.left + viewport.offsetLeft,
+      }
+      const clamped = clampAiButtonPosition(basePosition.left, basePosition.top)
+
+      aiButtonPositionRef.current = clamped
+      applyAiButtonPosition(clamped)
+      setAiButtonPosition((current) => (
+        current.top === clamped.top && current.left === clamped.left ? current : clamped
+      ))
+
+      if (showAiPanel) {
+        updateAiPanelPosition()
+      }
+    }
+
+    syncFloatingButtonPosition()
+
+    const handleViewportChange = () => {
+      syncFloatingButtonPosition()
+    }
+
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, true)
+    window.visualViewport?.addEventListener('resize', handleViewportChange)
+    window.visualViewport?.addEventListener('scroll', handleViewportChange)
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange, true)
+      window.visualViewport?.removeEventListener('resize', handleViewportChange)
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange)
+    }
+  }, [applyAiButtonPosition, clampAiButtonPosition, isDesktopViewport, isEnabled, resetAiButtonToDock, showAiPanel, updateAiPanelPosition])
 
   useEffect(() => {
     if (!showAiModelMenu) {
@@ -526,14 +880,32 @@ export function TipTapAiAssistant({
   }, [aiModelQuery, aiSelectedModel, showAiModelMenu])
 
   useEffect(() => {
-    if (!isEnabled || typeof window === 'undefined' || !isDesktopViewport || !aiButtonRef.current) return
-    const rect = aiButtonRef.current.getBoundingClientRect()
-    if (aiButtonPosition.top === 0 && aiButtonPosition.left === 0) {
-      const nextPosition = { top: rect.top, left: rect.left }
-      aiButtonPositionRef.current = nextPosition
-      setAiButtonPosition(nextPosition)
+    if (!showConversationMenu) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (conversationMenuRef.current?.contains(target) || conversationMenuButtonRef.current?.contains(target)) return
+      setShowConversationMenu(false)
     }
-  }, [aiButtonPosition.left, aiButtonPosition.top, isDesktopViewport, isEnabled])
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowConversationMenu(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showConversationMenu])
+
+  useEffect(() => {
+    setShowConversationMenu(false)
+  }, [activeConversationId])
 
   useEffect(() => {
     if (!conversationViewportRef.current) return
@@ -556,15 +928,134 @@ export function TipTapAiAssistant({
         >
           <div className="border-b border-border/60 px-4 pb-4 pt-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                     <Wand2 className="h-4 w-4" />
                   </span>
-                  <div className="min-w-0">
-                    <div>{t('editor.ai_panel_title')}</div>
-                    <div className="mt-0.5 text-xs font-normal text-muted-foreground">
-                      {t('editor.ai_chat_subtitle')}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div>
+                      <div className="text-sm font-medium text-foreground">{t('editor.ai_panel_title')}</div>
+                      <div className="mt-0.5 text-xs font-normal text-muted-foreground">
+                        {t('editor.ai_chat_subtitle')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative min-w-0 flex-1">
+                        <div
+                          ref={conversationMenuButtonRef}
+                          className={`flex h-10 min-w-0 items-center justify-between gap-2 rounded-full border px-3 text-left text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow,background-color] ${
+                            showConversationMenu
+                              ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
+                              : 'border-border/80 bg-background/90 hover:border-primary/30'
+                          } ${conversationSaving || conversationLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={showConversationMenu}
+                          aria-haspopup="listbox"
+                          aria-controls={conversationMenuId}
+                          onClick={() => {
+                            if (conversationSaving || conversationLoading) return
+                            setShowConversationMenu((current) => !current)
+                          }}
+                          onKeyDown={(event) => {
+                            if (conversationSaving || conversationLoading) return
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              setShowConversationMenu((current) => !current)
+                            }
+                          }}
+                        >
+                          <span className="min-w-0 truncate font-medium text-foreground">
+                            {conversationLoading ? t('editor.ai_conversation_loading') : activeConversationLabel}
+                          </span>
+                          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${showConversationMenu ? 'rotate-180' : ''}`} />
+                        </div>
+                        {showConversationMenu ? (
+                          <div
+                            ref={conversationMenuRef}
+                            id={conversationMenuId}
+                            className="absolute left-0 top-[calc(100%+8px)] z-30 w-full overflow-hidden rounded-2xl border border-border/80 bg-background/98 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur"
+                            role="listbox"
+                          >
+                            <div className="border-b border-border/60 p-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleCreateConversation()}
+                                disabled={conversationSaving}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Plus className="h-4 w-4" />
+                                {t('editor.ai_conversation_new')}
+                              </button>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto p-2">
+                              {conversations.length === 0 ? (
+                                <div className="rounded-xl px-3 py-2 text-sm text-muted-foreground">
+                                  {t('editor.ai_conversation_empty')}
+                                </div>
+                              ) : (
+                                conversations.map((conversation) => {
+                                  const isSelected = conversation.id === activeConversationId
+                                  const label = conversation.title?.trim()
+                                    || conversation.summary?.trim()
+                                    || `${t('editor.ai_conversation_label')} ${conversation.createdAt.slice(0, 10)}`
+                                  return (
+                                    <div
+                                      key={conversation.id}
+                                      className={`flex items-center gap-2 rounded-xl px-3 py-2 transition-colors ${
+                                        isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'
+                                      }`}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          void loadConversationDetail(conversation.id)
+                                          setShowConversationMenu(false)
+                                        }}
+                                        className="min-w-0 flex-1 text-left"
+                                      >
+                                        <div className="truncate text-sm font-medium">{label}</div>
+                                        <div className="truncate text-xs text-muted-foreground">{new Date(conversation.updatedAt).toLocaleString()}</div>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDeleteConversation(conversation.id)}
+                                        disabled={conversationDeleting}
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                                        title={t('editor.ai_conversation_delete')}
+                                        aria-label={t('editor.ai_conversation_delete')}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateConversation()}
+                        disabled={conversationSaving}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                        title={t('editor.ai_conversation_new')}
+                        aria-label={t('editor.ai_conversation_new')}
+                      >
+                        {conversationSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteConversation()}
+                        disabled={!activeConversationId || conversationDeleting}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                        title={t('editor.ai_conversation_delete')}
+                        aria-label={t('editor.ai_conversation_delete')}
+                      >
+                        {conversationDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -591,7 +1082,12 @@ export function TipTapAiAssistant({
           </div>
 
           <div ref={conversationViewportRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-            {sessionMessages.length === 0 ? (
+            {conversationLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('editor.ai_conversation_loading')}
+              </div>
+            ) : sessionMessages.length === 0 ? (
               <div className="rounded-[24px] border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
                 <div className="font-medium text-foreground">{t('editor.ai_chat_empty_title')}</div>
                 <div className="mt-2 leading-6">{t('editor.ai_chat_empty_description')}</div>
@@ -815,7 +1311,7 @@ export function TipTapAiAssistant({
                   <button
                     type="button"
                     onClick={() => void refreshAiModels()}
-                    disabled={aiModelsLoading || aiLoading}
+                    disabled={aiModelsLoading || aiLoading || conversationLoading}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     title={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
                     aria-label={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
@@ -828,9 +1324,10 @@ export function TipTapAiAssistant({
                     <button
                       type="button"
                       onClick={clearConversation}
+                      disabled={conversationSaving}
                       className="rounded-full border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
                     >
-                      {t('common.reset')}
+                      {t('editor.ai_conversation_new')}
                     </button>
                   ) : null}
                   <button
@@ -843,12 +1340,12 @@ export function TipTapAiAssistant({
                   >
                     {aiPromptPolishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void runAiAction(aiMode)}
-                    disabled={aiLoading || aiPromptPolishing}
-                    className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
+                    <button
+                      type="button"
+                      onClick={() => void runAiAction(aiMode)}
+                      disabled={aiLoading || aiPromptPolishing || conversationLoading || conversationDeleting}
+                      className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
                     {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     {t('editor.ai_generate')}
                   </button>
@@ -881,13 +1378,13 @@ export function TipTapAiAssistant({
           : 'border-border/80 bg-background/90 text-foreground shadow-[0_18px_36px_rgba(15,23,42,0.12)] hover:border-primary/30 hover:text-primary'
       }`}
       aria-pressed={showAiPanel}
-      style={{
-        top: isDesktopViewport && (aiButtonPosition.top || aiButtonPosition.left) ? aiButtonPosition.top : undefined,
-        left: isDesktopViewport && (aiButtonPosition.top || aiButtonPosition.left) ? aiButtonPosition.left : undefined,
-        right: !isDesktopViewport || (!aiButtonPosition.top && !aiButtonPosition.left) ? 20 : undefined,
-        bottom: !isDesktopViewport || (!aiButtonPosition.top && !aiButtonPosition.left) ? 20 : undefined,
-      }}
-    >
+        style={{
+          top: isDesktopViewport && (aiButtonPosition.top || aiButtonPosition.left) ? aiButtonPosition.top : undefined,
+          left: isDesktopViewport && (aiButtonPosition.top || aiButtonPosition.left) ? aiButtonPosition.left : undefined,
+          right: !isDesktopViewport || (!aiButtonPosition.top && !aiButtonPosition.left) ? AI_FLOATING_BUTTON_INSET : undefined,
+          bottom: !isDesktopViewport || (!aiButtonPosition.top && !aiButtonPosition.left) ? AI_FLOATING_BUTTON_INSET : undefined,
+        }}
+      >
       <span
         className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200 ${
           showAiPanel

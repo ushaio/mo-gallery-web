@@ -59,6 +59,7 @@ export interface NarrativeTipTapEditorProps {
   aiOptions?: {
     enabled: boolean
     token?: string | null
+    scopeId?: string
     title?: string
   }
 }

@@ -28,7 +28,7 @@ CREATE TABLE "AiMessage" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AiConversation_scopeId_key" ON "AiConversation"("scopeId");
+CREATE INDEX "AiConversation_scopeId_updatedAt_idx" ON "AiConversation"("scopeId", "updatedAt");
 
 -- CreateIndex
 CREATE INDEX "AiConversation_updatedAt_idx" ON "AiConversation"("updatedAt");
