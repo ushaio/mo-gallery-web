@@ -6,6 +6,7 @@ const ALLOWED_STYLE_PROPERTIES = new Set([
   'color',
   'background-color',
   'font-size',
+  'font-family',
 ])
 
 function sanitizeStyleValue(property: string, rawValue: string | null | undefined) {
@@ -28,12 +29,34 @@ function sanitizeStyleValue(property: string, rawValue: string | null | undefine
     return null
   }
 
+  if (
+    property === 'font-family' &&
+    /[;{}<>]/.test(value)
+  ) {
+    return null
+  }
+
   return value
 }
 
-function buildAllowedStyle(
-  entries: Array<[string, string | null | undefined]>
-) {
+interface InlineStyleAttrs {
+  color?: string | null
+  backgroundColor?: string | null
+  fontSize?: string | null
+  fontFamily?: string | null
+}
+
+interface MarkCommandContext {
+  editor: {
+    getAttributes: (name: string) => InlineStyleAttrs
+  }
+  commands: {
+    unsetMark: (name: string) => boolean
+    setMark: (name: string, attributes: InlineStyleAttrs) => boolean
+  }
+}
+
+function buildAllowedStyle(entries: Array<[string, string | null | undefined]>) {
   const styleEntries: string[] = []
 
   for (const [property, rawValue] of entries) {
@@ -48,25 +71,62 @@ function buildAllowedStyle(
   return styleEntries.length > 0 ? styleEntries.join('; ') : null
 }
 
-function extractSupportedStyle(element: HTMLElement) {
+function extractSupportedStyle(element: HTMLElement): InlineStyleAttrs | null {
+  const color = sanitizeStyleValue('color', element.style.color || element.getAttribute('color'))
+  const backgroundColor = sanitizeStyleValue(
+    'background-color',
+    element.style.backgroundColor || element.getAttribute('bgcolor')
+  )
+  const fontSize = sanitizeStyleValue('font-size', element.style.fontSize)
+  const fontFamily = sanitizeStyleValue(
+    'font-family',
+    element.style.fontFamily || element.getAttribute('face')
+  )
+
+  if (!color && !backgroundColor && !fontSize && !fontFamily) {
+    return null
+  }
+
+  return {
+    color,
+    backgroundColor,
+    fontSize,
+    fontFamily,
+  }
+}
+
+function getStyleString(attrs: InlineStyleAttrs) {
   return buildAllowedStyle([
-    ['color', element.style.color || element.getAttribute('color')],
-    [
-      'background-color',
-      element.style.backgroundColor || element.getAttribute('bgcolor'),
-    ],
-    ['font-size', element.style.fontSize],
+    ['color', attrs.color],
+    ['background-color', attrs.backgroundColor],
+    ['font-size', attrs.fontSize],
+    ['font-family', attrs.fontFamily],
   ])
 }
 
-function getAttrs(element: HTMLElement, fallbackStyle?: string) {
-  const pastedStyle = extractSupportedStyle(element) ?? fallbackStyle ?? null
+function getAttrs(element: HTMLElement, fallbackAttrs?: InlineStyleAttrs) {
+  const attrs = extractSupportedStyle(element) ?? fallbackAttrs ?? null
 
-  if (!pastedStyle) {
+  if (!attrs) {
     return false
   }
 
-  return { pastedStyle }
+  return attrs
+}
+
+function hasRenderableAttrs(attrs: InlineStyleAttrs) {
+  return Boolean(attrs.color || attrs.backgroundColor || attrs.fontSize || attrs.fontFamily)
+}
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    pastedStyle: {
+      setFontSize: (fontSize: string) => ReturnType
+      unsetFontSize: () => ReturnType
+      setFontFamily: (fontFamily: string) => ReturnType
+      unsetFontFamily: () => ReturnType
+    }
+  }
 }
 
 export const PastedStyleMark = Mark.create({
@@ -77,9 +137,91 @@ export const PastedStyleMark = Mark.create({
 
   addAttributes() {
     return {
-      pastedStyle: {
+      color: {
         default: null,
       },
+      backgroundColor: {
+        default: null,
+      },
+      fontSize: {
+        default: null,
+      },
+      fontFamily: {
+        default: null,
+      },
+    }
+  },
+
+  addCommands() {
+    return {
+      setFontSize:
+        (fontSize: string) =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: currentAttrs.color ?? null,
+            backgroundColor: currentAttrs.backgroundColor ?? null,
+            fontSize: sanitizeStyleValue('font-size', fontSize),
+            fontFamily: currentAttrs.fontFamily ?? null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
+      unsetFontSize:
+        () =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: currentAttrs.color ?? null,
+            backgroundColor: currentAttrs.backgroundColor ?? null,
+            fontSize: null,
+            fontFamily: currentAttrs.fontFamily ?? null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
+      setFontFamily:
+        (fontFamily: string) =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: currentAttrs.color ?? null,
+            backgroundColor: currentAttrs.backgroundColor ?? null,
+            fontSize: currentAttrs.fontSize ?? null,
+            fontFamily: sanitizeStyleValue('font-family', fontFamily),
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
+      unsetFontFamily:
+        () =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: currentAttrs.color ?? null,
+            backgroundColor: currentAttrs.backgroundColor ?? null,
+            fontSize: currentAttrs.fontSize ?? null,
+            fontFamily: null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
     }
   },
 
@@ -98,22 +240,25 @@ export const PastedStyleMark = Mark.create({
         getAttrs: (element) =>
           getAttrs(
             element as HTMLElement,
-            `background-color: ${DEFAULT_MARK_HIGHLIGHT}`
+            { backgroundColor: DEFAULT_MARK_HIGHLIGHT }
           ),
       },
     ]
   },
 
   renderHTML({ HTMLAttributes }) {
-    const attrs = HTMLAttributes as Record<string, unknown> & {
-      pastedStyle?: string | null
-    }
-
-    const { pastedStyle, ...rest } = attrs
+    const attrs = HTMLAttributes as Record<string, unknown> & InlineStyleAttrs
+    const { color, backgroundColor, fontSize, fontFamily, ...rest } = attrs
+    const style = getStyleString({
+      color,
+      backgroundColor,
+      fontSize,
+      fontFamily,
+    })
 
     return [
       'span',
-      mergeAttributes(rest, pastedStyle ? { style: pastedStyle } : {}),
+      mergeAttributes(rest, style ? { style } : {}),
       0,
     ]
   },

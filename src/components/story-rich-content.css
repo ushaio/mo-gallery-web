@@ -21,14 +21,32 @@
   color: color-mix(in srgb, var(--foreground) 88%, transparent);
 }
 
-.story-rich-content > p:first-of-type::first-letter,
-.story-rich-content .story-rich-html > p:first-of-type::first-letter {
+.story-rich-content > p:first-of-type:not([data-drop-cap='false'])::first-letter,
+.story-rich-content .story-rich-html > p:first-of-type:not([data-drop-cap='false'])::first-letter,
+.story-rich-content > p[data-drop-cap='true']::first-letter,
+.story-rich-content .story-rich-html > p[data-drop-cap='true']::first-letter {
   float: left;
   margin-right: 0.12em;
   margin-top: 0.08em;
   font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   font-size: 4.5rem;
   line-height: 0.8;
+}
+
+.story-rich-content > p[style*='text-align: center']:first-of-type:not([data-drop-cap='false'])::first-letter,
+.story-rich-content .story-rich-html > p[style*='text-align: center']:first-of-type:not([data-drop-cap='false'])::first-letter,
+.story-rich-content > p[style*='text-align: center'][data-drop-cap='true']::first-letter,
+.story-rich-content .story-rich-html > p[style*='text-align: center'][data-drop-cap='true']::first-letter,
+.story-rich-content > p[style*='text-align: right']:first-of-type:not([data-drop-cap='false'])::first-letter,
+.story-rich-content .story-rich-html > p[style*='text-align: right']:first-of-type:not([data-drop-cap='false'])::first-letter,
+.story-rich-content > p[style*='text-align: right'][data-drop-cap='true']::first-letter,
+.story-rich-content .story-rich-html > p[style*='text-align: right'][data-drop-cap='true']::first-letter {
+  float: none;
+  margin-right: 0;
+  margin-top: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .story-rich-content h1,
@@ -252,8 +270,10 @@
     line-height: 1.85;
   }
 
-  .story-rich-content > p:first-of-type::first-letter,
-  .story-rich-content .story-rich-html > p:first-of-type::first-letter {
+  .story-rich-content > p:first-of-type:not([data-drop-cap='false'])::first-letter,
+  .story-rich-content .story-rich-html > p:first-of-type:not([data-drop-cap='false'])::first-letter,
+  .story-rich-content > p[data-drop-cap='true']::first-letter,
+  .story-rich-content .story-rich-html > p[data-drop-cap='true']::first-letter {
     font-size: 3.6rem;
   }
 

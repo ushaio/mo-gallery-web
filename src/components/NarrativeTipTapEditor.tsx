@@ -9,6 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import type { Editor } from '@tiptap/core'
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -16,6 +17,7 @@ import Link from '@tiptap/extension-link'
 import { ResizableImage } from '@/components/tiptap-extensions/ResizableImage'
 import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
+import { DropCapParagraph } from '@/components/tiptap-extensions/DropCapParagraph'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
@@ -31,6 +33,7 @@ import {
   ListOrdered,
   Quote,
   Code,
+  Pilcrow,
   Link as LinkIcon,
   Image as ImageIcon,
   AlignLeft,
@@ -65,6 +68,76 @@ const IMAGE_WIDTH_PRESETS: Record<'sm' | 'md' | 'lg', number> = {
   sm: 320,
   md: 480,
   lg: 720,
+}
+
+const HEADING_OPTIONS = [
+  { label: '正文', value: '' },
+  { label: '标题 1', value: '1' },
+  { label: '标题 2', value: '2' },
+  { label: '标题 3', value: '3' },
+] as const
+
+const FONT_SIZE_OPTIONS = [
+  { label: '默认字号', value: '' },
+  { label: '12px', value: '12px' },
+  { label: '14px', value: '14px' },
+  { label: '16px', value: '16px' },
+  { label: '18px', value: '18px' },
+  { label: '20px', value: '20px' },
+  { label: '24px', value: '24px' },
+  { label: '28px', value: '28px' },
+] as const
+
+const FONT_FAMILY_OPTIONS = [
+  {
+    label: '默认字体',
+    value: '',
+  },
+  {
+    label: '衬线',
+    value: 'var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+  },
+  {
+    label: '无衬线',
+    value: 'var(--font-sans), ui-sans-serif, system-ui, sans-serif',
+  },
+  {
+    label: '宋体风格',
+    value: '"STSong", "Songti SC", "Noto Serif SC", serif',
+  },
+  {
+    label: '黑体风格',
+    value: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
+  },
+  {
+    label: '等宽',
+    value: 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace',
+  },
+] as const
+
+function ensureFirstParagraphHasDropCap(currentEditor: Editor) {
+  let offset = 0
+
+  for (let index = 0; index < currentEditor.state.doc.childCount; index += 1) {
+    const child = currentEditor.state.doc.child(index)
+
+    if (child.type.name === 'paragraph') {
+      if (typeof child.attrs.dropCap === 'boolean') {
+        return
+      }
+
+      const nextAttrs = {
+        ...child.attrs,
+        dropCap: true,
+      }
+
+      const transaction = currentEditor.state.tr.setNodeMarkup(offset, undefined, nextAttrs)
+      currentEditor.view.dispatch(transaction)
+      return
+    }
+
+    offset += child.nodeSize
+  }
 }
 
 function convertMarkdownToHtml(input: string): string {
@@ -200,6 +273,32 @@ function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, childr
   )
 }
 
+interface ToolbarSelectProps {
+  value: string
+  onChange: (value: string) => void
+  onMouseDown?: (event: React.MouseEvent<HTMLSelectElement>) => void
+  title: string
+  options: ReadonlyArray<{ label: string; value: string }>
+}
+
+function ToolbarSelect({ value, onChange, onMouseDown, title, options }: ToolbarSelectProps) {
+  return (
+    <select
+      value={value}
+      title={title}
+      onMouseDown={onMouseDown}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-8 min-w-[92px] border border-transparent bg-transparent px-2 text-[11px] text-muted-foreground transition-all duration-200 hover:border-border hover:bg-background hover:text-accent-foreground focus:border-primary/30 focus:bg-background focus:text-foreground focus:outline-none"
+    >
+      {options.map((option) => (
+        <option key={`${title}-${option.label}`} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function ToolbarDivider() {
   return <div className="mx-2 h-4 w-px bg-border/80" />
 }
@@ -208,6 +307,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
   ({ value, onChange, placeholder, onPasteFiles, className }, ref) => {
     const currentValueRef = useRef(value)
     const onPasteFilesRef = useRef(onPasteFiles)
+    const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
     const [showLinkInput, setShowLinkInput] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
@@ -233,6 +333,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const editor = useEditor({
       extensions: [
         PastedBlockStyle,
+        DropCapParagraph,
         StarterKit.configure({
           heading: {
             levels: [1, 2, 3],
@@ -304,6 +405,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       },
     })
 
+    useEffect(() => {
+      if (!editor) return
+      ensureFirstParagraphHasDropCap(editor)
+    }, [editor, processedContent])
+
     const editorUiState = useEditorState({
       editor,
       selector: ({ editor: currentEditor }) => {
@@ -325,7 +431,16 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             isAlignCenter: false,
             isAlignRight: false,
             isImageSelected: false,
+            hasDropCap: false,
+            headingLevel: '',
+            fontSize: '',
+            fontFamily: '',
           }
+        }
+
+        const pastedStyleAttributes = currentEditor.getAttributes('pastedStyle') as {
+          fontSize?: string
+          fontFamily?: string
         }
 
         return {
@@ -345,9 +460,42 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isAlignCenter: currentEditor.isActive({ textAlign: 'center' }),
           isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
           isImageSelected: currentEditor.isActive('image'),
+          hasDropCap: currentEditor.getAttributes('paragraph').dropCap === true,
+          headingLevel: currentEditor.isActive('heading', { level: 1 })
+            ? '1'
+            : currentEditor.isActive('heading', { level: 2 })
+              ? '2'
+              : currentEditor.isActive('heading', { level: 3 })
+                ? '3'
+                : '',
+          fontSize: pastedStyleAttributes.fontSize || '',
+          fontFamily: pastedStyleAttributes.fontFamily || '',
         }
       },
     })
+
+    const resolvedEditorUiState = editorUiState ?? {
+      isBold: false,
+      isItalic: false,
+      isUnderline: false,
+      isStrike: false,
+      isCode: false,
+      isHeading1: false,
+      isHeading2: false,
+      isHeading3: false,
+      isBulletList: false,
+      isOrderedList: false,
+      isBlockquote: false,
+      isLink: false,
+      isAlignLeft: false,
+      isAlignCenter: false,
+      isAlignRight: false,
+      isImageSelected: false,
+      hasDropCap: false,
+      headingLevel: '',
+      fontSize: '',
+      fontFamily: '',
+    }
 
     const focusEditor = useCallback(() => {
       editor?.commands.focus()
@@ -380,6 +528,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         if (editor) {
           const processed = isMarkdownContent(html) ? convertMarkdownToHtml(html) : html
           editor.commands.setContent(processed)
+          ensureFirstParagraphHasDropCap(editor)
           currentValueRef.current = html
         }
       },
@@ -435,6 +584,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         
         const newHtml = currentHtml.replace(searchValue, processedNext)
         editor.commands.setContent(newHtml)
+        ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = newHtml
         onChange(newHtml)
         focusEditor()
@@ -489,9 +639,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const toggleItalic = () => editor?.chain().focus().toggleItalic().run()
     const toggleUnderline = () => editor?.chain().focus().toggleUnderline().run()
     const toggleStrike = () => editor?.chain().focus().toggleStrike().run()
-    const toggleH1 = () => editor?.chain().focus().toggleHeading({ level: 1 }).run()
-    const toggleH2 = () => editor?.chain().focus().toggleHeading({ level: 2 }).run()
-    const toggleH3 = () => editor?.chain().focus().toggleHeading({ level: 3 }).run()
     const toggleBulletList = () => editor?.chain().focus().toggleBulletList().run()
     const toggleOrderedList = () => editor?.chain().focus().toggleOrderedList().run()
     const toggleBlockquote = () => editor?.chain().focus().toggleBlockquote().run()
@@ -537,9 +684,80 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor.chain().focus().setTextAlign(align).run()
     }
 
+    const toggleDropCap = useCallback(() => {
+      if (!editor) return
+
+      editor
+        .chain()
+        .focus()
+        .setParagraphDropCap(resolvedEditorUiState.hasDropCap ? false : true)
+        .run()
+    }, [editor, resolvedEditorUiState.hasDropCap])
+
+    const setHeadingLevel = useCallback((level: string) => {
+      if (!editor) return
+
+      const chain = editor.chain().focus()
+      const pendingSelection = pendingSelectionRef.current
+      if (pendingSelection) {
+        chain.setTextSelection(pendingSelection)
+      }
+
+      if (level === '1' || level === '2' || level === '3') {
+        chain.setHeading({ level: Number.parseInt(level, 10) as 1 | 2 | 3 }).run()
+      } else {
+        chain.setParagraph().run()
+      }
+
+      pendingSelectionRef.current = null
+    }, [editor])
+
+    const setFontSize = useCallback((fontSize: string) => {
+      if (!editor) return
+
+      const chain = editor.chain().focus()
+      const pendingSelection = pendingSelectionRef.current
+      if (pendingSelection) {
+        chain.setTextSelection(pendingSelection)
+      }
+      if (fontSize) {
+        chain.setFontSize(fontSize).run()
+        pendingSelectionRef.current = null
+        return
+      }
+
+      chain.unsetFontSize().run()
+      pendingSelectionRef.current = null
+    }, [editor])
+
+    const setFontFamily = useCallback((fontFamily: string) => {
+      if (!editor) return
+
+      const chain = editor.chain().focus()
+      const pendingSelection = pendingSelectionRef.current
+      if (pendingSelection) {
+        chain.setTextSelection(pendingSelection)
+      }
+      if (fontFamily) {
+        chain.setFontFamily(fontFamily).run()
+        pendingSelectionRef.current = null
+        return
+      }
+
+      chain.unsetFontFamily().run()
+      pendingSelectionRef.current = null
+    }, [editor])
+
     const preserveSelectionOnToolbarMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
     }, [])
+
+    const preserveSelectionOnSelectMouseDown = useCallback(() => {
+      if (!editor) return
+
+      const { from, to } = editor.state.selection
+      pendingSelectionRef.current = { from, to }
+    }, [editor])
 
     const undo = () => editor?.chain().focus().undo().run()
     const redo = () => editor?.chain().focus().redo().run()
@@ -555,15 +773,28 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     return (
       <div className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
         <div className="scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-3 py-2 whitespace-nowrap">
-          <ToolbarButton onClick={toggleH1} isActive={editor.isActive('heading', { level: 1 })} title="标题1">
-            <span className="text-xs font-bold">H1</span>
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleH2} isActive={editor.isActive('heading', { level: 2 })} title="标题2">
-            <span className="text-xs font-bold">H2</span>
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleH3} isActive={editor.isActive('heading', { level: 3 })} title="标题3">
-            <span className="text-xs font-bold">H3</span>
-          </ToolbarButton>
+          <ToolbarSelect
+            value={resolvedEditorUiState.headingLevel}
+            onChange={setHeadingLevel}
+            onMouseDown={preserveSelectionOnSelectMouseDown}
+            title="标题级别"
+            options={HEADING_OPTIONS}
+          />
+
+          <ToolbarSelect
+            value={resolvedEditorUiState.fontFamily}
+            onChange={setFontFamily}
+            onMouseDown={preserveSelectionOnSelectMouseDown}
+            title="字体"
+            options={FONT_FAMILY_OPTIONS}
+          />
+          <ToolbarSelect
+            value={resolvedEditorUiState.fontSize}
+            onChange={setFontSize}
+            onMouseDown={preserveSelectionOnSelectMouseDown}
+            title="字号"
+            options={FONT_SIZE_OPTIONS}
+          />
 
           <ToolbarDivider />
 
@@ -593,6 +824,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           </ToolbarButton>
           <ToolbarButton onClick={toggleBlockquote} isActive={editor.isActive('blockquote')} title="引用">
             <Quote className="w-4 h-4" />
+          </ToolbarButton>
+          <ToolbarButton onClick={toggleDropCap} isActive={resolvedEditorUiState.hasDropCap} title="首字放大">
+            <Pilcrow className="w-4 h-4" />
           </ToolbarButton>
 
           <ToolbarDivider />
