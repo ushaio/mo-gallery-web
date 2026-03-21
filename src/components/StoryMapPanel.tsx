@@ -1,33 +1,38 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MapPinned, Maximize2, Minimize2 } from 'lucide-react'
+import { MapPin, Maximize2, Minimize2, Camera, Images } from 'lucide-react'
 import Map, { Marker, NavigationControl, Popup, type MapRef } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { clusterMarkers, type ClusterPoint } from '@/lib/map-clustering'
+import { getPhotoCoordinates, type PhotoCoordinates } from '@/lib/photo-location'
 
+// High-contrast dark map style
 const MAP_STYLE: StyleSpecification = {
   version: 8,
   sources: {
-    osm: {
+    carto: {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: [
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+      ],
       tileSize: 256,
-      attribution: 'OpenStreetMap contributors',
+      attribution: '© OpenStreetMap contributors, © CARTO',
     },
   },
   layers: [
     {
-      id: 'osm',
+      id: 'carto',
       type: 'raster',
-      source: 'osm',
+      source: 'carto',
     },
   ],
 }
 
 type GeotaggedPhoto = PhotoDto & {
-  latitude: number
-  longitude: number
+  coordinates: PhotoCoordinates
 }
 
 type PopupAnchor = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -109,17 +114,113 @@ function getOverflowScore(
   }
 }
 
-function isFiniteCoordinate(value: number | undefined): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
+function toGeotaggedPhoto(photo: PhotoDto): GeotaggedPhoto | null {
+  const coordinates = getPhotoCoordinates(photo)
+  if (!coordinates) {
+    return null
+  }
+
+  return {
+    ...photo,
+    coordinates,
+  }
 }
 
-function hasCoordinates(photo: PhotoDto): photo is GeotaggedPhoto {
-  return isFiniteCoordinate(photo.latitude) && isFiniteCoordinate(photo.longitude)
+// Cluster marker component
+interface ClusterMarkerProps {
+  point: ClusterPoint
+  onFocusPhoto: (photo: GeotaggedPhoto) => void
+}
+
+function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const photos = point.properties.clusteredPhotos ?? []
+  const count = point.properties.point_count ?? 0
+
+  const handleClick = () => {
+    setIsExpanded(!isExpanded)
+  }
+
+  return (
+    <Marker
+      longitude={point.geometry.coordinates[0]}
+      latitude={point.geometry.coordinates[1]}
+      anchor="center"
+    >
+      <div className="relative">
+        {/* Expanded cluster grid */}
+        {isExpanded && photos.length > 0 && (
+          <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 overflow-hidden rounded-xl border border-white/20 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur-md">
+            <div className="grid grid-cols-3 gap-1.5">
+              {photos.slice(0, 9).map((photo) => (
+                <button
+                  key={photo.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsExpanded(false)
+                    onFocusPhoto(photo)
+                  }}
+                  className="size-10 overflow-hidden rounded-lg transition-transform hover:scale-110"
+                >
+                  <img
+                    src={resolveAssetUrl(photo.thumbnailUrl || photo.url)}
+                    alt={photo.title}
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+            {count > 9 && (
+              <p className="mt-1.5 text-center text-[9px] text-zinc-400">
+                +{count - 9} more
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Cluster pin */}
+        <button
+          type="button"
+          onClick={handleClick}
+          className="group relative cursor-pointer transition-all hover:scale-110"
+          aria-label={`${count} photos at this location`}
+        >
+          {/* Background preview */}
+          {photos[0] && (
+            <div className="absolute inset-0 overflow-hidden rounded-full">
+              <img
+                src={resolveAssetUrl(photos[0].thumbnailUrl || photos[0].url)}
+                alt=""
+                className="h-full w-full object-cover opacity-40"
+              />
+              <div className="absolute inset-0 bg-zinc-900/60" />
+            </div>
+          )}
+
+          {/* Cluster count */}
+          <div className="relative flex size-9 items-center justify-center rounded-full border-2 border-white/80 bg-zinc-800/95 shadow-lg">
+            <Images className="mr-0.5 size-3.5 text-zinc-300" />
+            <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-bold text-zinc-900 shadow-md">
+              {count > 99 ? '99+' : count}
+            </span>
+          </div>
+
+          {/* Pin tail */}
+          <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-zinc-800/95" />
+        </button>
+      </div>
+    </Marker>
+  )
 }
 
 export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
+  const { locale } = useLanguage()
   const mapRef = useRef<MapRef | null>(null)
-  const geotaggedPhotos = useMemo(() => photos.filter(hasCoordinates), [photos])
+  const geotaggedPhotos = useMemo(
+    () => photos.map(toGeotaggedPhoto).filter((photo): photo is GeotaggedPhoto => photo !== null),
+    [photos]
+  )
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null)
   const [popupPhotoId, setPopupPhotoId] = useState<string | null>(null)
   const [popupAnchor, setPopupAnchor] = useState<PopupAnchor>('top')
@@ -128,6 +229,13 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     imageHeight: 112,
     edgePadding: 96,
   })
+  const [currentZoom, setCurrentZoom] = useState(expanded ? 14.5 : 13.5)
+
+  // Clustered markers based on zoom level
+  const clusteredMarkers = useMemo(
+    () => clusterMarkers(geotaggedPhotos, currentZoom),
+    [geotaggedPhotos, currentZoom]
+  )
 
   const selectedPhoto = useMemo(
     () => geotaggedPhotos.find((photo) => photo.id === selectedPhotoId) ?? null,
@@ -149,23 +257,23 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     if (geotaggedPhotos.length === 1) {
       const photo = geotaggedPhotos[0]
       map.flyTo({
-        center: [photo.longitude, photo.latitude],
+        center: [photo.coordinates.lng, photo.coordinates.lat],
         zoom: 13.5,
         duration: 0,
       })
       return
     }
 
-    let minLng = geotaggedPhotos[0].longitude
-    let maxLng = geotaggedPhotos[0].longitude
-    let minLat = geotaggedPhotos[0].latitude
-    let maxLat = geotaggedPhotos[0].latitude
+    let minLng = geotaggedPhotos[0].coordinates.lng
+    let maxLng = geotaggedPhotos[0].coordinates.lng
+    let minLat = geotaggedPhotos[0].coordinates.lat
+    let maxLat = geotaggedPhotos[0].coordinates.lat
 
     for (const photo of geotaggedPhotos) {
-      minLng = Math.min(minLng, photo.longitude)
-      maxLng = Math.max(maxLng, photo.longitude)
-      minLat = Math.min(minLat, photo.latitude)
-      maxLat = Math.max(maxLat, photo.latitude)
+      minLng = Math.min(minLng, photo.coordinates.lng)
+      maxLng = Math.max(maxLng, photo.coordinates.lng)
+      minLat = Math.min(minLat, photo.coordinates.lat)
+      maxLat = Math.max(maxLat, photo.coordinates.lat)
     }
 
     const lngSpan = maxLng - minLng
@@ -306,7 +414,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
       return { anchor: 'bottom', offsetX: 0, offsetY: 0 }
     }
 
-    const point = map.project([photo.longitude, photo.latitude])
+    const point = map.project([photo.coordinates.lng, photo.coordinates.lat])
     const container = map.getContainer()
     const width = container.clientWidth || 320
     const height = container.clientHeight || 320
@@ -356,7 +464,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     })
 
     map.flyTo({
-      center: [photo.longitude, photo.latitude],
+      center: [photo.coordinates.lng, photo.coordinates.lat],
       zoom: Math.max(map.getZoom(), expanded ? 14.5 : 13.5),
       offset: [placement.offsetX, placement.offsetY],
       duration: 450,
@@ -366,124 +474,183 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
 
   return (
     <section
-      className={`overflow-hidden border border-border/60 bg-card/80 shadow-[0_24px_60px_-48px_rgba(0,0,0,0.4)] ${
-        expanded
-          ? 'rounded-[32px] bg-card/95'
-          : 'rounded-[28px]'
+      className={`overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 ${
+        expanded ? 'shadow-2xl' : 'shadow-lg'
       }`}
     >
-      <div className="relative border-b border-border/60 px-6 pb-5 pt-6">
-        <div className="mb-3 flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.3em] text-primary/75">
-          <div className="h-px w-6 bg-primary/45" />
-          <span>Map</span>
-        </div>
-        <div className="absolute right-6 top-4">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/80 text-primary">
-            <MapPinned className="size-4" />
+      {/* Header */}
+      <div className="relative border-b border-zinc-100 px-5 pb-4 pt-5 dark:border-zinc-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
+              {locale === 'zh' ? '位置' : 'Locations'}
+            </span>
+            <div className="mt-1 flex items-center gap-2">
+              <MapPin className="size-3.5 text-zinc-400 dark:text-zinc-500" />
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {geotaggedPhotos.length} {locale === 'zh' ? '张照片已标注' : `photo${geotaggedPhotos.length === 1 ? '' : 's'} mapped`}
+              </span>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
+            aria-label={expanded ? 'Collapse map' : 'Expand map'}
+            title={expanded ? 'Collapse map' : 'Expand map'}
+          >
+            {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </button>
         </div>
       </div>
 
       {geotaggedPhotos.length === 0 ? (
-        <div className="px-6 py-10">
-          <div className="rounded-[24px] border border-dashed border-border/70 bg-background/65 px-5 py-8 text-center">
-            <p className="text-xs font-bold uppercase tracking-[0.3em] text-muted-foreground/65">No GPS Data</p>
-            <p className="mt-3 font-serif italic leading-7 text-muted-foreground">
-              Upload photos with location metadata if you want the narrative route to appear here.
-            </p>
+        /* Empty State */
+        <div className="flex flex-col items-center justify-center px-6 py-12">
+          <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+            <Camera className="size-5 text-zinc-400" />
           </div>
+          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+            {locale === 'zh' ? '暂无位置数据' : 'No location data'}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+            {locale === 'zh' ? '带有 GPS 信息的照片将显示在此处' : 'Photos with GPS metadata will appear here'}
+          </p>
         </div>
       ) : (
-        <>
-          <div className={`relative overflow-hidden border-b border-border/60 bg-muted/20 ${expanded ? 'h-[min(72vh,720px)] min-h-[420px]' : 'h-[320px]'}`}>
-            <div className="pointer-events-none absolute right-3 top-[84px] z-10">
-              <div className="pointer-events-auto flex overflow-hidden rounded-md border border-black/15 bg-white shadow-sm dark:border-white/10 dark:bg-[#0f0f0f]">
-                <button
-                  type="button"
-                  onClick={onToggleExpanded}
-                  className="flex h-[29px] w-[29px] cursor-pointer items-center justify-center text-[#1f1f1f] transition-colors hover:bg-black/5 dark:text-[#d4af37] dark:hover:bg-white/8"
-                  aria-label={expanded ? 'Collapse map panel' : 'Expand map panel'}
-                  title={expanded ? 'Collapse map panel' : 'Expand map panel'}
-                >
-                  {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-                </button>
-              </div>
-            </div>
-            <Map
-              ref={mapRef}
-              initialViewState={{
-                longitude: selectedPhoto?.longitude ?? geotaggedPhotos[0].longitude,
-                latitude: selectedPhoto?.latitude ?? geotaggedPhotos[0].latitude,
-                zoom: geotaggedPhotos.length === 1 ? 13.5 : 2.5,
-              }}
-              mapStyle={MAP_STYLE}
-              attributionControl={false}
-              reuseMaps
-              scrollZoom={expanded}
-              onLoad={fitMapToPhotos}
-            >
-              <NavigationControl position="top-right" showCompass={false} />
+        /* Map Container */
+        <div
+          className={`relative overflow-hidden ${
+            expanded ? 'h-[min(72vh,720px)] min-h-[420px]' : 'h-[280px]'
+          }`}
+        >
+          <Map
+            ref={mapRef}
+            initialViewState={{
+              longitude: selectedPhoto?.coordinates.lng ?? geotaggedPhotos[0].coordinates.lng,
+              latitude: selectedPhoto?.coordinates.lat ?? geotaggedPhotos[0].coordinates.lat,
+              zoom: geotaggedPhotos.length === 1 ? 13.5 : 2.5,
+            }}
+            mapStyle={MAP_STYLE}
+            attributionControl={false}
+            reuseMaps
+            scrollZoom={expanded}
+            onLoad={fitMapToPhotos}
+            onMove={(evt) => setCurrentZoom(evt.viewState.zoom)}
+          >
+            <NavigationControl position="top-right" showCompass={false} />
 
-              {geotaggedPhotos.map((photo) => {
+            {clusteredMarkers.map((clusterPoint) => {
+              if (clusterPoint.properties.cluster) {
+                // Render cluster marker
+                return (
+                  <ClusterMarker
+                    key={`cluster-${clusterPoint.geometry.coordinates[0]}-${clusterPoint.geometry.coordinates[1]}`}
+                    point={clusterPoint}
+                    onFocusPhoto={focusPhotoOnMap}
+                  />
+                )
+              } else {
+                // Render individual marker
+                const photo = clusterPoint.properties.marker!
                 const isSelected = photo.id === selectedPhoto?.id
 
                 return (
                   <Marker
                     key={photo.id}
-                    longitude={photo.longitude}
-                    latitude={photo.latitude}
+                    longitude={photo.coordinates.lng}
+                    latitude={photo.coordinates.lat}
                     anchor="bottom"
                   >
                     <button
                       type="button"
                       onClick={() => focusPhotoOnMap(photo)}
-                      className={`flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border-2 transition-all ${
-                        isSelected
-                          ? 'border-primary bg-primary shadow-[0_0_0_6px_rgba(212,175,55,0.18)]'
-                          : 'border-white bg-black/80 shadow-[0_8px_20px_rgba(0,0,0,0.28)]'
+                      className={`group relative cursor-pointer transition-all ${
+                        isSelected ? 'scale-110' : 'hover:scale-110'
                       }`}
-                      aria-label={`View map point for ${photo.title}`}
+                      aria-label={`View ${photo.title} on map`}
                     >
-                      <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-primary-foreground' : 'bg-white'}`} />
+                      {/* Marker Pin */}
+                      <div
+                        className={`flex size-7 items-center justify-center rounded-full border-[2.5px] shadow-lg transition-all ${
+                          isSelected
+                            ? 'border-zinc-900 bg-white'
+                            : 'border-white/80 bg-zinc-100/95'
+                        }`}
+                      >
+                        <Camera
+                          className={`size-3 ${
+                            isSelected ? 'text-zinc-900' : 'text-zinc-500'
+                          }`}
+                        />
+                      </div>
+                      {/* Pin Tail */}
+                      <div
+                        className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
+                          isSelected ? 'bg-white' : 'bg-zinc-100/95'
+                        }`}
+                      />
+                      {/* Selection Ring */}
+                      {isSelected && (
+                        <div className="absolute -inset-2 rounded-full border-2 border-white/40" />
+                      )}
                     </button>
                   </Marker>
                 )
-              })}
+              }
+            })}
 
-              {popupPhoto ? (
-                <Popup
-                  key={popupPhoto.id}
-                  longitude={popupPhoto.longitude}
-                  latitude={popupPhoto.latitude}
-                  anchor={popupAnchor}
-                  offset={12}
-                  closeButton={false}
-                  onClose={() => setPopupPhotoId(null)}
-                  maxWidth={`${popupLayout.width}px`}
-                  style={{ ['--story-popup-width' as string]: `${popupLayout.width}px` }}
-                  className="[&_.maplibregl-popup-content]:w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:max-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:min-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:box-border [&_.maplibregl-popup-content]:overflow-hidden [&_.maplibregl-popup-content]:rounded-[18px] [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-border/70 [&_.maplibregl-popup-content]:bg-card/95 [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-xl"
-                >
-                  <div className="w-full overflow-hidden rounded-[18px]">
-                    <div
-                      className="flex items-center justify-center bg-muted/30"
-                      style={{ height: popupLayout.imageHeight }}
-                    >
-                      <img
-                        src={resolveAssetUrl(popupPhoto.thumbnailUrl || popupPhoto.url, cdnDomain)}
-                        alt={popupPhoto.title}
-                        className="block h-full w-full object-contain"
-                      />
-                    </div>
-                    <div className="space-y-1 px-2.5 py-2">
-                      <h3 className="text-xs font-medium text-foreground">{popupPhoto.title}</h3>
+            {popupPhoto ? (
+              <Popup
+                key={popupPhoto.id}
+                longitude={popupPhoto.coordinates.lng}
+                latitude={popupPhoto.coordinates.lat}
+                anchor={popupAnchor}
+                offset={16}
+                closeButton={false}
+                onClose={() => setPopupPhotoId(null)}
+                maxWidth={`${popupLayout.width}px`}
+                style={{ ['--story-popup-width' as string]: `${popupLayout.width}px` }}
+                className="[&_.maplibregl-popup-content]:w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:max-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:min-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:box-border [&_.maplibregl-popup-content]:overflow-hidden [&_.maplibregl-popup-content]:rounded-2xl [&_.maplibregl-popup-content]:bg-zinc-900 [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-2xl [&_.maplibregl-popup-content]:ring-1 [&_.maplibregl-popup-content]:ring-white/10"
+              >
+                <div className="w-full overflow-hidden rounded-2xl">
+                  {/* Photo */}
+                  <div
+                    className="relative flex items-center justify-center bg-zinc-800"
+                    style={{ height: popupLayout.imageHeight }}
+                  >
+                    <img
+                      src={resolveAssetUrl(popupPhoto.thumbnailUrl || popupPhoto.url, cdnDomain)}
+                      alt={popupPhoto.title}
+                      className="block h-full w-full object-cover"
+                    />
+                    {/* Photo Number Badge */}
+                    <div className="absolute left-2 top-2">
+                      <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur-sm">
+                        {geotaggedPhotos.findIndex((p) => p.id === popupPhoto.id) + 1}/{geotaggedPhotos.length}
+                      </span>
                     </div>
                   </div>
-                </Popup>
-              ) : null}
-            </Map>
-          </div>
-
-        </>
+                  {/* Info */}
+                  <div className="px-3 py-2.5">
+                    <h3 className="text-xs font-medium text-zinc-100 line-clamp-1">
+                      {popupPhoto.title}
+                    </h3>
+                    {popupPhoto.takenAt && (
+                      <p className="mt-0.5 text-[10px] text-zinc-400">
+                        {new Date(popupPhoto.takenAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            ) : null}
+          </Map>
+        </div>
       )}
     </section>
   )

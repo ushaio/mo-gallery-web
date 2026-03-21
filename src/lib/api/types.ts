@@ -40,8 +40,7 @@ export interface PhotoDto {
   shutterSpeed?: string
   iso?: number
   takenAt?: string
-  latitude?: number
-  longitude?: number
+  gps?: string
   orientation?: number
   software?: string
   exifRaw?: string

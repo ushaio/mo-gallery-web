@@ -4,8 +4,9 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Loader2, Image as ImageIcon, Send, Sparkles, Check, FolderOpen, Minimize2, Save, Clock, Trash2 } from 'lucide-react'
 import { compressImage } from '@/lib/image-compress'
+import { calculateFileHash } from '@/lib/file-hash'
 import { useAuth } from '@/contexts/AuthContext'
-import { uploadPhotoWithProgress, createStory, getAdminAlbums, addPhotosToAlbum, type PhotoDto, type AlbumDto, resolveAssetUrl } from '@/lib/api'
+import { uploadPhotoWithProgress, createStory, getAdminAlbums, addPhotosToAlbum, checkDuplicatePhoto, getPhotos, type PhotoDto, type AlbumDto, resolveAssetUrl } from '@/lib/api'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useDropzone } from 'react-dropzone'
@@ -319,16 +320,52 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
           }
 
           try {
+            const fileHash = await calculateFileHash(pending.file)
+            const duplicate = await checkDuplicatePhoto(token, fileHash)
+
+            if (duplicate.isDuplicate && duplicate.existingPhoto) {
+              let existingPhoto = photos.find((photo) => photo.id === duplicate.existingPhoto?.id)
+                || uploadedPhotos.find((photo) => photo.id === duplicate.existingPhoto?.id)
+
+              if (!existingPhoto) {
+                const allPhotos = await getPhotos({ all: true })
+                existingPhoto = allPhotos.find((photo) => photo.id === duplicate.existingPhoto?.id)
+              }
+
+              if (existingPhoto) {
+                if (!uploadedPhotos.some((photo) => photo.id === existingPhoto.id)) {
+                  uploadedPhotos.push(existingPhoto)
+                }
+
+                notify(`图片已重复，已替换为已上传照片：${existingPhoto.title}`, 'info')
+
+                if (selectedAlbumIds.length > 0) {
+                  await Promise.all(selectedAlbumIds.map(async (albumId) => {
+                    try {
+                      await addPhotosToAlbum(token, albumId, [existingPhoto.id])
+                    } catch (error) {
+                      console.error('Failed to add duplicate photo to album:', error)
+                    }
+                  }))
+                }
+
+                continue
+              }
+            }
+
             const result = await uploadPhotoWithProgress({
               token,
               file: fileToUpload,
               title: fileToUpload.name,
+              file_hash: fileHash,
               onProgress: (progress) => {
                 setUploadQueue(prev => prev.map(p => p.id === pending.id ? { ...p, progress } : p))
               }
             })
 
-            uploadedPhotos.push(result)
+            if (!uploadedPhotos.some((photo) => photo.id === result.id)) {
+              uploadedPhotos.push(result)
+            }
 
             // Auto-link to albums
             if (selectedAlbumIds.length > 0) {

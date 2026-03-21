@@ -25,6 +25,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatFileSize } from '@/lib/utils'
+import { formatPhotoCoordinates } from '@/lib/photo-location'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
 
@@ -416,7 +417,7 @@ export function PhotoDetailModal({
     { 
       icon: MapPin, 
       label: 'GPS', 
-      value: photo.latitude && photo.longitude ? `${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}` : undefined 
+      value: formatPhotoCoordinates(photo, 4)
     },
   ].filter(item => item.value)
 
