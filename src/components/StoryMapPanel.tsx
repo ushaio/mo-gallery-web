@@ -6,6 +6,7 @@ import Map, { Marker, NavigationControl, Popup, type MapRef } from 'react-map-gl
 import type { StyleSpecification } from 'maplibre-gl'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { clusterMarkers, type ClusterPoint } from '@/lib/map-clustering'
 import { getPhotoCoordinates, type PhotoCoordinates } from '@/lib/photo-location'
 
@@ -29,6 +30,20 @@ const MAP_STYLE: StyleSpecification = {
       source: 'carto',
     },
   ],
+}
+
+const LIGHT_MAP_STYLE: StyleSpecification = {
+  ...MAP_STYLE,
+  sources: {
+    carto: {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+      ],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors, &copy; CARTO',
+    },
+  },
 }
 
 type GeotaggedPhoto = PhotoDto & {
@@ -129,10 +144,11 @@ function toGeotaggedPhoto(photo: PhotoDto): GeotaggedPhoto | null {
 // Cluster marker component
 interface ClusterMarkerProps {
   point: ClusterPoint
+  isDark: boolean
   onFocusPhoto: (photo: GeotaggedPhoto) => void
 }
 
-function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
+function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const photos = point.properties.clusteredPhotos ?? []
   const count = point.properties.point_count ?? 0
@@ -150,7 +166,13 @@ function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
       <div className="relative">
         {/* Expanded cluster grid */}
         {isExpanded && photos.length > 0 && (
-          <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 overflow-hidden rounded-xl border border-white/20 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur-md">
+          <div
+            className={`absolute bottom-full left-1/2 mb-2 -translate-x-1/2 overflow-hidden rounded-xl border p-2 shadow-2xl backdrop-blur-md ${
+              isDark
+                ? 'border-white/20 bg-zinc-900/95'
+                : 'border-zinc-200/90 bg-white/95'
+            }`}
+          >
             <div className="grid grid-cols-3 gap-1.5">
               {photos.slice(0, 9).map((photo) => (
                 <button
@@ -172,7 +194,7 @@ function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
               ))}
             </div>
             {count > 9 && (
-              <p className="mt-1.5 text-center text-[9px] text-zinc-400">
+              <p className={`mt-1.5 text-center text-[9px] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
                 +{count - 9} more
               </p>
             )}
@@ -194,20 +216,36 @@ function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
                 alt=""
                 className="h-full w-full object-cover opacity-40"
               />
-              <div className="absolute inset-0 bg-zinc-900/60" />
+              <div className={`absolute inset-0 ${isDark ? 'bg-zinc-900/60' : 'bg-white/40'}`} />
             </div>
           )}
 
           {/* Cluster count */}
-          <div className="relative flex size-9 items-center justify-center rounded-full border-2 border-white/80 bg-zinc-800/95 shadow-lg">
-            <Images className="mr-0.5 size-3.5 text-zinc-300" />
-            <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-bold text-zinc-900 shadow-md">
+          <div
+            className={`relative flex size-9 items-center justify-center rounded-full border-2 shadow-lg ${
+              isDark
+                ? 'border-white/80 bg-zinc-800/95'
+                : 'border-white bg-zinc-100/95'
+            }`}
+          >
+            <Images className={`mr-0.5 size-3.5 ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`} />
+            <span
+              className={`absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full text-[9px] font-bold shadow-md ${
+                isDark
+                  ? 'bg-zinc-100 text-zinc-900'
+                  : 'bg-zinc-900 text-white'
+              }`}
+            >
               {count > 99 ? '99+' : count}
             </span>
           </div>
 
           {/* Pin tail */}
-          <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-zinc-800/95" />
+          <div
+            className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
+              isDark ? 'bg-zinc-800/95' : 'bg-zinc-100/95'
+            }`}
+          />
         </button>
       </div>
     </Marker>
@@ -216,6 +254,7 @@ function ClusterMarker({ point, onFocusPhoto }: ClusterMarkerProps) {
 
 export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
   const { locale } = useLanguage()
+  const { resolvedTheme } = useTheme()
   const mapRef = useRef<MapRef | null>(null)
   const geotaggedPhotos = useMemo(
     () => photos.map(toGeotaggedPhoto).filter((photo): photo is GeotaggedPhoto => photo !== null),
@@ -230,6 +269,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     edgePadding: 96,
   })
   const [currentZoom, setCurrentZoom] = useState(expanded ? 14.5 : 13.5)
+  const isDark = resolvedTheme === 'dark'
+  const mapStyle = isDark ? MAP_STYLE : LIGHT_MAP_STYLE
 
   // Clustered markers based on zoom level
   const clusteredMarkers = useMemo(
@@ -522,6 +563,10 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
         <div
           className={`relative overflow-hidden ${
             expanded ? 'h-[min(72vh,720px)] min-h-[420px]' : 'h-[280px]'
+          } ${
+            isDark
+              ? '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-white/10 [&_.maplibregl-ctrl-group]:bg-zinc-950/88 [&_.maplibregl-ctrl-group]:shadow-xl [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-zinc-200 [&_.maplibregl-ctrl-button:hover]:bg-white/10 [&_.maplibregl-popup-tip]:border-b-zinc-900 [&_.maplibregl-popup-tip]:border-t-zinc-900'
+              : '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-zinc-200/90 [&_.maplibregl-ctrl-group]:bg-white/92 [&_.maplibregl-ctrl-group]:shadow-lg [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-zinc-700 [&_.maplibregl-ctrl-button:hover]:bg-zinc-100 [&_.maplibregl-popup-tip]:border-b-white [&_.maplibregl-popup-tip]:border-t-white'
           }`}
         >
           <Map
@@ -531,7 +576,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
               latitude: selectedPhoto?.coordinates.lat ?? geotaggedPhotos[0].coordinates.lat,
               zoom: geotaggedPhotos.length === 1 ? 13.5 : 2.5,
             }}
-            mapStyle={MAP_STYLE}
+            mapStyle={mapStyle}
             attributionControl={false}
             reuseMaps
             scrollZoom={expanded}
@@ -547,6 +592,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                   <ClusterMarker
                     key={`cluster-${clusterPoint.geometry.coordinates[0]}-${clusterPoint.geometry.coordinates[1]}`}
                     point={clusterPoint}
+                    isDark={isDark}
                     onFocusPhoto={focusPhotoOnMap}
                   />
                 )
@@ -574,25 +620,29 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                       <div
                         className={`flex size-7 items-center justify-center rounded-full border-[2.5px] shadow-lg transition-all ${
                           isSelected
-                            ? 'border-zinc-900 bg-white'
-                            : 'border-white/80 bg-zinc-100/95'
+                            ? isDark ? 'border-zinc-200 bg-zinc-950' : 'border-zinc-900 bg-white'
+                            : isDark ? 'border-white/80 bg-zinc-900/95' : 'border-white/80 bg-zinc-100/95'
                         }`}
                       >
                         <Camera
                           className={`size-3 ${
-                            isSelected ? 'text-zinc-900' : 'text-zinc-500'
+                            isSelected
+                              ? isDark ? 'text-zinc-100' : 'text-zinc-900'
+                              : isDark ? 'text-zinc-300' : 'text-zinc-500'
                           }`}
                         />
                       </div>
                       {/* Pin Tail */}
                       <div
                         className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
-                          isSelected ? 'bg-white' : 'bg-zinc-100/95'
+                          isSelected
+                            ? isDark ? 'bg-zinc-950' : 'bg-white'
+                            : isDark ? 'bg-zinc-900/95' : 'bg-zinc-100/95'
                         }`}
                       />
                       {/* Selection Ring */}
                       {isSelected && (
-                        <div className="absolute -inset-2 rounded-full border-2 border-white/40" />
+                        <div className={`absolute -inset-2 rounded-full border-2 ${isDark ? 'border-white/40' : 'border-zinc-900/15'}`} />
                       )}
                     </button>
                   </Marker>
@@ -611,12 +661,16 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                 onClose={() => setPopupPhotoId(null)}
                 maxWidth={`${popupLayout.width}px`}
                 style={{ ['--story-popup-width' as string]: `${popupLayout.width}px` }}
-                className="[&_.maplibregl-popup-content]:w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:max-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:min-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:box-border [&_.maplibregl-popup-content]:overflow-hidden [&_.maplibregl-popup-content]:rounded-2xl [&_.maplibregl-popup-content]:bg-zinc-900 [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-2xl [&_.maplibregl-popup-content]:ring-1 [&_.maplibregl-popup-content]:ring-white/10"
+                className={`[&_.maplibregl-popup-content]:w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:max-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:min-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:box-border [&_.maplibregl-popup-content]:overflow-hidden [&_.maplibregl-popup-content]:rounded-2xl [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-2xl [&_.maplibregl-popup-content]:ring-1 ${
+                  isDark
+                    ? '[&_.maplibregl-popup-content]:bg-zinc-900 [&_.maplibregl-popup-content]:ring-white/10'
+                    : '[&_.maplibregl-popup-content]:bg-white [&_.maplibregl-popup-content]:ring-zinc-900/10'
+                }`}
               >
                 <div className="w-full overflow-hidden rounded-2xl">
                   {/* Photo */}
                   <div
-                    className="relative flex items-center justify-center bg-zinc-800"
+                    className={`relative flex items-center justify-center ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}
                     style={{ height: popupLayout.imageHeight }}
                   >
                     <img
@@ -626,18 +680,24 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                     />
                     {/* Photo Number Badge */}
                     <div className="absolute left-2 top-2">
-                      <span className="rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur-sm">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[9px] font-medium backdrop-blur-sm ${
+                          isDark
+                            ? 'bg-black/60 text-white'
+                            : 'bg-white/90 text-zinc-900 ring-1 ring-zinc-900/10'
+                        }`}
+                      >
                         {geotaggedPhotos.findIndex((p) => p.id === popupPhoto.id) + 1}/{geotaggedPhotos.length}
                       </span>
                     </div>
                   </div>
                   {/* Info */}
                   <div className="px-3 py-2.5">
-                    <h3 className="text-xs font-medium text-zinc-100 line-clamp-1">
+                    <h3 className={`line-clamp-1 text-xs font-medium ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
                       {popupPhoto.title}
                     </h3>
                     {popupPhoto.takenAt && (
-                      <p className="mt-0.5 text-[10px] text-zinc-400">
+                      <p className={`mt-0.5 text-[10px] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
                         {new Date(popupPhoto.takenAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                           month: 'short',
                           day: 'numeric',

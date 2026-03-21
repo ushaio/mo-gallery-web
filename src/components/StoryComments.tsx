@@ -8,6 +8,7 @@ import { getStoryComments, submitPhotoComment, type PublicCommentDto } from '@/l
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { Toast, type Notification } from '@/components/Toast'
 import dynamic from 'next/dynamic'
 
@@ -39,6 +40,7 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
   const { t, locale } = useLanguage()
   const { user, token } = useAuth()
   const { settings, isLoading: settingsLoading } = useSettings()
+  const { resolvedTheme } = useTheme()
   const router = useRouter()
   const pathname = usePathname()
   const [comments, setComments] = useState<PublicCommentDto[]>([])
@@ -60,6 +62,12 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
   const commentsStorage = settings?.comments_storage?.toUpperCase() || ''
   const isWaline = commentsStorage === 'LEANCLOUD'
   const walineServerUrl = settings?.waline_server_url || ''
+  const isDark = resolvedTheme === 'dark'
+  const containerClassName = compact
+    ? isDark
+      ? 'rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4'
+      : 'rounded-2xl border border-zinc-200/80 bg-white/80 p-4'
+    : ''
 
   useEffect(() => {
     if (!isWaline) {
@@ -151,13 +159,14 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
 
   if (isWaline) {
     return (
-      <div className="relative">
+      <div className={`relative ${containerClassName}`}>
         <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
         {walineServerUrl ? (
           <WalineCommentsWrapper
             serverURL={walineServerUrl}
             path={`/stories/${storyId}`}
             lang={locale === 'zh' ? 'zh-CN' : 'en'}
+            dark={isDark ? 'html.dark' : ''}
           />
         ) : (
           <p className="text-center text-xs text-zinc-400 dark:text-zinc-500 py-4">
@@ -169,7 +178,7 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
   }
 
   return (
-    <div className="relative">
+    <div className={`relative ${containerClassName}`}>
       <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
       
       {/* Comment Form */}

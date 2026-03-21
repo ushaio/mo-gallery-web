@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
+import { buildStoryPreviewText, stripStoryContentToPlainText } from '@/lib/story-rich-content'
 
 function WechatIcon(props: React.ComponentProps<'svg'>) {
   return (
@@ -37,11 +38,7 @@ function WechatIcon(props: React.ComponentProps<'svg'>) {
 }
 
 function estimateReadingMinutes(content: string) {
-  const plainText = content
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[#*_`>\-\[\]()]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const plainText = stripStoryContentToPlainText(content)
 
   return Math.max(1, Math.ceil(plainText.length / 500))
 }
@@ -144,7 +141,7 @@ export default function StoryDetailPage() {
           </div>
           <div>
             <p className="font-serif text-xl text-zinc-900 dark:text-zinc-100">{error || 'Story not found'}</p>
-            <p className="mt-2 text-sm text-zinc-500">The story you're looking for doesn't exist or has been removed.</p>
+            <p className="mt-2 text-sm text-zinc-500">The story you&apos;re looking for doesn&apos;t exist or has been removed.</p>
           </div>
           <Link href="/story" className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-6 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 cursor-pointer">
             <ArrowLeft className="size-3.5" />
@@ -224,7 +221,7 @@ export default function StoryDetailPage() {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="mt-6 max-w-2xl text-lg leading-relaxed text-white/60 font-light line-clamp-3"
               >
-                {story.content.replace(/<[^>]+>/g, '').slice(0, 200)}...
+                {buildStoryPreviewText(story.content, 200)}
               </motion.p>
             )}
 

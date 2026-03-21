@@ -76,12 +76,34 @@ export function normalizeStoryContentImages(content: string) {
 }
 
 export function countStoryCharacters(content?: string | null) {
+  return stripStoryContentToPlainText(content).length
+}
+
+export function stripStoryContentToPlainText(content?: string | null) {
   return (content || '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/[#*_`>\-\[\]()]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .length
+}
+
+export function buildStoryPreviewText(content?: string | null, maxLength?: number) {
+  const plainText = stripStoryContentToPlainText(content)
+
+  if (!maxLength || plainText.length <= maxLength) {
+    return plainText
+  }
+
+  return `${plainText.slice(0, maxLength).trimEnd()}...`
 }
 
 export function findStoryPhotoById(photos: PhotoDto[], photoId?: string) {
