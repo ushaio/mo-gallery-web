@@ -71,6 +71,47 @@ const IMAGE_WIDTH_PRESETS: Record<'sm' | 'md' | 'lg', number> = {
   lg: 720,
 }
 
+const TAB_INDENT = '\u3000\u3000'
+const DEFAULT_FONT_SIZE_LABEL = '18px'
+const FONT_SIZE_VALUES = ['12px', '14px', '16px', '20px', '24px', '28px'] as const
+const FONT_FAMILY_SANS_VALUE = 'var(--font-sans), ui-sans-serif, system-ui, sans-serif'
+const FONT_FAMILY_SONG_VALUE = '"STSong", "Songti SC", "Noto Serif SC", serif'
+const FONT_FAMILY_HEI_VALUE = '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif'
+const FONT_FAMILY_MONO_VALUE = 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace'
+const FONT_FAMILY_OPTIMA_VALUE = '"Optima", "Optima-Regular", "PingFang TC", "PingFang SC", "Helvetica Neue", sans-serif'
+const FONT_FAMILY_VALUES = [
+  FONT_FAMILY_SANS_VALUE,
+  FONT_FAMILY_SONG_VALUE,
+  FONT_FAMILY_HEI_VALUE,
+  FONT_FAMILY_MONO_VALUE,
+  FONT_FAMILY_OPTIMA_VALUE,
+] as const
+
+function normalizeInlineStyleValue(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, ' ') || ''
+}
+
+function resolveActiveInlineStyleValue(
+  currentEditor: Editor,
+  attribute: 'fontSize' | 'fontFamily',
+  supportedValues: readonly string[]
+) {
+  const activeValue = supportedValues.find((value) =>
+    currentEditor.isActive('pastedStyle', { [attribute]: value })
+  )
+  if (activeValue) {
+    return activeValue
+  }
+
+  const rawValue = (currentEditor.getAttributes('pastedStyle') as {
+    fontSize?: string
+    fontFamily?: string
+  })[attribute]
+  const normalizedValue = normalizeInlineStyleValue(rawValue)
+
+  return supportedValues.find((value) => normalizeInlineStyleValue(value) === normalizedValue) ?? ''
+}
+
 function ensureFirstParagraphHasDropCap(currentEditor: Editor) {
   let offset = 0
 
@@ -273,46 +314,43 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const headingOptions = useMemo(() => [
       { label: t('editor.heading_paragraph'), value: '' },
-      { label: t('editor.heading_1'), value: '1' },
-      { label: t('editor.heading_2'), value: '2' },
-      { label: t('editor.heading_3'), value: '3' },
+      { label: 'H1', value: '1' },
+      { label: 'H2', value: '2' },
+      { label: 'H3', value: '3' },
+      { label: 'H4', value: '4' },
+      { label: 'H5', value: '5' },
+      { label: 'H6', value: '6' },
     ], [t])
 
     const fontSizeOptions = useMemo(() => [
-      { label: t('editor.font_size_default'), value: '' },
-      { label: '12px', value: '12px' },
-      { label: '14px', value: '14px' },
-      { label: '16px', value: '16px' },
-      { label: '18px', value: '18px' },
-      { label: '20px', value: '20px' },
-      { label: '24px', value: '24px' },
-      { label: '28px', value: '28px' },
+      { label: DEFAULT_FONT_SIZE_LABEL, value: '' },
+      ...FONT_SIZE_VALUES.map((size) => ({ label: size, value: size })),
     ], [t])
 
     const fontFamilyOptions = useMemo(() => [
       {
-        label: t('editor.font_family_default'),
+        label: 'PingFang SC',
         value: '',
       },
       {
-        label: t('editor.font_family_serif'),
-        value: 'var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
-      },
-      {
         label: t('editor.font_family_sans'),
-        value: 'var(--font-sans), ui-sans-serif, system-ui, sans-serif',
+        value: FONT_FAMILY_SANS_VALUE,
       },
       {
         label: t('editor.font_family_song'),
-        value: '"STSong", "Songti SC", "Noto Serif SC", serif',
+        value: FONT_FAMILY_SONG_VALUE,
       },
       {
         label: t('editor.font_family_hei'),
-        value: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
+        value: FONT_FAMILY_HEI_VALUE,
       },
       {
         label: t('editor.font_family_mono'),
-        value: 'ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace',
+        value: FONT_FAMILY_MONO_VALUE,
+      },
+      {
+        label: t('editor.font_family_optima'),
+        value: FONT_FAMILY_OPTIMA_VALUE,
       },
     ], [t])
 
@@ -338,7 +376,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         DropCapParagraph,
         StarterKit.configure({
           heading: {
-            levels: [1, 2, 3],
+            levels: [1, 2, 3, 4, 5, 6],
           },
         }),
         Placeholder.configure({
@@ -404,6 +442,23 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           void onPasteFilesRef.current?.(files)
           return true
         },
+        handleKeyDown: (view, event) => {
+          if (event.key !== 'Tab') {
+            return false
+          }
+
+          const { $from } = view.state.selection
+          for (let depth = $from.depth; depth > 0; depth -= 1) {
+            const nodeName = $from.node(depth).type.name
+            if (nodeName === 'tableCell' || nodeName === 'tableHeader') {
+              return false
+            }
+          }
+
+          event.preventDefault()
+          view.dispatch(view.state.tr.insertText(TAB_INDENT))
+          return true
+        },
       },
     })
 
@@ -440,11 +495,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           }
         }
 
-        const pastedStyleAttributes = currentEditor.getAttributes('pastedStyle') as {
-          fontSize?: string
-          fontFamily?: string
-        }
-
         return {
           isBold: currentEditor.isActive('bold'),
           isItalic: currentEditor.isActive('italic'),
@@ -463,15 +513,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
           isImageSelected: currentEditor.isActive('image'),
           hasDropCap: currentEditor.getAttributes('paragraph').dropCap === true,
-          headingLevel: currentEditor.isActive('heading', { level: 1 })
-            ? '1'
-            : currentEditor.isActive('heading', { level: 2 })
-              ? '2'
-              : currentEditor.isActive('heading', { level: 3 })
-                ? '3'
-                : '',
-          fontSize: pastedStyleAttributes.fontSize || '',
-          fontFamily: pastedStyleAttributes.fontFamily || '',
+          headingLevel: (
+            ['1', '2', '3', '4', '5', '6'].find((level) =>
+              currentEditor.isActive('heading', { level: Number.parseInt(level, 10) })
+            ) ?? ''
+          ),
+          fontSize: resolveActiveInlineStyleValue(currentEditor, 'fontSize', FONT_SIZE_VALUES),
+          fontFamily: resolveActiveInlineStyleValue(currentEditor, 'fontFamily', FONT_FAMILY_VALUES),
         }
       },
     })
@@ -724,8 +772,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         chain.setTextSelection(pendingSelection)
       }
 
-      if (level === '1' || level === '2' || level === '3') {
-        chain.setHeading({ level: Number.parseInt(level, 10) as 1 | 2 | 3 }).run()
+      if (['1', '2', '3', '4', '5', '6'].includes(level)) {
+        chain.setHeading({ level: Number.parseInt(level, 10) as 1 | 2 | 3 | 4 | 5 | 6 }).run()
       } else {
         chain.setParagraph().run()
       }

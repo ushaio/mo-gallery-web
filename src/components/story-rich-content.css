@@ -1,6 +1,6 @@
 ﻿.story-rich-content {
   color: var(--foreground);
-  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   font-size: 1.125rem;
   line-height: 1.95;
 }
