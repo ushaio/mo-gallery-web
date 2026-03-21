@@ -77,8 +77,6 @@ model Photo {
   shutterSpeed String?
   iso          Int?
   takenAt      DateTime?
-  latitude     Float?
-  longitude    Float?
   orientation  Int?
   software     String?
   exifRaw      String?

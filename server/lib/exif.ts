@@ -10,8 +10,6 @@ export interface ExifData {
   shutterSpeed?: string
   iso?: number
   takenAt?: Date
-  latitude?: number
-  longitude?: number
   orientation?: number
   software?: string
   exifRaw?: string
@@ -88,10 +86,6 @@ export async function extractExifData(buffer: Buffer): Promise<ExifData> {
     }
 
     // GPS location
-    if (tags.gps?.Latitude !== undefined && tags.gps?.Longitude !== undefined) {
-      exifData.latitude = tags.gps.Latitude
-      exifData.longitude = tags.gps.Longitude
-    }
     if (tags.gps) {
       const gps: Record<string, unknown> = {}
       const gpsDateStamp = getGpsDateStampDescription(tags.gps)
@@ -194,8 +188,15 @@ export function formatExifForDisplay(exif: ExifData): Record<string, string> {
     formatted['拍摄时间'] = exif.takenAt.toLocaleString('zh-CN')
   }
 
-  if (isFiniteCoordinate(exif.latitude) && isFiniteCoordinate(exif.longitude)) {
-    formatted['位置'] = `${exif.latitude.toFixed(6)}, ${exif.longitude.toFixed(6)}`
+  if (exif.gps) {
+    try {
+      const gps = JSON.parse(exif.gps) as { latitude?: unknown; longitude?: unknown }
+      if (isFiniteCoordinate(gps.latitude) && isFiniteCoordinate(gps.longitude)) {
+        formatted['位置'] = `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`
+      }
+    } catch {
+      // Ignore malformed gps payloads in display formatting.
+    }
   }
 
   if (exif.software) {
