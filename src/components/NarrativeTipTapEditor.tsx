@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -49,6 +50,8 @@ import {
   Loader2,
   Wand2,
   X,
+  ChevronDown,
+  Check,
 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -65,7 +68,6 @@ export interface NarrativeTipTapEditorProps {
     enabled: boolean
     token?: string | null
     title?: string
-    initialModel?: string
   }
 }
 
@@ -136,6 +138,9 @@ const PRESET_TEXT_COLOR_VALUES = [
   ...MORE_TEXT_COLOR_OPTIONS,
 ] as const
 const AI_CONTEXT_LIMIT = 500
+const AI_SELECTION_PREVIEW_LIMIT = 28
+const AI_MODELS_STORAGE_KEY = 'story-editor-ai-models'
+const AI_SELECTED_MODEL_STORAGE_KEY = 'story-editor-ai-selected-model'
 
 const AI_PRESET_ACTIONS: Array<{ action: StoryAiAction; key: string }> = [
   { action: 'rewrite', key: 'rewrite' },
@@ -162,6 +167,17 @@ function convertPlainTextToEditorHtml(input: string) {
     .split(/\n{2,}/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('')
+}
+
+function compactTextPreview(input: string, limit: number) {
+  const normalized = input.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= limit) {
+    return normalized
+  }
+
+  const headLength = Math.ceil((limit - 3) / 2)
+  const tailLength = Math.floor((limit - 3) / 2)
+  return `${normalized.slice(0, headLength)}...${normalized.slice(normalized.length - tailLength)}`
 }
 
 function normalizeInlineStyleValue(value: string | null | undefined) {
@@ -420,6 +436,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const textColorPickerRef = useRef<HTMLInputElement | null>(null)
     const aiButtonRef = useRef<HTMLButtonElement | null>(null)
     const aiPanelRef = useRef<HTMLDivElement | null>(null)
+    const aiModelButtonRef = useRef<HTMLButtonElement | null>(null)
+    const aiModelMenuRef = useRef<HTMLDivElement | null>(null)
+    const aiModelListRef = useRef<HTMLDivElement | null>(null)
     const aiButtonPositionRef = useRef({ top: 0, left: 0 })
     const aiDragStateRef = useRef<{
       pointerId: number
@@ -450,8 +469,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [aiLoading, setAiLoading] = useState(false)
     const [aiError, setAiError] = useState('')
     const [aiModelOptions, setAiModelOptions] = useState<StoryAiModelOption[]>([])
-    const [aiSelectedModel, setAiSelectedModel] = useState(aiOptions?.initialModel || '')
+    const [aiSelectedModel, setAiSelectedModel] = useState('')
     const [aiModelsLoading, setAiModelsLoading] = useState(false)
+    const [showAiModelMenu, setShowAiModelMenu] = useState(false)
+    const [aiModelQuery, setAiModelQuery] = useState('')
+    const [aiSelectedText, setAiSelectedText] = useState('')
+    const [aiCurrentParagraph, setAiCurrentParagraph] = useState('')
+    const [aiContextBefore, setAiContextBefore] = useState('')
+    const [aiContextAfter, setAiContextAfter] = useState('')
     const [aiButtonPosition, setAiButtonPosition] = useState({ top: 0, left: 0 })
     const [aiPanelPosition, setAiPanelPosition] = useState({ top: 0, left: 0 })
     const [aiSelectionRange, setAiSelectionRange] = useState<{ from: number; to: number } | null>(null)
@@ -459,6 +484,45 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [aiMode, setAiMode] = useState<StoryAiAction>('rewrite')
     const { t } = useLanguage()
     const { resolvedTheme } = useTheme()
+    const aiModelMenuId = useId()
+    const selectedAiModelLabel = useMemo(() => {
+      return aiModelOptions.find((option) => option.id === aiSelectedModel)?.label
+        ?? t('editor.ai_model_current_default')
+    }, [aiModelOptions, aiSelectedModel, t])
+    const filteredAiModelOptions = useMemo(() => {
+      const query = aiModelQuery.trim().toLowerCase()
+      if (!query) return aiModelOptions
+
+      return aiModelOptions.filter((option) => option.label.toLowerCase().includes(query))
+    }, [aiModelOptions, aiModelQuery])
+    useEffect(() => {
+      if (!aiOptions?.enabled || typeof window === 'undefined') return
+
+      try {
+        const cachedModels = window.localStorage.getItem(AI_MODELS_STORAGE_KEY)
+        const cachedSelectedModel = window.localStorage.getItem(AI_SELECTED_MODEL_STORAGE_KEY)
+
+        if (cachedModels) {
+          const parsed = JSON.parse(cachedModels) as StoryAiModelOption[]
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAiModelOptions(parsed)
+          } else {
+            setAiModelOptions([])
+          }
+        } else {
+          setAiModelOptions([])
+        }
+
+        if (cachedSelectedModel) {
+          setAiSelectedModel(cachedSelectedModel)
+        } else {
+          setAiSelectedModel('')
+        }
+      } catch {
+        setAiModelOptions([])
+        setAiSelectedModel('')
+      }
+    }, [aiOptions?.enabled, t])
 
     const headingOptions = useMemo(() => [
       { label: t('editor.heading_paragraph'), value: '' },
@@ -505,11 +569,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     useEffect(() => {
       currentValueRef.current = value
     }, [value])
-
-    useEffect(() => {
-      if (!aiOptions?.initialModel) return
-      setAiSelectedModel((current) => current || aiOptions.initialModel || '')
-    }, [aiOptions?.initialModel])
 
     useEffect(() => {
       onPasteFilesRef.current = onPasteFiles
@@ -614,6 +673,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         },
       },
     })
+
+    const aiSelectionPreview = useMemo(() => {
+      if (!aiHasSelection || !aiSelectedText) return ''
+      return compactTextPreview(aiSelectedText, AI_SELECTION_PREVIEW_LIMIT)
+    }, [aiHasSelection, aiSelectedText])
 
     useEffect(() => {
       if (!editor) return
@@ -724,8 +788,34 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       if (!editor) return
       const { from, to } = editor.state.selection
       const hasSelection = from !== to
+      const selectedText = hasSelection ? editor.state.doc.textBetween(from, to, '\n\n').trim() : ''
+      const currentParagraph = (() => {
+        const { $from } = editor.state.selection
+        for (let depth = $from.depth; depth >= 0; depth -= 1) {
+          const node = $from.node(depth)
+          if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+            return node.textContent.trim()
+          }
+        }
+        return ''
+      })()
+      const contextBefore = editor.state.doc.textBetween(
+        Math.max(0, from - AI_CONTEXT_LIMIT),
+        from,
+        '\n\n',
+      ).trim()
+      const contextAfter = editor.state.doc.textBetween(
+        to,
+        Math.min(editor.state.doc.content.size, to + AI_CONTEXT_LIMIT),
+        '\n\n',
+      ).trim()
+
       setAiSelectionRange(hasSelection ? { from, to } : null)
       setAiHasSelection(hasSelection)
+      setAiSelectedText(selectedText)
+      setAiCurrentParagraph(currentParagraph)
+      setAiContextBefore(contextBefore)
+      setAiContextAfter(contextAfter)
     }, [editor])
 
     useEffect(() => {
@@ -752,36 +842,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [editor])
 
     const getContextAroundSelection = useCallback(() => {
-      if (!editor) {
-        return {
-          selectedText: '',
-          currentParagraph: '',
-          contextBefore: '',
-          contextAfter: '',
-        }
-      }
-
-      const { from, to } = editor.state.selection
-      const selectedText = from !== to ? editor.state.doc.textBetween(from, to, '\n\n').trim() : ''
-      const currentParagraph = getCurrentParagraphText()
-      const contextBefore = editor.state.doc.textBetween(
-        Math.max(0, from - AI_CONTEXT_LIMIT),
-        from,
-        '\n\n',
-      ).trim()
-      const contextAfter = editor.state.doc.textBetween(
-        to,
-        Math.min(editor.state.doc.content.size, to + AI_CONTEXT_LIMIT),
-        '\n\n',
-      ).trim()
-
       return {
-        selectedText,
-        currentParagraph,
-        contextBefore,
-        contextAfter,
+        selectedText: aiSelectedText,
+        currentParagraph: aiCurrentParagraph || getCurrentParagraphText(),
+        contextBefore: aiContextBefore,
+        contextAfter: aiContextAfter,
       }
-    }, [editor, getCurrentParagraphText])
+    }, [aiContextAfter, aiContextBefore, aiCurrentParagraph, aiSelectedText, getCurrentParagraphText])
 
     const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
       if (!editor) return
@@ -853,7 +920,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         await streamStoryAiGenerate(aiOptions.token, {
           action,
           model: aiSelectedModel || undefined,
-          prompt: action === 'custom' ? aiPrompt.trim() : undefined,
+          prompt: aiPrompt.trim() || undefined,
           title: aiOptions.title,
           selectedText: context.selectedText || undefined,
           currentParagraph: context.currentParagraph || undefined,
@@ -883,7 +950,16 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       try {
         const response = await getStoryAiModels(aiOptions.token)
         setAiModelOptions(response.models)
-        setAiSelectedModel((current) => current || response.defaultModel)
+        setAiSelectedModel((current) => {
+          const nextModel = current || response.defaultModel
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(AI_SELECTED_MODEL_STORAGE_KEY, nextModel)
+          }
+          return nextModel
+        })
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(AI_MODELS_STORAGE_KEY, JSON.stringify(response.models))
+        }
       } catch (error) {
         setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
       } finally {
@@ -892,9 +968,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [aiOptions?.enabled, aiOptions?.token, t])
 
     useEffect(() => {
-      if (!showAiPanel || aiModelOptions.length > 0 || aiModelsLoading) return
-      void refreshAiModels()
-    }, [aiModelOptions.length, aiModelsLoading, refreshAiModels, showAiPanel])
+      if (!aiSelectedModel || typeof window === 'undefined') return
+      window.localStorage.setItem(AI_SELECTED_MODEL_STORAGE_KEY, aiSelectedModel)
+    }, [aiSelectedModel])
 
     const imperativeHandle = useMemo<NarrativeTipTapEditorHandle>(() => ({
       getValue: () => {
@@ -1380,6 +1456,56 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [showAiPanel, updateAiPanelPosition])
 
     useEffect(() => {
+      if (!showAiModelMenu) return
+
+      const handlePointerDown = (event: MouseEvent) => {
+        const target = event.target as Node | null
+        if (
+          aiModelMenuRef.current?.contains(target)
+          || aiModelButtonRef.current?.contains(target)
+        ) {
+          return
+        }
+        setShowAiModelMenu(false)
+      }
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          setShowAiModelMenu(false)
+        }
+      }
+
+      window.addEventListener('mousedown', handlePointerDown)
+      window.addEventListener('keydown', handleKeyDown)
+
+      return () => {
+        window.removeEventListener('mousedown', handlePointerDown)
+        window.removeEventListener('keydown', handleKeyDown)
+      }
+    }, [showAiModelMenu])
+
+    useEffect(() => {
+      if (!showAiModelMenu) {
+        setAiModelQuery('')
+      }
+    }, [showAiModelMenu])
+
+    useEffect(() => {
+      if (!showAiModelMenu) return
+      if (aiModelQuery.trim()) return
+
+      requestAnimationFrame(() => {
+        const selectedOption = aiModelListRef.current?.querySelector<HTMLElement>('[data-ai-model-selected="true"]')
+        selectedOption?.scrollIntoView({ block: 'nearest' })
+      })
+    }, [aiModelQuery, aiSelectedModel, showAiModelMenu])
+
+    const handleAiModelInputFocus = useCallback(() => {
+      setAiModelQuery('')
+      setShowAiModelMenu(true)
+    }, [])
+
+    useEffect(() => {
       if (!aiOptions?.enabled || typeof window === 'undefined') return
 
       const buttonElement = aiButtonRef.current
@@ -1418,6 +1544,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       const buttonElement = aiButtonRef.current
       if (!buttonElement) return
 
+      event.preventDefault()
+      syncAiSelectionState()
+
       const rect = buttonElement.getBoundingClientRect()
       aiDragStateRef.current = {
         pointerId: event.pointerId,
@@ -1429,7 +1558,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       }
 
       buttonElement.setPointerCapture(event.pointerId)
-    }, [])
+    }, [syncAiSelectionState])
 
     const handleAiButtonPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
       const dragState = aiDragStateRef.current
@@ -1512,7 +1641,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       ? createPortal(
           <div
             ref={aiPanelRef}
-            className="fixed z-[140] w-[360px] rounded-2xl border border-border/80 bg-background/95 p-4 shadow-[0_24px_48px_rgba(15,23,42,0.16)] backdrop-blur"
+            className="fixed z-[140] flex h-[560px] w-[360px] flex-col rounded-2xl border border-border/80 bg-background/95 p-4 shadow-[0_24px_48px_rgba(15,23,42,0.16)] backdrop-blur"
             style={{
               top: aiPanelPosition.top,
               left: aiPanelPosition.left,
@@ -1536,14 +1665,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
             <div className="mb-3 flex flex-wrap gap-2">
               {AI_PRESET_ACTIONS.map((item) => (
-                <button
-                  key={item.action}
-                  type="button"
-                  onClick={() => void runAiAction(item.action)}
-                  disabled={aiLoading}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                    aiMode === item.action
-                      ? 'border-primary bg-primary/10 text-primary'
+                        <button
+                          key={item.action}
+                          type="button"
+                          onClick={() => setAiMode(item.action)}
+                          disabled={aiLoading}
+                          className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                            aiMode === item.action
+                              ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
                   } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
@@ -1552,33 +1681,103 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               ))}
             </div>
 
-            <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground">
-              {aiHasSelection ? t('editor.ai_scope_selection') : t('editor.ai_scope_paragraph')}
+            <div
+              className="mb-3 overflow-hidden rounded-xl border border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground"
+              title={aiHasSelection ? aiSelectedText : undefined}
+            >
+              <span className="block whitespace-nowrap">
+                {aiHasSelection ? aiSelectionPreview : t('editor.ai_scope_paragraph')}
+              </span>
             </div>
 
             <div className="mb-3 flex items-center gap-2">
-              <select
-                value={aiSelectedModel}
-                onChange={(event) => setAiSelectedModel(event.target.value)}
-                disabled={aiModelsLoading || aiLoading}
-                className="h-9 min-w-0 flex-1 rounded-full border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {aiModelOptions.length === 0 ? (
-                  <option value="">
-                    {aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_models_empty')}
-                  </option>
+              <div className="relative min-w-0 flex-1">
+                <div
+                  ref={aiModelButtonRef}
+                  className={`flex h-10 w-full items-center justify-between gap-3 rounded-2xl border px-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition-[border-color,box-shadow,background-color] ${
+                    showAiModelMenu
+                      ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
+                      : 'border-border/80 bg-gradient-to-r from-background via-background to-muted/20 hover:border-primary/30'
+                  } ${aiModelsLoading || aiLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                  role="combobox"
+                  aria-expanded={showAiModelMenu}
+                  aria-haspopup="listbox"
+                  aria-controls={aiModelMenuId}
+                >
+                  <span className="min-w-0 flex-1">
+                    <input
+                      type="text"
+                      value={showAiModelMenu ? aiModelQuery : selectedAiModelLabel}
+                      onFocus={handleAiModelInputFocus}
+                      onChange={(event) => {
+                        setAiModelQuery(event.target.value)
+                        setShowAiModelMenu(true)
+                      }}
+                      onClick={() => setShowAiModelMenu(true)}
+                      disabled={aiModelsLoading || aiLoading}
+                      placeholder={aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_model_search_placeholder')}
+                      className="block h-5 w-full truncate bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground/70"
+                    />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAiModelMenu((current) => !current)}
+                    disabled={aiModelsLoading || aiLoading}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
+                    tabIndex={-1}
+                  >
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-200 ${showAiModelMenu ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </div>
+
+                {showAiModelMenu ? (
+                  <div
+                    ref={aiModelMenuRef}
+                    id={aiModelMenuId}
+                    className="absolute left-0 top-[calc(100%+8px)] z-20 max-h-56 w-full overflow-hidden rounded-2xl border border-border/80 bg-background/98 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur"
+                    role="listbox"
+                  >
+                    <div ref={aiModelListRef} className="max-h-56 overflow-y-auto p-2">
+                      {filteredAiModelOptions.length === 0 ? (
+                        <div className="rounded-xl px-3 py-2 text-sm text-muted-foreground">
+                          {aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_models_empty')}
+                        </div>
+                      ) : (
+                        filteredAiModelOptions.map((option) => {
+                          const isSelected = option.id === aiSelectedModel
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              data-ai-model-selected={isSelected ? 'true' : undefined}
+                              onClick={() => {
+                                setAiSelectedModel(option.id)
+                                setShowAiModelMenu(false)
+                              }}
+                              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors ${
+                                isSelected
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-foreground hover:bg-muted/70'
+                              }`}
+                              title={option.label}
+                            >
+                              <span className="min-w-0 flex-1 truncate text-sm">{option.label}</span>
+                              {isSelected ? <Check className="h-4 w-4 shrink-0" /> : null}
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
                 ) : null}
-                {aiModelOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              </div>
               <button
                 type="button"
                 onClick={() => void refreshAiModels()}
                 disabled={aiModelsLoading || aiLoading}
-                className="inline-flex h-9 shrink-0 items-center rounded-full border border-border px-3 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 shrink-0 items-center rounded-2xl border border-border/80 bg-background px-3 text-xs font-medium text-foreground transition-[border-color,background-color,color] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
               </button>
@@ -1594,8 +1793,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             <div className="mb-3 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => void runAiAction('custom')}
-                disabled={aiLoading || !aiPrompt.trim()}
+                onClick={() => void runAiAction(aiMode)}
+                disabled={aiLoading}
                 className="inline-flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -1604,11 +1803,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               {aiError ? <span className="text-xs text-destructive">{aiError}</span> : null}
             </div>
 
-            <div className="mb-3 min-h-32 rounded-xl border border-border/70 bg-muted/10 p-3 text-sm text-foreground">
+            <div className="mb-3 min-h-0 flex-1 overflow-hidden rounded-xl border border-border/70 bg-muted/10 p-3 text-sm text-foreground">
               {aiPreview ? (
-                <div className="whitespace-pre-wrap leading-6">{aiPreview}</div>
+                <div className="h-full overflow-y-auto whitespace-pre-wrap leading-6">{aiPreview}</div>
               ) : (
-                <div className="text-muted-foreground">{aiLoading ? t('editor.ai_generating') : t('editor.ai_preview_placeholder')}</div>
+                <div className="h-full overflow-y-auto text-muted-foreground">{aiLoading ? t('editor.ai_generating') : t('editor.ai_preview_placeholder')}</div>
               )}
             </div>
 
@@ -1653,7 +1852,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             onPointerUp={handleAiButtonPointerUp}
             onPointerCancel={handleAiButtonPointerUp}
             onClick={handleAiButtonClick}
-            className="fixed z-[130] inline-flex h-12 items-center gap-2 rounded-full border border-primary/20 bg-background/95 px-4 text-sm font-medium text-foreground shadow-[0_18px_36px_rgba(15,23,42,0.18)] backdrop-blur transition-all hover:border-primary/40 hover:text-primary touch-none select-none"
+            className={`fixed z-[130] inline-flex h-12 items-center gap-2 rounded-full border px-4 text-sm font-medium backdrop-blur touch-none select-none transition-[background-color,border-color,color,box-shadow,transform] duration-200 active:scale-[0.98] ${
+              showAiPanel
+                ? 'border-primary/35 bg-primary/12 text-primary shadow-[0_20px_40px_rgba(37,99,235,0.22)]'
+                : 'border-primary/20 bg-background/95 text-foreground shadow-[0_18px_36px_rgba(15,23,42,0.18)] hover:border-primary/40 hover:bg-background hover:text-primary'
+            }`}
+            aria-pressed={showAiPanel}
             style={{
               top: aiButtonPosition.top || undefined,
               left: aiButtonPosition.left || undefined,
@@ -1661,8 +1865,16 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               bottom: aiButtonPosition.top || aiButtonPosition.left ? undefined : 20,
             }}
           >
-            <Sparkles className="h-4 w-4" />
-            {t('editor.ai_button')}
+            <span
+              className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-200 ${
+                showAiPanel
+                  ? 'border-primary/30 bg-primary text-primary-foreground shadow-[0_0_18px_rgba(59,130,246,0.35)]'
+                  : 'border-primary/15 bg-primary/10 text-primary'
+              }`}
+            >
+              <Sparkles className={`h-4 w-4 transition-transform duration-200 ${showAiPanel ? 'scale-110 rotate-12' : ''}`} />
+            </span>
+            <span className="tracking-[0.02em]">{t('editor.ai_button')}</span>
           </button>,
           document.body,
         )

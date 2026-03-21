@@ -63,7 +63,8 @@ function buildUserPrompt(payload: StoryAiGeneratePayload): string {
     payload.contextBefore ? `前文参考：\n${payload.contextBefore}` : '',
     payload.contextAfter ? `后文参考：\n${payload.contextAfter}` : '',
     `任务：${ACTION_INSTRUCTIONS[payload.action]}`,
-    payload.prompt ? `用户附加指令：${payload.prompt}` : '',
+    payload.prompt ? `用户补充要求（必须尽量满足，作为生成约束和参考）：\n${payload.prompt}` : '',
+    '输出要求：只输出最终正文内容，不解释你的修改过程，不添加标题或前缀。',
   ].filter(Boolean)
 
   return sections.join('\n\n')
