@@ -5,10 +5,13 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { DragEvent } from 'react'
 import ExifReader from 'exifreader'
 import { compressImage } from '@/lib/image-compress'
+import { calculateFileHash } from '@/lib/file-hash'
 import { stripGpsData } from '@/lib/privacy-strip'
 import {
   addPhotosToAlbum,
   addPhotosToStory,
+  checkDuplicatePhoto,
+  getPhotos,
   uploadPhotoWithProgress,
   type PhotoDto,
   type StoryDto,
@@ -162,6 +165,19 @@ export function useStoryEditorActions({
     setAllPhotos((prev) => (prev.some((item) => item.id === photo.id) ? prev : [photo, ...prev]))
   }, [setAllPhotos])
 
+  const findExistingPhotoById = useCallback(async (photoId: string) => {
+    const cachedPhoto = currentStory?.photos.find((photo) => photo.id === photoId)
+      || allPhotos.find((photo) => photo.id === photoId)
+
+    if (cachedPhoto) {
+      return cachedPhoto
+    }
+
+    const photos = await getPhotos({ all: true })
+    setAllPhotos(photos)
+    return photos.find((photo) => photo.id === photoId) ?? null
+  }, [allPhotos, currentStory?.photos, setAllPhotos])
+
   const { uploadAndInsertFiles } = useStoryPasteUploads({
     token: token || '',
     currentStory,
@@ -222,6 +238,26 @@ export function useStoryEditorActions({
       setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'uploading' as const, progress: 0 } : image))
 
       try {
+        const fileHash = await calculateFileHash(pending.file)
+        const duplicate = await checkDuplicatePhoto(token, fileHash)
+
+        if (duplicate.isDuplicate && duplicate.existingPhoto) {
+          const existingPhoto = await findExistingPhotoById(duplicate.existingPhoto.id)
+
+          if (existingPhoto) {
+            if (!uploadedPhotoIds.includes(existingPhoto.id)) {
+              uploadedPhotoIds.push(existingPhoto.id)
+            }
+            if (!uploadedPhotos.some((photo) => photo.id === existingPhoto.id)) {
+              uploadedPhotos.push(existingPhoto)
+            }
+            addPhotoToCache(existingPhoto)
+            setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'success' as const, progress: 100, photoId: existingPhoto.id } : image))
+            notify(`图片已重复，已替换为已上传照片：${existingPhoto.title}`, 'info')
+            continue
+          }
+        }
+
         let fileToUpload = pending.file
 
         if (settings.stripGps) {
@@ -244,13 +280,18 @@ export function useStoryEditorActions({
           storage_provider: settings.storageProvider,
           storage_path: settings.storagePath,
           storage_path_full: settings.storagePathFull,
+          file_hash: fileHash,
           onProgress: (progress) => {
             setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, progress } : image))
           },
         })
 
-        uploadedPhotoIds.push(photo.id)
-        uploadedPhotos.push(photo)
+        if (!uploadedPhotoIds.includes(photo.id)) {
+          uploadedPhotoIds.push(photo.id)
+        }
+        if (!uploadedPhotos.some((item) => item.id === photo.id)) {
+          uploadedPhotos.push(photo)
+        }
         setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'success' as const, progress: 100, photoId: photo.id } : image))
       } catch (error) {
         setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'failed' as const, error: error instanceof Error ? error.message : 'Upload failed' } : image))
@@ -272,11 +313,25 @@ export function useStoryEditorActions({
     if (uploadedPhotos.length > 0) {
       const isNew = !stories.find((story) => story.id === currentStory.id)
       if (isNew) {
-        setCurrentStory((prev) => (prev ? { ...prev, photos: [...(prev.photos || []), ...uploadedPhotos] } : prev))
+        setCurrentStory((prev) => {
+          if (!prev) return prev
+          const existingIds = new Set((prev.photos || []).map((photo) => photo.id))
+          const nextPhotos = uploadedPhotos.filter((photo) => !existingIds.has(photo.id))
+          return nextPhotos.length > 0 ? { ...prev, photos: [...(prev.photos || []), ...nextPhotos] } : prev
+        })
       } else {
         try {
-          await addPhotosToStory(token, currentStory.id, uploadedPhotoIds)
-          setCurrentStory((prev) => (prev ? { ...prev, photos: [...(prev.photos || []), ...uploadedPhotos] } : prev))
+          const existingIds = new Set((currentStory.photos || []).map((photo) => photo.id))
+          const newPhotoIds = uploadedPhotoIds.filter((photoId) => !existingIds.has(photoId))
+          if (newPhotoIds.length > 0) {
+            await addPhotosToStory(token, currentStory.id, newPhotoIds)
+          }
+          setCurrentStory((prev) => {
+            if (!prev) return prev
+            const currentIds = new Set((prev.photos || []).map((photo) => photo.id))
+            const nextPhotos = uploadedPhotos.filter((photo) => !currentIds.has(photo.id))
+            return nextPhotos.length > 0 ? { ...prev, photos: [...(prev.photos || []), ...nextPhotos] } : prev
+          })
         } catch {}
       }
     }
@@ -294,7 +349,7 @@ export function useStoryEditorActions({
     }
 
     notify(`${failedCount} ${t('admin.upload_failed_count')}`, 'error')
-  }, [currentStory, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
+  }, [addPhotoToCache, currentStory, findExistingPhotoById, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {
     setPendingImages((prev) => prev.map((image) => image.status === 'failed' ? { ...image, status: 'pending' as const, error: undefined, progress: 0 } : image))
