@@ -1,18 +1,11 @@
 import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
+import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
 
 const stories = new Hono<{ Variables: AuthVariables }>()
-
-// Helper function to sort photos by the order stored in PhotoStories junction table
-// Note: Since Prisma doesn't maintain order in many-to-many relations automatically,
-// we need to store the order. For now, we'll use the order from the reorder API call.
-// This function will be enhanced when order field is added to the junction table.
-function sortPhotosByOrder<T extends { id: string }>(photos: T[], photoIds: string[]): T[] {
-  return photoIds.map((orderId) => photos.find((p) => p.id === orderId)).filter((p): p is T => !!p)
-}
 
 // Validation schemas
 const CreateStorySchema = z.object({
@@ -37,6 +30,17 @@ const AddPhotosSchema = z.object({
 
 const ReorderPhotosSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1),
+})
+
+const StoryAiGenerateSchema = z.object({
+  action: z.enum(['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']),
+  model: z.string().max(200).optional(),
+  prompt: z.string().max(2000).optional(),
+  title: z.string().max(200).optional(),
+  selectedText: z.string().max(6000).optional(),
+  currentParagraph: z.string().max(4000).optional(),
+  contextBefore: z.string().max(4000).optional(),
+  contextAfter: z.string().max(4000).optional(),
 })
 
 // Public endpoints
@@ -507,6 +511,46 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
     }
     return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+stories.post('/admin/stories/ai/generate', async (c) => {
+  try {
+    const body = await c.req.json()
+    const validated = StoryAiGenerateSchema.parse(body)
+
+    const stream = await createStoryAiStream(validated)
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
+    })
+  } catch (error) {
+    console.error('Story AI generate error:', error)
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    const status = message === 'AI service is not configured' ? 503 : 500
+    return c.json({ error: message }, status)
+  }
+})
+
+stories.get('/admin/stories/ai/models', async (c) => {
+  try {
+    const data = await fetchStoryAiModels()
+    return c.json({
+      success: true,
+      data,
+    })
+  } catch (error) {
+    console.error('Story AI models error:', error)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    const status = message === 'AI service is not configured' ? 503 : 500
+    return c.json({ error: message }, status)
   }
 })
 

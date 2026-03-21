@@ -25,6 +25,7 @@ import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
 
 interface StoryEditorViewProps {
+  token: string | null
   currentStory: StoryDto
   pendingImages: PendingImage[]
   pendingCoverId: string | null
@@ -78,6 +79,7 @@ interface StoryEditorViewProps {
 }
 
 export function StoryEditorView({
+  token,
   currentStory,
   pendingImages,
   pendingCoverId,
@@ -177,7 +179,19 @@ export function StoryEditorView({
           </div>
 
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
-            <NarrativeTipTapEditor ref={editorRef} value={currentStory.content} onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))} onPasteFiles={onPasteFiles} placeholder={t('ui.markdown_placeholder')} className="overflow-hidden bg-background" />
+            <NarrativeTipTapEditor
+              ref={editorRef}
+              value={currentStory.content}
+              onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
+              onPasteFiles={onPasteFiles}
+              placeholder={t('ui.markdown_placeholder')}
+              className="overflow-hidden bg-background"
+              aiOptions={{
+                enabled: true,
+                token,
+                title: currentStory.title,
+              }}
+            />
           </div>
         </div>
 

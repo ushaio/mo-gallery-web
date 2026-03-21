@@ -46,7 +46,7 @@ function estimateReadingMinutes(content: string) {
 export default function StoryDetailPage() {
   const params = useParams()
   const reduceMotion = useReducedMotion()
-  const { t } = useLanguage()
+  const { locale, t } = useLanguage()
   const { settings } = useSettings()
   const { isReady, user } = useAuth()
 
@@ -102,19 +102,64 @@ export default function StoryDetailPage() {
   const readingMinutes = story ? estimateReadingMinutes(story.content || '') : 1
   const activePhoto = story?.photos?.[activePhotoIndex] || null
   const isAdmin = isReady && user?.isAdmin === true
+  const detailText = locale === 'zh'
+    ? {
+        loading: '加载叙事中',
+        notFound: '未找到叙事',
+        notFoundDesc: '你要查找的叙事不存在或已被移除。',
+        backToStories: '返回叙事列表',
+        backToAllStories: '返回所有叙事',
+        tag: '影像叙事',
+        readMinutes: '分钟阅读',
+        photographs: '张照片',
+        scroll: '滚动',
+        copyWechat: '复制微信图文',
+        copyEmpty: '没有可以复制的文章内容',
+        copySuccess: '已复制为微信图文',
+        copyFailed: '复制失败，请检查剪贴板权限',
+        visualArchive: '影像档案',
+        gallery: '画廊',
+        collectionSuffix: '张照片在此合集中',
+        discussion: '讨论',
+        previousPhoto: '上一张照片',
+        nextPhoto: '下一张照片',
+        viewPhotoPrefix: '查看',
+      }
+    : {
+        loading: 'Loading Story',
+        notFound: 'Story not found',
+        notFoundDesc: 'The story you are looking for does not exist or has been removed.',
+        backToStories: 'Back to Stories',
+        backToAllStories: 'Back to All Stories',
+        tag: 'Photography Story',
+        readMinutes: 'min read',
+        photographs: 'photographs',
+        scroll: 'Scroll',
+        copyWechat: 'Copy as WeChat article text',
+        copyEmpty: 'No article content available to copy',
+        copySuccess: 'Copied as WeChat article text',
+        copyFailed: 'Copy failed, please check clipboard permission',
+        visualArchive: 'Visual Archive',
+        gallery: 'Gallery',
+        collectionSuffix: 'photographs in this collection',
+        discussion: 'Discussion',
+        previousPhoto: 'Previous photo',
+        nextPhoto: 'Next photo',
+        viewPhotoPrefix: 'View',
+      }
 
   const handleCopyWechatArticle = async () => {
     if (!story) {
-      notify('No article content available to copy', 'info')
+      notify(detailText.copyEmpty, 'info')
       return
     }
 
     try {
       await copyStoryAsWechatArticle(story, settings?.cdn_domain)
-      notify('Copied as WeChat article text')
+      notify(detailText.copySuccess)
     } catch (copyError) {
       console.error('Failed to copy wechat article text:', copyError)
-      notify('Copy failed, please check clipboard permission', 'error')
+      notify(detailText.copyFailed, 'error')
     }
   }
 
@@ -126,7 +171,7 @@ export default function StoryDetailPage() {
             <div className="h-px w-16 bg-foreground/80 animate-[grow_2s_ease-in-out_infinite]" />
             <div className="absolute inset-0 h-px w-16 bg-foreground/40 animate-[grow_2s_ease-in-out_infinite_0.3s]" />
           </div>
-          <span className="text-[11px] font-medium uppercase tracking-[0.4em] text-foreground/60">Loading Story</span>
+          <span className="text-[11px] font-medium uppercase tracking-[0.4em] text-foreground/60">{detailText.loading}</span>
         </div>
       </div>
     )
@@ -140,12 +185,12 @@ export default function StoryDetailPage() {
             <ImageIcon className="size-6 text-zinc-400" />
           </div>
           <div>
-            <p className="font-serif text-xl text-zinc-900 dark:text-zinc-100">{error || 'Story not found'}</p>
-            <p className="mt-2 text-sm text-zinc-500">The story you&apos;re looking for doesn&apos;t exist or has been removed.</p>
+            <p className="font-serif text-xl text-zinc-900 dark:text-zinc-100">{error || detailText.notFound}</p>
+            <p className="mt-2 text-sm text-zinc-500">{detailText.notFoundDesc}</p>
           </div>
           <Link href="/story" className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-6 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 cursor-pointer">
             <ArrowLeft className="size-3.5" />
-            Back to Stories
+            {detailText.backToStories}
           </Link>
         </div>
       </div>
@@ -182,7 +227,7 @@ export default function StoryDetailPage() {
               <span className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-white/10 backdrop-blur-sm transition-all hover:bg-white/20">
                 <ArrowLeft className="size-4" />
               </span>
-              <span className="hidden sm:block">{t('story.back_to_list') || 'Back to Stories'}</span>
+              <span className="hidden sm:block">{t('story.back_to_list') || detailText.backToStories}</span>
             </Link>
           </div>
         </div>
@@ -204,7 +249,7 @@ export default function StoryDetailPage() {
             >
               <span className="inline-flex items-center gap-2.5 rounded-full bg-white/10 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/80 backdrop-blur-sm">
                 <span className="size-1.5 rounded-full bg-rose-500" />
-                Photography Story
+                {detailText.tag}
               </span>
             </motion.div>
 
@@ -235,7 +280,7 @@ export default function StoryDetailPage() {
               <div className="flex items-center gap-2">
                 <Calendar className="size-3.5" />
                 <time dateTime={story.createdAt}>
-                  {new Date(story.createdAt).toLocaleDateString('en-US', { 
+                  {new Date(story.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric' 
@@ -245,12 +290,12 @@ export default function StoryDetailPage() {
               <div className="h-3 w-px bg-white/20" aria-hidden="true" />
               <div className="flex items-center gap-2">
                 <Clock className="size-3.5" />
-                <span>{readingMinutes} min read</span>
+                <span>{readingMinutes} {detailText.readMinutes}</span>
               </div>
               <div className="h-3 w-px bg-white/20" aria-hidden="true" />
               <div className="flex items-center gap-2">
                 <ImageIcon className="size-3.5" />
-                <span>{story.photos.length} photographs</span>
+                <span>{story.photos.length} {detailText.photographs}</span>
               </div>
             </motion.div>
           </motion.div>
@@ -268,7 +313,7 @@ export default function StoryDetailPage() {
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
             className="flex flex-col items-center gap-2"
           >
-            <span className="text-[9px] uppercase tracking-[0.3em] text-white/40">Scroll</span>
+            <span className="text-[9px] uppercase tracking-[0.3em] text-white/40">{detailText.scroll}</span>
             <div className="h-8 w-px bg-gradient-to-b from-white/40 to-transparent" />
           </motion.div>
         </motion.div>
@@ -299,24 +344,7 @@ export default function StoryDetailPage() {
           <main className="lg:col-span-8">
             {/* Article Content */}
             <article className="mb-16">
-              <div className="relative">
-                {/* Admin Actions */}
-                {isAdmin ? (
-                  <div className="absolute -right-2 -top-2 z-10">
-                    <button
-                      type="button"
-                      onClick={handleCopyWechatArticle}
-                      className="inline-flex size-10 items-center justify-center rounded-full border border-[#07c160]/30 bg-[#07c160]/10 text-[#0a8f49] shadow-lg backdrop-blur-sm transition-all hover:border-[#07c160]/50 hover:bg-[#07c160]/20 hover:shadow-xl cursor-pointer"
-                      aria-label="Copy as WeChat article text"
-                      title="Copy as WeChat article text"
-                    >
-                      <span className="flex size-6 items-center justify-center rounded-full bg-[#07c160] text-white">
-                        <WechatIcon className="size-3.5" />
-                      </span>
-                    </button>
-                  </div>
-                ) : null}
-
+              <div>
                 {/* Content with Magazine Typography */}
                 <div className="prose prose-lg prose-zinc max-w-none dark:prose-invert prose-headings:font-serif prose-headings:tracking-tight prose-p:leading-relaxed prose-a:text-zinc-900 prose-a:decoration-zinc-300 prose-a:underline-offset-4 hover:prose-a:text-zinc-600 dark:prose-a:text-zinc-100 dark:prose-a:decoration-zinc-600 dark:hover:prose-a:text-zinc-300">
                   <StoryRichContent
@@ -329,15 +357,28 @@ export default function StoryDetailPage() {
             </article>
 
             {/* Back to Stories Link */}
-            <div className="mb-16 flex justify-center">
+            <div className="mb-16 flex flex-col items-center gap-4">
               <Link 
                 href="/story" 
                 className="group inline-flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-400 transition-colors hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300 cursor-pointer"
               >
                 <ArrowLeft className="size-3 transition-transform group-hover:-translate-x-1" />
-                Back to All Stories
+                {detailText.backToAllStories}
                 <span className="h-px w-8 bg-zinc-300 transition-all group-hover:w-12 dark:bg-zinc-600" />
               </Link>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleCopyWechatArticle}
+                  className="inline-flex size-10 items-center justify-center rounded-full border border-[#07c160]/30 bg-[#07c160]/10 text-[#0a8f49] shadow-sm transition-all hover:border-[#07c160]/50 hover:bg-[#07c160]/20 hover:shadow-md cursor-pointer"
+                  aria-label={detailText.copyWechat}
+                  title={detailText.copyWechat}
+                >
+                  <span className="flex size-6 items-center justify-center rounded-full bg-[#07c160] text-white">
+                    <WechatIcon className="size-3.5" />
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             {/* Photo Gallery - Magazine Style */}
@@ -347,13 +388,13 @@ export default function StoryDetailPage() {
                 <div className="mb-10 flex items-end justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-400 dark:text-zinc-500">
-                      Visual Archive
+                      {detailText.visualArchive}
                     </span>
                     <h2 className="mt-3 font-serif text-3xl font-medium tracking-tight text-zinc-900 dark:text-zinc-100 md:text-4xl">
-                      Gallery
+                      {detailText.gallery}
                     </h2>
                     <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                      {story.photos.length} photographs in this collection
+                      {story.photos.length} {detailText.collectionSuffix}
                     </p>
                   </div>
                   {story.photos.length > 1 && (
@@ -362,7 +403,7 @@ export default function StoryDetailPage() {
                         type="button"
                         onClick={() => setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : story.photos.length - 1))}
                         className="flex size-10 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
-                        aria-label="Previous photo"
+                        aria-label={detailText.previousPhoto}
                       >
                         <ChevronLeft className="size-4" />
                       </button>
@@ -370,7 +411,7 @@ export default function StoryDetailPage() {
                         type="button"
                         onClick={() => setActivePhotoIndex((prev) => (prev < story.photos.length - 1 ? prev + 1 : 0))}
                         className="flex size-10 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
-                        aria-label="Next photo"
+                        aria-label={detailText.nextPhoto}
                       >
                         <ChevronRight className="size-4" />
                       </button>
@@ -409,7 +450,7 @@ export default function StoryDetailPage() {
                             type="button" 
                             onClick={() => setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : story.photos.length - 1))} 
                             className="absolute left-4 top-1/2 z-20 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-zinc-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white hover:shadow-xl sm:hidden cursor-pointer"
-                            aria-label="Previous photo"
+                            aria-label={detailText.previousPhoto}
                           >
                             <ChevronLeft className="size-5" />
                           </button>
@@ -417,7 +458,7 @@ export default function StoryDetailPage() {
                             type="button" 
                             onClick={() => setActivePhotoIndex((prev) => (prev < story.photos.length - 1 ? prev + 1 : 0))} 
                             className="absolute right-4 top-1/2 z-20 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-zinc-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white hover:shadow-xl sm:hidden cursor-pointer"
-                            aria-label="Next photo"
+                            aria-label={detailText.nextPhoto}
                           >
                             <ChevronRight className="size-5" />
                           </button>
@@ -454,7 +495,7 @@ export default function StoryDetailPage() {
                             ? 'border-zinc-900 ring-4 ring-zinc-900/20 dark:border-zinc-100 dark:ring-zinc-100/20' 
                             : 'border-transparent opacity-60 hover:opacity-100'
                         }`}
-                        aria-label={`View ${photo.title}`}
+                        aria-label={`${detailText.viewPhotoPrefix} ${photo.title}`}
                       >
                         <img 
                           src={getPhotoUrl(photo, true)} 
@@ -489,7 +530,7 @@ export default function StoryDetailPage() {
                 <div className="mb-6 flex items-center gap-2">
                   <div className="h-px w-6 bg-zinc-300 dark:bg-zinc-600" />
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-400 dark:text-zinc-500">
-                    Discussion
+                    {detailText.discussion}
                   </h3>
                 </div>
                 <StoryComments storyId={story.id} targetPhotoId={targetPhotoId} compact />

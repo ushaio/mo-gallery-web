@@ -102,6 +102,35 @@ export interface StoryDto {
   photos: PhotoDto[]
 }
 
+export type StoryAiAction =
+  | 'rewrite'
+  | 'expand'
+  | 'shorten'
+  | 'continue'
+  | 'summarize'
+  | 'custom'
+
+export interface StoryAiGenerateInput {
+  action: StoryAiAction
+  model?: string
+  prompt?: string
+  title?: string
+  selectedText?: string
+  currentParagraph?: string
+  contextBefore?: string
+  contextAfter?: string
+}
+
+export interface StoryAiModelOption {
+  id: string
+  label: string
+}
+
+export interface StoryAiModelsResponse {
+  defaultModel: string
+  models: StoryAiModelOption[]
+}
+
 export interface BlogDto {
   id: string
   title: string

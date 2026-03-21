@@ -9,6 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/core'
 import { useEditor, useEditorState, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -44,9 +45,14 @@ import {
   Redo,
   Highlighter,
   Palette,
+  Sparkles,
+  Loader2,
+  Wand2,
+  X,
 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { getStoryAiModels, streamStoryAiGenerate, type StoryAiAction, type StoryAiModelOption } from '@/lib/api'
 import './tiptap-editor.css'
 
 export interface NarrativeTipTapEditorProps {
@@ -55,6 +61,12 @@ export interface NarrativeTipTapEditorProps {
   placeholder?: string
   onPasteFiles?: (files: File[]) => void | Promise<void>
   className?: string
+  aiOptions?: {
+    enabled: boolean
+    token?: string | null
+    title?: string
+    initialModel?: string
+  }
 }
 
 export interface NarrativeTipTapEditorHandle {
@@ -123,6 +135,34 @@ const PRESET_TEXT_COLOR_VALUES = [
   ...BASIC_TEXT_COLOR_OPTIONS,
   ...MORE_TEXT_COLOR_OPTIONS,
 ] as const
+const AI_CONTEXT_LIMIT = 500
+
+const AI_PRESET_ACTIONS: Array<{ action: StoryAiAction; key: string }> = [
+  { action: 'rewrite', key: 'rewrite' },
+  { action: 'expand', key: 'expand' },
+  { action: 'shorten', key: 'shorten' },
+  { action: 'continue', key: 'continue' },
+  { action: 'summarize', key: 'summarize' },
+]
+
+function escapeHtml(input: string) {
+  return input
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function convertPlainTextToEditorHtml(input: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
 
 function normalizeInlineStyleValue(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, ' ') || ''
@@ -368,7 +408,7 @@ function ToolbarDivider() {
 }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
-  ({ value, onChange, placeholder, onPasteFiles, className }, ref) => {
+  ({ value, onChange, placeholder, onPasteFiles, className, aiOptions }, ref) => {
     const currentValueRef = useRef(value)
     const onPasteFilesRef = useRef(onPasteFiles)
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
@@ -378,6 +418,18 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const textColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const textColorMenuRef = useRef<HTMLDivElement | null>(null)
     const textColorPickerRef = useRef<HTMLInputElement | null>(null)
+    const aiButtonRef = useRef<HTMLButtonElement | null>(null)
+    const aiPanelRef = useRef<HTMLDivElement | null>(null)
+    const aiButtonPositionRef = useRef({ top: 0, left: 0 })
+    const aiDragStateRef = useRef<{
+      pointerId: number
+      startX: number
+      startY: number
+      originLeft: number
+      originTop: number
+      moved: boolean
+    } | null>(null)
+    const aiSuppressClickRef = useRef(false)
     const [showLinkInput, setShowLinkInput] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
@@ -392,6 +444,19 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [customTextColor, setCustomTextColor] = useState(DEFAULT_TEXT_COLOR)
     const [recentTextColors, setRecentTextColors] = useState<string[]>([])
     const [textColorTab, setTextColorTab] = useState<'basic' | 'more'>('basic')
+    const [showAiPanel, setShowAiPanel] = useState(false)
+    const [aiPrompt, setAiPrompt] = useState('')
+    const [aiPreview, setAiPreview] = useState('')
+    const [aiLoading, setAiLoading] = useState(false)
+    const [aiError, setAiError] = useState('')
+    const [aiModelOptions, setAiModelOptions] = useState<StoryAiModelOption[]>([])
+    const [aiSelectedModel, setAiSelectedModel] = useState(aiOptions?.initialModel || '')
+    const [aiModelsLoading, setAiModelsLoading] = useState(false)
+    const [aiButtonPosition, setAiButtonPosition] = useState({ top: 0, left: 0 })
+    const [aiPanelPosition, setAiPanelPosition] = useState({ top: 0, left: 0 })
+    const [aiSelectionRange, setAiSelectionRange] = useState<{ from: number; to: number } | null>(null)
+    const [aiHasSelection, setAiHasSelection] = useState(false)
+    const [aiMode, setAiMode] = useState<StoryAiAction>('rewrite')
     const { t } = useLanguage()
     const { resolvedTheme } = useTheme()
 
@@ -440,6 +505,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     useEffect(() => {
       currentValueRef.current = value
     }, [value])
+
+    useEffect(() => {
+      if (!aiOptions?.initialModel) return
+      setAiSelectedModel((current) => current || aiOptions.initialModel || '')
+    }, [aiOptions?.initialModel])
 
     useEffect(() => {
       onPasteFilesRef.current = onPasteFiles
@@ -650,6 +720,69 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor?.commands.focus()
     }, [editor])
 
+    const syncAiSelectionState = useCallback(() => {
+      if (!editor) return
+      const { from, to } = editor.state.selection
+      const hasSelection = from !== to
+      setAiSelectionRange(hasSelection ? { from, to } : null)
+      setAiHasSelection(hasSelection)
+    }, [editor])
+
+    useEffect(() => {
+      if (!editor) return
+
+      syncAiSelectionState()
+      editor.on('selectionUpdate', syncAiSelectionState)
+
+      return () => {
+        editor.off('selectionUpdate', syncAiSelectionState)
+      }
+    }, [editor, syncAiSelectionState])
+
+    const getCurrentParagraphText = useCallback(() => {
+      if (!editor) return ''
+      const { $from } = editor.state.selection
+      for (let depth = $from.depth; depth >= 0; depth -= 1) {
+        const node = $from.node(depth)
+        if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+          return node.textContent.trim()
+        }
+      }
+      return ''
+    }, [editor])
+
+    const getContextAroundSelection = useCallback(() => {
+      if (!editor) {
+        return {
+          selectedText: '',
+          currentParagraph: '',
+          contextBefore: '',
+          contextAfter: '',
+        }
+      }
+
+      const { from, to } = editor.state.selection
+      const selectedText = from !== to ? editor.state.doc.textBetween(from, to, '\n\n').trim() : ''
+      const currentParagraph = getCurrentParagraphText()
+      const contextBefore = editor.state.doc.textBetween(
+        Math.max(0, from - AI_CONTEXT_LIMIT),
+        from,
+        '\n\n',
+      ).trim()
+      const contextAfter = editor.state.doc.textBetween(
+        to,
+        Math.min(editor.state.doc.content.size, to + AI_CONTEXT_LIMIT),
+        '\n\n',
+      ).trim()
+
+      return {
+        selectedText,
+        currentParagraph,
+        contextBefore,
+        contextAfter,
+      }
+    }, [editor, getCurrentParagraphText])
+
     const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
       if (!editor) return
 
@@ -668,6 +801,100 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
       focusEditor()
     }, [editor, focusEditor])
+
+    const applyAiResult = useCallback((mode: 'replace' | 'insert' | 'append') => {
+      if (!editor || !aiPreview.trim()) return
+
+      const html = convertPlainTextToEditorHtml(aiPreview)
+      if (!html) return
+
+      if (mode === 'replace' && aiSelectionRange) {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(aiSelectionRange)
+          .insertContent(html)
+          .run()
+      } else if (mode === 'append') {
+        editor
+          .chain()
+          .focus('end')
+          .insertContent(html)
+          .run()
+      } else {
+        editor
+          .chain()
+          .focus()
+          .insertContent(html)
+          .run()
+      }
+
+      setAiPreview('')
+      setAiError('')
+      setShowAiPanel(false)
+      focusEditor()
+    }, [aiPreview, aiSelectionRange, editor, focusEditor])
+
+    const runAiAction = useCallback(async (action: StoryAiAction) => {
+      if (!editor || !aiOptions?.enabled) return
+      if (!aiOptions.token) {
+        setAiError(t('editor.ai_missing_token'))
+        return
+      }
+
+      setAiLoading(true)
+      setAiError('')
+      setAiPreview('')
+      setAiMode(action)
+
+      const context = getContextAroundSelection()
+
+      try {
+        await streamStoryAiGenerate(aiOptions.token, {
+          action,
+          model: aiSelectedModel || undefined,
+          prompt: action === 'custom' ? aiPrompt.trim() : undefined,
+          title: aiOptions.title,
+          selectedText: context.selectedText || undefined,
+          currentParagraph: context.currentParagraph || undefined,
+          contextBefore: context.contextBefore || undefined,
+          contextAfter: context.contextAfter || undefined,
+        }, {
+          onChunk: (chunk) => {
+            setAiPreview((current) => current + chunk)
+          },
+        })
+      } catch (error) {
+        setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+      } finally {
+        setAiLoading(false)
+      }
+    }, [aiOptions?.enabled, aiOptions?.title, aiOptions?.token, aiPrompt, aiSelectedModel, editor, getContextAroundSelection, t])
+
+    const refreshAiModels = useCallback(async () => {
+      if (!aiOptions?.enabled || !aiOptions.token) {
+        setAiError(t('editor.ai_missing_token'))
+        return
+      }
+
+      setAiModelsLoading(true)
+      setAiError('')
+
+      try {
+        const response = await getStoryAiModels(aiOptions.token)
+        setAiModelOptions(response.models)
+        setAiSelectedModel((current) => current || response.defaultModel)
+      } catch (error) {
+        setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+      } finally {
+        setAiModelsLoading(false)
+      }
+    }, [aiOptions?.enabled, aiOptions?.token, t])
+
+    useEffect(() => {
+      if (!showAiPanel || aiModelOptions.length > 0 || aiModelsLoading) return
+      void refreshAiModels()
+    }, [aiModelOptions.length, aiModelsLoading, refreshAiModels, showAiPanel])
 
     const imperativeHandle = useMemo<NarrativeTipTapEditorHandle>(() => ({
       getValue: () => {
@@ -1010,6 +1237,42 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       })
     }, [])
 
+    const updateAiPanelPosition = useCallback(() => {
+      const buttonElement = aiButtonRef.current
+      if (!buttonElement) return
+
+      const rect = buttonElement.getBoundingClientRect()
+      const panelWidth = 360
+      const viewportPadding = 12
+      const left = Math.max(
+        viewportPadding,
+        Math.min(rect.right - panelWidth, window.innerWidth - panelWidth - viewportPadding),
+      )
+
+      const nextPosition = {
+        top: Math.max(viewportPadding, rect.top - 12),
+        left,
+      }
+
+      if (aiPanelRef.current) {
+        aiPanelRef.current.style.top = `${nextPosition.top}px`
+        aiPanelRef.current.style.left = `${nextPosition.left}px`
+      }
+
+      setAiPanelPosition(nextPosition)
+    }, [])
+
+    const applyAiButtonPosition = useCallback((position: { top: number; left: number }) => {
+      aiButtonPositionRef.current = position
+
+      if (aiButtonRef.current) {
+        aiButtonRef.current.style.top = `${position.top}px`
+        aiButtonRef.current.style.left = `${position.left}px`
+        aiButtonRef.current.style.right = 'auto'
+        aiButtonRef.current.style.bottom = 'auto'
+      }
+    }, [])
+
     useEffect(() => {
       if (!showBackgroundColorMenu) return
 
@@ -1090,6 +1353,139 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       }
     }, [showTextColorMenu, updateTextColorMenuPosition])
 
+    useEffect(() => {
+      if (!showAiPanel) return
+
+      updateAiPanelPosition()
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          setShowAiPanel(false)
+        }
+      }
+
+      const handleViewportChange = () => {
+        updateAiPanelPosition()
+      }
+
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('resize', handleViewportChange)
+      window.addEventListener('scroll', handleViewportChange, true)
+
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('resize', handleViewportChange)
+        window.removeEventListener('scroll', handleViewportChange, true)
+      }
+    }, [showAiPanel, updateAiPanelPosition])
+
+    useEffect(() => {
+      if (!aiOptions?.enabled || typeof window === 'undefined') return
+
+      const buttonElement = aiButtonRef.current
+      if (!buttonElement) return
+
+      const rect = buttonElement.getBoundingClientRect()
+      if (aiButtonPosition.top === 0 && aiButtonPosition.left === 0) {
+        const nextPosition = {
+          top: rect.top,
+          left: rect.left,
+        }
+        aiButtonPositionRef.current = nextPosition
+        setAiButtonPosition(nextPosition)
+      }
+    }, [aiButtonPosition.left, aiButtonPosition.top, aiOptions?.enabled])
+
+    const clampAiButtonPosition = useCallback((left: number, top: number) => {
+      const buttonElement = aiButtonRef.current
+      const width = buttonElement?.offsetWidth || 160
+      const height = buttonElement?.offsetHeight || 48
+      const viewportPadding = 12
+
+      return {
+        left: Math.min(
+          Math.max(viewportPadding, left),
+          Math.max(viewportPadding, window.innerWidth - width - viewportPadding),
+        ),
+        top: Math.min(
+          Math.max(viewportPadding, top),
+          Math.max(viewportPadding, window.innerHeight - height - viewportPadding),
+        ),
+      }
+    }, [])
+
+    const handleAiButtonPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+      const buttonElement = aiButtonRef.current
+      if (!buttonElement) return
+
+      const rect = buttonElement.getBoundingClientRect()
+      aiDragStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originLeft: rect.left,
+        originTop: rect.top,
+        moved: false,
+      }
+
+      buttonElement.setPointerCapture(event.pointerId)
+    }, [])
+
+    const handleAiButtonPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+      const dragState = aiDragStateRef.current
+      if (!dragState || dragState.pointerId !== event.pointerId) return
+
+      const nextLeft = dragState.originLeft + (event.clientX - dragState.startX)
+      const nextTop = dragState.originTop + (event.clientY - dragState.startY)
+      const clamped = clampAiButtonPosition(nextLeft, nextTop)
+
+      if (Math.abs(event.clientX - dragState.startX) > 4 || Math.abs(event.clientY - dragState.startY) > 4) {
+        dragState.moved = true
+        aiSuppressClickRef.current = true
+      }
+
+      applyAiButtonPosition(clamped)
+      if (showAiPanel) {
+        if (aiPanelRef.current) {
+          const panelWidth = aiPanelRef.current.offsetWidth || 360
+          const viewportPadding = 12
+          const buttonWidth = aiButtonRef.current?.offsetWidth || 160
+          const left = Math.max(
+            viewportPadding,
+            Math.min(clamped.left + buttonWidth - panelWidth, window.innerWidth - panelWidth - viewportPadding),
+          )
+          const top = Math.max(viewportPadding, clamped.top - 12)
+          aiPanelRef.current.style.top = `${top}px`
+          aiPanelRef.current.style.left = `${left}px`
+        }
+      }
+    }, [applyAiButtonPosition, clampAiButtonPosition, showAiPanel])
+
+    const handleAiButtonPointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+      const dragState = aiDragStateRef.current
+      if (!dragState || dragState.pointerId !== event.pointerId) return
+
+      if (aiButtonRef.current?.hasPointerCapture(event.pointerId)) {
+        aiButtonRef.current.releasePointerCapture(event.pointerId)
+      }
+
+      setAiButtonPosition(aiButtonPositionRef.current)
+      if (showAiPanel) {
+        updateAiPanelPosition()
+      }
+      aiDragStateRef.current = null
+      window.setTimeout(() => {
+        aiSuppressClickRef.current = false
+      }, 0)
+    }, [showAiPanel, updateAiPanelPosition])
+
+    const handleAiButtonClick = useCallback(() => {
+      if (aiSuppressClickRef.current) {
+        return
+      }
+      setShowAiPanel((current) => !current)
+    }, [])
+
     const preserveSelectionOnToolbarMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
     }, [])
@@ -1111,6 +1507,166 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         </div>
       )
     }
+
+    const aiPanel = showAiPanel && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={aiPanelRef}
+            className="fixed z-[140] w-[360px] rounded-2xl border border-border/80 bg-background/95 p-4 shadow-[0_24px_48px_rgba(15,23,42,0.16)] backdrop-blur"
+            style={{
+              top: aiPanelPosition.top,
+              left: aiPanelPosition.left,
+              transform: 'translateY(-100%)',
+            }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Wand2 className="h-4 w-4 text-primary" />
+                {t('editor.ai_panel_title')}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAiPanel(false)}
+                className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title={t('common.cancel')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-2">
+              {AI_PRESET_ACTIONS.map((item) => (
+                <button
+                  key={item.action}
+                  type="button"
+                  onClick={() => void runAiAction(item.action)}
+                  disabled={aiLoading}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    aiMode === item.action
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {t(`editor.ai_action_${item.key}`)}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground">
+              {aiHasSelection ? t('editor.ai_scope_selection') : t('editor.ai_scope_paragraph')}
+            </div>
+
+            <div className="mb-3 flex items-center gap-2">
+              <select
+                value={aiSelectedModel}
+                onChange={(event) => setAiSelectedModel(event.target.value)}
+                disabled={aiModelsLoading || aiLoading}
+                className="h-9 min-w-0 flex-1 rounded-full border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {aiModelOptions.length === 0 ? (
+                  <option value="">
+                    {aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_models_empty')}
+                  </option>
+                ) : null}
+                {aiModelOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => void refreshAiModels()}
+                disabled={aiModelsLoading || aiLoading}
+                className="inline-flex h-9 shrink-0 items-center rounded-full border border-border px-3 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
+              </button>
+            </div>
+
+            <textarea
+              value={aiPrompt}
+              onChange={(event) => setAiPrompt(event.target.value)}
+              placeholder={t('editor.ai_prompt_placeholder')}
+              className="mb-3 h-24 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary"
+            />
+
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => void runAiAction('custom')}
+                disabled={aiLoading || !aiPrompt.trim()}
+                className="inline-flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {t('editor.ai_generate')}
+              </button>
+              {aiError ? <span className="text-xs text-destructive">{aiError}</span> : null}
+            </div>
+
+            <div className="mb-3 min-h-32 rounded-xl border border-border/70 bg-muted/10 p-3 text-sm text-foreground">
+              {aiPreview ? (
+                <div className="whitespace-pre-wrap leading-6">{aiPreview}</div>
+              ) : (
+                <div className="text-muted-foreground">{aiLoading ? t('editor.ai_generating') : t('editor.ai_preview_placeholder')}</div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!aiPreview.trim() || !aiSelectionRange}
+                onClick={() => applyAiResult('replace')}
+                className="rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('editor.ai_apply_replace')}
+              </button>
+              <button
+                type="button"
+                disabled={!aiPreview.trim()}
+                onClick={() => applyAiResult('insert')}
+                className="rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('editor.ai_apply_insert')}
+              </button>
+              <button
+                type="button"
+                disabled={!aiPreview.trim()}
+                onClick={() => applyAiResult('append')}
+                className="rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('editor.ai_apply_append')}
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null
+
+    const aiFloatingButton = aiOptions?.enabled && typeof document !== 'undefined'
+      ? createPortal(
+          <button
+            ref={aiButtonRef}
+            type="button"
+            onPointerDown={handleAiButtonPointerDown}
+            onPointerMove={handleAiButtonPointerMove}
+            onPointerUp={handleAiButtonPointerUp}
+            onPointerCancel={handleAiButtonPointerUp}
+            onClick={handleAiButtonClick}
+            className="fixed z-[130] inline-flex h-12 items-center gap-2 rounded-full border border-primary/20 bg-background/95 px-4 text-sm font-medium text-foreground shadow-[0_18px_36px_rgba(15,23,42,0.18)] backdrop-blur transition-all hover:border-primary/40 hover:text-primary touch-none select-none"
+            style={{
+              top: aiButtonPosition.top || undefined,
+              left: aiButtonPosition.left || undefined,
+              right: aiButtonPosition.top || aiButtonPosition.left ? undefined : 20,
+              bottom: aiButtonPosition.top || aiButtonPosition.left ? undefined : 20,
+            }}
+          >
+            <Sparkles className="h-4 w-4" />
+            {t('editor.ai_button')}
+          </button>,
+          document.body,
+        )
+      : null
 
     return (
       <div className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
@@ -1596,8 +2152,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         )}
 
         <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
-          <EditorContent editor={editor} className="h-full custom-scrollbar" />
+          <div className="relative h-full">
+            <EditorContent editor={editor} className="h-full custom-scrollbar" />
+          </div>
         </div>
+        {aiFloatingButton}
+        {aiPanel}
       </div>
     )
   }
