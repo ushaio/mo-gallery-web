@@ -42,6 +42,8 @@ import {
   Table as TableIcon,
   Undo,
   Redo,
+  Highlighter,
+  Palette,
 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -86,6 +88,41 @@ const FONT_FAMILY_VALUES = [
   FONT_FAMILY_MONO_VALUE,
   FONT_FAMILY_OPTIMA_VALUE,
 ] as const
+const DEFAULT_TEXT_HIGHLIGHT = '#fff3a3'
+const BACKGROUND_COLOR_RECENT_LIMIT = 8
+const BASIC_BACKGROUND_COLOR_OPTIONS = [
+  '#ffffff', '#f4cccc', '#f9cb9c', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#ead1dc',
+  '#f3f3f3', '#f4b6b6', '#f6b26b', '#ffe599', '#b6d7a8', '#a2c4c9', '#a4c2f4', '#d5a6bd',
+  '#d9d9d9', '#ea9999', '#ffb366', '#ffd966', '#93c47d', '#76a5af', '#6d9eeb', '#c27ba0',
+  '#b7b7b7', '#e06666', '#ff8c42', '#f1c232', '#6aa84f', '#45818e', '#3c78d8', '#a64d79',
+] as const
+const MORE_BACKGROUND_COLOR_OPTIONS = [
+  '#999999', '#cc0000', '#e69138', '#bf9000', '#38761d', '#134f5c', '#1155cc', '#741b47',
+  '#666666', '#990000', '#b45f06', '#7f6000', '#274e13', '#0c343d', '#1c4587', '#4c1130',
+  '#000000', '#ff0000', '#ff6d01', '#f6b400', '#00d000', '#00c6e8', '#4a86e8', '#b03af2',
+  '#ff2d55', '#ff5f5f', '#ff9f0a', '#ffd60a', '#32d74b', '#64d2ff', '#5e5ce6', '#bf5af2',
+] as const
+const PRESET_BACKGROUND_COLOR_VALUES = [
+  ...BASIC_BACKGROUND_COLOR_OPTIONS,
+  ...MORE_BACKGROUND_COLOR_OPTIONS,
+] as const
+const DEFAULT_TEXT_COLOR = '#1f1f1f'
+const TEXT_COLOR_RECENT_LIMIT = 8
+const BASIC_TEXT_COLOR_OPTIONS = [
+  '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#d9d9d9', '#efefef', '#ffffff',
+  '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#9900ff',
+  '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#ead1dc',
+] as const
+const MORE_TEXT_COLOR_OPTIONS = [
+  '#7f0000', '#cc4125', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3c78d8', '#674ea7',
+  '#a61c00', '#cc0000', '#e06666', '#f6b26b', '#ffd966', '#93c47d', '#76a5af', '#6d9eeb',
+  '#8e7cc3', '#c27ba0', '#dd7e6b', '#ea9999', '#f9cb9c', '#ffe599', '#b6d7a8', '#a2c4c9',
+  '#a4c2f4', '#b4a7d6', '#d5a6bd', '#fff2f0', '#f4f4f4', '#1c1c1c', '#0b5394', '#38761d',
+] as const
+const PRESET_TEXT_COLOR_VALUES = [
+  ...BASIC_TEXT_COLOR_OPTIONS,
+  ...MORE_TEXT_COLOR_OPTIONS,
+] as const
 
 function normalizeInlineStyleValue(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, ' ') || ''
@@ -93,8 +130,9 @@ function normalizeInlineStyleValue(value: string | null | undefined) {
 
 function resolveActiveInlineStyleValue(
   currentEditor: Editor,
-  attribute: 'fontSize' | 'fontFamily',
-  supportedValues: readonly string[]
+  attribute: 'fontSize' | 'fontFamily' | 'backgroundColor' | 'color',
+  supportedValues: readonly string[],
+  preserveRawValue = false
 ) {
   const activeValue = supportedValues.find((value) =>
     currentEditor.isActive('pastedStyle', { [attribute]: value })
@@ -106,10 +144,29 @@ function resolveActiveInlineStyleValue(
   const rawValue = (currentEditor.getAttributes('pastedStyle') as {
     fontSize?: string
     fontFamily?: string
+    backgroundColor?: string
+    color?: string
   })[attribute]
   const normalizedValue = normalizeInlineStyleValue(rawValue)
 
-  return supportedValues.find((value) => normalizeInlineStyleValue(value) === normalizedValue) ?? ''
+  return supportedValues.find((value) => normalizeInlineStyleValue(value) === normalizedValue)
+    ?? (preserveRawValue ? normalizedValue : '')
+}
+
+function normalizeHexColor(value: string) {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return null
+
+  const withHash = normalized.startsWith('#') ? normalized : `#${normalized}`
+  if (/^#[0-9a-f]{3}$/i.test(withHash)) {
+    return `#${withHash[1]}${withHash[1]}${withHash[2]}${withHash[2]}${withHash[3]}${withHash[3]}`
+  }
+
+  if (/^#[0-9a-f]{6}$/i.test(withHash)) {
+    return withHash
+  }
+
+  return null
 }
 
 function ensureFirstParagraphHasDropCap(currentEditor: Editor) {
@@ -249,17 +306,19 @@ interface ToolbarButtonProps {
   disabled?: boolean
   title: string
   children: React.ReactNode
+  buttonRef?: React.Ref<HTMLButtonElement>
 }
 
-function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, children }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, onMouseDown, isActive, disabled, title, children, buttonRef }: ToolbarButtonProps) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
       onMouseDown={onMouseDown}
       disabled={disabled}
       title={title}
-      className={`flex h-8 min-w-8 items-center justify-center border px-2 text-[11px] transition-all duration-200 ${
+      className={`flex h-7 min-w-7 items-center justify-center border px-1.5 text-[11px] transition-all duration-200 ${
         isActive
           ? 'border-border bg-background text-accent-foreground'
           : 'border-transparent text-muted-foreground hover:border-border hover:bg-background hover:text-accent-foreground'
@@ -279,13 +338,22 @@ interface ToolbarSelectProps {
 }
 
 function ToolbarSelect({ value, onChange, onMouseDown, title, options }: ToolbarSelectProps) {
+  const selectWidth = useMemo(() => {
+    const longestLabelLength = options.reduce((max, option) => {
+      return Math.max(max, option.label.length)
+    }, 0)
+
+    return `${Math.max(longestLabelLength + 4, 7)}ch`
+  }, [options])
+
   return (
     <select
       value={value}
       title={title}
       onMouseDown={onMouseDown}
       onChange={(event) => onChange(event.target.value)}
-      className="h-8 min-w-[92px] border border-transparent bg-transparent px-2 text-[11px] text-muted-foreground transition-all duration-200 hover:border-border hover:bg-background hover:text-accent-foreground focus:border-primary/30 focus:bg-background focus:text-foreground focus:outline-none"
+      style={{ width: selectWidth }}
+      className="h-7 appearance-none border border-transparent bg-transparent px-1.5 text-[11px] text-muted-foreground transition-all duration-200 hover:border-border hover:bg-background hover:text-accent-foreground focus:border-primary/30 focus:bg-background focus:text-foreground focus:outline-none"
     >
       {options.map((option) => (
         <option key={`${title}-${option.label}`} value={option.value}>
@@ -297,7 +365,7 @@ function ToolbarSelect({ value, onChange, onMouseDown, title, options }: Toolbar
 }
 
 function ToolbarDivider() {
-  return <div className="mx-2 h-4 w-px bg-border/80" />
+  return <div className="mx-1 h-3.5 w-px bg-border/80" />
 }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
@@ -305,10 +373,26 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const currentValueRef = useRef(value)
     const onPasteFilesRef = useRef(onPasteFiles)
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
+    const backgroundColorButtonRef = useRef<HTMLButtonElement | null>(null)
+    const backgroundColorMenuRef = useRef<HTMLDivElement | null>(null)
+    const backgroundColorPickerRef = useRef<HTMLInputElement | null>(null)
+    const textColorButtonRef = useRef<HTMLButtonElement | null>(null)
+    const textColorMenuRef = useRef<HTMLDivElement | null>(null)
+    const textColorPickerRef = useRef<HTMLInputElement | null>(null)
     const [showLinkInput, setShowLinkInput] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
+    const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
+    const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
+    const [customBackgroundColor, setCustomBackgroundColor] = useState(DEFAULT_TEXT_HIGHLIGHT)
+    const [recentBackgroundColors, setRecentBackgroundColors] = useState<string[]>([])
+    const [backgroundColorTab, setBackgroundColorTab] = useState<'basic' | 'more'>('basic')
+    const [showTextColorMenu, setShowTextColorMenu] = useState(false)
+    const [textColorMenuPosition, setTextColorMenuPosition] = useState({ top: 0, left: 0 })
+    const [customTextColor, setCustomTextColor] = useState(DEFAULT_TEXT_COLOR)
+    const [recentTextColors, setRecentTextColors] = useState<string[]>([])
+    const [textColorTab, setTextColorTab] = useState<'basic' | 'more'>('basic')
     const { t } = useLanguage()
     const { resolvedTheme } = useTheme()
 
@@ -325,7 +409,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const fontSizeOptions = useMemo(() => [
       { label: DEFAULT_FONT_SIZE_LABEL, value: '' },
       ...FONT_SIZE_VALUES.map((size) => ({ label: size, value: size })),
-    ], [t])
+    ], [])
 
     const fontFamilyOptions = useMemo(() => [
       {
@@ -492,6 +576,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             headingLevel: '',
             fontSize: '',
             fontFamily: '',
+            color: '',
+            backgroundColor: '',
           }
         }
 
@@ -520,6 +606,18 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           ),
           fontSize: resolveActiveInlineStyleValue(currentEditor, 'fontSize', FONT_SIZE_VALUES),
           fontFamily: resolveActiveInlineStyleValue(currentEditor, 'fontFamily', FONT_FAMILY_VALUES),
+          color: resolveActiveInlineStyleValue(
+            currentEditor,
+            'color',
+            PRESET_TEXT_COLOR_VALUES,
+            true
+          ),
+          backgroundColor: resolveActiveInlineStyleValue(
+            currentEditor,
+            'backgroundColor',
+            PRESET_BACKGROUND_COLOR_VALUES,
+            true
+          ),
         }
       },
     })
@@ -545,6 +643,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       headingLevel: '',
       fontSize: '',
       fontFamily: '',
+      color: '',
+      backgroundColor: '',
     }
 
     const focusEditor = useCallback(() => {
@@ -817,6 +917,180 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       pendingSelectionRef.current = null
     }, [editor])
 
+    const setTextColor = useCallback((color: string) => {
+      if (!editor) return
+
+      const normalizedColor = color ? normalizeHexColor(color) : ''
+      if (color && !normalizedColor) {
+        return
+      }
+
+      const chain = editor.chain().focus()
+      const pendingSelection = pendingSelectionRef.current
+      if (pendingSelection) {
+        chain.setTextSelection(pendingSelection)
+      }
+
+      if (normalizedColor) {
+        chain.setTextColor(normalizedColor).run()
+        setCustomTextColor(normalizedColor)
+        setRecentTextColors((current) => {
+          const nextColors = [normalizedColor, ...current.filter((item) => item !== normalizedColor)]
+          return nextColors.slice(0, TEXT_COLOR_RECENT_LIMIT)
+        })
+      } else {
+        chain.unsetTextColor().run()
+      }
+
+      pendingSelectionRef.current = null
+      setShowTextColorMenu(false)
+    }, [editor])
+
+    const setBackgroundColor = useCallback((backgroundColor: string) => {
+      if (!editor) return
+
+      const normalizedBackgroundColor = backgroundColor ? normalizeHexColor(backgroundColor) : ''
+      if (backgroundColor && !normalizedBackgroundColor) {
+        return
+      }
+
+      const chain = editor.chain().focus()
+      const pendingSelection = pendingSelectionRef.current
+      if (pendingSelection) {
+        chain.setTextSelection(pendingSelection)
+      }
+
+      if (normalizedBackgroundColor) {
+        chain.setBackgroundColor(normalizedBackgroundColor).run()
+        setCustomBackgroundColor(normalizedBackgroundColor)
+        setRecentBackgroundColors((current) => {
+          const nextColors = [normalizedBackgroundColor, ...current.filter((color) => color !== normalizedBackgroundColor)]
+          return nextColors.slice(0, BACKGROUND_COLOR_RECENT_LIMIT)
+        })
+      } else {
+        chain.unsetBackgroundColor().run()
+      }
+
+      pendingSelectionRef.current = null
+      setShowBackgroundColorMenu(false)
+    }, [editor])
+
+    const updateTextColorMenuPosition = useCallback(() => {
+      const buttonElement = textColorButtonRef.current
+      if (!buttonElement) return
+
+      const rect = buttonElement.getBoundingClientRect()
+      const menuWidth = 360
+      const viewportPadding = 12
+      const left = Math.max(
+        viewportPadding,
+        Math.min(rect.left, window.innerWidth - menuWidth - viewportPadding)
+      )
+
+      setTextColorMenuPosition({
+        top: rect.bottom + 6,
+        left,
+      })
+    }, [])
+
+    const updateBackgroundColorMenuPosition = useCallback(() => {
+      const buttonElement = backgroundColorButtonRef.current
+      if (!buttonElement) return
+
+      const rect = buttonElement.getBoundingClientRect()
+      const menuWidth = 360
+      const viewportPadding = 12
+      const left = Math.max(
+        viewportPadding,
+        Math.min(rect.left, window.innerWidth - menuWidth - viewportPadding)
+      )
+
+      setBackgroundColorMenuPosition({
+        top: rect.bottom + 6,
+        left,
+      })
+    }, [])
+
+    useEffect(() => {
+      if (!showBackgroundColorMenu) return
+
+      updateBackgroundColorMenuPosition()
+
+      const handlePointerDown = (event: MouseEvent) => {
+        const target = event.target as Node | null
+        if (
+          backgroundColorMenuRef.current?.contains(target)
+          || backgroundColorButtonRef.current?.contains(target)
+        ) {
+          return
+        }
+
+        setShowBackgroundColorMenu(false)
+      }
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          setShowBackgroundColorMenu(false)
+        }
+      }
+
+      const handleViewportChange = () => {
+        updateBackgroundColorMenuPosition()
+      }
+
+      window.addEventListener('mousedown', handlePointerDown)
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('resize', handleViewportChange)
+      window.addEventListener('scroll', handleViewportChange, true)
+
+      return () => {
+        window.removeEventListener('mousedown', handlePointerDown)
+        window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('resize', handleViewportChange)
+        window.removeEventListener('scroll', handleViewportChange, true)
+      }
+    }, [showBackgroundColorMenu, updateBackgroundColorMenuPosition])
+
+    useEffect(() => {
+      if (!showTextColorMenu) return
+
+      updateTextColorMenuPosition()
+
+      const handlePointerDown = (event: MouseEvent) => {
+        const target = event.target as Node | null
+        if (
+          textColorMenuRef.current?.contains(target)
+          || textColorButtonRef.current?.contains(target)
+        ) {
+          return
+        }
+
+        setShowTextColorMenu(false)
+      }
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          setShowTextColorMenu(false)
+        }
+      }
+
+      const handleViewportChange = () => {
+        updateTextColorMenuPosition()
+      }
+
+      window.addEventListener('mousedown', handlePointerDown)
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('resize', handleViewportChange)
+      window.addEventListener('scroll', handleViewportChange, true)
+
+      return () => {
+        window.removeEventListener('mousedown', handlePointerDown)
+        window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('resize', handleViewportChange)
+        window.removeEventListener('scroll', handleViewportChange, true)
+      }
+    }, [showTextColorMenu, updateTextColorMenuPosition])
+
     const preserveSelectionOnToolbarMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
     }, [])
@@ -841,7 +1115,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     return (
       <div className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
-        <div className="scrollbar-hide flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-3 py-2 whitespace-nowrap">
+        <div className="scrollbar-hide flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-2 py-1.5 whitespace-nowrap">
           <ToolbarSelect
             value={resolvedEditorUiState.headingLevel}
             onChange={setHeadingLevel}
@@ -882,6 +1156,70 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           <ToolbarButton onClick={toggleCode} isActive={resolvedEditorUiState.isCode} title={t('editor.inline_code')}>
             <Code className="w-4 h-4" />
           </ToolbarButton>
+          <div className="relative">
+            <ToolbarButton
+              buttonRef={textColorButtonRef}
+              onMouseDown={preserveSelectionOnToolbarMouseDown}
+              onClick={() => {
+                if (!showTextColorMenu) {
+                  setCustomTextColor(resolvedEditorUiState.color || DEFAULT_TEXT_COLOR)
+                  setTextColorTab(
+                    MORE_TEXT_COLOR_OPTIONS.includes(
+                      (resolvedEditorUiState.color || '').toLowerCase() as (typeof MORE_TEXT_COLOR_OPTIONS)[number]
+                    )
+                      ? 'more'
+                      : 'basic'
+                  )
+                }
+                setShowBackgroundColorMenu(false)
+                setShowTextColorMenu((current) => !current)
+              }}
+              isActive={Boolean(resolvedEditorUiState.color)}
+              title={t('editor.text_color')}
+            >
+              <span className="relative flex items-center justify-center">
+                <Palette className="h-4 w-4" />
+                <span
+                  className="absolute bottom-0 left-1/2 h-1.5 w-3 -translate-x-1/2 rounded-sm border border-black/5"
+                  style={{
+                    backgroundColor: resolvedEditorUiState.color || DEFAULT_TEXT_COLOR,
+                  }}
+                />
+              </span>
+            </ToolbarButton>
+          </div>
+          <div className="relative">
+            <ToolbarButton
+              buttonRef={backgroundColorButtonRef}
+              onMouseDown={preserveSelectionOnToolbarMouseDown}
+              onClick={() => {
+                if (!showBackgroundColorMenu) {
+                  setCustomBackgroundColor(resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT)
+                  setBackgroundColorTab(
+                    MORE_BACKGROUND_COLOR_OPTIONS.includes(
+                      (resolvedEditorUiState.backgroundColor || '').toLowerCase() as (typeof MORE_BACKGROUND_COLOR_OPTIONS)[number]
+                    )
+                      ? 'more'
+                      : 'basic'
+                  )
+                }
+                setShowTextColorMenu(false)
+                setShowBackgroundColorMenu((current) => !current)
+              }}
+              isActive={Boolean(resolvedEditorUiState.backgroundColor)}
+              title={t('editor.background_color')}
+            >
+              <span className="relative flex items-center justify-center">
+                <Highlighter className="h-4 w-4" />
+                <span
+                  className="absolute bottom-0 left-1/2 h-1.5 w-3 -translate-x-1/2 rounded-sm border border-black/5"
+                  style={{
+                    backgroundColor: resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT,
+                  }}
+                />
+              </span>
+            </ToolbarButton>
+          </div>
 
           <ToolbarDivider />
 
@@ -981,6 +1319,292 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             <Redo className="w-4 h-4" />
           </ToolbarButton>
         </div>
+
+        {showBackgroundColorMenu && (
+          <div
+            ref={backgroundColorMenuRef}
+            className="fixed z-50 flex w-[360px] flex-col gap-3 rounded-md border border-border bg-background p-4 shadow-xl"
+            style={{
+              top: backgroundColorMenuPosition.top,
+              left: backgroundColorMenuPosition.left,
+            }}
+          >
+            <div className="space-y-2">
+              <div className="text-sm text-foreground">{t('editor.background_color_recent')}</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => setBackgroundColor('')}
+                  className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${
+                    resolvedEditorUiState.backgroundColor
+                      ? 'border-border hover:border-foreground/30'
+                      : 'border-foreground/60'
+                  }`}
+                  title={t('editor.background_color_clear')}
+                />
+                {recentBackgroundColors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onMouseDown={preserveSelectionOnToolbarMouseDown}
+                    onClick={() => setBackgroundColor(color)}
+                    className={`h-8 w-8 rounded-sm border transition-colors ${
+                      resolvedEditorUiState.backgroundColor === color
+                        ? 'border-foreground/60'
+                        : 'border-border hover:border-foreground/30'
+                    }`}
+                    title={color}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => setBackgroundColorTab('basic')}
+                  className={`text-sm transition-colors ${
+                    backgroundColorTab === 'basic'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {t('editor.background_color_basic')}
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => {
+                    setBackgroundColorTab('more')
+                    backgroundColorPickerRef.current?.click()
+                  }}
+                  className={`text-sm transition-colors ${
+                    backgroundColorTab === 'more'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {t('editor.background_color_more')}
+                </button>
+                <input
+                  ref={backgroundColorPickerRef}
+                  type="color"
+                  value={normalizeHexColor(customBackgroundColor) || DEFAULT_TEXT_HIGHLIGHT}
+                  onChange={(event) => {
+                    const nextColor = normalizeHexColor(event.target.value)
+                    if (!nextColor) return
+                    setCustomBackgroundColor(nextColor)
+                    setBackgroundColorTab('more')
+                  }}
+                  className="sr-only"
+                  tabIndex={-1}
+                />
+              </div>
+              <div className="grid grid-cols-8 gap-2">
+                {(backgroundColorTab === 'basic'
+                  ? BASIC_BACKGROUND_COLOR_OPTIONS
+                  : MORE_BACKGROUND_COLOR_OPTIONS
+                ).map((color) => (
+                  <button
+                    key={`${backgroundColorTab}-${color}`}
+                    type="button"
+                    onMouseDown={preserveSelectionOnToolbarMouseDown}
+                    onClick={() => {
+                      setCustomBackgroundColor(color)
+                      setBackgroundColor(color)
+                    }}
+                    className={`h-7 w-7 rounded-sm border transition-colors ${
+                      resolvedEditorUiState.backgroundColor === color
+                        ? 'border-foreground/60'
+                        : 'border-border hover:border-foreground/30'
+                    }`}
+                    title={color}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  className="h-9 w-12 shrink-0 rounded-sm border border-border"
+                  style={{ backgroundColor: normalizeHexColor(customBackgroundColor) || DEFAULT_TEXT_HIGHLIGHT }}
+                  onClick={() => setBackgroundColor(customBackgroundColor)}
+                  title={customBackgroundColor}
+                />
+                <input
+                  type="text"
+                  value={customBackgroundColor}
+                  onChange={(event) => setCustomBackgroundColor(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      setBackgroundColor(customBackgroundColor)
+                    }
+                  }}
+                  className="h-9 min-w-0 flex-1 rounded-sm border border-border px-3 text-sm text-foreground outline-none transition-colors focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => setBackgroundColor(customBackgroundColor)}
+                  className="h-9 shrink-0 rounded-sm border border-border px-4 text-sm text-foreground transition-colors hover:border-foreground/30"
+                >
+                  {t('editor.confirm')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showTextColorMenu && (
+          <div
+            ref={textColorMenuRef}
+            className="fixed z-50 flex w-[360px] flex-col gap-3 rounded-md border border-border bg-background p-4 shadow-xl"
+            style={{
+              top: textColorMenuPosition.top,
+              left: textColorMenuPosition.left,
+            }}
+          >
+            <div className="space-y-2">
+              <div className="text-sm text-foreground">{t('editor.text_color_recent')}</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => setTextColor('')}
+                  className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${
+                    resolvedEditorUiState.color
+                      ? 'border-border hover:border-foreground/30'
+                      : 'border-foreground/60'
+                  }`}
+                  title={t('editor.text_color_clear')}
+                />
+                {recentTextColors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onMouseDown={preserveSelectionOnToolbarMouseDown}
+                    onClick={() => setTextColor(color)}
+                    className={`h-8 w-8 rounded-sm border transition-colors ${
+                      resolvedEditorUiState.color === color
+                        ? 'border-foreground/60'
+                        : 'border-border hover:border-foreground/30'
+                    }`}
+                    title={color}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => setTextColorTab('basic')}
+                  className={`text-sm transition-colors ${
+                    textColorTab === 'basic'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {t('editor.text_color_basic')}
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => {
+                    setTextColorTab('more')
+                    textColorPickerRef.current?.click()
+                  }}
+                  className={`text-sm transition-colors ${
+                    textColorTab === 'more'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {t('editor.text_color_more')}
+                </button>
+                <input
+                  ref={textColorPickerRef}
+                  type="color"
+                  value={normalizeHexColor(customTextColor) || DEFAULT_TEXT_COLOR}
+                  onChange={(event) => {
+                    const nextColor = normalizeHexColor(event.target.value)
+                    if (!nextColor) return
+                    setCustomTextColor(nextColor)
+                    setTextColorTab('more')
+                  }}
+                  className="sr-only"
+                  tabIndex={-1}
+                />
+              </div>
+              <div className="grid grid-cols-8 gap-2">
+                {(textColorTab === 'basic'
+                  ? BASIC_TEXT_COLOR_OPTIONS
+                  : MORE_TEXT_COLOR_OPTIONS
+                ).map((color) => (
+                  <button
+                    key={`${textColorTab}-${color}`}
+                    type="button"
+                    onMouseDown={preserveSelectionOnToolbarMouseDown}
+                    onClick={() => {
+                      setCustomTextColor(color)
+                      setTextColor(color)
+                    }}
+                    className={`h-7 w-7 rounded-sm border transition-colors ${
+                      resolvedEditorUiState.color === color
+                        ? 'border-foreground/60'
+                        : 'border-border hover:border-foreground/30'
+                    }`}
+                    title={color}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  className="h-9 w-12 shrink-0 rounded-sm border border-border"
+                  style={{ backgroundColor: normalizeHexColor(customTextColor) || DEFAULT_TEXT_COLOR }}
+                  onClick={() => setTextColor(customTextColor)}
+                  title={customTextColor}
+                />
+                <input
+                  type="text"
+                  value={customTextColor}
+                  onChange={(event) => setCustomTextColor(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      setTextColor(customTextColor)
+                    }
+                  }}
+                  className="h-9 min-w-0 flex-1 rounded-sm border border-border px-3 text-sm text-foreground outline-none transition-colors focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onMouseDown={preserveSelectionOnToolbarMouseDown}
+                  onClick={() => setTextColor(customTextColor)}
+                  className="h-9 shrink-0 rounded-sm border border-border px-4 text-sm text-foreground transition-colors hover:border-foreground/30"
+                >
+                  {t('editor.confirm')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
           <EditorContent editor={editor} className="h-full custom-scrollbar" />

@@ -121,10 +121,14 @@ function hasRenderableAttrs(attrs: InlineStyleAttrs) {
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     pastedStyle: {
+      setTextColor: (color: string) => ReturnType
+      unsetTextColor: () => ReturnType
       setFontSize: (fontSize: string) => ReturnType
       unsetFontSize: () => ReturnType
       setFontFamily: (fontFamily: string) => ReturnType
       unsetFontFamily: () => ReturnType
+      setBackgroundColor: (backgroundColor: string) => ReturnType
+      unsetBackgroundColor: () => ReturnType
     }
   }
 }
@@ -154,6 +158,40 @@ export const PastedStyleMark = Mark.create({
 
   addCommands() {
     return {
+      setTextColor:
+        (color: string) =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: sanitizeStyleValue('color', color),
+            backgroundColor: currentAttrs.backgroundColor ?? null,
+            fontSize: currentAttrs.fontSize ?? null,
+            fontFamily: currentAttrs.fontFamily ?? null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
+      unsetTextColor:
+        () =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: null,
+            backgroundColor: currentAttrs.backgroundColor ?? null,
+            fontSize: currentAttrs.fontSize ?? null,
+            fontFamily: currentAttrs.fontFamily ?? null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
       setFontSize:
         (fontSize: string) =>
         ({ editor, commands }: MarkCommandContext) => {
@@ -214,6 +252,40 @@ export const PastedStyleMark = Mark.create({
             backgroundColor: currentAttrs.backgroundColor ?? null,
             fontSize: currentAttrs.fontSize ?? null,
             fontFamily: null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
+      setBackgroundColor:
+        (backgroundColor: string) =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: currentAttrs.color ?? null,
+            backgroundColor: sanitizeStyleValue('background-color', backgroundColor),
+            fontSize: currentAttrs.fontSize ?? null,
+            fontFamily: currentAttrs.fontFamily ?? null,
+          }
+
+          if (!hasRenderableAttrs(nextAttrs)) {
+            return commands.unsetMark(this.name)
+          }
+
+          return commands.setMark(this.name, nextAttrs)
+        },
+      unsetBackgroundColor:
+        () =>
+        ({ editor, commands }: MarkCommandContext) => {
+          const currentAttrs = editor.getAttributes(this.name) as InlineStyleAttrs
+          const nextAttrs: InlineStyleAttrs = {
+            color: currentAttrs.color ?? null,
+            backgroundColor: null,
+            fontSize: currentAttrs.fontSize ?? null,
+            fontFamily: currentAttrs.fontFamily ?? null,
           }
 
           if (!hasRenderableAttrs(nextAttrs)) {
