@@ -131,6 +131,38 @@ export interface StoryAiModelsResponse {
   models: StoryAiModelOption[]
 }
 
+export interface EditorAiConversationDto {
+  id: string
+  scopeId: string
+  title?: string
+  summary?: string
+  lastModel?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EditorAiMessageDto {
+  id: string
+  conversationId: string
+  role: string
+  content: string
+  status: string
+  model?: string
+  action?: string
+  metadata?: unknown
+  error?: string
+  createdAt: string
+}
+
+export interface EditorAiConversationInput {
+  scopeId: string
+  title?: string
+}
+
+export interface EditorAiGenerateInput extends StoryAiGenerateInput {
+  conversationId: string
+}
+
 export interface BlogDto {
   id: string
   title: string

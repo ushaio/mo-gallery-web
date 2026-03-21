@@ -31,6 +31,39 @@ model User {
   @@index([oauthProvider])
 }
 
+model AiConversation {
+  id        String      @id @default(cuid())
+  scopeId   String      @unique
+  title     String?
+  summary   String?
+  lastModel String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messages AiMessage[]
+
+  @@index([updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  status         String         @default("completed")
+  model          String?
+  action         String?
+  metadata       Json?
+  error          String?
+  createdAt      DateTime       @default(now())
+
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([role])
+  @@index([status])
+}
+
 model Camera {
   id        String   @id // 规范化品牌键，如 "sony"
   name      String   // 标准化显示名，如 "Sony"

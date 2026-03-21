@@ -17,6 +17,12 @@ export interface StoryAiGeneratePayload {
   currentParagraph?: string
   contextBefore?: string
   contextAfter?: string
+  historyMessages?: Array<{
+    role: 'user' | 'assistant'
+    content: string
+  }>
+  onComplete?: (content: string, activeModel: string) => Promise<void> | void
+  onError?: (message: string) => Promise<void> | void
 }
 
 interface StoryAiConfig {
@@ -38,6 +44,8 @@ const ACTION_INSTRUCTIONS: Record<StoryAiAction, string> = {
   summarize: '总结成一段适合作为故事摘要的文字。',
   custom: '严格按用户指令完成改写或生成。',
 }
+
+const SYSTEM_PROMPT = '你是一名中文叙事编辑助手，帮助用户编辑摄影故事。只输出最终可直接放进正文的内容，不要解释，不要加引号，不要用“修改如下”之类的前缀。'
 
 function getStoryAiConfig(): StoryAiConfig {
   const baseUrl = process.env.AI_BASE_URL?.trim()
@@ -70,7 +78,31 @@ function buildUserPrompt(payload: StoryAiGeneratePayload): string {
   return sections.join('\n\n')
 }
 
-export async function createStoryAiStream(payload: StoryAiGeneratePayload): Promise<ReadableStream<Uint8Array>> {
+function buildUpstreamMessages(payload: StoryAiGeneratePayload) {
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    {
+      role: 'system',
+      content: SYSTEM_PROMPT,
+    },
+  ]
+
+  for (const history of payload.historyMessages || []) {
+    if (!history.content.trim()) continue
+    messages.push({
+      role: history.role,
+      content: history.content.trim(),
+    })
+  }
+
+  messages.push({
+    role: 'user',
+    content: buildUserPrompt(payload),
+  })
+
+  return messages
+}
+
+export async function createEditorAiStream(payload: StoryAiGeneratePayload): Promise<ReadableStream<Uint8Array>> {
   const config = getStoryAiConfig()
   const activeModel = payload.model?.trim() || config.model
 
@@ -84,16 +116,7 @@ export async function createStoryAiStream(payload: StoryAiGeneratePayload): Prom
       model: activeModel,
       stream: true,
       temperature: 0.7,
-      messages: [
-        {
-          role: 'system',
-          content: '你是一名中文叙事编辑助手，帮助用户编辑摄影故事。只输出最终可直接放进正文的内容，不要解释，不要加引号，不要用“修改如下”之类的前缀。',
-        },
-        {
-          role: 'user',
-          content: buildUserPrompt(payload),
-        },
-      ],
+      messages: buildUpstreamMessages(payload),
     }),
   })
 
@@ -106,6 +129,7 @@ export async function createStoryAiStream(payload: StoryAiGeneratePayload): Prom
   const decoder = new TextDecoder()
   const encoder = new TextEncoder()
   let buffer = ''
+  let fullContent = ''
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -114,6 +138,7 @@ export async function createStoryAiStream(payload: StoryAiGeneratePayload): Prom
           const { done, value } = await upstreamReader.read()
 
           if (done) {
+            await payload.onComplete?.(fullContent, activeModel)
             controller.enqueue(encoder.encode('event: done\ndata: [DONE]\n\n'))
             controller.close()
             return
@@ -142,6 +167,8 @@ export async function createStoryAiStream(payload: StoryAiGeneratePayload): Prom
               if (!content) {
                 continue
               }
+
+              fullContent += content
               controller.enqueue(encoder.encode(`event: chunk\ndata: ${JSON.stringify(content)}\n\n`))
             } catch {
               continue
@@ -150,6 +177,7 @@ export async function createStoryAiStream(payload: StoryAiGeneratePayload): Prom
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'AI stream failed'
+        await payload.onError?.(message)
         controller.enqueue(encoder.encode(`event: error\ndata: ${message}\n\n`))
         controller.close()
       }
@@ -158,6 +186,10 @@ export async function createStoryAiStream(payload: StoryAiGeneratePayload): Prom
       void upstreamReader.cancel()
     },
   })
+}
+
+export async function createStoryAiStream(payload: StoryAiGeneratePayload): Promise<ReadableStream<Uint8Array>> {
+  return createEditorAiStream(payload)
 }
 
 export async function fetchStoryAiModels(): Promise<{

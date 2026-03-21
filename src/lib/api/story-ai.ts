@@ -100,3 +100,18 @@ export async function streamStoryAiGenerate(
 export async function getStoryAiModels(token: string): Promise<StoryAiModelsResponse> {
   return apiRequestData<StoryAiModelsResponse>('/api/admin/stories/ai/models', {}, token)
 }
+
+export async function polishStoryAiPrompt(
+  token: string,
+  input: {
+    text: string
+    action?: StoryAiGenerateInput['action']
+    hasSelection?: boolean
+    model?: string
+  },
+): Promise<{ text: string }> {
+  return apiRequestData<{ text: string }>('/api/admin/stories/ai/polish-prompt', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }, token)
+}

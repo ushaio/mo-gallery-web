@@ -2,6 +2,7 @@ import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
+import { polishStoryAiPrompt } from '~/server/lib/story-ai-prompt'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
 
@@ -41,6 +42,13 @@ const StoryAiGenerateSchema = z.object({
   currentParagraph: z.string().max(4000).optional(),
   contextBefore: z.string().max(4000).optional(),
   contextAfter: z.string().max(4000).optional(),
+})
+
+const StoryAiPromptPolishSchema = z.object({
+  text: z.string().min(1).max(2000),
+  action: z.enum(['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']).optional(),
+  hasSelection: z.boolean().optional(),
+  model: z.string().max(200).optional(),
 })
 
 // Public endpoints
@@ -529,6 +537,30 @@ stories.post('/admin/stories/ai/generate', async (c) => {
     })
   } catch (error) {
     console.error('Story AI generate error:', error)
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    const status = message === 'AI service is not configured' ? 503 : 500
+    return c.json({ error: message }, status)
+  }
+})
+
+stories.post('/admin/stories/ai/polish-prompt', async (c) => {
+  try {
+    const body = await c.req.json()
+    const validated = StoryAiPromptPolishSchema.parse(body)
+    const text = await polishStoryAiPrompt(validated)
+
+    return c.json({
+      success: true,
+      data: {
+        text,
+      },
+    })
+  } catch (error) {
+    console.error('Polish story AI prompt error:', error)
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
     }
