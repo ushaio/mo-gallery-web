@@ -45,6 +45,7 @@ import {
   Highlighter,
   Palette,
 } from 'lucide-react'
+import TipTapAiAssistant from '@/components/TipTapAiAssistant'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import './tiptap-editor.css'
@@ -55,6 +56,12 @@ export interface NarrativeTipTapEditorProps {
   placeholder?: string
   onPasteFiles?: (files: File[]) => void | Promise<void>
   className?: string
+  aiOptions?: {
+    enabled: boolean
+    token?: string | null
+    scopeId?: string
+    title?: string
+  }
 }
 
 export interface NarrativeTipTapEditorHandle {
@@ -123,6 +130,26 @@ const PRESET_TEXT_COLOR_VALUES = [
   ...BASIC_TEXT_COLOR_OPTIONS,
   ...MORE_TEXT_COLOR_OPTIONS,
 ] as const
+const AI_CONTEXT_LIMIT = 500
+
+function escapeHtml(input: string) {
+  return input
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function convertPlainTextToEditorHtml(input: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
 
 function normalizeInlineStyleValue(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, ' ') || ''
@@ -368,7 +395,7 @@ function ToolbarDivider() {
 }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
-  ({ value, onChange, placeholder, onPasteFiles, className }, ref) => {
+  ({ value, onChange, placeholder, onPasteFiles, className, aiOptions }, ref) => {
     const currentValueRef = useRef(value)
     const onPasteFilesRef = useRef(onPasteFiles)
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
@@ -392,6 +419,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [customTextColor, setCustomTextColor] = useState(DEFAULT_TEXT_COLOR)
     const [recentTextColors, setRecentTextColors] = useState<string[]>([])
     const [textColorTab, setTextColorTab] = useState<'basic' | 'more'>('basic')
+    const [aiSelectedText, setAiSelectedText] = useState('')
+    const [aiCurrentParagraph, setAiCurrentParagraph] = useState('')
+    const [aiContextBefore, setAiContextBefore] = useState('')
+    const [aiContextAfter, setAiContextAfter] = useState('')
+    const [aiSelectionRange, setAiSelectionRange] = useState<{ from: number; to: number } | null>(null)
+    const [aiHasSelection, setAiHasSelection] = useState(false)
     const { t } = useLanguage()
     const { resolvedTheme } = useTheme()
 
@@ -650,6 +683,50 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor?.commands.focus()
     }, [editor])
 
+    const syncAiSelectionState = useCallback(() => {
+      if (!editor) return
+      const { from, to } = editor.state.selection
+      const hasSelection = from !== to
+      const selectedText = hasSelection ? editor.state.doc.textBetween(from, to, '\n\n').trim() : ''
+      const currentParagraph = (() => {
+        const { $from } = editor.state.selection
+        for (let depth = $from.depth; depth >= 0; depth -= 1) {
+          const node = $from.node(depth)
+          if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+            return node.textContent.trim()
+          }
+        }
+        return ''
+      })()
+      const contextBefore = editor.state.doc.textBetween(
+        Math.max(0, from - AI_CONTEXT_LIMIT),
+        from,
+        '\n\n',
+      ).trim()
+      const contextAfter = editor.state.doc.textBetween(
+        to,
+        Math.min(editor.state.doc.content.size, to + AI_CONTEXT_LIMIT),
+        '\n\n',
+      ).trim()
+
+      setAiSelectionRange(hasSelection ? { from, to } : null)
+      setAiHasSelection(hasSelection)
+      setAiSelectedText(selectedText)
+      setAiCurrentParagraph(currentParagraph)
+      setAiContextBefore(contextBefore)
+      setAiContextAfter(contextAfter)
+    }, [editor])
+
+    useEffect(() => {
+      if (!editor) return
+
+      editor.on('selectionUpdate', syncAiSelectionState)
+
+      return () => {
+        editor.off('selectionUpdate', syncAiSelectionState)
+      }
+    }, [editor, syncAiSelectionState])
+
     const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
       if (!editor) return
 
@@ -665,6 +742,40 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           },
         })
         .run()
+
+      focusEditor()
+    }, [editor, focusEditor])
+
+    const applyAiResult = useCallback((
+      mode: 'replace' | 'insert' | 'append',
+      preview: string,
+      selectionRange: { from: number; to: number } | null,
+    ) => {
+      if (!editor || !preview.trim()) return
+
+      const html = convertPlainTextToEditorHtml(preview)
+      if (!html) return
+
+      if (mode === 'replace' && selectionRange) {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(selectionRange)
+          .insertContent(html)
+          .run()
+      } else if (mode === 'append') {
+        editor
+          .chain()
+          .focus('end')
+          .insertContent(html)
+          .run()
+      } else {
+        editor
+          .chain()
+          .focus()
+          .insertContent(html)
+          .run()
+      }
 
       focusEditor()
     }, [editor, focusEditor])
@@ -1596,8 +1707,23 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         )}
 
         <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
-          <EditorContent editor={editor} className="h-full custom-scrollbar" />
+          <div className="relative h-full">
+            <EditorContent editor={editor} className="h-full custom-scrollbar" />
+          </div>
         </div>
+        <TipTapAiAssistant
+          options={aiOptions}
+          context={{
+            selectionRange: aiSelectionRange,
+            hasSelection: aiHasSelection,
+            selectedText: aiSelectedText,
+            currentParagraph: aiCurrentParagraph,
+            contextBefore: aiContextBefore,
+            contextAfter: aiContextAfter,
+          }}
+          onSyncContext={syncAiSelectionState}
+          onApplyResult={applyAiResult}
+        />
       </div>
     )
   }

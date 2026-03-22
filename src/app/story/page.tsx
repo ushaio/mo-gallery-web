@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { BookOpen, Calendar, ArrowRight, Image as ImageIcon, ArrowUpRight, Clock } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
+import { BookOpen, Calendar } from 'lucide-react'
 import Link from 'next/link'
 import { getStories, type StoryDto } from '@/lib/api'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { resolveAssetUrl } from '@/lib/api'
 import { QuickStoryEditor } from '@/components/story/QuickStoryEditor'
+import { buildStoryPreviewText } from '@/lib/story-rich-content'
 
 // 故事列表页 - 按年月时间线展示所有故事
 export default function StoryListPage() {
@@ -16,7 +17,6 @@ export default function StoryListPage() {
   const { settings } = useSettings()
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   // 加载故事列表数据
   async function loadStories() {
@@ -217,8 +217,6 @@ export default function StoryListPage() {
                                     viewport={{ once: true, margin: "-50px" }}
                                     transition={{ duration: 0.2, ease: "easeOut" }}
                                     className={`group relative flex flex-col gap-5 ${isWide ? 'md:col-span-2' : ''} ${offset}`}
-                                    onMouseEnter={() => setHoveredId(story.id)}
-                                    onMouseLeave={() => setHoveredId(null)}
                                   >
                                     <Link href={`/story/${story.id}`} className="block h-full">
                                       <div className="flex flex-col h-full">
@@ -272,7 +270,7 @@ export default function StoryListPage() {
 
                                           {!isWide && (
                                             <p className="text-xs text-muted-foreground/70 leading-relaxed font-serif italic mb-4 line-clamp-2 md:w-5/6">
-                                              {story.content.replace(/[#*`\[\]]/g, '')}
+                                              {buildStoryPreviewText(story.content)}
                                             </p>
                                           )}
 

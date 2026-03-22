@@ -463,6 +463,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         />
       ) : (
         <StoryEditorView
+          token={token}
           currentStory={currentStory}
           pendingImages={pendingImages}
           pendingCoverId={pendingCoverId}
