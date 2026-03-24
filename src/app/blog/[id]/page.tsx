@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Calendar, ArrowLeft, BookText } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { getBlog, type BlogDto } from '@/lib/api'
+import { getBlog } from '@/lib/api/blogs'
+import type { BlogDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { StoryRichContent } from '@/components/StoryRichContent'
 
@@ -31,7 +32,7 @@ export default function BlogDetailPage() {
     }
 
     if (id) {
-      fetchBlog()
+      void fetchBlog()
     }
   }, [id, t])
 
@@ -96,7 +97,7 @@ export default function BlogDetailPage() {
             className="flex items-center gap-3 text-primary mb-4"
           >
             <BookText className="w-5 h-5" />
-            <span className="text-[10px] font-black uppercase tracking-[0.4em]">Blog</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.4em]">{t('blog.title')}</span>
           </motion.div>
 
           <motion.h1

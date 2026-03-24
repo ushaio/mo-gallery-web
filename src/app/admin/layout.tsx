@@ -363,7 +363,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         return
       }
       setSettingsError(err instanceof Error ? err.message : t('common.error'))
-      notify('Failed to save settings', 'error')
+      notify(t('admin.settings_save_failed'), 'error')
     } finally {
       setSettingsSaving(false)
     }
@@ -425,7 +425,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         return
       }
       setSettingsError(err instanceof Error ? err.message : t('common.error'))
-      notify('Failed to save settings', 'error')
+      notify(t('admin.settings_save_failed'), 'error')
     } finally {
       setSettingsSaving(false)
       setUrlUpdateParams(null)
@@ -518,7 +518,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             className={`fixed top-1/2 z-50 hidden h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none md:flex ${
               isSidebarCollapsed ? 'left-20' : 'left-64'
             }`}
-            aria-label={locale === 'zh' ? (isSidebarCollapsed ? '灞曞紑渚ц竟鏍?' : '鏀惰捣渚ц竟鏍?') : (isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
+            aria-label={isSidebarCollapsed ? t('admin.sidebar_expand') : t('admin.sidebar_collapse')}
             aria-pressed={isSidebarCollapsed}
           >
             <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
@@ -655,7 +655,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
                   <div className="mb-6">
                     <p className="text-sm text-foreground leading-relaxed">
-                      {locale === 'zh' ? '确定要退出登录吗？' : 'Are you sure you want to logout?'}
+                      {t('admin.logout_confirm')}
                     </p>
                   </div>
 

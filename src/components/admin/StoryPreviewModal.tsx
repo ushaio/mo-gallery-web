@@ -1,6 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 import {
   X,
   Calendar,
@@ -68,9 +69,12 @@ export function StoryPreviewModal({
       <section className="relative h-screen w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
           {getCoverPhoto() ? (
-            <img
+            <Image
               src={getPhotoUrl(getCoverPhoto()!)}
               alt={story.title}
+              fill
+              unoptimized
+              sizes="100vw"
               className="w-full h-full object-cover opacity-60"
             />
           ) : (
@@ -87,7 +91,7 @@ export function StoryPreviewModal({
             className="flex items-center gap-3 mb-8"
           >
             <div className="h-px w-8 bg-primary/50" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary/80">Narrative</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary/80">{t('admin.narrative')}</span>
             <div className="h-px w-8 bg-primary/50" />
           </motion.div>
 
@@ -112,7 +116,7 @@ export function StoryPreviewModal({
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              {Math.ceil((story.content?.length || 0) / 500)} min read
+              {Math.ceil((story.content?.length || 0) / 500)} {t('admin.min_read')}
             </div>
           </motion.div>
         </div>
@@ -124,7 +128,7 @@ export function StoryPreviewModal({
           transition={{ delay: 1.2, duration: 1 }}
           className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4"
         >
-          <span className="text-[9px] font-bold uppercase tracking-[0.4em] text-white/40">Scroll</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.4em] text-white/40">{t('admin.scroll')}</span>
           <div className="w-px h-12 bg-gradient-to-b from-primary/50 to-transparent" />
         </motion.div>
       </section>
@@ -139,7 +143,7 @@ export function StoryPreviewModal({
               <div className="h-px flex-1 bg-border/50" />
             </div>
             <p className="text-xl md:text-2xl font-serif italic text-muted-foreground leading-relaxed">
-              This narrative features {story.photos?.length || 0} visual records captured during this journey.
+              {t('admin.narrative')} · {story.photos?.length || 0} {t('story.detail_photographs')}
             </p>
           </div>
 
@@ -164,11 +168,14 @@ export function StoryPreviewModal({
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
-              className="my-32 -mx-6 md:-mx-24 lg:-mx-48 aspect-[21/9] overflow-hidden bg-muted"
+              className="relative my-32 -mx-6 md:-mx-24 lg:-mx-48 aspect-[21/9] overflow-hidden bg-muted"
             >
-              <img
+              <Image
                 src={getPhotoUrl(story.photos[1])}
-                alt="Featured visual"
+                alt={t('admin.featured_visual')}
+                fill
+                unoptimized
+                sizes="(min-width: 1024px) 1200px, 100vw"
                 className="w-full h-full object-cover"
               />
             </motion.div>
@@ -179,11 +186,11 @@ export function StoryPreviewModal({
             <section className="mt-40">
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16">
                 <div className="space-y-4">
-                  <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em]">Visual Archive</span>
-                  <h2 className="text-4xl md:text-5xl font-serif font-light tracking-tight">Gallery</h2>
+                  <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em]">{t('story.detail_visual_archive')}</span>
+                  <h2 className="text-4xl md:text-5xl font-serif font-light tracking-tight">{t('story.detail_gallery')}</h2>
                 </div>
                 <p className="text-sm text-muted-foreground font-serif italic max-w-xs">
-                  A complete collection of moments documented in this narrative.
+                  {t('admin.complete_collection_hint')}
                 </p>
               </div>
 
@@ -225,7 +232,7 @@ export function StoryPreviewModal({
                 杩斿洖缂栬緫
               </span>
               <span className="text-4xl md:text-6xl font-serif font-light italic tracking-tight hover:text-primary transition-colors">
-                Close Preview
+                {t('admin.close_preview')}
               </span>
             </AdminButton>
           </div>
@@ -281,10 +288,10 @@ export function StoryPreviewModal({
 
           <div className="absolute bottom-12 left-12 flex flex-col gap-2">
             <div className="text-white font-serif text-2xl tracking-tight">
-              {story.photos[previewPhotoIndex].title || 'Untitled Record'}
+              {story.photos[previewPhotoIndex].title || t('admin.untitled_record')}
             </div>
             <div className="text-white/40 font-mono text-[10px] uppercase tracking-widest">
-              {previewPhotoIndex + 1} of {story.photos.length}
+              {previewPhotoIndex + 1} / {story.photos.length}
             </div>
           </div>
         </motion.div>

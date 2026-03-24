@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -11,6 +12,7 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
   const { isAuthenticated, isReady, user } = useAuth()
+  const { t } = useLanguage()
   const router = useRouter()
 
   useEffect(() => {
@@ -19,17 +21,16 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
       return
     }
 
-    // If admin access is required but user is not admin, redirect to home
     if (isReady && isAuthenticated && requireAdmin && !user?.isAdmin) {
       router.push('/')
     }
-  }, [isAuthenticated, isReady, router, requireAdmin, user?.isAdmin])
+  }, [isAuthenticated, isReady, requireAdmin, router, user?.isAdmin])
 
   if (!isReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <p className="text-muted-foreground">正在加载...</p>
+          <p className="text-muted-foreground">{t('common.loading_progress')}</p>
         </div>
       </div>
     )
@@ -37,20 +38,19 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <p className="text-muted-foreground">正在验证身份...</p>
+          <p className="text-muted-foreground">{t('common.authenticating')}</p>
         </div>
       </div>
     )
   }
 
-  // Show access denied message briefly before redirect for non-admin users
   if (requireAdmin && !user?.isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <p className="text-muted-foreground">访问被拒绝 / Access Denied</p>
+          <p className="text-muted-foreground">{t('common.access_denied')}</p>
         </div>
       </div>
     )

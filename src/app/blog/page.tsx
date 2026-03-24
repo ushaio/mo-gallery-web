@@ -1,17 +1,20 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookText, Calendar, ArrowRight, Clock, Tag } from 'lucide-react'
+import { ArrowRight, BookText, Calendar, Clock, Tag } from 'lucide-react'
 import Link from 'next/link'
-import { getBlogs, getBlogCategories, type BlogDto } from '@/lib/api'
+import { getBlogCategories, getBlogs } from '@/lib/api/blogs'
+import type { BlogDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 
+const ALL_CATEGORY_KEY = 'all'
+
 export default function BlogListPage() {
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [categories, setCategories] = useState<string[]>([])
-  const [activeCategory, setActiveCategory] = useState<string>('all')
+  const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY_KEY)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -19,33 +22,33 @@ export default function BlogListPage() {
       try {
         const [blogsData, categoriesData] = await Promise.all([
           getBlogs(),
-          getBlogCategories()
+          getBlogCategories(),
         ])
+
         setBlogs(blogsData)
-        setCategories(['all', ...categoriesData])
+        setCategories([ALL_CATEGORY_KEY, ...categoriesData])
       } catch (error) {
         console.error('Failed to fetch blog data:', error)
       } finally {
         setLoading(false)
       }
     }
-    fetchData()
+
+    void fetchData()
   }, [])
 
-  // Filter blogs by category
   const filteredBlogs = useMemo(() => {
-    if (activeCategory === 'all') return blogs
-    return blogs.filter(blog => blog.category === activeCategory)
-  }, [blogs, activeCategory])
+    if (activeCategory === ALL_CATEGORY_KEY) return blogs
+    return blogs.filter((blog) => blog.category === activeCategory)
+  }, [activeCategory, blogs])
 
-  // Group blogs by year and month for timeline
   const timelineData = useMemo(() => {
     const grouped: Record<string, Record<string, BlogDto[]>> = {}
 
-    filteredBlogs.forEach(blog => {
+    filteredBlogs.forEach((blog) => {
       const date = new Date(blog.createdAt)
-      const year = date.getFullYear().toString()
-      const month = (date.getMonth() + 1).toString().padStart(2, '0')
+      const year = String(date.getFullYear())
+      const month = String(date.getMonth() + 1).padStart(2, '0')
 
       if (!grouped[year]) grouped[year] = {}
       if (!grouped[year][month]) grouped[year][month] = []
@@ -57,21 +60,21 @@ export default function BlogListPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
+      <div className="min-h-screen bg-background pt-24 pb-16 text-foreground">
         <div className="px-4 md:px-8 lg:px-12">
-          <div className="max-w-screen-2xl mx-auto">
+          <div className="mx-auto max-w-screen-2xl">
             <div className="animate-pulse space-y-8">
-              <div className="h-12 bg-muted rounded w-1/3"></div>
+              <div className="h-12 w-1/3 rounded bg-muted" />
               <div className="flex gap-4">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="h-8 bg-muted rounded w-20"></div>
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} className="h-8 w-20 rounded bg-muted" />
                 ))}
               </div>
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="space-y-4 border-l-2 border-border pl-8">
-                  <div className="h-6 bg-muted rounded w-3/4"></div>
-                  <div className="h-4 bg-muted rounded w-1/4"></div>
-                  <div className="h-4 bg-muted rounded"></div>
+              {Array.from({ length: 3 }, (_, index) => (
+                <div key={index} className="space-y-4 border-l-2 border-border pl-8">
+                  <div className="h-6 w-3/4 rounded bg-muted" />
+                  <div className="h-4 w-1/4 rounded bg-muted" />
+                  <div className="h-4 rounded bg-muted" />
                 </div>
               ))}
             </div>
@@ -82,30 +85,28 @@ export default function BlogListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
-      {/* Header Section */}
+    <div className="min-h-screen bg-background pt-24 pb-16 text-foreground">
       <div className="px-4 md:px-8 lg:px-12">
-        <div className="max-w-screen-2xl mx-auto">
+        <div className="mx-auto max-w-screen-2xl">
           <header className="mb-6 md:mb-8">
             <div className="flex flex-col gap-6 md:gap-8">
-              {/* Title Section */}
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 md:gap-8">
+              <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end md:gap-8">
                 <div className="space-y-3 md:space-y-4">
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="flex items-center gap-3 text-primary"
                   >
-                    <span className="text-label-sm font-black uppercase tracking-[0.4em]">Blog</span>
+                    <span className="text-label-sm font-black uppercase tracking-[0.4em]">{t('blog.title')}</span>
                     <div className="h-[1px] w-12 bg-primary/30" />
                   </motion.div>
                   <motion.h1
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className="text-4xl md:text-5xl lg:text-7xl font-serif font-light tracking-tighter leading-none"
+                    className="text-4xl font-serif font-light leading-none tracking-tighter md:text-5xl lg:text-7xl"
                   >
-                    {activeCategory === 'all' ? t('nav.logs') : activeCategory}
+                    {activeCategory === ALL_CATEGORY_KEY ? t('nav.logs') : activeCategory}
                   </motion.h1>
                 </div>
 
@@ -113,58 +114,56 @@ export default function BlogListPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.2 }}
-                  className="text-label-sm font-mono text-muted-foreground uppercase tracking-widest"
+                  className="text-label-sm font-mono uppercase tracking-widest text-muted-foreground"
                 >
                   {filteredBlogs.length} {t('blog.count_suffix')}
                 </motion.div>
               </div>
 
-              {/* Category Filter - Horizontal scroll on mobile */}
-              {categories.length > 1 && (
+              {categories.length > 1 ? (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.25 }}
-                  className="-mx-4 md:mx-0 px-4 md:px-0 overflow-x-auto scrollbar-hide"
+                  className="-mx-4 overflow-x-auto px-4 scrollbar-hide md:mx-0 md:px-0"
                 >
-                  <div className="flex gap-2 md:flex-wrap md:justify-start pb-2 md:pb-0">
+                  <div className="flex gap-2 pb-2 md:flex-wrap md:justify-start md:pb-0">
                     {categories.map((category) => (
                       <button
                         key={category}
                         onClick={() => setActiveCategory(category)}
-                        className={`px-3 md:px-4 py-1.5 text-label font-bold uppercase tracking-widest transition-all border whitespace-nowrap shrink-0 ${
+                        className={`shrink-0 whitespace-nowrap border px-3 py-1.5 text-label font-bold uppercase tracking-widest transition-all md:px-4 ${
                           activeCategory === category
-                            ? 'bg-primary text-primary-foreground border-primary'
+                            ? 'border-primary bg-primary text-primary-foreground'
                             : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
                         }`}
                       >
-                        {category === 'all' ? t('gallery.all') : category}
+                        {category === ALL_CATEGORY_KEY ? t('gallery.all') : category}
                       </button>
                     ))}
                   </div>
                 </motion.div>
-              )}
+              ) : null}
             </div>
           </header>
         </div>
       </div>
 
-      {/* Timeline Content */}
       <div className="px-4 md:px-8 lg:px-12">
-        <div className="max-w-screen-2xl mx-auto">
+        <div className="mx-auto max-w-screen-2xl">
           {filteredBlogs.length === 0 ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-center py-20 border border-dashed border-border"
+              className="border border-dashed border-border py-20 text-center"
             >
-              <BookText className="w-16 h-16 mx-auto mb-4 opacity-20" />
+              <BookText className="mx-auto mb-4 h-16 w-16 opacity-20" />
               <p className="text-muted-foreground">{t('blog.empty')}</p>
             </motion.div>
           ) : (
             <div className="space-y-16">
               {Object.keys(timelineData)
-                .sort((a, b) => parseInt(b) - parseInt(a))
+                .sort((left, right) => parseInt(right, 10) - parseInt(left, 10))
                 .map((year, yearIndex) => (
                   <motion.div
                     key={year}
@@ -172,79 +171,70 @@ export default function BlogListPage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 + yearIndex * 0.1 }}
                   >
-                    {/* Year Header */}
-                    <div className="flex items-center gap-4 mb-8">
+                    <div className="mb-8 flex items-center gap-4">
                       <div className="flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-primary" />
-                        <h2 className="text-3xl font-serif font-light tracking-tight">
-                          {year}
-                        </h2>
+                        <Clock className="h-5 w-5 text-primary" />
+                        <h2 className="text-3xl font-serif font-light tracking-tight">{year}</h2>
                       </div>
-                      <div className="flex-1 h-[1px] bg-border" />
+                      <div className="h-[1px] flex-1 bg-border" />
                     </div>
 
-                    {/* Months */}
                     <div className="space-y-12">
                       {Object.keys(timelineData[year])
-                        .sort((a, b) => parseInt(b) - parseInt(a))
+                        .sort((left, right) => parseInt(right, 10) - parseInt(left, 10))
                         .map((month) => (
                           <div key={`${year}-${month}`} className="relative">
-                            {/* Month Label */}
-                            <div className="flex items-center gap-4 mb-6">
-                              <div className="text-label font-mono text-muted-foreground uppercase tracking-widest">
-                                {month} 月
+                            <div className="mb-6 flex items-center gap-4">
+                              <div className="text-label font-mono uppercase tracking-widest text-muted-foreground">
+                                {new Date(`${year}-${month}-01`).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
+                                  month: 'long',
+                                })}
                               </div>
-                              <div className="flex-1 h-[1px] bg-border/50" />
+                              <div className="h-[1px] flex-1 bg-border/50" />
                             </div>
 
-                            {/* Blog Posts */}
-                            <div className="space-y-4 md:space-y-6 pl-6 md:pl-8 border-l-2 border-border">
+                            <div className="space-y-4 border-l-2 border-border pl-6 md:space-y-6 md:pl-8">
                               {timelineData[year][month].map((blog, index) => (
                                 <motion.article
                                   key={blog.id}
                                   initial={{ opacity: 0, x: -20 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   transition={{ delay: index * 0.05 }}
-                                  className="relative group"
+                                  className="group relative"
                                 >
-                                  {/* Timeline Dot */}
-                                  <div className="absolute -left-[27px] md:-left-[33px] top-2 w-2 h-2 rounded-full bg-border group-hover:bg-primary transition-colors" />
+                                  <div className="absolute top-2 -left-[27px] h-2 w-2 rounded-full bg-border transition-colors group-hover:bg-primary md:-left-[33px]" />
 
                                   <Link
                                     href={`/blog/${blog.id}`}
-                                    className="block space-y-2 md:space-y-3 p-4 md:p-6 -ml-6 md:-ml-8 border border-transparent hover:border-border hover:bg-card/30 transition-all"
+                                    className="-ml-6 block space-y-2 border border-transparent p-4 transition-all hover:border-border hover:bg-card/30 md:-ml-8 md:space-y-3 md:p-6"
                                   >
-                                    {/* Title */}
-                                    <h3 className="text-xl md:text-2xl font-serif font-light leading-tight group-hover:text-primary transition-colors">
+                                    <h3 className="text-xl font-serif font-light leading-tight transition-colors group-hover:text-primary md:text-2xl">
                                       {blog.title}
                                     </h3>
 
-                                    {/* Meta */}
-                                    <div className="flex flex-wrap items-center gap-3 md:gap-4 text-label-sm text-muted-foreground uppercase tracking-widest">
+                                    <div className="flex flex-wrap items-center gap-3 text-label-sm uppercase tracking-widest text-muted-foreground md:gap-4">
                                       <div className="flex items-center gap-1">
-                                        <Calendar className="w-3 h-3" />
-                                        {new Date(blog.createdAt).toLocaleDateString('zh-CN', {
+                                        <Calendar className="h-3 w-3" />
+                                        {new Date(blog.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                                           month: 'long',
                                           day: 'numeric',
                                         })}
                                       </div>
-                                      {blog.category && blog.category !== t('blog.uncategorized') && (
+                                      {blog.category && blog.category !== t('blog.uncategorized') ? (
                                         <div className="flex items-center gap-1">
-                                          <Tag className="w-3 h-3" />
+                                          <Tag className="h-3 w-3" />
                                           {blog.category}
                                         </div>
-                                      )}
+                                      ) : null}
                                     </div>
 
-                                    {/* Excerpt */}
-                                    <p className="text-body-sm md:text-body text-muted-foreground line-clamp-2 leading-relaxed">
+                                    <p className="line-clamp-2 text-body-sm leading-relaxed text-muted-foreground md:text-body">
                                       {blog.content.replace(/[#*`\[\]]/g, '').substring(0, 150)}...
                                     </p>
 
-                                    {/* Read More */}
-                                    <div className="flex items-center gap-2 text-label-sm text-primary font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center gap-2 text-label-sm font-bold uppercase tracking-widest text-primary opacity-0 transition-opacity group-hover:opacity-100">
                                       {t('blog.read_more')}
-                                      <ArrowRight className="w-3 h-3" />
+                                      <ArrowRight className="h-3 w-3" />
                                     </div>
                                   </Link>
                                 </motion.article>
@@ -258,7 +248,6 @@ export default function BlogListPage() {
             </div>
           )}
 
-          {/* Back to Gallery */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -267,7 +256,7 @@ export default function BlogListPage() {
           >
             <Link
               href="/gallery"
-              className="inline-block px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all text-label font-bold uppercase tracking-widest"
+              className="inline-block border border-border px-8 py-3 text-label font-bold uppercase tracking-widest transition-all hover:border-primary hover:text-primary"
             >
               {t('blog.back_to_gallery')}
             </Link>

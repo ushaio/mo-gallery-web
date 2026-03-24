@@ -6,7 +6,6 @@ import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
 export type GalleryView = 'photos' | 'albums'
 
-// 画廊页面头部组件 - 包含标题、视图切换 Tab、分类筛选和计数
 interface GalleryHeaderProps {
   activeCategory: string
   categories: string[]
@@ -31,8 +30,7 @@ export function GalleryHeader({
   return (
     <header className="mb-12 md:mb-16">
       <div className="flex flex-col gap-8">
-        {/* 标题区域 */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <div className="space-y-3">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -41,7 +39,7 @@ export function GalleryHeader({
             >
               <div className="h-px w-6 bg-primary/60" />
               <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary/80">
-                Collection
+                {t('gallery.collection_label')}
               </span>
             </motion.div>
             <motion.h1
@@ -49,11 +47,13 @@ export function GalleryHeader({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight"
+              className="text-4xl font-serif font-light tracking-tight md:text-5xl lg:text-6xl"
             >
               {view === 'albums'
-                ? (t('gallery.albums') || 'Albums')
-                : (activeCategory === 'all' ? t('gallery.title') : activeCategory)}
+                ? t('gallery.albums')
+                : activeCategory === 'all'
+                  ? t('gallery.title')
+                  : activeCategory}
             </motion.h1>
           </div>
 
@@ -63,82 +63,78 @@ export function GalleryHeader({
             transition={{ delay: 0.2 }}
             className="flex items-center gap-4"
           >
-            <span className="text-xs text-muted-foreground/60 font-serif italic hidden md:block">
-              Visual moments
+            <span className="hidden font-serif text-xs italic text-muted-foreground/60 md:block">
+              {t('gallery.visual_moments')}
             </span>
-            <div className="h-4 w-px bg-border/50 hidden md:block" />
-            <div className="text-xs font-mono text-muted-foreground tracking-wider">
+            <div className="hidden h-4 w-px bg-border/50 md:block" />
+            <div className="text-xs font-mono tracking-wider text-muted-foreground">
               {view === 'albums'
-                ? `${albumCount ?? 0} ${t('gallery.album_count_suffix') || 'albums'}`
+                ? `${albumCount ?? 0} ${t('gallery.album_count_suffix')}`
                 : `${photoCount} ${t('gallery.count_suffix')}`}
             </div>
           </motion.div>
         </div>
 
-        {/* 视图切换 Tab + 分类筛选 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           className="border-t border-border/30 pt-4"
         >
-          {/* Tab 切换 */}
-          <div role="tablist" aria-label="Gallery view" className="flex gap-0 mb-4">
-            {(['photos', 'albums'] as const).map((v) => (
+          <div role="tablist" aria-label={t('gallery.gallery_view_aria')} className="mb-4 flex gap-0">
+            {(['photos', 'albums'] as const).map((nextView) => (
               <button
-                key={v}
+                key={nextView}
                 role="tab"
-                aria-selected={view === v}
-                onClick={() => onViewChange(v)}
-                className={`relative px-4 py-2 text-xs font-medium uppercase tracking-wider transition-all rounded-sm ${
-                  view === v
-                    ? 'text-primary bg-primary/8'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                aria-selected={view === nextView}
+                onClick={() => onViewChange(nextView)}
+                className={`relative rounded-sm px-4 py-2 text-xs font-medium uppercase tracking-wider transition-all ${
+                  view === nextView
+                    ? 'bg-primary/8 text-primary'
+                    : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                 }`}
               >
-                {v === 'photos' ? (t('gallery.photos_tab') || 'Photos') : (t('gallery.albums_tab') || 'Albums')}
-                {view === v && (
+                {nextView === 'photos' ? t('gallery.photos_tab') : t('gallery.albums_tab')}
+                {view === nextView ? (
                   <motion.div
                     layoutId="activeViewTab"
                     className="absolute bottom-0 left-0 right-0 h-px bg-primary"
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                   />
-                )}
+                ) : null}
               </button>
             ))}
           </div>
 
-          {/* 分类筛选导航 - 仅照片流显示 */}
-          {view === 'photos' && (
-            <div className="flex md:flex-wrap gap-2 md:gap-1 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide mask-gradient-x md:mask-none">
-              {categories.map((cat) => (
+          {view === 'photos' ? (
+            <div className="mask-gradient-x scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4 pb-2 md:mx-0 md:flex-wrap md:gap-1 md:px-0 md:pb-0 md:mask-none">
+              {categories.map((category) => (
                 <button
-                  key={cat}
-                  onClick={() => onCategoryChange(cat)}
-                  className={`relative px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all whitespace-nowrap flex-shrink-0 ${
-                    activeCategory === cat
-                      ? 'text-primary bg-primary/8'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  key={category}
+                  onClick={() => onCategoryChange(category)}
+                  className={`relative flex-shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all ${
+                    activeCategory === category
+                      ? 'bg-primary/8 text-primary'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   }`}
                 >
-                  {cat === 'all' ? t('gallery.all') : cat}
-                  {activeCategory === cat && (
+                  {category === 'all' ? t('gallery.all') : category}
+                  {activeCategory === category ? (
                     <motion.div
                       layoutId="activeCategory"
-                      className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
+                      className="absolute bottom-0 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary"
                     />
-                  )}
+                  ) : null}
                 </button>
               ))}
             </div>
-          )}
+          ) : null}
         </motion.div>
       </div>
     </header>
   )
 }
 
-// 画廊工具栏组件 - 搜索、显示选项和视图模式切换
 interface GalleryToolbarProps {
   search: string
   onSearchChange: (search: string) => void
@@ -163,56 +159,48 @@ export function GalleryToolbar({
   t,
 }: GalleryToolbarProps) {
   return (
-    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/30 transition-all duration-300">
+    <div className="sticky top-0 z-30 border-b border-border/30 bg-background/95 backdrop-blur-sm transition-all duration-300">
       <div className="px-4 md:px-8 lg:px-12">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-2 sm:gap-4 h-12 md:h-14">
-          {/* 搜索栏 - 移动端自适应宽度 */}
-          <div className="flex-1 min-w-0 max-w-[140px] sm:max-w-xs transition-all duration-300 ease-in-out focus-within:max-w-full sm:focus-within:max-w-xs">
-            <div className="relative group">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary transition-colors" />
+        <div className="mx-auto flex h-12 max-w-screen-2xl items-center justify-between gap-2 sm:gap-4 md:h-14">
+          <div className="max-w-[140px] min-w-0 flex-1 transition-all duration-300 ease-in-out focus-within:max-w-full sm:max-w-xs sm:focus-within:max-w-xs">
+            <div className="group relative">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50 transition-colors group-focus-within:text-primary" />
               <input
                 type="text"
                 value={search}
-                onChange={(e) => onSearchChange(e.target.value)}
+                onChange={(event) => onSearchChange(event.target.value)}
                 placeholder={t('common.search')}
-                className="w-full h-8 pl-8 pr-3 bg-muted/30 border-transparent focus:bg-background border focus:border-border rounded-full text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all"
+                className="h-8 w-full rounded-full border border-transparent bg-muted/30 pl-8 pr-3 text-xs font-mono transition-all placeholder:text-muted-foreground/40 focus:border-border focus:bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
               />
             </div>
           </div>
 
-          {/* 显示控制项 */}
           <div className="flex items-center gap-1 sm:gap-2">
-            {/* 沉浸模式 / 黑白模式 */}
             <button
               onClick={() => onImmersiveChange(!immersive)}
               className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
-                immersive
-                  ? 'text-primary bg-primary/10'
-                  : 'text-muted-foreground hover:text-foreground'
+                immersive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
-              aria-label={t('gallery.immersive') || '沉浸模式'}
+              aria-label={t('gallery.immersive')}
               aria-pressed={immersive}
             >
-              {t('gallery.immersive') || '沉浸'}
+              {t('gallery.immersive')}
             </button>
 
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
-              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider flex items-center gap-1.5 ${
-                grayscale
-                  ? 'text-primary bg-primary/10'
-                  : 'text-muted-foreground hover:text-foreground'
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
+                grayscale ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
-              aria-label="Black & White mode"
+              aria-label={t('gallery.black_white_mode')}
               aria-pressed={grayscale}
             >
               {grayscale ? <Circle className="size-2.5" /> : <CircleOff className="size-2.5" />}
-              <span className="hidden sm:inline">B&W</span>
+              <span className="hidden sm:inline">{t('gallery.black_white_short')}</span>
             </button>
 
-            <div className="w-px h-4 bg-border/50 mx-1" />
+            <div className="mx-1 h-4 w-px bg-border/50" />
 
-            {/* 视图模式切换 */}
             <ViewModeToggle
               viewMode={viewMode}
               onViewModeChange={onViewModeChange}

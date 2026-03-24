@@ -16,10 +16,9 @@ import {
   Plus,
   BookOpen,
   Edit3,
-  ArrowRight,
   Minimize2,
 } from 'lucide-react'
-import { AdminSettingsDto, uploadPhoto, createStory } from '@/lib/api'
+import { AdminSettingsDto, createStory } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
 import { formatFileSize } from '@/lib/utils'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
@@ -318,7 +317,7 @@ export function StoryUploadTab({
                 type="text"
                 value={storyTitle}
                 onChange={(e) => setStoryTitle(e.target.value)}
-                placeholder="e.g., 春日漫步"
+                placeholder={t('admin.title_hint_single')}
               />
             </div>
 
@@ -375,7 +374,7 @@ export function StoryUploadTab({
                   onChange={(e) => setUploadSource(e.target.value)}
                   className="w-full p-3 bg-background border-b border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"
                 >
-                  <option value="local">Local Storage</option>
+                  <option value="local">{t('admin.local_storage')}</option>
                   <option value="r2">Cloudflare R2</option>
                   <option value="github">GitHub</option>
                 </select>
@@ -491,7 +490,7 @@ export function StoryUploadTab({
                     />
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
                       {selectedUploadIds.size > 0
-                        ? `${selectedUploadIds.size} Selected`
+                        ? `${selectedUploadIds.size} ${t('admin.selected')}`
                         : `${uploadFiles.length} ${t('admin.items')}`}
                     </span>
                   </div>
@@ -501,7 +500,7 @@ export function StoryUploadTab({
                       adminVariant="iconDestructive"
                       size="xs"
                       className="p-1.5 rounded"
-                      title="Delete Selected"
+                      title={t('admin.delete_selected')}
                     >
                       <Trash2 className="w-4 h-4" />
                     </AdminButton>
@@ -540,7 +539,7 @@ export function StoryUploadTab({
                     size="xs"
                     className="text-destructive hover:opacity-80 text-[10px] font-bold uppercase tracking-widest"
                   >
-                    Clear
+                    {t('admin.clear_all')}
                   </AdminButton>
                   <div className="h-4 w-[1px] bg-border"></div>
                   <label className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors text-[10px] font-bold uppercase tracking-widest">
@@ -576,6 +575,7 @@ export function StoryUploadTab({
                       onSelect={handleSelectUploadToggle}
                       onRemove={handleRemoveUpload}
                       onTitleChange={handleTitleChange}
+                      t={t}
                     />
                   ))}
                 </div>
@@ -618,6 +618,7 @@ function StoryUploadFileItem({
   onSelect,
   onRemove,
   onTitleChange,
+  t,
 }: {
   item: StoryUploadFile
   viewMode: 'list' | 'grid'
@@ -626,6 +627,7 @@ function StoryUploadFileItem({
   onSelect: (id: string) => void
   onRemove: (id: string) => void
   onTitleChange: (id: string, title: string) => void
+  t: (key: string) => string
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(item.title)
@@ -819,26 +821,26 @@ function StoryUploadFileItem({
           <div className="flex items-center gap-1 text-green-500">
             <Check className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
-              Done
+              {t('admin.done')}
             </span>
           </div>
         ) : item.status === 'uploading' ? (
           <div className="flex items-center gap-2 text-primary">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline animate-pulse">
-              Processing
+              {t('admin.processing')}
             </span>
           </div>
         ) : item.status === 'failed' ? (
           <div className="flex items-center gap-1 text-destructive">
             <X className="w-4 h-4" />
             <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
-              Failed
+              {t('admin.failed')}
             </span>
           </div>
         ) : uploading ? (
           <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground opacity-50">
-            Waiting
+            {t('admin.waiting')}
           </span>
         ) : (
           <AdminButton

@@ -1,8 +1,16 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { PhotoDto, PublicSettingsDto } from '@/lib/api'
+import { useMemo } from 'react'
+import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
 import { PhotoCard } from './PhotoCard'
+import { useResponsiveColumnCount } from './useResponsiveColumnCount'
+
+const MASONRY_COLUMN_RULES = [
+  { minWidth: 1280, columns: 5 },
+  { minWidth: 1024, columns: 4 },
+  { minWidth: 640, columns: 3 },
+  { minWidth: 0, columns: 2 },
+]
 
 interface MasonryViewProps {
   photos: PhotoDto[]
@@ -12,55 +20,32 @@ interface MasonryViewProps {
   onPhotoClick: (photo: PhotoDto) => void
 }
 
-type ColumnPhotos = {
-  [columnIndex: number]: (PhotoDto & { originalIndex: number })[]
-}
+type ColumnPhoto = PhotoDto & { originalIndex: number }
+type ColumnPhotos = Record<number, ColumnPhoto[]>
 
-// 瀑布流视图 - 根据窗口宽度自适应列数
 export function MasonryView({ photos, settings, grayscale, immersive = false, onPhotoClick }: MasonryViewProps) {
-  const [columnCount, setColumnCount] = useState(2)
+  const columnCount = useResponsiveColumnCount(MASONRY_COLUMN_RULES)
 
-  // 响应式列数调整
-  useEffect(() => {
-    const handleResize = () => {
-      if (typeof window !== 'undefined') {
-        const width = window.innerWidth
-        if (width >= 1280) setColumnCount(5)
-        else if (width >= 1024) setColumnCount(4)
-        else if (width >= 640) setColumnCount(3)
-        else setColumnCount(2)
+  const columnPhotos = useMemo<ColumnPhotos>(() => {
+    return photos.reduce<ColumnPhotos>((columns, photo, index) => {
+      const columnIndex = index % columnCount
+      if (!columns[columnIndex]) {
+        columns[columnIndex] = []
       }
-    }
 
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  // 将照片按列分配（轮流分配到各列）
-  const columnPhotos: ColumnPhotos = useMemo(() => {
-    const columns: ColumnPhotos = {}
-
-    photos.forEach((photo, index) => {
-      const colIndex = index % columnCount
-
-      if (!columns[colIndex]) {
-        columns[colIndex] = []
-      }
-      columns[colIndex].push({ ...photo, originalIndex: index })
-    })
-
-    return columns
-  }, [photos, columnCount])
+      columns[columnIndex].push({ ...photo, originalIndex: index })
+      return columns
+    }, {})
+  }, [columnCount, photos])
 
   return (
     <div className={`flex ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}>
-      {Array.from({ length: columnCount }).map((_, colIndex) => (
-        <div 
-          key={colIndex} 
+      {Array.from({ length: columnCount }, (_, columnIndex) => (
+        <div
+          key={columnIndex}
           className={`flex-1 min-w-0 flex flex-col ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}
         >
-          {columnPhotos[colIndex]?.map((photo, photoIndex) => (
+          {columnPhotos[columnIndex]?.map((photo) => (
             <PhotoCard
               key={photo.id}
               photo={photo}

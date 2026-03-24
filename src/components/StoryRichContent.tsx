@@ -1,8 +1,10 @@
 ﻿'use client'
 
+import { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { PhotoDto } from '@/lib/api/types'
 import './story-rich-content.css'
 
 interface StoryRichContentProps {
@@ -134,16 +136,27 @@ function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {
   }
 }
 
-export function StoryRichContent({ content, photos, cdnDomain, className = '' }: StoryRichContentProps) {
-  const markdownComponents = createMarkdownComponents(photos, cdnDomain)
+export const StoryRichContent = memo(function StoryRichContent({
+  content,
+  photos,
+  cdnDomain,
+  className = '',
+}: StoryRichContentProps) {
+  const markdownComponents = useMemo(
+    () => createMarkdownComponents(photos, cdnDomain),
+    [photos, cdnDomain],
+  )
   const isHtmlContent = HTML_TAG_PATTERN.test(content)
   const rootClassName = ['story-rich-content', className].filter(Boolean).join(' ')
+  const resolvedHtml = useMemo(() => {
+    if (!isHtmlContent) return null
+    return resolveStoryHtml(content, photos, cdnDomain)
+  }, [cdnDomain, content, isHtmlContent, photos])
 
   if (isHtmlContent) {
-    const resolvedHtml = resolveStoryHtml(content, photos, cdnDomain)
     return (
       <div className={rootClassName}>
-        <div className="story-rich-html" dangerouslySetInnerHTML={{ __html: resolvedHtml }} />
+        <div className="story-rich-html" dangerouslySetInnerHTML={{ __html: resolvedHtml ?? '' }} />
       </div>
     )
   }
@@ -155,6 +168,6 @@ export function StoryRichContent({ content, photos, cdnDomain, className = '' }:
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 export default StoryRichContent

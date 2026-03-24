@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapPin, Maximize2, Minimize2, Camera, Images } from 'lucide-react'
 import Map, { Marker, NavigationControl, Popup, type MapRef } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
-import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { PhotoDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { clusterMarkers, type ClusterPoint } from '@/lib/map-clustering'
@@ -149,6 +150,7 @@ interface ClusterMarkerProps {
 }
 
 function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
+  const { t } = useLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
   const photos = point.properties.clusteredPhotos ?? []
   const count = point.properties.point_count ?? 0
@@ -195,7 +197,7 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
             </div>
             {count > 9 && (
               <p className={`mt-1.5 text-center text-[9px] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                +{count - 9} more
+                +{count - 9} {t('story.map_cluster_more')}
               </p>
             )}
           </div>
@@ -206,7 +208,7 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
           type="button"
           onClick={handleClick}
           className="group relative cursor-pointer transition-all hover:scale-110"
-          aria-label={`${count} photos at this location`}
+          aria-label={`${count} ${t('story.map_cluster_aria_suffix')}`}
         >
           {/* Background preview */}
           {photos[0] && (
@@ -253,7 +255,7 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
 }
 
 export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
-  const { locale } = useLanguage()
+  const { locale, t } = useLanguage()
   const { resolvedTheme } = useTheme()
   const mapRef = useRef<MapRef | null>(null)
   const geotaggedPhotos = useMemo(
@@ -524,12 +526,12 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
         <div className="flex items-center justify-between">
           <div>
             <span className="text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
-              {locale === 'zh' ? '位置' : 'Locations'}
+              {t('story.map_locations')}
             </span>
             <div className="mt-1 flex items-center gap-2">
               <MapPin className="size-3.5 text-zinc-400 dark:text-zinc-500" />
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                {geotaggedPhotos.length} {locale === 'zh' ? '张照片已标注' : `photo${geotaggedPhotos.length === 1 ? '' : 's'} mapped`}
+                {geotaggedPhotos.length} {t('story.map_mapped_suffix')}
               </span>
             </div>
           </div>
@@ -537,8 +539,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
             type="button"
             onClick={onToggleExpanded}
             className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
-            aria-label={expanded ? 'Collapse map' : 'Expand map'}
-            title={expanded ? 'Collapse map' : 'Expand map'}
+            aria-label={expanded ? t('story.map_collapse') : t('story.map_expand')}
+            title={expanded ? t('story.map_collapse') : t('story.map_expand')}
           >
             {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </button>
@@ -552,10 +554,10 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
             <Camera className="size-5 text-zinc-400" />
           </div>
           <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-            {locale === 'zh' ? '暂无位置数据' : 'No location data'}
+            {t('story.map_empty_title')}
           </p>
           <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-            {locale === 'zh' ? '带有 GPS 信息的照片将显示在此处' : 'Photos with GPS metadata will appear here'}
+            {t('story.map_empty_description')}
           </p>
         </div>
       ) : (
@@ -614,7 +616,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                       className={`group relative cursor-pointer transition-all ${
                         isSelected ? 'scale-110' : 'hover:scale-110'
                       }`}
-                      aria-label={`View ${photo.title} on map`}
+                      aria-label={`${t('story.map_view_photo_on_map')} ${photo.title}`}
                     >
                       {/* Marker Pin */}
                       <div

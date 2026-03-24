@@ -13,6 +13,16 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp", "@waline/vercel"],
   images: {
     unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "http",
+        hostname: "**",
+      },
+      {
+        protocol: "https",
+        hostname: "**",
+      },
+    ],
   },
 };
 

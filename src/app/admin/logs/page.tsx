@@ -7,7 +7,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { BookText, BookOpen, FileArchive, Clock, Trash2, Eye, X, Image as ImageIcon, Edit3, ArrowRight } from 'lucide-react'
 import { useAdmin } from '../layout'
-import { PhotoDto, AdminSettingsDto } from '@/lib/api'
 import { BlogTab } from './BlogTab'
 import { StoriesTab } from './StoriesTab'
 import {
@@ -166,7 +165,7 @@ export default function LogsPage() {
         await clearStoryEditorDraftFromDB(deleteDialog.id)
         setStoryEditorDrafts(prev => prev.filter(d => d.storyId !== deleteDialog.id))
       }
-      notify(t('admin.draft_deleted') || '草稿已删除')
+      notify(t('admin.draft_deleted'))
     } catch (err) {
       console.error('Failed to delete draft:', err)
       notify(t('common.error'), 'error')
@@ -187,9 +186,9 @@ export default function LogsPage() {
   // 格式化相对时间显示
   function formatRelativeTime(timestamp: number): string {
     const diff = Date.now() - timestamp
-    if (diff < 60000) return t('story.draft_just_now') || '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} ${t('story.draft_minutes_ago') || '分钟前'}`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ${t('story.draft_hours_ago') || '小时前'}`
+    if (diff < 60000) return t('story.draft_just_now')
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} ${t('story.draft_minutes_ago')}`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ${t('story.draft_hours_ago')}`
     return new Date(timestamp).toLocaleString()
   }
 
@@ -269,30 +268,30 @@ export default function LogsPage() {
           adminVariant="tab"
           data-state={activeSubTab === 'stories' ? 'active' : 'inactive'}
           className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
-          title={t('admin.double_click_refresh') || '双击刷新'}
+          title={t('admin.double_click_refresh')}
         >
           <BookOpen className="w-4 h-4" />
-          {t('nav.story') || '叙事'}
+          {t('nav.story')}
         </AdminButton>
         <AdminButton
           onClick={() => handleTabClick('blog')}
           adminVariant="tab"
           data-state={activeSubTab === 'blog' ? 'active' : 'inactive'}
           className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
-          title={t('admin.double_click_refresh') || '双击刷新'}
+          title={t('admin.double_click_refresh')}
         >
           <BookText className="w-4 h-4" />
-          {t('admin.blog') || '博客'}
+          {t('admin.blog')}
         </AdminButton>
         <AdminButton
           onClick={() => handleTabClick('drafts')}
           adminVariant="tab"
           data-state={activeSubTab === 'drafts' ? 'active' : 'inactive'}
           className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
-          title={t('admin.double_click_refresh') || '双击刷新'}
+          title={t('admin.double_click_refresh')}
         >
           <FileArchive className="w-4 h-4" />
-          {t('admin.drafts') || '草稿'}
+          {t('admin.drafts')}
           {totalDrafts > 0 && (
             <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded-full">
               {totalDrafts}
@@ -378,9 +377,9 @@ export default function LogsPage() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                         <BookOpen className="w-3.5 h-3.5" />
-                        <span>{t('admin.story_draft') || '叙事草稿'}</span>
+                        <span>{t('admin.story_draft')}</span>
                         <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 rounded">
-                          {t('admin.read_only') || '只读'}
+                          {t('admin.read_only')}
                         </span>
                       </div>
                       <div className="p-5 border border-border hover:border-primary/50 transition-colors rounded-lg group">
@@ -694,14 +693,14 @@ export default function LogsPage() {
                           {f.preview ? (
                             <img
                               src={f.preview}
-                              alt={f.file?.name || `文件 ${i + 1}`}
+                              alt={f.file?.name || `${t('admin.files')} ${i + 1}`}
                               className="w-full h-full object-cover"
                             />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-1">
                               <ImageIcon className="w-4 h-4 opacity-30" />
                               <span className="text-[10px] truncate max-w-full px-1">
-                                {f.file?.name?.substring(0, 10) || `文件 ${i + 1}`}
+                                {f.file?.name?.substring(0, 10) || `${t('admin.files')} ${i + 1}`}
                               </span>
                             </div>
                           )}

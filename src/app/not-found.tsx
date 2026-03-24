@@ -3,10 +3,13 @@
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { ArrowLeft } from 'lucide-react'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 export default function NotFound() {
+  const { t } = useLanguage()
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -14,35 +17,37 @@ export default function NotFound() {
         className="space-y-8"
       >
         <div className="space-y-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary">Error</span>
-          <h1 className="text-9xl md:text-[12rem] font-serif leading-none tracking-tighter opacity-10 select-none">
+          <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary">
+            {t('not_found.eyebrow')}
+          </span>
+          <h1 className="select-none font-serif text-9xl leading-none tracking-tighter opacity-10 md:text-[12rem]">
             404
           </h1>
         </div>
 
-        <div className="space-y-6 max-w-md mx-auto">
-          <h2 className="text-2xl md:text-3xl font-serif font-light">
-            Lost in the Void
+        <div className="mx-auto max-w-md space-y-6">
+          <h2 className="text-2xl font-serif font-light md:text-3xl">
+            {t('not_found.title')}
           </h2>
-          <p className="text-sm text-muted-foreground font-serif italic leading-relaxed">
-            The page you are looking for has faded into the ether, or perhaps it never existed at all.
+          <p className="font-serif text-sm italic leading-relaxed text-muted-foreground">
+            {t('not_found.description')}
           </p>
         </div>
 
         <div className="pt-8">
           <Link
             href="/"
-            className="inline-flex items-center gap-3 px-8 py-4 bg-foreground text-background text-xs font-bold uppercase tracking-[0.2em] hover:bg-foreground/90 transition-all group"
+            className="group inline-flex items-center gap-3 bg-foreground px-8 py-4 text-xs font-bold uppercase tracking-[0.2em] text-background transition-all hover:bg-foreground/90"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            <span>Return Home</span>
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+            <span>{t('not_found.back_home')}</span>
           </Link>
         </div>
       </motion.div>
 
       <div className="absolute bottom-8 left-0 right-0 text-center">
-        <p className="text-[10px] text-muted-foreground/30 uppercase tracking-widest font-mono">
-          404 • Page Not Found
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/30">
+          {t('not_found.footer')}
         </p>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from 'framer-motion'
 import {
@@ -20,7 +20,10 @@ import {
   LayoutGrid,
   ChevronDown,
 } from 'lucide-react'
-import { PhotoDto, resolveAssetUrl, getPhotoStory, type StoryDto, getPhotoComments, getStoryComments, type PublicCommentDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { getPhotoComments, getStoryComments } from '@/lib/api/comments'
+import { getPhotoStory } from '@/lib/api/stories'
+import type { PhotoDto, PublicCommentDto, StoryDto } from '@/lib/api/types'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -28,6 +31,11 @@ import { formatFileSize } from '@/lib/utils'
 import { formatPhotoCoordinates } from '@/lib/photo-location'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
+
+const DRAG_DISMISS_THRESHOLD = 150
+const SWIPE_THRESHOLD = 50
+const VELOCITY_THRESHOLD = 500
+const MOBILE_CONTROLS_AUTO_HIDE_DELAY = 3000
 
 type TabType = 'story' | 'info' // 面板标签类型：故事 | 信息
 
@@ -104,13 +112,13 @@ export function PhotoDetailModal({
   const displayTotal = totalPhotos ?? allPhotos.length
   const displayIndex = currentPhotoIndex >= 0 ? currentPhotoIndex + 1 : 0
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
     if (hasPrevious && onPhotoChange) {
       onPhotoChange(allPhotos[currentPhotoIndex - 1])
     }
-  }
+  }, [allPhotos, currentPhotoIndex, hasPrevious, onPhotoChange])
 
-  const handleNext = async () => {
+  const handleNext = useCallback(async () => {
     if (!onPhotoChange) return
 
     if (hasNextLoaded) {
@@ -124,7 +132,7 @@ export function PhotoDetailModal({
         setIsLoadingMore(false)
       }
     }
-  }
+  }, [allPhotos, canLoadMore, currentPhotoIndex, hasNextLoaded, onLoadMore, onPhotoChange])
 
   // 加载更多照片后自动导航到下一张
   useEffect(() => {
@@ -148,7 +156,7 @@ export function PhotoDetailModal({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, allPhotos, currentPhotoIndex, hasPrevious, hasNext])
+  }, [allPhotos.length, handleNext, handlePrevious, hasNext, hasPrevious, isOpen, onClose])
 
   // 触摸滑动处理
   const [scale, setScale] = useState(1)
@@ -169,7 +177,6 @@ export function PhotoDetailModal({
   }, [imgX, imgY])
 
   // 拖拽关闭阈值
-  const DRAG_DISMISS_THRESHOLD = 150
 
   // 拖拽处理
   const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -185,9 +192,6 @@ export function PhotoDetailModal({
     }
 
     // 水平拖拽切换判定
-    const SWIPE_THRESHOLD = 50
-    const VELOCITY_THRESHOLD = 500
-
     if (info.offset.x > SWIPE_THRESHOLD || info.velocity.x > VELOCITY_THRESHOLD) {
       if (hasPrevious) handlePrevious()
     } else if (info.offset.x < -SWIPE_THRESHOLD || info.velocity.x < -VELOCITY_THRESHOLD) {
@@ -294,7 +298,7 @@ export function PhotoDetailModal({
     }
     
     fetchStoryData()
-  }, [photo?.id, isOpen, isPhotoInCachedStory])
+  }, [activeTab, hideStoryTab, isOpen, isPhotoInCachedStory, photo, storyCache])
 
   // 弹窗关闭时清除缓存并恢复页面滚动
   useEffect(() => {
@@ -332,7 +336,7 @@ export function PhotoDetailModal({
     setScale(1)
     imgX.set(0)
     imgY.set(0)
-  }, [photo?.id])
+  }, [imgX, imgY, photo?.id])
 
   // 缩略图条滚动到当前照片位置
   useEffect(() => {
@@ -364,7 +368,7 @@ export function PhotoDetailModal({
     clearMobileControlsTimeout()
     mobileControlsTimeoutRef.current = setTimeout(() => {
       setMobileControlsVisible(false)
-    }, 3000)
+    }, MOBILE_CONTROLS_AUTO_HIDE_DELAY)
   }, [clearMobileControlsTimeout])
 
   const handleMobilePhotoTap = useCallback(() => {
@@ -416,7 +420,7 @@ export function PhotoDetailModal({
     { icon: Camera, label: t('gallery.focal'), value: photo.focalLength },
     { 
       icon: MapPin, 
-      label: 'GPS', 
+      label: t('gallery.gps'), 
       value: formatPhotoCoordinates(photo, 4)
     },
   ].filter(item => item.value)
@@ -617,7 +621,7 @@ export function PhotoDetailModal({
                    <button
                     onClick={toggleThumbnails}
                     className={`w-10 h-10 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 ${showThumbnails ? 'bg-white/20 border-white/30' : ''}`}
-                    title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
+                    title={showThumbnails ? t('gallery.hide_thumbnails') : t('gallery.show_thumbnails')}
                   >
                     {showThumbnails ? <ChevronDown className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
                   </button>
