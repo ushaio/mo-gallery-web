@@ -1,6 +1,6 @@
 {
   "name": "mo-gallery",
-  "version": "0.5.6-beta",
+  "version": "0.5.6-beta.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
