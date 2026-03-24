@@ -26,9 +26,9 @@ function resolveTranslation(source: TranslationTree, path: string): string | und
     if (typeof current === 'string') return undefined
     if (!(key in current)) return undefined
 
-    const next = current[key]
-    if (typeof next !== 'string' && typeof next !== 'object') return undefined
-    current = next
+    const nextValue: TranslationTree[string] = current[key]
+    if (typeof nextValue !== 'string' && typeof nextValue !== 'object') return undefined
+    current = nextValue
   }
 
   return typeof current === 'string' ? current : undefined
