@@ -40,8 +40,7 @@ export interface PhotoDto {
   shutterSpeed?: string
   iso?: number
   takenAt?: string
-  latitude?: number
-  longitude?: number
+  gps?: string
   orientation?: number
   software?: string
   exifRaw?: string
@@ -101,6 +100,80 @@ export interface StoryDto {
   createdAt: string
   updatedAt: string
   photos: PhotoDto[]
+}
+
+export type StoryAiAction =
+  | 'rewrite'
+  | 'expand'
+  | 'shorten'
+  | 'continue'
+  | 'summarize'
+  | 'custom'
+
+export interface StoryAiGenerateInput {
+  action?: StoryAiAction
+  model?: string
+  prompt?: string
+  title?: string
+  selectedText?: string
+  currentParagraph?: string
+  contextBefore?: string
+  contextAfter?: string
+}
+
+export interface StoryAiModelOption {
+  id: string
+  label: string
+}
+
+export interface StoryAiModelsResponse {
+  defaultModel: string
+  models: StoryAiModelOption[]
+}
+
+export interface EditorAiConversationDto {
+  id: string
+  scopeId: string
+  title?: string
+  summary?: string
+  lastModel?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EditorAiConversationWithMessagesDto extends EditorAiConversationDto {
+  messages: EditorAiMessageDto[]
+}
+
+export interface EditorAiMessageDto {
+  id: string
+  conversationId: string
+  role: string
+  content: string
+  status: string
+  model?: string
+  action?: string
+  metadata?: unknown
+  error?: string
+  createdAt: string
+}
+
+export interface EditorAiConversationInput {
+  scopeId: string
+  title?: string
+}
+
+export interface EditorAiConversationCreateInput {
+  scopeId: string
+  title?: string
+}
+
+export interface EditorAiConversationsQuery {
+  scopeId: string
+}
+
+export type EditorAiGenerateInput = StoryAiGenerateInput & {
+  conversationId: string
 }
 
 export interface BlogDto {

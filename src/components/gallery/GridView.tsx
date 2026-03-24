@@ -1,8 +1,18 @@
 'use client'
 
-import { memo, useState, useEffect } from 'react'
-import { PhotoDto, PublicSettingsDto, resolveAssetUrl } from '@/lib/api'
+import { memo, useMemo } from 'react'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
 import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
+import { useResponsiveColumnCount } from './useResponsiveColumnCount'
+
+const GRID_COLUMN_RULES = [
+  { minWidth: 1280, columns: 6 },
+  { minWidth: 1024, columns: 5 },
+  { minWidth: 768, columns: 4 },
+  { minWidth: 640, columns: 3 },
+  { minWidth: 0, columns: 2 },
+]
 
 interface GridViewProps {
   photos: PhotoDto[]
@@ -22,9 +32,21 @@ interface GridItemProps {
   onClick: () => void
 }
 
-// 网格单元组件 - 等比正方形裁切展示
-const GridItem = memo(function GridItem({ photo, index, settings, grayscale, immersive, columnCount, onClick }: GridItemProps) {
+const GridItem = memo(function GridItem({
+  photo,
+  index,
+  settings,
+  grayscale,
+  immersive,
+  columnCount,
+  onClick,
+}: GridItemProps) {
   const { ref, style } = useEntranceAnimation({ index, columnCount })
+  const coverUrl = useMemo(
+    () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
+    [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
+  )
+  const primaryCategory = useMemo(() => photo.category.split(',')[0], [photo.category])
 
   return (
     <div
@@ -35,58 +57,37 @@ const GridItem = memo(function GridItem({ photo, index, settings, grayscale, imm
     >
       <div className={`relative aspect-square overflow-hidden bg-muted ${immersive ? '' : 'mb-3'}`}>
         <img
-          src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
+          src={coverUrl}
           alt={photo.title}
           className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
             grayscale ? 'grayscale group-hover:grayscale-0' : ''
           }`}
         />
 
-        {/* 悬浮遮罩 */}
         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
       </div>
 
-      {/* 元数据 - 图片下方 */}
-      {!immersive && (
+      {!immersive ? (
         <div className="flex justify-between items-start opacity-60 group-hover:opacity-100 transition-opacity">
-           <div className="space-y-1">
-             <h3 className="text-lg font-serif leading-tight text-foreground line-clamp-1 group-hover:text-primary transition-colors">
-                {photo.title}
-             </h3>
-             <p className="text-ui-xs font-mono text-muted-foreground uppercase tracking-widest">
-                {photo.category.split(',')[0]}
-             </p>
-           </div>
-           <span className="text-ui-micro font-mono text-muted-foreground/60">
-             {String(index + 1).padStart(2, '0')}
-           </span>
+          <div className="space-y-1">
+            <h3 className="text-lg font-serif leading-tight text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+              {photo.title}
+            </h3>
+            <p className="text-ui-xs font-mono text-muted-foreground uppercase tracking-widest">
+              {primaryCategory}
+            </p>
+          </div>
+          <span className="text-ui-micro font-mono text-muted-foreground/60">
+            {String(index + 1).padStart(2, '0')}
+          </span>
         </div>
-      )}
+      ) : null}
     </div>
   )
 })
 
-// 网格视图 - 等比正方形网格布局
 export function GridView({ photos, settings, grayscale, immersive = false, onPhotoClick }: GridViewProps) {
-  const [columnCount, setColumnCount] = useState(2)
-
-  // 响应式列数调整
-  useEffect(() => {
-    const handleResize = () => {
-      if (typeof window !== 'undefined') {
-        const width = window.innerWidth
-        if (width >= 1280) setColumnCount(6)
-        else if (width >= 1024) setColumnCount(5)
-        else if (width >= 768) setColumnCount(4)
-        else if (width >= 640) setColumnCount(3)
-        else setColumnCount(2)
-      }
-    }
-
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  const columnCount = useResponsiveColumnCount(GRID_COLUMN_RULES)
 
   return (
     <div

@@ -200,7 +200,7 @@ export function AlbumsTab({
   /** 保存相册（创建或更新） */
   async function handleSaveAlbum() {
     if (!token || !currentAlbum || !currentAlbum.name.trim()) {
-      notify(t('admin.album_name_required') || 'Please enter album name', 'error')
+      notify(t('admin.album_name_required'), 'error')
       return
     }
     try {
@@ -242,7 +242,7 @@ export function AlbumsTab({
     try {
       setSaving(true)
       await addPhotosToAlbum(token, currentAlbum.id, Array.from(selectedPhotoIds))
-      notify(t('admin.photos_added') || 'Photos added', 'success')
+      notify(t('admin.photos_added'), 'success')
       setShowPhotoSelector(false)
       setSelectedPhotoIds(new Set())
       const updatedAlbums = await getAdminAlbums(token)
@@ -264,7 +264,7 @@ export function AlbumsTab({
       const updated = await removePhotoFromAlbum(token, currentAlbum.id, photoId)
       setCurrentAlbum(updated)
       setAlbums(prev => prev.map(a => a.id === updated.id ? updated : a))
-      notify(t('admin.photo_removed') || 'Photo removed', 'success')
+      notify(t('admin.photo_removed'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(t('common.error'), 'error')
@@ -278,7 +278,7 @@ export function AlbumsTab({
       const updated = await setAlbumCover(token, currentAlbum.id, photoId)
       setCurrentAlbum(updated)
       setAlbums(prev => prev.map(a => a.id === updated.id ? updated : a))
-      notify(t('admin.cover_set') || 'Cover set', 'success')
+      notify(t('admin.cover_set'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(t('common.error'), 'error')
@@ -302,7 +302,7 @@ export function AlbumsTab({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-light tracking-wide">{t('admin.albums') || 'Albums'}</h2>
+            <h2 className="text-xl font-light tracking-wide">{t('admin.albums')}</h2>
             <p className="text-xs text-muted-foreground mt-1">{filteredAlbums.length} of {albums.length}</p>
           </div>
           <AdminButton onClick={handleCreateAlbum} adminVariant="unstyled" className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors">
@@ -318,7 +318,7 @@ export function AlbumsTab({
             {/* Left: Info */}
             <div className="flex items-center gap-3 shrink-0">
               <span className="text-sm font-medium text-foreground">
-                <span className="text-muted-foreground">{filteredAlbums.length} {t('admin.albums') || 'Albums'}</span>
+                <span className="text-muted-foreground">{filteredAlbums.length} {t('admin.albums')}</span>
               </span>
             </div>
 
@@ -374,7 +374,7 @@ export function AlbumsTab({
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                     }`}
-                  title="Grid view"
+                  title={t('admin.grid_view')}
                 >
                   <LayoutGrid className="w-4 h-4" />
                 </AdminButton>
@@ -385,7 +385,7 @@ export function AlbumsTab({
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                     }`}
-                  title="List view"
+                  title={t('admin.list_view')}
                 >
                   <List className="w-4 h-4" />
                 </AdminButton>
@@ -424,7 +424,7 @@ export function AlbumsTab({
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
-                      <span>Clear all</span>
+                      <span>{t('admin.clear_all')}</span>
                     </AdminButton>
                   </>
                 )}
@@ -435,7 +435,7 @@ export function AlbumsTab({
           {/* Active Filters Tags */}
           {activeFilterCount > 0 && !showFilters && (
             <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Active filters:</span>
+              <span className="text-xs text-muted-foreground">{t('admin.active_filters')}:</span>
               {filterStatus !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
                   {filterStatus === 'published' ? t('admin.published') : t('admin.draft')}
@@ -449,7 +449,7 @@ export function AlbumsTab({
                 adminVariant="unstyled"
                 className="text-xs text-muted-foreground hover:text-foreground underline"
               >
-                Clear all
+                {t('admin.clear_all')}
               </AdminButton>
             </div>
           )}
@@ -463,7 +463,7 @@ export function AlbumsTab({
         ) : filteredAlbums.length === 0 ? (
           <div className="py-20 text-center border border-dashed border-border/50 bg-muted/5">
             <FolderOpen className="w-12 h-12 mx-auto mb-4 opacity-10" />
-            <p className="text-sm text-muted-foreground mb-4">{searchQuery || filterStatus !== 'all' ? 'No albums match your filters' : (t('admin.no_albums') || 'No albums yet')}</p>
+            <p className="text-sm text-muted-foreground mb-4">{searchQuery || filterStatus !== 'all' ? t('admin.no_albums_match_filters') : t('admin.no_albums')}</p>
             {!searchQuery && filterStatus === 'all' && (
               <AdminButton onClick={handleCreateAlbum} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
                 <Plus className="w-4 h-4" />
@@ -604,12 +604,12 @@ export function AlbumsTab({
         {activeTab === 'overview' ? (
           <div className="max-w-xl space-y-6">
             <div>
-              <label className="block text-xs text-muted-foreground mb-2">{t('admin.album_name') || 'Album Name'}</label>
-              <CustomInput variant="config" value={currentAlbum.name} onChange={e => setCurrentAlbum({ ...currentAlbum, name: e.target.value })} placeholder={t('admin.album_name_placeholder') || 'Enter album name'} />
+              <label className="block text-xs text-muted-foreground mb-2">{t('admin.album_name')}</label>
+              <CustomInput variant="config" value={currentAlbum.name} onChange={e => setCurrentAlbum({ ...currentAlbum, name: e.target.value })} placeholder={t('admin.album_name_placeholder')} />
             </div>
             <div>
-              <label className="block text-xs text-muted-foreground mb-2">{t('admin.description') || 'Description'}</label>
-              <textarea value={currentAlbum.description || ''} onChange={e => setCurrentAlbum({ ...currentAlbum, description: e.target.value })} placeholder={t('admin.description_placeholder') || 'Enter description (optional)'} className="w-full p-3 h-24 bg-muted/30 border-b border-border focus:border-primary outline-none text-sm transition-colors resize-none" />
+              <label className="block text-xs text-muted-foreground mb-2">{t('admin.description')}</label>
+              <textarea value={currentAlbum.description || ''} onChange={e => setCurrentAlbum({ ...currentAlbum, description: e.target.value })} placeholder={t('admin.description_placeholder')} className="w-full p-3 h-24 bg-muted/30 border-b border-border focus:border-primary outline-none text-sm transition-colors resize-none" />
             </div>
             <div className="flex items-center gap-3 p-3 bg-muted/30 border-b border-border">
               <input type="checkbox" checked={currentAlbum.isPublished} onChange={e => setCurrentAlbum({ ...currentAlbum, isPublished: e.target.checked })} className="w-4 h-4 accent-primary" />
@@ -625,7 +625,7 @@ export function AlbumsTab({
                     <AdminButton onClick={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()) }} adminVariant="icon">
                       <X className="w-4 h-4" />
                     </AdminButton>
-                    <span className="text-sm">{selectedPhotoIds.size} selected</span>
+                    <span className="text-sm">{selectedPhotoIds.size} {t('admin.selected')}</span>
                   </div>
                   <AdminButton onClick={handleAddPhotos} disabled={selectedPhotoIds.size === 0 || saving} adminVariant="unstyled" className="flex items-center gap-2 px-4 py-1.5 bg-foreground text-background text-xs font-medium disabled:opacity-50 transition-colors">
                     <Check className="w-3.5 h-3.5" />
@@ -639,7 +639,19 @@ export function AlbumsTab({
                     {availablePhotos.map(photo => {
                       const isSelected = selectedPhotoIds.has(photo.id)
                       return (
-                        <div key={photo.id} onClick={() => setSelectedPhotoIds(prev => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next })} className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}>
+                        <div
+                          key={photo.id}
+                          onClick={() => setSelectedPhotoIds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(photo.id)) {
+                              next.delete(photo.id)
+                            } else {
+                              next.add(photo.id)
+                            }
+                            return next
+                          })}
+                          className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
+                        >
                           <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
                           {isSelected && <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>}
                         </div>
@@ -668,10 +680,10 @@ export function AlbumsTab({
                       onClick={() => onPreview(photo)}
                     >
                       <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
-                      {isCover && <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-[8px] font-medium">Cover</div>}
+                      {isCover && <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-[8px] font-medium">{t('admin.cover')}</div>}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
-                        {!isCover && <AdminButton onClick={(e) => { e.stopPropagation(); handleSetCover(photo.id) }} adminVariant="unstyled" className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-[9px] font-medium">Set Cover</AdminButton>}
-                        <AdminButton onClick={(e) => { e.stopPropagation(); handleRemovePhoto(photo.id) }} adminVariant="unstyled" className="px-2 py-1 bg-red-500/80 hover:bg-red-500 text-white text-[9px] font-medium">Remove</AdminButton>
+                        {!isCover && <AdminButton onClick={(e) => { e.stopPropagation(); handleSetCover(photo.id) }} adminVariant="unstyled" className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-[9px] font-medium">{t('admin.set_cover')}</AdminButton>}
+                        <AdminButton onClick={(e) => { e.stopPropagation(); handleRemovePhoto(photo.id) }} adminVariant="unstyled" className="px-2 py-1 bg-red-500/80 hover:bg-red-500 text-white text-[9px] font-medium">{t('admin.remove')}</AdminButton>
                       </div>
                     </div>
                   )

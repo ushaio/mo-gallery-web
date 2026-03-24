@@ -31,6 +31,40 @@ model User {
   @@index([oauthProvider])
 }
 
+model AiConversation {
+  id        String      @id @default(cuid())
+  scopeId   String
+  title     String?
+  summary   String?
+  lastModel String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  messages AiMessage[]
+
+  @@index([scopeId, updatedAt])
+  @@index([updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  status         String         @default("completed")
+  model          String?
+  action         String?
+  metadata       Json?
+  error          String?
+  createdAt      DateTime       @default(now())
+
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([role])
+  @@index([status])
+}
+
 model Camera {
   id        String   @id // 规范化品牌键，如 "sony"
   name      String   // 标准化显示名，如 "Sony"
@@ -77,11 +111,10 @@ model Photo {
   shutterSpeed String?
   iso          Int?
   takenAt      DateTime?
-  latitude     Float?
-  longitude    Float?
   orientation  Int?
   software     String?
   exifRaw      String?
+  gps          String?  // JSON: tags.gps raw data { latitude, longitude, altitude, dateStamp }
 
   categories Category[]
   stories    Story[]    @relation("PhotoStories")
@@ -128,12 +161,14 @@ model Story {
   content      String // Markdown content
   coverPhotoId String?
   isPublished  Boolean  @default(false)
+  storyDate    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   photos Photo[] @relation("PhotoStories")
 
   @@index([isPublished])
+  @@index([storyDate])
   @@index([createdAt])
   @@index([coverPhotoId])
 }

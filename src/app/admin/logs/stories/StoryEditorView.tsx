@@ -25,6 +25,7 @@ import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
 
 interface StoryEditorViewProps {
+  token: string | null
   currentStory: StoryDto
   pendingImages: PendingImage[]
   pendingCoverId: string | null
@@ -78,6 +79,7 @@ interface StoryEditorViewProps {
 }
 
 export function StoryEditorView({
+  token,
   currentStory,
   pendingImages,
   pendingCoverId,
@@ -139,7 +141,7 @@ export function StoryEditorView({
           <AdminButton onClick={onBack} adminVariant="link" className="shrink-0 self-start whitespace-nowrap px-0 text-[10px] tracking-[0.24em] hover:no-underline">
             <ChevronLeft className="h-4 w-4" /> {t('admin.back_list')}
           </AdminButton>
-          <AdminInput type="text" value={currentStory.title || ''} onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, title: event.target.value } : prev))} placeholder={t('story.title_placeholder')} className="min-w-0 flex-1 border-0 border-b border-border/60 bg-transparent px-0 py-0 font-serif text-4xl font-light leading-[0.92] tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-6xl" />
+          <AdminInput type="text" value={currentStory.title || ''} onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, title: event.target.value } : prev))} placeholder={t('story.title_placeholder')} className="min-w-0 flex-1 border-0 border-b border-border/60 bg-transparent px-0 py-0 font-serif text-2xl font-light leading-[0.92] tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-3xl" />
           {draftSaved ? <span className="flex items-center gap-1 text-[10px] text-green-500"><Check className="h-3 w-3" />{t('story.draft_saved')}</span> : null}
           {!draftSaved && lastSavedAt ? <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><Clock className="h-3 w-3" />{new Date(lastSavedAt).toLocaleTimeString()}</span> : null}
         </div>
@@ -177,7 +179,20 @@ export function StoryEditorView({
           </div>
 
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
-            <NarrativeTipTapEditor ref={editorRef} value={currentStory.content} onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))} onPasteFiles={onPasteFiles} placeholder={t('ui.markdown_placeholder')} className="overflow-hidden bg-background" />
+            <NarrativeTipTapEditor
+              ref={editorRef}
+              value={currentStory.content}
+              onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
+              onPasteFiles={onPasteFiles}
+              placeholder={t('ui.markdown_placeholder')}
+              className="overflow-hidden bg-background"
+              aiOptions={{
+                enabled: true,
+                token,
+                scopeId: currentStory.id,
+                title: currentStory.title,
+              }}
+            />
           </div>
         </div>
 

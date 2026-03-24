@@ -1,25 +1,22 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookText, Calendar, ArrowRight } from 'lucide-react'
+import { ArrowRight, BookText, Calendar } from 'lucide-react'
 import Link from 'next/link'
-import { getBlogs, type BlogDto } from '@/lib/api'
+import { getBlogs } from '@/lib/api/blogs'
+import type { BlogDto } from '@/lib/api/types'
+import { useLanguage } from '@/contexts/LanguageContext'
 
-// 博客侧边栏组件 - 展示最新的博客文章
-interface BlogSidebarProps {
-  t: (key: string) => string
-}
-
-export function BlogSidebar({ t }: BlogSidebarProps) {
+export function BlogSidebar() {
+  const { t, locale } = useLanguage()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
 
-  // 获取最新 3 篇博客
   useEffect(() => {
     async function fetchBlogs() {
       try {
-        const data = await getBlogs(3) // 获取最新 3 篇博客
+        const data = await getBlogs(3)
         setBlogs(data)
       } catch (error) {
         console.error('Failed to fetch blogs:', error)
@@ -27,18 +24,19 @@ export function BlogSidebar({ t }: BlogSidebarProps) {
         setLoading(false)
       }
     }
-    fetchBlogs()
+
+    void fetchBlogs()
   }, [])
 
   if (loading) {
     return (
-      <aside className="w-full lg:w-80 shrink-0">
+      <aside className="w-full shrink-0 lg:w-80">
         <div className="sticky top-24 space-y-6">
-          <div className="border border-border p-6 bg-card/50">
+          <div className="border border-border bg-card/50 p-6">
             <div className="animate-pulse space-y-4">
-              <div className="h-4 bg-muted rounded w-1/2"></div>
-              <div className="h-3 bg-muted rounded"></div>
-              <div className="h-3 bg-muted rounded w-5/6"></div>
+              <div className="h-4 w-1/2 rounded bg-muted" />
+              <div className="h-3 rounded bg-muted" />
+              <div className="h-3 w-5/6 rounded bg-muted" />
             </div>
           </div>
         </div>
@@ -47,32 +45,27 @@ export function BlogSidebar({ t }: BlogSidebarProps) {
   }
 
   return (
-    <aside className="w-full lg:w-80 shrink-0">
+    <aside className="w-full shrink-0 lg:w-80">
       <motion.div
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.3 }}
         className="sticky top-24 space-y-6"
       >
-        {/* 博客列表区域 */}
         <div className="border border-border bg-card/50">
-          <div className="p-6 border-b border-border">
-            <div className="flex items-center gap-3 mb-2">
-              <BookText className="w-5 h-5 text-primary" />
-              <h3 className="font-serif text-xl uppercase tracking-tight">
-                博客
-              </h3>
+          <div className="border-b border-border p-6">
+            <div className="mb-2 flex items-center gap-3">
+              <BookText className="h-5 w-5 text-primary" />
+              <h3 className="font-serif text-xl uppercase tracking-tight">{t('blog.title')}</h3>
             </div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-              最新文章
-            </p>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{t('blog.latest')}</p>
           </div>
 
           <div className="divide-y divide-border">
             {blogs.length === 0 ? (
               <div className="p-6 text-center">
-                <BookText className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                <p className="text-xs text-muted-foreground">暂无博客文章</p>
+                <BookText className="mx-auto mb-2 h-8 w-8 opacity-20" />
+                <p className="text-xs text-muted-foreground">{t('blog.empty')}</p>
               </div>
             ) : (
               blogs.map((blog, index) => (
@@ -84,26 +77,24 @@ export function BlogSidebar({ t }: BlogSidebarProps) {
                 >
                   <Link
                     href={`/blog/${blog.id}`}
-                    className="block p-6 hover:bg-muted/20 transition-colors group"
+                    className="group block p-6 transition-colors hover:bg-muted/20"
                   >
                     <div className="space-y-2">
-                      <h4 className="font-serif text-base leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                      <h4 className="line-clamp-2 font-serif text-base leading-tight transition-colors group-hover:text-primary">
                         {blog.title}
                       </h4>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(blog.updatedAt).toLocaleDateString('zh-CN', {
+                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        {new Date(blog.updatedAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                           year: 'numeric',
                           month: 'short',
                           day: 'numeric',
                         })}
                       </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {blog.content}
-                      </p>
-                      <div className="flex items-center gap-1 text-[10px] text-primary font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                        阅读更多
-                        <ArrowRight className="w-3 h-3" />
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{blog.content}</p>
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                        {t('blog.read_more')}
+                        <ArrowRight className="h-3 w-3" />
                       </div>
                     </div>
                   </Link>
@@ -112,16 +103,16 @@ export function BlogSidebar({ t }: BlogSidebarProps) {
             )}
           </div>
 
-          {blogs.length > 0 && (
-            <div className="p-4 border-t border-border">
+          {blogs.length > 0 ? (
+            <div className="border-t border-border p-4">
               <Link
                 href="/blog"
-                className="block text-center py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+                className="block py-2 text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-primary"
               >
-                查看全部博客 →
+                {t('blog.view_all')}
               </Link>
             </div>
-          )}
+          ) : null}
         </div>
       </motion.div>
     </aside>

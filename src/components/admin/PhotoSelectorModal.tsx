@@ -321,7 +321,7 @@ export function PhotoSelectorModal({
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
-                  title="Grid view"
+                  title={t('admin.grid_view')}
                 >
                   <LayoutGrid className="w-4 h-4" />
                 </AdminButton>
@@ -333,7 +333,7 @@ export function PhotoSelectorModal({
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
-                  title="List view"
+                  title={t('admin.list_view')}
                 >
                   <ListIcon className="w-4 h-4" />
                 </AdminButton>
@@ -362,7 +362,7 @@ export function PhotoSelectorModal({
               <div className="flex flex-wrap items-center gap-3">
                 {/* Sort */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">Sort:</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.sort')}:</span>
                   <div className="relative">
                     <select
                       value={sortBy}
@@ -437,7 +437,7 @@ export function PhotoSelectorModal({
                       }`}
                     >
                       <option value="all">{t('gallery.all')}</option>
-                      <option value="local">Local</option>
+                      <option value="local">{t('admin.local_storage')}</option>
                       <option value="r2">Cloudflare R2</option>
                       <option value="github">GitHub</option>
                     </select>
@@ -452,7 +452,7 @@ export function PhotoSelectorModal({
                     : 'bg-background border-border text-muted-foreground hover:text-foreground'
                 }`}>
                   <Star className={`w-3.5 h-3.5 ${onlyFeatured ? 'fill-current' : ''}`} />
-                  <span className="text-xs font-medium">{t('admin.feat')}</span>
+                  <span className="text-xs font-medium">{t('admin.featured')}</span>
                   <input
                     type="checkbox"
                     checked={onlyFeatured}
@@ -472,7 +472,7 @@ export function PhotoSelectorModal({
                       className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
                     >
                       <X className="w-3.5 h-3.5" />
-                      <span>Clear all</span>
+                      <span>{t('admin.clear_all')}</span>
                     </AdminButton>
                   </>
                 )}
@@ -483,7 +483,7 @@ export function PhotoSelectorModal({
           {/* Active Filters Tags */}
           {activeFilterCount > 0 && !showFilters && (
             <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Active filters:</span>
+              <span className="text-xs text-muted-foreground">{t('admin.active_filters')}:</span>
               {categoryFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
                   {categoryFilter}
@@ -511,7 +511,7 @@ export function PhotoSelectorModal({
               {onlyFeatured && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-500/10 text-amber-600 text-xs rounded-md">
                   <Star className="w-3 h-3 fill-current" />
-                  Featured
+                  {t('admin.featured')}
                   <AdminButton onClick={() => setOnlyFeatured(false)} adminVariant="icon" className="hover:text-amber-500/70">
                     <X className="w-3 h-3" />
                   </AdminButton>
@@ -522,7 +522,7 @@ export function PhotoSelectorModal({
                 adminVariant="link"
                 className="text-xs text-muted-foreground hover:text-foreground underline"
               >
-                Clear all
+                {t('admin.clear_all')}
               </AdminButton>
             </div>
           )}
@@ -631,7 +631,7 @@ export function PhotoSelectorModal({
                   adminVariant="link"
                   className="mt-2 text-xs text-primary"
                 >
-                  Clear filters to see all photos
+                  {t('admin.clear_filters_hint')}
                 </AdminButton>
               )}
             </div>

@@ -19,7 +19,7 @@
   padding: 2rem 2rem 5rem;
   outline: none;
   color: var(--tiptap-black);
-  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   font-size: 1.125rem;
   line-height: 1.95;
 }
@@ -164,7 +164,8 @@
   margin: 1.2rem 0;
 }
 
-.tiptap-editor .tiptap > p:first-of-type::first-letter {
+.tiptap-editor .tiptap > p:first-of-type:not([data-drop-cap='false'])::first-letter,
+.tiptap-editor .tiptap > p[data-drop-cap='true']::first-letter {
   float: left;
   margin-right: 0.12em;
   margin-top: 0.08em;

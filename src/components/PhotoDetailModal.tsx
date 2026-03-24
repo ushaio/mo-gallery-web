@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from 'framer-motion'
 import {
@@ -20,13 +20,23 @@ import {
   LayoutGrid,
   ChevronDown,
 } from 'lucide-react'
-import { PhotoDto, resolveAssetUrl, getPhotoStory, type StoryDto, getPhotoComments, getStoryComments, type PublicCommentDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { getPhotoComments, getStoryComments } from '@/lib/api/comments'
+import { getPhotoStory } from '@/lib/api/stories'
+import type { PhotoDto, PublicCommentDto, StoryDto } from '@/lib/api/types'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatFileSize } from '@/lib/utils'
+import { formatPhotoCoordinates } from '@/lib/photo-location'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
+
+const DRAG_DISMISS_THRESHOLD = 150
+const SWIPE_THRESHOLD = 50
+const VELOCITY_THRESHOLD = 500
+const MOBILE_CONTROLS_AUTO_HIDE_DELAY = 3000
+const PAN_AXIS_LOCK_THRESHOLD = 12
 
 type TabType = 'story' | 'info' // 面板标签类型：故事 | 信息
 
@@ -87,9 +97,13 @@ export function PhotoDetailModal({
   // 移动端沉浸模式 - 控制控件可见性
   const [mobileControlsVisible, setMobileControlsVisible] = useState(true)
   const mobileControlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const imageViewportRef = useRef<HTMLDivElement>(null)
 
   // 渐进式图片加载：先显示缩略图，再淡入全尺寸图片
   const [fullImageLoaded, setFullImageLoaded] = useState(false)
+  const [imageViewportWidth, setImageViewportWidth] = useState(0)
+  const [panAxis, setPanAxis] = useState<'x' | 'y' | null>(null)
+  const [isSlideAnimating, setIsSlideAnimating] = useState(false)
 
   const currentPhotoIndex = photo && allPhotos.length > 0
     ? allPhotos.findIndex(p => p.id === photo.id)
@@ -102,14 +116,15 @@ export function PhotoDetailModal({
   // 显示总数：优先使用传入的总数，否则使用已加载数量
   const displayTotal = totalPhotos ?? allPhotos.length
   const displayIndex = currentPhotoIndex >= 0 ? currentPhotoIndex + 1 : 0
+  const hasPhotoSequence = allPhotos.length > 1 || hasMore
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
     if (hasPrevious && onPhotoChange) {
       onPhotoChange(allPhotos[currentPhotoIndex - 1])
     }
-  }
+  }, [allPhotos, currentPhotoIndex, hasPrevious, onPhotoChange])
 
-  const handleNext = async () => {
+  const handleNext = useCallback(async () => {
     if (!onPhotoChange) return
 
     if (hasNextLoaded) {
@@ -123,7 +138,7 @@ export function PhotoDetailModal({
         setIsLoadingMore(false)
       }
     }
-  }
+  }, [allPhotos, canLoadMore, currentPhotoIndex, hasNextLoaded, onLoadMore, onPhotoChange])
 
   // 加载更多照片后自动导航到下一张
   useEffect(() => {
@@ -147,7 +162,7 @@ export function PhotoDetailModal({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, allPhotos, currentPhotoIndex, hasPrevious, hasNext])
+  }, [allPhotos.length, handleNext, handlePrevious, hasNext, hasPrevious, isOpen, onClose])
 
   // 触摸滑动处理
   const [scale, setScale] = useState(1)
@@ -155,6 +170,7 @@ export function PhotoDetailModal({
   // 用 motion value 统一控制放大时的图片位置
   const imgX = useMotionValue(0)
   const imgY = useMotionValue(0)
+  const swipeX = useMotionValue(0)
 
   // 双击放大/缩小
   const handleDoubleTap = useCallback(() => {
@@ -167,32 +183,177 @@ export function PhotoDetailModal({
     })
   }, [imgX, imgY])
 
-  // 拖拽关闭阈值
-  const DRAG_DISMISS_THRESHOLD = 150
+  const prevPhoto = hasPrevious ? allPhotos[currentPhotoIndex - 1] : null
+  const nextPhoto = hasNextLoaded ? allPhotos[currentPhotoIndex + 1] : null
 
-  // 拖拽处理
-  const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+  const renderSlideImage = useCallback((slidePhoto: PhotoDto | null, isCurrentSlide: boolean) => {
+    if (!slidePhoto) {
+      return <div className="h-full w-full" />
+    }
+
+    const resolvedThumbnail = resolveAssetUrl(slidePhoto.thumbnailUrl || slidePhoto.url, settings?.cdn_domain)
+    const resolvedPhoto = resolveAssetUrl(slidePhoto.url, settings?.cdn_domain)
+
+    return (
+      <div className="relative h-full w-full pointer-events-none">
+        <div className="absolute inset-0 overflow-hidden">
+          <div
+            className="absolute inset-0 bg-cover bg-center blur-3xl scale-125"
+            style={{
+              backgroundImage: `url(${resolvedThumbnail})`,
+              opacity: 0.4,
+            }}
+          />
+          <div
+            className="absolute inset-0 bg-cover bg-center blur-2xl scale-110"
+            style={{
+              backgroundImage: `url(${resolvedThumbnail})`,
+              opacity: 0.15,
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/40" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30" />
+        </div>
+        {isCurrentSlide ? (
+          <>
+            <Image
+              src={resolvedThumbnail}
+              alt={slidePhoto.title}
+              fill
+              sizes="(max-width: 1024px) 100vw, 70vw"
+              className={`object-contain select-none transition-opacity duration-500 ${
+                fullImageLoaded ? 'opacity-0' : 'opacity-100'
+              }`}
+              style={{ transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
+              draggable={false}
+              priority
+            />
+            <Image
+              src={resolvedPhoto}
+              alt={slidePhoto.title}
+              fill
+              sizes="(max-width: 1024px) 100vw, 70vw"
+              className={`object-contain shadow-2xl select-none transition-opacity duration-700 ${
+                fullImageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              style={{ transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
+              draggable={false}
+              priority
+              onLoad={() => setFullImageLoaded(true)}
+            />
+          </>
+        ) : (
+          <Image
+            src={resolvedPhoto}
+            alt={slidePhoto.title}
+            fill
+            sizes="(max-width: 1024px) 100vw, 70vw"
+            className="object-contain select-none opacity-90"
+            draggable={false}
+          />
+        )}
+      </div>
+    )
+  }, [fullImageLoaded, isDragging, scale, settings?.cdn_domain])
+
+  const animateSwipeTo = useCallback(async (target: number, onComplete?: () => void) => {
+    setIsSlideAnimating(true)
+    try {
+      await animate(swipeX, target, {
+        duration: 0.24,
+        ease: [0.22, 1, 0.36, 1],
+      })
+      onComplete?.()
+    } finally {
+      swipeX.set(0)
+      setPanAxis(null)
+      setIsSlideAnimating(false)
+    }
+  }, [swipeX])
+
+  const handleImagePanStart = useCallback(() => {
+    if (isSlideAnimating) return
+    setIsDragging(true)
+    setPanAxis(null)
+  }, [isSlideAnimating])
+
+  const handleImagePan = useCallback((_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    if (scale > 1) {
+      imgX.set(imgX.get() + info.delta.x)
+      imgY.set(imgY.get() + info.delta.y)
+      return
+    }
+
+    if (isSlideAnimating) return
+
+    if (!panAxis) {
+      if (Math.abs(info.offset.x) < PAN_AXIS_LOCK_THRESHOLD && Math.abs(info.offset.y) < PAN_AXIS_LOCK_THRESHOLD) {
+        return
+      }
+      setPanAxis(Math.abs(info.offset.x) >= Math.abs(info.offset.y) ? 'x' : 'y')
+      return
+    }
+
+    if (panAxis === 'x') {
+      const movingPrev = info.offset.x > 0
+      const movingNext = info.offset.x < 0
+
+      if ((movingPrev && !hasPrevious) || (movingNext && !hasNext)) {
+        swipeX.set(info.offset.x * 0.2)
+        return
+      }
+
+      swipeX.set(info.offset.x)
+    }
+  }, [hasNext, hasPrevious, imgX, imgY, isSlideAnimating, panAxis, scale, swipeX])
+
+  const handleImagePanEnd = useCallback(async (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false)
 
-    // 放大状态：位置已由 imgX/imgY motion value 实时更新，无需额外处理
-    if (scale > 1) return
+    if (scale > 1) {
+      return
+    }
 
-    // 垂直拖拽关闭判定
+    if (panAxis === 'y') {
+      if (Math.abs(info.offset.y) > DRAG_DISMISS_THRESHOLD) {
+        onClose()
+      }
+      setPanAxis(null)
+      return
+    }
+
+    if (panAxis === 'x') {
+      if ((info.offset.x > SWIPE_THRESHOLD || info.velocity.x > VELOCITY_THRESHOLD) && hasPrevious && imageViewportWidth > 0) {
+        await animateSwipeTo(imageViewportWidth, handlePrevious)
+        return
+      }
+
+      if ((info.offset.x < -SWIPE_THRESHOLD || info.velocity.x < -VELOCITY_THRESHOLD) && hasNext && imageViewportWidth > 0) {
+        await animateSwipeTo(-imageViewportWidth, () => { void handleNext() })
+        return
+      }
+
+      await animateSwipeTo(0)
+      return
+    }
+
     if (Math.abs(info.offset.y) > DRAG_DISMISS_THRESHOLD) {
       onClose()
       return
     }
 
-    // 水平拖拽切换判定
-    const SWIPE_THRESHOLD = 50
-    const VELOCITY_THRESHOLD = 500
-
-    if (info.offset.x > SWIPE_THRESHOLD || info.velocity.x > VELOCITY_THRESHOLD) {
-      if (hasPrevious) handlePrevious()
-    } else if (info.offset.x < -SWIPE_THRESHOLD || info.velocity.x < -VELOCITY_THRESHOLD) {
-      if (hasNext) handleNext()
+    if ((info.offset.x > SWIPE_THRESHOLD || info.velocity.x > VELOCITY_THRESHOLD) && hasPrevious && imageViewportWidth > 0) {
+      await animateSwipeTo(imageViewportWidth, handlePrevious)
+      return
     }
-  }
+
+    if ((info.offset.x < -SWIPE_THRESHOLD || info.velocity.x < -VELOCITY_THRESHOLD) && hasNext && imageViewportWidth > 0) {
+      await animateSwipeTo(-imageViewportWidth, () => { void handleNext() })
+      return
+    }
+
+    await animateSwipeTo(0)
+  }, [animateSwipeTo, handleNext, handlePrevious, hasNext, hasPrevious, imageViewportWidth, onClose, panAxis, scale])
 
   // 面板拖拽处理
   const handlePanelDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -293,7 +454,7 @@ export function PhotoDetailModal({
     }
     
     fetchStoryData()
-  }, [photo?.id, isOpen, isPhotoInCachedStory])
+  }, [activeTab, hideStoryTab, isOpen, isPhotoInCachedStory, photo, storyCache])
 
   // 弹窗关闭时清除缓存并恢复页面滚动
   useEffect(() => {
@@ -331,7 +492,27 @@ export function PhotoDetailModal({
     setScale(1)
     imgX.set(0)
     imgY.set(0)
-  }, [photo?.id])
+    swipeX.set(0)
+    setPanAxis(null)
+  }, [imgX, imgY, photo?.id, swipeX])
+
+  useEffect(() => {
+    const node = imageViewportRef.current
+    if (!node) return
+
+    const updateWidth = () => {
+      setImageViewportWidth(node.clientWidth)
+    }
+
+    updateWidth()
+
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(node)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [isOpen])
 
   // 缩略图条滚动到当前照片位置
   useEffect(() => {
@@ -363,7 +544,7 @@ export function PhotoDetailModal({
     clearMobileControlsTimeout()
     mobileControlsTimeoutRef.current = setTimeout(() => {
       setMobileControlsVisible(false)
-    }, 3000)
+    }, MOBILE_CONTROLS_AUTO_HIDE_DELAY)
   }, [clearMobileControlsTimeout])
 
   const handleMobilePhotoTap = useCallback(() => {
@@ -387,16 +568,29 @@ export function PhotoDetailModal({
     }
 
     setMobilePanelExpanded(false)
-    setMobileControlsVisible(true)
-    scheduleMobileControlsAutoHide()
-  }, [isOpen, clearMobileControlsTimeout, scheduleMobileControlsAutoHide])
+  }, [isOpen, clearMobileControlsTimeout])
 
   useEffect(() => {
+    if (!isOpen) {
+      clearMobileControlsTimeout()
+      return
+    }
+
     if (mobilePanelExpanded) {
       clearMobileControlsTimeout()
       setMobileControlsVisible(true)
+      return
     }
-  }, [mobilePanelExpanded, clearMobileControlsTimeout])
+
+    setMobileControlsVisible(true)
+    scheduleMobileControlsAutoHide()
+  }, [
+    isOpen,
+    mobilePanelExpanded,
+    photo?.id,
+    clearMobileControlsTimeout,
+    scheduleMobileControlsAutoHide,
+  ])
 
   // Clear timeout on unmount
   useEffect(() => {
@@ -407,6 +601,18 @@ export function PhotoDetailModal({
 
   if (!photo) return null
 
+  const photoTakenLabel = photo.takenAt
+    ? user?.isAdmin
+      ? new Date(photo.takenAt).toLocaleString(locale, {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : new Date(photo.takenAt).toLocaleDateString(locale, { dateStyle: 'long' })
+    : null
+
   const exifItems = [
     { icon: Camera, label: t('gallery.equipment'), value: photo.cameraModel },
     { icon: Aperture, label: t('gallery.aperture'), value: photo.aperture },
@@ -415,8 +621,8 @@ export function PhotoDetailModal({
     { icon: Camera, label: t('gallery.focal'), value: photo.focalLength },
     { 
       icon: MapPin, 
-      label: 'GPS', 
-      value: photo.latitude && photo.longitude ? `${photo.latitude.toFixed(4)}, ${photo.longitude.toFixed(4)}` : undefined 
+      label: t('gallery.gps'), 
+      value: formatPhotoCoordinates(photo, 4)
     },
   ].filter(item => item.value)
 
@@ -435,6 +641,7 @@ export function PhotoDetailModal({
             {/* Left: Immersive Photo Viewer */}
             <div className={`relative bg-black/5 flex flex-col overflow-hidden ${mobilePanelExpanded ? 'h-[40vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
               <div
+                ref={imageViewportRef}
                 className="relative flex-1 flex items-center justify-center group overflow-hidden touch-none"
                 onClick={(e) => {
                   if (isDragging) return
@@ -458,9 +665,9 @@ export function PhotoDetailModal({
                 </button>
 
                 {/* Photo Counter - Top Right */}
-                {(allPhotos.length > 1 || hasMore) && (
+                {hasPhotoSequence && (
                   <div className={`absolute top-4 right-4 md:top-6 md:right-6 z-50 px-4 py-2 bg-black/30 backdrop-blur-md text-white/80 font-mono text-xs rounded-full border border-white/10 transition-all duration-300 ${
-                    !mobileControlsVisible && !mobilePanelExpanded ? 'lg:opacity-0 lg:group-hover:opacity-100 opacity-0 pointer-events-none lg:pointer-events-auto' : 'md:opacity-0 md:group-hover:opacity-100'
+                    !mobileControlsVisible && !mobilePanelExpanded ? 'lg:opacity-0 lg:group-hover:opacity-100 opacity-0 pointer-events-none lg:pointer-events-auto' : 'lg:opacity-0 lg:group-hover:opacity-100'
                   }`}>
                     <span className="text-white">{displayIndex}</span>
                     <span className="text-white/50 mx-1">/</span>
@@ -468,99 +675,59 @@ export function PhotoDetailModal({
                   </div>
                 )}
 
-                {/* Dual-layer Blurred Background */}
-                <div className="absolute inset-0 z-0 overflow-hidden">
-                  {/* Base layer - deep blur with darkening */}
-                  <div
-                    className="absolute inset-0 bg-cover bg-center blur-3xl scale-125 transition-all duration-1000"
-                    style={{
-                      backgroundImage: `url(${resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)})`,
-                      opacity: 0.4,
-                    }}
-                  />
-                  {/* Top layer - lighter blur with gradient overlay */}
-                  <div
-                    className="absolute inset-0 bg-cover bg-center blur-2xl scale-110 transition-all duration-700"
-                    style={{
-                      backgroundImage: `url(${resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)})`,
-                      opacity: 0.15,
-                    }}
-                  />
-                  {/* Gradient overlays for depth */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/40" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30" />
-                </div>
-
                 <motion.div
-                  className="absolute inset-0 flex items-center justify-center p-2 md:p-12 z-10 touch-none"
-                  drag={scale === 1}
-                  dragElastic={0.2}
-                  dragSnapToOrigin
-                  onDragStart={() => setIsDragging(true)}
-                  onDragEnd={handleDragEnd}
-                  onPanStart={() => { if (scale > 1) setIsDragging(true) }}
-                  onPan={(_, info) => {
-                    if (scale > 1) {
-                      imgX.set(imgX.get() + info.delta.x)
-                      imgY.set(imgY.get() + info.delta.y)
-                    }
-                  }}
-                  onPanEnd={() => { if (scale > 1) setIsDragging(false) }}
-                  style={{ x: scale > 1 ? imgX : undefined, y: scale > 1 ? imgY : undefined }}
+                  className="absolute inset-0 z-10 touch-none"
+                  onPanStart={handleImagePanStart}
+                  onPan={handleImagePan}
+                  onPanEnd={handleImagePanEnd}
                 >
-                  <div className="relative w-full h-full pointer-events-none">
-                    {/* Thumbnail placeholder - shows while full image loads */}
-                    <Image
-                      src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
-                      alt={photo.title}
-                      fill
-                      sizes="(max-width: 1024px) 100vw, 70vw"
-                      className={`object-contain select-none transition-opacity duration-500 ${
-                        fullImageLoaded ? 'opacity-0' : 'opacity-100'
-                      }`}
-                      style={{ filter: 'blur(8px)', transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
-                      draggable={false}
-                      priority
-                    />
-                    {/* Full resolution image */}
-                    <Image
-                      src={resolveAssetUrl(photo.url, settings?.cdn_domain)}
-                      alt={photo.title}
-                      fill
-                      sizes="(max-width: 1024px) 100vw, 70vw"
-                      className={`object-contain shadow-2xl select-none transition-opacity duration-700 ${
-                        fullImageLoaded ? 'opacity-100' : 'opacity-0'
-                      }`}
-                      style={{ transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
-                      draggable={false}
-                      priority
-                      onLoad={() => setFullImageLoaded(true)}
-                    />
-                    {/* Loading indicator */}
-                    {!fullImageLoaded && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
+                  {scale === 1 && imageViewportWidth > 0 ? (
+                    <motion.div
+                      className="absolute top-0 flex h-full"
+                      style={{ width: imageViewportWidth * 3, left: -imageViewportWidth, x: swipeX }}
+                    >
+                      {[prevPhoto, photo, nextPhoto].map((slidePhoto, index) => (
+                        <div
+                          key={slidePhoto?.id ?? `empty-slide-${index}`}
+                          className="relative h-full shrink-0 p-2 md:p-12"
+                          style={{ width: imageViewportWidth }}
+                        >
+                          {renderSlideImage(slidePhoto, index === 1)}
                         </div>
+                      ))}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      className="absolute inset-0 flex items-center justify-center p-2 md:p-12"
+                      style={{ x: scale > 1 ? imgX : undefined, y: scale > 1 ? imgY : undefined }}
+                    >
+                      {renderSlideImage(photo, true)}
+                    </motion.div>
+                  )}
+                  {/* Loading indicator */}
+                  {!fullImageLoaded && (
+                    <div className="pointer-events-none absolute bottom-4 right-4 z-20 md:bottom-8 md:right-8">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
+                        <div className="h-4 w-4 rounded-full border-2 border-white/25 border-t-white/90 animate-spin" />
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </motion.div>
 
                 {/* Navigation Arrows - Hidden on mobile */}
-                {(allPhotos.length > 1 || hasMore) && (
+                {hasPhotoSequence && (
                   <>
                     <button
                       onClick={handlePrevious}
                       disabled={!hasPrevious}
-                      className="hidden md:flex absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
+                      className="hidden lg:flex absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
                     >
                       <ChevronLeft className="w-7 h-7 transition-transform group-hover:-translate-x-0.5" />
                     </button>
                     <button
                       onClick={handleNext}
                       disabled={!hasNext || isLoadingMore}
-                      className="hidden md:flex absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
+                      className="hidden lg:flex absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
                     >
                       {isLoadingMore ? (
                         <Loader2 className="w-6 h-6 animate-spin" />
@@ -571,30 +738,15 @@ export function PhotoDetailModal({
                   </>
                 )}
                 
-                {/* Bottom Info Card - Hidden on mobile when controls not visible */}
-                <div className={`absolute bottom-0 left-0 right-0 p-4 md:p-8 transition-all duration-300 pointer-events-none z-10 ${
-                  mobilePanelExpanded
-                    ? 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100'
-                    : mobileControlsVisible
-                      ? 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
-                      : 'opacity-0 lg:opacity-0 lg:group-hover:opacity-100'
-                }`}>
+                {/* Bottom Info Card - Desktop only to keep mobile focused on the photo */}
+                <div className="hidden lg:block absolute bottom-0 left-0 right-0 p-8 transition-all duration-300 pointer-events-none z-10 opacity-0 group-hover:opacity-100">
                   <div className="max-w-screen-2xl mx-auto">
                     <div className="inline-flex flex-col gap-2 p-4 md:p-5 bg-black/40 backdrop-blur-xl rounded-lg border border-white/10">
                       <p className="font-serif text-lg md:text-2xl text-white leading-tight">{photo.title}</p>
                       <div className="flex items-center gap-4 text-white/60">
-                        {photo.takenAt && (
+                        {photoTakenLabel && (
                           <span className="font-mono text-xs uppercase tracking-wider">
-                            {user?.isAdmin
-                              ? new Date(photo.takenAt).toLocaleString(locale, {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : new Date(photo.takenAt).toLocaleDateString(locale, { dateStyle: 'long' })
-                            }
+                            {photoTakenLabel}
                           </span>
                         )}
                         {photo.cameraModel && (
@@ -612,11 +764,11 @@ export function PhotoDetailModal({
                 </div>
 
                 {/* Thumbnail Toggle Button - Desktop only */}
-                <div className="hidden md:block absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="hidden lg:block absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                    <button
                     onClick={toggleThumbnails}
                     className={`w-10 h-10 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 ${showThumbnails ? 'bg-white/20 border-white/30' : ''}`}
-                    title={showThumbnails ? 'Hide Thumbnails' : 'Show Thumbnails'}
+                    title={showThumbnails ? t('gallery.hide_thumbnails') : t('gallery.show_thumbnails')}
                   >
                     {showThumbnails ? <ChevronDown className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
                   </button>
@@ -631,7 +783,7 @@ export function PhotoDetailModal({
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    className="hidden md:block relative bg-black/20 backdrop-blur-sm border-t border-white/5 shrink-0 z-30 overflow-hidden"
+                    className="hidden lg:block relative bg-black/20 backdrop-blur-sm border-t border-white/5 shrink-0 z-30 overflow-hidden"
                   >
                      <div
                        ref={thumbnailsScrollRef}
@@ -670,52 +822,6 @@ export function PhotoDetailModal({
                   </motion.div>
                 )}
               </AnimatePresence>
-              
-              {/* Mobile Thumbnails Strip - Hidden when controls not visible */}
-              {allPhotos.length > 1 && (
-                <AnimatePresence>
-                  {(mobileControlsVisible || mobilePanelExpanded) && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="md:hidden relative bg-black/30 backdrop-blur-md border-t border-white/5 shrink-0 z-30"
-                    >
-                      <div className="flex items-center gap-1.5 p-2 overflow-x-auto scroll-smooth h-14">
-                        {allPhotos.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => onPhotoChange?.(p)}
-                            className={`relative flex-shrink-0 h-full aspect-square overflow-hidden transition-all duration-300 ${
-                              p.id === photo.id
-                                ? 'ring-2 ring-white/80 opacity-100'
-                                : 'opacity-50'
-                            }`}
-                          >
-                            <Image
-                              src={resolveAssetUrl(p.thumbnailUrl || p.url, settings?.cdn_domain)}
-                              alt={p.title}
-                              fill
-                              sizes="40px"
-                              className="object-cover"
-                            />
-                          </button>
-                        ))}
-                        {hasMore && (
-                          <div className="flex-shrink-0 h-full aspect-square bg-white/5 flex items-center justify-center border border-white/10">
-                            {isLoadingMore ? (
-                              <Loader2 className="w-3 h-3 animate-spin text-white/50" />
-                            ) : (
-                              <span className="text-[10px] text-white/40">+</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              )}
             </div>
 
             {/* Right: Info & Story Panel */}
@@ -735,7 +841,19 @@ export function PhotoDetailModal({
                 className="lg:hidden flex items-center justify-center py-3 bg-background border-b border-border touch-none cursor-grab active:cursor-grabbing"
                 onTap={() => setMobilePanelExpanded((prev) => !prev)}
               >
-                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+                <div className="flex min-w-0 flex-col items-center gap-2 px-4">
+                  <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+                  {!mobilePanelExpanded && (
+                    <div className="min-w-0 text-center">
+                      <p className="truncate font-serif text-sm text-foreground">{photo.title}</p>
+                      {photoTakenLabel && (
+                        <p className="mt-1 truncate text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          {photoTakenLabel}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </motion.div>
               
               {/* Tabs with Sliding Indicator */}

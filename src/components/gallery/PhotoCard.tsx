@@ -1,9 +1,9 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import Image from 'next/image'
-import { PhotoDto, resolveAssetUrl } from '@/lib/api'
-import { PublicSettingsDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
 import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
 
 interface PhotoCardProps {
@@ -16,9 +16,22 @@ interface PhotoCardProps {
   onClick: () => void
 }
 
-// 照片卡片组件 - 用于瀑布流布局，支持灰度和沉浸模式
-export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grayscale, immersive = false, columnCount = 5, onClick }: PhotoCardProps) {
+export const PhotoCard = memo(function PhotoCard({
+  photo,
+  index,
+  settings,
+  grayscale,
+  immersive = false,
+  columnCount = 5,
+  onClick,
+}: PhotoCardProps) {
   const { ref, style } = useEntranceAnimation({ index, columnCount })
+  const coverUrl = useMemo(
+    () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
+    [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
+  )
+  const primaryCategory = useMemo(() => photo.category.split(',')[0], [photo.category])
+  const createdYear = useMemo(() => new Date(photo.createdAt).getFullYear(), [photo.createdAt])
 
   return (
     <div
@@ -32,7 +45,7 @@ export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grays
         style={{ backgroundColor: photo.dominantColors?.[0] || '#e5e5e5' }}
       >
         <Image
-          src={resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain)}
+          src={coverUrl}
           alt={photo.title}
           width={photo.width || 800}
           height={photo.height || 600}
@@ -43,28 +56,26 @@ export const PhotoCard = memo(function PhotoCard({ photo, index, settings, grays
           loading="lazy"
         />
 
-        {/* 悬浮遮罩 */}
         <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
       </div>
 
-      {/* 图片下方信息（非沉浸模式显示） */}
-      {!immersive && (
+      {!immersive ? (
         <div className="flex justify-between items-start gap-4">
           <div className="space-y-1.5 max-w-[80%]">
             <h3 className="text-body font-serif leading-tight text-foreground group-hover:text-primary transition-colors duration-200">
               {photo.title}
             </h3>
             <p className="text-label font-bold uppercase tracking-[0.2em] text-muted-foreground">
-               {photo.category.split(',')[0]}
+              {primaryCategory}
             </p>
           </div>
 
           <div className="flex flex-col items-end gap-1 text-label-sm font-mono text-muted-foreground/60">
-             <span>{String(index + 1).padStart(2, '0')}</span>
-             <span>{new Date(photo.createdAt).getFullYear()}</span>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <span>{createdYear}</span>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 })

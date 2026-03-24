@@ -5,9 +5,13 @@ import Image from 'next/image'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
-import { getFeaturedPhotos, resolveAssetUrl, type PhotoDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { getFeaturedPhotos } from '@/lib/api/photos'
+import type { PhotoDto } from '@/lib/api/types'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
+
+const PARTICLE_COUNT = 20
 
 export default function Home() {
   const { settings, envConfig } = useSettings()
@@ -34,7 +38,7 @@ export default function Home() {
   // 仅在客户端生成粒子位置，避免水合不一致
   const particles = useMemo(() => {
     if (!isMounted) return []
-    return [...Array(20)].map((_, i) => ({
+    return Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
       id: i,
       x: Math.random() * window.innerWidth,
       y: Math.random() * window.innerHeight,
@@ -48,7 +52,7 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    const run = async () => {
+    async function loadFeaturedPhotos() {
       try {
         const data = await getFeaturedPhotos()
         if (data && data.length > 0) {
@@ -60,7 +64,8 @@ export default function Home() {
         setIsLoading(false)
       }
     }
-    run()
+
+    void loadFeaturedPhotos()
   }, [])
 
   // 自动轮播首屏图片
@@ -175,7 +180,7 @@ export default function Home() {
               transition={{ duration: 0.2, delay: 0.1, ease: "easeOut" }}
             >
               <span className="block text-white">
-                {(t('home.hero_vis') || 'YOUR MOMENTS').replace('{SITE_AUTHOR}', siteAuthor)}
+                {t('home.hero_vis').replace('{SITE_AUTHOR}', siteAuthor)}
               </span>
             </motion.h1>
 
@@ -185,7 +190,7 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: 0.15, ease: "easeOut" }}
             >
-              {t('home.hero_real') || 'YOUR STORIES'}
+              {t('home.hero_real')}
             </motion.p>
 
             {/* 动画分隔线 */}
@@ -206,7 +211,7 @@ export default function Home() {
               animate={{ opacity: 1 }}
               transition={{ duration: 0.2, delay: 0.2, ease: "easeOut" }}
             >
-              {(t('home.hero_desc') || '').replace('{siteTitle}', siteTitle)}
+              {t('home.hero_desc').replace('{siteTitle}', siteTitle)}
             </motion.p>
 
             {/* CTA 按钮 - 去掉 backdrop-blur 以优化性能 */}
@@ -220,7 +225,7 @@ export default function Home() {
                 href="/gallery"
                 className="group relative inline-flex items-center gap-3 px-8 py-4 bg-white/15 border border-white/30 rounded-full text-white text-sm hover:bg-white/25 hover:border-white/50 transition-colors duration-200"
               >
-                <span className="relative z-10">{t('home.explore') || 'EXPLORE GALLERY'}</span>
+                <span className="relative z-10">{t('home.explore')}</span>
                 <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </motion.div>
@@ -262,7 +267,7 @@ export default function Home() {
             transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
           >
             <span className="text-[10px] uppercase font-light">
-              {t('home.enter') || 'SCROLL TO EXPLORE'}
+              {t('home.enter')}
             </span>
             <div className="w-[1px] h-8 bg-white/60" />
           </motion.div>
@@ -288,7 +293,7 @@ export default function Home() {
             <span className="block text-6xl md:text-8xl font-serif text-primary/20 leading-none mb-4">&ldquo;</span>
 
             <p className="font-serif text-2xl md:text-4xl font-light leading-relaxed text-foreground/90 text-pretty">
-              {t('home.quote') || 'An ordinary photo becomes extraordinary because of your story.'}
+              {t('home.quote')}
             </p>
 
             <span className="block text-6xl md:text-8xl font-serif text-primary/20 leading-none mt-4 rotate-180">&rdquo;</span>
@@ -315,10 +320,10 @@ export default function Home() {
         >
           <div className="text-center md:text-left">
             <span className="block text-xs text-primary/60 uppercase mb-3">
-              {t('home.curated') || 'CURATED COLLECTION'}
+              {t('home.curated')}
             </span>
             <h2 className="font-serif text-4xl md:text-5xl text-foreground text-balance">
-              {t('home.works') || 'Featured Works'}
+              {t('home.works')}
             </h2>
           </div>
 
@@ -327,7 +332,7 @@ export default function Home() {
             className="group flex items-center gap-3 px-6 py-3 border border-border rounded-full hover:border-primary hover:bg-primary/5 transition-all duration-200"
           >
             <span className="font-sans text-xs text-muted-foreground group-hover:text-primary transition-colors">
-              VIEW ALL WORKS
+              {t('home.view_all_works')}
             </span>
             <ArrowRight className="size-4 text-muted-foreground group-hover:text-primary transition-all group-hover:translate-x-1" />
           </Link>
@@ -432,11 +437,11 @@ export default function Home() {
             </div>
 
             <span className="block font-sans text-xs text-primary mb-6 uppercase">
-              {t('home.artist') || 'ABOUT THE GALLERY'}
+              {t('home.artist')}
             </span>
 
             <p className="font-serif text-xl md:text-2xl text-foreground/80 leading-relaxed mb-12 max-w-2xl mx-auto text-pretty">
-              {(t('home.about_text') || '').replace('{siteTitle}', siteTitle)}
+              {t('home.about_text').replace('{siteTitle}', siteTitle)}
             </p>
 
             <Link
@@ -444,7 +449,7 @@ export default function Home() {
               className="group inline-flex items-center gap-4 px-8 py-4 bg-foreground text-background rounded-full hover:bg-primary transition-colors duration-200"
             >
               <span className="font-sans text-sm">
-                {t('home.read_bio') || 'LEARN MORE'}
+                {t('home.read_bio')}
               </span>
               <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
             </Link>

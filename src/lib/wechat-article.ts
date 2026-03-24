@@ -104,6 +104,16 @@ function walkNode(node: Node, photos: PhotoDto[], cdnDomain: string | undefined,
     el.removeAttribute('data-type')
   }
 
+  const inlineFontSize = el.style.fontSize?.trim()
+  if (inlineFontSize) {
+    el.setAttribute('style', mergeStyle(el.getAttribute('style') || '', `font-size:${inlineFontSize}`))
+  }
+
+  const inlineFontFamily = el.style.fontFamily?.trim()
+  if (inlineFontFamily) {
+    el.setAttribute('style', mergeStyle(el.getAttribute('style') || '', `font-family:${inlineFontFamily}`))
+  }
+
   // Walk children
   const isPreContext = insidePre || tag === 'pre'
   for (let i = 0; i < el.childNodes.length; i++) {

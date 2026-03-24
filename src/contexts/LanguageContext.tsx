@@ -1,7 +1,8 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { dictionaries, Locale } from '@/lib/i18n'
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { dictionaries, type Locale } from '@/lib/i18n'
+import type { TranslationTree } from '@/lib/i18n/types'
 
 type LanguageContextType = {
   locale: Locale
@@ -11,17 +12,30 @@ type LanguageContextType = {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>('zh')
-  const [mounted, setMounted] = useState(false)
+function getInitialLocale(): Locale {
+  if (typeof window === 'undefined') return 'zh'
 
-  useEffect(() => {
-    const savedLocale = localStorage.getItem('locale') as Locale
-    if (savedLocale && (savedLocale === 'zh' || savedLocale === 'en')) {
-      setLocale(savedLocale)
-    }
-    setMounted(true)
-  }, [])
+  const savedLocale = localStorage.getItem('locale')
+  return savedLocale === 'zh' || savedLocale === 'en' ? savedLocale : 'zh'
+}
+
+function resolveTranslation(source: TranslationTree, path: string): string | undefined {
+  let current: TranslationTree | string = source
+
+  for (const key of path.split('.')) {
+    if (typeof current === 'string') return undefined
+    if (!(key in current)) return undefined
+
+    const nextValue: TranslationTree[string] = current[key]
+    if (typeof nextValue !== 'string' && typeof nextValue !== 'object') return undefined
+    current = nextValue
+  }
+
+  return typeof current === 'string' ? current : undefined
+}
+
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  const [locale, setLocale] = useState<Locale>(getInitialLocale)
 
   const changeLocale = (newLocale: Locale) => {
     setLocale(newLocale)
@@ -29,18 +43,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }
 
   const t = (path: string): string => {
-    const keys = path.split('.')
-    let current: any = dictionaries[locale]
-    
-    for (const key of keys) {
-      if (current[key] === undefined) {
-        console.warn(`Translation key missing: ${path} for locale: ${locale}`)
-        return path
-      }
-      current = current[key]
+    const localized = resolveTranslation(dictionaries[locale], path)
+    if (localized !== undefined) return localized
+
+    const fallback = resolveTranslation(dictionaries.en, path)
+    if (fallback !== undefined) {
+      console.warn(`Translation key missing: ${path} for locale: ${locale}, falling back to en`)
+      return fallback
     }
-    
-    return current as string
+
+    console.warn(`Translation key missing: ${path} for locale: ${locale}`)
+    return path
   }
 
   return (
