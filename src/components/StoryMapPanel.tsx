@@ -169,11 +169,7 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
         {/* Expanded cluster grid */}
         {isExpanded && photos.length > 0 && (
           <div
-            className={`absolute bottom-full left-1/2 mb-2 -translate-x-1/2 overflow-hidden rounded-xl border p-2 shadow-2xl backdrop-blur-md ${
-              isDark
-                ? 'border-white/20 bg-zinc-900/95'
-                : 'border-zinc-200/90 bg-white/95'
-            }`}
+            className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 overflow-hidden rounded-xl border border-border/60 bg-background/95 p-2 shadow-2xl backdrop-blur-md"
           >
             <div className="grid grid-cols-3 gap-1.5">
               {photos.slice(0, 9).map((photo) => (
@@ -196,7 +192,7 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
               ))}
             </div>
             {count > 9 && (
-              <p className={`mt-1.5 text-center text-[9px] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+              <p className="mt-1.5 text-center text-[9px] text-muted-foreground">
                 +{count - 9} {t('story.map_cluster_more')}
               </p>
             )}
@@ -218,25 +214,17 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
                 alt=""
                 className="h-full w-full object-cover opacity-40"
               />
-              <div className={`absolute inset-0 ${isDark ? 'bg-zinc-900/60' : 'bg-white/40'}`} />
+              <div className="absolute inset-0 bg-background/55" />
             </div>
           )}
 
           {/* Cluster count */}
           <div
-            className={`relative flex size-9 items-center justify-center rounded-full border-2 shadow-lg ${
-              isDark
-                ? 'border-white/80 bg-zinc-800/95'
-                : 'border-white bg-zinc-100/95'
-            }`}
+            className="relative flex size-9 items-center justify-center rounded-full border-2 border-background bg-background/95 shadow-lg"
           >
-            <Images className={`mr-0.5 size-3.5 ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`} />
+            <Images className="mr-0.5 size-3.5 text-foreground/70" />
             <span
-              className={`absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full text-[9px] font-bold shadow-md ${
-                isDark
-                  ? 'bg-zinc-100 text-zinc-900'
-                  : 'bg-zinc-900 text-white'
-              }`}
+              className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground shadow-md"
             >
               {count > 99 ? '99+' : count}
             </span>
@@ -244,9 +232,7 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
 
           {/* Pin tail */}
           <div
-            className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
-              isDark ? 'bg-zinc-800/95' : 'bg-zinc-100/95'
-            }`}
+            className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-background/95"
           />
         </button>
       </div>
@@ -517,20 +503,20 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
 
   return (
     <section
-      className={`overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 ${
+      className={`overflow-hidden rounded-[28px] border border-border/30 bg-background/80 ${
         expanded ? 'shadow-2xl' : 'shadow-lg'
       }`}
     >
       {/* Header */}
-      <div className="relative border-b border-zinc-100 px-5 pb-4 pt-5 dark:border-zinc-800">
+      <div className="relative border-b border-border/30 px-5 pb-4 pt-5">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
+            <span className="text-[10px] font-medium uppercase tracking-[0.3em] text-muted-foreground">
               {t('story.map_locations')}
             </span>
             <div className="mt-1 flex items-center gap-2">
-              <MapPin className="size-3.5 text-zinc-400 dark:text-zinc-500" />
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <MapPin className="size-3.5 text-primary/70" />
+              <span className="text-sm font-medium text-foreground/80">
                 {geotaggedPhotos.length} {t('story.map_mapped_suffix')}
               </span>
             </div>
@@ -538,7 +524,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
           <button
             type="button"
             onClick={onToggleExpanded}
-            className="flex size-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
+            className="flex size-9 cursor-pointer items-center justify-center rounded-full border border-border/40 text-muted-foreground transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
             aria-label={expanded ? t('story.map_collapse') : t('story.map_expand')}
             title={expanded ? t('story.map_collapse') : t('story.map_expand')}
           >
@@ -550,13 +536,13 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
       {geotaggedPhotos.length === 0 ? (
         /* Empty State */
         <div className="flex flex-col items-center justify-center px-6 py-12">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-            <Camera className="size-5 text-zinc-400" />
+          <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted/30">
+            <Camera className="size-5 text-muted-foreground/60" />
           </div>
-          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm font-medium text-foreground/75">
             {t('story.map_empty_title')}
           </p>
-          <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             {t('story.map_empty_description')}
           </p>
         </div>
@@ -567,8 +553,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
             expanded ? 'h-[min(72vh,720px)] min-h-[420px]' : 'h-[280px]'
           } ${
             isDark
-              ? '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-white/10 [&_.maplibregl-ctrl-group]:bg-zinc-950/88 [&_.maplibregl-ctrl-group]:shadow-xl [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-zinc-200 [&_.maplibregl-ctrl-button:hover]:bg-white/10 [&_.maplibregl-popup-tip]:border-b-zinc-900 [&_.maplibregl-popup-tip]:border-t-zinc-900'
-              : '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-zinc-200/90 [&_.maplibregl-ctrl-group]:bg-white/92 [&_.maplibregl-ctrl-group]:shadow-lg [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-zinc-700 [&_.maplibregl-ctrl-button:hover]:bg-zinc-100 [&_.maplibregl-popup-tip]:border-b-white [&_.maplibregl-popup-tip]:border-t-white'
+              ? '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-border/40 [&_.maplibregl-ctrl-group]:bg-background/88 [&_.maplibregl-ctrl-group]:shadow-xl [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-foreground [&_.maplibregl-ctrl-button:hover]:bg-muted/50 [&_.maplibregl-popup-tip]:border-b-background [&_.maplibregl-popup-tip]:border-t-background'
+              : '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-border/60 [&_.maplibregl-ctrl-group]:bg-background/92 [&_.maplibregl-ctrl-group]:shadow-lg [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-foreground [&_.maplibregl-ctrl-button:hover]:bg-muted/60 [&_.maplibregl-popup-tip]:border-b-background [&_.maplibregl-popup-tip]:border-t-background'
           }`}
         >
           <Map
@@ -622,29 +608,27 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                       <div
                         className={`flex size-7 items-center justify-center rounded-full border-[2.5px] shadow-lg transition-all ${
                           isSelected
-                            ? isDark ? 'border-zinc-200 bg-zinc-950' : 'border-zinc-900 bg-white'
-                            : isDark ? 'border-white/80 bg-zinc-900/95' : 'border-white/80 bg-zinc-100/95'
+                            ? 'border-primary bg-background'
+                            : 'border-background/80 bg-background/95'
                         }`}
                       >
                         <Camera
                           className={`size-3 ${
                             isSelected
-                              ? isDark ? 'text-zinc-100' : 'text-zinc-900'
-                              : isDark ? 'text-zinc-300' : 'text-zinc-500'
+                              ? 'text-primary'
+                              : 'text-foreground/65'
                           }`}
                         />
                       </div>
                       {/* Pin Tail */}
                       <div
                         className={`absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 ${
-                          isSelected
-                            ? isDark ? 'bg-zinc-950' : 'bg-white'
-                            : isDark ? 'bg-zinc-900/95' : 'bg-zinc-100/95'
+                          isSelected ? 'bg-background' : 'bg-background/95'
                         }`}
                       />
                       {/* Selection Ring */}
                       {isSelected && (
-                        <div className={`absolute -inset-2 rounded-full border-2 ${isDark ? 'border-white/40' : 'border-zinc-900/15'}`} />
+                        <div className="absolute -inset-2 rounded-full border-2 border-primary/25" />
                       )}
                     </button>
                   </Marker>
@@ -665,14 +649,14 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                 style={{ ['--story-popup-width' as string]: `${popupLayout.width}px` }}
                 className={`[&_.maplibregl-popup-content]:w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:max-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:min-w-[var(--story-popup-width)] [&_.maplibregl-popup-content]:box-border [&_.maplibregl-popup-content]:overflow-hidden [&_.maplibregl-popup-content]:rounded-2xl [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-content]:shadow-2xl [&_.maplibregl-popup-content]:ring-1 ${
                   isDark
-                    ? '[&_.maplibregl-popup-content]:bg-zinc-900 [&_.maplibregl-popup-content]:ring-white/10'
-                    : '[&_.maplibregl-popup-content]:bg-white [&_.maplibregl-popup-content]:ring-zinc-900/10'
+                    ? '[&_.maplibregl-popup-content]:bg-background [&_.maplibregl-popup-content]:ring-border/50'
+                    : '[&_.maplibregl-popup-content]:bg-background [&_.maplibregl-popup-content]:ring-border/60'
                 }`}
               >
                 <div className="w-full overflow-hidden rounded-2xl">
                   {/* Photo */}
                   <div
-                    className={`relative flex items-center justify-center ${isDark ? 'bg-zinc-800' : 'bg-zinc-100'}`}
+                    className="relative flex items-center justify-center bg-muted/40"
                     style={{ height: popupLayout.imageHeight }}
                   >
                     <img
@@ -685,8 +669,8 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                       <span
                         className={`rounded-full px-2 py-0.5 text-[9px] font-medium backdrop-blur-sm ${
                           isDark
-                            ? 'bg-black/60 text-white'
-                            : 'bg-white/90 text-zinc-900 ring-1 ring-zinc-900/10'
+                            ? 'bg-background/80 text-foreground ring-1 ring-border/50'
+                            : 'bg-background/90 text-foreground ring-1 ring-border/60'
                         }`}
                       >
                         {geotaggedPhotos.findIndex((p) => p.id === popupPhoto.id) + 1}/{geotaggedPhotos.length}
@@ -695,11 +679,11 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                   </div>
                   {/* Info */}
                   <div className="px-3 py-2.5">
-                    <h3 className={`line-clamp-1 text-xs font-medium ${isDark ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                    <h3 className="line-clamp-1 text-xs font-medium text-foreground">
                       {popupPhoto.title}
                     </h3>
                     {popupPhoto.takenAt && (
-                      <p className={`mt-0.5 text-[10px] ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
                         {new Date(popupPhoto.takenAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                           month: 'short',
                           day: 'numeric',

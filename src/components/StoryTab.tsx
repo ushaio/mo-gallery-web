@@ -368,11 +368,18 @@ export function StoryTab({
       )}
 
       <div className="border-t border-border/30 pt-8">
-        <div className="mb-8 flex items-center gap-2">
-          <MessageSquare className="h-3.5 w-3.5 text-primary/60" />
-          <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-primary/80">
-            {t('gallery.comments')} {!isWaline && comments.length > 0 ? `(${comments.length})` : ''}
-          </h3>
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-3.5 w-3.5 text-primary/60" />
+            <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-primary/80">
+              {t('gallery.comments')}
+            </h3>
+          </div>
+          {!isWaline && comments.length > 0 ? (
+            <span className="inline-flex items-center justify-center rounded-full border border-border/40 bg-muted/20 px-3 py-1 text-ui-micro font-mono uppercase tracking-[0.2em] text-muted-foreground/60">
+              {comments.length}
+            </span>
+          ) : null}
         </div>
 
         {isWaline ? (
@@ -391,17 +398,18 @@ export function StoryTab({
           )
         ) : (
           <>
-            <div className="group relative mb-10">
+            <div className="group relative mb-10 rounded-[28px] border border-border/30 bg-muted/10 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)] backdrop-blur-sm sm:p-6">
               {!settingsLoaded ? (
                 <div className="animate-pulse space-y-5">
                   <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    <div className="h-10 bg-muted/50" />
-                    <div className="h-10 bg-muted/50" />
+                    <div className="h-12 rounded-2xl bg-muted/50" />
+                    <div className="h-12 rounded-2xl bg-muted/50" />
                   </div>
-                  <div className="h-24 bg-muted/50" />
+                  <div className="h-28 rounded-[24px] bg-muted/50" />
+                  <div className="h-11 w-40 rounded-full bg-muted/50" />
                 </div>
               ) : !canComment ? (
-                <div className="border border-dashed border-border/30 bg-muted/5 py-10 text-center">
+                <div className="rounded-[24px] border border-dashed border-border/30 bg-background/60 px-6 py-10 text-center">
                   <MessageSquare className="mx-auto mb-4 h-6 w-6 text-muted-foreground/20" />
                   <p className="mb-6 text-ui-xs text-muted-foreground/60">
                     {t('gallery.comment_linuxdo_only')}
@@ -412,7 +420,7 @@ export function StoryTab({
                       const returnUrl = encodeURIComponent(pathname || '/')
                       router.push(`/login?returnUrl=${returnUrl}`)
                     }}
-                    className="inline-flex items-center gap-2.5 bg-[#f8d568] px-5 py-2.5 text-ui-micro font-bold uppercase tracking-[0.15em] text-[#1a1a1a] transition-all hover:bg-[#f5c842]"
+                    className="inline-flex items-center gap-2.5 rounded-full bg-primary px-5 py-2.5 text-ui-micro font-bold uppercase tracking-[0.15em] text-primary-foreground transition-all hover:bg-primary/90"
                   >
                     <LogIn className="h-3.5 w-3.5" />
                     {t('gallery.comment_login_to_comment')}
@@ -429,7 +437,7 @@ export function StoryTab({
                         type="text"
                         value={formData.author}
                         onChange={(event) => setFormData({ ...formData, author: event.target.value })}
-                        className="w-full border-b border-border/40 bg-transparent py-2 text-ui-xs font-serif outline-none transition-colors placeholder:text-muted-foreground/30 focus:border-primary"
+                        className="w-full rounded-2xl border border-border/35 bg-background/80 px-4 py-3 text-ui-xs font-serif outline-none transition-colors placeholder:text-muted-foreground/30 focus:border-primary focus:bg-background"
                         required
                         disabled={submitting || isLinuxDoUser || isAdmin}
                       />
@@ -443,18 +451,18 @@ export function StoryTab({
                             : t('gallery.comment_email')}
                       </label>
                       {isAdmin && !isLinuxDoUser ? (
-                        <div className="flex items-center gap-2 border-b border-primary/20 bg-primary/5 px-2 py-2">
+                        <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
                           <svg className="h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z" />
                           </svg>
                           <span className="text-ui-xs font-medium text-primary">{t('admin.admin')}</span>
                         </div>
                       ) : linuxdoOnly && isLinuxDoUser ? (
-                        <div className="flex items-center gap-2 border-b border-[#f8d568]/20 bg-[#f8d568]/5 px-2 py-2">
-                          <svg className="h-3.5 w-3.5 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
+                        <div className="flex min-h-12 items-center gap-2 rounded-2xl border border-border/35 bg-muted/30 px-4 py-3">
+                          <svg className="h-3.5 w-3.5 text-primary/70" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
                           </svg>
-                          <span className="text-ui-xs font-medium text-[#f8d568]">
+                          <span className="text-ui-xs font-medium text-foreground/75">
                             {t('gallery.comment_linuxdo_badge')}
                           </span>
                         </div>
@@ -463,7 +471,7 @@ export function StoryTab({
                           type="email"
                           value={formData.email}
                           onChange={(event) => setFormData({ ...formData, email: event.target.value })}
-                          className="w-full border-b border-border/40 bg-transparent py-2 text-ui-xs font-serif outline-none transition-colors placeholder:italic placeholder:text-muted-foreground/30 focus:border-primary"
+                          className="w-full rounded-2xl border border-border/35 bg-background/80 px-4 py-3 text-ui-xs font-serif outline-none transition-colors placeholder:italic placeholder:text-muted-foreground/30 focus:border-primary focus:bg-background"
                           placeholder={t('common.optional')}
                           disabled={submitting}
                         />
@@ -478,7 +486,7 @@ export function StoryTab({
                     <textarea
                       value={formData.content}
                       onChange={(event) => setFormData({ ...formData, content: event.target.value })}
-                      className="min-h-[90px] w-full resize-none border border-border/30 bg-muted/5 p-3 text-ui-xs font-serif outline-none transition-colors placeholder:text-muted-foreground/30 focus:border-primary"
+                      className="min-h-[120px] w-full resize-none rounded-[24px] border border-border/35 bg-background/80 px-4 py-3 text-ui-xs font-serif outline-none transition-colors placeholder:text-muted-foreground/30 focus:border-primary focus:bg-background"
                       required
                       disabled={submitting}
                       placeholder={t('gallery.comment_empty_hint')}
@@ -488,7 +496,7 @@ export function StoryTab({
                   <button
                     type="submit"
                     disabled={submitting || !formData.author.trim() || !formData.content.trim()}
-                    className="flex w-full items-center justify-center gap-2 bg-foreground px-6 py-2.5 text-ui-micro font-bold uppercase tracking-[0.15em] text-background transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 sm:w-auto"
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3 text-ui-micro font-bold uppercase tracking-[0.15em] text-background transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 sm:w-auto"
                   >
                     <Send className="h-3 w-3" />
                     <span>{submitting ? t('gallery.comment_submitting') : t('gallery.comment_submit')}</span>
@@ -498,13 +506,14 @@ export function StoryTab({
             </div>
 
             {commentsLoading ? (
-              <div className="animate-pulse space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
                 {[...Array(2)].map((_, index) => (
-                  <div key={index} className="flex gap-3 border-t border-border/20 pt-5">
-                    <div className="h-8 w-8 shrink-0 bg-muted/50" />
+                  <div key={index} className="flex gap-3 rounded-[24px] border border-border/20 bg-muted/10 p-5">
+                    <div className="h-10 w-10 shrink-0 rounded-full bg-muted/50" />
                     <div className="flex-1 space-y-2">
-                      <div className="h-3 w-1/4 bg-muted/50" />
-                      <div className="h-3 w-full bg-muted/50" />
+                      <div className="h-3 w-1/4 rounded-full bg-muted/50" />
+                      <div className="h-3 w-full rounded-full bg-muted/50" />
+                      <div className="h-3 w-2/3 rounded-full bg-muted/40" />
                     </div>
                   </div>
                 ))}
@@ -513,7 +522,7 @@ export function StoryTab({
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="border border-border/20 bg-muted/5 py-12 text-center"
+                className="rounded-[28px] border border-border/20 bg-muted/5 px-6 py-12 text-center"
               >
                 <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center">
                   <svg className="h-6 w-6 text-primary/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
@@ -532,7 +541,7 @@ export function StoryTab({
                 variants={{
                   visible: { transition: { staggerChildren: 0.05 } },
                 }}
-                className="divide-y divide-border/20"
+                className="grid gap-4"
               >
                 {comments.map((comment) => (
                   <motion.div
@@ -542,29 +551,29 @@ export function StoryTab({
                       visible: { opacity: 1, y: 0 },
                     }}
                     transition={{ duration: 0.25, ease: 'easeOut' }}
-                    className="flex gap-3 pt-5 first:border-t-0 first:pt-0"
+                    className="flex gap-4 rounded-[24px] border border-border/25 bg-background/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition-colors hover:border-border/45 sm:p-5"
                   >
                     <div className="flex-shrink-0">
                       {comment.avatarUrl ? (
                         <img
                           src={comment.avatarUrl}
                           alt={comment.author}
-                          className="h-8 w-8 border border-border/30 object-cover"
+                          className="h-10 w-10 rounded-full border border-border/30 object-cover"
                         />
                       ) : (
-                        <div className="flex h-8 w-8 items-center justify-center border border-border/30 bg-primary/10">
-                          <span className="text-ui-micro font-bold uppercase text-primary">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border/30 bg-primary/10">
+                          <span className="text-ui-xs font-bold uppercase tracking-wide text-primary">
                             {comment.author.charAt(0)}
                           </span>
                         </div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-ui-xs font-bold uppercase tracking-wide text-foreground">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-ui-xs font-bold uppercase tracking-[0.16em] text-foreground">
                           {comment.author}
                         </span>
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/40">
+                        <span className="inline-flex items-center rounded-full bg-muted/30 px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/50">
                           {new Date(comment.createdAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
                             year: 'numeric',
                             month: '2-digit',
@@ -574,7 +583,7 @@ export function StoryTab({
                           })}
                         </span>
                       </div>
-                      <p className="mt-1.5 font-serif text-ui-xs leading-relaxed text-foreground/70">
+                      <p className="mt-2 font-serif text-ui-xs leading-relaxed text-foreground/75">
                         {comment.content}
                       </p>
                     </div>

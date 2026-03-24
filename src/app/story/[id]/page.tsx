@@ -502,10 +502,10 @@ export default function StoryDetailPage() {
             ) : null}
 
             {targetPhotoId ? (
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6 dark:border-zinc-800 dark:bg-zinc-900/50">
+              <div className="rounded-[28px] border border-border/30 bg-background/80 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)] sm:p-6">
                 <div className="mb-6 flex items-center gap-2">
-                  <div className="h-px w-6 bg-zinc-300 dark:bg-zinc-600" />
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-400 dark:text-zinc-500">
+                  <div className="h-px w-6 bg-border" />
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.4em] text-muted-foreground">
                     {detailText.discussion}
                   </h3>
                 </div>
