@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.958.0",
-    "@hono/node-server": "^1.19.7",
+    "@hono/node-server": "^1.19.11",
     "@hono/zod-validator": "^0.7.6",
     "@iconify/react": "^6.0.2",
     "@octokit/rest": "^22.0.1",
@@ -45,7 +45,7 @@
     "class-variance-authority": "^0.7.0",
     "exifreader": "^4.33.1",
     "framer-motion": "^12.23.26",
-    "hono": "^4.11.1",
+    "hono": "^4.12.9",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.562.0",
     "maplibre-gl": "^5.20.2",
