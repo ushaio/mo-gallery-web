@@ -9,12 +9,12 @@ import {
   X,
   ImageIcon,
   Star,
-  Search,
   SlidersHorizontal,
 } from 'lucide-react'
 import { PhotoDto, resolveAssetUrl, AlbumDto, getAlbums, AdminSettingsDto, CameraDto, LensDto, getCameras, getLenses } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
+import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 
 type SortOption = 'upload-desc' | 'upload-asc' | 'taken-desc' | 'taken-asc'
 type ViewMode = 'grid' | 'list'
@@ -196,12 +196,9 @@ export function PhotosTab({
 
   return (
     <div className="space-y-4">
-      {/* Main Toolbar */}
-      <div className="bg-muted/30 border border-border rounded-lg p-4">
-        {/* Top Row: Selection, Search, Actions */}
-        <div className="flex flex-col md:flex-row md:items-center gap-4">
-          {/* Left: Selection Info */}
-          <div className="flex items-center gap-3 shrink-0">
+      <AdminCollectionToolbar
+        info={(
+          <>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -232,43 +229,21 @@ export function PhotosTab({
                 </AdminButton>
               </>
             )}
-          </div>
-
-          {/* Center: Search */}
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder={t('common.search')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-4 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-              />
-              {search && (
-                <AdminButton
-                  onClick={() => setSearch('')}
-                  adminVariant="icon"
-                  size="xs"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </AdminButton>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          </>
+        )}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={t('common.search')}
+        actions={(
+          <>
             {/* Filter Toggle */}
             <AdminButton
               onClick={() => setShowFilters(!showFilters)}
-              adminVariant="outline"
-              size="sm"
-              className={`gap-2 rounded-md text-xs font-medium normal-case ${
+              adminVariant="unstyled"
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-md transition-all ${
                 showFilters || activeFilterCount > 0
                   ? 'bg-primary/10 border-primary/30 text-primary'
-                  : 'bg-background text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                  : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
               }`}
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -284,9 +259,8 @@ export function PhotosTab({
             <div className="flex bg-background border border-border rounded-md overflow-hidden">
               <AdminButton
                 onClick={() => onViewModeChange('grid')}
-                adminVariant="icon"
-                size="xs"
-                className={`p-2 ${
+                adminVariant="unstyled"
+                className={`p-2 transition-colors ${
                   viewMode === 'grid'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -297,9 +271,8 @@ export function PhotosTab({
               </AdminButton>
               <AdminButton
                 onClick={() => onViewModeChange('list')}
-                adminVariant="icon"
-                size="xs"
-                className={`p-2 ${
+                adminVariant="unstyled"
+                className={`p-2 transition-colors ${
                   viewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -313,20 +286,16 @@ export function PhotosTab({
             {/* Refresh */}
             <AdminButton
               onClick={onRefresh}
-              adminVariant="icon"
-              size="xs"
-              className="p-2 bg-background border border-border rounded-md text-muted-foreground hover:text-foreground hover:border-foreground/30"
+              adminVariant="unstyled"
+              className="p-2 bg-background border border-border rounded-md text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
               title={t('common.refresh')}
             >
               <RefreshCw className="w-4 h-4" />
             </AdminButton>
-          </div>
-        </div>
-
-        {/* Filter Row - Collapsible */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex flex-wrap items-center gap-3">
+          </>
+        )}
+        filters={showFilters ? (
+          <div className="flex flex-wrap items-center gap-3">
               {/* Sort */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">Sort:</span>
@@ -438,21 +407,17 @@ export function PhotosTab({
                   <div className="h-5 w-px bg-border" />
                   <AdminButton
                     onClick={clearAllFilters}
-                    adminVariant="link"
-                    size="xs"
-                    className="gap-1.5 text-xs font-medium normal-case"
+                    adminVariant="unstyled"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="w-3.5 h-3.5" />
                     <span>Clear all</span>
                   </AdminButton>
                 </>
               )}
-            </div>
           </div>
-        )}
-
-        {/* Active Filters Tags */}
-        {activeFilterCount > 0 && !showFilters && (
+        ) : undefined}
+        activeFilters={activeFilterCount > 0 && !showFilters ? (
           <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">Active filters:</span>
             {categoryFilter !== 'all' && (
@@ -536,15 +501,14 @@ export function PhotosTab({
             )}
             <AdminButton
               onClick={clearAllFilters}
-              adminVariant="link"
-              size="xs"
-              className="text-xs text-muted-foreground underline normal-case"
+              adminVariant="unstyled"
+              className="text-xs text-muted-foreground hover:text-foreground underline"
             >
               Clear all
             </AdminButton>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error && (
         <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-sm flex items-center gap-2">

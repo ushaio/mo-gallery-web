@@ -15,7 +15,6 @@ import {
   Layout,
   Settings,
   GripVertical,
-  Search,
   LayoutGrid,
   List,
   Filter,
@@ -37,6 +36,7 @@ import {
 import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
+import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 
 /** 视图模式：网格 / 列表 */
 type ViewMode = 'grid' | 'list'
@@ -299,54 +299,17 @@ export function AlbumsTab({
   if (!currentAlbum) {
     return (
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-light tracking-wide">{t('admin.albums')}</h2>
-            <p className="text-xs text-muted-foreground mt-1">{filteredAlbums.length} of {albums.length}</p>
-          </div>
-          <AdminButton onClick={handleCreateAlbum} adminVariant="unstyled" className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors">
-            <Plus className="w-4 h-4" />
-            {t('admin.new_album') || 'New Album'}
-          </AdminButton>
-        </div>
-
-        {/* Main Toolbar */}
-        <div className="bg-muted/30 border border-border rounded-lg p-4">
-          {/* Top Row: Search, Actions */}
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            {/* Left: Info */}
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-sm font-medium text-foreground">
-                <span className="text-muted-foreground">{filteredAlbums.length} {t('admin.albums')}</span>
-              </span>
-            </div>
-
-            {/* Center: Search */}
-            <div className="flex-1 max-w-md">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder={t('common.search')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-9 pl-9 pr-4 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                />
-                {searchQuery && (
-                  <AdminButton
-                    onClick={() => setSearchQuery('')}
-                    adminVariant="unstyled"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </AdminButton>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Actions */}
-            <div className="flex items-center gap-2 shrink-0">
+        <AdminCollectionToolbar
+          info={(
+            <span className="text-sm font-medium text-foreground">
+              <span className="text-muted-foreground">{filteredAlbums.length} {t('admin.albums')}</span>
+            </span>
+          )}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder={t('common.search')}
+          actions={(
+            <>
               {/* Filter Toggle */}
               <AdminButton
                 onClick={() => setShowFilters(!showFilters)}
@@ -390,50 +353,54 @@ export function AlbumsTab({
                   <List className="w-4 h-4" />
                 </AdminButton>
               </div>
-            </div>
-          </div>
-
-          {/* Filter Row - Collapsible */}
-          {showFilters && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Status Filter */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.status') || 'Status'}:</span>
-                  <div className="flex bg-background border border-border rounded-md overflow-hidden">
-                    {(['all', 'published', 'draft'] as FilterStatus[]).map(status => (
-                      <AdminButton
-                        key={status}
-                        onClick={() => setFilterStatus(status)}
-                        adminVariant="unstyled"
-                        className={`px-3 py-1.5 text-xs font-medium transition-colors ${filterStatus === status ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                      >
-                        {status === 'all' ? t('common.all') || 'All' : status === 'published' ? t('admin.published') || 'Published' : t('admin.draft') || 'Draft'}
-                      </AdminButton>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Clear Filters */}
-                {activeFilterCount > 0 && (
-                  <>
-                    <div className="h-5 w-px bg-border my-auto" />
-                    <AdminButton
-                      onClick={clearAllFilters}
-                      adminVariant="unstyled"
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      <span>{t('admin.clear_all')}</span>
-                    </AdminButton>
-                  </>
-                )}
-              </div>
-            </div>
+            </>
           )}
+          endActions={(
+            <AdminButton
+              onClick={handleCreateAlbum}
+              adminVariant="unstyled"
+              className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              {t('admin.new_album') || 'New Album'}
+            </AdminButton>
+          )}
+          filters={showFilters ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Status Filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.status') || 'Status'}:</span>
+                <div className="flex bg-background border border-border rounded-md overflow-hidden">
+                  {(['all', 'published', 'draft'] as FilterStatus[]).map(status => (
+                    <AdminButton
+                      key={status}
+                      onClick={() => setFilterStatus(status)}
+                      adminVariant="unstyled"
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${filterStatus === status ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                    >
+                      {status === 'all' ? t('common.all') || 'All' : status === 'published' ? t('admin.published') || 'Published' : t('admin.draft') || 'Draft'}
+                    </AdminButton>
+                  ))}
+                </div>
+              </div>
 
-          {/* Active Filters Tags */}
-          {activeFilterCount > 0 && !showFilters && (
+              {/* Clear Filters */}
+              {activeFilterCount > 0 && (
+                <>
+                  <div className="h-5 w-px bg-border my-auto" />
+                  <AdminButton
+                    onClick={clearAllFilters}
+                    adminVariant="unstyled"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>{t('admin.clear_all')}</span>
+                  </AdminButton>
+                </>
+              )}
+            </div>
+          ) : undefined}
+          activeFilters={activeFilterCount > 0 && !showFilters ? (
             <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground">{t('admin.active_filters')}:</span>
               {filterStatus !== 'all' && (
@@ -452,8 +419,8 @@ export function AlbumsTab({
                 {t('admin.clear_all')}
               </AdminButton>
             </div>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         {/* Content */}
         {loading ? (
