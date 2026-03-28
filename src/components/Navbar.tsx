@@ -58,8 +58,10 @@ export default function Navbar() {
     }
   }, [mobileMenuOpen])
 
+  const isAdminRoute = pathname === '/admin' || pathname?.startsWith('/admin/')
+
   // Hide navbar on admin pages
-  if (pathname?.startsWith('/admin/')) {
+  if (isAdminRoute) {
     return null
   }
 

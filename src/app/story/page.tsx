@@ -11,6 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { QuickStoryEditor } from '@/components/story/QuickStoryEditor'
 import { buildStoryPreviewText } from '@/lib/story-rich-content'
+import { getStoryCoverImageStyle } from '@/lib/story-cover'
 
 const STORY_GRID_CLASSNAME = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 pl-4 md:pl-8'
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -255,7 +256,9 @@ export default function StoryListPage() {
                                       <motion.img
                                         src={story.coverUrl}
                                         alt={story.title}
-                                        className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                                        className="w-full h-full object-cover"
+                                        style={getStoryCoverImageStyle(story)}
+                                        whileHover={{ scale: 1.05 }}
                                       />
                                     ) : (
                                       <div className="w-full h-full flex items-center justify-center">

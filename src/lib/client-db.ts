@@ -17,6 +17,10 @@ export interface StoryEditorDraftData {
   isPublished: boolean;
   createdAt: string;
   coverPhotoId?: string | null;
+  coverCropX?: number | null;
+  coverCropY?: number | null;
+  coverCropWidth?: number | null;
+  coverCropHeight?: number | null;
   pendingCoverId?: string | null; // Cover ID for pending (not yet uploaded) images
   photoIds: string[];
   savedAt: number;
@@ -265,6 +269,10 @@ export async function saveStoryEditorDraftToDB(data: {
   isPublished: boolean;
   createdAt: string;
   coverPhotoId?: string | null;
+  coverCropX?: number | null;
+  coverCropY?: number | null;
+  coverCropWidth?: number | null;
+  coverCropHeight?: number | null;
   pendingCoverId?: string | null;
   photoIds: string[];
   files: { id: string; file: File }[];
@@ -283,6 +291,10 @@ export async function saveStoryEditorDraftToDB(data: {
         isPublished: data.isPublished,
         createdAt: data.createdAt,
         coverPhotoId: data.coverPhotoId,
+        coverCropX: data.coverCropX,
+        coverCropY: data.coverCropY,
+        coverCropWidth: data.coverCropWidth,
+        coverCropHeight: data.coverCropHeight,
         pendingCoverId: data.pendingCoverId,
         photoIds: data.photoIds,
         savedAt: Date.now(),

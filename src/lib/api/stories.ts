@@ -43,6 +43,10 @@ export async function createStory(
     isPublished: boolean
     photoIds?: string[]
     coverPhotoId?: string
+    coverCropX?: number | null
+    coverCropY?: number | null
+    coverCropWidth?: number | null
+    coverCropHeight?: number | null
     storyDate?: string
   },
 ): Promise<StoryDto> {
@@ -64,6 +68,10 @@ export async function updateStory(
     content?: string
     isPublished?: boolean
     coverPhotoId?: string | null
+    coverCropX?: number | null
+    coverCropY?: number | null
+    coverCropWidth?: number | null
+    coverCropHeight?: number | null
     createdAt?: string | null
     storyDate?: string | null
   },

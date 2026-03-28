@@ -48,7 +48,9 @@ interface StoryEditorViewProps {
   dragOverItemId: string | null
   openMenuPhotoId: string | null
   openMenuPendingId: string | null
+  canEditCoverCrop: boolean
   showPreview: () => void
+  onOpenCoverCropEditor: () => void
   onBack: () => void
   onSave: () => void
   onPasteFiles: (files: File[]) => void
@@ -102,7 +104,9 @@ export function StoryEditorView({
   dragOverItemId,
   openMenuPhotoId,
   openMenuPendingId,
+  canEditCoverCrop,
   showPreview,
+  onOpenCoverCropEditor,
   onBack,
   onSave,
   onPasteFiles,
@@ -133,6 +137,7 @@ export function StoryEditorView({
 }: StoryEditorViewProps) {
   const editorCharacterCount = countStoryCharacters(currentStory.content)
   const relatedPhotoCount = currentStory.photos?.length || 0
+  const editCoverCropLabel = t('admin.edit_cover_crop') === 'admin.edit_cover_crop' ? '调整封面裁剪' : t('admin.edit_cover_crop')
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-hidden">
@@ -173,6 +178,12 @@ export function StoryEditorView({
               <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground"><ImageIcon className="h-4 w-4" />{relatedPhotoCount} {t('story.related_photos')}</span>
             </div>
             <div className="flex items-center gap-2">
+              {canEditCoverCrop ? (
+                <AdminButton onClick={onOpenCoverCropEditor} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {editCoverCropLabel}
+                </AdminButton>
+              ) : null}
               <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground">{isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}{t('ui.immersive')}</AdminButton>
               <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"><Eye className="h-3.5 w-3.5" />{t('admin.preview')}</AdminButton>
             </div>

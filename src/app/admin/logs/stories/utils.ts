@@ -14,6 +14,10 @@ export function createEmptyStory(): StoryDto {
     createdAt: now,
     updatedAt: now,
     photos: [],
+    coverCropX: null,
+    coverCropY: null,
+    coverCropWidth: null,
+    coverCropHeight: null,
   }
 }
 

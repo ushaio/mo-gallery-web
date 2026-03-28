@@ -15,6 +15,10 @@ const CreateStorySchema = z.object({
   isPublished: z.boolean().default(false),
   photoIds: z.array(z.string().uuid()).optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
+  coverCropX: z.number().min(0).max(1).optional().nullable(),
+  coverCropY: z.number().min(0).max(1).optional().nullable(),
+  coverCropWidth: z.number().gt(0).max(1).optional().nullable(),
+  coverCropHeight: z.number().gt(0).max(1).optional().nullable(),
 })
 
 const UpdateStorySchema = z.object({
@@ -22,6 +26,10 @@ const UpdateStorySchema = z.object({
   content: z.string().min(1).max(50000).optional(),
   isPublished: z.boolean().optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
+  coverCropX: z.number().min(0).max(1).optional().nullable(),
+  coverCropY: z.number().min(0).max(1).optional().nullable(),
+  coverCropWidth: z.number().gt(0).max(1).optional().nullable(),
+  coverCropHeight: z.number().gt(0).max(1).optional().nullable(),
   storyDate: z.string().datetime().optional().nullable(),
   createdAt: z.string().datetime().optional().nullable(),
 })
@@ -292,6 +300,10 @@ stories.post('/admin/stories', async (c) => {
         content: validated.content,
         isPublished: validated.isPublished,
         coverPhotoId: validated.coverPhotoId,
+        coverCropX: validated.coverCropX,
+        coverCropY: validated.coverCropY,
+        coverCropWidth: validated.coverCropWidth,
+        coverCropHeight: validated.coverCropHeight,
         photos: validated.photoIds
           ? {
               connect: validated.photoIds.map((id) => ({ id })),
@@ -337,6 +349,10 @@ stories.patch('/admin/stories/:id', async (c) => {
     if (validated.content !== undefined) updateData.content = validated.content
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
+    if (validated.coverCropX !== undefined) updateData.coverCropX = validated.coverCropX
+    if (validated.coverCropY !== undefined) updateData.coverCropY = validated.coverCropY
+    if (validated.coverCropWidth !== undefined) updateData.coverCropWidth = validated.coverCropWidth
+    if (validated.coverCropHeight !== undefined) updateData.coverCropHeight = validated.coverCropHeight
     if (validated.storyDate !== undefined) {
       updateData.storyDate = validated.storyDate ? new Date(validated.storyDate) : new Date()
     } else if (validated.createdAt !== undefined) {

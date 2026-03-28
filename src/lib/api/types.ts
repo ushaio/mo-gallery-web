@@ -97,6 +97,10 @@ export interface StoryDto {
   title: string
   content: string
   coverPhotoId?: string
+  coverCropX?: number | null
+  coverCropY?: number | null
+  coverCropWidth?: number | null
+  coverCropHeight?: number | null
   isPublished: boolean
   storyDate: string
   createdAt: string

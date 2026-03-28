@@ -13,6 +13,7 @@ import {
 import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryRichContent } from '@/components/StoryRichContent'
+import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
 
 interface StoryPreviewModalProps {
   story: StoryDto
@@ -42,12 +43,7 @@ export function StoryPreviewModal({
     return resolveAssetUrl(url, cdnDomain)
   }
 
-  const getCoverPhoto = () => {
-    if (story.coverPhotoId) {
-      return story.photos?.find(p => p.id === story.coverPhotoId) || story.photos?.[0]
-    }
-    return story.photos?.[0]
-  }
+  const coverPhoto = getStoryCoverPhoto(story)
 
   return (
     <motion.div
@@ -68,14 +64,15 @@ export function StoryPreviewModal({
       {/* Hero Section */}
       <section className="relative h-screen w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
-          {getCoverPhoto() ? (
+          {coverPhoto ? (
             <Image
-              src={getPhotoUrl(getCoverPhoto()!)}
+              src={getPhotoUrl(coverPhoto)}
               alt={story.title}
               fill
               unoptimized
               sizes="100vw"
               className="w-full h-full object-cover opacity-60"
+              style={getStoryCoverImageStyle(story)}
             />
           ) : (
             <div className="w-full h-full bg-muted/10" />

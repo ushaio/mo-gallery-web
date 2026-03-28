@@ -19,6 +19,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
 import { buildStoryPreviewText, stripStoryContentToPlainText } from '@/lib/story-rich-content'
+import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
 
 function WechatIcon(props: React.ComponentProps<'svg'>) {
   return (
@@ -122,13 +123,7 @@ export default function StoryDetailPage() {
     return resolveAssetUrl(url, settings?.cdn_domain)
   }, [settings?.cdn_domain])
 
-  const coverPhoto = useMemo(() => {
-    if (!story) return null
-    if (story.coverPhotoId) {
-      return story.photos.find((photo) => photo.id === story.coverPhotoId) || story.photos[0] || null
-    }
-    return story.photos[0] || null
-  }, [story])
+  const coverPhoto = useMemo(() => (story ? getStoryCoverPhoto(story) : null), [story])
 
   const coverUrl = coverPhoto ? getPhotoUrl(coverPhoto) : null
   const previewText = useMemo(() => (story?.content ? buildStoryPreviewText(story.content, 200) : ''), [story?.content])
@@ -217,7 +212,8 @@ export default function StoryDetailPage() {
               priority
               unoptimized
               sizes="100vw"
-              className="h-full w-full object-cover opacity-40 transition-transform duration-1000 ease-out hover:scale-105"
+              className="h-full w-full object-cover opacity-40"
+              style={getStoryCoverImageStyle(story)}
             />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900" />

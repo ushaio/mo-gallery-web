@@ -696,6 +696,13 @@ export const adminMessages: LocaleDictionaryGroup = {
       local_storage: 'Local Storage',
       complete_collection_hint: 'A complete collection of moments documented in this narrative.',
       draft_deleted: 'Draft deleted',
+      edit_cover_crop: 'Edit cover crop',
+      cover_crop_hint: 'Drag the crop area to choose which part of the cover photo stays visible.',
+      reset_crop: 'Reset crop',
+      apply_crop: 'Apply crop',
+      resize_cover_crop: 'Resize crop area',
+      cover_crop_card_preview: 'Card preview',
+      cover_crop_hero_preview: 'Hero preview',
     }
   }
 }

@@ -23,6 +23,10 @@ export interface StorySnapshot {
   storyDate: string
   photoIds: string[]
   coverPhotoId?: string
+  coverCropX?: number | null
+  coverCropY?: number | null
+  coverCropWidth?: number | null
+  coverCropHeight?: number | null
 }
 
 export interface DraftRestoreDialogState {
