@@ -37,7 +37,14 @@ export async function getAdminStories(token: string): Promise<StoryDto[]> {
 
 export async function createStory(
   token: string,
-  data: { title: string; content: string; isPublished: boolean; photoIds?: string[]; coverPhotoId?: string },
+  data: {
+    title: string
+    content: string
+    isPublished: boolean
+    photoIds?: string[]
+    coverPhotoId?: string
+    storyDate?: string
+  },
 ): Promise<StoryDto> {
   return apiRequestData<StoryDto>(
     '/api/admin/stories',
@@ -52,7 +59,14 @@ export async function createStory(
 export async function updateStory(
   token: string,
   id: string,
-  data: { title?: string; content?: string; isPublished?: boolean; coverPhotoId?: string | null; createdAt?: string | null },
+  data: {
+    title?: string
+    content?: string
+    isPublished?: boolean
+    coverPhotoId?: string | null
+    createdAt?: string | null
+    storyDate?: string | null
+  },
 ): Promise<StoryDto> {
   return apiRequestData<StoryDto>(
     `/api/admin/stories/${encodeURIComponent(id)}`,

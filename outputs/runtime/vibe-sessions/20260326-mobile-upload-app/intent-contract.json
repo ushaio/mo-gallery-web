@@ -1,0 +1,34 @@
+{
+  "runId": "20260326-mobile-upload-app",
+  "stage": "deep_interview",
+  "timestamp": "2026-03-26T00:00:00+08:00",
+  "goal": "Design a mobile app path for this repository that prioritizes fast batch photo upload from a phone into the existing album and story system.",
+  "deliverable": "Frozen requirement document and execution plan for a self-use mobile uploader app.",
+  "constraints": [
+    "User wants a self-only mobile app",
+    "Phase 1 must prioritize fast batch upload from system gallery",
+    "Uploads should default to recently used targets with override support",
+    "One batch may attach to zero or more albums and zero or more stories",
+    "Failures should auto-retry and unfinished work should continue after app restart",
+    "Current backend supports only single-file uploads and no true chunk resumability"
+  ],
+  "acceptanceCriteria": [
+    "Can select multiple photos from mobile gallery",
+    "Can upload into existing album/story system",
+    "Recent targets are remembered",
+    "Queue recovers after app exit",
+    "Retries and duplicate protection are defined"
+  ],
+  "nonGoals": [
+    "Full mobile admin parity",
+    "Public multi-user upload",
+    "Complex mobile writing in phase 1",
+    "Chunked resumable upload in phase 1"
+  ],
+  "autonomyMode": "interactive_governed",
+  "inferredAssumptions": [
+    "Flutter is preferred over Tauri for this mobile reliability-focused use case",
+    "Task-level recovery is acceptable for phase 1 if user intent of 'continue later' is preserved",
+    "Backend changes should be minimal and directly tied to mobile upload reliability"
+  ]
+}
