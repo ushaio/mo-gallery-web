@@ -285,6 +285,7 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
 
 photos.post('/admin/photos', async (c) => {
   try {
+    const allowedOriginFlags = new Set(['web', 'mobile'])
     const formData = await c.req.formData()
     const file = formData.get('file') as File
     const titleRaw = formData.get('title') as string
@@ -294,6 +295,11 @@ photos.post('/admin/photos', async (c) => {
     const storagePath = formData.get('storage_path') as string
     const storagePathFull = formData.get('storage_path_full') === 'true'
     const fileHash = formData.get('file_hash') as string | null
+    const originFlagInput = formData.get('origin_flag')
+    const originFlag =
+      typeof originFlagInput === 'string' && allowedOriginFlags.has(originFlagInput)
+        ? originFlagInput
+        : 'web'
 
     if (!file) {
       return c.json({ error: 'File is required' }, 400)
@@ -429,6 +435,7 @@ photos.post('/admin/photos', async (c) => {
         title,
         url: uploadResult.url,
         thumbnailUrl: uploadResult.thumbnailUrl,
+        originFlag,
         storageProvider: storageConfig.provider,
         storageKey: uploadResult.key,
         width: metadata.width || 0,

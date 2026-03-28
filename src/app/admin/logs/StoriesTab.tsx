@@ -137,7 +137,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       setSaving(true)
       const isNew = !stories.find((story) => story.id === currentStory.id)
       const photoIds = currentStory.photos?.map((photo) => photo.id) || []
-      const dateChanged = initialStory && currentStory.createdAt !== initialStory.createdAt
+      const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
       if (isNew) {
         await createStory(token, {
@@ -146,7 +146,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
-          ...(dateChanged && currentStory.createdAt ? { createdAt: currentStory.createdAt } : {}),
+          ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
         })
         notify(t('story.created'), 'success')
       } else {
@@ -155,7 +155,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           content: currentStory.content,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
-          ...(dateChanged ? { createdAt: currentStory.createdAt } : {}),
+          ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
         })
         if (photoIds.length > 0) {
           await reorderStoryPhotos(token, currentStory.id, photoIds)
@@ -325,7 +325,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [])
 
   const handleSetPhotoDate = useCallback((takenAt: string) => {
-    setCurrentStory((prev) => (prev ? { ...prev, createdAt: takenAt } : prev))
+    setCurrentStory((prev) => (prev ? { ...prev, storyDate: takenAt } : prev))
     setUseCustomDate(true)
   }, [])
 

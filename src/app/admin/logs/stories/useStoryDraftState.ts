@@ -53,6 +53,7 @@ function createSnapshot(story: StoryDto): StorySnapshot {
     content: story.content,
     isPublished: story.isPublished,
     createdAt: story.createdAt,
+    storyDate: story.storyDate,
     photoIds: story.photos?.map((photo) => photo.id) || [],
     coverPhotoId: story.coverPhotoId,
   }
@@ -88,7 +89,7 @@ export function useStoryDraftState({
       currentStory.title !== initialStory.title ||
       currentStory.content !== initialStory.content ||
       currentStory.isPublished !== initialStory.isPublished ||
-      currentStory.createdAt !== initialStory.createdAt ||
+      currentStory.storyDate !== initialStory.storyDate ||
       currentStory.coverPhotoId !== initialStory.coverPhotoId ||
       JSON.stringify(currentStory.photos?.map((photo) => photo.id) || []) !== JSON.stringify(initialStory.photoIds) ||
       pendingImages.length > 0 ||
@@ -141,11 +142,28 @@ export function useStoryDraftState({
       .map((id) => allPhotos.find((photo) => photo.id === id) || baseStory.photos?.find((photo) => photo.id === id))
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
-    setCurrentStory({ ...baseStory, title: draft.title || baseStory.title, content: draft.content || baseStory.content, isPublished: draft.isPublished, createdAt: draft.createdAt || baseStory.createdAt, coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId, photos: restoredPhotos })
+    setCurrentStory({
+      ...baseStory,
+      title: draft.title || baseStory.title,
+      content: draft.content || baseStory.content,
+      isPublished: draft.isPublished,
+      createdAt: draft.createdAt || baseStory.createdAt,
+      storyDate: draft.createdAt || baseStory.storyDate,
+      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
+      photos: restoredPhotos,
+    })
     setPendingImages(restorePendingImages(draft.files))
     setPendingCoverId(draft.pendingCoverId || null)
     setLastSavedAt(draft.savedAt)
-    setInitialStory({ title: draft.title || baseStory.title, content: draft.content || baseStory.content, isPublished: draft.isPublished, createdAt: draft.createdAt || baseStory.createdAt, photoIds: draft.photoIds, coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId })
+    setInitialStory({
+      title: draft.title || baseStory.title,
+      content: draft.content || baseStory.content,
+      isPublished: draft.isPublished,
+      createdAt: draft.createdAt || baseStory.createdAt,
+      storyDate: draft.createdAt || baseStory.storyDate,
+      photoIds: draft.photoIds,
+      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
+    })
     notify(t('admin.restored_from_draft'), 'info')
   }, [allPhotos, notify, setCurrentStory, setPendingCoverId, setPendingImages, t])
 
@@ -249,6 +267,7 @@ export function useStoryDraftState({
         title: editFromDraft.title,
         content: editFromDraft.content,
         isPublished: editFromDraft.isPublished,
+        storyDate: editFromDraft.createdAt,
         createdAt: editFromDraft.createdAt,
         updatedAt: new Date().toISOString(),
         coverPhotoId: editFromDraft.coverPhotoId ?? undefined,

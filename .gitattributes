@@ -1,0 +1,2 @@
+*.sql text eol=lf
+prisma/migrations/** text eol=lf

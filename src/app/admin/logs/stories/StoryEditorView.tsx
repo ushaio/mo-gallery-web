@@ -161,11 +161,11 @@ export function StoryEditorView({
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 {useCustomDate ? (
                   <div className="flex items-center gap-1">
-                    <input type="datetime-local" value={new Date(currentStory.createdAt).toISOString().slice(0, 16)} onChange={(event) => { const value = event.target.value; setCurrentStory((prev) => prev ? { ...prev, createdAt: value ? new Date(value).toISOString() : new Date().toISOString() } : prev) }} className="border border-border bg-background px-2 py-1 text-xs outline-none transition-all focus:border-primary" />
+                    <input type="datetime-local" value={new Date(currentStory.storyDate).toISOString().slice(0, 16)} onChange={(event) => { const value = event.target.value; setCurrentStory((prev) => prev ? { ...prev, storyDate: value ? new Date(value).toISOString() : new Date().toISOString() } : prev) }} className="border border-border bg-background px-2 py-1 text-xs outline-none transition-all focus:border-primary" />
                     <button type="button" onClick={() => setUseCustomDate(false)} className="p-1 text-primary transition-colors hover:bg-primary/10" title={t('common.confirm')}><Check className="h-4 w-4" /></button>
                   </div>
                 ) : (
-                  <span onClick={() => setUseCustomDate(true)} className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed" title={t('admin.custom_date')}>{new Date(currentStory.createdAt).toLocaleString()}</span>
+                  <span onClick={() => setUseCustomDate(true)} className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed" title={t('admin.custom_date')}>{new Date(currentStory.storyDate).toLocaleString()}</span>
                 )}
               </div>
               <div className="hidden h-4 w-px bg-border/60 sm:block" />

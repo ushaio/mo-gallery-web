@@ -22,6 +22,7 @@ const UpdateStorySchema = z.object({
   content: z.string().min(1).max(50000).optional(),
   isPublished: z.boolean().optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
+  storyDate: z.string().datetime().optional().nullable(),
   createdAt: z.string().datetime().optional().nullable(),
 })
 
@@ -336,8 +337,10 @@ stories.patch('/admin/stories/:id', async (c) => {
     if (validated.content !== undefined) updateData.content = validated.content
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
-    if (validated.createdAt !== undefined) {
-      updateData.createdAt = validated.createdAt ? new Date(validated.createdAt) : new Date()
+    if (validated.storyDate !== undefined) {
+      updateData.storyDate = validated.storyDate ? new Date(validated.storyDate) : new Date()
+    } else if (validated.createdAt !== undefined) {
+      updateData.storyDate = validated.createdAt ? new Date(validated.createdAt) : new Date()
     }
 
     const story = await db.story.update({

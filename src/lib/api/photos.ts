@@ -99,6 +99,7 @@ export async function uploadPhoto(input: {
   file: File
   title: string
   category: string | string[]
+  origin_flag?: 'web' | 'mobile'
   storage_provider?: string
   storage_path?: string
   file_hash?: string
@@ -108,6 +109,7 @@ export async function uploadPhoto(input: {
   form.set('title', input.title)
   const categoryValue = Array.isArray(input.category) ? input.category.join(',') : input.category
   form.set('category', categoryValue)
+  if (input.origin_flag) form.set('origin_flag', input.origin_flag)
   if (input.storage_provider) form.set('storage_provider', input.storage_provider)
   if (input.storage_path) form.set('storage_path', input.storage_path)
   if (input.file_hash) form.set('file_hash', input.file_hash)
@@ -124,6 +126,7 @@ export function uploadPhotoWithProgress(input: {
   file: File
   title: string
   category?: string | string[]
+  origin_flag?: 'web' | 'mobile'
   storage_provider?: string
   storage_path?: string
   storage_path_full?: boolean
@@ -138,6 +141,7 @@ export function uploadPhotoWithProgress(input: {
       const categoryValue = Array.isArray(input.category) ? input.category.join(',') : input.category
       form.set('category', categoryValue)
     }
+    if (input.origin_flag) form.set('origin_flag', input.origin_flag)
     if (input.storage_provider) form.set('storage_provider', input.storage_provider)
     if (input.storage_path) form.set('storage_path', input.storage_path)
     if (input.storage_path_full) form.set('storage_path_full', 'true')

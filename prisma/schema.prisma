@@ -86,6 +86,7 @@ model Photo {
   title           String
   url             String
   thumbnailUrl    String?
+  originFlag      String   @default("web")
   storageProvider String   @default("local")
   storageKey      String?
   width           Int
@@ -161,7 +162,7 @@ model Story {
   content      String // Markdown content
   coverPhotoId String?
   isPublished  Boolean  @default(false)
-  storyDate    DateTime?
+  storyDate    DateTime @default(now())
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

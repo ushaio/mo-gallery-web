@@ -10,6 +10,7 @@ export function createEmptyStory(): StoryDto {
     title: '',
     content: '',
     isPublished: false,
+    storyDate: now,
     createdAt: now,
     updatedAt: now,
     photos: [],

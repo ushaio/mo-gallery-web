@@ -20,6 +20,7 @@ export interface StorySnapshot {
   content: string
   isPublished: boolean
   createdAt: string
+  storyDate: string
   photoIds: string[]
   coverPhotoId?: string
 }

@@ -18,6 +18,7 @@ export interface PhotoDto {
   category: string
   url: string
   thumbnailUrl?: string
+  originFlag?: 'web' | 'mobile'
   width: number
   height: number
   size?: number
@@ -97,6 +98,7 @@ export interface StoryDto {
   content: string
   coverPhotoId?: string
   isPublished: boolean
+  storyDate: string
   createdAt: string
   updatedAt: string
   photos: PhotoDto[]
