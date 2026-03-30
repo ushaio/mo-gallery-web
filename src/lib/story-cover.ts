@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { PhotoDto, StoryDto } from '@/lib/api/types'
+import type { PhotoDto, StoryCoverCropValue, StoryDto } from '@/lib/api/types'
 
 export interface StoryCoverCrop {
   x: number
@@ -32,24 +32,12 @@ export function normalizeStoryCoverCrop(
   return { x, y, width, height }
 }
 
-export function getStoryCoverCrop(story: Pick<StoryDto, 'coverCropX' | 'coverCropY' | 'coverCropWidth' | 'coverCropHeight'>): StoryCoverCrop | null {
-  const hasCrop = [
-    story.coverCropX,
-    story.coverCropY,
-    story.coverCropWidth,
-    story.coverCropHeight,
-  ].some((value) => value !== null && value !== undefined)
-
-  if (!hasCrop) {
+export function getStoryCoverCrop(story: Pick<StoryDto, 'coverCrop'>): StoryCoverCrop | null {
+  if (!story.coverCrop) {
     return null
   }
 
-  return normalizeStoryCoverCrop({
-    x: story.coverCropX ?? 0,
-    y: story.coverCropY ?? 0,
-    width: story.coverCropWidth ?? 1,
-    height: story.coverCropHeight ?? 1,
-  })
+  return normalizeStoryCoverCrop(story.coverCrop)
 }
 
 export function isDefaultStoryCoverCrop(crop?: StoryCoverCrop | null) {
@@ -76,7 +64,7 @@ export function getStoryCoverPhoto(story: Pick<StoryDto, 'coverPhotoId' | 'photo
 }
 
 export function getStoryCoverImageStyle(
-  story: Pick<StoryDto, 'coverCropX' | 'coverCropY' | 'coverCropWidth' | 'coverCropHeight'>,
+  story: Pick<StoryDto, 'coverCrop'>,
 ): CSSProperties | undefined {
   const crop = getStoryCoverCrop(story)
   if (!crop) {
@@ -91,5 +79,16 @@ export function getStoryCoverImageStyle(
     objectPosition: `${centerX}% ${centerY}%`,
     transform: `scale(${zoom})`,
     transformOrigin: 'center center',
+  }
+}
+
+export function toStoryCoverCropValue(crop: StoryCoverCrop | null | undefined): StoryCoverCropValue | null {
+  if (!crop) return null
+  const normalized = normalizeStoryCoverCrop(crop)
+  return {
+    x: normalized.x,
+    y: normalized.y,
+    width: normalized.width,
+    height: normalized.height,
   }
 }

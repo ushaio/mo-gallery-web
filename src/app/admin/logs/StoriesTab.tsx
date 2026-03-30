@@ -23,7 +23,7 @@ import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
-import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop } from '@/lib/story-cover'
+import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { useAdmin } from '../layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
@@ -149,10 +149,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
-          coverCropX: currentStory.coverCropX ?? null,
-          coverCropY: currentStory.coverCropY ?? null,
-          coverCropWidth: currentStory.coverCropWidth ?? null,
-          coverCropHeight: currentStory.coverCropHeight ?? null,
+          coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
         })
         notify(t('story.created'), 'success')
@@ -162,10 +159,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           content: currentStory.content,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
-          coverCropX: currentStory.coverCropX ?? null,
-          coverCropY: currentStory.coverCropY ?? null,
-          coverCropWidth: currentStory.coverCropWidth ?? null,
-          coverCropHeight: currentStory.coverCropHeight ?? null,
+          coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
         })
         if (photoIds.length > 0) {
@@ -331,10 +325,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           ? {}
           : {
               coverPhotoId: undefined,
-              coverCropX: null,
-              coverCropY: null,
-              coverCropWidth: null,
-              coverCropHeight: null,
+              coverCrop: null,
             }),
       }
     })
@@ -354,10 +345,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         ...(removedCover
           ? {
               coverPhotoId: undefined,
-              coverCropX: null,
-              coverCropY: null,
-              coverCropWidth: null,
-              coverCropHeight: null,
+              coverCrop: null,
             }
           : {}),
       }
@@ -373,10 +361,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         coverPhotoId: photoId,
         ...(shouldResetCrop
           ? {
-              coverCropX: null,
-              coverCropY: null,
-              coverCropWidth: null,
-              coverCropHeight: null,
+              coverCrop: null,
             }
           : {}),
       }
@@ -389,10 +374,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setCurrentStory((prev) => (prev ? {
       ...prev,
       coverPhotoId: undefined,
-      coverCropX: null,
-      coverCropY: null,
-      coverCropWidth: null,
-      coverCropHeight: null,
+      coverCrop: null,
     } : prev))
   }, [])
 
@@ -409,10 +391,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       return {
         ...prev,
         coverPhotoId: coverPhoto?.id ?? prev.coverPhotoId,
-        coverCropX: normalized?.x ?? null,
-        coverCropY: normalized?.y ?? null,
-        coverCropWidth: normalized?.width ?? null,
-        coverCropHeight: normalized?.height ?? null,
+        coverCrop: toStoryCoverCropValue(normalized),
       }
     })
     setShowCoverCropEditor(false)

@@ -161,10 +161,7 @@ model Story {
   title        String
   content      String // Markdown content
   coverPhotoId String?
-  coverCropX   Float?
-  coverCropY   Float?
-  coverCropWidth Float?
-  coverCropHeight Float?
+  coverCrop    Json?
   isPublished  Boolean  @default(false)
   storyDate    DateTime @default(now())
   createdAt    DateTime @default(now())

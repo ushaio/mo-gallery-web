@@ -106,10 +106,7 @@ export function StoryCoverCropModal({
 
   const previewStory = useMemo(
     () => ({
-      coverCropX: crop.x,
-      coverCropY: crop.y,
-      coverCropWidth: crop.width,
-      coverCropHeight: crop.height,
+      coverCrop: crop,
     }),
     [crop],
   )

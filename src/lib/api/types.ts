@@ -92,15 +92,19 @@ export interface PublicCommentDto {
   photoId?: string
 }
 
+export interface StoryCoverCropValue {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface StoryDto {
   id: string
   title: string
   content: string
   coverPhotoId?: string
-  coverCropX?: number | null
-  coverCropY?: number | null
-  coverCropWidth?: number | null
-  coverCropHeight?: number | null
+  coverCrop?: StoryCoverCropValue | null
   isPublished: boolean
   storyDate: string
   createdAt: string
