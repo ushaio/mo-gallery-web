@@ -1,4 +1,5 @@
 import 'server-only'
+import { Prisma } from '@prisma/client'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
@@ -304,7 +305,12 @@ stories.post('/admin/stories', async (c) => {
         content: validated.content,
         isPublished: validated.isPublished,
         coverPhotoId: validated.coverPhotoId,
-        coverCrop: validated.coverCrop,
+        coverCrop:
+          validated.coverCrop === undefined
+            ? undefined
+            : validated.coverCrop === null
+              ? Prisma.JsonNull
+              : validated.coverCrop,
         photos: validated.photoIds
           ? {
               connect: validated.photoIds.map((id) => ({ id })),
@@ -345,12 +351,15 @@ stories.patch('/admin/stories/:id', async (c) => {
     const body = await c.req.json()
     const validated = UpdateStorySchema.parse(body)
 
-    const updateData: Record<string, unknown> = {}
+    const updateData: Prisma.StoryUpdateInput = {}
     if (validated.title !== undefined) updateData.title = validated.title
     if (validated.content !== undefined) updateData.content = validated.content
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
-    if (validated.coverCrop !== undefined) updateData.coverCrop = validated.coverCrop
+    if (validated.coverCrop !== undefined) {
+      updateData.coverCrop =
+        validated.coverCrop === null ? Prisma.JsonNull : validated.coverCrop
+    }
     if (validated.storyDate !== undefined) {
       updateData.storyDate = validated.storyDate ? new Date(validated.storyDate) : new Date()
     } else if (validated.createdAt !== undefined) {
