@@ -2,6 +2,7 @@ import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import { invalidateSettingsCache } from '~/server/lib/storage'
 
 const settings = new Hono<{ Variables: AuthVariables }>()
 
@@ -69,6 +70,7 @@ settings.patch('/', authMiddleware, async (c) => {
           }),
         ),
       )
+      invalidateSettingsCache()
     }
 
     // Return updated settings (including env-based ones)

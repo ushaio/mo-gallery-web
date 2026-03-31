@@ -5,7 +5,7 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 import { extractExifData } from '~/server/lib/exif'
 import { extractDominantColors } from '~/server/lib/colors'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
-import { StorageProviderFactory, StorageConfig, StorageError } from '~/server/lib/storage'
+import { StorageProviderFactory, StorageError, getStorageConfig } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
 
@@ -21,55 +21,6 @@ function buildThumbnailKey(originalKey: string): string {
   const parsed = path.posix.parse(originalKey)
   const thumbnailFilename = buildThumbnailFilename(parsed.base)
   return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
-}
-
-/**
- * Build storage configuration from database settings
- */
-async function getStorageConfig(
-  providerOverride?: string
-): Promise<StorageConfig> {
-  // Fetch all settings
-  const settings = await db.setting.findMany()
-  const settingsMap = Object.fromEntries(
-    settings.map((s) => [s.key, s.value])
-  )
-
-  const provider = (
-    providerOverride ||
-    settingsMap.storage_provider ||
-    'local'
-  ) as 'local' | 'github' | 'r2'
-
-  const config: StorageConfig = { provider }
-
-  switch (provider) {
-    case 'local':
-      config.localBasePath = path.join(process.cwd(), 'public', 'uploads')
-      config.localBaseUrl = '/uploads'
-      break
-
-    case 'github':
-      config.githubToken = settingsMap.github_token
-      config.githubRepo = settingsMap.github_repo
-      config.githubPath = settingsMap.github_path || 'uploads'
-      config.githubBranch = settingsMap.github_branch || 'main'
-      config.githubAccessMethod = (settingsMap.github_access_method ||
-        'jsdelivr') as 'raw' | 'jsdelivr' | 'pages'
-      config.githubPagesUrl = settingsMap.github_pages_url
-      break
-
-    case 'r2':
-      config.r2AccessKeyId = settingsMap.r2_access_key_id
-      config.r2SecretAccessKey = settingsMap.r2_secret_access_key
-      config.r2Bucket = settingsMap.r2_bucket
-      config.r2Endpoint = settingsMap.r2_endpoint
-      config.r2PublicUrl = settingsMap.r2_public_url
-      config.r2Path = settingsMap.r2_path
-      break
-  }
-
-  return config
 }
 
 // Public endpoints
