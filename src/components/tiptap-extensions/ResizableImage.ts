@@ -90,12 +90,9 @@ function createSizeLabel(): HTMLElement {
   label.className = 'tiptap-image-size-label'
   label.style.cssText = `
     position: fixed;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.75);
     color: white;
-    padding: 4px 12px;
+    padding: 4px 10px;
     border-radius: 4px;
     font-size: 12px;
     font-family: ui-monospace, monospace;
@@ -103,25 +100,42 @@ function createSizeLabel(): HTMLElement {
     z-index: 1000;
     opacity: 0;
     transition: opacity 0.15s ease;
+    white-space: nowrap;
   `
   return label
 }
 
 /**
- * Update the size label position and content
+ * Update the size label with percentage of original size
  */
-function updateSizeLabel(label: HTMLElement, width: number, height: number | null, imageElement: HTMLElement) {
-  const rect = imageElement.getBoundingClientRect()
+function updateSizeLabel(
+  label: HTMLElement,
+  currentWidth: number,
+  imageElement: HTMLElement
+) {
+  const imgElement = imageElement as HTMLImageElement
+  const naturalWidth = imgElement.naturalWidth || 0
 
-  // Calculate actual rendered height if not provided
-  const displayHeight = height ?? Math.round(rect.height)
+  // Calculate percentage of original size
+  let displayText: string
+  if (naturalWidth > 0) {
+    const percentage = Math.round((currentWidth / naturalWidth) * 100)
+    displayText = `${percentage}%`
+  } else {
+    // Fallback to pixel width if naturalWidth not available
+    displayText = `${Math.round(currentWidth)}px`
+  }
 
-  label.textContent = `${Math.round(width)} × ${displayHeight}`
+  label.textContent = displayText
   label.style.opacity = '1'
 
-  // Position above the image
-  label.style.top = `${rect.top - 32}px`
-  label.style.left = `${rect.left + rect.width / 2}px`
+  // Position the label above the image, centered
+  const rect = imageElement.getBoundingClientRect()
+  const labelWidth = label.offsetWidth || 60
+
+  label.style.top = `${rect.top - 28}px`
+  label.style.left = `${rect.left + (rect.width - labelWidth) / 2}px`
+  label.style.transform = 'none'
 }
 
 /**
@@ -209,6 +223,30 @@ export const ResizableImage = Image.extend({
       // Create size label for resize feedback
       const sizeLabel = createSizeLabel()
       let isResizing = false
+      let originalNaturalWidth = 0
+
+      // Get natural width after image loads
+      const captureNaturalWidth = () => {
+        if (imageElement.naturalWidth > 0) {
+          originalNaturalWidth = imageElement.naturalWidth
+        }
+      }
+
+      /**
+       * Snap width to 1% increments of original size
+       */
+      const snapToPercentageStep = (width: number): number => {
+        if (originalNaturalWidth <= 0) return width
+
+        // Calculate percentage and round to integer
+        const percentage = Math.round((width / originalNaturalWidth) * 100)
+
+        // Clamp percentage to reasonable bounds (1% - 100%)
+        const clampedPercentage = Math.max(1, Math.min(100, percentage))
+
+        // Convert back to pixels
+        return Math.round((clampedPercentage / 100) * originalNaturalWidth)
+      }
 
       const syncImageState = (attrs: Record<string, unknown>, container?: HTMLElement) => {
         const width = typeof attrs.width === 'number' ? attrs.width : null
@@ -232,14 +270,21 @@ export const ResizableImage = Image.extend({
         node,
         getPos,
         onResize: (width) => {
-          applyImageDimensions(imageElement, width)
+          // Capture natural width if not yet available
+          if (originalNaturalWidth <= 0) {
+            captureNaturalWidth()
+          }
+
+          // Snap to 1% increments
+          const snappedWidth = snapToPercentageStep(width)
+          applyImageDimensions(imageElement, snappedWidth)
 
           // Show and update size label during resize
           if (!isResizing) {
             isResizing = true
             document.body.appendChild(sizeLabel)
           }
-          updateSizeLabel(sizeLabel, width, null, imageElement)
+          updateSizeLabel(sizeLabel, snappedWidth, imageElement)
         },
         onCommit: (width) => {
           const pos = getPos()
@@ -247,6 +292,14 @@ export const ResizableImage = Image.extend({
           if (pos === undefined) {
             return
           }
+
+          // Capture natural width if not yet available
+          if (originalNaturalWidth <= 0) {
+            captureNaturalWidth()
+          }
+
+          // Snap to 1% increments for final value
+          const snappedWidth = snapToPercentageStep(width)
 
           // Hide and remove size label
           hideSizeLabel(sizeLabel)
@@ -258,7 +311,7 @@ export const ResizableImage = Image.extend({
           this.editor
             .chain()
             .setNodeSelection(pos)
-            .updateAttributes(this.name, { width, height: null })
+            .updateAttributes(this.name, { width: snappedWidth, height: null })
             .run()
         },
         onUpdate: (updatedNode) => {
@@ -309,6 +362,8 @@ export const ResizableImage = Image.extend({
       const revealNodeView = () => {
         dom.style.visibility = ''
         dom.style.pointerEvents = ''
+        // Capture natural width when image loads
+        captureNaturalWidth()
       }
 
       dom.style.visibility = 'hidden'
