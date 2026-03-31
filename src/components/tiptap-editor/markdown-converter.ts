@@ -124,18 +124,53 @@ export function convertMarkdownToHtml(input: string): string {
     }
   )
 
+  // Convert headers
   result = result
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+
+  // Convert inline formatting
+  result = result
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/~~(.+?)~~/g, '<s>$1</s>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/^\s*[-*]\s+/gm, '<li>')
-    .replace(/^\s*\d+\.\s+/gm, '<li>')
-    .replace(/\n/g, '<br>')
 
+  // Convert unordered lists (consecutive lines starting with - or *)
+  result = result.replace(
+    /^([ \t]*[-*][ \t]+.+\n?)+/gm,
+    (match) => {
+      const items = match
+        .trim()
+        .split(/\n/)
+        .map((line) => line.replace(/^[ \t]*[-*][ \t]+/, ''))
+        .filter(Boolean)
+        .map((item) => `<li>${item}</li>`)
+        .join('')
+      return `<ul>${items}</ul>`
+    }
+  )
+
+  // Convert ordered lists (consecutive lines starting with number.)
+  result = result.replace(
+    /^([ \t]*\d+\.[ \t]+.+\n?)+/gm,
+    (match) => {
+      const items = match
+        .trim()
+        .split(/\n/)
+        .map((line) => line.replace(/^[ \t]*\d+\.[ \t]+/, ''))
+        .filter(Boolean)
+        .map((item) => `<li>${item}</li>`)
+        .join('')
+      return `<ol>${items}</ol>`
+    }
+  )
+
+  // Convert remaining newlines to <br>
+  result = result.replace(/\n/g, '<br>')
+
+  // Wrap plain text in paragraphs if no block elements exist
   if (!/<[a-z][\s\S]*>/i.test(result)) {
     result = result.split('<br>').map(p => `<p>${p}</p>`).join('')
   }

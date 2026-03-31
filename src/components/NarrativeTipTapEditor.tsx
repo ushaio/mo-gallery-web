@@ -68,7 +68,7 @@ import { ToolbarButton, ToolbarSelect, ToolbarDivider } from './tiptap-editor/Ed
 import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './tiptap-editor/ColorPickerMenu'
 import { useNarrativeEditor } from './tiptap-editor/useNarrativeEditor'
 import { useEditorImperativeHandle, type NarrativeTipTapEditorHandle } from './tiptap-editor/useEditorImperativeHandle'
-import '../tiptap-editor.css'
+import './tiptap-editor.css'
 
 export interface NarrativeTipTapEditorProps {
   value: string

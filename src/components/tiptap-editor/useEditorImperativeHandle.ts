@@ -22,7 +22,7 @@ export interface NarrativeTipTapEditorHandle {
   insertValue: (html: string) => void
   insertMarkdown: (markdown: string) => void
   replaceText: (searchValue: string, nextValue: string) => boolean
-  scaleLastImage: (mode: 'sm' | 'md' | 'lg') => boolean
+  scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => boolean
   focus: () => void
 }
 
@@ -57,23 +57,14 @@ export function useEditorImperativeHandle({
 
     insertValue: (content: string) => {
       if (editor) {
+        // Handle image content (markdown or HTML img tag)
         const imageAttrs = convertMarkdownImageToHtmlAttrs(content) || convertHtmlImageToAttrs(content)
         if (imageAttrs) {
           insertInlineImage(imageAttrs)
           return
         }
 
-        // Convert Markdown images to HTML images for TipTap
-        let processedContent = content
-        if (isMarkdownImageSyntax(content)) {
-          const attrs = convertMarkdownImageToHtmlAttrs(content)
-          if (attrs) {
-            const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
-            processedContent = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${widthAttr} />`
-          }
-        }
-
-        editor.commands.insertContent(processedContent)
+        editor.commands.insertContent(content)
         focusEditor()
       }
     },
@@ -116,19 +107,17 @@ export function useEditorImperativeHandle({
       return true
     },
 
-    scaleLastImage: (mode: 'sm' | 'md' | 'lg') => {
+    scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => {
       if (!editor) return false
       const width = IMAGE_WIDTH_PRESETS[mode]
 
-      // Find the last image node and update its width
+      // Find the first image node and update its width
       const { state } = editor
-      let found = false
       let imagePos = -1
 
       state.doc.descendants((node, pos) => {
-        if (node.type.name === 'image' && !found) {
+        if (node.type.name === 'image' && imagePos < 0) {
           imagePos = pos
-          found = true
         }
       })
 
