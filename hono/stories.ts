@@ -495,29 +495,20 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
   }
 })
 
-// Reorder photos in story
+// Reorder photos in story - single operation using set to replace the relation
 stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
     const validated = ReorderPhotosSchema.parse(body)
 
-    // First, disconnect all photos from the story
-    await db.story.update({
-      where: { id },
-      data: {
-        photos: {
-          set: [], // Disconnect all photos
-        },
-      },
-    })
-
-    // Then, reconnect photos in the new order
+    // Use set to replace the entire photos relation in one operation
+    // Prisma handles the reorder atomically without needing disconnect first
     const story = await db.story.update({
       where: { id },
       data: {
         photos: {
-          connect: validated.photoIds.map((photoId) => ({ id: photoId })),
+          set: validated.photoIds.map((photoId) => ({ id: photoId })),
         },
       },
       include: {
