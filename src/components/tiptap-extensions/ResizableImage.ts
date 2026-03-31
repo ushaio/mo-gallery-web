@@ -43,7 +43,7 @@ function parseSizeFromStyle(element: HTMLElement, property: 'width' | 'height'):
     return null
   }
 
-  const regex = new RegExp(`${property}\s*:\s*(\d+(?:\.\d+)?)px`, 'i')
+  const regex = new RegExp(`${property}\\s*:\\s*(\\d+(?:\\.\\d+)?)px`, 'i')
   const match = styleAttribute.match(regex)
   if (!match) {
     return null
@@ -80,6 +80,55 @@ function applyImageDimensions(imageElement: HTMLElement, width: number | null) {
   // Always let the browser derive height from the intrinsic image ratio.
   imageElement.style.removeProperty('height')
   imageElement.removeAttribute('height')
+}
+
+/**
+ * Create a floating size label element
+ */
+function createSizeLabel(): HTMLElement {
+  const label = document.createElement('div')
+  label.className = 'tiptap-image-size-label'
+  label.style.cssText = `
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  `
+  return label
+}
+
+/**
+ * Update the size label position and content
+ */
+function updateSizeLabel(label: HTMLElement, width: number, height: number | null, imageElement: HTMLElement) {
+  const rect = imageElement.getBoundingClientRect()
+
+  // Calculate actual rendered height if not provided
+  const displayHeight = height ?? Math.round(rect.height)
+
+  label.textContent = `${Math.round(width)} × ${displayHeight}`
+  label.style.opacity = '1'
+
+  // Position above the image
+  label.style.top = `${rect.top - 32}px`
+  label.style.left = `${rect.left + rect.width / 2}px`
+}
+
+/**
+ * Hide the size label
+ */
+function hideSizeLabel(label: HTMLElement) {
+  label.style.opacity = '0'
 }
 
 export const ResizableImage = Image.extend({
@@ -157,6 +206,10 @@ export const ResizableImage = Image.extend({
 
       const imageSrc = String(HTMLAttributes.src ?? '')
 
+      // Create size label for resize feedback
+      const sizeLabel = createSizeLabel()
+      let isResizing = false
+
       const syncImageState = (attrs: Record<string, unknown>, container?: HTMLElement) => {
         const width = typeof attrs.width === 'number' ? attrs.width : null
 
@@ -180,12 +233,26 @@ export const ResizableImage = Image.extend({
         getPos,
         onResize: (width) => {
           applyImageDimensions(imageElement, width)
+
+          // Show and update size label during resize
+          if (!isResizing) {
+            isResizing = true
+            document.body.appendChild(sizeLabel)
+          }
+          updateSizeLabel(sizeLabel, width, null, imageElement)
         },
         onCommit: (width) => {
           const pos = getPos()
 
           if (pos === undefined) {
             return
+          }
+
+          // Hide and remove size label
+          hideSizeLabel(sizeLabel)
+          isResizing = false
+          if (sizeLabel.parentElement) {
+            sizeLabel.parentElement.removeChild(sizeLabel)
           }
 
           this.editor
@@ -278,6 +345,10 @@ export const ResizableImage = Image.extend({
 
       const originalDestroy = nodeView.destroy.bind(nodeView)
       nodeView.destroy = () => {
+        // Clean up size label if still in DOM
+        if (isResizing && sizeLabel.parentElement) {
+          sizeLabel.parentElement.removeChild(sizeLabel)
+        }
         imageElement.removeEventListener('mousedown', handleSelect)
         dom.removeEventListener('mousedown', handleSelect)
         editor.off('selectionUpdate', syncSelectionState)

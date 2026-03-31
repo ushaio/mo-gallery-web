@@ -33,6 +33,7 @@ import {
   Redo,
   Highlighter,
   Palette,
+  RemoveFormatting,
 } from 'lucide-react'
 import TipTapAiAssistant from '@/components/TipTapAiAssistant'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -550,6 +551,16 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       pendingSelectionRef.current = { from, to }
     }, [editor])
 
+    const clearFormatting = useCallback(() => {
+      if (!editor) return
+      editor
+        .chain()
+        .focus()
+        .clearNodes()
+        .unsetAllMarks()
+        .run()
+    }, [editor])
+
     const undo = () => editor?.chain().focus().undo().run()
     const redo = () => editor?.chain().focus().redo().run()
 
@@ -758,6 +769,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
           <ToolbarButton onClick={addTable} title={t('editor.table')}>
             <TableIcon className="w-4 h-4" />
+          </ToolbarButton>
+
+          <ToolbarDivider />
+
+          <ToolbarButton onClick={clearFormatting} title={t('editor.clear_formatting')}>
+            <RemoveFormatting className="w-4 h-4" />
           </ToolbarButton>
 
           <ToolbarDivider />
