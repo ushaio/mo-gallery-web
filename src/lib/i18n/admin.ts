@@ -348,6 +348,12 @@ export const adminMessages: LocaleDictionaryGroup = {
       local_storage: '本地存储',
       complete_collection_hint: '这篇叙事记录下的完整影像集合。',
       draft_deleted: '草稿已删除',
+      edit_cover_crop: '编辑封面裁剪',
+      cover_crop_hint: '拖动裁剪区域或拖动边缘/角点调整大小。',
+      reset_crop: '重置裁剪',
+      apply_crop: '应用裁剪',
+      cover_crop_card_preview: '卡片预览',
+      cover_crop_hero_preview: '头图预览',
     }
   },
   en: {

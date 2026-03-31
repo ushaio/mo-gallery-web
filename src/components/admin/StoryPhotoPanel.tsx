@@ -51,6 +51,7 @@ interface StoryPhotoPanelProps {
   onRemovePendingImage: (id: string) => void
   onSetCover: (photoId: string) => void
   onSetPendingCover: (id: string) => void
+  onEditCoverCrop: () => void
   onSetPhotoDate: (takenAt: string) => void
   onRetryFailedUploads: () => void
   onPhotoPanelDragOver: (e: React.DragEvent) => void
@@ -90,6 +91,7 @@ export function StoryPhotoPanel({
   onRemovePendingImage,
   onSetCover,
   onSetPendingCover,
+  onEditCoverCrop,
   onSetPhotoDate,
   onRetryFailedUploads,
   onPhotoPanelDragOver,
@@ -314,7 +316,18 @@ export function StoryPhotoPanel({
                       ) : null}
 
                       <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                        {currentStory?.coverPhotoId !== photo.id || pendingCoverId ? (
+                        {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
+                          <AdminButton
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onEditCoverCrop()
+                            }}
+                            adminVariant="ghost"
+                            className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
+                          >
+                            {t('admin.edit_cover_crop')}
+                          </AdminButton>
+                        ) : (
                           <AdminButton
                             onClick={(event) => {
                               event.stopPropagation()
@@ -325,7 +338,7 @@ export function StoryPhotoPanel({
                           >
                             {t('admin.cover')}
                           </AdminButton>
-                        ) : null}
+                        )}
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()

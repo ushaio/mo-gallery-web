@@ -387,10 +387,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setCurrentStory((prev) => {
       if (!prev) return prev
       const normalized = crop ? normalizeStoryCoverCrop(crop) : null
-      const coverPhoto = getStoryCoverPhoto(prev)
       return {
         ...prev,
-        coverPhotoId: coverPhoto?.id ?? prev.coverPhotoId,
         coverCrop: toStoryCoverCropValue(normalized),
       }
     })
