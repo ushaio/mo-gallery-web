@@ -78,6 +78,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [showCoverCropEditor, setShowCoverCropEditor] = useState(false)
 
   const initialLoadRef = useRef(false)
+  const savingRef = useRef(false)
 
   const loadStories = useCallback(async () => {
     if (!token) return
@@ -135,8 +136,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const doSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
+    if (savingRef.current) return
 
     try {
+      savingRef.current = true
       setSaving(true)
       const isNew = !stories.find((story) => story.id === currentStory.id)
       const photoIds = currentStory.photos?.map((photo) => photo.id) || []
@@ -187,6 +190,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       console.error('Failed to save story:', error)
       notify(t('story.save_failed'), 'error')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, router, stories, t, token])
@@ -271,6 +275,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const handleSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
+    if (savingRef.current) return
     if (!currentStory.title.trim() || !currentStory.content.trim()) {
       notify(t('story.fill_title_content'), 'error')
       return

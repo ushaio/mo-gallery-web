@@ -113,15 +113,17 @@ export function UploadQueueProvider({
     }
     notifiedBatchesRef.current.add(batchId)
 
-    // If albumIds are provided, add photos to each album
+    // If albumIds are provided, add photos to each album in parallel
     if (albumIds && albumIds.length > 0 && photoIds.length > 0 && tokenRef.current) {
-      for (const albumId of albumIds) {
-        try {
-          await addPhotosToAlbum(tokenRef.current, albumId, photoIds)
-        } catch (err) {
-          console.error(`Failed to add photos to album ${albumId}:`, err)
-        }
-      }
+      await Promise.all(
+        albumIds.map(async (albumId) => {
+          try {
+            await addPhotosToAlbum(tokenRef.current, albumId, photoIds)
+          } catch (err) {
+            console.error(`Failed to add photos to album ${albumId}:`, err)
+          }
+        })
+      )
     }
 
     if (photoIds.length > 0 && onUploadCompleteRef.current) {
@@ -265,7 +267,7 @@ export function UploadQueueProvider({
       activeUploadsRef.current--
       uploadingTasksRef.current.delete(task.id) // Remove from uploading set
       // Process next in queue
-      setTimeout(processQueue, 50)
+      queueMicrotask(processQueue)
     }
   }
 
@@ -325,7 +327,7 @@ export function UploadQueueProvider({
       setIsMinimized(false)
 
       // Start processing queue
-      setTimeout(processQueue, 50)
+      queueMicrotask(processQueue)
     },
     [processQueue]
   )
@@ -346,7 +348,7 @@ export function UploadQueueProvider({
             : t
         )
       })
-      setTimeout(processQueue, 50)
+      setTimeout(processQueue, 0)
     },
     [processQueue]
   )

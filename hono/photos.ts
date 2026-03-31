@@ -315,24 +315,6 @@ photos.post('/admin/photos', async (c) => {
     const filename = `${randomName}${ext}`
     const thumbnailFilename = buildThumbnailFilename(filename)
 
-    // Upload via storage provider (original + thumbnail in parallel)
-    const uploadResult = await storage.upload(
-      {
-        buffer,
-        filename,
-        path: storagePath,
-        contentType: file.type,
-        useFullPath: storagePathFull,
-      },
-      {
-        buffer: thumbnailBuffer,
-        filename: thumbnailFilename,
-        path: storagePath,
-        contentType: 'image/webp',
-        useFullPath: storagePathFull,
-      }
-    )
-
     // Split categories by comma and trim
     const categoriesArray = category
       ? category
@@ -341,8 +323,26 @@ photos.post('/admin/photos', async (c) => {
           .filter((c) => c.length > 0)
       : []
 
-    // Extract dominant colors from the image
-    const dominantColors = await extractDominantColors(buffer)
+    // Upload to storage and extract dominant colors in parallel
+    const [uploadResult, dominantColors] = await Promise.all([
+      storage.upload(
+        {
+          buffer,
+          filename,
+          path: storagePath,
+          contentType: file.type,
+          useFullPath: storagePathFull,
+        },
+        {
+          buffer: thumbnailBuffer,
+          filename: thumbnailFilename,
+          path: storagePath,
+          contentType: 'image/webp',
+          useFullPath: storagePathFull,
+        }
+      ),
+      extractDominantColors(buffer),
+    ])
 
     // Find or create camera record (brand-based)
     let cameraId: string | null = null
