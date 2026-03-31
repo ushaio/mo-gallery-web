@@ -53,6 +53,8 @@ type GeotaggedPhoto = PhotoDto & {
 
 type PopupAnchor = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
+const POPUP_ANCHORS: PopupAnchor[] = ['bottom', 'top', 'left', 'right', 'bottom-left', 'bottom-right', 'top-left', 'top-right']
+
 interface StoryMapPanelProps {
   photos: PhotoDto[]
   cdnDomain?: string
@@ -448,12 +450,11 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     const width = container.clientWidth || 320
     const height = container.clientHeight || 320
     const popupHeight = popupLayout.imageHeight + POPUP_TEXT_HEIGHT
-    const anchors: PopupAnchor[] = ['bottom', 'top', 'left', 'right', 'bottom-left', 'bottom-right', 'top-left', 'top-right']
 
     let bestPlacement: PopupPlacement = { anchor: 'bottom', offsetX: 0, offsetY: 0 }
     let bestScore = Number.POSITIVE_INFINITY
 
-    for (const anchor of anchors) {
+    for (const anchor of POPUP_ANCHORS) {
       const rect = getPopupRect(anchor, point.x, point.y, popupLayout.width, popupHeight)
       const overflow = getOverflowScore(rect, width, height)
 
