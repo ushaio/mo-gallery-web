@@ -79,6 +79,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const initialLoadRef = useRef(false)
   const savingRef = useRef(false)
+  const handledEditStoryIdRef = useRef<string | null>(null)
 
   const loadStories = useCallback(async () => {
     if (!token) return
@@ -473,9 +474,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   useEffect(() => {
     if (refreshKey && refreshKey > 0) {
       void loadStories()
-      resetEditorState()
     }
-  }, [loadStories, refreshKey, resetEditorState])
+  }, [loadStories, refreshKey])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -503,13 +503,28 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [restorePasteUploadSettings, restoreUploadSettings])
 
   useEffect(() => {
-    if (editStoryId && stories.length > 0) {
-      const story = stories.find((item) => item.id === editStoryId)
-      if (story) {
-        void editStoryWithDraftCheck(story)
-      }
+    if (!editStoryId) {
+      handledEditStoryIdRef.current = null
+      return
     }
-  }, [editStoryId, editStoryWithDraftCheck, stories])
+
+    if (handledEditStoryIdRef.current === editStoryId) {
+      return
+    }
+
+    const story = stories.find((item) => item.id === editStoryId)
+    if (!story) {
+      return
+    }
+
+    if (storyEditMode === 'editor' && currentStory?.id === editStoryId) {
+      handledEditStoryIdRef.current = editStoryId
+      return
+    }
+
+    handledEditStoryIdRef.current = editStoryId
+    void editStoryWithDraftCheck(story)
+  }, [currentStory?.id, editStoryId, editStoryWithDraftCheck, stories, storyEditMode])
 
   const togglePhotoPanelCollapse = useCallback(() => {
     setIsPhotoPanelCollapsed((prev) => {
