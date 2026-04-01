@@ -13,6 +13,7 @@ import {
   LayoutGrid,
 } from 'lucide-react'
 import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
+import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +31,7 @@ export interface PendingImage {
 interface StoryPhotoPanelProps {
   isCollapsed: boolean
   currentStory: StoryDto | null
+  editorContent: string
   pendingImages: PendingImage[]
   pendingCoverId: string | null
   cdnDomain?: string
@@ -70,6 +72,7 @@ interface StoryPhotoPanelProps {
 export function StoryPhotoPanel({
   isCollapsed,
   currentStory,
+  editorContent,
   pendingImages,
   pendingCoverId,
   cdnDomain,
@@ -107,6 +110,17 @@ export function StoryPhotoPanel({
   onOpenPasteUploadSettings,
 }: StoryPhotoPanelProps) {
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
+  const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
+
+  const isPhotoInserted = (photo: PhotoDto) => {
+    const candidates = getStoryImageMatchCandidates({
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      cdnDomain,
+    })
+
+    return Array.from(candidates).some((candidate) => insertedImageUrls.has(candidate))
+  }
 
   const getCombinedItems = () => {
     const photoItems = (currentStory?.photos || []).map((photo) => ({ id: photo.id, type: 'photo' as const }))
@@ -315,7 +329,11 @@ export function StoryPhotoPanel({
                         </div>
                       ) : null}
 
-                      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      {isPhotoInserted(photo) ? (
+                        <div className="absolute inset-0 z-10 bg-black/40" />
+                      ) : null}
+
+                      <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                         {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
                           <AdminButton
                             onClick={(event) => {
