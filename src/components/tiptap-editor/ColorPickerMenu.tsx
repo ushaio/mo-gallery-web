@@ -3,9 +3,10 @@
  */
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect } from 'react'
 import type { Ref, Dispatch, SetStateAction } from 'react'
 import { normalizeHexColor } from './markdown-converter'
+import { shouldCloseColorPickerMenu } from './color-picker-utils'
 import {
   DEFAULT_TEXT_COLOR,
   DEFAULT_TEXT_HIGHLIGHT,
@@ -209,13 +210,11 @@ interface BackgroundColorPickerProps {
   recentColors: string[]
   customColor: string
   tab: 'basic' | 'more'
-  buttonRef: Ref<HTMLButtonElement>
   menuRef: Ref<HTMLDivElement>
   pickerRef: Ref<HTMLInputElement>
   onSetColor: (color: string) => void
   onSetCustomColor: Dispatch<SetStateAction<string>>
   onSetTab: Dispatch<SetStateAction<'basic' | 'more'>>
-  onSetIsOpen: Dispatch<SetStateAction<boolean>>
   onMouseDown: (event: React.MouseEvent<Element>) => void
   t: (key: string) => string
 }
@@ -232,7 +231,6 @@ export function BackgroundColorPicker({
   onSetColor,
   onSetCustomColor,
   onSetTab,
-  onSetIsOpen,
   onMouseDown,
   t,
 }: BackgroundColorPickerProps) {
@@ -270,13 +268,11 @@ interface TextColorPickerProps {
   recentColors: string[]
   customColor: string
   tab: 'basic' | 'more'
-  buttonRef: Ref<HTMLButtonElement>
   menuRef: Ref<HTMLDivElement>
   pickerRef: Ref<HTMLInputElement>
   onSetColor: (color: string) => void
   onSetCustomColor: Dispatch<SetStateAction<string>>
   onSetTab: Dispatch<SetStateAction<'basic' | 'more'>>
-  onSetIsOpen: Dispatch<SetStateAction<boolean>>
   onMouseDown: (event: React.MouseEvent<Element>) => void
   t: (key: string) => string
 }
@@ -326,6 +322,7 @@ export function TextColorPicker({
 interface UseColorPickerMenuOptions {
   isOpen: boolean
   buttonRef: Ref<HTMLButtonElement>
+  menuRef: Ref<HTMLDivElement>
   onSetIsOpen: Dispatch<SetStateAction<boolean>>
   onSetPosition: Dispatch<SetStateAction<{ top: number; left: number }>>
 }
@@ -333,6 +330,7 @@ interface UseColorPickerMenuOptions {
 export function useColorPickerMenu({
   isOpen,
   buttonRef,
+  menuRef,
   onSetIsOpen,
   onSetPosition,
 }: UseColorPickerMenuOptions) {
@@ -361,11 +359,13 @@ export function useColorPickerMenu({
 
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null
-      const menuElement = (buttonRef as React.RefObject<HTMLButtonElement>)?.current
-      // Check if click is inside button - if so, don't close (let toggle logic handle it)
-      if (menuElement?.contains(target)) {
+      const buttonElement = (buttonRef as React.RefObject<HTMLButtonElement>)?.current
+      const pickerMenuElement = (menuRef as React.RefObject<HTMLDivElement>)?.current
+
+      if (!shouldCloseColorPickerMenu(target, buttonElement, pickerMenuElement)) {
         return
       }
+
       onSetIsOpen(false)
     }
 
@@ -390,7 +390,7 @@ export function useColorPickerMenu({
       window.removeEventListener('resize', handleViewportChange)
       window.removeEventListener('scroll', handleViewportChange, true)
     }
-  }, [isOpen, updatePosition, buttonRef, onSetIsOpen])
+  }, [isOpen, updatePosition, buttonRef, menuRef, onSetIsOpen])
 
   return { updatePosition }
 }

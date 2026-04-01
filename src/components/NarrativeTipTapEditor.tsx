@@ -61,9 +61,6 @@ import {
   normalizeHexColor,
   resolveActiveInlineStyleValue,
   convertPlainTextToEditorHtml,
-  convertMarkdownImageToHtmlAttrs,
-  convertHtmlImageToAttrs,
-  isMarkdownImageSyntax,
 } from './tiptap-editor/markdown-converter'
 import { ToolbarButton, ToolbarSelect, ToolbarDivider } from './tiptap-editor/EditorToolbar'
 import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './tiptap-editor/ColorPickerMenu'
@@ -527,16 +524,18 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       setShowBackgroundColorMenu(false)
     }, [editor])
 
-    const { updatePosition: updateTextColorMenuPosition } = useColorPickerMenu({
+    useColorPickerMenu({
       isOpen: showTextColorMenu,
       buttonRef: textColorButtonRef,
+      menuRef: textColorMenuRef,
       onSetIsOpen: setShowTextColorMenu,
       onSetPosition: setTextColorMenuPosition,
     })
 
-    const { updatePosition: updateBackgroundColorMenuPosition } = useColorPickerMenu({
+    useColorPickerMenu({
       isOpen: showBackgroundColorMenu,
       buttonRef: backgroundColorButtonRef,
+      menuRef: backgroundColorMenuRef,
       onSetIsOpen: setShowBackgroundColorMenu,
       onSetPosition: setBackgroundColorMenuPosition,
     })
