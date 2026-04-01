@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { uploadPhotoWithProgress, addPhotosToAlbum } from '@/lib/api'
+import { uploadPhotoWithProgress, addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
 import { compressImage, CompressionMode } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
@@ -112,6 +112,15 @@ export function UploadQueueProvider({
       return
     }
     notifiedBatchesRef.current.add(batchId)
+
+    // If storyId is provided, add photos to the story
+    if (storyId && photoIds.length > 0 && tokenRef.current) {
+      try {
+        await addPhotosToStory(tokenRef.current, storyId, photoIds)
+      } catch (err) {
+        console.error(`Failed to add photos to story ${storyId}:`, err)
+      }
+    }
 
     // If albumIds are provided, add photos to each album in parallel
     if (albumIds && albumIds.length > 0 && photoIds.length > 0 && tokenRef.current) {
