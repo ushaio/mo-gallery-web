@@ -794,13 +794,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           recentColors={recentBackgroundColors}
           customColor={customBackgroundColor}
           tab={backgroundColorTab}
-          buttonRef={backgroundColorButtonRef}
           menuRef={backgroundColorMenuRef}
           pickerRef={backgroundColorPickerRef}
           onSetColor={setBackgroundColor}
           onSetCustomColor={setCustomBackgroundColor}
           onSetTab={setBackgroundColorTab}
-          onSetIsOpen={setShowBackgroundColorMenu}
           onMouseDown={preserveSelectionOnToolbarMouseDown}
           t={t}
         />
@@ -812,13 +810,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           recentColors={recentTextColors}
           customColor={customTextColor}
           tab={textColorTab}
-          buttonRef={textColorButtonRef}
           menuRef={textColorMenuRef}
           pickerRef={textColorPickerRef}
           onSetColor={setTextColor}
           onSetCustomColor={setCustomTextColor}
           onSetTab={setTextColorTab}
-          onSetIsOpen={setShowTextColorMenu}
           onMouseDown={preserveSelectionOnToolbarMouseDown}
           t={t}
         />

@@ -136,6 +136,8 @@ export const adminMessages: LocaleDictionaryGroup = {
       completed: '成功',
       failed: '失败',
       pending: '等待中',
+      rejected: '已拒绝',
+      all: '全部',
       retry: '重试',
       retry_all_failed: '重试所有失败项',
       sort_upload_desc: '上传: 最新',
@@ -355,6 +357,12 @@ export const adminMessages: LocaleDictionaryGroup = {
       apply_crop: '应用裁剪',
       cover_crop_card_preview: '卡片预览',
       cover_crop_hero_preview: '头图预览',
+      active_filters_label: '当前筛选',
+      clear_all_filters: '清除全部',
+      featured_only: '精选',
+      photos_count: '张照片',
+      no_matching_stories: '没有符合条件的叙事',
+      refresh: '刷新',
     }
   },
   en: {
@@ -492,6 +500,8 @@ export const adminMessages: LocaleDictionaryGroup = {
       completed: 'completed',
       failed: 'failed',
       pending: 'Pending',
+      rejected: 'Rejected',
+      all: 'All',
       retry: 'Retry',
       retry_all_failed: 'Retry all',
       sort_upload_desc: 'Upload: Newest',
@@ -711,6 +721,12 @@ export const adminMessages: LocaleDictionaryGroup = {
       resize_cover_crop: 'Resize crop area',
       cover_crop_card_preview: 'Card preview',
       cover_crop_hero_preview: 'Hero preview',
+      active_filters_label: 'Active filters',
+      clear_all_filters: 'Clear all',
+      featured_only: 'Featured',
+      photos_count: 'photos',
+      no_matching_stories: 'No stories match the current filters',
+      refresh: 'Refresh',
     }
   }
 }

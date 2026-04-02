@@ -1,4 +1,4 @@
-import { shouldCloseColorPickerMenu } from '../src/components/tiptap-editor/color-picker-utils.ts'
+import { shouldCloseColorPickerMenu } from '../src/components/tiptap-editor/color-picker-utils'
 
 function assert(condition: unknown, message: string) {
   if (!condition) {
@@ -6,17 +6,15 @@ function assert(condition: unknown, message: string) {
   }
 }
 
-type MockNode = {
-  name: string
-}
+type MockNode = Node
 
 type MockElement = {
-  contains: (target: MockNode | null) => boolean
+  contains: (target: Node | null) => boolean
 }
 
-const buttonTarget: MockNode = { name: 'button' }
-const menuTarget: MockNode = { name: 'menu-item' }
-const outsideTarget: MockNode = { name: 'outside' }
+const buttonTarget = { name: 'button' } as unknown as Node
+const menuTarget = { name: 'menu-item' } as unknown as Node
+const outsideTarget = { name: 'outside' } as unknown as Node
 
 const buttonElement: MockElement = {
   contains: (target) => target === buttonTarget,

@@ -549,6 +549,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onTogglePublish={(story) => void handleTogglePublish(story)}
           onRequestDelete={setDeleteStoryId}
           t={t}
+          cdnDomain={settings?.cdn_domain}
+          onRefresh={() => void loadStories()}
         />
       ) : (
         <StoryEditorView

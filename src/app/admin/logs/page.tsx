@@ -135,6 +135,7 @@ export default function LogsPage() {
       setStoryEditorDrafts(storyEditorDrafts)
     } catch (err) {
       console.error('Failed to load drafts:', err)
+      notify(t('common.error'), 'error')
     } finally {
       setLoadingDrafts(false)
     }

@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import {
   BookOpen,
   Calendar,
@@ -10,13 +11,15 @@ import {
   History,
   Image as ImageIcon,
   Plus,
+  RefreshCw,
   Trash2,
+  X,
 } from 'lucide-react'
 import type { SelectOption } from '@/components/admin/AdminFormControls'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
-import type { StoryDto } from '@/lib/api'
+import { resolveAssetUrl, type StoryDto } from '@/lib/api'
 import { countStoryCharacters } from '@/lib/story-rich-content'
 
 interface StoryListViewProps {
@@ -29,6 +32,8 @@ interface StoryListViewProps {
   onTogglePublish: (story: StoryDto) => void
   onRequestDelete: (storyId: string) => void
   t: (key: string) => string
+  cdnDomain?: string
+  onRefresh?: () => void
 }
 
 export function StoryListView({
@@ -41,19 +46,37 @@ export function StoryListView({
   onTogglePublish,
   onRequestDelete,
   t,
+  cdnDomain,
+  onRefresh,
 }: StoryListViewProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+
   const statusOptions: SelectOption[] = [
     { value: '', label: t('admin.all_status') },
     { value: 'published', label: t('admin.published') },
     { value: 'draft', label: t('admin.draft') },
   ]
 
-  const filteredStories = stories.filter((story) => {
-    if (!statusFilter) return true
-    if (statusFilter === 'published') return story.isPublished
-    if (statusFilter === 'draft') return !story.isPublished
-    return true
-  })
+  const filteredStories = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase()
+
+    return stories.filter((story) => {
+      const matchesStatus = (() => {
+        if (!statusFilter) return true
+        if (statusFilter === 'published') return story.isPublished
+        if (statusFilter === 'draft') return !story.isPublished
+        return true
+      })()
+
+      const matchesSearch =
+        !normalizedSearch ||
+        (story.title || '').toLowerCase().includes(normalizedSearch)
+
+      return matchesStatus && matchesSearch
+    })
+  }, [stories, statusFilter, searchQuery])
+
+  const hasActiveFilters = !!statusFilter || !!searchQuery.trim()
 
   return (
     <div className="flex flex-1 flex-col space-y-8 overflow-hidden">
@@ -62,6 +85,8 @@ export function StoryListView({
           <input
             type="text"
             placeholder={t('admin.search_placeholder')}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
             className="w-48 border border-border bg-background px-3 py-2 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
           />
           <AdminSelect
@@ -72,10 +97,23 @@ export function StoryListView({
             className="w-32"
           />
         </div>
-        <AdminButton onClick={onCreateStory} adminVariant="primary" size="lg" className="flex items-center">
-          <Plus className="mr-2 h-4 w-4" />
-          {t('ui.create_story')}
-        </AdminButton>
+        <div className="flex items-center gap-2">
+          {onRefresh && (
+            <AdminButton
+              onClick={onRefresh}
+              adminVariant="outline"
+              size="lg"
+              className="flex items-center"
+              title={t('common.refresh')}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </AdminButton>
+          )}
+          <AdminButton onClick={onCreateStory} adminVariant="primary" size="lg" className="flex items-center">
+            <Plus className="mr-2 h-4 w-4" />
+            {t('ui.create_story')}
+          </AdminButton>
+        </div>
       </div>
 
       <div className="custom-scrollbar flex-1 overflow-y-auto">
@@ -88,6 +126,24 @@ export function StoryListView({
                 key={story.id}
                 className="group flex items-center justify-between border border-border bg-card px-5 py-5 transition-colors hover:border-primary/50"
               >
+                {(() => {
+                  const coverPhoto = story.coverPhotoId
+                    ? story.photos.find(p => p.id === story.coverPhotoId) || story.photos[0]
+                    : story.photos[0]
+                  return coverPhoto ? (
+                    <div
+                      className="hidden sm:block w-20 h-14 flex-shrink-0 bg-muted overflow-hidden cursor-pointer"
+                      onClick={() => onEditStory(story)}
+                    >
+                      <img
+                        src={resolveAssetUrl(coverPhoto.thumbnailUrl || coverPhoto.url, cdnDomain)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : null
+                })()}
                 <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onEditStory(story)}>
                   <div className="mb-2 flex items-center gap-3">
                     <h4 className="truncate text-lg font-semibold transition-colors group-hover:text-primary">
@@ -164,6 +220,44 @@ export function StoryListView({
                   <BookOpen className="h-8 w-8 text-muted-foreground/50" />
                 </div>
                 <h3 className="mb-1 text-sm font-semibold text-foreground">{t('ui.no_story')}</h3>
+              </div>
+            ) : filteredStories.length === 0 ? (
+              <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 px-4 py-20 text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
+                  <BookOpen className="h-8 w-8 text-muted-foreground/50" />
+                </div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">
+                  {t('common.search')}
+                </h3>
+                <p className="mb-4 text-xs text-muted-foreground">
+                  {t('admin.no_albums_match_filters') || 'No stories match the current filters'}
+                </p>
+                {hasActiveFilters && (
+                  <div className="flex items-center gap-2">
+                    {!!searchQuery.trim() && (
+                      <AdminButton
+                        onClick={() => setSearchQuery('')}
+                        adminVariant="outline"
+                        size="sm"
+                        className="flex items-center gap-1.5"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        {t('common.search')}
+                      </AdminButton>
+                    )}
+                    {!!statusFilter && (
+                      <AdminButton
+                        onClick={() => onStatusFilterChange('')}
+                        adminVariant="outline"
+                        size="sm"
+                        className="flex items-center gap-1.5"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        {t('admin.filter') || 'Filter'}
+                      </AdminButton>
+                    )}
+                  </div>
+                )}
               </div>
             ) : null}
           </div>

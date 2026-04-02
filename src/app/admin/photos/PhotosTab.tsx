@@ -19,6 +19,28 @@ import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolba
 type SortOption = 'upload-desc' | 'upload-asc' | 'taken-desc' | 'taken-asc'
 type ViewMode = 'grid' | 'list'
 
+const PHOTOS_FILTER_KEY = 'admin-photos-filters'
+
+interface PersistedFilters {
+  search: string
+  categoryFilter: string
+  channelFilter: string
+  albumFilter: string
+  cameraFilter: string
+  lensFilter: string
+  onlyFeatured: boolean
+  sortBy: SortOption
+  showFilters: boolean
+}
+
+function loadPersistedFilters(): Partial<PersistedFilters> {
+  try {
+    const stored = sessionStorage.getItem(PHOTOS_FILTER_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch {}
+  return {}
+}
+
 interface PhotosTabProps {
   photos: PhotoDto[]
   categories: string[]
@@ -35,6 +57,7 @@ interface PhotosTabProps {
   onPreview: (photo: PhotoDto) => void
   t: (key: string) => string
   settings: AdminSettingsDto | null
+  notify?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
 export function PhotosTab({
@@ -53,21 +76,34 @@ export function PhotosTab({
   onPreview,
   t,
   settings,
+  notify,
 }: PhotosTabProps) {
-  const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [channelFilter, setChannelFilter] = useState('all')
-  const [albumFilter, setAlbumFilter] = useState('all')
-  const [cameraFilter, setCameraFilter] = useState('all')
-  const [lensFilter, setLensFilter] = useState('all')
-  const [onlyFeatured, setOnlyFeatured] = useState(false)
-  const [sortBy, setSortBy] = useState<SortOption>('upload-desc')
-  const [showFilters, setShowFilters] = useState(false)
+  const [persisted] = useState(() => loadPersistedFilters())
+  const [search, setSearch] = useState(persisted.search ?? '')
+  const [categoryFilter, setCategoryFilter] = useState(persisted.categoryFilter ?? 'all')
+  const [channelFilter, setChannelFilter] = useState(persisted.channelFilter ?? 'all')
+  const [albumFilter, setAlbumFilter] = useState(persisted.albumFilter ?? 'all')
+  const [cameraFilter, setCameraFilter] = useState(persisted.cameraFilter ?? 'all')
+  const [lensFilter, setLensFilter] = useState(persisted.lensFilter ?? 'all')
+  const [onlyFeatured, setOnlyFeatured] = useState(persisted.onlyFeatured ?? false)
+  const [sortBy, setSortBy] = useState<SortOption>(persisted.sortBy ?? 'upload-desc')
+  const [showFilters, setShowFilters] = useState(persisted.showFilters ?? false)
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [cameras, setCameras] = useState<CameraDto[]>([])
   const [lenses, setLenses] = useState<LensDto[]>([])
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+
+  // Persist filter state to sessionStorage
+  useEffect(() => {
+    try {
+      const state: PersistedFilters = {
+        search, categoryFilter, channelFilter, albumFilter,
+        cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters,
+      }
+      sessionStorage.setItem(PHOTOS_FILTER_KEY, JSON.stringify(state))
+    } catch {}
+  }, [search, categoryFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters])
 
   // Load albums, cameras, and lenses on mount
   useEffect(() => {
@@ -83,6 +119,7 @@ export function PhotosTab({
         setLenses(lensesData)
       } catch (err) {
         console.error('Failed to load filter data:', err)
+        notify?.(err instanceof Error ? err.message : t('common.error'), 'error')
       }
     }
     loadFilterData()
@@ -185,6 +222,7 @@ export function PhotosTab({
     setLensFilter('all')
     setOnlyFeatured(false)
     setSearch('')
+    try { sessionStorage.removeItem(PHOTOS_FILTER_KEY) } catch {}
   }
 
   const sortOptions: { value: SortOption; label: string }[] = [
@@ -411,7 +449,7 @@ export function PhotosTab({
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="w-3.5 h-3.5" />
-                    <span>Clear all</span>
+                    <span>{t('admin.clear_all_filters')}</span>
                   </AdminButton>
                 </>
               )}
@@ -419,7 +457,7 @@ export function PhotosTab({
         ) : undefined}
         activeFilters={activeFilterCount > 0 && !showFilters ? (
           <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Active filters:</span>
+            <span className="text-xs text-muted-foreground">{t('admin.active_filters_label')}:</span>
             {categoryFilter !== 'all' && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
                 {categoryFilter}
@@ -488,7 +526,7 @@ export function PhotosTab({
             {onlyFeatured && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-500/10 text-amber-600 text-xs rounded-md">
                 <Star className="w-3 h-3 fill-current" />
-                Featured
+                {t('admin.featured_only')}
                 <AdminButton
                   onClick={() => setOnlyFeatured(false)}
                   adminVariant="icon"
@@ -504,7 +542,7 @@ export function PhotosTab({
               adminVariant="unstyled"
               className="text-xs text-muted-foreground hover:text-foreground underline"
             >
-              Clear all
+              {t('admin.clear_all_filters')}
             </AdminButton>
           </div>
         ) : undefined}

@@ -20,6 +20,7 @@ export default function PhotosPage() {
     setSelectedPhoto: onPreview,
     t,
     settings,
+    notify,
   } = useAdmin()
 
   return (
@@ -39,6 +40,7 @@ export default function PhotosPage() {
       onPreview={onPreview}
       t={t}
       settings={settings}
+      notify={notify}
     />
   )
 }

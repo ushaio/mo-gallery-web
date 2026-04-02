@@ -514,6 +514,140 @@ photos.delete('/admin/photos/:id', async (c) => {
   }
 })
 
+photos.post('/admin/photos/batch-delete', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { photoIds, deleteOriginal, deleteThumbnail, force } = body as {
+      photoIds: string[]
+      deleteOriginal?: boolean
+      deleteThumbnail?: boolean
+      force?: boolean
+    }
+
+    if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+      return c.json({ error: 'photoIds must be a non-empty array' }, 400)
+    }
+
+    // Fetch all photos with their story associations
+    const photosList = await db.photo.findMany({
+      where: { id: { in: photoIds } },
+      include: {
+        stories: { select: { id: true, title: true } },
+      },
+    })
+
+    const errors: string[] = []
+    let deleted = 0
+    let failed = 0
+
+    // Filter out photos that have stories (unless force is true)
+    const photosToDelete: typeof photosList = []
+    for (const photo of photosList) {
+      if (photo.stories.length > 0 && !force) {
+        errors.push(`Photo "${photo.title}" (${photo.id}) has associated stories`)
+        failed++
+      } else {
+        photosToDelete.push(photo)
+      }
+    }
+
+    // Track missing photos
+    const foundIds = new Set(photosList.map((p) => p.id))
+    for (const id of photoIds) {
+      if (!foundIds.has(id)) {
+        errors.push(`Photo ${id} not found`)
+        failed++
+      }
+    }
+
+    // Group photos by storage provider to reuse storage instances
+    const byProvider = new Map<string, typeof photosToDelete>()
+    for (const photo of photosToDelete) {
+      const provider = photo.storageProvider || 'default'
+      if (!byProvider.has(provider)) {
+        byProvider.set(provider, [])
+      }
+      byProvider.get(provider)!.push(photo)
+    }
+
+    // Process each provider group in parallel
+    const providerResults = await Promise.allSettled(
+      Array.from(byProvider.entries()).map(async ([provider, providerPhotos]) => {
+        // Create one storage instance per provider
+        let storage: ReturnType<typeof StorageProviderFactory.create> | null = null
+        if (deleteOriginal || deleteThumbnail) {
+          const storageConfig = await getStorageConfig(provider === 'default' ? undefined : provider)
+          storage = StorageProviderFactory.create(storageConfig)
+        }
+
+        // Delete photos within this provider group in parallel
+        const photoResults = await Promise.allSettled(
+          providerPhotos.map(async (photo) => {
+            // Delete files from storage if requested
+            if (storage && (deleteOriginal || deleteThumbnail)) {
+              let thumbnailKey: string | undefined
+              if (deleteThumbnail && photo.storageKey) {
+                thumbnailKey = buildThumbnailKey(photo.storageKey)
+              }
+
+              const originalKey = deleteOriginal ? (photo.storageKey || photo.url) : undefined
+              const thumbKey = deleteThumbnail ? thumbnailKey : undefined
+
+              if (originalKey && thumbKey) {
+                await storage.delete(originalKey, thumbKey)
+              } else if (originalKey) {
+                await storage.delete(originalKey)
+              } else if (thumbKey) {
+                await storage.delete(thumbKey)
+              }
+            }
+
+            // Delete DB record
+            await db.photo.delete({ where: { id: photo.id } })
+            return photo.id
+          })
+        )
+
+        return photoResults
+      })
+    )
+
+    // Collect results from all provider groups
+    for (const providerResult of providerResults) {
+      if (providerResult.status === 'fulfilled') {
+        for (const photoResult of providerResult.value) {
+          if (photoResult.status === 'fulfilled') {
+            deleted++
+          } else {
+            failed++
+            errors.push(
+              photoResult.reason instanceof Error
+                ? photoResult.reason.message
+                : String(photoResult.reason)
+            )
+          }
+        }
+      } else {
+        // Entire provider group failed
+        failed++
+        errors.push(
+          providerResult.reason instanceof Error
+            ? providerResult.reason.message
+            : String(providerResult.reason)
+        )
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: { deleted, failed, errors },
+    })
+  } catch (error) {
+    console.error('Batch delete photos error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')

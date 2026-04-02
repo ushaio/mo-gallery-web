@@ -1,4 +1,4 @@
-import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls } from '../src/lib/story-rich-content.ts'
+import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls } from '../src/lib/story-rich-content'
 
 function assert(condition: unknown, message: string) {
   if (!condition) {

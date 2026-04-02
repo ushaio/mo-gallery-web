@@ -32,6 +32,7 @@ import {
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminLoading } from '@/components/admin/AdminLoading'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
 interface SettingsTabProps {
   token: string | null
@@ -67,22 +68,32 @@ export function SettingsTab({
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [limit] = useState(20)
+  const [commentStatusFilter, setCommentStatusFilter] = useState('')
 
   // Linux DO binding state
   const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
   const [linuxDoBinding, setLinuxDoBinding] = useState<LinuxDoBinding | null>(null)
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState<
+    | { type: 'comment'; id: string }
+    | { type: 'linuxdo-unbind' }
+    | null
+  >(null)
 
   const refreshComments = async () => {
     if (!token) return
     setCommentsLoading(true)
     try {
-      const { data, meta } = await getComments(token, { page, limit })
+      const { data, meta } = await getComments(token, { page, limit, status: commentStatusFilter || undefined })
       setComments(data)
       setTotalPages(meta.totalPages)
     } catch (err) {
-      console.error(err)
+      if (err instanceof ApiUnauthorizedError) {
+        onUnauthorized()
+        return
+      }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
       setCommentsLoading(false)
     }
@@ -106,33 +117,29 @@ export function SettingsTab({
     }
   }
 
-  const handleDeleteComment = async (id: string) => {
-    if (!token || !window.confirm(t('common.confirm'))) return
+  const handleDeleteComment = (id: string) => {
+    if (!token) return
+    setDeleteDialog({ type: 'comment', id })
+  }
+
+  // Load Linux DO status and binding
+  const loadLinuxDoStatus = async () => {
+    setLinuxDoLoading(true)
     try {
-      await deleteComment(token, id)
-      await refreshComments()
-      notify(t('admin.notify_success'))
+      const enabled = await isLinuxDoEnabled()
+      setLinuxDoEnabled(enabled)
+      if (enabled && token) {
+        const binding = await getLinuxDoBinding(token)
+        setLinuxDoBinding(binding)
+      } else {
+        setLinuxDoBinding(null)
+      }
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
         onUnauthorized()
         return
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
-    }
-  }
-
-  // Load Linux DO status and binding
-  const loadLinuxDoStatus = async () => {
-    try {
-      const enabled = await isLinuxDoEnabled()
-      setLinuxDoEnabled(enabled)
-      if (enabled && token) {
-        setLinuxDoLoading(true)
-        const binding = await getLinuxDoBinding(token)
-        setLinuxDoBinding(binding)
-      }
-    } catch (err) {
-      console.error('Failed to load Linux DO status:', err)
     } finally {
       setLinuxDoLoading(false)
     }
@@ -158,13 +165,25 @@ export function SettingsTab({
   }
 
   // Handle Linux DO unbind
-  const handleLinuxDoUnbind = async () => {
-    if (!token || !window.confirm(t('common.confirm'))) return
+  const handleLinuxDoUnbind = () => {
+    if (!token) return
+    setDeleteDialog({ type: 'linuxdo-unbind' })
+  }
+
+  const confirmDeleteDialog = async () => {
+    if (!token || !deleteDialog) return
+
     try {
-      setLinuxDoBindLoading(true)
-      await unbindLinuxDoAccount(token)
-      setLinuxDoBinding(null)
+      if (deleteDialog.type === 'comment') {
+        await deleteComment(token, deleteDialog.id)
+        await refreshComments()
+      } else {
+        setLinuxDoBindLoading(true)
+        await unbindLinuxDoAccount(token)
+        setLinuxDoBinding(null)
+      }
       notify(t('admin.notify_success'))
+      setDeleteDialog(null)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
         onUnauthorized()
@@ -172,11 +191,17 @@ export function SettingsTab({
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
-      setLinuxDoBindLoading(false)
+      if (deleteDialog.type === 'linuxdo-unbind') {
+        setLinuxDoBindLoading(false)
+      }
     }
   }
 
-  // Load Linux DO status on mount
+  const handleCommentStatusChange = (status: string) => {
+    setCommentStatusFilter(status)
+    setPage(1)
+  }
+
   useEffect(() => {
     loadLinuxDoStatus()
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -188,12 +213,13 @@ export function SettingsTab({
     if (settingsTab === 'account') {
       loadLinuxDoStatus()
     }
-  }, [settingsTab, token, page]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [settingsTab, token, page, commentStatusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSettingsReady = !loading && !!settings
 
   return (
-    <div className="max-w-[1920px]">
+    <>
+      <div className="max-w-[1920px]">
       <div className="flex flex-col md:flex-row gap-12 relative">
         <aside className="w-full md:w-48 space-y-1 md:sticky md:top-0 md:h-fit">
           <div className="mb-6 pb-2 border-b border-border">
@@ -758,9 +784,32 @@ export function SettingsTab({
                 {commentTab === 'manage' && (
                   <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="pb-4 border-b border-border flex items-center justify-between">
-                      <h3 className="font-serif text-2xl">
-                        {t('admin.comments_manage')}
-                      </h3>
+                      <div className="flex items-center gap-4">
+                        <h3 className="font-serif text-2xl">
+                          {t('admin.comments_manage')}
+                        </h3>
+                        <div className="flex bg-background border border-border rounded-md overflow-hidden">
+                          {[
+                            { value: '', label: t('admin.all') },
+                            { value: 'pending', label: t('admin.pending') },
+                            { value: 'approved', label: t('admin.published') },
+                            { value: 'rejected', label: t('admin.rejected') },
+                          ].map(opt => (
+                            <AdminButton
+                              key={opt.value}
+                              onClick={() => handleCommentStatusChange(opt.value)}
+                              adminVariant="unstyled"
+                              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                                commentStatusFilter === opt.value
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                              }`}
+                            >
+                              {opt.label}
+                            </AdminButton>
+                          ))}
+                        </div>
+                      </div>
                       <AdminButton
                         onClick={refreshComments}
                         adminVariant="icon"
@@ -1040,6 +1089,23 @@ export function SettingsTab({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+      <SimpleDeleteDialog
+        isOpen={deleteDialog !== null}
+        title={t('common.confirm')}
+        message={
+          deleteDialog?.type === 'linuxdo-unbind'
+            ? t('common.confirm')
+            : t('admin.confirm_delete_single') + '?'
+        }
+        onConfirm={confirmDeleteDialog}
+        onCancel={() => {
+          if (!linuxDoBindLoading) {
+            setDeleteDialog(null)
+          }
+        }}
+        t={t}
+      />
+    </>
   )
 }

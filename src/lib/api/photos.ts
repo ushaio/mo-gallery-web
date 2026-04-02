@@ -214,6 +214,28 @@ export async function deletePhoto(input: {
   )
 }
 
+export async function batchDeletePhotos(input: {
+  token: string
+  photoIds: string[]
+  deleteOriginal?: boolean
+  deleteThumbnail?: boolean
+  force?: boolean
+}): Promise<{ deleted: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ deleted: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-delete',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        deleteOriginal: input.deleteOriginal,
+        deleteThumbnail: input.deleteThumbnail,
+        force: input.force,
+      }),
+    },
+    input.token,
+  )
+}
+
 export async function checkPhotoStories(
   token: string,
   photoId: string,

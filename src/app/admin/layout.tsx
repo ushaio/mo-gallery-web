@@ -18,6 +18,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
+  batchDeletePhotos,
   batchUpdatePhotoUrls,
   checkPhotosStories,
   deletePhoto,
@@ -263,20 +264,32 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     try {
       if (deleteConfirmDialog.isBulk) {
         setPhotosLoading(true)
-        for (const id of deleteConfirmDialog.photoIds) {
-          await deletePhoto({ token, id, deleteOriginal, deleteThumbnail })
-        }
+        const force = photosWithStories.length > 0
+        const result = await batchDeletePhotos({
+          token,
+          photoIds: deleteConfirmDialog.photoIds,
+          deleteOriginal,
+          deleteThumbnail,
+          force,
+        })
         setSelectedPhotoIds(new Set())
+        await refreshPhotos()
+        notify(`${result.deleted} ${t('admin.notify_photo_deleted')}`)
+        if (result.failed > 0) {
+          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
+        }
       } else {
+        const force = photosWithStories.length > 0
         await deletePhoto({
           token,
           id: deleteConfirmDialog.photoIds[0],
           deleteOriginal,
           deleteThumbnail,
+          force,
         })
+        await refreshPhotos()
+        notify(t('admin.notify_photo_deleted'))
       }
-      await refreshPhotos()
-      notify(t('admin.notify_photo_deleted'))
       setDeleteConfirmDialog(null)
       setDeleteOriginal(true)
       setDeleteThumbnail(true)

@@ -37,6 +37,7 @@ import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
 /** 视图模式：网格 / 列表 */
 type ViewMode = 'grid' | 'list'
@@ -90,12 +91,15 @@ export function AlbumsTab({
   const [showPhotoSelector, setShowPhotoSelector] = useState(false) // 是否显示照片选择器
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set()) // 已选中待添加的照片 ID
   const [draggingId, setDraggingId] = useState<string | null>(null) // 正在拖拽的相册 ID
+  const [deletingAlbumId, setDeletingAlbumId] = useState<string | null>(null)
+  const [pendingAlbumDelete, setPendingAlbumDelete] = useState<AlbumDto | null>(null)
 
   // 筛选与视图状态
   const [viewMode, setViewMode] = useState<ViewMode>('grid')          // 视图模式
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all') // 发布状态筛选
   const [searchQuery, setSearchQuery] = useState('')                   // 搜索关键字
   const [showFilters, setShowFilters] = useState(false)                // 是否展开筛选面板
+  const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
 
   // token 变化时重新加载相册
   useEffect(() => { loadAlbums() }, [token])
@@ -156,6 +160,24 @@ export function AlbumsTab({
     }
   }
 
+  async function confirmDeleteAlbum() {
+    if (!token || !pendingAlbumDelete) return
+
+    try {
+      setDeletingAlbumId(pendingAlbumDelete.id)
+      await deleteAlbum(token, pendingAlbumDelete.id)
+      notify(t('admin.notify_success'), 'success')
+      if (currentAlbum?.id === pendingAlbumDelete.id) setCurrentAlbum(null)
+      setPendingAlbumDelete(null)
+      await loadAlbums()
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      notify(t('common.error'), 'error')
+    } finally {
+      setDeletingAlbumId(null)
+    }
+  }
+
   // ==================== 数据操作 ====================
 
   /** 加载相册列表 */
@@ -183,18 +205,10 @@ export function AlbumsTab({
   }
 
   /** 删除相册（需用户确认） */
-  async function handleDeleteAlbum(id: string, e?: React.MouseEvent) {
+  function handleDeleteAlbum(album: AlbumDto, e?: React.MouseEvent) {
     e?.stopPropagation()
-    if (!token || !window.confirm(t('common.confirm') + '?')) return
-    try {
-      await deleteAlbum(token, id)
-      notify(t('admin.notify_success'), 'success')
-      if (currentAlbum?.id === id) setCurrentAlbum(null)
-      await loadAlbums()
-    } catch (err) {
-      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
-      notify(t('common.error'), 'error')
-    }
+    if (!token) return
+    setPendingAlbumDelete(album)
   }
 
   /** 保存相册（创建或更新） */
@@ -291,6 +305,15 @@ export function AlbumsTab({
     const albumPhotoIds = new Set(currentAlbum.photos.map(p => p.id))
     return photos.filter(p => !albumPhotoIds.has(p.id))
   }, [photos, currentAlbum])
+
+  const filteredAvailablePhotos = useMemo(() => {
+    if (!photoSelectorSearch.trim()) return availablePhotos
+    const query = photoSelectorSearch.toLowerCase()
+    return availablePhotos.filter(p =>
+      p.title.toLowerCase().includes(query) ||
+      p.category.toLowerCase().includes(query)
+    )
+  }, [availablePhotos, photoSelectorSearch])
 
   // ==================== 渲染 ====================
 
@@ -440,44 +463,46 @@ export function AlbumsTab({
           </div>
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredAlbums.map(album => (
-              <div
-                key={album.id}
-                draggable
-                onDragStart={e => handleDragStart(e, album.id)}
-                onDragOver={e => handleDragOver(e, album.id)}
-                onDragEnd={handleDragEnd}
-                onClick={() => { setCurrentAlbum({ ...album }); setActiveTab('photos') }}
-                className={`group cursor-pointer bg-card border border-border/50 hover:border-border transition-all ${draggingId === album.id ? 'opacity-50' : ''}`}
-              >
-                <div className="relative aspect-[4/3] bg-muted overflow-hidden">
-                  <div className="absolute top-2 left-2 z-10 p-1 bg-black/40 text-white/70 hover:text-white cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                    <GripVertical className="w-4 h-4" />
+            {filteredAlbums.map(album => {
+              return (
+                <div
+                  key={album.id}
+                  draggable
+                  onDragStart={e => handleDragStart(e, album.id)}
+                  onDragOver={e => handleDragOver(e, album.id)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => { setCurrentAlbum({ ...album }); setActiveTab('photos') }}
+                  className={`group cursor-pointer bg-card border border-border/50 hover:border-border transition-all ${draggingId === album.id ? 'opacity-50' : ''}`}
+                >
+                  <div className="relative aspect-[4/3] bg-muted overflow-hidden">
+                    <div className="absolute top-2 left-2 z-10 p-1 bg-black/40 text-white/70 hover:text-white cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                      <GripVertical className="w-4 h-4" />
+                    </div>
+                    {album.coverUrl || album.photos.length > 0 ? (
+                      <img src={resolveAssetUrl(album.coverUrl || album.photos[0]?.thumbnailUrl || album.photos[0]?.url, cdnDomain)} alt={album.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center"><FolderOpen className="w-10 h-10 opacity-10" /></div>
+                    )}
+                    <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{album.photoCount}</div>
+                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-1.5 bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors">
+                        {album.isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </AdminButton>
+                      <AdminButton onClick={e => handleDeleteAlbum(album, e)} disabled={deletingAlbumId === album.id} adminVariant="unstyled" className="p-1.5 bg-red-500/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </AdminButton>
+                    </div>
                   </div>
-                  {album.coverUrl || album.photos.length > 0 ? (
-                    <img src={resolveAssetUrl(album.coverUrl || album.photos[0]?.thumbnailUrl || album.photos[0]?.url, cdnDomain)} alt={album.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center"><FolderOpen className="w-10 h-10 opacity-10" /></div>
-                  )}
-                  <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{album.photoCount}</div>
-                  <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-1.5 bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors">
-                      {album.isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                    </AdminButton>
-                    <AdminButton onClick={e => handleDeleteAlbum(album.id, e)} adminVariant="unstyled" className="p-1.5 bg-red-500/80 hover:bg-red-500 text-white transition-colors">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </AdminButton>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h3 className="font-medium truncate">{album.name}</h3>
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${album.isPublished ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                    </div>
+                    {album.description && <p className="text-xs text-muted-foreground line-clamp-1">{album.description}</p>}
                   </div>
                 </div>
-                <div className="p-4">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className="font-medium truncate">{album.name}</h3>
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${album.isPublished ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                  </div>
-                  {album.description && <p className="text-xs text-muted-foreground line-clamp-1">{album.description}</p>}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <div className="space-y-2">
@@ -506,13 +531,13 @@ export function AlbumsTab({
                     <h3 className="font-medium truncate">{album.name}</h3>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${album.isPublished ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
                   </div>
-                  <p className="text-xs text-muted-foreground">{album.photoCount} photos</p>
+                  <p className="text-xs text-muted-foreground">{album.photoCount} {t('admin.photos_count')}</p>
                 </div>
                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-2 hover:bg-muted transition-colors">
                     {album.isPublished ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
                   </AdminButton>
-                  <AdminButton onClick={e => handleDeleteAlbum(album.id, e)} adminVariant="unstyled" className="p-2 text-destructive hover:bg-destructive/10 transition-colors">
+                  <AdminButton onClick={e => handleDeleteAlbum(album, e)} disabled={deletingAlbumId === album.id} adminVariant="unstyled" className="p-2 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
                     <Trash2 className="w-4 h-4" />
                   </AdminButton>
                 </div>
@@ -526,140 +551,255 @@ export function AlbumsTab({
 
   // ---------- 详情视图（编辑相册） ----------
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between pb-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <AdminButton onClick={() => setCurrentAlbum(null)} adminVariant="icon">
-            <ChevronLeft className="w-5 h-5" />
-          </AdminButton>
-          <div>
-            <h2 className="text-lg font-medium">{currentAlbum.name || (t('admin.new_album') || 'New Album')}</h2>
-            <p className="text-xs text-muted-foreground">{currentAlbum.isPublished ? t('admin.published') : t('admin.draft')}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {activeTab === 'overview' && (
-            <AdminButton onClick={handleSaveAlbum} disabled={saving} adminVariant="unstyled" className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground disabled:opacity-50 transition-colors">
-              <Save className="w-4 h-4" />
-              {saving ? t('common.loading') : t('admin.save')}
+    <>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between pb-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <AdminButton onClick={() => setCurrentAlbum(null)} adminVariant="icon">
+              <ChevronLeft className="w-5 h-5" />
             </AdminButton>
-          )}
-          {activeTab === 'photos' && (
-            <AdminButton onClick={() => setShowPhotoSelector(true)} adminVariant="unstyled" className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors">
-              <Plus className="w-4 h-4" />
-              {t('admin.add_photos') || 'Add Photos'}
-            </AdminButton>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-1 border-b border-border">
-        <AdminButton onClick={() => setActiveTab('overview')} adminVariant="unstyled" className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-          <Settings className="w-4 h-4" />
-          {t('admin.overview') || 'Overview'}
-        </AdminButton>
-        {currentAlbum.id && (
-          <AdminButton onClick={() => setActiveTab('photos')} adminVariant="unstyled" className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${activeTab === 'photos' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-            <Layout className="w-4 h-4" />
-            {t('admin.photos') || 'Photos'}
-            <span className="ml-1 px-1.5 py-0.5 bg-muted text-[10px]">{currentAlbum.photos.length}</span>
-          </AdminButton>
-        )}
-      </div>
-
-      <div className="pt-2">
-        {activeTab === 'overview' ? (
-          <div className="max-w-xl space-y-6">
             <div>
-              <label className="block text-xs text-muted-foreground mb-2">{t('admin.album_name')}</label>
-              <CustomInput variant="config" value={currentAlbum.name} onChange={e => setCurrentAlbum({ ...currentAlbum, name: e.target.value })} placeholder={t('admin.album_name_placeholder')} />
-            </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-2">{t('admin.description')}</label>
-              <textarea value={currentAlbum.description || ''} onChange={e => setCurrentAlbum({ ...currentAlbum, description: e.target.value })} placeholder={t('admin.description_placeholder')} className="w-full p-3 h-24 bg-muted/30 border-b border-border focus:border-primary outline-none text-sm transition-colors resize-none" />
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-muted/30 border-b border-border">
-              <input type="checkbox" checked={currentAlbum.isPublished} onChange={e => setCurrentAlbum({ ...currentAlbum, isPublished: e.target.checked })} className="w-4 h-4 accent-primary" />
-              <span className="text-sm">{currentAlbum.isPublished ? t('admin.published') : t('admin.draft')}</span>
+              <h2 className="text-lg font-medium">
+                {currentAlbum.name || (t('admin.new_album') || 'New Album')}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {currentAlbum.isPublished ? t('admin.published') : t('admin.draft')}
+              </p>
             </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {showPhotoSelector ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-muted/30 border border-border">
-                  <div className="flex items-center gap-3">
-                    <AdminButton onClick={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()) }} adminVariant="icon">
-                      <X className="w-4 h-4" />
-                    </AdminButton>
-                    <span className="text-sm">{selectedPhotoIds.size} {t('admin.selected')}</span>
-                  </div>
-                  <AdminButton onClick={handleAddPhotos} disabled={selectedPhotoIds.size === 0 || saving} adminVariant="unstyled" className="flex items-center gap-2 px-4 py-1.5 bg-foreground text-background text-xs font-medium disabled:opacity-50 transition-colors">
-                    <Check className="w-3.5 h-3.5" />
-                    Add
-                  </AdminButton>
-                </div>
-                {loading ? (
-                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
-                ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                    {availablePhotos.map(photo => {
-                      const isSelected = selectedPhotoIds.has(photo.id)
-                      return (
-                        <div
-                          key={photo.id}
-                          onClick={() => setSelectedPhotoIds((prev) => {
-                            const next = new Set(prev)
-                            if (next.has(photo.id)) {
-                              next.delete(photo.id)
-                            } else {
-                              next.add(photo.id)
-                            }
-                            return next
-                          })}
-                          className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
-                        >
-                          <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
-                          {isSelected && <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : currentAlbum.photos.length === 0 ? (
-              <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">
-                <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-10" />
-                <p className="text-sm text-muted-foreground mb-3">{t('admin.album_empty') || 'This album is empty'}</p>
-                <AdminButton onClick={() => setShowPhotoSelector(true)} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
-                  <Plus className="w-4 h-4" />
-                  {t('admin.add_photos') || 'Add Photos'}
-                </AdminButton>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                {currentAlbum.photos.map(photo => {
-                  const isCover = currentAlbum.coverUrl === (photo.thumbnailUrl || photo.url)
-                  return (
-                    <div
-                      key={photo.id}
-                      className="relative aspect-square group bg-muted overflow-hidden cursor-pointer"
-                      onClick={() => onPreview(photo)}
-                    >
-                      <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
-                      {isCover && <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-[8px] font-medium">{t('admin.cover')}</div>}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
-                        {!isCover && <AdminButton onClick={(e) => { e.stopPropagation(); handleSetCover(photo.id) }} adminVariant="unstyled" className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-[9px] font-medium">{t('admin.set_cover')}</AdminButton>}
-                        <AdminButton onClick={(e) => { e.stopPropagation(); handleRemovePhoto(photo.id) }} adminVariant="unstyled" className="px-2 py-1 bg-red-500/80 hover:bg-red-500 text-white text-[9px] font-medium">{t('admin.remove')}</AdminButton>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+          <div className="flex items-center gap-2">
+            {activeTab === 'overview' && (
+              <AdminButton
+                onClick={handleSaveAlbum}
+                disabled={saving}
+                adminVariant="unstyled"
+                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground disabled:opacity-50 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? t('common.loading') : t('admin.save')}
+              </AdminButton>
+            )}
+            {activeTab === 'photos' && (
+              <AdminButton
+                onClick={() => setShowPhotoSelector(true)}
+                adminVariant="unstyled"
+                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                {t('admin.add_photos') || 'Add Photos'}
+              </AdminButton>
             )}
           </div>
-        )}
+        </div>
+
+        <div className="flex gap-1 border-b border-border">
+          <AdminButton
+            onClick={() => setActiveTab('overview')}
+            adminVariant="unstyled"
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            <Settings className="w-4 h-4" />
+            {t('admin.overview') || 'Overview'}
+          </AdminButton>
+          {currentAlbum.id && (
+            <AdminButton
+              onClick={() => setActiveTab('photos')}
+              adminVariant="unstyled"
+              className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-colors ${activeTab === 'photos' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            >
+              <Layout className="w-4 h-4" />
+              {t('admin.photos') || 'Photos'}
+              <span className="ml-1 px-1.5 py-0.5 bg-muted text-[10px]">
+                {currentAlbum.photos.length}
+              </span>
+            </AdminButton>
+          )}
+        </div>
+
+        <div className="pt-2">
+          {activeTab === 'overview' ? (
+            <div className="max-w-xl space-y-6">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-2">{t('admin.album_name')}</label>
+                <CustomInput
+                  variant="config"
+                  value={currentAlbum.name}
+                  onChange={e => setCurrentAlbum({ ...currentAlbum, name: e.target.value })}
+                  placeholder={t('admin.album_name_placeholder')}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-2">{t('admin.description')}</label>
+                <textarea
+                  value={currentAlbum.description || ''}
+                  onChange={e => setCurrentAlbum({ ...currentAlbum, description: e.target.value })}
+                  placeholder={t('admin.description_placeholder')}
+                  className="w-full p-3 h-24 bg-muted/30 border-b border-border focus:border-primary outline-none text-sm transition-colors resize-none"
+                />
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-muted/30 border-b border-border">
+                <input
+                  type="checkbox"
+                  checked={currentAlbum.isPublished}
+                  onChange={e => setCurrentAlbum({ ...currentAlbum, isPublished: e.target.checked })}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-sm">
+                  {currentAlbum.isPublished ? t('admin.published') : t('admin.draft')}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {showPhotoSelector ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-muted/30 border border-border">
+                    <div className="flex items-center gap-3">
+                      <AdminButton
+                        onClick={() => {
+                          setShowPhotoSelector(false)
+                          setSelectedPhotoIds(new Set())
+                          setPhotoSelectorSearch('')
+                        }}
+                        adminVariant="icon"
+                      >
+                        <X className="w-4 h-4" />
+                      </AdminButton>
+                      <span className="text-sm">{selectedPhotoIds.size} {t('admin.selected')}</span>
+                      <input
+                        type="text"
+                        value={photoSelectorSearch}
+                        onChange={(e) => setPhotoSelectorSearch(e.target.value)}
+                        placeholder={t('common.search')}
+                        className="px-2 py-1 text-sm bg-transparent border border-border rounded focus:border-primary outline-none w-40"
+                      />
+                    </div>
+                    <AdminButton
+                      onClick={handleAddPhotos}
+                      disabled={selectedPhotoIds.size === 0 || saving}
+                      adminVariant="unstyled"
+                      className="flex items-center gap-2 px-4 py-1.5 bg-foreground text-background text-xs font-medium disabled:opacity-50 transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Add
+                    </AdminButton>
+                  </div>
+                  {loading ? (
+                    <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                  ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                      {filteredAvailablePhotos.map(photo => {
+                        const isSelected = selectedPhotoIds.has(photo.id)
+                        return (
+                          <div
+                            key={photo.id}
+                            onClick={() => setSelectedPhotoIds((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(photo.id)) {
+                                next.delete(photo.id)
+                              } else {
+                                next.add(photo.id)
+                              }
+                              return next
+                            })}
+                            className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
+                          >
+                            <img
+                              src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)}
+                              alt={photo.title}
+                              className="w-full h-full object-cover"
+                            />
+                            {isSelected && (
+                              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                <Check className="w-5 h-5 text-primary" />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : currentAlbum.photos.length === 0 ? (
+                <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">
+                  <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-10" />
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {t('admin.album_empty') || 'This album is empty'}
+                  </p>
+                  <AdminButton
+                    onClick={() => setShowPhotoSelector(true)}
+                    adminVariant="unstyled"
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {t('admin.add_photos') || 'Add Photos'}
+                  </AdminButton>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                  {currentAlbum.photos.map(photo => {
+                    const isCover = currentAlbum.coverUrl === (photo.thumbnailUrl || photo.url)
+                    return (
+                      <div
+                        key={photo.id}
+                        className="relative aspect-square group bg-muted overflow-hidden cursor-pointer"
+                        onClick={() => onPreview(photo)}
+                      >
+                        <img
+                          src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)}
+                          alt={photo.title}
+                          className="w-full h-full object-cover"
+                        />
+                        {isCover && (
+                          <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-[8px] font-medium">
+                            {t('admin.cover')}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
+                          {!isCover && (
+                            <AdminButton
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSetCover(photo.id)
+                              }}
+                              adminVariant="unstyled"
+                              className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-[9px] font-medium"
+                            >
+                              {t('admin.set_cover')}
+                            </AdminButton>
+                          )}
+                          <AdminButton
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRemovePhoto(photo.id)
+                            }}
+                            adminVariant="unstyled"
+                            className="px-2 py-1 bg-red-500/80 hover:bg-red-500 text-white text-[9px] font-medium"
+                          >
+                            {t('admin.remove')}
+                          </AdminButton>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <SimpleDeleteDialog
+        isOpen={pendingAlbumDelete !== null}
+        title={t('common.confirm')}
+        message={t('admin.confirm_delete_single') + '?'}
+        onConfirm={confirmDeleteAlbum}
+        onCancel={() => {
+          if (!deletingAlbumId) {
+            setPendingAlbumDelete(null)
+          }
+        }}
+        t={t}
+      />
+    </>
   )
 }
