@@ -1,4 +1,0 @@
-interface:
-  display_name: "MO Gallery Dev"
-  short_description: "Guide MO Gallery development tasks"
-  default_prompt: "Use $mo-gallery-dev to implement a safe change in this MO Gallery photo journal and blog system."
