@@ -21,7 +21,7 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react'
-import { AdminSettingsDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, type StoryDto, type AlbumDto } from '@/lib/api'
+import { AdminSettingsDto, StorageSourceDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, getStorageSources, type StoryDto, type AlbumDto } from '@/lib/api'
 import { type CompressionMode } from '@/lib/image-compress'
 import { stripGpsData } from '@/lib/privacy-strip'
 import { calculateFileHash } from '@/lib/file-hash'
@@ -372,7 +372,8 @@ export function UploadTab({
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
-  const [uploadSource, setUploadSource] = useState('local')
+  const [uploadSourceId, setUploadSourceId] = useState<string>('')
+  const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
   const [useCustomPrefix, setUseCustomPrefix] = useState(false)
   const [uploadPath, setUploadPath] = useState('')
   const [isInitialized, setIsInitialized] = useState(false)
@@ -396,28 +397,25 @@ export function UploadTab({
   const [uploadError, setUploadError] = useState('')
 
   useEffect(() => {
-    if (settings?.storage_provider && !isInitialized) {
-      queueMicrotask(() => {
-        setUploadSource(settings.storage_provider)
-        setUseCustomPrefix(false)
-        setIsInitialized(true)
-      })
-    }
-  }, [settings, isInitialized])
+    if (!token || isInitialized) return
+    getStorageSources(token).then(sources => {
+      setStorageSources(sources)
+      if (sources.length > 0) setUploadSourceId(sources[0].id)
+      setIsInitialized(true)
+    }).catch(() => setIsInitialized(true))
+  }, [token, isInitialized])
 
-  // Reset custom prefix when storage provider changes
+  // Reset custom prefix when storage source changes
   useEffect(() => {
     if (!isInitialized) return
     setUseCustomPrefix(false)
     setUploadPath('')
-  }, [uploadSource, isInitialized])
+  }, [uploadSourceId, isInitialized])
 
-  // Get the system prefix for current provider
-  const configPrefix = uploadSource === 'r2'
-    ? settings?.r2_path
-    : uploadSource === 'github'
-      ? settings?.github_path
-      : undefined
+  const selectedSource = storageSources.find(s => s.id === uploadSourceId)
+
+  // Get the configured prefix for the selected source
+  const configPrefix = selectedSource?.basePath || undefined
 
   // Load stories only when modal opens
   const loadStories = useCallback(async () => {
@@ -663,7 +661,8 @@ export function UploadTab({
       })),
       title: uploadTitle.trim(),
       categories: uploadCategories,
-      storageProvider: uploadSource,
+      storageProvider: selectedSource?.type || 'local',
+      storageSourceId: uploadSourceId || undefined,
       storagePath: useCustomPrefix ? (uploadPath.trim() || undefined) : (uploadPath.trim() || undefined),
       storagePathFull: useCustomPrefix,
       storyId: uploadStoryId || undefined,
@@ -798,13 +797,9 @@ export function UploadTab({
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
                     <AdminSelect
-                      value={uploadSource}
-                      onChange={setUploadSource}
-                      options={[
-                        { value: 'local', label: 'Local' },
-                        { value: 'r2', label: 'R2' },
-                        { value: 'github', label: 'GitHub' },
-                      ]}
+                      value={uploadSourceId}
+                      onChange={setUploadSourceId}
+                      options={storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` }))}
                     />
                   </div>
                   <div>
@@ -1045,7 +1040,7 @@ export function UploadTab({
         categories={uploadCategories}
         albumNames={selectedAlbumNames}
         storyName={selectedStoryName}
-        storageProvider={uploadSource}
+        storageProvider={selectedSource ? `${selectedSource.name} (${selectedSource.type})` : uploadSourceId}
         storagePath={fullStoragePath}
         compressionEnabled={compressionMode !== 'none'}
         privacyStripEnabled={privacyStripEnabled}

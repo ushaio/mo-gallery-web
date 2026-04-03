@@ -370,7 +370,7 @@ export function PhotosTab({
                   options={[
                     { value: 'all', label: t('gallery.all') },
                     { value: 'local', label: 'Local' },
-                    { value: 'r2', label: 'Cloudflare R2' },
+                    { value: 's3', label: 'S3' },
                     { value: 'github', label: 'GitHub' },
                   ]}
                   className="min-w-[130px]"

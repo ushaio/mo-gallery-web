@@ -21,6 +21,7 @@ export interface UploadTask {
   title: string
   categories: string[]
   storageProvider?: string
+  storageSourceId?: string
   storagePath?: string
   storagePathFull?: boolean
   storyId?: string
@@ -43,6 +44,7 @@ interface UploadQueueContextType {
     title: string
     categories: string[]
     storageProvider?: string
+    storageSourceId?: string
     storagePath?: string
     storagePathFull?: boolean
     storyId?: string
@@ -206,6 +208,7 @@ export function UploadQueueProvider({
         title: task.title,
         category: task.categories,
         storage_provider: task.storageProvider,
+        storage_source_id: task.storageSourceId,
         storage_path: task.storagePath,
         storage_path_full: task.storagePathFull,
         file_hash: task.fileHash,
@@ -286,6 +289,7 @@ export function UploadQueueProvider({
       title: string
       categories: string[]
       storageProvider?: string
+      storageSourceId?: string
       storagePath?: string
       storagePathFull?: boolean
       storyId?: string
@@ -320,6 +324,7 @@ export function UploadQueueProvider({
                 : fallbackTitle,
             categories: params.categories,
             storageProvider: params.storageProvider,
+            storageSourceId: params.storageSourceId,
             storagePath: params.storagePath,
             storagePathFull: params.storagePathFull,
             storyId: params.storyId,

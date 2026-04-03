@@ -88,6 +88,7 @@ model Photo {
   thumbnailUrl    String?
   originFlag      String   @default("web")
   storageProvider String   @default("local")
+  storageSourceId String?
   storageKey      String?
   width           Int
   height          Int
@@ -154,6 +155,23 @@ model Setting {
   id    String @id @default(uuid())
   key   String @unique
   value String
+}
+
+model StorageSource {
+  id           String   @id @default(cuid())
+  name         String
+  type         String   // 'local' | 'github' | 's3'
+  accessKey    String?  // GitHub: token, S3: accessKeyId
+  secretKey    String?  // S3: secretAccessKey
+  bucket       String?  // GitHub: owner/repo, S3: bucket
+  region       String?  // S3
+  endpoint     String?  // S3
+  publicUrl    String?  // GitHub: pagesUrl, S3: publicUrl
+  basePath     String?  // Local: sub-path, GitHub/S3: path prefix
+  branch       String?  // GitHub
+  accessMethod String?  // GitHub: raw/jsdelivr/pages
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Story {

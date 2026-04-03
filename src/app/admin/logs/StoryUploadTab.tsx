@@ -375,7 +375,7 @@ export function StoryUploadTab({
                   className="w-full p-3 bg-background border-b border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"
                 >
                   <option value="local">{t('admin.local_storage')}</option>
-                  <option value="r2">Cloudflare R2</option>
+                  <option value="s3">S3</option>
                   <option value="github">GitHub</option>
                 </select>
               </div>

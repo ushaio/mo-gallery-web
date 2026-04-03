@@ -1,26 +1,17 @@
-/**
- * Storage Provider Factory
- *
- * Creates the appropriate storage provider based on configuration
- */
-
 import { StorageProvider, StorageConfig, StorageError } from './types'
 import { LocalStorageProvider } from './local'
 import { GithubStorageProvider } from './github'
-import { R2StorageProvider } from './r2'
+import { S3StorageProvider } from './s3'
 
 export class StorageProviderFactory {
   static create(config: StorageConfig): StorageProvider {
     switch (config.provider) {
       case 'local':
         return new LocalStorageProvider(config)
-
       case 'github':
         return new GithubStorageProvider(config)
-
-      case 'r2':
-        return new R2StorageProvider(config)
-
+      case 's3':
+        return new S3StorageProvider(config)
       default:
         throw new StorageError(
           `Unknown storage provider: ${config.provider}`,

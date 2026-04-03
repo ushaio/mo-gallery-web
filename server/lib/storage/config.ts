@@ -32,12 +32,81 @@ export function invalidateSettingsCache() {
   inflightRequest = null
 }
 
+/**
+ * Build a StorageConfig from a StorageSource record (new multi-instance path).
+ */
+export function storageConfigFromSource(source: {
+  type: string
+  accessKey?: string | null
+  secretKey?: string | null
+  bucket?: string | null
+  region?: string | null
+  endpoint?: string | null
+  publicUrl?: string | null
+  basePath?: string | null
+  branch?: string | null
+  accessMethod?: string | null
+}): StorageConfig {
+  const type = source.type as 'local' | 'github' | 's3'
+
+  switch (type) {
+    case 'local':
+      return {
+        provider: 'local',
+        localBasePath: source.basePath
+          ? path.join(process.cwd(), 'public', 'uploads', source.basePath)
+          : path.join(process.cwd(), 'public', 'uploads'),
+        localBaseUrl: source.basePath ? `/uploads/${source.basePath}` : '/uploads',
+      }
+
+    case 'github':
+      return {
+        provider: 'github',
+        githubToken: source.accessKey ?? undefined,
+        githubRepo: source.bucket ?? undefined,
+        githubPath: source.basePath ?? undefined,
+        githubBranch: source.branch ?? 'main',
+        githubAccessMethod: (source.accessMethod as 'raw' | 'jsdelivr' | 'pages') ?? 'jsdelivr',
+        githubPagesUrl: source.publicUrl ?? undefined,
+      }
+
+    case 's3':
+      return {
+        provider: 's3',
+        s3AccessKeyId: source.accessKey ?? undefined,
+        s3SecretAccessKey: source.secretKey ?? undefined,
+        s3Bucket: source.bucket ?? undefined,
+        s3Region: source.region ?? undefined,
+        s3Endpoint: source.endpoint ?? undefined,
+        s3PublicUrl: source.publicUrl ?? undefined,
+        s3Path: source.basePath ?? undefined,
+      }
+
+    default:
+      throw new Error(`Unknown storage source type: ${type}`)
+  }
+}
+
+/**
+ * Load StorageConfig by StorageSource ID (new path).
+ * Falls back to legacy settings-based loading when sourceId is absent.
+ */
+export async function getStorageConfigBySourceId(sourceId: string): Promise<StorageConfig> {
+  const source = await db.storageSource.findUnique({ where: { id: sourceId } })
+  if (!source) throw new Error(`StorageSource not found: ${sourceId}`)
+  return storageConfigFromSource(source)
+}
+
+/**
+ * Legacy: load StorageConfig from flat Setting table by provider type string.
+ * Used for old photos that have no storageSourceId, and for the storage scan UI.
+ */
 export async function getStorageConfig(providerOverride?: string): Promise<StorageConfig> {
   const settingsMap = await getSettings()
 
   const provider = (
     providerOverride || settingsMap.storage_provider || 'local'
-  ) as 'local' | 'github' | 'r2'
+  ) as 'local' | 'github' | 's3'
 
   const config: StorageConfig = { provider }
 
@@ -54,13 +123,13 @@ export async function getStorageConfig(providerOverride?: string): Promise<Stora
       config.githubAccessMethod = (settingsMap.github_access_method || 'jsdelivr') as 'raw' | 'jsdelivr' | 'pages'
       config.githubPagesUrl = settingsMap.github_pages_url
       break
-    case 'r2':
-      config.r2AccessKeyId = settingsMap.r2_access_key_id
-      config.r2SecretAccessKey = settingsMap.r2_secret_access_key
-      config.r2Bucket = settingsMap.r2_bucket
-      config.r2Endpoint = settingsMap.r2_endpoint
-      config.r2PublicUrl = settingsMap.r2_public_url
-      config.r2Path = settingsMap.r2_path
+    case 's3':
+      config.s3AccessKeyId = settingsMap.s3_access_key_id
+      config.s3SecretAccessKey = settingsMap.s3_secret_access_key
+      config.s3Bucket = settingsMap.s3_bucket
+      config.s3Endpoint = settingsMap.s3_endpoint
+      config.s3PublicUrl = settingsMap.s3_public_url
+      config.s3Path = settingsMap.s3_path
       break
   }
 

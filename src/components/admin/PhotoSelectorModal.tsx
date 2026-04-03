@@ -438,7 +438,7 @@ export function PhotoSelectorModal({
                     >
                       <option value="all">{t('gallery.all')}</option>
                       <option value="local">{t('admin.local_storage')}</option>
-                      <option value="r2">Cloudflare R2</option>
+                      <option value="s3">S3</option>
                       <option value="github">GitHub</option>
                     </select>
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />

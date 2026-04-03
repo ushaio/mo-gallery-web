@@ -22,7 +22,7 @@ export interface UploadResult {
 }
 
 export interface StorageConfig {
-  provider: 'local' | 'github' | 'r2'
+  provider: 'local' | 'github' | 's3'
 
   // Local filesystem config
   localBasePath?: string
@@ -36,13 +36,14 @@ export interface StorageConfig {
   githubAccessMethod?: 'raw' | 'jsdelivr' | 'pages'
   githubPagesUrl?: string
 
-  // R2 config
-  r2AccessKeyId?: string
-  r2SecretAccessKey?: string
-  r2Bucket?: string
-  r2Endpoint?: string
-  r2PublicUrl?: string
-  r2Path?: string
+  // S3-compatible config (AWS S3, Cloudflare R2, etc.)
+  s3AccessKeyId?: string
+  s3SecretAccessKey?: string
+  s3Bucket?: string
+  s3Region?: string
+  s3Endpoint?: string
+  s3PublicUrl?: string
+  s3Path?: string
 }
 
 export interface MoveResult {

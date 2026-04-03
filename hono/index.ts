@@ -13,6 +13,7 @@ import storage from './storage'
 import equipment from './equipment'
 import editorAi from './editor-ai'
 import { walineHandler } from './waline'
+import storageSources from './storage-sources'
 import { originCheckMiddleware } from './middleware/origin-check'
 
 const route = new Hono()
@@ -49,6 +50,7 @@ route.route('/', friends)
 route.route('/', storage)
 route.route('/', equipment)
 route.route('/', editorAi)
+route.route('/', storageSources)
 route.route('/settings', settings)
 route.route('/admin/settings', settings)
 

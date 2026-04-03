@@ -101,6 +101,7 @@ export async function uploadPhoto(input: {
   category: string | string[]
   origin_flag?: 'web' | 'mobile'
   storage_provider?: string
+  storage_source_id?: string
   storage_path?: string
   file_hash?: string
 }): Promise<PhotoDto> {
@@ -111,6 +112,7 @@ export async function uploadPhoto(input: {
   form.set('category', categoryValue)
   if (input.origin_flag) form.set('origin_flag', input.origin_flag)
   if (input.storage_provider) form.set('storage_provider', input.storage_provider)
+  if (input.storage_source_id) form.set('storage_source_id', input.storage_source_id)
   if (input.storage_path) form.set('storage_path', input.storage_path)
   if (input.file_hash) form.set('file_hash', input.file_hash)
 
@@ -128,6 +130,7 @@ export function uploadPhotoWithProgress(input: {
   category?: string | string[]
   origin_flag?: 'web' | 'mobile'
   storage_provider?: string
+  storage_source_id?: string
   storage_path?: string
   storage_path_full?: boolean
   file_hash?: string
@@ -143,6 +146,7 @@ export function uploadPhotoWithProgress(input: {
     }
     if (input.origin_flag) form.set('origin_flag', input.origin_flag)
     if (input.storage_provider) form.set('storage_provider', input.storage_provider)
+    if (input.storage_source_id) form.set('storage_source_id', input.storage_source_id)
     if (input.storage_path) form.set('storage_path', input.storage_path)
     if (input.storage_path_full) form.set('storage_path_full', 'true')
     if (input.file_hash) form.set('file_hash', input.file_hash)

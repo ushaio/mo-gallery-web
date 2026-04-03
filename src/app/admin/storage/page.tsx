@@ -216,7 +216,7 @@ export default function StorageCleanupPage() {
             onChange={setProvider}
             options={[
               { value: 'local', label: t('admin.storage_provider_local') },
-              { value: 'r2', label: t('admin.storage_provider_r2') },
+              { value: 's3', label: 'S3' },
               { value: 'github', label: t('admin.storage_provider_github') },
             ]}
             className="min-w-[160px]"

@@ -69,10 +69,10 @@ export function ImageUploadSettingsModal({
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
   const configPrefix = useMemo(() => {
-    if (storageProvider === 'r2') return settings?.r2_path || ''
+    if (storageProvider === 'r2' || storageProvider === 's3') return settings?.s3_path || ''
     if (storageProvider === 'github') return settings?.github_path || ''
     return ''
-  }, [settings?.github_path, settings?.r2_path, storageProvider])
+  }, [settings?.github_path, settings?.s3_path, storageProvider])
 
   const categoryOptions = useMemo<MultiSelectOption[]>(() => {
     return categories
@@ -90,7 +90,7 @@ export function ImageUploadSettingsModal({
 
   const providerOptions = useMemo<SelectOption[]>(() => [
     { value: 'local', label: t('admin.storage_provider_local') },
-    { value: 'r2', label: t('admin.storage_provider_r2') },
+    { value: 's3', label: 'S3' },
     { value: 'github', label: t('admin.storage_provider_github') },
   ], [t])
 

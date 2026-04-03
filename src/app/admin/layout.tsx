@@ -385,18 +385,18 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const handleSaveSettings = useCallback(async () => {
     if (!token || !settings || !originalSettings) return
 
-    // Check if R2 Public URL has changed
-    const r2UrlChanged =
-      settings.storage_provider === 'r2' &&
-      settings.r2_public_url !== originalSettings.r2_public_url &&
-      originalSettings.r2_public_url?.trim()
+    // Check if S3 Public URL has changed
+    const s3UrlChanged =
+      settings.storage_provider === 's3' &&
+      settings.s3_public_url !== originalSettings.s3_public_url &&
+      originalSettings.s3_public_url?.trim()
 
     // If URL changed, show confirmation dialog
-    if (r2UrlChanged) {
+    if (s3UrlChanged) {
       setUrlUpdateParams({
-        storageProvider: 'r2',
-        oldPublicUrl: originalSettings.r2_public_url,
-        newPublicUrl: settings.r2_public_url,
+        storageProvider: 's3',
+        oldPublicUrl: originalSettings.s3_public_url,
+        newPublicUrl: settings.s3_public_url,
       })
       setShowUrlUpdateDialog(true)
       return

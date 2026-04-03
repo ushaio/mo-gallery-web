@@ -6,23 +6,20 @@ import { invalidateSettingsCache } from '~/server/lib/storage'
 
 const settings = new Hono<{ Variables: AuthVariables }>()
 
-// Protected settings endpoints
 settings.get('/', authMiddleware, async (c) => {
   try {
     const settingsList = await db.setting.findMany()
 
     const config: Record<string, string> = {
-      // These are read from environment variables (read-only)
       site_title: process.env.SITE_TITLE || 'MO GALLERY',
       cdn_domain: process.env.CDN_DOMAIN || '',
-      // These are stored in database
       storage_provider: 'local',
-      r2_access_key_id: '',
-      r2_secret_access_key: '',
-      r2_bucket: '',
-      r2_endpoint: '',
-      r2_public_url: '',
-      r2_path: '',
+      s3_access_key_id: '',
+      s3_secret_access_key: '',
+      s3_bucket: '',
+      s3_endpoint: '',
+      s3_public_url: '',
+      s3_path: '',
       github_token: '',
       github_repo: '',
       github_path: '',
@@ -31,7 +28,6 @@ settings.get('/', authMiddleware, async (c) => {
       github_pages_url: '',
     }
 
-    // Only apply database values for non-env settings
     const envSettings = ['site_title', 'cdn_domain']
     settingsList.forEach((s) => {
       if (!envSettings.includes(s.key)) {
@@ -39,10 +35,7 @@ settings.get('/', authMiddleware, async (c) => {
       }
     })
 
-    return c.json({
-      success: true,
-      data: config,
-    })
+    return c.json({ success: true, data: config })
   } catch (error) {
     console.error('Get settings error:', error)
     return c.json({ error: 'Internal server error' }, 500)
@@ -53,13 +46,11 @@ settings.patch('/', authMiddleware, async (c) => {
   try {
     const data = await c.req.json()
 
-    // Filter out environment-based settings (they cannot be changed via API)
     const envSettings = ['site_title', 'cdn_domain']
     const filteredData = Object.fromEntries(
       Object.entries(data).filter(([key]) => !envSettings.includes(key))
     )
 
-    // Use transaction to avoid prepared statement conflicts with connection poolers
     if (Object.keys(filteredData).length > 0) {
       await db.$transaction(
         Object.keys(filteredData).map((key) =>
@@ -73,24 +64,18 @@ settings.patch('/', authMiddleware, async (c) => {
       invalidateSettingsCache()
     }
 
-    // Return updated settings (including env-based ones)
     const settingsList = await db.setting.findMany()
     const config: Record<string, string> = {
-      // These are read from environment variables (read-only)
       site_title: process.env.SITE_TITLE || 'MO GALLERY',
       cdn_domain: process.env.CDN_DOMAIN || '',
     }
-
     settingsList.forEach((s) => {
       if (!envSettings.includes(s.key)) {
         config[s.key] = s.value
       }
     })
 
-    return c.json({
-      success: true,
-      data: config,
-    })
+    return c.json({ success: true, data: config })
   } catch (error) {
     console.error('Update settings error:', error)
     return c.json({ error: 'Internal server error' }, 500)

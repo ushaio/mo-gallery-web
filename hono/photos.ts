@@ -5,7 +5,7 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 import { extractExifData } from '~/server/lib/exif'
 import { extractDominantColors } from '~/server/lib/colors'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
-import { StorageProviderFactory, StorageError, getStorageConfig } from '~/server/lib/storage'
+import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
 
@@ -21,6 +21,14 @@ function buildThumbnailKey(originalKey: string): string {
   const parsed = path.posix.parse(originalKey)
   const thumbnailFilename = buildThumbnailFilename(parsed.base)
   return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
+}
+
+/** Resolve storage config preferring storageSourceId, falling back to storageProvider string. */
+async function resolveStorageConfig(photo: { storageSourceId?: string | null; storageProvider: string }) {
+  if (photo.storageSourceId) {
+    return getStorageConfigBySourceId(photo.storageSourceId)
+  }
+  return getStorageConfig(photo.storageProvider)
 }
 
 // Public endpoints
@@ -242,6 +250,7 @@ photos.post('/admin/photos', async (c) => {
     const titleRaw = formData.get('title') as string
     const title = titleRaw?.trim() || 'Untitled'
     const category = formData.get('category') as string
+    const storageSourceId = formData.get('storage_source_id') as string | null
     const storageProvider = formData.get('storage_provider') as string
     const storagePath = formData.get('storage_path') as string
     const storagePathFull = formData.get('storage_path_full') === 'true'
@@ -281,7 +290,9 @@ photos.post('/admin/photos', async (c) => {
     // 2. Extract EXIF data
     // 3. Get metadata + generate thumbnail
     const [storageConfig, exifData, { metadata, thumbnailBuffer }] = await Promise.all([
-      getStorageConfig(storageProvider || undefined),
+      storageSourceId
+        ? getStorageConfigBySourceId(storageSourceId)
+        : getStorageConfig(storageProvider || undefined),
       extractExifData(buffer),
       (async () => {
         const sharpInstance = sharp(buffer)
@@ -388,6 +399,7 @@ photos.post('/admin/photos', async (c) => {
         thumbnailUrl: uploadResult.thumbnailUrl,
         originFlag,
         storageProvider: storageConfig.provider,
+        storageSourceId: storageSourceId || null,
         storageKey: uploadResult.key,
         width: metadata.width || 0,
         height: metadata.height || 0,
@@ -470,7 +482,7 @@ photos.delete('/admin/photos/:id', async (c) => {
       // Delete files from storage based on user selection
       if (deleteOriginal || deleteThumbnail) {
         // Get storage configuration for the provider used by this photo
-        const storageConfig = await getStorageConfig(photo.storageProvider)
+        const storageConfig = await resolveStorageConfig(photo)
 
         // Create storage provider instance
         const storage = StorageProviderFactory.create(storageConfig)
@@ -576,7 +588,7 @@ photos.post('/admin/photos/batch-delete', async (c) => {
         // Create one storage instance per provider
         let storage: ReturnType<typeof StorageProviderFactory.create> | null = null
         if (deleteOriginal || deleteThumbnail) {
-          const storageConfig = await getStorageConfig(provider === 'default' ? undefined : provider)
+        const storageConfig = await getStorageConfig(provider === 'default' ? undefined : provider)
           storage = StorageProviderFactory.create(storageConfig)
         }
 
@@ -667,7 +679,7 @@ photos.patch('/admin/photos/:id', async (c) => {
         return c.json({ error: 'Photo not found' }, 404)
       }
 
-      const storageConfig = await getStorageConfig(photo.storageProvider)
+      const storageConfig = await resolveStorageConfig(photo)
       const storage = StorageProviderFactory.create(storageConfig)
 
       // Derive thumbnail key
@@ -832,7 +844,7 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
     // Find all photos using this storage provider
     const photosList = await db.photo.findMany({
       where: {
-        storageProvider: storageProvider as 'local' | 'github' | 'r2',
+        storageProvider: storageProvider as 'local' | 'github' | 's3',
       },
     })
 
@@ -884,9 +896,9 @@ photos.post('/admin/photos/:id/reanalyze-colors', async (c) => {
     }
 
     // Get storage config and download the image
-    const storageConfig = await getStorageConfig(photo.storageProvider)
+    const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
-    
+
     const buffer = await storage.download(photo.storageKey || photo.url)
     if (!buffer) {
       return c.json({ error: 'Failed to download image' }, 500)
@@ -941,7 +953,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    const storageConfig = await getStorageConfig(photo.storageProvider)
+    const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
     storage.validateConfig()
 
@@ -1080,7 +1092,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const photo = await db.photo.findUnique({ where: { id } })
     if (!photo) return c.json({ error: 'Photo not found' }, 404)
 
-    const storageConfig = await getStorageConfig(photo.storageProvider)
+    const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
 
     const buffer = await storage.download(photo.storageKey || photo.url)

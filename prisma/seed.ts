@@ -30,11 +30,11 @@ async function main() {
     { key: 'github_branch', value: process.env.GITHUB_BRANCH || 'main' },
     { key: 'github_access_method', value: process.env.GITHUB_ACCESS_METHOD || 'jsdelivr' },
     { key: 'github_pages_url', value: process.env.GITHUB_PAGES_URL || '' },
-    // R2 Storage Settings (for future use)
-    { key: 'r2_access_key_id', value: process.env.R2_ACCESS_KEY_ID || '' },
-    { key: 'r2_secret_access_key', value: process.env.R2_SECRET_ACCESS_KEY || '' },
-    { key: 'r2_bucket', value: process.env.R2_BUCKET || '' },
-    { key: 'r2_endpoint', value: process.env.R2_ENDPOINT || '' },
+    // R2/S3 Storage Settings
+    { key: 's3_access_key_id', value: process.env.R2_ACCESS_KEY_ID || '' },
+    { key: 's3_secret_access_key', value: process.env.R2_SECRET_ACCESS_KEY || '' },
+    { key: 's3_bucket', value: process.env.R2_BUCKET || '' },
+    { key: 's3_endpoint', value: process.env.R2_ENDPOINT || '' },
   ]
 
   for (const setting of settings) {
