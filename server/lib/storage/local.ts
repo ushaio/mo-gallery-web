@@ -101,7 +101,11 @@ export class LocalStorageProvider implements StorageProvider {
       }
     } catch (error) {
       console.error('Failed to delete local file:', error)
-      // Don't throw - deletion is best-effort
+      throw new StorageError(
+        'Failed to delete from local storage',
+        'LOCAL_DELETE_FAILED',
+        error
+      )
     }
   }
 

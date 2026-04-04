@@ -91,6 +91,16 @@ storageSources.delete('/admin/storage-sources/:id', async (c) => {
   const source = await db.storageSource.findUnique({ where: { id } })
   if (!source) return c.json({ error: 'Not found' }, 404)
 
+  const photoCount = await db.photo.count({
+    where: { storageSourceId: id },
+  })
+  if (photoCount > 0) {
+    return c.json(
+      { error: `Storage source is still used by ${photoCount} photo(s)` },
+      409
+    )
+  }
+
   await db.storageSource.delete({ where: { id } })
   return c.json({ success: true })
 })

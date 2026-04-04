@@ -20,6 +20,28 @@ import {
   StorageFile,
 } from './types'
 
+function getErrorStatus(error: unknown): number | undefined {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const status = (error as { status?: unknown }).status
+    return typeof status === 'number' ? status : undefined
+  }
+  return undefined
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+  return String(error)
+}
+
+function getGithubErrorData(error: unknown): unknown {
+  if (error && typeof error === 'object' && 'response' in error) {
+    return (error as { response?: { data?: unknown } }).response?.data
+  }
+  return undefined
+}
+
 export class GithubStorageProvider implements StorageProvider {
   private octokit: Octokit
   private owner: string
@@ -110,10 +132,10 @@ export class GithubStorageProvider implements StorageProvider {
       }
 
       return result
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('GitHub upload error:', error)
       throw new StorageError(
-        `Failed to upload to GitHub: ${error.message}`,
+        `Failed to upload to GitHub: ${getErrorMessage(error)}`,
         'GITHUB_UPLOAD_FAILED',
         error
       )
@@ -121,19 +143,19 @@ export class GithubStorageProvider implements StorageProvider {
   }
 
   async delete(key: string, thumbnailKey?: string): Promise<void> {
-    // Note: This method always attempts to delete from GitHub
-    // The decision to call this method is made by the caller
     try {
-      // Delete original file
       await this.deleteFromGithub(key)
-
-      // Delete thumbnail if provided
       if (thumbnailKey) {
         await this.deleteFromGithub(thumbnailKey)
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to delete from GitHub: ${key}`, error)
-      // Don't throw - deletion is best-effort
+      const message = error instanceof Error ? error.message : String(error)
+      throw new StorageError(
+        `Failed to delete from GitHub: ${message}`,
+        'GITHUB_DELETE_FAILED',
+        error
+      )
     }
   }
 
@@ -273,10 +295,10 @@ export class GithubStorageProvider implements StorageProvider {
       if (!Array.isArray(data) && 'sha' in data) {
         sha = data.sha
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // File doesn't exist (404), that's fine
-      if (error.status !== 404) {
-        console.error('GitHub getContent error:', error.response?.data || error.message)
+      if (getErrorStatus(error) !== 404) {
+        console.error('GitHub getContent error:', getGithubErrorData(error) || getErrorMessage(error))
         throw error
       }
     }
@@ -292,10 +314,14 @@ export class GithubStorageProvider implements StorageProvider {
         branch: this.branch,
         ...(sha && { sha }),
       })
-    } catch (error: any) {
-       console.error('GitHub createOrUpdateFileContents error:', error.response?.data || error.message)
+    } catch (error: unknown) {
+       console.error('GitHub createOrUpdateFileContents error:', getGithubErrorData(error) || getErrorMessage(error))
 
-       const msg = error.response?.data?.message || error.message || ''
+       const responseData = getGithubErrorData(error)
+       const responseMessage = responseData && typeof responseData === 'object' && 'message' in responseData
+         ? (responseData as { message?: unknown }).message
+         : undefined
+       const msg = typeof responseMessage === 'string' ? responseMessage : getErrorMessage(error)
        if (msg.includes('exists where') && msg.includes('subdirectory')) {
          const conflict = await this.checkPathConflict(path)
          if (conflict) {
@@ -329,7 +355,7 @@ export class GithubStorageProvider implements StorageProvider {
             if (!Array.isArray(data) && data.type === 'file') {
                 return currentPath
             }
-        } catch (e) {
+        } catch {
             // Ignore 404 or other errors during check
         }
     }
@@ -356,8 +382,8 @@ export class GithubStorageProvider implements StorageProvider {
           branch: this.branch,
         })
       }
-    } catch (error: any) {
-      if (error.status === 404) {
+    } catch (error: unknown) {
+      if (getErrorStatus(error) === 404) {
         console.log(`File not found on GitHub: ${path}`)
         return
       }

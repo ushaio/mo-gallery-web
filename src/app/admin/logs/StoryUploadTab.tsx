@@ -18,12 +18,12 @@ import {
   Edit3,
   Minimize2,
 } from 'lucide-react'
-import { AdminSettingsDto, createStory } from '@/lib/api'
+import { AdminSettingsDto, StorageSourceDto, createStory, getStorageSources } from '@/lib/api'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
 import { formatFileSize } from '@/lib/utils'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminInput, AdminMultiSelect } from '@/components/admin/AdminFormControls'
+import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
 
 interface StoryUploadFile {
   id: string
@@ -46,7 +46,6 @@ interface StoryUploadTabProps {
 export function StoryUploadTab({
   token,
   categories,
-  settings,
   t,
   notify,
   onStoryCreated,
@@ -70,7 +69,8 @@ export function StoryUploadTab({
   const [batchPhotoTitle, setBatchPhotoTitle] = useState('')
 
   // 存储配置
-  const [uploadSource, setUploadSource] = useState('local')
+  const [uploadSourceId, setUploadSourceId] = useState('')
+  const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
   const [uploadPath, setUploadPath] = useState('')
 
@@ -85,13 +85,34 @@ export function StoryUploadTab({
 
   // 从设置初始化默认值
   useEffect(() => {
-    if (settings?.storage_provider && !isInitialized) {
-      queueMicrotask(() => {
-        setUploadSource(settings.storage_provider)
-        setIsInitialized(true)
+    if (!token || isInitialized) return
+
+    let cancelled = false
+    getStorageSources(token)
+      .then((sources) => {
+        if (cancelled) return
+        setStorageSources(sources)
+        if (sources.length > 0) {
+          setUploadSourceId(sources[0].id)
+        }
       })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to load storage sources:', error)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsInitialized(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
     }
-  }, [settings, isInitialized])
+  }, [token, isInitialized])
+
+  const selectedSource = storageSources.find((source) => source.id === uploadSourceId)
 
   const categoryOptions = useMemo(
     () =>
@@ -194,6 +215,10 @@ export function StoryUploadTab({
       setUploadError(t('admin.categories'))
       return
     }
+    if (storageSources.length === 0 || !selectedSource) {
+      setUploadError('No storage source configured')
+      return
+    }
 
     setUploadError('')
 
@@ -234,7 +259,8 @@ export function StoryUploadTab({
         files: filesToUpload.map(item => ({ id: item.id, file: item.file })),
         title: batchPhotoTitle.trim() || '', // Will use filename if empty
         categories: uploadCategories,
-        storageProvider: uploadSource || undefined,
+        storageProvider: selectedSource.type,
+        storageSourceId: uploadSourceId || undefined,
         storagePath: uploadPath.trim() || undefined,
         storyId: story.id,
         albumIds: undefined,
@@ -369,15 +395,15 @@ export function StoryUploadTab({
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                   {t('admin.storage_provider')}
                 </label>
-                <select
-                  value={uploadSource}
-                  onChange={(e) => setUploadSource(e.target.value)}
-                  className="w-full p-3 bg-background border-b border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"
-                >
-                  <option value="local">{t('admin.local_storage')}</option>
-                  <option value="s3">S3</option>
-                  <option value="github">GitHub</option>
-                </select>
+                <AdminSelect
+                  value={uploadSourceId}
+                  onChange={setUploadSourceId}
+                  options={storageSources.map((source) => ({
+                    value: source.id,
+                    label: `${source.name} (${source.type})`,
+                  }))}
+                  disabled={!isInitialized || storageSources.length === 0}
+                />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">

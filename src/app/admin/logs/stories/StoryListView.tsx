@@ -124,7 +124,7 @@ export function StoryListView({
             {filteredStories.map((story) => (
               <div
                 key={story.id}
-                className="group flex items-center justify-between border border-border bg-card px-5 py-5 transition-colors hover:border-primary/50"
+                className="group flex items-center gap-5 border border-border bg-card px-5 py-5 transition-colors hover:border-primary/50 sm:gap-6"
               >
                 {(() => {
                   const coverPhoto = story.coverPhotoId
@@ -132,7 +132,7 @@ export function StoryListView({
                     : story.photos[0]
                   return coverPhoto ? (
                     <div
-                      className="hidden sm:block w-20 h-14 flex-shrink-0 bg-muted overflow-hidden cursor-pointer"
+                      className="hidden h-16 w-24 flex-shrink-0 cursor-pointer overflow-hidden border border-border/70 bg-muted sm:block"
                       onClick={() => onEditStory(story)}
                     >
                       <img
@@ -144,7 +144,7 @@ export function StoryListView({
                     </div>
                   ) : null
                 })()}
-                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onEditStory(story)}>
+                <div className="min-w-0 flex-1 cursor-pointer pr-1 sm:pr-2" onClick={() => onEditStory(story)}>
                   <div className="mb-2 flex items-center gap-3">
                     <h4 className="truncate text-lg font-semibold transition-colors group-hover:text-primary">
                       {story.title || t('story.untitled')}
@@ -181,7 +181,7 @@ export function StoryListView({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1.5 opacity-100 transition-opacity duration-200 sm:gap-2 sm:opacity-0 sm:group-hover:opacity-100">
+                <div className="ml-auto flex shrink-0 items-center gap-1.5 opacity-100 transition-opacity duration-200 sm:gap-2 sm:pl-2 sm:opacity-0 sm:group-hover:opacity-100">
                   <AdminButton
                     onClick={(event) => {
                       event.stopPropagation()

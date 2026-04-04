@@ -572,23 +572,26 @@ photos.post('/admin/photos/batch-delete', async (c) => {
       }
     }
 
-    // Group photos by storage provider to reuse storage instances
-    const byProvider = new Map<string, typeof photosToDelete>()
+    // Group photos by exact storage source so multi-instance providers stay isolated.
+    const byStorageTarget = new Map<string, typeof photosToDelete>()
     for (const photo of photosToDelete) {
-      const provider = photo.storageProvider || 'default'
-      if (!byProvider.has(provider)) {
-        byProvider.set(provider, [])
+      const storageTarget = photo.storageSourceId
+        ? `source:${photo.storageSourceId}`
+        : `provider:${photo.storageProvider || 'default'}`
+      if (!byStorageTarget.has(storageTarget)) {
+        byStorageTarget.set(storageTarget, [])
       }
-      byProvider.get(provider)!.push(photo)
+      byStorageTarget.get(storageTarget)!.push(photo)
     }
 
-    // Process each provider group in parallel
+    // Process each storage target group in parallel
     const providerResults = await Promise.allSettled(
-      Array.from(byProvider.entries()).map(async ([provider, providerPhotos]) => {
-        // Create one storage instance per provider
+      Array.from(byStorageTarget.entries()).map(async ([storageTarget, providerPhotos]) => {
         let storage: ReturnType<typeof StorageProviderFactory.create> | null = null
         if (deleteOriginal || deleteThumbnail) {
-        const storageConfig = await getStorageConfig(provider === 'default' ? undefined : provider)
+          const storageConfig = storageTarget.startsWith('source:')
+            ? await getStorageConfigBySourceId(storageTarget.slice('source:'.length))
+            : await getStorageConfig(storageTarget === 'provider:default' ? undefined : storageTarget.slice('provider:'.length))
           storage = StorageProviderFactory.create(storageConfig)
         }
 

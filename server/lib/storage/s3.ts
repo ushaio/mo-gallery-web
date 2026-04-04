@@ -97,8 +97,10 @@ export class S3StorageProvider implements StorageProvider {
     try {
       await this.deleteFromS3(key)
       if (thumbnailKey) await this.deleteFromS3(thumbnailKey)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Failed to delete from S3: ${key}`, error)
+      const msg = error instanceof Error ? error.message : String(error)
+      throw new StorageError(`Failed to delete from S3: ${msg}`, 'S3_DELETE_FAILED', error)
     }
   }
 
