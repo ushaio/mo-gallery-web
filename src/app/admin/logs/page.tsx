@@ -24,6 +24,7 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { countStoryCharacters } from '@/lib/story-rich-content'
+import { formatRelativeTimeLabel } from '@/lib/utils'
 
 // 扩展类型：为故事草稿文件添加预览 URL
 interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
@@ -43,7 +44,7 @@ export default function LogsPage() {
   } = useAdmin()
 
   // 当前激活的子标签页（默认为故事标签）
-  const [activeSubTab, setActiveSubTab] = useState<'blog' | 'stories' | 'drafts'>(editStoryId ? 'stories' : 'stories')
+  const [activeSubTab, setActiveSubTab] = useState<'blog' | 'stories' | 'drafts'>('stories')
 
   // 草稿状态管理 - 使用带预览 URL 的扩展类型
   const [storyDraft, setStoryDraft] = useState<StoryDraftWithPreviews | null>(null) // 故事上传草稿（只读）
@@ -186,11 +187,7 @@ export default function LogsPage() {
 
   // 格式化相对时间显示
   function formatRelativeTime(timestamp: number): string {
-    const diff = Date.now() - timestamp
-    if (diff < 60000) return t('story.draft_just_now')
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} ${t('story.draft_minutes_ago')}`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ${t('story.draft_hours_ago')}`
-    return new Date(timestamp).toLocaleString()
+    return formatRelativeTimeLabel(timestamp, t, 'datetime')
   }
 
   // 计算草稿总数（用于显示徽章）

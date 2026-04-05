@@ -1,4 +1,4 @@
-import type { PhotoDto } from '@/lib/api'
+import type { PhotoDto } from '@/lib/api/types'
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g
 const HTML_IMAGE_PATTERN = /<img\b[^>]*\bsrc=(['"])(.*?)\1[^>]*>/gi

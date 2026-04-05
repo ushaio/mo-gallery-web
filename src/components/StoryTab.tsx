@@ -139,10 +139,9 @@ export function StoryTab({
 
         if (data?.id) {
           const allComments = await getStoryComments(data.id)
-          allComments.sort((a, b) =>
+          setInternalComments(allComments.toSorted((a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )
-          setInternalComments(allComments)
+          ))
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : t('story.load_failed')
@@ -185,14 +184,14 @@ export function StoryTab({
         ? await getStoryComments(story.id)
         : await getPhotoComments(photoId)
 
-      newComments.sort((a, b) =>
+      const sorted = newComments.toSorted((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
 
       if (onCommentsUpdate) {
-        onCommentsUpdate(newComments)
+        onCommentsUpdate(sorted)
       } else {
-        setInternalComments(newComments)
+        setInternalComments(sorted)
       }
     } catch (err) {
       console.error('Failed to refresh comments:', err)

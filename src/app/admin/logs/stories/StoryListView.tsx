@@ -19,7 +19,8 @@ import type { SelectOption } from '@/components/admin/AdminFormControls'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
-import { resolveAssetUrl, type StoryDto } from '@/lib/api'
+import type { StoryDto } from '@/lib/api/types'
+import { resolveAssetUrl } from '@/lib/api/core'
 import { countStoryCharacters } from '@/lib/story-rich-content'
 
 interface StoryListViewProps {

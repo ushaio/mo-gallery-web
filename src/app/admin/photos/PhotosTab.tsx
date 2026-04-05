@@ -11,7 +11,10 @@ import {
   Star,
   SlidersHorizontal,
 } from 'lucide-react'
-import { PhotoDto, resolveAssetUrl, AlbumDto, getAlbums, AdminSettingsDto, CameraDto, LensDto, getCameras, getLenses } from '@/lib/api'
+import type { PhotoDto, AlbumDto, AdminSettingsDto, CameraDto, LensDto } from '@/lib/api/types'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { getAlbums } from '@/lib/api/albums'
+import { getCameras, getLenses } from '@/lib/api/equipment'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
@@ -192,7 +195,7 @@ export function PhotosTab({
     })
 
     // Apply sorting
-    return filtered.sort((a, b) => {
+    return filtered.toSorted((a, b) => {
       switch (sortBy) {
         case 'upload-desc':
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

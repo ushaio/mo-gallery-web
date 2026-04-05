@@ -18,7 +18,9 @@ import {
   Edit3,
   Minimize2,
 } from 'lucide-react'
-import { AdminSettingsDto, StorageSourceDto, createStory, getStorageSources } from '@/lib/api'
+import type { AdminSettingsDto, StorageSourceDto } from '@/lib/api/types'
+import { createStory } from '@/lib/api/stories'
+import { getStorageSources } from '@/lib/api/storage-sources'
 import { compressImage, type CompressionMode } from '@/lib/image-compress'
 import { formatFileSize } from '@/lib/utils'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'

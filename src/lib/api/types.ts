@@ -217,6 +217,11 @@ export interface BlogDto {
   updatedAt: string
 }
 
+/** Lightweight DTO for blog lists — no full content, only preview text */
+export type BlogListItemDto = Omit<BlogDto, 'content'> & {
+  previewText: string
+}
+
 export interface AlbumDto {
   id: string
   name: string

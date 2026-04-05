@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { loginWithLinuxDo, bindLinuxDoAccount } from '@/lib/api'
+import { loginWithLinuxDo, bindLinuxDoAccount } from '@/lib/api/auth'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 

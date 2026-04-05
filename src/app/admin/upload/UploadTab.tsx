@@ -21,7 +21,11 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react'
-import { AdminSettingsDto, StorageSourceDto, getAdminStories, getAdminAlbums, checkDuplicatePhotos, getStorageSources, type StoryDto, type AlbumDto } from '@/lib/api'
+import type { AdminSettingsDto, StorageSourceDto, StoryDto, AlbumDto } from '@/lib/api/types'
+import { getAdminStories } from '@/lib/api/stories'
+import { getAdminAlbums } from '@/lib/api/albums'
+import { checkDuplicatePhotos } from '@/lib/api/photos'
+import { getStorageSources } from '@/lib/api/storage-sources'
 import { type CompressionMode } from '@/lib/image-compress'
 import { stripGpsData } from '@/lib/privacy-strip'
 import { calculateFileHash } from '@/lib/file-hash'

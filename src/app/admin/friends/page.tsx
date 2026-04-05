@@ -16,17 +16,16 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react'
+import type { FriendLinkDto } from '@/lib/api/types'
+import { ApiUnauthorizedError } from '@/lib/api/core'
 import {
-  FriendLinkDto,
   getAdminFriendLinks,
   createFriendLink,
   updateFriendLink,
   deleteFriendLink,
   reorderFriendLinks,
-  ApiUnauthorizedError,
-} from '@/lib/api'
+} from '@/lib/api/friends'
 import { useAuth } from '@/contexts/AuthContext'
-import { useRouter } from 'next/navigation'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { useAdmin } from '../layout'
@@ -55,9 +54,8 @@ const defaultFormData: FriendFormData = {
 }
 
 export default function FriendsPage() {
-  const { t, notify } = useAdmin()
-  const { token, logout } = useAuth()
-  const router = useRouter()
+  const { t, notify, handleUnauthorized } = useAdmin()
+  const { token } = useAuth()
 
   // 状态管理
   const [friends, setFriends] = useState<FriendLinkDto[]>([]) // 友链列表
@@ -67,12 +65,6 @@ export default function FriendsPage() {
   const [editingFriend, setEditingFriend] = useState<FriendFormData | null>(null) // 正在编辑的友链
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null) // 删除确认对话框
   const [draggedId, setDraggedId] = useState<string | null>(null) // 拖拽中的友链ID
-
-  // 处理未授权情况
-  const handleUnauthorized = () => {
-    logout()
-    router.push('/login')
-  }
 
   // 获取友链列表
   const fetchFriends = async () => {

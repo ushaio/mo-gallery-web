@@ -12,7 +12,8 @@ import {
   MoreVertical,
   LayoutGrid,
 } from 'lucide-react'
-import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'

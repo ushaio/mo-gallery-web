@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ExternalLink, Users, Sparkles, Loader2 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { getFriendLinks, FriendLinkDto } from '@/lib/api'
+import { getFriendLinks } from '@/lib/api/friends'
+import type { FriendLinkDto } from '@/lib/api/types'
 
 export default function TheyPage() {
   const { t } = useLanguage()

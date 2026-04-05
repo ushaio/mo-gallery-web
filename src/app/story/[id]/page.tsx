@@ -4,16 +4,24 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Clock, Image as ImageIcon } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getStory } from '@/lib/api/stories'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { StoryComments } from '@/components/StoryComments'
-import { StoryMapPanel } from '@/components/StoryMapPanel'
-import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { Toast, type Notification } from '@/components/Toast'
+
+const StoryMapPanel = dynamic(
+  () => import('@/components/StoryMapPanel').then((m) => m.StoryMapPanel),
+  { ssr: false },
+)
+const PhotoDetailModal = dynamic(
+  () => import('@/components/PhotoDetailModal').then((m) => m.PhotoDetailModal),
+  { ssr: false },
+)
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'

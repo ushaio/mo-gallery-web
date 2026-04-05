@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, LogIn, Send } from 'lucide-react'
-import { getStoryComments, submitPhotoComment, type PublicCommentDto } from '@/lib/api'
+import { getStoryComments, submitPhotoComment } from '@/lib/api/comments'
+import type { PublicCommentDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -94,8 +95,7 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
       setLoading(true)
       setError(null)
       const data = await getStoryComments(storyId)
-      data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      setComments(data)
+      setComments(data.toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
     } catch (err) {
       console.error('Failed to load comments:', err)
       setError(err instanceof Error ? err.message : 'Failed to load comments')
@@ -107,8 +107,7 @@ export function StoryComments({ storyId, targetPhotoId, compact = false }: Story
   async function refreshComments() {
     try {
       const data = await getStoryComments(storyId)
-      data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      setComments(data)
+      setComments(data.toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
     } catch (err) {
       console.error('Failed to refresh comments:', err)
     }

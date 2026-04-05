@@ -411,7 +411,7 @@ export function PhotoDetailModal({
           commentsData = await getPhotoComments(photo.id)
         }
         
-        commentsData.sort((a, b) =>
+        commentsData = commentsData.toSorted((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
         
@@ -427,13 +427,13 @@ export function PhotoDetailModal({
           // 无故事，尝试获取照片评论
           try {
             const photoComments = await getPhotoComments(photo.id)
-            photoComments.sort((a, b) =>
+            const sortedComments = photoComments.toSorted((a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             )
             setStoryCache({
               photoId: photo.id,
               story: null,
-              comments: photoComments,
+              comments: sortedComments,
               fetchedAt: Date.now(),
             })
           } catch {

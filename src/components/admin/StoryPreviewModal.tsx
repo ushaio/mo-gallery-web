@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'

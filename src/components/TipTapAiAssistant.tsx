@@ -322,7 +322,7 @@ export function TipTapAiAssistant({
         const next = current.some((item) => item.id === conversation.id)
           ? current.map((item) => (item.id === conversation.id ? conversation : item))
           : [conversation, ...current]
-        return next.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        return next.toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
       })
       setSessionMessages(
         conversation.messages

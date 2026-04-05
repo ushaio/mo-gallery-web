@@ -1,4 +1,5 @@
-import { resolveAssetUrl, type PhotoDto, type StoryDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { PhotoDto, StoryDto } from '@/lib/api/types'
 
 /* ------------------------------------------------------------------ */
 /*  WeChat-compatible inline style map                                 */

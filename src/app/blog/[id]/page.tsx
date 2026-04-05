@@ -1,157 +1,41 @@
-'use client'
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { queryBlog } from '~/server/lib/queries'
+import { BlogDetailContent } from './BlogDetailContent'
 
-import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
-import { Calendar, ArrowLeft, BookText } from 'lucide-react'
-import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { getBlog } from '@/lib/api/blogs'
-import type { BlogDto } from '@/lib/api/types'
-import { useLanguage } from '@/contexts/LanguageContext'
-import { StoryRichContent } from '@/components/StoryRichContent'
+interface BlogDetailPageProps {
+  params: Promise<{ id: string }>
+}
 
-export default function BlogDetailPage() {
-  const params = useParams()
-  const id = params.id as string
-  const { t, locale } = useLanguage()
-  const [blog, setBlog] = useState<BlogDto | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export async function generateMetadata({ params }: BlogDetailPageProps): Promise<Metadata> {
+  const { id } = await params
+  const blog = await queryBlog(id)
 
-  useEffect(() => {
-    async function fetchBlog() {
-      try {
-        const data = await getBlog(id)
-        setBlog(data)
-      } catch (err) {
-        console.error('Failed to fetch blog:', err)
-        setError(t('blog.not_found'))
-      } finally {
-        setLoading(false)
-      }
-    }
+  if (!blog) return { title: 'Not Found' }
 
-    if (id) {
-      void fetchBlog()
-    }
-  }, [id, t])
+  const description = blog.content
+    .replace(/[#*`\[\]<>]/g, '')
+    .substring(0, 160)
+    .trim()
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="animate-pulse space-y-8">
-            <div className="h-12 bg-muted rounded w-3/4"></div>
-            <div className="h-4 bg-muted rounded w-1/4"></div>
-            <div className="space-y-4 mt-12">
-              <div className="h-4 bg-muted rounded"></div>
-              <div className="h-4 bg-muted rounded"></div>
-              <div className="h-4 bg-muted rounded w-5/6"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+  return {
+    title: blog.title,
+    description,
+    openGraph: {
+      title: blog.title,
+      description,
+      type: 'article',
+      publishedTime: blog.createdAt,
+      modifiedTime: blog.updatedAt,
+    },
   }
+}
 
-  if (error || !blog) {
-    return (
-      <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center py-20">
-            <BookText className="w-16 h-16 mx-auto mb-4 opacity-20" />
-            <p className="text-muted-foreground mb-8">{error || t('blog.not_found')}</p>
-            <Link
-              href="/blog"
-              className="inline-block px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all text-xs font-bold uppercase tracking-widest"
-            >
-              {t('story.back_to_list')}
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
-  }
+export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
+  const { id } = await params
+  const blog = await queryBlog(id)
 
-  return (
-    <div className="min-h-screen bg-background text-foreground pt-24 pb-16 px-4 md:px-8 lg:px-12">
-      <div className="max-w-4xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="mb-8"
-        >
-          <Link
-            href="/blog"
-            className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            {t('story.back_to_list')}
-          </Link>
-        </motion.div>
+  if (!blog) notFound()
 
-        <header className="mb-12 pb-8 border-b border-border">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3 text-primary mb-4"
-          >
-            <BookText className="w-5 h-5" />
-            <span className="text-[10px] font-black uppercase tracking-[0.4em]">{t('blog.title')}</span>
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-4xl md:text-6xl font-serif font-light tracking-tighter leading-tight mb-6"
-          >
-            {blog.title}
-          </motion.h1>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest"
-          >
-            <Calendar className="w-3 h-3" />
-            {new Date(blog.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </motion.div>
-        </header>
-
-        <motion.article
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <StoryRichContent content={blog.content} photos={[]} className="story-rich-content--article" />
-        </motion.article>
-
-        <motion.footer
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row gap-4 justify-between"
-        >
-          <Link
-            href="/blog"
-            className="inline-block px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all text-xs font-bold uppercase tracking-widest text-center"
-          >
-            {t('story.back_to_list')}
-          </Link>
-          <Link
-            href="/gallery"
-            className="inline-block px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all text-xs font-bold uppercase tracking-widest text-center"
-          >
-            {t('blog.back_to_gallery')}
-          </Link>
-        </motion.footer>
-      </div>
-    </div>
-  )
+  return <BlogDetailContent blog={blog} />
 }

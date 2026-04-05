@@ -44,6 +44,7 @@ export function MasonryView({ photos, settings, grayscale, immersive = false, on
         <div
           key={columnIndex}
           className={`flex-1 min-w-0 flex flex-col ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}
+          style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 500px' }}
         >
           {columnPhotos[columnIndex]?.map((photo) => (
             <PhotoCard

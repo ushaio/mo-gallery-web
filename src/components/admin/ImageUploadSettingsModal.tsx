@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { FolderOpen, MapPinOff, Minimize2, Settings, Upload, X } from 'lucide-react'
-import { getAdminAlbums, type AdminSettingsDto, type AlbumDto } from '@/lib/api'
+import type { AdminSettingsDto, AlbumDto } from '@/lib/api/types'
+import { getAdminAlbums } from '@/lib/api/albums'
 import type { CompressionMode } from '@/lib/image-compress'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminMultiSelect, AdminSelect, type MultiSelectOption, type SelectOption } from '@/components/admin/AdminFormControls'

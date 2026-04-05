@@ -43,8 +43,10 @@ export function MissingFileUploadModal({
   const handleFile = useCallback((f: File) => {
     if (!f.type.startsWith('image/')) return
     setFile(f)
-    const url = URL.createObjectURL(f)
-    setPreview(url)
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(f)
+    })
   }, [])
 
   const handleDrop = (e: React.DragEvent) => {
@@ -91,7 +93,10 @@ export function MissingFileUploadModal({
 
   const handleClose = () => {
     setFile(null)
-    setPreview(null)
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     setCompressionMode('none')
     onClose()
   }

@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { scanStorage, cleanupStorage, fixMissingPhotos, generateThumbnail, StorageFile, StorageScanStats } from '@/lib/api'
+import type { StorageFile, StorageScanStats } from '@/lib/api/types'
+import { scanStorage, cleanupStorage, fixMissingPhotos } from '@/lib/api/storage'
+import { generateThumbnail } from '@/lib/api/photos'
 import { MissingFileUploadModal } from '@/components/admin/MissingFileUploadModal'
 import { Toast, Notification } from '@/components/Toast'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -95,7 +97,7 @@ export default function StorageCleanupPage() {
   }
 
   const groupedFiles = groupFilesByFolder(files)
-  const sortedFolders = Object.keys(groupedFiles).sort()
+  const sortedFolders = Object.keys(groupedFiles).toSorted()
 
   const toggleFolder = (folder: string) => {
     const newCollapsed = new Set(collapsedFolders)

@@ -12,7 +12,10 @@ import {
   LayoutGrid,
   List as ListIcon,
 } from 'lucide-react'
-import { getPhotos, getAlbums, resolveAssetUrl, type PhotoDto, type AlbumDto } from '@/lib/api'
+import type { PhotoDto, AlbumDto } from '@/lib/api/types'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { getPhotos } from '@/lib/api/photos'
+import { getAlbums } from '@/lib/api/albums'
 import { useSettings } from '@/contexts/SettingsContext'
 import { AdminButton } from '@/components/admin/AdminButton'
 
@@ -125,7 +128,7 @@ export function PhotoSelectorModal({
         }
       })
     })
-    return Array.from(cats).sort()
+    return Array.from(cats).toSorted()
   }, [allPhotos, categories])
 
   // Get album photo IDs for filtering
@@ -158,7 +161,7 @@ export function PhotoSelectorModal({
     })
 
     // Apply sorting
-    return filtered.sort((a, b) => {
+    return filtered.toSorted((a, b) => {
       switch (sortBy) {
         case 'upload-desc':
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

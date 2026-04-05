@@ -8,10 +8,6 @@ type ResponsiveRule = {
 }
 
 function resolveColumnCount(rules: ResponsiveRule[]) {
-  if (typeof window === 'undefined') {
-    return rules[rules.length - 1]?.columns ?? 1
-  }
-
   const width = window.innerWidth
   for (const rule of rules) {
     if (width >= rule.minWidth) {
@@ -22,8 +18,15 @@ function resolveColumnCount(rules: ResponsiveRule[]) {
   return rules[rules.length - 1]?.columns ?? 1
 }
 
+/**
+ * SSR-safe responsive column count hook.
+ * Returns the SSR fallback on first render to avoid hydration mismatch,
+ * then syncs to the real viewport width in useEffect.
+ */
 export function useResponsiveColumnCount(rules: ResponsiveRule[]) {
-  const [columnCount, setColumnCount] = useState(() => resolveColumnCount(rules))
+  // SSR fallback: use the last rule (smallest breakpoint) for consistent hydration
+  const ssrFallback = rules[rules.length - 1]?.columns ?? 1
+  const [columnCount, setColumnCount] = useState(ssrFallback)
 
   useEffect(() => {
     const updateColumnCount = () => {

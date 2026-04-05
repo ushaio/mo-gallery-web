@@ -1,7 +1,9 @@
 'use client'
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { uploadPhotoWithProgress, addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
+import { uploadPhotoWithProgress } from '@/lib/api/photos'
+import { addPhotosToAlbum } from '@/lib/api/albums'
+import { addPhotosToStory } from '@/lib/api/stories'
 import { compressImage, CompressionMode } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'

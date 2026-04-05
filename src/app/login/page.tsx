@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api'
+import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
 import { Loader2 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 

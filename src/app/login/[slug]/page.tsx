@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { login as apiLogin, getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api'
+import { login as apiLogin, getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { notFound } from 'next/navigation'

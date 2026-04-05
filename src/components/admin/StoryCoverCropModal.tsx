@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Check, RotateCcw, X, Crop } from 'lucide-react'
-import type { PhotoDto } from '@/lib/api'
-import { resolveAssetUrl } from '@/lib/api'
+import type { PhotoDto } from '@/lib/api/types'
+import { resolveAssetUrl } from '@/lib/api/core'
 import {
   getStoryCoverImageStyle,
   isDefaultStoryCoverCrop,

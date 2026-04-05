@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import type { Dispatch, DragEvent, SetStateAction } from 'react'
-import type { PhotoDto, StoryDto } from '@/lib/api'
+import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 
 interface UseStoryPhotoDnDParams {
