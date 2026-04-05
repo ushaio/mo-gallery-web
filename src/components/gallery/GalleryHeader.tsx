@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { Search, Circle, CircleOff } from 'lucide-react'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
-export type GalleryView = 'photos' | 'albums'
+export type GalleryView = 'photos' | 'albums' | 'film'
 
 interface GalleryHeaderProps {
   activeCategory: string
@@ -43,7 +43,7 @@ export function GalleryHeader({
               </span>
             </motion.div>
             <motion.h1
-              key={view === 'albums' ? 'albums' : activeCategory}
+              key={view === 'albums' ? 'albums' : view === 'film' ? 'film' : activeCategory}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -51,9 +51,11 @@ export function GalleryHeader({
             >
               {view === 'albums'
                 ? t('gallery.albums')
-                : activeCategory === 'all'
-                  ? t('gallery.title')
-                  : activeCategory}
+                : view === 'film'
+                  ? t('gallery.film_tab')
+                  : activeCategory === 'all'
+                    ? t('gallery.title')
+                    : activeCategory}
             </motion.h1>
           </div>
 
@@ -82,7 +84,7 @@ export function GalleryHeader({
           className="border-t border-border/30 pt-4"
         >
           <div role="tablist" aria-label={t('gallery.gallery_view_aria')} className="mb-4 flex gap-0">
-            {(['photos', 'albums'] as const).map((nextView) => (
+            {(['photos', 'albums', 'film'] as const).map((nextView) => (
               <button
                 key={nextView}
                 role="tab"
@@ -94,7 +96,11 @@ export function GalleryHeader({
                     : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                 }`}
               >
-                {nextView === 'photos' ? t('gallery.photos_tab') : t('gallery.albums_tab')}
+                {nextView === 'photos'
+                  ? t('gallery.photos_tab')
+                  : nextView === 'albums'
+                    ? t('gallery.albums_tab')
+                    : t('gallery.film_tab')}
                 {view === nextView ? (
                   <motion.div
                     layoutId="activeViewTab"
@@ -106,7 +112,7 @@ export function GalleryHeader({
             ))}
           </div>
 
-          {view === 'photos' ? (
+          {view === 'photos' || view === 'film' ? (
             <div className="mask-gradient-x scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4 pb-2 md:mx-0 md:flex-wrap md:gap-1 md:px-0 md:pb-0 md:mask-none">
               {categories.map((category) => (
                 <button
@@ -144,6 +150,7 @@ interface GalleryToolbarProps {
   onGrayscaleChange: (grayscale: boolean) => void
   immersive: boolean
   onImmersiveChange: (immersive: boolean) => void
+  view?: GalleryView
   t: (key: string) => string
 }
 
@@ -156,6 +163,7 @@ export function GalleryToolbar({
   onGrayscaleChange,
   immersive,
   onImmersiveChange,
+  view,
   t,
 }: GalleryToolbarProps) {
   return (
@@ -176,16 +184,18 @@ export function GalleryToolbar({
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              onClick={() => onImmersiveChange(!immersive)}
-              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
-                immersive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
-              }`}
-              aria-label={t('gallery.immersive')}
-              aria-pressed={immersive}
-            >
-              {t('gallery.immersive')}
-            </button>
+            {view !== 'film' ? (
+              <button
+                onClick={() => onImmersiveChange(!immersive)}
+                className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
+                  immersive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                aria-label={t('gallery.immersive')}
+                aria-pressed={immersive}
+              >
+                {t('gallery.immersive')}
+              </button>
+            ) : null}
 
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
@@ -199,13 +209,17 @@ export function GalleryToolbar({
               <span className="hidden sm:inline">{t('gallery.black_white_short')}</span>
             </button>
 
-            <div className="mx-1 h-4 w-px bg-border/50" />
+            {view !== 'film' ? (
+              <>
+                <div className="mx-1 h-4 w-px bg-border/50" />
 
-            <ViewModeToggle
-              viewMode={viewMode}
-              onViewModeChange={onViewModeChange}
-              t={t}
-            />
+                <ViewModeToggle
+                  viewMode={viewMode}
+                  onViewModeChange={onViewModeChange}
+                  t={t}
+                />
+              </>
+            ) : null}
           </div>
         </div>
       </div>

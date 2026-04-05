@@ -11,6 +11,7 @@ import type { AlbumDto, PhotoDto, PhotoPaginationMeta } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { AlbumGrid } from '@/components/gallery/AlbumGrid'
+import { FilmStripView } from '@/components/gallery/FilmStripView'
 import { GalleryHeader, GalleryToolbar, type GalleryView } from '@/components/gallery/GalleryHeader'
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
 import type { ViewMode } from '@/components/gallery/ViewModeToggle'
@@ -80,7 +81,12 @@ export function GalleryContent({
   const handleViewChange = useCallback((nextView: GalleryView) => {
     setView(nextView)
     setSearch('')
-    router.push(nextView === 'albums' ? '/gallery?view=albums' : '/gallery', { scroll: false })
+    const url = nextView === 'albums'
+      ? '/gallery?view=albums'
+      : nextView === 'film'
+        ? '/gallery?view=film'
+        : '/gallery'
+    router.push(url, { scroll: false })
   }, [router])
 
   // Fetch albums when switching to album view
@@ -105,7 +111,7 @@ export function GalleryContent({
   // Refetch photos only when category changes (skip initial load since we have server data)
   const isInitialLoad = useRef(true)
   useEffect(() => {
-    if (view !== 'photos') return
+    if (view !== 'photos' && view !== 'film') return
     if (isInitialLoad.current) {
       isInitialLoad.current = false
       return
@@ -266,6 +272,7 @@ export function GalleryContent({
         onGrayscaleChange={setGrayscale}
         immersive={immersive}
         onImmersiveChange={setImmersive}
+        view={view}
         t={t}
       />
 
@@ -281,6 +288,23 @@ export function GalleryContent({
                 transition={{ duration: 0.2 }}
               >
                 <AlbumGrid albums={albums} onAlbumClick={handleAlbumClick} isLoading={albumsLoading} t={t} />
+              </motion.div>
+            ) : view === 'film' ? (
+              <motion.div
+                key="film"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                style={{ opacity: isFilterPending ? 0.6 : 1 }}
+              >
+                <FilmStripView
+                  photos={filteredPhotos}
+                  settings={settings}
+                  grayscale={grayscale}
+                  onPhotoClick={setSelectedPhoto}
+                  loading={loading}
+                />
               </motion.div>
             ) : (
               <motion.div
