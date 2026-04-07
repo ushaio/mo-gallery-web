@@ -12,10 +12,8 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
   const { view, photoId } = await searchParams
   const isAlbumView = view === 'albums'
 
-  const resolvedView: GalleryView =
-    view === 'albums' ? 'albums' : view === 'film' ? 'film' : 'photos'
+  const resolvedView: GalleryView = isAlbumView ? 'albums' : 'photos'
 
-  // Prefetch photos + categories for photo and film views (they share the same data)
   const [photosResult, categories] = isAlbumView
     ? [null, []]
     : await Promise.all([

@@ -330,16 +330,7 @@ export function FilmPageContent({ initialPhotos, initialMeta }: FilmPageContentP
   }, [loadMore, loadingMore, meta?.hasMore])
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#060606]">
-      {/* Full-page grain */}
-      <div className="film-grain-overlay pointer-events-none fixed inset-0 z-0 opacity-[0.06]" />
-
-      {/* Ambient center glow */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0"
-        style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 30%, rgba(200,168,80,0.05) 0%, transparent 70%)' }}
-      />
-
+    <div className="relative min-h-screen overflow-x-hidden bg-background">
       {/* ── Top bar ─────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between px-6 py-5 md:px-12">
         <Link
@@ -402,8 +393,8 @@ export function FilmPageContent({ initialPhotos, initialMeta }: FilmPageContentP
       {/* ── Film strips ─────────────────────────────────────── */}
       <section className="relative z-10 pb-20">
         {/* Left/right edge fades */}
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-[#060606] to-transparent md:w-12" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-[#060606] to-transparent md:w-12" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent md:w-12" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent md:w-12" />
 
         <div className="overflow-x-auto scrollbar-hide px-6 md:px-12">
           <div className="flex min-w-max flex-col gap-6 py-4">

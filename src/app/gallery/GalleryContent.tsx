@@ -284,23 +284,6 @@ export function GalleryContent({
               >
                 <AlbumGrid albums={albums} onAlbumClick={handleAlbumClick} isLoading={albumsLoading} t={t} />
               </motion.div>
-            ) : view === 'film' ? (
-              <motion.div
-                key="film"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                style={{ opacity: isFilterPending ? 0.6 : 1 }}
-              >
-                <FilmStripView
-                  photos={filteredPhotos}
-                  settings={settings}
-                  grayscale={grayscale}
-                  onPhotoClick={setSelectedPhoto}
-                  loading={loading}
-                />
-              </motion.div>
             ) : (
               <motion.div
                 key="photos"

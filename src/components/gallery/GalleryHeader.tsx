@@ -108,7 +108,7 @@ export function GalleryHeader({
             ))}
           </div>
 
-          {view === 'photos' || view === 'film' ? (
+          {view === 'photos' ? (
             <div className="mask-gradient-x scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4 pb-2 md:mx-0 md:flex-wrap md:gap-1 md:px-0 md:pb-0 md:mask-none">
               {categories.map((category) => (
                 <button
@@ -180,18 +180,16 @@ export function GalleryToolbar({
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            {view !== 'film' ? (
-              <button
-                onClick={() => onImmersiveChange(!immersive)}
-                className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
-                  immersive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
-                }`}
-                aria-label={t('gallery.immersive')}
-                aria-pressed={immersive}
-              >
-                {t('gallery.immersive')}
-              </button>
-            ) : null}
+            <button
+              onClick={() => onImmersiveChange(!immersive)}
+              className={`px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
+                immersive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
+              }`}
+              aria-label={t('gallery.immersive')}
+              aria-pressed={immersive}
+            >
+              {t('gallery.immersive')}
+            </button>
 
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
@@ -205,17 +203,13 @@ export function GalleryToolbar({
               <span className="hidden sm:inline">{t('gallery.black_white_short')}</span>
             </button>
 
-            {view !== 'film' ? (
-              <>
-                <div className="mx-1 h-4 w-px bg-border/50" />
+            <div className="mx-1 h-4 w-px bg-border/50" />
 
-                <ViewModeToggle
-                  viewMode={viewMode}
-                  onViewModeChange={onViewModeChange}
-                  t={t}
-                />
-              </>
-            ) : null}
+            <ViewModeToggle
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
+              t={t}
+            />
           </div>
         </div>
       </div>
