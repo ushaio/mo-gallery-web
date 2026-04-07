@@ -29,6 +29,7 @@ export const coreMessages: LocaleDictionaryGroup = {
     nav: {
       home: '首页',
       gallery: '画廊',
+      gallery_film: '胶片',
       story: '叙事',
       they: '他们',
       about: '关于',
@@ -76,6 +77,7 @@ export const coreMessages: LocaleDictionaryGroup = {
     nav: {
       home: 'HOME',
       gallery: 'GALLERY',
+      gallery_film: 'FILM',
       story: 'STORY',
       they: 'THEY',
       about: 'ABOUT',

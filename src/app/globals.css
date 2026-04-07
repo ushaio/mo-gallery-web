@@ -144,10 +144,48 @@
 
   /* Film grain noise overlay for FilmStripView */
   .film-grain-overlay {
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
     background-repeat: repeat;
-    background-size: 128px 128px;
-    mix-blend-mode: overlay;
+    background-size: 180px 180px;
+    mix-blend-mode: soft-light;
+    animation: film-grain-shift 0.12s steps(1) infinite;
+  }
+
+  @keyframes film-grain-shift {
+    0%   { background-position: 0 0; }
+    25%  { background-position: -40px -20px; }
+    50%  { background-position: 20px -40px; }
+    75%  { background-position: -20px 20px; }
+    100% { background-position: 40px 10px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .film-grain-overlay {
+      animation: none;
+    }
+  }
+
+  /* Scanline texture for film frames */
+  .film-scanlines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.06) 2px,
+      rgba(0, 0, 0, 0.06) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* Vignette on film frames */
+  .film-vignette {
+    background: radial-gradient(
+      ellipse at center,
+      transparent 55%,
+      rgba(0, 0, 0, 0.55) 100%
+    );
+    pointer-events: none;
+    transition: opacity 0.35s ease;
   }
 
   /* ========================================

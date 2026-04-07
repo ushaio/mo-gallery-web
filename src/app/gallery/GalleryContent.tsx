@@ -11,7 +11,6 @@ import type { AlbumDto, PhotoDto, PhotoPaginationMeta } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { AlbumGrid } from '@/components/gallery/AlbumGrid'
-import { FilmStripView } from '@/components/gallery/FilmStripView'
 import { GalleryHeader, GalleryToolbar, type GalleryView } from '@/components/gallery/GalleryHeader'
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
 import type { ViewMode } from '@/components/gallery/ViewModeToggle'
@@ -81,11 +80,7 @@ export function GalleryContent({
   const handleViewChange = useCallback((nextView: GalleryView) => {
     setView(nextView)
     setSearch('')
-    const url = nextView === 'albums'
-      ? '/gallery?view=albums'
-      : nextView === 'film'
-        ? '/gallery?view=film'
-        : '/gallery'
+    const url = nextView === 'albums' ? '/gallery?view=albums' : '/gallery'
     router.push(url, { scroll: false })
   }, [router])
 
@@ -111,7 +106,7 @@ export function GalleryContent({
   // Refetch photos only when category changes (skip initial load since we have server data)
   const isInitialLoad = useRef(true)
   useEffect(() => {
-    if (view !== 'photos' && view !== 'film') return
+    if (view !== 'photos') return
     if (isInitialLoad.current) {
       isInitialLoad.current = false
       return

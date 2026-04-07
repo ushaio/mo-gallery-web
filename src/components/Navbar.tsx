@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { LogOut, Sun, Moon, Monitor, Menu, X } from 'lucide-react'
+import { LogOut, Sun, Moon, Monitor, Menu, X, ChevronDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -18,6 +18,9 @@ export default function Navbar() {
   const { t, locale, setLocale } = useLanguage()
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [galleryDropdownOpen, setGalleryDropdownOpen] = useState(false)
+  const [mobileGalleryOpen, setMobileGalleryOpen] = useState(false)
+  const galleryDropdownRef = useRef<HTMLDivElement>(null)
   const [scrolled, setScrolled] = useState(false)
   const prevPathnameRef = useRef(pathname)
 
@@ -170,7 +173,6 @@ export default function Navbar() {
               <div className="flex space-x-8">
                 {[
                   { name: t('nav.home'), path: '/' },
-                  { name: t('nav.gallery'), path: '/gallery' },
                   { name: t('nav.story'), path: '/story' },
                   { name: t('nav.they'), path: '/they' },
                   { name: t('nav.about'), path: '/about' },
@@ -182,27 +184,25 @@ export default function Navbar() {
                       href={item.path}
                       className={cn(
                         "font-sans text-xs font-medium tracking-[0.2em] transition-colors duration-300 uppercase relative group",
-                        isActive 
+                        isActive
                           ? (isTransparent ? "text-white" : "text-primary")
                           : textColorClass,
                         !isActive && hoverColorClass
                       )}
                     >
                       {item.name}
-                      {/* Underline indicator */}
-                      <motion.span 
+                      <motion.span
                         className={cn(
                           "absolute -bottom-1 left-0 h-[1px]",
                           isTransparent ? "bg-white" : "bg-primary"
                         )}
                         initial={false}
-                        animate={{ 
+                        animate={{
                           width: isActive ? '100%' : '0%',
                           opacity: isActive ? 1 : 0
                         }}
                         transition={{ duration: 0.3, ease: 'easeInOut' }}
                       />
-                      {/* Hover underline (only when not active) */}
                       {!isActive && (
                         <span className={cn(
                           "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-300 group-hover:w-full",
@@ -212,6 +212,70 @@ export default function Navbar() {
                     </Link>
                   )
                 })}
+
+                {/* Gallery with dropdown */}
+                <div
+                  ref={galleryDropdownRef}
+                  className="relative"
+                  onMouseEnter={() => setGalleryDropdownOpen(true)}
+                  onMouseLeave={() => setGalleryDropdownOpen(false)}
+                >
+                  <Link
+                    href="/gallery"
+                    className={cn(
+                      "font-sans text-xs font-medium tracking-[0.2em] transition-colors duration-300 uppercase relative group flex items-center gap-1",
+                      isMenuItemActive('/gallery')
+                        ? (isTransparent ? "text-white" : "text-primary")
+                        : textColorClass,
+                      !isMenuItemActive('/gallery') && hoverColorClass
+                    )}
+                  >
+                    {t('nav.gallery')}
+                    <ChevronDown className={cn(
+                      "w-3 h-3 transition-transform duration-200",
+                      galleryDropdownOpen ? "rotate-180" : ""
+                    )} />
+                    <motion.span
+                      className={cn(
+                        "absolute -bottom-1 left-0 h-[1px]",
+                        isTransparent ? "bg-white" : "bg-primary"
+                      )}
+                      initial={false}
+                      animate={{
+                        width: isMenuItemActive('/gallery') ? '100%' : '0%',
+                        opacity: isMenuItemActive('/gallery') ? 1 : 0
+                      }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    />
+                    {!isMenuItemActive('/gallery') && (
+                      <span className={cn(
+                        "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-300 group-hover:w-full",
+                        isTransparent ? "bg-white" : "bg-primary"
+                      )} />
+                    )}
+                  </Link>
+
+                  <AnimatePresence>
+                    {galleryDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 6 }}
+                        transition={{ duration: 0.15, ease: 'easeOut' }}
+                        className="absolute left-0 top-full pt-3 z-50"
+                      >
+                        <div className="bg-background/95 backdrop-blur-xl border border-border/50 shadow-lg py-1 min-w-[120px]">
+                          <Link
+                            href="/gallery/film"
+                            className="block px-4 py-2 font-sans text-[10px] font-medium tracking-[0.2em] uppercase text-muted-foreground hover:text-primary hover:bg-muted/40 transition-colors duration-200"
+                          >
+                            {t('nav.gallery_film')}
+                          </Link>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
 
               <div className={cn("h-4 w-[1px]", isTransparent ? "bg-white/30" : "bg-border")}></div>
@@ -300,6 +364,7 @@ export default function Navbar() {
                   { name: t('nav.about'), path: '/about' },
                 ].map((item, index) => {
                   const isActive = isMenuItemActive(item.path)
+                  const isGallery = item.path === '/gallery'
                   return (
                     <motion.div
                       key={item.path}
@@ -307,28 +372,61 @@ export default function Navbar() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
                     >
-                      <Link
-                        href={item.path}
-                        className={cn(
-                          "block py-4 font-serif text-3xl tracking-tight transition-colors relative",
-                          isActive 
-                            ? 'text-primary' 
-                            : 'text-foreground hover:text-primary'
-                        )}
-                      >
-                        <span className="relative">
-                          {item.name}
-                          {/* Active indicator for mobile */}
-                          {isActive && (
-                            <motion.span
-                              className="absolute -bottom-1 left-0 h-[2px] bg-primary"
-                              initial={{ width: 0 }}
-                              animate={{ width: '100%' }}
-                              transition={{ duration: 0.3, ease: 'easeOut' }}
-                            />
+                      <div className="flex items-center">
+                        <Link
+                          href={item.path}
+                          className={cn(
+                            "block py-4 font-serif text-3xl tracking-tight transition-colors relative flex-1",
+                            isActive
+                              ? 'text-primary'
+                              : 'text-foreground hover:text-primary'
                           )}
-                        </span>
-                      </Link>
+                        >
+                          <span className="relative">
+                            {item.name}
+                            {isActive && (
+                              <motion.span
+                                className="absolute -bottom-1 left-0 h-[2px] bg-primary"
+                                initial={{ width: 0 }}
+                                animate={{ width: '100%' }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                              />
+                            )}
+                          </span>
+                        </Link>
+                        {isGallery && (
+                          <button
+                            onClick={() => setMobileGalleryOpen((v) => !v)}
+                            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label="Toggle gallery submenu"
+                          >
+                            <ChevronDown className={cn(
+                              "w-5 h-5 transition-transform duration-200",
+                              mobileGalleryOpen ? "rotate-180" : ""
+                            )} />
+                          </button>
+                        )}
+                      </div>
+                      {isGallery && (
+                        <AnimatePresence>
+                          {mobileGalleryOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden pl-4 border-l border-border/40"
+                            >
+                              <Link
+                                href="/gallery/film"
+                                className="block py-3 font-sans text-base tracking-widest uppercase text-muted-foreground hover:text-primary transition-colors"
+                              >
+                                {t('nav.gallery_film')}
+                              </Link>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      )}
                     </motion.div>
                   )
                 })}

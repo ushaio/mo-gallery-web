@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { Search, Circle, CircleOff } from 'lucide-react'
 import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 
-export type GalleryView = 'photos' | 'albums' | 'film'
+export type GalleryView = 'photos' | 'albums'
 
 interface GalleryHeaderProps {
   activeCategory: string
@@ -43,7 +43,7 @@ export function GalleryHeader({
               </span>
             </motion.div>
             <motion.h1
-              key={view === 'albums' ? 'albums' : view === 'film' ? 'film' : activeCategory}
+              key={view === 'albums' ? 'albums' : activeCategory}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -51,11 +51,9 @@ export function GalleryHeader({
             >
               {view === 'albums'
                 ? t('gallery.albums')
-                : view === 'film'
-                  ? t('gallery.film_tab')
-                  : activeCategory === 'all'
-                    ? t('gallery.title')
-                    : activeCategory}
+                : activeCategory === 'all'
+                  ? t('gallery.title')
+                  : activeCategory}
             </motion.h1>
           </div>
 
@@ -84,7 +82,7 @@ export function GalleryHeader({
           className="border-t border-border/30 pt-4"
         >
           <div role="tablist" aria-label={t('gallery.gallery_view_aria')} className="mb-4 flex gap-0">
-            {(['photos', 'albums', 'film'] as const).map((nextView) => (
+            {(['photos', 'albums'] as const).map((nextView) => (
               <button
                 key={nextView}
                 role="tab"
@@ -98,9 +96,7 @@ export function GalleryHeader({
               >
                 {nextView === 'photos'
                   ? t('gallery.photos_tab')
-                  : nextView === 'albums'
-                    ? t('gallery.albums_tab')
-                    : t('gallery.film_tab')}
+                  : t('gallery.albums_tab')}
                 {view === nextView ? (
                   <motion.div
                     layoutId="activeViewTab"
