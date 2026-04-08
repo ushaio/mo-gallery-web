@@ -27,6 +27,43 @@ function isValidDate(value: Date | undefined): value is Date {
   return value instanceof Date && Number.isFinite(value.getTime())
 }
 
+function normalizeStorageKeyCandidate(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const normalized = value.replace(/\\/g, '/').trim()
+  if (!normalized) return undefined
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      return new URL(normalized).pathname.replace(/^\/+/, '')
+    } catch {
+      return normalized
+    }
+  }
+  return normalized.replace(/^\/+/, '')
+}
+
+function deriveOriginalStorageKey(photo: {
+  storageKey?: string | null
+  url: string
+}) {
+  return (
+    normalizeStorageKeyCandidate(photo.storageKey) ||
+    normalizeStorageKeyCandidate(photo.url)
+  )
+}
+
+function deriveThumbnailStorageKey(photo: {
+  storageKey?: string | null
+  thumbnailUrl?: string | null
+}) {
+  if (photo.thumbnailUrl) {
+    const thumbnailFromUrl = normalizeStorageKeyCandidate(photo.thumbnailUrl)
+    if (thumbnailFromUrl) return thumbnailFromUrl
+  }
+
+  const originalKey = normalizeStorageKeyCandidate(photo.storageKey)
+  return originalKey ? buildThumbnailKey(originalKey) : undefined
+}
+
 function mapPhotoDto(
   photo: {
     categories: { name: string }[]
@@ -755,13 +792,15 @@ photos.patch('/admin/photos/:id', async (c) => {
       const storage = StorageProviderFactory.create(storageConfig)
 
       // Derive thumbnail key
-      let thumbnailKey: string | undefined
-      if (photo.storageKey) {
-        thumbnailKey = buildThumbnailKey(photo.storageKey)
+      const originalKey = deriveOriginalStorageKey(photo)
+      if (!originalKey) {
+        return c.json({ error: 'Photo storage key is missing' }, 400)
       }
 
+      const thumbnailKey = deriveThumbnailStorageKey(photo)
+
       const moveResult = await storage.move(
-        photo.storageKey || photo.url,
+        originalKey,
         body.storagePath,
         thumbnailKey
       )
@@ -876,7 +915,10 @@ photos.patch('/admin/photos/:id', async (c) => {
     })
   } catch (error) {
     console.error('Update photo error:', error)
-    return c.json({ error: 'Internal server error' }, 500)
+    if (error instanceof StorageError) {
+      return c.json({ error: error.message }, 400)
+    }
+    return c.json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
   }
 })
 

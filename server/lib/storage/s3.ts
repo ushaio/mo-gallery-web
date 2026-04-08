@@ -127,10 +127,9 @@ export class S3StorageProvider implements StorageProvider {
 
     await this.client.send(new CopyObjectCommand({
       Bucket: this.bucket,
-      CopySource: `${this.bucket}/${oldKey}`,
+      CopySource: this.buildCopySource(oldKey),
       Key: newKey,
     }))
-    await this.deleteFromS3(oldKey)
 
     const result: MoveResult = { newKey, newUrl: this.getUrl(newKey) }
 
@@ -139,14 +138,31 @@ export class S3StorageProvider implements StorageProvider {
       const newThumbKey = newPath
         ? `${newPath}/${thumbFilename}`.replace(/\/+/g, '/').replace(/^\/+/, '')
         : thumbFilename
-      await this.client.send(new CopyObjectCommand({
-        Bucket: this.bucket,
-        CopySource: `${this.bucket}/${thumbnailKey}`,
-        Key: newThumbKey,
-      }))
-      await this.deleteFromS3(thumbnailKey)
-      result.newThumbnailKey = newThumbKey
-      result.newThumbnailUrl = this.getUrl(newThumbKey)
+
+      try {
+        await this.client.send(new CopyObjectCommand({
+          Bucket: this.bucket,
+          CopySource: this.buildCopySource(thumbnailKey),
+          Key: newThumbKey,
+        }))
+        result.newThumbnailKey = newThumbKey
+        result.newThumbnailUrl = this.getUrl(newThumbKey)
+      } catch (error: unknown) {
+        if (this.isNotFoundError(error)) {
+          console.warn(`S3 thumbnail missing during move: ${thumbnailKey}`)
+        } else {
+          console.warn(`S3 thumbnail move skipped for ${thumbnailKey}:`, error)
+        }
+      }
+    }
+
+    await this.deleteFromS3(oldKey)
+    if (thumbnailKey && result.newThumbnailKey) {
+      try {
+        await this.deleteFromS3(thumbnailKey)
+      } catch (error: unknown) {
+        console.warn(`S3 thumbnail delete skipped for ${thumbnailKey}:`, error)
+      }
     }
 
     return result
@@ -192,6 +208,32 @@ export class S3StorageProvider implements StorageProvider {
     if (subfolder) parts.push(subfolder)
     parts.push(filename)
     return parts.join('/').replace(/\/+/g, '/').replace(/^\/+/, '')
+  }
+
+  private buildCopySource(key: string): string {
+    const encodedKey = key
+      .split('/')
+      .map(segment => encodeURIComponent(segment))
+      .join('/')
+    return `${this.bucket}/${encodedKey}`
+  }
+
+  private isNotFoundError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false
+
+    const maybeError = error as {
+      name?: unknown
+      Code?: unknown
+      code?: unknown
+      $metadata?: { httpStatusCode?: unknown }
+    }
+
+    return (
+      maybeError.name === 'NoSuchKey' ||
+      maybeError.Code === 'NoSuchKey' ||
+      maybeError.code === 'NoSuchKey' ||
+      maybeError.$metadata?.httpStatusCode === 404
+    )
   }
 
   private async uploadToS3(key: string, buffer: Buffer, contentType: string): Promise<void> {

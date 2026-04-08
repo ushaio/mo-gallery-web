@@ -64,9 +64,10 @@ export class LocalStorageProvider implements StorageProvider {
       const filePath = this.buildFilePath(file.filename, file.path)
       await writeFile(filePath, file.buffer)
 
+      const fileKey = this.buildRelativeKey(file.filename, file.path)
       const result: UploadResult = {
         url: this.getUrl(file.filename, file.path),
-        key: file.filename,
+        key: fileKey,
       }
 
       // Upload thumbnail
@@ -77,7 +78,7 @@ export class LocalStorageProvider implements StorageProvider {
         )
         await writeFile(thumbPath, thumbnail.buffer)
         result.thumbnailUrl = this.getUrl(thumbnail.filename, thumbnail.path)
-        result.thumbnailKey = thumbnail.filename
+        result.thumbnailKey = this.buildRelativeKey(thumbnail.filename, thumbnail.path)
       }
 
       return result
@@ -211,5 +212,11 @@ export class LocalStorageProvider implements StorageProvider {
       targetPath = path.join(targetPath, subfolder)
     }
     return path.join(targetPath, filename)
+  }
+
+  private buildRelativeKey(filename: string, subfolder?: string): string {
+    return subfolder
+      ? path.posix.join(subfolder.replace(/\\/g, '/'), filename)
+      : filename
   }
 }
