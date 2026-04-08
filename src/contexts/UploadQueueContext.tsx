@@ -210,8 +210,11 @@ export function UploadQueueProvider({
             )
           )
         } catch (compressError) {
-          // If compression fails, continue with original file
-          console.warn('Compression failed, using original file:', compressError)
+          const message =
+            compressError instanceof Error && compressError.message
+              ? compressError.message
+              : 'Image compression failed'
+          throw new Error(`Compression failed before upload: ${message}`)
         }
       }
 

@@ -24,6 +24,32 @@ export interface BatchDuplicateCheckResult {
   hasDuplicates: boolean
 }
 
+function extractUploadErrorMessage(responseText: string, status: number, statusText: string): string {
+  const trimmed = responseText.trim()
+
+  if (trimmed) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      return extractErrorMessage(parsed) ?? `Upload failed (${status})`
+    } catch {
+      if (/payload too large|request entity too large|body exceeded|entity too large/i.test(trimmed)) {
+        return 'Upload failed: request body is too large'
+      }
+      if (trimmed.startsWith('<')) {
+        if (status === 413) return 'Upload failed: request body is too large'
+        return `Upload failed (${status}${statusText ? ` ${statusText}` : ''})`
+      }
+      return trimmed
+    }
+  }
+
+  if (status === 413) {
+    return 'Upload failed: request body is too large'
+  }
+
+  return `Upload failed (${status}${statusText ? ` ${statusText}` : ''})`
+}
+
 export async function getCategories(): Promise<string[]> {
   return apiRequestData<string[]>('/api/categories')
 }
@@ -181,7 +207,12 @@ export function uploadPhotoWithProgress(input: {
           reject(new Error(extractErrorMessage(response) ?? `Upload failed (${xhr.status})`))
         }
       } catch {
-        reject(new Error('Invalid response from server'))
+        if (xhr.status >= 200 && xhr.status < 300) {
+          reject(new Error('Invalid response from server'))
+          return
+        }
+
+        reject(new Error(extractUploadErrorMessage(xhr.responseText, xhr.status, xhr.statusText)))
       }
     })
 
