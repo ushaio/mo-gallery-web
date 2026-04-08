@@ -40,6 +40,9 @@ export interface PhotoDto {
   id: string
   title: string
   category: string
+  photoType?: 'digital' | 'film'
+  filmRollId?: string | null
+  filmRollName?: string | null
   url: string
   thumbnailUrl?: string
   originFlag?: 'web' | 'mobile'

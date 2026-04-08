@@ -322,6 +322,8 @@ export async function updatePhoto(input: {
     category?: string
     takenAt?: string | null
     storagePath?: string
+    photoType?: 'digital' | 'film'
+    filmRollId?: string | null
   }
 }): Promise<PhotoDto> {
   return apiRequestData<PhotoDto>(

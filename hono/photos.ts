@@ -27,6 +27,23 @@ function isValidDate(value: Date | undefined): value is Date {
   return value instanceof Date && Number.isFinite(value.getTime())
 }
 
+function mapPhotoDto(
+  photo: {
+    categories: { name: string }[]
+    dominantColors: string | null
+    filmPhoto?: { filmRollId: string; filmRoll?: { name: string } | null } | null
+  } & Record<string, unknown>
+) {
+  return {
+    ...photo,
+    category: photo.categories.map((c) => c.name).join(','),
+    dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
+    photoType: photo.filmPhoto ? 'film' : 'digital',
+    filmRollId: photo.filmPhoto?.filmRollId ?? null,
+    filmRollName: photo.filmPhoto?.filmRoll?.name ?? null,
+  }
+}
+
 /** Resolve storage config preferring storageSourceId, falling back to storageProvider string. */
 async function resolveStorageConfig(photo: { storageSourceId?: string | null; storageProvider: string }) {
   if (photo.storageSourceId) {
@@ -53,18 +70,19 @@ photos.get('/photos', async (c) => {
     if (allStr === 'true') {
       const photosList = await db.photo.findMany({
         where,
-        include: { categories: true, camera: true, lens: true },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
         orderBy: [
           { takenAt: { sort: 'desc', nulls: 'last' } },
           { createdAt: 'desc' },
         ],
       })
 
-      const data = photosList.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-        dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-      }))
+      const data = photosList.map(mapPhotoDto)
 
       return c.json({
         success: true,
@@ -82,7 +100,12 @@ photos.get('/photos', async (c) => {
       db.photo.count({ where }),
       db.photo.findMany({
         where,
-        include: { categories: true, camera: true, lens: true },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
         skip,
         take: pageSize,
         orderBy: [
@@ -92,11 +115,7 @@ photos.get('/photos', async (c) => {
       })
     ])
 
-    const data = photosList.map((p) => ({
-      ...p,
-      category: p.categories.map((c) => c.name).join(','),
-      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-    }))
+    const data = photosList.map(mapPhotoDto)
 
     return c.json({
       success: true,
@@ -119,7 +138,12 @@ photos.get('/photos/featured', async (c) => {
   try {
     const photosList = await db.photo.findMany({
       where: { isFeatured: true },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
       take: 6,
       orderBy: [
         { takenAt: { sort: 'desc', nulls: 'last' } },
@@ -127,11 +151,7 @@ photos.get('/photos/featured', async (c) => {
       ],
     })
 
-    const data = photosList.map((p) => ({
-      ...p,
-      category: p.categories.map((c) => c.name).join(','),
-      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-    }))
+    const data = photosList.map(mapPhotoDto)
 
     return c.json({
       success: true,
@@ -468,15 +488,17 @@ photos.post('/admin/photos', async (c) => {
           })),
         },
       },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
     })
 
     return c.json({
       success: true,
-      data: {
-        ...photo,
-        category: photo.categories.map((c) => c.name).join(','),
-      },
+      data: mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Upload photo error:', error)
@@ -706,6 +728,14 @@ photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
+    const requestedPhotoType =
+      body.photoType === 'digital' || body.photoType === 'film'
+        ? body.photoType
+        : undefined
+    const requestedFilmRollId =
+      body.filmRollId === null || typeof body.filmRollId === 'string'
+        ? body.filmRollId
+        : undefined
 
     // Build update data
     const updateData: Record<string, unknown> = {}
@@ -773,19 +803,76 @@ photos.patch('/admin/photos/:id', async (c) => {
       }
     }
 
+    if (requestedPhotoType === 'film') {
+      if (!requestedFilmRollId) {
+        return c.json({ error: 'Film photos must be assigned to a film roll' }, 400)
+      }
+
+      const roll = await db.filmRoll.findUnique({
+        where: { id: requestedFilmRollId },
+        select: { id: true },
+      })
+
+      if (!roll) {
+        return c.json({ error: 'Film roll not found' }, 404)
+      }
+
+      const existingFilmPhoto = await db.filmPhoto.findUnique({
+        where: { photoId: id },
+        select: { id: true, filmRollId: true, frameNumber: true },
+      })
+
+      if (existingFilmPhoto) {
+        if (existingFilmPhoto.filmRollId !== requestedFilmRollId) {
+          const maxFrame = await db.filmPhoto.findFirst({
+            where: { filmRollId: requestedFilmRollId },
+            orderBy: { frameNumber: 'desc' },
+            select: { frameNumber: true },
+          })
+
+          await db.filmPhoto.update({
+            where: { id: existingFilmPhoto.id },
+            data: {
+              filmRollId: requestedFilmRollId,
+              frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+            },
+          })
+        }
+      } else {
+        const maxFrame = await db.filmPhoto.findFirst({
+          where: { filmRollId: requestedFilmRollId },
+          orderBy: { frameNumber: 'desc' },
+          select: { frameNumber: true },
+        })
+
+        await db.filmPhoto.create({
+          data: {
+            photoId: id,
+            filmRollId: requestedFilmRollId,
+            frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+          },
+        })
+      }
+    } else if (requestedPhotoType === 'digital') {
+      await db.filmPhoto.deleteMany({
+        where: { photoId: id },
+      })
+    }
+
     const photo = await db.photo.update({
       where: { id },
       data: updateData,
-      include: { categories: true, camera: true, lens: true }
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      }
     })
 
     return c.json({
       success: true,
-      data: {
-        ...photo,
-        category: photo.categories.map((c) => c.name).join(','),
-        dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
-      },
+      data: mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Update photo error:', error)
@@ -1164,16 +1251,17 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const updated = await db.photo.update({
       where: { id },
       data: { thumbnailUrl: uploadResult.url },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
     })
 
     return c.json({
       success: true,
-      data: {
-        ...updated,
-        category: updated.categories.map((c) => c.name).join(','),
-        dominantColors: updated.dominantColors ? JSON.parse(updated.dominantColors) : null,
-      },
+      data: mapPhotoDto(updated),
     })
   } catch (error) {
     console.error('Generate thumbnail error:', error)
