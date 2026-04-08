@@ -23,6 +23,10 @@ function buildThumbnailKey(originalKey: string): string {
   return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
 }
 
+function isValidDate(value: Date | undefined): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime())
+}
+
 /** Resolve storage config preferring storageSourceId, falling back to storageProvider string. */
 async function resolveStorageConfig(photo: { storageSourceId?: string | null; storageProvider: string }) {
   if (photo.storageSourceId) {
@@ -452,7 +456,7 @@ photos.post('/admin/photos', async (c) => {
         aperture: exifData.aperture,
         shutterSpeed: exifData.shutterSpeed,
         iso: exifData.iso,
-        takenAt: exifData.takenAt,
+        takenAt: isValidDate(exifData.takenAt) ? exifData.takenAt : undefined,
         gps: exifData.gps,
         orientation: exifData.orientation,
         software: exifData.software,
@@ -1054,7 +1058,9 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
         updateData.aperture = exifData.aperture
         updateData.shutterSpeed = exifData.shutterSpeed
         updateData.iso = exifData.iso
-        updateData.takenAt = exifData.takenAt
+        if (isValidDate(exifData.takenAt)) {
+          updateData.takenAt = exifData.takenAt
+        }
         updateData.gps = exifData.gps
         updateData.orientation = exifData.orientation
         updateData.software = exifData.software
