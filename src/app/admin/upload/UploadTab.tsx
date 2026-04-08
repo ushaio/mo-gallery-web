@@ -20,10 +20,13 @@ import {
   ExternalLink,
   ChevronDown,
   Check,
+  Camera,
+  Film,
 } from 'lucide-react'
-import type { AdminSettingsDto, StorageSourceDto, StoryDto, AlbumDto } from '@/lib/api/types'
+import type { AdminSettingsDto, StorageSourceDto, StoryDto, AlbumDto, FilmRollDto } from '@/lib/api/types'
 import { getAdminStories } from '@/lib/api/stories'
 import { getAdminAlbums } from '@/lib/api/albums'
+import { getFilmRolls } from '@/lib/api/film-rolls'
 import { checkDuplicatePhotos } from '@/lib/api/photos'
 import { getStorageSources } from '@/lib/api/storage-sources'
 import { type CompressionMode } from '@/lib/image-compress'
@@ -35,6 +38,7 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
 import { DuplicatePhotosDialog, type DuplicateInfo } from '@/components/admin/DuplicatePhotosDialog'
 import { StorySelectorModal } from '@/components/admin/StorySelectorModal'
+import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
 
 interface UploadTabProps {
   token: string | null
@@ -363,6 +367,9 @@ export function UploadTab({
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  // Upload type: digital or film
+  const [uploadType, setUploadType] = useState<'digital' | 'film'>('digital')
+
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
 
@@ -375,6 +382,13 @@ export function UploadTab({
   const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>([])
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
+
+  // Film roll state
+  const [uploadFilmRollId, setUploadFilmRollId] = useState('')
+  const [uploadFilmRollName, setUploadFilmRollName] = useState('')
+  const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
+  const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
+  const [showFilmRollSelector, setShowFilmRollSelector] = useState(false)
 
   const [uploadSourceId, setUploadSourceId] = useState<string>('')
   const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
@@ -446,6 +460,23 @@ export function UploadTab({
     getAdminAlbums(token).then(data => !cancelled && setAlbums(data)).finally(() => !cancelled && setLoadingAlbums(false))
     return () => { cancelled = true }
   }, [token])
+
+  const loadFilmRolls = useCallback(async () => {
+    if (filmRolls.length > 0) return
+    setLoadingFilmRolls(true)
+    try {
+      const data = await getFilmRolls()
+      setFilmRolls(data)
+    } finally {
+      setLoadingFilmRolls(false)
+    }
+  }, [filmRolls.length])
+
+  useEffect(() => {
+    if (showFilmRollSelector) {
+      loadFilmRolls()
+    }
+  }, [showFilmRollSelector, loadFilmRolls])
 
   const categoryOptions = useMemo(
     () =>
@@ -614,6 +645,23 @@ export function UploadTab({
 
   const handleDragEnd = () => setDragIndex(null)
 
+  const handleUploadTypeChange = (type: 'digital' | 'film') => {
+    if (type === uploadType) return
+    setUploadType(type)
+    // Reset params but keep files
+    setUploadTitle('')
+    setUploadCategories([])
+    setUploadStoryId('')
+    setUploadStoryTitle('')
+    setUploadAlbumIds([])
+    setUploadFilmRollId('')
+    setUploadFilmRollName('')
+    setUseCustomPrefix(false)
+    setUploadPath('')
+    setCompressionMode('none')
+    setPrivacyStripEnabled(false)
+  }
+
   const handleUploadClick = () => {
     if (!token) return
     if (!uploadFiles.length) { setUploadError(t('admin.select_files')); return }
@@ -671,6 +719,7 @@ export function UploadTab({
       storagePathFull: useCustomPrefix,
       storyId: uploadStoryId || undefined,
       albumIds: uploadAlbumIds.length ? uploadAlbumIds : undefined,
+      filmRollId: uploadType === 'film' && uploadFilmRollId ? uploadFilmRollId : undefined,
       compressionMode: compressionMode !== 'none' ? compressionMode : undefined,
       maxSizeMB: compressionMode !== 'none' ? maxSizeMB : undefined,
       token,
@@ -726,6 +775,32 @@ export function UploadTab({
 
   return (
     <>
+      {/* Upload Type Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-border">
+        <button
+          onClick={() => handleUploadTypeChange('digital')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+            uploadType === 'digital'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Camera className="w-4 h-4" />
+          {t('admin.upload_type_digital')}
+        </button>
+        <button
+          onClick={() => handleUploadTypeChange('film')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+            uploadType === 'film'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Film className="w-4 h-4" />
+          {t('admin.upload_type_film')}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
         {/* Left Panel - Settings */}
         <div className="lg:col-span-4">
@@ -794,6 +869,27 @@ export function UploadTab({
                   <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
               </div>
+
+              {/* Film Roll - only visible in film mode */}
+              {uploadType === 'film' && (
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                    <Film className="w-3 h-3" />
+                    {t('admin.film_roll_select')}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowFilmRollSelector(true)}
+                    disabled={loadingFilmRolls}
+                    className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+                  >
+                    <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
+                      {uploadFilmRollName || t('admin.no_film_roll')}
+                    </span>
+                    <Film className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              )}
 
               {/* Storage - compact layout */}
               <div className="pt-3 border-t border-border/50">
@@ -1073,6 +1169,18 @@ export function UploadTab({
         stories={stories}
         selectedStoryId={uploadStoryId}
         loading={loadingStories}
+        t={t}
+      />
+      <FilmRollSelectorModal
+        isOpen={showFilmRollSelector}
+        onClose={() => setShowFilmRollSelector(false)}
+        onSelect={(rollId, rollName) => {
+          setUploadFilmRollId(rollId || '')
+          setUploadFilmRollName(rollName || '')
+        }}
+        filmRolls={filmRolls}
+        selectedRollId={uploadFilmRollId}
+        loading={loadingFilmRolls}
         t={t}
       />
     </>

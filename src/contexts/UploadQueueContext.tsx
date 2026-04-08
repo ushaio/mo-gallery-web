@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { uploadPhotoWithProgress } from '@/lib/api/photos'
 import { addPhotosToAlbum } from '@/lib/api/albums'
 import { addPhotosToStory } from '@/lib/api/stories'
+import { addPhotosToFilmRoll } from '@/lib/api/film-rolls'
 import { compressImage, CompressionMode } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
@@ -28,6 +29,7 @@ export interface UploadTask {
   storagePathFull?: boolean
   storyId?: string
   albumIds?: string[]
+  filmRollId?: string
   fileHash?: string // Original file hash for duplicate detection
   batchId: string // Unique batch identifier
   // Compression settings
@@ -51,6 +53,7 @@ interface UploadQueueContextType {
     storagePathFull?: boolean
     storyId?: string
     albumIds?: string[]
+    filmRollId?: string
     compressionMode?: CompressionMode
     maxSizeMB?: number
     token: string
@@ -110,7 +113,7 @@ export function UploadQueueProvider({
     )
   }, [])
 
-  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumIds: string[] | undefined, photoIds: string[]) => {
+  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumIds: string[] | undefined, filmRollId: string | undefined, photoIds: string[]) => {
     // Double-check we haven't already notified for this batch
     if (notifiedBatchesRef.current.has(batchId)) {
       return
@@ -137,6 +140,15 @@ export function UploadQueueProvider({
           }
         })
       )
+    }
+
+    // If filmRollId is provided, add photos to the film roll
+    if (filmRollId && photoIds.length > 0 && tokenRef.current) {
+      try {
+        await addPhotosToFilmRoll(tokenRef.current, filmRollId, photoIds)
+      } catch (err) {
+        console.error(`Failed to add photos to film roll ${filmRollId}:`, err)
+      }
     }
 
     if (photoIds.length > 0 && onUploadCompleteRef.current) {
@@ -240,7 +252,7 @@ export function UploadQueueProvider({
 
           // Schedule notification outside of setState
           setTimeout(() => {
-            notifyBatchComplete(task.batchId, task.storyId, task.albumIds, photoIds)
+            notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds)
           }, 0)
         }
 
@@ -270,7 +282,7 @@ export function UploadQueueProvider({
 
           if (photoIds.length > 0) {
             setTimeout(() => {
-              notifyBatchComplete(task.batchId, task.storyId, task.albumIds, photoIds)
+              notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds)
             }, 0)
           }
         }
@@ -296,6 +308,7 @@ export function UploadQueueProvider({
       storagePathFull?: boolean
       storyId?: string
       albumIds?: string[]
+      filmRollId?: string
       compressionMode?: CompressionMode
       maxSizeMB?: number
       token: string
@@ -331,6 +344,7 @@ export function UploadQueueProvider({
             storagePathFull: params.storagePathFull,
             storyId: params.storyId,
             albumIds: params.albumIds,
+            filmRollId: params.filmRollId,
             fileHash: item.fileHash,
             compressionMode: params.compressionMode,
             maxSizeMB: params.maxSizeMB,
