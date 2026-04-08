@@ -334,20 +334,43 @@ export function FilmRollsTab({
         {loading ? (
           <div className="py-20"><AdminLoading text={t('common.loading')} className="min-h-[320px]" /></div>
         ) : filteredRolls.length === 0 ? (
-          <div className="py-20 text-center border border-dashed border-border/50 bg-muted/5">
-            <Film className="w-12 h-12 mx-auto mb-4 opacity-10" />
-            <p className="text-sm text-muted-foreground mb-4">{searchQuery || filterBrand ? t('admin.no_film_rolls_match_filters') : t('admin.no_film_rolls')}</p>
+          /* ── Empty state ── */
+          <div className="py-20 text-center">
+            {/* Canister silhouette */}
+            <div className="relative w-[72px] mx-auto mb-6">
+              {/* Spool — flat disc */}
+              <div className="mx-auto w-8 h-4 rounded-full relative z-10"
+                style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #4a4a4a 30%, #555 50%, #444 70%, #2a2a2a 100%)', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
+              >
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-[#1a1a1a] border border-[#444]" />
+              </div>
+              {/* Cylinder body */}
+              <div
+                className="-mt-1.5 mx-auto h-28 flex items-center justify-center"
+                style={{
+                  width: '72px',
+                  borderRadius: '36px / 12px',
+                  background: 'linear-gradient(to right, #1a1a1a 0%, #333 20%, #3a3a3a 50%, #2a2a2a 80%, #1a1a1a 100%)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.5), inset 0 0 12px rgba(0,0,0,0.3)',
+                }}
+              >
+                <Film className="w-7 h-7 text-[#555]/30" />
+              </div>
+            </div>
+            <p className="font-mono text-sm text-[#666] mb-4">{searchQuery || filterBrand ? t('admin.no_film_rolls_match_filters') : t('admin.no_film_rolls')}</p>
             {!searchQuery && !filterBrand && (
-              <AdminButton onClick={handleCreateRoll} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
+              <AdminButton onClick={handleCreateRoll} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#1a1a1a] border border-[#3a3a3a] font-mono text-xs text-[#999] hover:text-[#ccc] hover:border-[#555] transition-colors">
                 <Plus className="w-4 h-4" />
                 {t('admin.create_first_film_roll')}
               </AdminButton>
             )}
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-8 gap-y-10">
             {filteredRolls.map(roll => {
               const cover = getRollCover(roll)
+              const photoCount = roll.photoCount ?? 0
+              const usagePercent = roll.frameCount > 0 ? Math.min(100, Math.round((photoCount / roll.frameCount) * 100)) : 0
               return (
                 <div
                   key={roll.id}
@@ -361,66 +384,176 @@ export function FilmRollsTab({
                       setActiveTab('photos')
                     }
                   }}
-                  className="group cursor-pointer bg-card border border-border/50 hover:border-border transition-all"
+                  className="group cursor-pointer transition-all duration-300 hover:-translate-y-1.5 flex flex-col items-center"
                 >
-                  <div className="relative aspect-[4/3] bg-muted overflow-hidden">
-                    {cover ? (
-                      <img src={cover} alt={roll.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center"><Film className="w-10 h-10 opacity-10" /></div>
-                    )}
-                    <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{roll.photoCount ?? 0}</div>
-                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-1.5 bg-red-500/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </AdminButton>
+                  {/* ── Spool hub — small flat disc peeking above body ── */}
+                  <div className="relative w-7 h-3.5 rounded-full z-10"
+                    style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #4a4a4a 30%, #555 50%, #444 70%, #2a2a2a 100%)', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
+                  >
+                    {/* Center hole */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-[#1a1a1a] border border-[#444]" />
+                  </div>
+
+                  {/* ── Canister cylinder body ── */}
+                  <div className="relative -mt-1.5 w-full" style={{ maxWidth: '140px' }}>
+                    <div
+                      className="relative overflow-hidden group-hover:shadow-[0_8px_32px_rgba(0,0,0,0.7)] transition-shadow"
+                      style={{
+                        borderRadius: '50% / 8px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {/* Metal shell with cylindrical curvature gradient (left-to-right) */}
+                      <div
+                        className="relative overflow-hidden"
+                        style={{
+                          background: 'linear-gradient(to right, #1e1e1e 0%, #383838 15%, #444 35%, #4a4a4a 50%, #3e3e3e 65%, #2e2e2e 85%, #1a1a1a 100%)',
+                        }}
+                      >
+                        {/* Top rim — elliptical cap of cylinder */}
+                        <div className="h-3 relative" style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #555 30%, #666 50%, #4a4a4a 70%, #222 100%)' }}>
+                          <div className="absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(to right, transparent 5%, rgba(255,255,255,0.1) 40%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.08) 60%, transparent 95%)' }} />
+                        </div>
+
+                        {/* Machined groove */}
+                        <div className="h-[3px]" style={{ background: 'linear-gradient(to right, #111 0%, #1e1e1e 30%, #222 50%, #1a1a1a 70%, #0e0e0e 100%)' }} />
+
+                        {/* ── Label area (the paper label wrapped around the canister) ── */}
+                        <div className="relative overflow-hidden">
+                          <div className="relative aspect-[3/4]">
+                            {cover ? (
+                              <img
+                                src={cover}
+                                alt={roll.name}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f5f0e6, #e8e0d0)' }}>
+                                <Film className="w-10 h-10 text-[#c8a850]/25" />
+                              </div>
+                            )}
+                            {/* Cylindrical curvature shadow on label edges */}
+                            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 12px 0 16px -8px rgba(0,0,0,0.5), inset -12px 0 16px -8px rgba(0,0,0,0.5)' }} />
+                            {/* Text overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/40" />
+                            {/* Brand top */}
+                            <div className="absolute top-0 inset-x-0 px-4 pt-2.5">
+                              <p className="font-mono text-[9px] font-black uppercase tracking-[0.3em] text-white/80 drop-shadow truncate text-center">{roll.brand}</p>
+                            </div>
+                            {/* Name + info bottom */}
+                            <div className="absolute bottom-0 inset-x-0 px-4 pb-3 text-center">
+                              <p className="font-mono text-[13px] font-bold text-white drop-shadow truncate">{roll.name}</p>
+                              <div className="flex items-center justify-center gap-2 mt-1">
+                                <span className="font-mono text-[10px] font-bold text-[#c8a850] drop-shadow">ISO {roll.iso}</span>
+                                <span className="font-mono text-[9px] text-white/50">{roll.frameCount}EXP</span>
+                              </div>
+                            </div>
+                            {/* Delete */}
+                            <div className="absolute top-2 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-1 rounded-full bg-black/50 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
+                                <Trash2 className="w-3 h-3" />
+                              </AdminButton>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Machined groove */}
+                        <div className="h-[3px]" style={{ background: 'linear-gradient(to right, #111 0%, #1e1e1e 30%, #222 50%, #1a1a1a 70%, #0e0e0e 100%)' }} />
+
+                        {/* Bottom info */}
+                        <div className="px-4 py-1.5 flex items-center justify-between">
+                          <span className="font-mono text-[8px] text-[#888]">{photoCount}/{roll.frameCount}</span>
+                          <div className="flex-1 mx-2 h-[3px] rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #111, #1a1a1a, #111)' }}>
+                            <div className="h-full rounded-full bg-[#c8a850]/70 transition-all duration-500" style={{ width: `${usagePercent}%` }} />
+                          </div>
+                          {roll.shootDate && <span className="font-mono text-[7px] text-[#666]">{formatDate(roll.shootDate)}</span>}
+                        </div>
+
+                        {/* Bottom rim */}
+                        <div className="h-3 relative" style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #555 30%, #666 50%, #4a4a4a 70%, #222 100%)' }}>
+                          <div className="absolute inset-x-0 bottom-0 h-px" style={{ background: 'linear-gradient(to right, transparent 5%, rgba(255,255,255,0.08) 40%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 60%, transparent 95%)' }} />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="p-4">
-                    <h3 className="font-medium truncate mb-1">{roll.name}</h3>
-                    <p className="text-xs text-muted-foreground">{roll.brand} · ISO {roll.iso} · {roll.frameCount} {t('admin.film_roll_frames')}</p>
-                    {roll.shootDate && <p className="text-xs text-muted-foreground/60 mt-1">{formatDate(roll.shootDate)}</p>}
+
+                  {/* ── Film leader tongue ── */}
+                  <div className="w-7 h-2.5 rounded-b-sm relative" style={{ background: 'linear-gradient(to right, #2a2a2a, #444, #3a3a3a, #2a2a2a)', borderLeft: '1px solid #555', borderRight: '1px solid #555', borderBottom: '1px solid #555' }}>
+                    <div className="absolute inset-x-1 top-0 h-px bg-[#1a1a1a]" />
                   </div>
                 </div>
               )
             })}
           </div>
         ) : (
-          <div className="space-y-2">
-            {filteredRolls.map(roll => (
-              <div
-                key={roll.id}
-                onClick={async () => {
-                  try {
-                    const full = await getFilmRoll(roll.id)
-                    setCurrentRoll(full)
-                    setActiveTab('photos')
-                  } catch {
-                    setCurrentRoll({ ...roll, filmPhotos: [] })
-                    setActiveTab('photos')
-                  }
-                }}
-                className="group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all"
-              >
-                <div className="w-16 h-12 bg-muted overflow-hidden flex-shrink-0">
-                  {getRollCover(roll) ? (
-                    <img src={getRollCover(roll)} alt={roll.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center"><Film className="w-5 h-5 opacity-20" /></div>
-                  )}
+          <div className="space-y-3">
+            {filteredRolls.map(roll => {
+              const photoCount = roll.photoCount ?? 0
+              const usagePercent = roll.frameCount > 0 ? Math.min(100, Math.round((photoCount / roll.frameCount) * 100)) : 0
+              return (
+                <div
+                  key={roll.id}
+                  onClick={async () => {
+                    try {
+                      const full = await getFilmRoll(roll.id)
+                      setCurrentRoll(full)
+                      setActiveTab('photos')
+                    } catch {
+                      setCurrentRoll({ ...roll, filmPhotos: [] })
+                      setActiveTab('photos')
+                    }
+                  }}
+                  className="group flex items-stretch cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
+                >
+                  {/* Left end cap — cylindrical curvature */}
+                  <div className="w-4 shrink-0 rounded-l-full flex items-center justify-center" style={{ background: 'linear-gradient(to right, #555 0%, #3a3a3a 60%, #2e2e2e 100%)', borderTop: '1px solid #555', borderBottom: '1px solid #555', borderLeft: '1px solid #555' }}>
+                    <div className="w-2 h-2 rounded-full bg-[#1a1a1a] border border-[#444]" />
+                  </div>
+                  {/* Body — horizontal cylinder surface */}
+                  <div className="flex-1 flex items-center overflow-hidden" style={{ background: 'linear-gradient(to bottom, #2a2a2a 0%, #383838 20%, #404040 50%, #353535 80%, #252525 100%)', borderTop: '1px solid #4a4a4a', borderBottom: '1px solid #4a4a4a' }}>
+                    {/* Groove */}
+                    <div className="w-[2px] self-stretch bg-[#1a1a1a]" />
+                    {/* Thumbnail */}
+                    <div className="w-12 h-12 overflow-hidden flex-shrink-0 relative">
+                      {getRollCover(roll) ? (
+                        <img src={getRollCover(roll)} alt={roll.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-[#f5f0e6]"><Film className="w-4 h-4 text-[#c8a850]/25" /></div>
+                      )}
+                      <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 4px 0 6px -3px rgba(0,0,0,0.4), inset -4px 0 6px -3px rgba(0,0,0,0.4)' }} />
+                    </div>
+                    {/* Groove */}
+                    <div className="w-[2px] self-stretch bg-[#1a1a1a]" />
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-mono text-sm font-medium text-[#e8e8e8] truncate">{roll.name}</h3>
+                        <span className="shrink-0 px-1.5 py-0.5 rounded-sm bg-[#c8a850] text-[#0a0a0a] font-mono text-[7px] font-black">ISO {roll.iso}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-[#999]">{roll.brand}</span>
+                        <span className="font-mono text-[9px] text-[#666]">{photoCount}/{roll.frameCount} EXP</span>
+                        <div className="w-14 h-[3px] rounded-full overflow-hidden bg-[#1a1a1a]">
+                          <div className="h-full rounded-full bg-[#c8a850]/60" style={{ width: `${usagePercent}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-mono text-[9px] text-[#555] hidden sm:block px-3">{formatDate(roll.shootDate)}</div>
+                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+                      <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-2 text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50">
+                        <Trash2 className="w-4 h-4" />
+                      </AdminButton>
+                    </div>
+                    {/* Groove */}
+                    <div className="w-[2px] self-stretch bg-[#1a1a1a]" />
+                  </div>
+                  {/* Right end cap */}
+                  <div className="w-4 shrink-0 rounded-r-full flex items-center justify-center" style={{ background: 'linear-gradient(to left, #555 0%, #3a3a3a 60%, #2e2e2e 100%)', borderTop: '1px solid #555', borderBottom: '1px solid #555', borderRight: '1px solid #555' }}>
+                    <div className="w-2 h-2 rounded-full bg-[#1a1a1a] border border-[#444]" />
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium truncate">{roll.name}</h3>
-                  <p className="text-xs text-muted-foreground">{roll.brand} · ISO {roll.iso} · {roll.photoCount ?? 0}/{roll.frameCount} {t('admin.film_roll_frames')}</p>
-                </div>
-                <div className="text-xs text-muted-foreground/60 hidden sm:block">{formatDate(roll.shootDate)}</div>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-2 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
-                    <Trash2 className="w-4 h-4" />
-                  </AdminButton>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
