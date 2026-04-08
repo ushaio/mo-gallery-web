@@ -196,4 +196,136 @@ filmRolls.delete('/admin/film-rolls/:id', async (c) => {
   }
 })
 
+// Admin: add photos to film roll
+filmRolls.post('/admin/film-rolls/:id/photos', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const body = await c.req.json()
+    const schema = z.object({
+      photoIds: z.array(z.string().min(1)).min(1),
+    })
+    const { photoIds } = schema.parse(body)
+
+    const roll = await db.filmRoll.findUnique({ where: { id }, include: { _count: { select: { filmPhotos: true } } } })
+    if (!roll) return c.json({ error: 'Film roll not found' }, 404)
+
+    // Get existing max frame number
+    const maxFrame = await db.filmPhoto.findFirst({
+      where: { filmRollId: id },
+      orderBy: { frameNumber: 'desc' },
+      select: { frameNumber: true },
+    })
+    let nextFrame = (maxFrame?.frameNumber ?? 0) + 1
+
+    // Filter out already-added photos
+    const existing = await db.filmPhoto.findMany({
+      where: { filmRollId: id, photoId: { in: photoIds } },
+      select: { photoId: true },
+    })
+    const existingSet = new Set(existing.map((e) => e.photoId))
+    const newPhotoIds = photoIds.filter((pid: string) => !existingSet.has(pid))
+
+    if (newPhotoIds.length > 0) {
+      await db.filmPhoto.createMany({
+        data: newPhotoIds.map((pid: string) => ({
+          filmRollId: id,
+          photoId: pid,
+          frameNumber: nextFrame++,
+        })),
+      })
+    }
+
+    // Return updated roll
+    const updated = await db.filmRoll.findUnique({
+      where: { id },
+      include: {
+        filmPhotos: {
+          orderBy: { frameNumber: 'asc' },
+          include: { photo: { include: { categories: true, camera: true, lens: true } } },
+        },
+      },
+    })
+
+    const data = {
+      ...updated!,
+      shootDate: updated!.shootDate?.toISOString() ?? null,
+      endDate: updated!.endDate?.toISOString() ?? null,
+      createdAt: updated!.createdAt.toISOString(),
+      updatedAt: updated!.updatedAt.toISOString(),
+      photoCount: updated!.filmPhotos.length,
+      filmPhotos: updated!.filmPhotos.map((fp) => ({
+        ...fp,
+        createdAt: fp.createdAt.toISOString(),
+        photo: {
+          ...fp.photo,
+          category: fp.photo.categories.map((c) => c.name).join(','),
+          dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
+          createdAt: fp.photo.createdAt.toISOString(),
+          takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
+          categories: undefined,
+        },
+      })),
+    }
+
+    return c.json({ success: true, data })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    console.error('Add photos to film roll error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// Admin: remove photo from film roll
+filmRolls.delete('/admin/film-rolls/:id/photos/:photoId', async (c) => {
+  try {
+    const { id, photoId } = c.req.param()
+
+    const filmPhoto = await db.filmPhoto.findFirst({
+      where: { filmRollId: id, photoId },
+    })
+    if (!filmPhoto) return c.json({ error: 'Photo not in this roll' }, 404)
+
+    await db.filmPhoto.delete({ where: { id: filmPhoto.id } })
+
+    // Return updated roll
+    const updated = await db.filmRoll.findUnique({
+      where: { id },
+      include: {
+        filmPhotos: {
+          orderBy: { frameNumber: 'asc' },
+          include: { photo: { include: { categories: true, camera: true, lens: true } } },
+        },
+      },
+    })
+
+    const data = {
+      ...updated!,
+      shootDate: updated!.shootDate?.toISOString() ?? null,
+      endDate: updated!.endDate?.toISOString() ?? null,
+      createdAt: updated!.createdAt.toISOString(),
+      updatedAt: updated!.updatedAt.toISOString(),
+      photoCount: updated!.filmPhotos.length,
+      filmPhotos: updated!.filmPhotos.map((fp) => ({
+        ...fp,
+        createdAt: fp.createdAt.toISOString(),
+        photo: {
+          ...fp.photo,
+          category: fp.photo.categories.map((c) => c.name).join(','),
+          dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
+          createdAt: fp.photo.createdAt.toISOString(),
+          takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
+          categories: undefined,
+        },
+      })),
+    }
+
+    return c.json({ success: true, data })
+  } catch (error) {
+    console.error('Remove photo from film roll error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 export default filmRolls

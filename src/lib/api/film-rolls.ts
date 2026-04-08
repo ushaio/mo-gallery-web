@@ -44,3 +44,19 @@ export async function deleteFilmRoll(token: string, id: string): Promise<void> {
     token,
   )
 }
+
+export async function addPhotosToFilmRoll(token: string, id: string, photoIds: string[]): Promise<FilmRollDto> {
+  return apiRequestData<FilmRollDto>(
+    `/api/admin/film-rolls/${encodeURIComponent(id)}/photos`,
+    { method: 'POST', body: JSON.stringify({ photoIds }) },
+    token,
+  )
+}
+
+export async function removePhotoFromFilmRoll(token: string, rollId: string, photoId: string): Promise<FilmRollDto> {
+  return apiRequestData<FilmRollDto>(
+    `/api/admin/film-rolls/${encodeURIComponent(rollId)}/photos/${encodeURIComponent(photoId)}`,
+    { method: 'DELETE' },
+    token,
+  )
+}
