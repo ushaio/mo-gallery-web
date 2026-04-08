@@ -31,7 +31,12 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   validateConfig(): void {
-    // Local storage requires no special config
+    if (process.env.VERCEL) {
+      throw new StorageError(
+        'Local storage is not supported on Vercel. Configure GitHub or S3 storage for uploads.',
+        'LOCAL_STORAGE_UNSUPPORTED_ON_VERCEL'
+      )
+    }
   }
 
   private async ensureDirectory(): Promise<void> {

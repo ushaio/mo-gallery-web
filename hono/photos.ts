@@ -244,6 +244,7 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
 
 photos.post('/admin/photos', async (c) => {
   try {
+    const startedAt = Date.now()
     const allowedOriginFlags = new Set(['web', 'mobile'])
     const formData = await c.req.formData()
     const file = formData.get('file') as File
@@ -265,6 +266,16 @@ photos.post('/admin/photos', async (c) => {
       return c.json({ error: 'File is required' }, 400)
     }
 
+    console.info('[upload] request received', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      storageSourceId,
+      storageProvider: storageProvider || undefined,
+      storagePath: storagePath || undefined,
+      storagePathFull,
+    })
+
     // Check for duplicate if fileHash is provided
     if (fileHash) {
       const existingPhoto = await db.photo.findFirst({
@@ -284,6 +295,11 @@ photos.post('/admin/photos', async (c) => {
     // Process image buffer
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
+    console.info('[upload] file buffered', {
+      fileName: file.name,
+      fileSize: buffer.length,
+      elapsedMs: Date.now() - startedAt,
+    })
 
     // Run these operations in parallel:
     // 1. Get storage configuration
@@ -311,6 +327,15 @@ photos.post('/admin/photos', async (c) => {
       })(),
     ])
 
+    console.info('[upload] image processed', {
+      fileName: file.name,
+      width: metadata.width,
+      height: metadata.height,
+      thumbnailSize: thumbnailBuffer.length,
+      provider: storageConfig.provider,
+      elapsedMs: Date.now() - startedAt,
+    })
+
     // Create storage provider instance
     const storage = StorageProviderFactory.create(storageConfig)
 
@@ -334,7 +359,8 @@ photos.post('/admin/photos', async (c) => {
           .filter((c) => c.length > 0)
       : []
 
-    // Upload to storage and extract dominant colors in parallel
+    // Use the generated thumbnail for color extraction to avoid decoding the
+    // large original image again inside a constrained serverless function.
     const [uploadResult, dominantColors] = await Promise.all([
       storage.upload(
         {
@@ -352,8 +378,16 @@ photos.post('/admin/photos', async (c) => {
           useFullPath: storagePathFull,
         }
       ),
-      extractDominantColors(buffer),
+      extractDominantColors(thumbnailBuffer),
     ])
+
+    console.info('[upload] storage upload complete', {
+      fileName: file.name,
+      key: uploadResult.key,
+      thumbnailKey: uploadResult.thumbnailKey,
+      dominantColors: dominantColors.length,
+      elapsedMs: Date.now() - startedAt,
+    })
 
     // Find or create camera record (brand-based)
     let cameraId: string | null = null
@@ -445,7 +479,8 @@ photos.post('/admin/photos', async (c) => {
     if (error instanceof StorageError) {
       return c.json({ error: error.message }, 400)
     }
-    return c.json({ error: 'Internal server error' }, 500)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    return c.json({ error: message }, 500)
   }
 })
 
