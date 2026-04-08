@@ -122,10 +122,41 @@ model Photo {
   stories    Story[]    @relation("PhotoStories")
   comments   Comment[]
   albums     Album[]    @relation("AlbumPhotos")
+  filmPhoto  FilmPhoto?
 
   @@index([cameraId])
   @@index([lensId])
   @@index([fileHash])
+}
+
+model FilmRoll {
+  id         String      @id @default(cuid())
+  name       String
+  brand      String
+  iso        Int
+  frameCount Int
+  notes      String?
+  shootDate  DateTime?
+  endDate    DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  filmPhotos FilmPhoto[]
+
+  @@index([shootDate])
+}
+
+model FilmPhoto {
+  id          String   @id @default(cuid())
+  filmRollId  String
+  photoId     String   @unique
+  frameNumber Int
+  createdAt   DateTime @default(now())
+
+  filmRoll FilmRoll @relation(fields: [filmRollId], references: [id], onDelete: Cascade)
+  photo    Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+
+  @@index([filmRollId])
 }
 
 model Album {

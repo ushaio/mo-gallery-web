@@ -1,7 +1,7 @@
 import 'server-only'
 import { cache } from 'react'
 import { db } from './db'
-import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, PhotoPaginationMeta } from '@/lib/api/types'
+import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, PhotoPaginationMeta, FilmRollDto } from '@/lib/api/types'
 
 const PHOTO_INCLUDE = { categories: true, camera: true, lens: true } as const
 const PHOTO_ORDER = [
@@ -174,3 +174,43 @@ export const queryStory = cache(async (id: string): Promise<StoryDto | null> => 
   })
   return story ? mapStoryToDto(story) : null
 })
+
+// ---------------------------------------------------------------------------
+// Film roll queries
+// ---------------------------------------------------------------------------
+
+export async function queryFilmRollsWithPhotos(): Promise<FilmRollDto[]> {
+  const rolls = await db.filmRoll.findMany({
+    orderBy: [{ shootDate: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+    include: {
+      filmPhotos: {
+        orderBy: { frameNumber: 'asc' },
+        include: {
+          photo: { include: PHOTO_INCLUDE },
+        },
+      },
+    },
+  })
+
+  return rolls.map((r) => ({
+    id: r.id,
+    name: r.name,
+    brand: r.brand,
+    iso: r.iso,
+    frameCount: r.frameCount,
+    notes: r.notes,
+    shootDate: r.shootDate ? serializeDate(r.shootDate) : null,
+    endDate: r.endDate ? serializeDate(r.endDate) : null,
+    createdAt: serializeDate(r.createdAt),
+    updatedAt: serializeDate(r.updatedAt),
+    photoCount: r.filmPhotos.length,
+    filmPhotos: r.filmPhotos.map((fp) => ({
+      id: fp.id,
+      filmRollId: fp.filmRollId,
+      photoId: fp.photoId,
+      frameNumber: fp.frameNumber,
+      createdAt: serializeDate(fp.createdAt),
+      photo: mapPhotoToDto(fp.photo),
+    })),
+  }))
+}

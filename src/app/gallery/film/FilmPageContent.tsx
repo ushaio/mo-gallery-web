@@ -1,33 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Circle, CircleOff } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
-import { getPhotosWithMeta } from '@/lib/api/photos'
 import { useSettings } from '@/contexts/SettingsContext'
-import { useResponsiveColumnCount } from '@/components/gallery/useResponsiveColumnCount'
-import type { PhotoDto, PhotoPaginationMeta } from '@/lib/api/types'
+import type { FilmRollDto, PhotoDto } from '@/lib/api/types'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const FILM_STRIP_RULES = [
-  { minWidth: 1024, columns: 5 },
-  { minWidth: 640, columns: 4 },
-  { minWidth: 0, columns: 3 },
-]
-
-const FILM_BRANDS = [
-  { name: 'KODAK PORTRA', code: '400', iso: '400/27°', exp: '36' },
-  { name: 'FUJIFILM PRO', code: '160NS', iso: '160/23°', exp: '36' },
-  { name: 'ILFORD HP5', code: 'PLUS', iso: '400/27°', exp: '36' },
-  { name: 'CINESTILL', code: '800T', iso: '800/30°', exp: '36' },
-  { name: 'KODAK GOLD', code: '200', iso: '200/24°', exp: '24' },
-]
 
 const LEADER_MARKS = ['△', '▽', '◁', '▷', '○', '□']
 
@@ -115,23 +99,22 @@ function SprocketRail({ holeCount }: { holeCount: number }) {
 // ---------------------------------------------------------------------------
 
 function FilmStrip({
+  roll,
   photos,
-  brand,
-  startIndex,
   grayscale,
   onPhotoClick,
   frameHeight,
   stripIndex,
 }: {
+  roll: FilmRollDto
   photos: PhotoDto[]
-  brand: (typeof FILM_BRANDS)[number]
-  startIndex: number
   grayscale: boolean
   onPhotoClick: (photo: PhotoDto) => void
   frameHeight: string
   stripIndex: number
 }) {
   const holeCount = photos.length * 2 + 3
+  const sideLabel = `${roll.brand.toUpperCase()} ${roll.name} — ${roll.frameCount}EXP — ISO ${roll.iso}`
 
   return (
     <motion.div
@@ -148,7 +131,7 @@ function FilmStrip({
             className="whitespace-nowrap font-mono text-[7px] font-black uppercase tracking-[0.25em] text-[#c8a850]/70 sm:text-[8px]"
             style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}
           >
-            {brand.name} {brand.code} — {brand.exp}EXP — DX {brand.iso}
+            {sideLabel}
           </span>
         </div>
         <div className="flex gap-[3px] p-[3px]" style={{ height: frameHeight }}>
@@ -156,7 +139,7 @@ function FilmStrip({
             <FilmFrame
               key={photo.id}
               photo={photo}
-              frameIndex={startIndex + i}
+              frameIndex={i}
               grayscale={grayscale}
               onClick={() => onPhotoClick(photo)}
             />
@@ -266,68 +249,29 @@ function Lightbox({
 // ---------------------------------------------------------------------------
 
 interface FilmPageContentProps {
-  initialPhotos: PhotoDto[]
-  initialMeta: PhotoPaginationMeta | null
+  initialRolls: FilmRollDto[]
 }
 
-const PAGE_SIZE = 60
-
-export function FilmPageContent({ initialPhotos, initialMeta }: FilmPageContentProps) {
-  const [photos, setPhotos] = useState<PhotoDto[]>(initialPhotos)
-  const [meta, setMeta] = useState<PhotoPaginationMeta | null>(initialMeta)
-  const [page, setPage] = useState(1)
-  const [loadingMore, setLoadingMore] = useState(false)
+export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
+  const [rolls] = useState<FilmRollDto[]>(initialRolls)
   const [grayscale, setGrayscale] = useState(true)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
-  const isLoadingRef = useRef(false)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
 
-  const framesPerStrip = useResponsiveColumnCount(FILM_STRIP_RULES)
-  const frameHeight = framesPerStrip >= 5 ? '14rem' : framesPerStrip >= 4 ? '12rem' : '9rem'
+  const frameHeight = '14rem'
+
+  const totalPhotos = useMemo(
+    () => rolls.reduce((sum, r) => sum + (r.filmPhotos?.length ?? 0), 0),
+    [rolls],
+  )
 
   const strips = useMemo(() => {
-    const result: Array<{ brand: (typeof FILM_BRANDS)[number]; photos: PhotoDto[] }> = []
-    for (let i = 0; i < photos.length; i += framesPerStrip) {
-      result.push({
-        brand: FILM_BRANDS[result.length % FILM_BRANDS.length],
-        photos: photos.slice(i, i + framesPerStrip),
-      })
-    }
-    return result
-  }, [photos, framesPerStrip])
-
-  const loadMore = useCallback(async () => {
-    if (isLoadingRef.current || !meta?.hasMore) return
-    isLoadingRef.current = true
-    setLoadingMore(true)
-    try {
-      const nextPage = page + 1
-      const result = await getPhotosWithMeta({ page: nextPage, pageSize: PAGE_SIZE })
-      setPhotos((prev) => [...prev, ...result.data])
-      setMeta(result.meta)
-      setPage(nextPage)
-    } catch (e) {
-      console.error('Failed to load more photos', e)
-    } finally {
-      setLoadingMore(false)
-      isLoadingRef.current = false
-    }
-  }, [meta?.hasMore, page])
-
-  // Infinite scroll
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && meta?.hasMore && !loadingMore) {
-          void loadMore()
-        }
-      },
-      { threshold: 0.1, rootMargin: '200px' },
-    )
-    const el = loadMoreRef.current
-    if (el) observer.observe(el)
-    return () => { if (el) observer.unobserve(el); observer.disconnect() }
-  }, [loadMore, loadingMore, meta?.hasMore])
+    return rolls
+      .filter((r) => r.filmPhotos && r.filmPhotos.length > 0)
+      .map((r) => ({
+        roll: r,
+        photos: r.filmPhotos!.map((fp) => fp.photo!).filter(Boolean),
+      }))
+  }, [rolls])
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background">
@@ -381,8 +325,8 @@ export function FilmPageContent({ initialPhotos, initialMeta }: FilmPageContentP
             </h1>
           </div>
           <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/20 md:text-right">
-            <div>{strips.length} ROLLS</div>
-            <div>{photos.length} FRAMES{meta?.hasMore ? '+' : ''}</div>
+            <div>{rolls.length} ROLLS</div>
+            <div>{totalPhotos} FRAMES</div>
           </div>
         </div>
 
@@ -400,10 +344,9 @@ export function FilmPageContent({ initialPhotos, initialMeta }: FilmPageContentP
           <div className="flex min-w-max flex-col gap-6 py-4">
             {strips.map((strip, i) => (
               <FilmStrip
-                key={i}
+                key={strip.roll.id}
+                roll={strip.roll}
                 photos={strip.photos}
-                brand={strip.brand}
-                startIndex={i * framesPerStrip}
                 grayscale={grayscale}
                 onPhotoClick={setSelectedPhoto}
                 frameHeight={frameHeight}
@@ -413,20 +356,11 @@ export function FilmPageContent({ initialPhotos, initialMeta }: FilmPageContentP
           </div>
         </div>
 
-        {/* Infinite scroll sentinel */}
-        <div ref={loadMoreRef} className="flex items-center justify-center py-8">
-          {loadingMore && (
-            <span className="font-mono text-[9px] uppercase tracking-[0.4em] text-[#c8a850]/30 animate-pulse">
-              DEVELOPING…
-            </span>
-          )}
-        </div>
-
-        {!meta?.hasMore && photos.length > 0 && (
-          <div className="flex items-center justify-center gap-4 pb-4">
+        {totalPhotos > 0 && (
+          <div className="flex items-center justify-center gap-4 py-8">
             <div className="h-px w-12 bg-[#c8a850]/20" />
             <span className="font-mono text-[9px] uppercase tracking-[0.4em] text-[#c8a850]/30">
-              END OF ROLL — {photos.length} FRAMES
+              END OF ROLL — {totalPhotos} FRAMES
             </span>
             <div className="h-px w-12 bg-[#c8a850]/20" />
           </div>

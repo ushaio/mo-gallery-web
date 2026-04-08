@@ -1,3 +1,27 @@
+export interface FilmRollDto {
+  id: string
+  name: string
+  brand: string
+  iso: number
+  frameCount: number
+  notes: string | null
+  shootDate: string | null
+  endDate: string | null
+  createdAt: string
+  updatedAt: string
+  photoCount?: number
+  filmPhotos?: FilmPhotoDto[]
+}
+
+export interface FilmPhotoDto {
+  id: string
+  filmRollId: string
+  photoId: string
+  frameNumber: number
+  createdAt: string
+  photo?: PhotoDto
+}
+
 export interface CameraDto {
   id: string
   name: string
