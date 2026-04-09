@@ -7,6 +7,7 @@ import {
   Save,
   Star,
   Camera,
+  Film,
   FileText,
   Tag,
   Aperture,
@@ -31,9 +32,12 @@ import {
   addPhotosToStory,
   removePhotoFromStory,
   reanalyzePhotoColors,
+  getFilmRolls,
+  type FilmRollDto,
 } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
+import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
 import { countStoryCharacters } from '@/lib/story-rich-content'
 
 interface PhotoDetailPanelProps {
@@ -68,6 +72,9 @@ export function PhotoDetailPanel({
     category: '',
     isFeatured: false,
     storagePath: '',
+    photoType: 'digital' as 'digital' | 'film',
+    filmRollId: '',
+    filmRollName: '',
   })
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<'info' | 'story'>('info')
@@ -84,10 +91,14 @@ export function PhotoDetailPanel({
   const [storySaving, setStorySaving] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [displayColors, setDisplayColors] = useState<string[]>([])
+  const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
+  const [filmRollsLoading, setFilmRollsLoading] = useState(false)
+  const [showFilmRollSelector, setShowFilmRollSelector] = useState(false)
 
   // Photo selection for adding to story
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
+  const filmRollButtonLabel = editData.filmRollName || t('admin.no_film_roll')
 
   // Reset form when photo changes
   useEffect(() => {
@@ -102,6 +113,9 @@ export function PhotoDetailPanel({
         category: photo.category || '',
         isFeatured: photo.isFeatured || false,
         storagePath,
+        photoType: photo.photoType || 'digital',
+        filmRollId: photo.filmRollId || '',
+        filmRollName: photo.filmRollName || '',
       })
       setDisplayColors(photo.dominantColors || [])
       setActiveTab('info')
@@ -109,6 +123,7 @@ export function PhotoDetailPanel({
       setStoryLoaded(false)
       setStoryData({ title: '', content: '', isPublished: false })
       setShowPhotoSelector(false)
+      setShowFilmRollSelector(false)
       setSelectedPhotoIds(new Set())
     }
   }, [photo])
@@ -136,6 +151,35 @@ export function PhotoDetailPanel({
     }
   }, [activeTab, photo, token, storyLoaded, storyLoading])
 
+  useEffect(() => {
+    if (!isOpen) return
+
+    let cancelled = false
+    setFilmRollsLoading(true)
+
+    getFilmRolls()
+      .then((data) => {
+        if (!cancelled) {
+          setFilmRolls(data)
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load film rolls:', err)
+        if (!cancelled) {
+          notify(t('common.error'), 'error')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFilmRollsLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, notify, t])
+
   // Photos available to add (not already in story)
   const availablePhotos = useMemo(() => {
     if (!story) return allPhotos
@@ -155,6 +199,10 @@ export function PhotoDetailPanel({
 
   const handleSave = async () => {
     if (!photo || !token) return
+    if (editData.photoType === 'film' && !editData.filmRollId) {
+      notify(t('admin.film_roll_select'), 'error')
+      return
+    }
 
     setSaving(true)
     try {
@@ -171,6 +219,8 @@ export function PhotoDetailPanel({
           title: editData.title,
           category: editData.category,
           isFeatured: editData.isFeatured,
+          photoType: editData.photoType,
+          filmRollId: editData.photoType === 'film' ? editData.filmRollId : null,
           ...(pathChanged && { storagePath: editData.storagePath }),
         },
       })
@@ -381,6 +431,8 @@ export function PhotoDetailPanel({
                             title: editData.title,
                             category: editData.category,
                             isFeatured: newFeatured,
+                            photoType: editData.photoType,
+                            filmRollId: editData.photoType === 'film' ? editData.filmRollId : null,
                           },
                         })
                         onSave(updated)
@@ -445,18 +497,18 @@ export function PhotoDetailPanel({
                       <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-3">
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                            {t('admin.photo_title') || 'Title'}
+                            {t('admin.photo_title')}
                           </label>
                           <AdminInput
                             value={editData.title}
                             onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                            placeholder={t('admin.title_hint_single') || 'Enter title'}
+                            placeholder={t('admin.title_hint_single')}
                           />
                         </div>
                         <div className="space-y-3">
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                             <Tag className="w-4 h-4" />
-                            {t('admin.categories') || 'Category'}
+                            {t('admin.categories')}
                           </label>
                           <AdminSelect
                             value={editData.category}
@@ -464,6 +516,49 @@ export function PhotoDetailPanel({
                             options={categories.filter(c => c !== '全部').map(c => ({ value: c, label: c }))}
                           />
                         </div>
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                            <Film className="w-4 h-4" />
+                            {t('admin.all_types')}
+                          </label>
+                          <AdminSelect
+                            value={editData.photoType}
+                            onChange={(val: string) =>
+                              setEditData((prev) => ({
+                                ...prev,
+                                photoType: val as 'digital' | 'film',
+                                ...(val === 'digital' ? { filmRollId: '', filmRollName: '' } : {}),
+                              }))
+                            }
+                            options={[
+                              { value: 'digital', label: t('admin.upload_type_digital') },
+                              { value: 'film', label: t('admin.upload_type_film') },
+                            ]}
+                          />
+                        </div>
+                        {editData.photoType === 'film' && (
+                          <div className="space-y-3 md:col-span-2">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                              {t('admin.film_roll_select')}
+                            </label>
+                            <AdminButton
+                              onClick={() => setShowFilmRollSelector(true)}
+                              adminVariant="outline"
+                              size="lg"
+                              className="w-full justify-between rounded-none"
+                              disabled={filmRollsLoading}
+                            >
+                              <span className={editData.filmRollName ? 'text-foreground' : 'text-muted-foreground'}>
+                                {filmRollsLoading
+                                  ? `${t('common.loading')}...`
+                                  : filmRollButtonLabel}
+                              </span>
+                              <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                                {t('admin.upload_type_film')}
+                              </span>
+                            </AdminButton>
+                          </div>
+                        )}
                       </section>
 
                       {/* Technical Specs - Grid Layout */}
@@ -854,6 +949,22 @@ export function PhotoDetailPanel({
                 </AnimatePresence>
               </div>
             </div>
+
+            <FilmRollSelectorModal
+              isOpen={showFilmRollSelector}
+              onClose={() => setShowFilmRollSelector(false)}
+              onSelect={(rollId, rollName) => {
+                setEditData((prev) => ({
+                  ...prev,
+                  filmRollId: rollId || '',
+                  filmRollName: rollName || '',
+                }))
+              }}
+              filmRolls={filmRolls}
+              selectedRollId={editData.filmRollId || undefined}
+              loading={filmRollsLoading}
+              t={t}
+            />
 
             {/* Footer - Fixed with glass effect */}
             <div className="flex gap-4 p-6 border-t border-border bg-background sticky bottom-0 z-20 flex-shrink-0">

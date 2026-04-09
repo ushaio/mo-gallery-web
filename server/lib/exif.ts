@@ -16,6 +16,56 @@ export interface ExifData {
   gps?: string
 }
 
+function isValidDate(value: Date | undefined): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime())
+}
+
+function parseExifDate(dateStr: string): Date | undefined {
+  const normalized = dateStr.replace(/\0/g, '').trim()
+  const match = normalized.match(
+    /^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/
+  )
+
+  if (!match) return undefined
+
+  const [, yearRaw, monthRaw, dayRaw, hourRaw = '00', minuteRaw = '00', secondRaw = '00'] = match
+  const year = Number.parseInt(yearRaw, 10)
+  const month = Number.parseInt(monthRaw, 10)
+  const day = Number.parseInt(dayRaw, 10)
+  const hour = Number.parseInt(hourRaw, 10)
+  const minute = Number.parseInt(minuteRaw, 10)
+  const second = Number.parseInt(secondRaw, 10)
+
+  // Ignore EXIF sentinel dates like 0000:00:00 00:00:00
+  if (
+    year <= 0 ||
+    month <= 0 ||
+    day <= 0 ||
+    month > 12 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return undefined
+  }
+
+  const parsed = new Date(year, month - 1, day, hour, minute, second)
+  if (
+    !isValidDate(parsed) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day ||
+    parsed.getHours() !== hour ||
+    parsed.getMinutes() !== minute ||
+    parsed.getSeconds() !== second
+  ) {
+    return undefined
+  }
+
+  return parsed
+}
+
 function isFiniteCoordinate(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
@@ -74,12 +124,13 @@ export async function extractExifData(buffer: Buffer): Promise<ExifData> {
     // Date taken
     if (tags.exif?.DateTimeOriginal?.description) {
       try {
-        // EXIF date format: "YYYY:MM:DD HH:MM:SS"
         const dateStr = tags.exif.DateTimeOriginal.description
-        const [datePart, timePart] = dateStr.split(' ')
-        const [year, month, day] = datePart.split(':')
-        const isoDateStr = `${year}-${month}-${day}T${timePart}`
-        exifData.takenAt = new Date(isoDateStr)
+        const parsedDate = parseExifDate(dateStr)
+        if (parsedDate) {
+          exifData.takenAt = parsedDate
+        } else {
+          console.warn('Ignoring invalid EXIF date:', dateStr)
+        }
       } catch (e) {
         console.warn('Failed to parse EXIF date:', e)
       }

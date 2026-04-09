@@ -27,6 +27,7 @@ const PHOTOS_FILTER_KEY = 'admin-photos-filters'
 interface PersistedFilters {
   search: string
   categoryFilter: string
+  photoTypeFilter: string
   channelFilter: string
   albumFilter: string
   cameraFilter: string
@@ -84,6 +85,7 @@ export function PhotosTab({
   const [persisted] = useState(() => loadPersistedFilters())
   const [search, setSearch] = useState(persisted.search ?? '')
   const [categoryFilter, setCategoryFilter] = useState(persisted.categoryFilter ?? 'all')
+  const [photoTypeFilter, setPhotoTypeFilter] = useState(persisted.photoTypeFilter ?? 'all')
   const [channelFilter, setChannelFilter] = useState(persisted.channelFilter ?? 'all')
   const [albumFilter, setAlbumFilter] = useState(persisted.albumFilter ?? 'all')
   const [cameraFilter, setCameraFilter] = useState(persisted.cameraFilter ?? 'all')
@@ -101,12 +103,12 @@ export function PhotosTab({
   useEffect(() => {
     try {
       const state: PersistedFilters = {
-        search, categoryFilter, channelFilter, albumFilter,
+        search, categoryFilter, photoTypeFilter, channelFilter, albumFilter,
         cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters,
       }
       sessionStorage.setItem(PHOTOS_FILTER_KEY, JSON.stringify(state))
     } catch {}
-  }, [search, categoryFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters])
+  }, [search, categoryFilter, photoTypeFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters])
 
   // Load albums, cameras, and lenses on mount
   useEffect(() => {
@@ -148,13 +150,14 @@ export function PhotosTab({
   const activeFilterCount = useMemo(() => {
     let count = 0
     if (categoryFilter !== 'all') count++
+    if (photoTypeFilter !== 'all') count++
     if (channelFilter !== 'all') count++
     if (albumFilter !== 'all') count++
     if (cameraFilter !== 'all') count++
     if (lensFilter !== 'all') count++
     if (onlyFeatured) count++
     return count
-  }, [categoryFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured])
+  }, [categoryFilter, photoTypeFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured])
 
   // Get album photo IDs for filtering
   const albumPhotoIds = useMemo(() => {
@@ -172,6 +175,9 @@ export function PhotosTab({
 
       const matchesCategory =
         categoryFilter === 'all' || p.category.includes(categoryFilter)
+
+      const matchesPhotoType =
+        photoTypeFilter === 'all' || (p.photoType ?? 'digital') === photoTypeFilter
 
       const matchesChannel =
         channelFilter === 'all' || p.storageProvider === channelFilter
@@ -191,7 +197,7 @@ export function PhotosTab({
 
       const matchesFeatured = !onlyFeatured || p.isFeatured
 
-      return matchesSearch && matchesCategory && matchesChannel && matchesAlbum && matchesCamera && matchesLens && matchesFeatured
+      return matchesSearch && matchesCategory && matchesPhotoType && matchesChannel && matchesAlbum && matchesCamera && matchesLens && matchesFeatured
     })
 
     // Apply sorting
@@ -215,10 +221,11 @@ export function PhotosTab({
           return 0
       }
     })
-  }, [photos, search, categoryFilter, channelFilter, albumPhotoIds, cameraFilter, lensFilter, onlyFeatured, sortBy])
+  }, [photos, search, categoryFilter, photoTypeFilter, channelFilter, albumPhotoIds, cameraFilter, lensFilter, onlyFeatured, sortBy])
 
   const clearAllFilters = () => {
     setCategoryFilter('all')
+    setPhotoTypeFilter('all')
     setChannelFilter('all')
     setAlbumFilter('all')
     setCameraFilter('all')
@@ -364,6 +371,21 @@ export function PhotosTab({
                 />
               </div>
 
+              {/* Photo Type Filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.all_types')}:</span>
+                <AdminSelect
+                  value={photoTypeFilter}
+                  onChange={setPhotoTypeFilter}
+                  options={[
+                    { value: 'all', label: t('gallery.all') },
+                    { value: 'digital', label: t('admin.upload_type_digital') },
+                    { value: 'film', label: t('admin.upload_type_film') },
+                  ]}
+                  className="min-w-[120px]"
+                />
+              </div>
+
               {/* Storage Filter */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.channel_filter')}:</span>
@@ -466,6 +488,19 @@ export function PhotosTab({
                 {categoryFilter}
                 <AdminButton
                   onClick={() => setCategoryFilter('all')}
+                  adminVariant="icon"
+                  size="xs"
+                  className="p-0 hover:text-primary/70"
+                >
+                  <X className="w-3 h-3" />
+                </AdminButton>
+              </span>
+            )}
+            {photoTypeFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
+                {t(`admin.upload_type_${photoTypeFilter}`)}
+                <AdminButton
+                  onClick={() => setPhotoTypeFilter('all')}
                   adminVariant="icon"
                   size="xs"
                   className="p-0 hover:text-primary/70"

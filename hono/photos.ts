@@ -23,6 +23,64 @@ function buildThumbnailKey(originalKey: string): string {
   return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
 }
 
+function isValidDate(value: Date | undefined): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime())
+}
+
+function normalizeStorageKeyCandidate(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const normalized = value.replace(/\\/g, '/').trim()
+  if (!normalized) return undefined
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      return new URL(normalized).pathname.replace(/^\/+/, '')
+    } catch {
+      return normalized
+    }
+  }
+  return normalized.replace(/^\/+/, '')
+}
+
+function deriveOriginalStorageKey(photo: {
+  storageKey?: string | null
+  url: string
+}) {
+  return (
+    normalizeStorageKeyCandidate(photo.storageKey) ||
+    normalizeStorageKeyCandidate(photo.url)
+  )
+}
+
+function deriveThumbnailStorageKey(photo: {
+  storageKey?: string | null
+  thumbnailUrl?: string | null
+}) {
+  if (photo.thumbnailUrl) {
+    const thumbnailFromUrl = normalizeStorageKeyCandidate(photo.thumbnailUrl)
+    if (thumbnailFromUrl) return thumbnailFromUrl
+  }
+
+  const originalKey = normalizeStorageKeyCandidate(photo.storageKey)
+  return originalKey ? buildThumbnailKey(originalKey) : undefined
+}
+
+function mapPhotoDto(
+  photo: {
+    categories: { name: string }[]
+    dominantColors: string | null
+    filmPhoto?: { filmRollId: string; filmRoll?: { name: string } | null } | null
+  } & Record<string, unknown>
+) {
+  return {
+    ...photo,
+    category: photo.categories.map((c) => c.name).join(','),
+    dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
+    photoType: photo.filmPhoto ? 'film' : 'digital',
+    filmRollId: photo.filmPhoto?.filmRollId ?? null,
+    filmRollName: photo.filmPhoto?.filmRoll?.name ?? null,
+  }
+}
+
 /** Resolve storage config preferring storageSourceId, falling back to storageProvider string. */
 async function resolveStorageConfig(photo: { storageSourceId?: string | null; storageProvider: string }) {
   if (photo.storageSourceId) {
@@ -49,18 +107,19 @@ photos.get('/photos', async (c) => {
     if (allStr === 'true') {
       const photosList = await db.photo.findMany({
         where,
-        include: { categories: true, camera: true, lens: true },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
         orderBy: [
           { takenAt: { sort: 'desc', nulls: 'last' } },
           { createdAt: 'desc' },
         ],
       })
 
-      const data = photosList.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-        dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-      }))
+      const data = photosList.map(mapPhotoDto)
 
       return c.json({
         success: true,
@@ -78,7 +137,12 @@ photos.get('/photos', async (c) => {
       db.photo.count({ where }),
       db.photo.findMany({
         where,
-        include: { categories: true, camera: true, lens: true },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
         skip,
         take: pageSize,
         orderBy: [
@@ -88,11 +152,7 @@ photos.get('/photos', async (c) => {
       })
     ])
 
-    const data = photosList.map((p) => ({
-      ...p,
-      category: p.categories.map((c) => c.name).join(','),
-      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-    }))
+    const data = photosList.map(mapPhotoDto)
 
     return c.json({
       success: true,
@@ -115,7 +175,12 @@ photos.get('/photos/featured', async (c) => {
   try {
     const photosList = await db.photo.findMany({
       where: { isFeatured: true },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
       take: 6,
       orderBy: [
         { takenAt: { sort: 'desc', nulls: 'last' } },
@@ -123,11 +188,7 @@ photos.get('/photos/featured', async (c) => {
       ],
     })
 
-    const data = photosList.map((p) => ({
-      ...p,
-      category: p.categories.map((c) => c.name).join(','),
-      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-    }))
+    const data = photosList.map(mapPhotoDto)
 
     return c.json({
       success: true,
@@ -244,6 +305,7 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
 
 photos.post('/admin/photos', async (c) => {
   try {
+    const startedAt = Date.now()
     const allowedOriginFlags = new Set(['web', 'mobile'])
     const formData = await c.req.formData()
     const file = formData.get('file') as File
@@ -265,6 +327,16 @@ photos.post('/admin/photos', async (c) => {
       return c.json({ error: 'File is required' }, 400)
     }
 
+    console.info('[upload] request received', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      storageSourceId,
+      storageProvider: storageProvider || undefined,
+      storagePath: storagePath || undefined,
+      storagePathFull,
+    })
+
     // Check for duplicate if fileHash is provided
     if (fileHash) {
       const existingPhoto = await db.photo.findFirst({
@@ -284,6 +356,11 @@ photos.post('/admin/photos', async (c) => {
     // Process image buffer
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
+    console.info('[upload] file buffered', {
+      fileName: file.name,
+      fileSize: buffer.length,
+      elapsedMs: Date.now() - startedAt,
+    })
 
     // Run these operations in parallel:
     // 1. Get storage configuration
@@ -311,6 +388,15 @@ photos.post('/admin/photos', async (c) => {
       })(),
     ])
 
+    console.info('[upload] image processed', {
+      fileName: file.name,
+      width: metadata.width,
+      height: metadata.height,
+      thumbnailSize: thumbnailBuffer.length,
+      provider: storageConfig.provider,
+      elapsedMs: Date.now() - startedAt,
+    })
+
     // Create storage provider instance
     const storage = StorageProviderFactory.create(storageConfig)
 
@@ -334,7 +420,8 @@ photos.post('/admin/photos', async (c) => {
           .filter((c) => c.length > 0)
       : []
 
-    // Upload to storage and extract dominant colors in parallel
+    // Use the generated thumbnail for color extraction to avoid decoding the
+    // large original image again inside a constrained serverless function.
     const [uploadResult, dominantColors] = await Promise.all([
       storage.upload(
         {
@@ -352,8 +439,16 @@ photos.post('/admin/photos', async (c) => {
           useFullPath: storagePathFull,
         }
       ),
-      extractDominantColors(buffer),
+      extractDominantColors(thumbnailBuffer),
     ])
+
+    console.info('[upload] storage upload complete', {
+      fileName: file.name,
+      key: uploadResult.key,
+      thumbnailKey: uploadResult.thumbnailKey,
+      dominantColors: dominantColors.length,
+      elapsedMs: Date.now() - startedAt,
+    })
 
     // Find or create camera record (brand-based)
     let cameraId: string | null = null
@@ -418,7 +513,7 @@ photos.post('/admin/photos', async (c) => {
         aperture: exifData.aperture,
         shutterSpeed: exifData.shutterSpeed,
         iso: exifData.iso,
-        takenAt: exifData.takenAt,
+        takenAt: isValidDate(exifData.takenAt) ? exifData.takenAt : undefined,
         gps: exifData.gps,
         orientation: exifData.orientation,
         software: exifData.software,
@@ -430,22 +525,25 @@ photos.post('/admin/photos', async (c) => {
           })),
         },
       },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
     })
 
     return c.json({
       success: true,
-      data: {
-        ...photo,
-        category: photo.categories.map((c) => c.name).join(','),
-      },
+      data: mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Upload photo error:', error)
     if (error instanceof StorageError) {
       return c.json({ error: error.message }, 400)
     }
-    return c.json({ error: 'Internal server error' }, 500)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    return c.json({ error: message }, 500)
   }
 })
 
@@ -667,6 +765,14 @@ photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
+    const requestedPhotoType =
+      body.photoType === 'digital' || body.photoType === 'film'
+        ? body.photoType
+        : undefined
+    const requestedFilmRollId =
+      body.filmRollId === null || typeof body.filmRollId === 'string'
+        ? body.filmRollId
+        : undefined
 
     // Build update data
     const updateData: Record<string, unknown> = {}
@@ -686,13 +792,15 @@ photos.patch('/admin/photos/:id', async (c) => {
       const storage = StorageProviderFactory.create(storageConfig)
 
       // Derive thumbnail key
-      let thumbnailKey: string | undefined
-      if (photo.storageKey) {
-        thumbnailKey = buildThumbnailKey(photo.storageKey)
+      const originalKey = deriveOriginalStorageKey(photo)
+      if (!originalKey) {
+        return c.json({ error: 'Photo storage key is missing' }, 400)
       }
 
+      const thumbnailKey = deriveThumbnailStorageKey(photo)
+
       const moveResult = await storage.move(
-        photo.storageKey || photo.url,
+        originalKey,
         body.storagePath,
         thumbnailKey
       )
@@ -734,23 +842,83 @@ photos.patch('/admin/photos/:id', async (c) => {
       }
     }
 
+    if (requestedPhotoType === 'film') {
+      if (!requestedFilmRollId) {
+        return c.json({ error: 'Film photos must be assigned to a film roll' }, 400)
+      }
+
+      const roll = await db.filmRoll.findUnique({
+        where: { id: requestedFilmRollId },
+        select: { id: true },
+      })
+
+      if (!roll) {
+        return c.json({ error: 'Film roll not found' }, 404)
+      }
+
+      const existingFilmPhoto = await db.filmPhoto.findUnique({
+        where: { photoId: id },
+        select: { id: true, filmRollId: true, frameNumber: true },
+      })
+
+      if (existingFilmPhoto) {
+        if (existingFilmPhoto.filmRollId !== requestedFilmRollId) {
+          const maxFrame = await db.filmPhoto.findFirst({
+            where: { filmRollId: requestedFilmRollId },
+            orderBy: { frameNumber: 'desc' },
+            select: { frameNumber: true },
+          })
+
+          await db.filmPhoto.update({
+            where: { id: existingFilmPhoto.id },
+            data: {
+              filmRollId: requestedFilmRollId,
+              frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+            },
+          })
+        }
+      } else {
+        const maxFrame = await db.filmPhoto.findFirst({
+          where: { filmRollId: requestedFilmRollId },
+          orderBy: { frameNumber: 'desc' },
+          select: { frameNumber: true },
+        })
+
+        await db.filmPhoto.create({
+          data: {
+            photoId: id,
+            filmRollId: requestedFilmRollId,
+            frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+          },
+        })
+      }
+    } else if (requestedPhotoType === 'digital') {
+      await db.filmPhoto.deleteMany({
+        where: { photoId: id },
+      })
+    }
+
     const photo = await db.photo.update({
       where: { id },
       data: updateData,
-      include: { categories: true, camera: true, lens: true }
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      }
     })
 
     return c.json({
       success: true,
-      data: {
-        ...photo,
-        category: photo.categories.map((c) => c.name).join(','),
-        dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
-      },
+      data: mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Update photo error:', error)
-    return c.json({ error: 'Internal server error' }, 500)
+    if (error instanceof StorageError) {
+      return c.json({ error: error.message }, 400)
+    }
+    return c.json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
   }
 })
 
@@ -1019,7 +1187,9 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
         updateData.aperture = exifData.aperture
         updateData.shutterSpeed = exifData.shutterSpeed
         updateData.iso = exifData.iso
-        updateData.takenAt = exifData.takenAt
+        if (isValidDate(exifData.takenAt)) {
+          updateData.takenAt = exifData.takenAt
+        }
         updateData.gps = exifData.gps
         updateData.orientation = exifData.orientation
         updateData.software = exifData.software
@@ -1123,16 +1293,17 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const updated = await db.photo.update({
       where: { id },
       data: { thumbnailUrl: uploadResult.url },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
     })
 
     return c.json({
       success: true,
-      data: {
-        ...updated,
-        category: updated.categories.map((c) => c.name).join(','),
-        dominantColors: updated.dominantColors ? JSON.parse(updated.dominantColors) : null,
-      },
+      data: mapPhotoDto(updated),
     })
   } catch (error) {
     console.error('Generate thumbnail error:', error)
