@@ -125,11 +125,24 @@ export class S3StorageProvider implements StorageProvider {
       ? `${newPath}/${filename}`.replace(/\/+/g, '/').replace(/^\/+/, '')
       : filename
 
-    await this.client.send(new CopyObjectCommand({
-      Bucket: this.bucket,
-      CopySource: this.buildCopySource(oldKey),
-      Key: newKey,
-    }))
+    try {
+      await this.client.send(new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: this.buildCopySource(oldKey),
+        Key: newKey,
+      }))
+    } catch (error: unknown) {
+      if (this.isNotFoundError(error)) {
+        throw new StorageError(
+          `Source file is missing from storage: ${oldKey}`,
+          'S3_SOURCE_NOT_FOUND',
+          error,
+        )
+      }
+
+      const msg = error instanceof Error ? error.message : String(error)
+      throw new StorageError(`Failed to move file in S3: ${msg}`, 'S3_MOVE_FAILED', error)
+    }
 
     const result: MoveResult = { newKey, newUrl: this.getUrl(newKey) }
 
@@ -156,7 +169,17 @@ export class S3StorageProvider implements StorageProvider {
       }
     }
 
-    await this.deleteFromS3(oldKey)
+    try {
+      await this.deleteFromS3(oldKey)
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error)
+      throw new StorageError(
+        `Moved file to ${newKey}, but failed to delete the original: ${msg}`,
+        'S3_MOVE_DELETE_FAILED',
+        error,
+      )
+    }
+
     if (thumbnailKey && result.newThumbnailKey) {
       try {
         await this.deleteFromS3(thumbnailKey)
@@ -229,8 +252,11 @@ export class S3StorageProvider implements StorageProvider {
     }
 
     return (
+      maybeError.name === 'NotFound' ||
       maybeError.name === 'NoSuchKey' ||
+      maybeError.Code === 'NotFound' ||
       maybeError.Code === 'NoSuchKey' ||
+      maybeError.code === 'NotFound' ||
       maybeError.code === 'NoSuchKey' ||
       maybeError.$metadata?.httpStatusCode === 404
     )

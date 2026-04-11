@@ -82,7 +82,7 @@ equipment.use('/admin/*', authMiddleware)
 equipment.get('/admin/cameras/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    
+
     const camera = await db.camera.findUnique({
       where: { id },
       include: {
@@ -117,7 +117,7 @@ equipment.get('/admin/cameras/:id', async (c) => {
 equipment.get('/admin/lenses/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    
+
     const lens = await db.lens.findUnique({
       where: { id },
       include: {

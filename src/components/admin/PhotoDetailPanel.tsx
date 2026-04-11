@@ -231,7 +231,7 @@ export function PhotoDetailPanel({
         onUnauthorized()
         return
       }
-      notify(t('common.error'), 'error')
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
       setSaving(false)
     }
@@ -442,7 +442,7 @@ export function PhotoDetailPanel({
                         if (err instanceof ApiUnauthorizedError) {
                           onUnauthorized()
                         } else {
-                          notify(t('common.error'), 'error')
+                          notify(err instanceof Error ? err.message : t('common.error'), 'error')
                         }
                       }
                     }}
@@ -626,7 +626,7 @@ export function PhotoDetailPanel({
                                 if (err instanceof ApiUnauthorizedError) {
                                   onUnauthorized()
                                 } else {
-                                  notify(t('common.error'), 'error')
+                                  notify(err instanceof Error ? err.message : t('common.error'), 'error')
                                 }
                               } finally {
                                 setReanalyzing(false)
