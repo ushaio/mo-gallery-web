@@ -318,6 +318,23 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         })
         .run()
 
+      // When no explicit width, auto-scale to 10% of original size after load
+      if (!attrs.width) {
+        const img = new window.Image()
+        img.onload = () => {
+          if (!editor || img.naturalWidth <= 0) return
+          const targetWidth = Math.max(40, Math.round(img.naturalWidth * 0.1))
+          // Find the image node we just inserted and update its width
+          editor.state.doc.descendants((node, pos) => {
+            if (node.type.name === 'image' && node.attrs.src === attrs.src && !node.attrs.width) {
+              editor.chain().setNodeSelection(pos).updateAttributes('image', { width: targetWidth }).run()
+              return false
+            }
+          })
+        }
+        img.src = attrs.src
+      }
+
       focusEditor()
     }, [editor, focusEditor])
 

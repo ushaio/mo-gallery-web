@@ -21,6 +21,11 @@
   color: color-mix(in srgb, var(--foreground) 88%, transparent);
 }
 
+.story-rich-content p:empty,
+.story-rich-content .story-rich-html p:empty {
+  min-height: 1em;
+}
+
 .story-rich-content > p:first-of-type:not([data-drop-cap='false'])::first-letter,
 .story-rich-content .story-rich-html > p:first-of-type:not([data-drop-cap='false'])::first-letter,
 .story-rich-content > p[data-drop-cap='true']::first-letter,

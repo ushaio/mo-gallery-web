@@ -196,7 +196,8 @@ export function convertMarkdownImageToHtmlAttrs(markdown: string): { src: string
 
 export function convertHtmlImageToAttrs(content: string): { src: string; alt?: string; width?: number } | null {
   const trimmed = content.trim()
-  const match = trimmed.match(/^<img\s+([^>]*?)\/?>$/i)
+  // Match bare <img> or <img> wrapped in other tags (e.g. <p><img ...></p>)
+  const match = trimmed.match(/<img\s+([^>]*?)\/?\s*>/i)
   if (!match) return null
 
   const attrs = match[1]

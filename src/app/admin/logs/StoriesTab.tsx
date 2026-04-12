@@ -382,6 +382,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       }
     })
     setPendingCoverId(null)
+    setShowCoverCropEditor(true)
   }, [])
 
   const handleSetPendingCover = useCallback((id: string) => {
@@ -449,7 +450,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const currentPhotoIds = currentStory?.photos?.map((photo) => photo.id) || []
   const currentCoverPhoto = currentStory ? getStoryCoverPhoto(currentStory) : null
   const currentCoverCrop = currentStory ? getStoryCoverCrop(currentStory) : null
-  const canEditCoverCrop = Boolean(currentCoverPhoto) && !pendingCoverId
 
   const handlePrevPhoto = useCallback(() => {
     if (previewPhotoIndex === null || !currentStory?.photos) return
@@ -585,9 +585,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           dragOverItemId={dragOverItemId}
           openMenuPhotoId={openMenuPhotoId}
           openMenuPendingId={openMenuPendingId}
-          canEditCoverCrop={canEditCoverCrop}
           showPreview={() => setShowPreview(true)}
-          onOpenCoverCropEditor={() => setShowCoverCropEditor(true)}
           onBack={resetEditorState}
           onSave={() => void handleSaveStory()}
           onPasteFiles={handlePasteFiles}

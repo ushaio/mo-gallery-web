@@ -20,8 +20,8 @@ export function buildStoryHtmlImage(options: {
 }) {
   const alt = escapeHtmlAttribute(options.alt || '')
   const src = escapeHtmlAttribute(options.url)
-  const width = Number.isFinite(options.width) ? Math.max(40, Math.round(options.width as number)) : 80
-  return `\n<p style="text-align: center"><img src="${src}" alt="${alt}" width="${width}"></p>\n`
+  const widthAttr = Number.isFinite(options.width) ? ` width="${Math.max(40, Math.round(options.width as number))}"` : ''
+  return `\n<p style="text-align: center"><img src="${src}" alt="${alt}"${widthAttr}></p>\n`
 }
 
 /** @deprecated Use buildStoryHtmlImage instead */
