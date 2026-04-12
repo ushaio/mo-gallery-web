@@ -317,14 +317,14 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
 
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.5em] text-[#c8a850]/40">
+            <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.5em] text-foreground/40">
               ANALOG ARCHIVE · 35MM
             </div>
-            <h1 className="font-serif text-5xl font-light tracking-tight text-white/90 md:text-7xl">
+            <h1 className="font-serif text-5xl font-light tracking-tight text-foreground/90 md:text-7xl">
               胶片
             </h1>
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/20 md:text-right">
+          <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/20 md:text-right">
             <div>{rolls.length} ROLLS</div>
             <div>{totalPhotos} FRAMES</div>
           </div>
@@ -336,24 +336,27 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
 
       {/* ── Film strips ─────────────────────────────────────── */}
       <section className="relative z-10 pb-20">
-        {/* Left/right edge fades */}
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent md:w-12" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent md:w-12" />
+        <div className="flex flex-col gap-6 py-4">
+          {strips.map((strip, i) => (
+            <div key={strip.roll.id} className="relative">
+              {/* Per-strip edge fades */}
+              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent md:w-12" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent md:w-12" />
 
-        <div className="overflow-x-auto scrollbar-hide px-6 md:px-12">
-          <div className="flex min-w-max flex-col gap-6 py-4">
-            {strips.map((strip, i) => (
-              <FilmStrip
-                key={strip.roll.id}
-                roll={strip.roll}
-                photos={strip.photos}
-                grayscale={grayscale}
-                onPhotoClick={setSelectedPhoto}
-                frameHeight={frameHeight}
-                stripIndex={i}
-              />
-            ))}
-          </div>
+              <div className="overflow-x-auto scrollbar-hide px-6 md:px-12">
+                <div className="min-w-max">
+                  <FilmStrip
+                    roll={strip.roll}
+                    photos={strip.photos}
+                    grayscale={grayscale}
+                    onPhotoClick={setSelectedPhoto}
+                    frameHeight={frameHeight}
+                    stripIndex={i}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
         {totalPhotos > 0 && (

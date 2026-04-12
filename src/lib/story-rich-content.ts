@@ -20,8 +20,8 @@ export function buildStoryHtmlImage(options: {
 }) {
   const alt = escapeHtmlAttribute(options.alt || '')
   const src = escapeHtmlAttribute(options.url)
-  const width = Number.isFinite(options.width) ? Math.max(160, Math.round(options.width as number)) : 480
-  return `\n<img src="${src}" alt="${alt}" width="${width}">\n`
+  const width = Number.isFinite(options.width) ? Math.max(40, Math.round(options.width as number)) : 80
+  return `\n<p style="text-align: center"><img src="${src}" alt="${alt}" width="${width}"></p>\n`
 }
 
 /** @deprecated Use buildStoryHtmlImage instead */
@@ -119,7 +119,7 @@ export function normalizeStoryContentImages(content: string) {
     HTML_IMAGE_WIDTH_PATTERN,
     (_match, beforeSrc: string, quote: string, src: string, betweenSrcAndWidth: string, _widthQuote: string | undefined, quotedWidth: string | undefined, unquotedWidth: string | undefined, afterWidth: string) => {
       const width = quotedWidth ?? unquotedWidth ?? '480'
-      const normalizedWidth = Math.max(160, Number.parseInt(width, 10) || 480)
+      const normalizedWidth = Math.max(40, Number.parseInt(width, 10) || 80)
       const trimmedBefore = beforeSrc.trim()
       const trimmedBetween = betweenSrcAndWidth.trim()
       const trimmedAfter = afterWidth.trim().replace(/\/$/, '').trim()

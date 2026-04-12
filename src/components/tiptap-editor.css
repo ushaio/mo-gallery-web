@@ -149,7 +149,7 @@
 
 .tiptap-editor .tiptap hr {
   border: none;
-  border-top: 1px solid var(--tiptap-gray-2);
+  border-top: 1px solid var(--foreground);
   margin: 2rem 0;
 }
 

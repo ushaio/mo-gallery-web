@@ -59,7 +59,7 @@ export function useStoryPasteUploads({
 
     const nextSettings: UploadSettings = {
       ...settings,
-      categories: settings.categories?.length ? settings.categories : [settings.category?.trim() || 'story-inline'],
+      categories: settings.categories || [],
     }
 
     const placeholders = files.map((file) => {
@@ -124,6 +124,7 @@ export function useStoryPasteUploads({
           title: file.name.replace(/\.[^/.]+$/, ''),
           category: nextSettings.categories,
           storage_provider: nextSettings.storageProvider,
+          storage_source_id: nextSettings.storageSourceId,
           storage_path: nextSettings.storagePath,
           storage_path_full: nextSettings.storagePathFull,
           file_hash: fileHash,

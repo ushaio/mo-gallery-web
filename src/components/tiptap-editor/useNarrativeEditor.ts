@@ -18,6 +18,7 @@ import { ResizableImage } from '@/components/tiptap-extensions/ResizableImage'
 import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import { DropCapParagraph } from '@/components/tiptap-extensions/DropCapParagraph'
+import { StyledHorizontalRule } from '@/components/tiptap-extensions/StyledHorizontalRule'
 import { convertMarkdownToHtml, ensureFirstParagraphHasDropCap, isMarkdownContent } from './markdown-converter'
 import { TAB_INDENT } from './editor-constants'
 
@@ -60,10 +61,12 @@ export function useNarrativeEditor({
       PastedBlockStyle,
       DropCapParagraph,
       StarterKit.configure({
+        horizontalRule: false,
         heading: {
           levels: [1, 2, 3, 4, 5, 6],
         },
       }),
+      StyledHorizontalRule,
       Placeholder.configure({
         placeholder: placeholder || t('editor.placeholder'),
         emptyEditorClass: 'is-editor-empty',

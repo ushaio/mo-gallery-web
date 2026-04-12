@@ -80,6 +80,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const initialLoadRef = useRef(false)
   const savingRef = useRef(false)
   const handledEditStoryIdRef = useRef<string | null>(null)
+  const pendingPhotoIdsRef = useRef<string[] | null>(null)
 
   const loadStories = useCallback(async () => {
     if (!token) return
@@ -143,7 +144,14 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = true
       setSaving(true)
       const isNew = !stories.find((story) => story.id === currentStory.id)
-      const photoIds = currentStory.photos?.map((photo) => photo.id) || []
+      const basePhotoIds = currentStory.photos?.map((photo) => photo.id) || []
+      // Merge any photo IDs that were just uploaded but not yet reflected in state
+      const extraIds = pendingPhotoIdsRef.current || []
+      const photoIdSet = new Set(basePhotoIds)
+      for (const id of extraIds) photoIdSet.add(id)
+      const photoIds = Array.from(photoIdSet)
+      pendingPhotoIdsRef.current = null
+
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
       if (isNew) {
@@ -226,6 +234,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     pendingImages,
     initialUploadSettings: DEFAULT_UPLOAD_SETTINGS,
     initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
+    pendingPhotoIdsRef,
     setCurrentStory,
     setAllPhotos,
     setPendingImages,

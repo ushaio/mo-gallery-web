@@ -17,6 +17,7 @@ interface StoryRichContentProps {
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const HTML_ANCHOR_PATTERN = /<a\b([^>]*?)href=(['"])(.*?)\2([^>]*)>/gi
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
+const HTML_HR_TAG_PATTERN = /<hr\b[^>]*\/?>/gi
 
 function normalizeImageWidth(width?: number | string) {
   if (typeof width === 'number' && Number.isFinite(width)) return Math.max(160, Math.round(width))
@@ -96,7 +97,12 @@ function resolveStoryHtml(content: string, photos: PhotoDto[], cdnDomain?: strin
     }
   )
 
-  return withResolvedLinks.replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, photos, cdnDomain))
+  return withResolvedLinks
+    .replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, photos, cdnDomain))
+    .replace(HTML_HR_TAG_PATTERN, (tag) => {
+      if (/\bstyle=/i.test(tag)) return tag
+      return tag.replace(/<hr/i, '<hr style="border: none; border-top: 1px solid currentColor; margin: 2rem 0;"')
+    })
 }
 
 function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {

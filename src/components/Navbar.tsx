@@ -213,69 +213,78 @@ export default function Navbar() {
                   )
                 })}
 
-                {/* Gallery with dropdown */}
-                <div
-                  ref={galleryDropdownRef}
-                  className="relative"
-                  onMouseEnter={() => setGalleryDropdownOpen(true)}
-                  onMouseLeave={() => setGalleryDropdownOpen(false)}
-                >
-                  <Link
-                    href="/gallery"
-                    className={cn(
-                      "font-sans text-xs font-medium tracking-[0.2em] transition-colors duration-300 uppercase relative group flex items-center gap-1",
-                      isMenuItemActive('/gallery')
-                        ? (isTransparent ? "text-white" : "text-primary")
-                        : textColorClass,
-                      !isMenuItemActive('/gallery') && hoverColorClass
-                    )}
-                  >
-                    {t('nav.gallery')}
-                    <ChevronDown className={cn(
-                      "w-3 h-3 transition-transform duration-200",
-                      galleryDropdownOpen ? "rotate-180" : ""
-                    )} />
-                    <motion.span
-                      className={cn(
-                        "absolute -bottom-1 left-0 h-[1px]",
-                        isTransparent ? "bg-white" : "bg-primary"
-                      )}
-                      initial={false}
-                      animate={{
-                        width: isMenuItemActive('/gallery') ? '100%' : '0%',
-                        opacity: isMenuItemActive('/gallery') ? 1 : 0
-                      }}
-                      transition={{ duration: 0.3, ease: 'easeInOut' }}
-                    />
-                    {!isMenuItemActive('/gallery') && (
-                      <span className={cn(
-                        "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-300 group-hover:w-full",
-                        isTransparent ? "bg-white" : "bg-primary"
-                      )} />
-                    )}
-                  </Link>
-
-                  <AnimatePresence>
-                    {galleryDropdownOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 6 }}
-                        transition={{ duration: 0.15, ease: 'easeOut' }}
-                        className="absolute left-0 top-full pt-3 z-50"
+                {/* Gallery / Film toggle dropdown */}
+                {(() => {
+                  const isFilmPage = pathname.startsWith('/gallery/film')
+                  const primaryLabel = isFilmPage ? t('nav.gallery_film') : t('nav.gallery')
+                  const primaryHref = isFilmPage ? '/gallery/film' : '/gallery'
+                  const secondaryLabel = isFilmPage ? t('nav.gallery') : t('nav.gallery_film')
+                  const secondaryHref = isFilmPage ? '/gallery' : '/gallery/film'
+                  return (
+                    <div
+                      ref={galleryDropdownRef}
+                      className="relative"
+                      onMouseEnter={() => setGalleryDropdownOpen(true)}
+                      onMouseLeave={() => setGalleryDropdownOpen(false)}
+                    >
+                      <Link
+                        href={primaryHref}
+                        className={cn(
+                          "font-sans text-xs font-medium tracking-[0.2em] transition-colors duration-300 uppercase relative group flex items-center gap-1",
+                          isMenuItemActive('/gallery')
+                            ? (isTransparent ? "text-white" : "text-primary")
+                            : textColorClass,
+                          !isMenuItemActive('/gallery') && hoverColorClass
+                        )}
                       >
-                        <div className="bg-background/95 backdrop-blur-xl border border-border/50 shadow-lg py-1 min-w-[120px]">
-                          <Link
-                            href="/gallery/film"
-                            className="block px-4 py-2 font-sans text-[10px] font-medium tracking-[0.2em] uppercase text-muted-foreground hover:text-primary hover:bg-muted/40 transition-colors duration-200"
+                        {primaryLabel}
+                        <ChevronDown className={cn(
+                          "w-3 h-3 transition-transform duration-200",
+                          galleryDropdownOpen ? "rotate-180" : ""
+                        )} />
+                        <motion.span
+                          className={cn(
+                            "absolute -bottom-1 left-0 h-[1px]",
+                            isTransparent ? "bg-white" : "bg-primary"
+                          )}
+                          initial={false}
+                          animate={{
+                            width: isMenuItemActive('/gallery') ? '100%' : '0%',
+                            opacity: isMenuItemActive('/gallery') ? 1 : 0
+                          }}
+                          transition={{ duration: 0.3, ease: 'easeInOut' }}
+                        />
+                        {!isMenuItemActive('/gallery') && (
+                          <span className={cn(
+                            "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-300 group-hover:w-full",
+                            isTransparent ? "bg-white" : "bg-primary"
+                          )} />
+                        )}
+                      </Link>
+
+                      <AnimatePresence>
+                        {galleryDropdownOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 6 }}
+                            transition={{ duration: 0.15, ease: 'easeOut' }}
+                            className="absolute left-0 top-full pt-3 z-50"
                           >
-                            {t('nav.gallery_film')}
-                          </Link>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                            <div className="bg-background/95 backdrop-blur-xl border border-border/50 shadow-lg py-1 min-w-[120px]">
+                              <Link
+                                href={secondaryHref}
+                                className="block px-4 py-2 font-sans text-[10px] font-medium tracking-[0.2em] uppercase text-muted-foreground hover:text-primary hover:bg-muted/40 transition-colors duration-200"
+                              >
+                                {secondaryLabel}
+                              </Link>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )
+                })()}
               </div>
 
               <div className={cn("h-4 w-[1px]", isTransparent ? "bg-white/30" : "bg-border")}></div>
@@ -356,80 +365,90 @@ export default function Navbar() {
             <div className="px-6 py-8 flex flex-col">
               {/* Navigation Links */}
               <nav className="flex flex-col space-y-1">
-                {[
-                  { name: t('nav.home'), path: '/' },
-                  { name: t('nav.gallery'), path: '/gallery' },
-                  { name: t('nav.story'), path: '/story' },
-                  { name: t('nav.they'), path: '/they' },
-                  { name: t('nav.about'), path: '/about' },
-                ].map((item, index) => {
-                  const isActive = isMenuItemActive(item.path)
-                  const isGallery = item.path === '/gallery'
-                  return (
-                    <motion.div
-                      key={item.path}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <div className="flex items-center">
-                        <Link
-                          href={item.path}
-                          className={cn(
-                            "block py-4 font-serif text-3xl tracking-tight transition-colors relative flex-1",
-                            isActive
-                              ? 'text-primary'
-                              : 'text-foreground hover:text-primary'
-                          )}
-                        >
-                          <span className="relative">
-                            {item.name}
-                            {isActive && (
-                              <motion.span
-                                className="absolute -bottom-1 left-0 h-[2px] bg-primary"
-                                initial={{ width: 0 }}
-                                animate={{ width: '100%' }}
-                                transition={{ duration: 0.3, ease: 'easeOut' }}
-                              />
+                {(() => {
+                  const isFilmPage = pathname.startsWith('/gallery/film')
+                  const galleryItem = isFilmPage
+                    ? { name: t('nav.gallery_film'), path: '/gallery/film' }
+                    : { name: t('nav.gallery'), path: '/gallery' }
+                  const gallerySubItem = isFilmPage
+                    ? { name: t('nav.gallery'), path: '/gallery' }
+                    : { name: t('nav.gallery_film'), path: '/gallery/film' }
+
+                  return [
+                    { name: t('nav.home'), path: '/' },
+                    galleryItem,
+                    { name: t('nav.story'), path: '/story' },
+                    { name: t('nav.they'), path: '/they' },
+                    { name: t('nav.about'), path: '/about' },
+                  ].map((item, index) => {
+                    const isActive = isMenuItemActive(item.path)
+                    const isGallery = item.path === '/gallery' || item.path === '/gallery/film'
+                    return (
+                      <motion.div
+                        key={item.path}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                      >
+                        <div className="flex items-center">
+                          <Link
+                            href={item.path}
+                            className={cn(
+                              "block py-4 font-serif text-3xl tracking-tight transition-colors relative flex-1",
+                              isActive
+                                ? 'text-primary'
+                                : 'text-foreground hover:text-primary'
                             )}
-                          </span>
-                        </Link>
-                        {isGallery && (
-                          <button
-                            onClick={() => setMobileGalleryOpen((v) => !v)}
-                            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="Toggle gallery submenu"
                           >
-                            <ChevronDown className={cn(
-                              "w-5 h-5 transition-transform duration-200",
-                              mobileGalleryOpen ? "rotate-180" : ""
-                            )} />
-                          </button>
-                        )}
-                      </div>
-                      {isGallery && (
-                        <AnimatePresence>
-                          {mobileGalleryOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="overflow-hidden pl-4 border-l border-border/40"
+                            <span className="relative">
+                              {item.name}
+                              {isActive && (
+                                <motion.span
+                                  className="absolute -bottom-1 left-0 h-[2px] bg-primary"
+                                  initial={{ width: 0 }}
+                                  animate={{ width: '100%' }}
+                                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                                />
+                              )}
+                            </span>
+                          </Link>
+                          {isGallery && (
+                            <button
+                              onClick={() => setMobileGalleryOpen((v) => !v)}
+                              className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+                              aria-label="Toggle gallery submenu"
                             >
-                              <Link
-                                href="/gallery/film"
-                                className="block py-3 font-sans text-base tracking-widest uppercase text-muted-foreground hover:text-primary transition-colors"
-                              >
-                                {t('nav.gallery_film')}
-                              </Link>
-                            </motion.div>
+                              <ChevronDown className={cn(
+                                "w-5 h-5 transition-transform duration-200",
+                                mobileGalleryOpen ? "rotate-180" : ""
+                              )} />
+                            </button>
                           )}
-                        </AnimatePresence>
-                      )}
-                    </motion.div>
-                  )
-                })}
+                        </div>
+                        {isGallery && (
+                          <AnimatePresence>
+                            {mobileGalleryOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden pl-4 border-l border-border/40"
+                              >
+                                <Link
+                                  href={gallerySubItem.path}
+                                  className="block py-3 font-sans text-base tracking-widest uppercase text-muted-foreground hover:text-primary transition-colors"
+                                >
+                                  {gallerySubItem.name}
+                                </Link>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        )}
+                      </motion.div>
+                    )
+                  })
+                })()}
               </nav>
 
               {/* Divider */}

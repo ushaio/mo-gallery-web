@@ -305,12 +305,16 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         .chain()
         .focus()
         .insertContent({
-          type: 'image',
-          attrs: {
-            src: attrs.src,
-            alt: attrs.alt || '',
-            ...(attrs.width ? { width: attrs.width } : {}),
-          },
+          type: 'paragraph',
+          attrs: { textAlign: 'center' },
+          content: [{
+            type: 'image',
+            attrs: {
+              src: attrs.src,
+              alt: attrs.alt || '',
+              ...(attrs.width ? { width: attrs.width } : {}),
+            },
+          }],
         })
         .run()
 

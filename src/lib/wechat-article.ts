@@ -26,7 +26,7 @@ const WECHAT_STYLES: Record<string, string> = {
   table: 'width:100%;border-collapse:collapse;margin:16px 0',
   th: 'border:1px solid #ddd;padding:8px;background:#f5f5f5;font-weight:700;text-align:left',
   td: 'border:1px solid #ddd;padding:8px;text-align:left',
-  hr: 'border:none;border-top:1px solid #ddd;margin:20px 0',
+  hr: 'border:none;border-top:1px solid #333;margin:20px 0',
   a: 'color:#576b95;text-decoration:none',
   pre: 'background:#f5f5f5;padding:12px 16px;margin:16px 0;overflow-x:auto;font-size:14px;font-family:Menlo,Consolas,monospace',
   code: 'background:#f5f5f5;padding:2px 6px;font-size:14px;font-family:Menlo,Consolas,monospace',

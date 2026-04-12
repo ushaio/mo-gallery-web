@@ -32,6 +32,7 @@ interface UseStoryEditorActionsParams {
   pendingImages: PendingImage[]
   initialUploadSettings: UploadSettings
   initialPasteUploadSettings: UploadSettings
+  pendingPhotoIdsRef: MutableRefObject<string[] | null>
   setCurrentStory: Dispatch<SetStateAction<StoryDto | null>>
   setAllPhotos: Dispatch<SetStateAction<PhotoDto[]>>
   setPendingImages: Dispatch<SetStateAction<PendingImage[]>>
@@ -89,6 +90,7 @@ export function useStoryEditorActions({
   pendingImages,
   initialUploadSettings,
   initialPasteUploadSettings,
+  pendingPhotoIdsRef,
   setCurrentStory,
   setAllPhotos,
   setPendingImages,
@@ -278,6 +280,7 @@ export function useStoryEditorActions({
           title: pending.file.name.replace(/\.[^/.]+$/, ''),
           category: settings.categories?.length ? settings.categories : settings.category,
           storage_provider: settings.storageProvider,
+          storage_source_id: settings.storageSourceId,
           storage_path: settings.storagePath,
           storage_path_full: settings.storagePathFull,
           file_hash: fileHash,
@@ -344,6 +347,9 @@ export function useStoryEditorActions({
 
     const failedCount = pendingImages.filter((image) => image.status === 'failed').length
     if (failedCount === 0) {
+      // Pass uploaded photo IDs via ref so doSaveStory can merge them
+      // (setCurrentStory hasn't re-rendered yet, so the closure state is stale)
+      pendingPhotoIdsRef.current = uploadedPhotoIds
       await onRequestSave()
       return
     }
