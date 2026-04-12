@@ -171,12 +171,9 @@ export default function Navbar() {
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-12">
               <div className="flex space-x-8">
-                {[
-                  { name: t('nav.home'), path: '/' },
-                  { name: t('nav.story'), path: '/story' },
-                  { name: t('nav.they'), path: '/they' },
-                  { name: t('nav.about'), path: '/about' },
-                ].map((item) => {
+                {/* Home */}
+                {(() => {
+                  const item = { name: t('nav.home'), path: '/' }
                   const isActive = isMenuItemActive(item.path)
                   return (
                     <Link
@@ -211,7 +208,7 @@ export default function Navbar() {
                       )}
                     </Link>
                   )
-                })}
+                })()}
 
                 {/* Gallery / Film toggle dropdown */}
                 {(() => {
@@ -285,6 +282,48 @@ export default function Navbar() {
                     </div>
                   )
                 })()}
+
+                {/* Story / They / About */}
+                {[
+                  { name: t('nav.story'), path: '/story' },
+                  { name: t('nav.they'), path: '/they' },
+                  { name: t('nav.about'), path: '/about' },
+                ].map((item) => {
+                  const isActive = isMenuItemActive(item.path)
+                  return (
+                    <Link
+                      key={item.path}
+                      href={item.path}
+                      className={cn(
+                        "font-sans text-xs font-medium tracking-[0.2em] transition-colors duration-300 uppercase relative group",
+                        isActive
+                          ? (isTransparent ? "text-white" : "text-primary")
+                          : textColorClass,
+                        !isActive && hoverColorClass
+                      )}
+                    >
+                      {item.name}
+                      <motion.span
+                        className={cn(
+                          "absolute -bottom-1 left-0 h-[1px]",
+                          isTransparent ? "bg-white" : "bg-primary"
+                        )}
+                        initial={false}
+                        animate={{
+                          width: isActive ? '100%' : '0%',
+                          opacity: isActive ? 1 : 0
+                        }}
+                        transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      />
+                      {!isActive && (
+                        <span className={cn(
+                          "absolute -bottom-1 left-0 w-0 h-[1px] transition-all duration-300 group-hover:w-full",
+                          isTransparent ? "bg-white" : "bg-primary"
+                        )} />
+                      )}
+                    </Link>
+                  )
+                })}
               </div>
 
               <div className={cn("h-4 w-[1px]", isTransparent ? "bg-white/30" : "bg-border")}></div>
