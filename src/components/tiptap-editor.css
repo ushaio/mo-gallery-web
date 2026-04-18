@@ -185,18 +185,18 @@
   outline: 3px solid rgba(149, 141, 241, 0.45);
 }
 
-.tiptap-editor .tiptap .spotify-embed-node {
+.tiptap-editor .tiptap .music-embed-node {
   display: block;
   margin: 1.5rem 0;
   border-radius: 1rem;
 }
 
-.tiptap-editor .tiptap .spotify-embed-node[data-selected='true'] {
+.tiptap-editor .tiptap .music-embed-node[data-selected='true'] {
   outline: 3px solid rgba(29, 185, 84, 0.3);
   outline-offset: 4px;
 }
 
-.tiptap-editor .tiptap .spotify-embed-node--invalid {
+.tiptap-editor .tiptap .music-embed-node--invalid {
   display: grid;
   place-items: center;
   min-height: 5.5rem;
@@ -205,13 +205,13 @@
   padding: 1rem;
 }
 
-.tiptap-editor .tiptap .spotify-embed-node__fallback {
+.tiptap-editor .tiptap .music-embed-node__fallback {
   color: color-mix(in srgb, hsl(var(--destructive)) 78%, hsl(var(--foreground)));
   font-size: 0.9rem;
   font-weight: 500;
 }
 
-.tiptap-editor .tiptap .spotify-embed-node__frame {
+.tiptap-editor .tiptap .music-embed-node__frame {
   display: block;
   width: 100%;
   border: 0;

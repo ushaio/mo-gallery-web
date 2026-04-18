@@ -211,3 +211,33 @@ export function findStoryPhotoById(photos: PhotoDto[], photoId?: string) {
   if (!photoId) return null
   return photos.find((photo) => photo.id === photoId) ?? null
 }
+
+export function findStoryPhotoByImageUrl(
+  photos: PhotoDto[],
+  imageUrl?: string | null,
+  cdnDomain?: string,
+) {
+  const normalizedTarget = normalizeStoryImageUrl(imageUrl || '')
+  if (!normalizedTarget) return null
+
+  const targetCandidates = new Set([
+    normalizedTarget,
+    stripOrigin(normalizedTarget),
+  ])
+
+  for (const photo of photos) {
+    const candidates = getStoryImageMatchCandidates({
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      cdnDomain,
+    })
+
+    for (const candidate of candidates) {
+      if (targetCandidates.has(candidate)) {
+        return photo
+      }
+    }
+  }
+
+  return null
+}

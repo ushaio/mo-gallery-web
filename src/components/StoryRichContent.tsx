@@ -1,12 +1,12 @@
 ﻿'use client'
 
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveAssetUrl } from '@/lib/api/core'
-import { parseSpotifyEmbedInfo } from '@/lib/spotify'
+import { parseMusicEmbedInfoByProvider } from '@/lib/music-embed'
 import type { PhotoDto } from '@/lib/api/types'
-import { findStoryPhotoById } from '@/lib/story-rich-content'
+import { findStoryPhotoById, findStoryPhotoByImageUrl } from '@/lib/story-rich-content'
 import './story-rich-content.css'
 
 interface StoryRichContentProps {
@@ -14,13 +14,14 @@ interface StoryRichContentProps {
   photos: PhotoDto[]
   cdnDomain?: string
   className?: string
+  onPhotoClick?: (photo: PhotoDto) => void
 }
 
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const HTML_ANCHOR_PATTERN = /<a\b([^>]*?)href=(['"])(.*?)\2([^>]*)>/gi
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
 const HTML_HR_TAG_PATTERN = /<hr\b[^>]*\/?>/gi
-const HTML_SPOTIFY_EMBED_PATTERN = /<div\b[^>]*data-type=(['"])spotify-embed\1[^>]*>\s*<\/div>/gi
+const HTML_MUSIC_EMBED_PATTERN = /<div\b[^>]*data-type=(['"])(?:music-embed|spotify-embed)\1[^>]*>\s*<\/div>/gi
 
 function escapeHtmlAttribute(value: string) {
   return value
@@ -104,6 +105,10 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
       : nextTag.replace(/<img/i, `<img alt="${escapedAlt}"`)
   }
 
+  if (matchedPhoto && !photoId) {
+    nextTag = nextTag.replace(/<img/i, `<img data-photo-id="${escapeHtmlAttribute(matchedPhoto.id)}"`)
+  }
+
   if (styleMatch) {
     nextTag = nextTag.replace(styleMatch[0], `style="${styleParts.join(' ')}"`)
   } else {
@@ -113,27 +118,35 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
   return nextTag
 }
 
-function buildSpotifyEmbedHtml(tag: string) {
+function buildMusicEmbedHtml(tag: string) {
+  const provider = tag.match(/\bdata-provider=(['"])(.*?)\1/i)?.[2]?.trim() || ''
   const url = tag.match(/\bdata-url=(['"])(.*?)\1/i)?.[2]?.trim() || ''
-  const embedInfo = parseSpotifyEmbedInfo(url)
+  const embedInfo = parseMusicEmbedInfoByProvider(provider, url)
   if (!embedInfo) {
     return tag
   }
 
   const escapedUrl = escapeHtmlAttribute(embedInfo.url)
   const escapedEmbedUrl = escapeHtmlAttribute(embedInfo.embedUrl)
-  const escapedType = escapeHtmlAttribute(embedInfo.type)
+  const escapedProvider = escapeHtmlAttribute(embedInfo.provider)
+  const escapedTitle = escapeHtmlAttribute(embedInfo.title)
+  const frameBorderAttribute = embedInfo.frameBorder ? ` frameborder="${escapeHtmlAttribute(embedInfo.frameBorder)}"` : ''
+  const marginWidthAttribute = embedInfo.marginWidth ? ` marginwidth="${escapeHtmlAttribute(embedInfo.marginWidth)}"` : ''
+  const marginHeightAttribute = embedInfo.marginHeight ? ` marginheight="${escapeHtmlAttribute(embedInfo.marginHeight)}"` : ''
+  const allowAttribute = embedInfo.allow ? ` allow="${escapeHtmlAttribute(embedInfo.allow)}"` : ''
+  const allowFullScreenAttribute = embedInfo.allowFullScreen ? ' allowfullscreen' : ''
+  const styleAttribute = embedInfo.provider === 'spotify' ? ' style="border-radius:12px"' : ''
 
   return `
-    <div class="story-spotify-card" data-type="spotify-embed" data-spotify-type="${escapedType}">
+    <div class="story-music-card" data-type="music-embed" data-provider="${escapedProvider}">
       <iframe
         src="${escapedEmbedUrl}"
-        title="Spotify ${escapedType}"
-        loading="lazy"
-        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        allowfullscreen
+        title="${escapedTitle}"
+        width="100%"
         height="${embedInfo.height}"
-        data-spotify-url="${escapedUrl}"
+        data-music-url="${escapedUrl}"
+        loading="lazy"
+        ${allowAttribute}${allowFullScreenAttribute}${frameBorderAttribute}${marginWidthAttribute}${marginHeightAttribute}${styleAttribute}
       ></iframe>
     </div>
   `
@@ -152,7 +165,7 @@ function resolveStoryHtml(content: string, photos: PhotoDto[], cdnDomain?: strin
 
   return withResolvedLinks
     .replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, photos, cdnDomain))
-    .replace(HTML_SPOTIFY_EMBED_PATTERN, (tag) => buildSpotifyEmbedHtml(tag))
+    .replace(HTML_MUSIC_EMBED_PATTERN, (tag) => buildMusicEmbedHtml(tag))
     .replace(HTML_HR_TAG_PATTERN, (tag) => {
       if (/\bstyle=/i.test(tag)) return tag
       return tag.replace(/<hr/i, '<hr style="border: none; border-top: 1px solid currentColor; margin: 2rem 0;"')
@@ -165,13 +178,14 @@ function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {
       const rawSrc = typeof src === 'string' ? src.trim() : ''
       const { url: parsedUrl, width: parsedWidth } = parseMarkdownImageSrc(rawSrc)
       const resolvedSrc = resolveStoryAssetUrl(parsedUrl, photos, cdnDomain)
-      const matchedPhoto = photos.find((photo) => photo.url === parsedUrl || photo.thumbnailUrl === parsedUrl)
+      const matchedPhoto = findStoryPhotoByImageUrl(photos, parsedUrl, cdnDomain)
       const normalizedWidth = parsedWidth ?? normalizeImageWidth(width)
 
       return (
         <img
           src={resolvedSrc}
           alt={alt ?? matchedPhoto?.title ?? ''}
+          data-photo-id={matchedPhoto?.id ?? undefined}
           width={normalizedWidth}
           style={normalizedWidth ? {
             display: 'inline-block',
@@ -201,28 +215,55 @@ export const StoryRichContent = memo(function StoryRichContent({
   photos,
   cdnDomain,
   className = '',
+  onPhotoClick,
 }: StoryRichContentProps) {
   const markdownComponents = useMemo(
     () => createMarkdownComponents(photos, cdnDomain),
     [photos, cdnDomain],
   )
   const isHtmlContent = HTML_TAG_PATTERN.test(content)
-  const rootClassName = ['story-rich-content', className].filter(Boolean).join(' ')
+  const rootClassName = ['story-rich-content', onPhotoClick ? 'story-rich-content--interactive' : '', className].filter(Boolean).join(' ')
   const resolvedHtml = useMemo(() => {
     if (!isHtmlContent) return null
     return resolveStoryHtml(content, photos, cdnDomain)
   }, [cdnDomain, content, isHtmlContent, photos])
+  const handleContentClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!onPhotoClick) return
+
+    const target = event.target
+    if (!(target instanceof HTMLElement)) {
+      return
+    }
+
+    const imageElement = target.closest('img')
+    if (!(imageElement instanceof HTMLImageElement)) {
+      return
+    }
+
+    const photoId = imageElement.getAttribute('data-photo-id')?.trim()
+    const matchedById = findStoryPhotoById(photos, photoId)
+    if (matchedById) {
+      onPhotoClick(matchedById)
+      return
+    }
+
+    const imageSrc = imageElement.getAttribute('src')
+    const matchedByUrl = findStoryPhotoByImageUrl(photos, imageSrc, cdnDomain)
+    if (matchedByUrl) {
+      onPhotoClick(matchedByUrl)
+    }
+  }, [cdnDomain, onPhotoClick, photos])
 
   if (isHtmlContent) {
     return (
-      <div className={rootClassName}>
+      <div className={rootClassName} onClick={handleContentClick}>
         <div className="story-rich-html" dangerouslySetInnerHTML={{ __html: resolvedHtml ?? '' }} />
       </div>
     )
   }
 
   return (
-    <div className={rootClassName}>
+    <div className={rootClassName} onClick={handleContentClick}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {content}
       </ReactMarkdown>

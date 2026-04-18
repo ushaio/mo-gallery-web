@@ -19,8 +19,8 @@ import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import { DropCapParagraph } from '@/components/tiptap-extensions/DropCapParagraph'
 import { StyledHorizontalRule } from '@/components/tiptap-extensions/StyledHorizontalRule'
-import { SpotifyEmbed } from '@/components/tiptap-extensions/SpotifyEmbed'
-import { parseSpotifyEmbedInfo } from '@/lib/spotify'
+import { MusicEmbed } from '@/components/tiptap-extensions/MusicEmbed'
+import { parseMusicEmbedInfo } from '@/lib/music-embed'
 import { convertMarkdownToHtml, ensureFirstParagraphHasDropCap, isMarkdownContent } from './markdown-converter'
 import { TAB_INDENT } from './editor-constants'
 
@@ -88,7 +88,7 @@ export function useNarrativeEditor({
           alwaysPreserveAspectRatio: true,
         },
       }),
-      SpotifyEmbed,
+      MusicEmbed,
       Underline,
       PastedStyleMark,
       TextAlign.configure({
@@ -135,15 +135,17 @@ export function useNarrativeEditor({
         }
 
         const plainText = event.clipboardData?.getData('text/plain')?.trim() || ''
-        const embedInfo = parseSpotifyEmbedInfo(plainText)
-        const spotifyEmbedType = view.state.schema.nodes.spotifyEmbed
+        const htmlText = event.clipboardData?.getData('text/html')?.trim() || ''
+        const embedInfo = parseMusicEmbedInfo(plainText) || parseMusicEmbedInfo(htmlText)
+        const musicEmbedType = view.state.schema.nodes.musicEmbed
 
-        if (embedInfo && spotifyEmbedType) {
+        if (embedInfo && musicEmbedType) {
           event.preventDefault()
           view.dispatch(
             view.state.tr
               .replaceSelectionWith(
-                spotifyEmbedType.create({
+                musicEmbedType.create({
+                  provider: embedInfo.provider,
                   url: embedInfo.url,
                 })
               )

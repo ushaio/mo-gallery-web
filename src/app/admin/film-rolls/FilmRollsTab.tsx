@@ -271,7 +271,8 @@ export function FilmRollsTab({
   // ==================== List View ====================
   if (!currentRoll) {
     return (
-      <div className="space-y-6">
+      <>
+        <div className="space-y-6">
         <AdminCollectionToolbar
           info={<span className="text-sm font-medium text-foreground"><span className="text-muted-foreground">{filteredRolls.length} {t('admin.film_rolls')}</span></span>}
           searchValue={searchQuery}
@@ -445,7 +446,16 @@ export function FilmRollsTab({
             ))}
           </div>
         )}
-      </div>
+        </div>
+        <SimpleDeleteDialog
+          isOpen={pendingRollDelete !== null}
+          title={t('common.confirm')}
+          message={t('admin.film_roll_delete_confirm')}
+          onConfirm={confirmDeleteRoll}
+          onCancel={() => { if (!deletingRollId) setPendingRollDelete(null) }}
+          t={t}
+        />
+      </>
     )
   }
 
@@ -656,7 +666,7 @@ export function FilmRollsTab({
       <SimpleDeleteDialog
         isOpen={pendingRollDelete !== null}
         title={t('common.confirm')}
-        message={t('admin.confirm_delete_single') + '?'}
+        message={t('admin.film_roll_delete_confirm')}
         onConfirm={confirmDeleteRoll}
         onCancel={() => { if (!deletingRollId) setPendingRollDelete(null) }}
         t={t}

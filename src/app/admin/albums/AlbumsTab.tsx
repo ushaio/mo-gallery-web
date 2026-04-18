@@ -321,7 +321,8 @@ export function AlbumsTab({
   // ---------- 列表视图（未选中相册） ----------
   if (!currentAlbum) {
     return (
-      <div className="space-y-6">
+      <>
+        <div className="space-y-6">
         <AdminCollectionToolbar
           info={(
             <span className="text-sm font-medium text-foreground">
@@ -467,15 +468,18 @@ export function AlbumsTab({
               return (
                 <div
                   key={album.id}
-                  draggable
-                  onDragStart={e => handleDragStart(e, album.id)}
                   onDragOver={e => handleDragOver(e, album.id)}
-                  onDragEnd={handleDragEnd}
                   onClick={() => { setCurrentAlbum({ ...album }); setActiveTab('photos') }}
                   className={`group cursor-pointer bg-card border border-border/50 hover:border-border transition-all ${draggingId === album.id ? 'opacity-50' : ''}`}
                 >
                   <div className="relative aspect-[4/3] bg-muted overflow-hidden">
-                    <div className="absolute top-2 left-2 z-10 p-1 bg-black/40 text-white/70 hover:text-white cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                    <div
+                      draggable
+                      onDragStart={e => handleDragStart(e, album.id)}
+                      onDragEnd={handleDragEnd}
+                      className="absolute top-2 left-2 z-10 p-1 bg-black/40 text-white/70 hover:text-white cursor-grab opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={e => e.stopPropagation()}
+                    >
                       <GripVertical className="w-4 h-4" />
                     </div>
                     {album.coverUrl || album.photos.length > 0 ? (
@@ -484,7 +488,7 @@ export function AlbumsTab({
                       <div className="w-full h-full flex items-center justify-center"><FolderOpen className="w-10 h-10 opacity-10" /></div>
                     )}
                     <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{album.photoCount}</div>
-                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                       <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-1.5 bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors">
                         {album.isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                       </AdminButton>
@@ -509,14 +513,17 @@ export function AlbumsTab({
             {filteredAlbums.map(album => (
               <div
                 key={album.id}
-                draggable
-                onDragStart={e => handleDragStart(e, album.id)}
                 onDragOver={e => handleDragOver(e, album.id)}
-                onDragEnd={handleDragEnd}
                 onClick={() => { setCurrentAlbum({ ...album }); setActiveTab('photos') }}
                 className={`group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all ${draggingId === album.id ? 'opacity-50' : ''}`}
               >
-                <div className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab" onClick={e => e.stopPropagation()}>
+                <div
+                  draggable
+                  onDragStart={e => handleDragStart(e, album.id)}
+                  onDragEnd={handleDragEnd}
+                  className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab"
+                  onClick={e => e.stopPropagation()}
+                >
                   <GripVertical className="w-4 h-4" />
                 </div>
                 <div className="w-16 h-12 bg-muted overflow-hidden flex-shrink-0">
@@ -533,7 +540,7 @@ export function AlbumsTab({
                   </div>
                   <p className="text-xs text-muted-foreground">{album.photoCount} {t('admin.photos_count')}</p>
                 </div>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-2 hover:bg-muted transition-colors">
                     {album.isPublished ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
                   </AdminButton>
@@ -546,6 +553,19 @@ export function AlbumsTab({
           </div>
         )}
       </div>
+      <SimpleDeleteDialog
+        isOpen={pendingAlbumDelete !== null}
+        title={t('common.confirm')}
+        message={t('admin.album_delete_confirm')}
+        onConfirm={confirmDeleteAlbum}
+        onCancel={() => {
+          if (!deletingAlbumId) {
+            setPendingAlbumDelete(null)
+          }
+        }}
+        t={t}
+      />
+      </>
     )
   }
 
@@ -791,7 +811,7 @@ export function AlbumsTab({
       <SimpleDeleteDialog
         isOpen={pendingAlbumDelete !== null}
         title={t('common.confirm')}
-        message={t('admin.confirm_delete_single') + '?'}
+        message={t('admin.album_delete_confirm')}
         onConfirm={confirmDeleteAlbum}
         onCancel={() => {
           if (!deletingAlbumId) {
