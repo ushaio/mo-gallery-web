@@ -13,6 +13,7 @@ import {
   Eraser,
   Sparkles,
   Search,
+  Quote,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
@@ -66,6 +67,7 @@ export default function AiAssistantPage() {
   const [showSidebar, setShowSidebar] = useState(true)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [quotedMessage, setQuotedMessage] = useState<EditorAiMessageDto | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -208,9 +210,27 @@ export default function AiAssistantPage() {
     }
 
     const userInput = input.trim()
+    const quoted = quotedMessage
     setInput('')
+    setQuotedMessage(null)
     setSending(true)
     setStreamingContent('')
+
+    // Build prompt with quote context
+    const prompt = quoted
+      ? `> ${quoted.content.split('\n').join('\n> ')}\n\n${userInput}`
+      : userInput
+
+    // Optimistic: show user message immediately
+    const optimisticMsg: EditorAiMessageDto = {
+      id: `optimistic-${Date.now()}`,
+      conversationId: conversationId!,
+      role: 'user',
+      content: prompt,
+      status: 'completed',
+      createdAt: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, optimisticMsg])
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -226,7 +246,7 @@ export default function AiAssistantPage() {
         {
           conversationId,
           action: 'custom',
-          prompt: userInput,
+          prompt,
           model: selectedModel || undefined,
         },
         {
@@ -285,6 +305,11 @@ export default function AiAssistantPage() {
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 2000)
     } catch { /* ignore */ }
+  }
+
+  const handleQuote = (msg: EditorAiMessageDto) => {
+    setQuotedMessage(msg)
+    textareaRef.current?.focus()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -442,6 +467,7 @@ export default function AiAssistantPage() {
                       message={msg}
                       copiedId={copiedId}
                       onCopy={handleCopy}
+                      onQuote={handleQuote}
                       t={t}
                     />
                   </motion.div>
@@ -501,6 +527,32 @@ export default function AiAssistantPage() {
         <div className="border-t border-border/60 p-4 flex-shrink-0 bg-background">
           <div className="max-w-2xl mx-auto">
             <div className="rounded-2xl border border-border/60 bg-muted/15 focus-within:border-primary/40 transition-colors">
+              {/* Quote preview */}
+              <AnimatePresence>
+                {quotedMessage && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-start gap-2 mx-3 mt-3 px-3 py-2 rounded-lg bg-muted/40 border-l-2 border-primary/40">
+                      <Quote className="w-3 h-3 text-primary/50 flex-shrink-0 mt-0.5" />
+                      <p className="flex-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        {quotedMessage.content}
+                      </p>
+                      <button
+                        onClick={() => setQuotedMessage(null)}
+                        className="flex-shrink-0 p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors cursor-pointer"
+                        aria-label="Remove quote"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -627,11 +679,13 @@ function MessageBubble({
   message,
   copiedId,
   onCopy,
+  onQuote,
   t,
 }: {
   message: EditorAiMessageDto
   copiedId: string | null
   onCopy: (content: string, id: string) => void
+  onQuote: (msg: EditorAiMessageDto) => void
   t: (key: string) => string
 }) {
   const isUser = message.role === 'user'
@@ -645,6 +699,16 @@ function MessageBubble({
             <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
               {message.content}
             </div>
+          </div>
+          <div className="mt-1 flex items-center justify-end">
+            <button
+              onClick={() => onQuote(message)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer"
+              aria-label="Quote"
+            >
+              <Quote className="w-3 h-3" />
+              <span>{t('admin.ai_quote')}</span>
+            </button>
           </div>
         </div>
         <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-foreground/10 flex items-center justify-center">
@@ -674,7 +738,7 @@ function MessageBubble({
         </div>
 
         {message.content && (
-          <div className="mt-1 flex items-center">
+          <div className="mt-1 flex items-center gap-1">
             <button
               onClick={() => onCopy(message.content, message.id)}
               className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer"
@@ -691,6 +755,14 @@ function MessageBubble({
                   <span>{t('admin.ai_copy')}</span>
                 </>
               )}
+            </button>
+            <button
+              onClick={() => onQuote(message)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer"
+              aria-label="Quote"
+            >
+              <Quote className="w-3 h-3" />
+              <span>{t('admin.ai_quote')}</span>
             </button>
           </div>
         )}

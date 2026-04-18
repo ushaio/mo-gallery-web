@@ -10,8 +10,8 @@ export interface MusicEmbedInfo {
   allow?: string
   allowFullScreen?: boolean
   frameBorder?: string
-  marginWidth?: string
-  marginHeight?: string
+  marginWidth?: number
+  marginHeight?: number
 }
 
 const SPOTIFY_BASE_URL = 'https://open.spotify.com'
@@ -121,8 +121,8 @@ function buildNetEaseSongEmbedInfo(songId: string): MusicEmbedInfo {
     embedUrl: `https://music.163.com/outchain/player?type=2&id=${normalizedId}&auto=0&height=${NETEASE_OUTCHAIN_HEIGHT}`,
     height: 86,
     frameBorder: '0',
-    marginWidth: '0',
-    marginHeight: '0',
+    marginWidth: 0,
+    marginHeight: 0,
   }
 }
 
