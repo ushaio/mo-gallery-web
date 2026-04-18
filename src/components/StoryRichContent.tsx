@@ -4,6 +4,7 @@ import { memo, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveAssetUrl } from '@/lib/api/core'
+import { parseSpotifyEmbedInfo } from '@/lib/spotify'
 import type { PhotoDto } from '@/lib/api/types'
 import { findStoryPhotoById } from '@/lib/story-rich-content'
 import './story-rich-content.css'
@@ -19,6 +20,7 @@ const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const HTML_ANCHOR_PATTERN = /<a\b([^>]*?)href=(['"])(.*?)\2([^>]*)>/gi
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
 const HTML_HR_TAG_PATTERN = /<hr\b[^>]*\/?>/gi
+const HTML_SPOTIFY_EMBED_PATTERN = /<div\b[^>]*data-type=(['"])spotify-embed\1[^>]*>\s*<\/div>/gi
 
 function escapeHtmlAttribute(value: string) {
   return value
@@ -111,6 +113,32 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
   return nextTag
 }
 
+function buildSpotifyEmbedHtml(tag: string) {
+  const url = tag.match(/\bdata-url=(['"])(.*?)\1/i)?.[2]?.trim() || ''
+  const embedInfo = parseSpotifyEmbedInfo(url)
+  if (!embedInfo) {
+    return tag
+  }
+
+  const escapedUrl = escapeHtmlAttribute(embedInfo.url)
+  const escapedEmbedUrl = escapeHtmlAttribute(embedInfo.embedUrl)
+  const escapedType = escapeHtmlAttribute(embedInfo.type)
+
+  return `
+    <div class="story-spotify-card" data-type="spotify-embed" data-spotify-type="${escapedType}">
+      <iframe
+        src="${escapedEmbedUrl}"
+        title="Spotify ${escapedType}"
+        loading="lazy"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        allowfullscreen
+        height="${embedInfo.height}"
+        data-spotify-url="${escapedUrl}"
+      ></iframe>
+    </div>
+  `
+}
+
 function resolveStoryHtml(content: string, photos: PhotoDto[], cdnDomain?: string) {
   const withResolvedLinks = content.replace(
     HTML_ANCHOR_PATTERN,
@@ -124,6 +152,7 @@ function resolveStoryHtml(content: string, photos: PhotoDto[], cdnDomain?: strin
 
   return withResolvedLinks
     .replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, photos, cdnDomain))
+    .replace(HTML_SPOTIFY_EMBED_PATTERN, (tag) => buildSpotifyEmbedHtml(tag))
     .replace(HTML_HR_TAG_PATTERN, (tag) => {
       if (/\bstyle=/i.test(tag)) return tag
       return tag.replace(/<hr/i, '<hr style="border: none; border-top: 1px solid currentColor; margin: 2rem 0;"')

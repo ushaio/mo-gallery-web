@@ -19,6 +19,8 @@ import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import { DropCapParagraph } from '@/components/tiptap-extensions/DropCapParagraph'
 import { StyledHorizontalRule } from '@/components/tiptap-extensions/StyledHorizontalRule'
+import { SpotifyEmbed } from '@/components/tiptap-extensions/SpotifyEmbed'
+import { parseSpotifyEmbedInfo } from '@/lib/spotify'
 import { convertMarkdownToHtml, ensureFirstParagraphHasDropCap, isMarkdownContent } from './markdown-converter'
 import { TAB_INDENT } from './editor-constants'
 
@@ -86,6 +88,7 @@ export function useNarrativeEditor({
           alwaysPreserveAspectRatio: true,
         },
       }),
+      SpotifyEmbed,
       Underline,
       PastedStyleMark,
       TextAlign.configure({
@@ -125,10 +128,31 @@ export function useNarrativeEditor({
         const files = Array.from(event.clipboardData?.files || []).filter((file) =>
           file.type.startsWith('image/')
         )
-        if (files.length === 0) return false
-        event.preventDefault()
-        void onPasteFilesRef.current?.(files)
-        return true
+        if (files.length > 0) {
+          event.preventDefault()
+          void onPasteFilesRef.current?.(files)
+          return true
+        }
+
+        const plainText = event.clipboardData?.getData('text/plain')?.trim() || ''
+        const embedInfo = parseSpotifyEmbedInfo(plainText)
+        const spotifyEmbedType = view.state.schema.nodes.spotifyEmbed
+
+        if (embedInfo && spotifyEmbedType) {
+          event.preventDefault()
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(
+                spotifyEmbedType.create({
+                  url: embedInfo.url,
+                })
+              )
+              .scrollIntoView()
+          )
+          return true
+        }
+
+        return false
       },
       handleKeyDown: (view, event) => {
         if (event.key !== 'Tab') {

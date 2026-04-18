@@ -237,6 +237,21 @@
   table-layout: fixed;
 }
 
+.story-rich-content .story-spotify-card,
+.story-rich-content .story-rich-html .story-spotify-card {
+  margin: 2rem 0;
+  border-radius: 1rem;
+}
+
+.story-rich-content .story-spotify-card iframe,
+.story-rich-content .story-rich-html .story-spotify-card iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
+}
+
 .story-rich-content th,
 .story-rich-content td,
 .story-rich-content .story-rich-html th,

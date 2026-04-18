@@ -33,11 +33,13 @@ import {
   Redo,
   Highlighter,
   Palette,
+  Music2,
   RemoveFormatting,
 } from 'lucide-react'
 import TipTapAiAssistant from '@/components/TipTapAiAssistant'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { parseSpotifyEmbedInfo } from '@/lib/spotify'
 
 import {
   DEFAULT_FONT_SIZE_LABEL,
@@ -98,6 +100,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
+    const [showSpotifyInput, setShowSpotifyInput] = useState(false)
+    const [spotifyUrl, setSpotifyUrl] = useState('')
+    const [spotifyInputError, setSpotifyInputError] = useState('')
     const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
     const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
     const [customBackgroundColor, setCustomBackgroundColor] = useState(DEFAULT_TEXT_HIGHLIGHT)
@@ -167,6 +172,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             isOrderedList: false,
             isBlockquote: false,
             isLink: false,
+            isSpotifyEmbed: false,
             isAlignLeft: false,
             isAlignCenter: false,
             isAlignRight: false,
@@ -193,6 +199,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isOrderedList: currentEditor.isActive('orderedList'),
           isBlockquote: currentEditor.isActive('blockquote'),
           isLink: currentEditor.isActive('link'),
+          isSpotifyEmbed: currentEditor.isActive('spotifyEmbed'),
           isAlignLeft: currentEditor.isActive({ textAlign: 'left' }),
           isAlignCenter: currentEditor.isActive({ textAlign: 'center' }),
           isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
@@ -240,6 +247,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       isOrderedList: false,
       isBlockquote: false,
       isLink: false,
+      isSpotifyEmbed: false,
       isAlignLeft: false,
       isAlignCenter: false,
       isAlignRight: false,
@@ -410,6 +418,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       } else {
         const previousUrl = editor.getAttributes('link').href
         setLinkUrl(previousUrl || '')
+        setShowImageInput(false)
+        setShowSpotifyInput(false)
+        setSpotifyInputError('')
         setShowLinkInput(true)
       }
     }, [editor, linkUrl, showLinkInput])
@@ -423,9 +434,46 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         setShowImageInput(false)
         setImageUrl('')
       } else {
+        setShowLinkInput(false)
+        setShowSpotifyInput(false)
+        setSpotifyInputError('')
         setShowImageInput(true)
       }
     }, [editor, imageUrl, insertInlineImage, showImageInput])
+
+    const addSpotifyEmbed = useCallback(() => {
+      if (!editor) return
+
+      if (!showSpotifyInput) {
+        setShowLinkInput(false)
+        setShowImageInput(false)
+        setSpotifyInputError('')
+        setShowSpotifyInput(true)
+        return
+      }
+
+      const embedInfo = parseSpotifyEmbedInfo(spotifyUrl)
+      if (!embedInfo) {
+        setSpotifyInputError(t('editor.spotify_invalid_url'))
+        return
+      }
+
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'spotifyEmbed',
+          attrs: {
+            url: embedInfo.url,
+          },
+        })
+        .run()
+
+      setShowSpotifyInput(false)
+      setSpotifyUrl('')
+      setSpotifyInputError('')
+      focusEditor()
+    }, [editor, focusEditor, showSpotifyInput, spotifyUrl, t])
 
     const addTable = useCallback(() => {
       if (!editor) return
@@ -789,6 +837,47 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 >
                   {t('editor.confirm')}
                 </button>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <ToolbarButton onClick={addSpotifyEmbed} isActive={resolvedEditorUiState.isSpotifyEmbed} title={t('editor.spotify')}>
+              <Music2 className="w-4 h-4" />
+            </ToolbarButton>
+            {showSpotifyInput && (
+              <div className="absolute top-full left-0 z-10 mt-1 w-64 border border-border bg-background p-2 shadow-lg">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="url"
+                    value={spotifyUrl}
+                    onChange={(e) => {
+                      setSpotifyUrl(e.target.value)
+                      if (spotifyInputError) {
+                        setSpotifyInputError('')
+                      }
+                    }}
+                    placeholder={t('editor.spotify_placeholder')}
+                    className="w-full border border-border px-2 py-1 text-xs focus:border-primary outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addSpotifyEmbed()
+                      if (e.key === 'Escape') {
+                        setShowSpotifyInput(false)
+                        setSpotifyInputError('')
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={addSpotifyEmbed}
+                    className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                  >
+                    {t('editor.confirm')}
+                  </button>
+                </div>
+                {spotifyInputError ? (
+                  <p className="mt-1 text-xs text-destructive">{spotifyInputError}</p>
+                ) : null}
               </div>
             )}
           </div>
