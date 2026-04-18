@@ -181,10 +181,23 @@ filmRolls.patch('/admin/film-rolls/:id', async (c) => {
   }
 })
 
-// Admin: delete film roll (cascades to FilmPhoto, NOT to Photo)
+// Admin: delete film roll (only allowed when empty)
 filmRolls.delete('/admin/film-rolls/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const roll = await db.filmRoll.findUnique({
+      where: { id },
+      select: { _count: { select: { filmPhotos: true } } },
+    })
+
+    if (!roll) {
+      return c.json({ error: 'Film roll not found' }, 404)
+    }
+
+    if (roll._count.filmPhotos > 0) {
+      return c.json({ error: 'Film roll contains photos and cannot be deleted' }, 409)
+    }
+
     await db.filmRoll.delete({ where: { id } })
     return c.json({ success: true })
   } catch (error) {

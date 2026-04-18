@@ -16,6 +16,7 @@ import {
   Filter,
   Layout,
 } from 'lucide-react'
+import { FilmCanisterSvg } from '@/components/admin/FilmCanisterSvg'
 import {
   getFilmRolls,
   getFilmRoll,
@@ -130,6 +131,10 @@ export function FilmRollsTab({
   function handleDeleteRoll(roll: FilmRollDto, e?: React.MouseEvent) {
     e?.stopPropagation()
     if (!token) return
+    if ((roll.photoCount ?? roll.filmPhotos?.length ?? 0) > 0) {
+      notify(t('admin.film_roll_delete_not_empty'), 'error')
+      return
+    }
     setPendingRollDelete(roll)
   }
 
@@ -144,7 +149,7 @@ export function FilmRollsTab({
       await loadRolls()
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
-      notify(t('common.error'), 'error')
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
       setDeletingRollId(null)
     }
@@ -384,7 +389,15 @@ export function FilmRollsTab({
                     {cover ? (
                       <img src={cover} alt={roll.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center"><Film className="w-10 h-10 opacity-10" /></div>
+                      <div className="w-full h-full flex items-center justify-center bg-muted/50">
+                        <FilmCanisterSvg
+                          brand={roll.brand}
+                          iso={roll.iso}
+                          photoCount={roll.photoCount ?? 0}
+                          frameCount={roll.frameCount}
+                          className="w-3/4 h-3/4 opacity-60"
+                        />
+                      </div>
                     )}
                     <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{roll.photoCount ?? 0}</div>
                     <div
@@ -422,12 +435,14 @@ export function FilmRollsTab({
                 }}
                 className="group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all"
               >
-                <div className="w-16 h-12 bg-muted overflow-hidden flex-shrink-0">
-                  {getRollCover(roll) ? (
-                    <img src={getRollCover(roll)} alt={roll.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center"><Film className="w-5 h-5 opacity-20" /></div>
-                  )}
+                <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center">
+                  <FilmCanisterSvg
+                    brand={roll.brand}
+                    iso={roll.iso}
+                    photoCount={roll.photoCount ?? 0}
+                    frameCount={roll.frameCount}
+                    className="w-full h-full"
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium truncate">{roll.name}</h3>
