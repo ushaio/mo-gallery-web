@@ -22,6 +22,8 @@ export default function Navbar() {
   const [mobileGalleryOpen, setMobileGalleryOpen] = useState(false)
   const galleryDropdownRef = useRef<HTMLDivElement>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [navHidden, setNavHidden] = useState(false)
+  const lastScrollY = useRef(0)
   const prevPathnameRef = useRef(pathname)
 
   // Only show title after settings are loaded to prevent flash
@@ -40,14 +42,25 @@ export default function Navbar() {
     }
   }, [pathname])
 
+  // Pages where navbar hides on scroll down
+  const shouldAutoHide = pathname.startsWith('/gallery') || pathname.startsWith('/story')
+
   // Handle scroll effect
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 20)
+      const currentY = window.scrollY
+      setScrolled(currentY > 20)
+
+      if (shouldAutoHide && currentY > 80) {
+        setNavHidden(currentY > lastScrollY.current)
+      } else {
+        setNavHidden(false)
+      }
+      lastScrollY.current = currentY
     }
-    window.addEventListener('scroll', handleScroll)
+    window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [shouldAutoHide])
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -145,8 +158,9 @@ export default function Navbar() {
       <nav
         className={cn(
           "fixed top-0 w-full z-50 transition-all duration-500",
-          isTransparent 
-            ? "bg-transparent border-transparent py-4" 
+          navHidden && !mobileMenuOpen ? "-translate-y-full" : "translate-y-0",
+          isTransparent
+            ? "bg-transparent border-transparent py-4"
             : "bg-background/80 backdrop-blur-xl border-b border-border/50 py-0"
         )}
       >
