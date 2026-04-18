@@ -75,7 +75,7 @@ BEGIN
       WITH story_tags AS (
         SELECT
           tag_match[1] AS full_tag,
-          (regexp_match(tag_match[1], $$src=(["'])(.*?)\1$$, 'i'))[2] AS src
+          (regexp_match(tag_match[1], $imgsrc$src=(["'])(.*?)\1$imgsrc$, 'i'))[2] AS src
         FROM regexp_matches(story_rec."content", '(<img\b[^>]*>)', 'gi') AS tag_match
       )
       SELECT DISTINCT
@@ -104,7 +104,7 @@ BEGIN
     WITH story_tags AS (
       SELECT
         tag_match[1] AS full_tag,
-        (regexp_match(tag_match[1], $$src=(["'])(.*?)\1$$, 'i'))[2] AS src
+        (regexp_match(tag_match[1], $imgsrc$src=(["'])(.*?)\1$imgsrc$, 'i'))[2] AS src
       FROM regexp_matches(story_rec."content", '(<img\b[^>]*>)', 'gi') AS tag_match
     )
     SELECT COUNT(*)
