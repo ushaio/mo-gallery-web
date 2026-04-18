@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Film,
   Plus,
@@ -62,6 +62,7 @@ export function FilmRollsTab({
   const [rolls, setRolls] = useState<FilmRollDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentRoll, setCurrentRoll] = useState<FilmRollDto | null>(null)
+  const [loadingCurrentRoll, setLoadingCurrentRoll] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'photos'>('overview')
   const [saving, setSaving] = useState(false)
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
@@ -75,6 +76,7 @@ export function FilmRollsTab({
   const [filterBrand, setFilterBrand] = useState('')
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
   const [photoTypeFilter, setPhotoTypeFilter] = useState<PhotoTypeFilter>('film')
+  const currentRollRequestIdRef = useRef(0)
 
   const brands = useMemo(() => {
     const set = new Set(rolls.map(r => r.brand))
@@ -119,6 +121,8 @@ export function FilmRollsTab({
   useEffect(() => { loadRolls() }, [loadRolls])
 
   function handleCreateRoll() {
+    currentRollRequestIdRef.current += 1
+    setLoadingCurrentRoll(false)
     setCurrentRoll({
       id: '', name: '', brand: '', iso: 400, frameCount: 36,
       notes: null, shootDate: null, endDate: null,
@@ -127,6 +131,32 @@ export function FilmRollsTab({
     })
     setActiveTab('overview')
   }
+
+  const openRollDetail = useCallback(async (roll: FilmRollDto) => {
+    const requestId = currentRollRequestIdRef.current + 1
+    currentRollRequestIdRef.current = requestId
+
+    setCurrentRoll({ ...roll, filmPhotos: roll.filmPhotos ?? [] })
+    setActiveTab('photos')
+    setShowPhotoSelector(false)
+    setSelectedPhotoIds(new Set())
+    setPhotoSelectorSearch('')
+    setPhotoTypeFilter('film')
+    setLoadingCurrentRoll(true)
+
+    try {
+      const full = await getFilmRoll(roll.id)
+      if (currentRollRequestIdRef.current !== requestId) return
+      setCurrentRoll(full)
+    } catch {
+      if (currentRollRequestIdRef.current !== requestId) return
+      setCurrentRoll(prev => prev?.id === roll.id ? { ...roll, filmPhotos: roll.filmPhotos ?? [] } : prev)
+    } finally {
+      if (currentRollRequestIdRef.current === requestId) {
+        setLoadingCurrentRoll(false)
+      }
+    }
+  }, [])
 
   function handleDeleteRoll(roll: FilmRollDto, e?: React.MouseEvent) {
     e?.stopPropagation()
@@ -373,16 +403,7 @@ export function FilmRollsTab({
               return (
                 <div
                   key={roll.id}
-                  onClick={async () => {
-                    try {
-                      const full = await getFilmRoll(roll.id)
-                      setCurrentRoll(full)
-                      setActiveTab('photos')
-                    } catch {
-                      setCurrentRoll({ ...roll, filmPhotos: [] })
-                      setActiveTab('photos')
-                    }
-                  }}
+                  onClick={() => { void openRollDetail(roll) }}
                   className="group cursor-pointer bg-card border border-border/50 hover:border-border transition-all"
                 >
                   <div className="relative aspect-[4/3] bg-muted overflow-hidden">
@@ -423,16 +444,7 @@ export function FilmRollsTab({
             {filteredRolls.map(roll => (
               <div
                 key={roll.id}
-                onClick={async () => {
-                  try {
-                    const full = await getFilmRoll(roll.id)
-                    setCurrentRoll(full)
-                    setActiveTab('photos')
-                  } catch {
-                    setCurrentRoll({ ...roll, filmPhotos: [] })
-                    setActiveTab('photos')
-                  }
-                }}
+                onClick={() => { void openRollDetail(roll) }}
                 className="group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all"
               >
                 <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center">
@@ -482,7 +494,11 @@ export function FilmRollsTab({
       <div className="space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <AdminButton onClick={() => setCurrentRoll(null)} adminVariant="icon">
+            <AdminButton onClick={() => {
+              currentRollRequestIdRef.current += 1
+              setLoadingCurrentRoll(false)
+              setCurrentRoll(null)
+            }} adminVariant="icon">
               <ChevronLeft className="w-5 h-5" />
             </AdminButton>
             <div>
@@ -509,8 +525,9 @@ export function FilmRollsTab({
             {activeTab === 'photos' && currentRoll.id && (
               <AdminButton
                 onClick={() => setShowPhotoSelector(true)}
+                disabled={loadingCurrentRoll}
                 adminVariant="unstyled"
-                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
                 {t('admin.add_photos')}
@@ -584,7 +601,11 @@ export function FilmRollsTab({
             </div>
           ) : (
             <div className="space-y-4">
-              {showPhotoSelector ? (
+              {loadingCurrentRoll ? (
+                <div className="py-16">
+                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                </div>
+              ) : showPhotoSelector ? (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3 p-3 bg-muted/30 border border-border sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap items-center gap-3">
