@@ -1,9 +1,11 @@
+import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g
-const HTML_IMAGE_PATTERN = /<img\b[^>]*\bsrc=(['"])(.*?)\1[^>]*>/gi
-const HTML_IMAGE_WIDTH_PATTERN = /<img\b([^>]*?)\bsrc=(['"])(.*?)\2([^>]*?)\swidth=(?:(['"])(\d+)\5|(\d+))([^>]*?)\/?>/gi
+const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
 const HTML_IMAGE_PHOTO_ID_PATTERN = /\bdata-photo-id=(['"])(.*?)\1/i
+const HTML_IMAGE_SRC_PATTERN = /\bsrc=(['"])(.*?)\1/i
+const HTML_IMAGE_WIDTH_PATTERN = /\bwidth=(?:(['"])(\d+)\1|(\d+))/i
 
 function escapeHtmlAttribute(value: string) {
   return value
@@ -47,12 +49,13 @@ export function getStoryMarkdownImageUrls(content: string) {
     urls.add(url)
   }
 
-  for (const match of content.matchAll(HTML_IMAGE_PATTERN)) {
+  for (const match of content.matchAll(HTML_IMAGE_TAG_PATTERN)) {
     if (HTML_IMAGE_PHOTO_ID_PATTERN.test(match[0])) {
       continue
     }
 
-    const url = normalizeStoryImageUrl(match[2] || '')
+    const rawSrc = match[0].match(HTML_IMAGE_SRC_PATTERN)?.[2] || ''
+    const url = normalizeStoryImageUrl(rawSrc)
     if (!url) continue
 
     if (/^uploading:\/\//i.test(url)) {
@@ -68,7 +71,7 @@ export function getStoryMarkdownImageUrls(content: string) {
 export function getStoryReferencedPhotoIds(content: string) {
   const photoIds = new Set<string>()
 
-  for (const match of content.matchAll(HTML_IMAGE_PATTERN)) {
+  for (const match of content.matchAll(HTML_IMAGE_TAG_PATTERN)) {
     const photoId = match[0].match(HTML_IMAGE_PHOTO_ID_PATTERN)?.[2]?.trim()
     if (!photoId) continue
     photoIds.add(photoId)
@@ -134,20 +137,43 @@ export function getStoryImageMatchCandidates(options: {
 }
 
 export function normalizeStoryContentImages(content: string) {
-  return content.replace(
-    HTML_IMAGE_WIDTH_PATTERN,
-    (_match, beforeSrc: string, quote: string, src: string, betweenSrcAndWidth: string, _widthQuote: string | undefined, quotedWidth: string | undefined, unquotedWidth: string | undefined, afterWidth: string) => {
-      const width = quotedWidth ?? unquotedWidth ?? '480'
-      const normalizedWidth = Math.max(40, Number.parseInt(width, 10) || 80)
-      const trimmedBefore = beforeSrc.trim()
-      const trimmedBetween = betweenSrcAndWidth.trim()
-      const trimmedAfter = afterWidth.trim().replace(/\/$/, '').trim()
-      const attrs = [trimmedBefore, `src=${quote}${src}${quote}`, trimmedBetween, `width="${normalizedWidth}"`, trimmedAfter]
-        .filter(Boolean)
-        .join(' ')
-      return `<img ${attrs}>`
+  return content.replace(HTML_IMAGE_TAG_PATTERN, (tag) => {
+    let nextTag = tag
+
+    const widthMatch = nextTag.match(HTML_IMAGE_WIDTH_PATTERN)
+    const rawWidth = widthMatch?.[2] || widthMatch?.[3]
+    if (rawWidth) {
+      const normalizedWidth = Math.max(40, Number.parseInt(rawWidth, 10) || 80)
+      nextTag = nextTag.replace(HTML_IMAGE_WIDTH_PATTERN, `width="${normalizedWidth}"`)
     }
-  )
+
+    if (HTML_IMAGE_PHOTO_ID_PATTERN.test(nextTag)) {
+      nextTag = nextTag.replace(/\s*\bsrc=(['"])(.*?)\1/i, '')
+    }
+
+    return nextTag.replace(/\s+>/g, '>')
+  })
+}
+
+export function hydrateStoryContentImages(content: string, photos: PhotoDto[], cdnDomain?: string) {
+  return content.replace(HTML_IMAGE_TAG_PATTERN, (tag) => {
+    const photoId = tag.match(HTML_IMAGE_PHOTO_ID_PATTERN)?.[2]?.trim()
+    if (!photoId) {
+      return tag
+    }
+
+    const photo = findStoryPhotoById(photos, photoId)
+    if (!photo) {
+      return tag
+    }
+
+    const resolvedSrc = resolveAssetUrl(photo.url, cdnDomain)
+    if (HTML_IMAGE_SRC_PATTERN.test(tag)) {
+      return tag.replace(HTML_IMAGE_SRC_PATTERN, `src="${resolvedSrc}"`)
+    }
+
+    return tag.replace(/<img/i, `<img src="${resolvedSrc}"`)
+  })
 }
 
 export function countStoryCharacters(content?: string | null) {

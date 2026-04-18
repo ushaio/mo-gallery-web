@@ -61,11 +61,11 @@ function resolveStoryAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: st
 
 function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: string) {
   const srcMatch = tag.match(/\bsrc=(['"])(.*?)\1/i)
-  if (!srcMatch) return tag
-
   const photoId = tag.match(/\bdata-photo-id=(['"])(.*?)\1/i)?.[2]?.trim()
   const matchedPhoto = findStoryPhotoById(photos, photoId)
-  const resolvedSrc = resolveStoryAssetUrl(srcMatch[2], photos, cdnDomain, photoId)
+  if (!srcMatch && !photoId) return tag
+
+  const resolvedSrc = resolveStoryAssetUrl(srcMatch?.[2] || '', photos, cdnDomain, photoId)
   const widthMatch = tag.match(/\bwidth=(?:(['"])(\d+)\1|(\d+))/i)
   const alignMatch = tag.match(/\bdata-align=(['"])(.*?)\1/i)
   const styleMatch = tag.match(/\bstyle=(['"])(.*?)\1/i)
@@ -91,7 +91,9 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
     styleParts.push('margin-right:0;')
   }
 
-  let nextTag = tag.replace(srcMatch[0], `src="${resolvedSrc}"`)
+  let nextTag = srcMatch
+    ? tag.replace(srcMatch[0], `src="${resolvedSrc}"`)
+    : tag.replace(/<img/i, `<img src="${resolvedSrc}"`)
   const altMatch = tag.match(/\balt=(['"])(.*?)\1/i)
   if ((!altMatch || !altMatch[2]) && matchedPhoto?.title) {
     const escapedAlt = escapeHtmlAttribute(matchedPhoto.title)

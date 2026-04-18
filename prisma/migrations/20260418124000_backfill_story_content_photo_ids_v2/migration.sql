@@ -3,7 +3,7 @@
 -- Why this migration exists:
 -- 1. Existing content may still use Markdown image syntax: ![alt](url)
 -- 2. Existing HTML <img> tags may still be missing data-photo-id
--- 3. We keep src as-is for fallback compatibility, and add data-photo-id
+-- 3. Internal gallery images are normalized to data-photo-id only
 --
 -- Notes:
 -- - This migration is idempotent.
@@ -75,7 +75,7 @@ BEGIN
   LOOP
     next_content := story_rec."content";
 
-    -- Backfill HTML <img> tags missing data-photo-id.
+    -- Normalize HTML <img> tags to data-photo-id only.
     FOR html_match IN
       WITH story_tags AS (
         SELECT
@@ -91,14 +91,23 @@ BEGIN
       JOIN tmp_story_photo_candidates candidates
         ON story_tags.src = candidates.candidate
       WHERE story_tags.src IS NOT NULL
-        AND story_tags.full_tag !~* '\bdata-photo-id='
     LOOP
-      next_tag := regexp_replace(
-        html_match.full_tag,
-        '<img\b',
-        format('<img data-photo-id="%s"', html_match.photo_id),
-        'i'
-      );
+      next_tag := regexp_replace(html_match.full_tag, $srcattr$\s*src=(["'])(.*?)\1$srcattr$, '', 'i');
+      IF next_tag ~* '\bdata-photo-id=' THEN
+        next_tag := regexp_replace(
+          next_tag,
+          $photoid$\bdata-photo-id=(["'])(.*?)\1$photoid$,
+          format('data-photo-id="%s"', html_match.photo_id),
+          'i'
+        );
+      ELSE
+        next_tag := regexp_replace(
+          next_tag,
+          '<img\b',
+          format('<img data-photo-id="%s"', html_match.photo_id),
+          'i'
+        );
+      END IF;
 
       IF next_tag <> html_match.full_tag THEN
         next_content := replace(next_content, html_match.full_tag, next_tag);
@@ -106,7 +115,7 @@ BEGIN
       END IF;
     END LOOP;
 
-    -- Convert Markdown images to HTML img tags with data-photo-id.
+    -- Convert Markdown images to HTML img tags with data-photo-id only.
     FOR md_match IN
       WITH markdown_images AS (
         SELECT
@@ -132,8 +141,7 @@ BEGIN
       WHERE markdown_images.src IS NOT NULL
     LOOP
       next_block := format(
-        E'\n<p style="text-align: center"><img src="%s" alt="%s" data-photo-id="%s"%s></p>\n',
-        replace(replace(replace(replace(replace(md_match.src, '&', '&amp;'), '"', '&quot;'), '''', '&#39;'), '<', '&lt;'), '>', '&gt;'),
+        E'\n<p style="text-align: center"><img alt="%s" data-photo-id="%s"%s></p>\n',
         replace(replace(replace(replace(replace(COALESCE(md_match.alt_text, ''), '&', '&amp;'), '"', '&quot;'), '''', '&#39;'), '<', '&lt;'), '>', '&gt;'),
         md_match.photo_id,
         CASE

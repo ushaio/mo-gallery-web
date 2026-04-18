@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   Calendar,
   Check,
@@ -19,7 +20,7 @@ import { AdminInput } from '@/components/admin/AdminFormControls'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
-import { countStoryCharacters, normalizeStoryContentImages } from '@/lib/story-rich-content'
+import { countStoryCharacters, hydrateStoryContentImages, normalizeStoryContentImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
 import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
@@ -135,6 +136,10 @@ export function StoryEditorView({
 }: StoryEditorViewProps) {
   const editorCharacterCount = countStoryCharacters(currentStory.content)
   const relatedPhotoCount = currentStory.photos?.length || 0
+  const hydratedEditorContent = useMemo(
+    () => hydrateStoryContentImages(currentStory.content, currentStory.photos || [], settingsCdnDomain),
+    [currentStory.content, currentStory.photos, settingsCdnDomain],
+  )
 
 
   return (
@@ -184,7 +189,7 @@ export function StoryEditorView({
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
             <NarrativeTipTapEditor
               ref={editorRef}
-              value={currentStory.content}
+              value={hydratedEditorContent}
               onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
               onPasteFiles={onPasteFiles}
               placeholder={t('ui.markdown_placeholder')}
