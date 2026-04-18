@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
-import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
+import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -111,8 +111,13 @@ export function StoryPhotoPanel({
 }: StoryPhotoPanelProps) {
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
+  const referencedPhotoIds = getStoryReferencedPhotoIds(editorContent)
 
   const isPhotoInserted = (photo: PhotoDto) => {
+    if (referencedPhotoIds.has(photo.id)) {
+      return true
+    }
+
     const candidates = getStoryImageMatchCandidates({
       url: photo.url,
       thumbnailUrl: photo.thumbnailUrl,

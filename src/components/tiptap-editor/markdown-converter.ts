@@ -178,7 +178,7 @@ export function convertMarkdownToHtml(input: string): string {
   return result
 }
 
-export function convertMarkdownImageToHtmlAttrs(markdown: string): { src: string; alt?: string; width?: number } | null {
+export function convertMarkdownImageToHtmlAttrs(markdown: string): { src: string; alt?: string; width?: number; photoId?: string } | null {
   const trimmed = markdown.trim()
   const match = trimmed.match(/!\[([^\]]*)\]\(([^)]+)\)/)
   if (!match) return null
@@ -194,7 +194,7 @@ export function convertMarkdownImageToHtmlAttrs(markdown: string): { src: string
   return { src, alt, width }
 }
 
-export function convertHtmlImageToAttrs(content: string): { src: string; alt?: string; width?: number } | null {
+export function convertHtmlImageToAttrs(content: string): { src: string; alt?: string; width?: number; photoId?: string } | null {
   const trimmed = content.trim()
   // Match bare <img> or <img> wrapped in other tags (e.g. <p><img ...></p>)
   const match = trimmed.match(/<img\s+([^>]*?)\/?\s*>/i)
@@ -206,9 +206,10 @@ export function convertHtmlImageToAttrs(content: string): { src: string; alt?: s
 
   const alt = attrs.match(/\balt=(['"])(.*?)\1/i)?.[2] || ''
   const widthValue = attrs.match(/\bwidth=(['"])?(\d+)\1?/i)?.[2]
+  const photoId = attrs.match(/\bdata-photo-id=(['"])(.*?)\1/i)?.[2]?.trim()
   const width = widthValue ? Number.parseInt(widthValue, 10) : undefined
 
-  return { src, alt, width }
+  return { src, alt, width, photoId }
 }
 
 export function isMarkdownImageSyntax(content: string): boolean {

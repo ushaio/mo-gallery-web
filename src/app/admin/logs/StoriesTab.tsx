@@ -22,7 +22,7 @@ import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
-import { getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
+import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { useAdmin } from '../layout'
 import {
@@ -291,13 +291,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       return
     }
 
-    const usedImageUrls = getStoryMarkdownImageUrls(currentStory.content)
-    const availablePhotoUrls = new Set(
-      (currentStory.photos || []).flatMap((photo) => [photo.url, photo.thumbnailUrl].filter((url): url is string => Boolean(url)))
-    )
-    const invalidImageUrls = Array.from(usedImageUrls).filter((url) => !availablePhotoUrls.has(url))
-    if (invalidImageUrls.length > 0) {
-      notify(`正文中引用了未关联的图片：${invalidImageUrls.slice(0, 3).join(', ')}`, 'error')
+    const referencedPhotoIds = getStoryReferencedPhotoIds(currentStory.content)
+    const availablePhotoIds = new Set((currentStory.photos || []).map((photo) => photo.id))
+    const invalidPhotoIds = Array.from(referencedPhotoIds).filter((photoId) => !availablePhotoIds.has(photoId))
+    if (invalidPhotoIds.length > 0) {
+      notify(`正文中引用了未关联的图库图片：${invalidPhotoIds.slice(0, 3).join(', ')}`, 'error')
       return
     }
 

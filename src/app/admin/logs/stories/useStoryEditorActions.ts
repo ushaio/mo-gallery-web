@@ -387,7 +387,7 @@ export function useStoryEditorActions({
   }, [persistPasteUploadSettings, uploadAndInsertFiles])
 
   const handleInsertPhotoMarkdown = useCallback((photo: PhotoDto) => {
-    insertDirective(buildStoryMarkdownImage({ url: photo.url, alt: photo.title }))
+    insertDirective(buildStoryMarkdownImage({ url: photo.url, alt: photo.title, photoId: photo.id }))
     notify('Inserted Markdown image', 'success')
   }, [insertDirective, notify])
 
@@ -406,7 +406,9 @@ export function useStoryEditorActions({
       return
     }
 
-    const markdown = photosToInsert.map((photo) => buildStoryMarkdownImage({ url: photo.url, alt: photo.title }).trim()).join('\n\n')
+    const markdown = photosToInsert
+      .map((photo) => buildStoryMarkdownImage({ url: photo.url, alt: photo.title, photoId: photo.id }).trim())
+      .join('\n\n')
     insertDirective(`\n${markdown}\n`)
     notify('Inserted Markdown gallery', 'success')
   }, [currentStory?.photos, insertDirective, notify])

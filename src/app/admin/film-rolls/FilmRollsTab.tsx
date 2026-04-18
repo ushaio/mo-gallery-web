@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Film,
   Plus,
@@ -31,11 +31,13 @@ import {
 } from '@/lib/api'
 import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
 type ViewMode = 'grid' | 'list'
+type PhotoTypeFilter = 'all' | 'digital' | 'film'
 
 interface FilmRollsTabProps {
   token: string | null
@@ -71,8 +73,7 @@ export function FilmRollsTab({
   const [showFilters, setShowFilters] = useState(false)
   const [filterBrand, setFilterBrand] = useState('')
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
-
-  useEffect(() => { loadRolls() }, [token])
+  const [photoTypeFilter, setPhotoTypeFilter] = useState<PhotoTypeFilter>('film')
 
   const brands = useMemo(() => {
     const set = new Set(rolls.map(r => r.brand))
@@ -101,7 +102,7 @@ export function FilmRollsTab({
     setSearchQuery('')
   }
 
-  async function loadRolls() {
+  const loadRolls = useCallback(async () => {
     if (!token) return
     try {
       setLoading(true)
@@ -112,7 +113,9 @@ export function FilmRollsTab({
     } finally {
       setLoading(false)
     }
-  }
+  }, [notify, onUnauthorized, t, token])
+
+  useEffect(() => { loadRolls() }, [loadRolls])
 
   function handleCreateRoll() {
     setCurrentRoll({
@@ -199,6 +202,7 @@ export function FilmRollsTab({
       setShowPhotoSelector(false)
       setSelectedPhotoIds(new Set())
       setPhotoSelectorSearch('')
+      setPhotoTypeFilter('film')
       notify(t('admin.photos_added'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
@@ -227,16 +231,28 @@ export function FilmRollsTab({
   }, [currentRoll])
 
   const availablePhotos = useMemo(() => {
-    return photos.filter(p => !rollPhotoIds.has(p.id))
-  }, [photos, rollPhotoIds])
+    return photos.filter((photo) => {
+      if (rollPhotoIds.has(photo.id)) return false
+      if (photo.filmRollId && photo.filmRollId !== currentRoll?.id) return false
+      return true
+    })
+  }, [currentRoll?.id, photos, rollPhotoIds])
 
   const filteredAvailablePhotos = useMemo(() => {
-    if (!photoSelectorSearch.trim()) return availablePhotos
-    const q = photoSelectorSearch.toLowerCase()
-    return availablePhotos.filter(p =>
-      p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
-    )
-  }, [availablePhotos, photoSelectorSearch])
+    const q = photoSelectorSearch.trim().toLowerCase()
+
+    return availablePhotos.filter((photo) => {
+      const resolvedPhotoType = photo.photoType ?? (photo.filmRollId ? 'film' : 'digital')
+      const matchesPhotoType = photoTypeFilter === 'all' || resolvedPhotoType === photoTypeFilter
+      if (!matchesPhotoType) return false
+      if (!q) return true
+
+      return (
+        photo.title.toLowerCase().includes(q) ||
+        photo.category.toLowerCase().includes(q)
+      )
+    })
+  }, [availablePhotos, photoSelectorSearch, photoTypeFilter])
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return '—'
@@ -370,7 +386,10 @@ export function FilmRollsTab({
                       <div className="w-full h-full flex items-center justify-center"><Film className="w-10 h-10 opacity-10" /></div>
                     )}
                     <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{roll.photoCount ?? 0}</div>
-                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div
+                      className="absolute bottom-2 right-2 z-10 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={e => e.stopPropagation()}
+                    >
                       <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-1.5 bg-red-500/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
                         <Trash2 className="w-3.5 h-3.5" />
                       </AdminButton>
@@ -414,7 +433,10 @@ export function FilmRollsTab({
                   <p className="text-xs text-muted-foreground">{roll.brand} · ISO {roll.iso} · {roll.photoCount ?? 0}/{roll.frameCount} {t('admin.film_roll_frames')}</p>
                 </div>
                 <div className="text-xs text-muted-foreground/60 hidden sm:block">{formatDate(roll.shootDate)}</div>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div
+                  className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={e => e.stopPropagation()}
+                >
                   <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-2 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
                     <Trash2 className="w-4 h-4" />
                   </AdminButton>
@@ -539,41 +561,63 @@ export function FilmRollsTab({
             <div className="space-y-4">
               {showPhotoSelector ? (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-muted/30 border border-border">
-                    <div className="flex items-center gap-3">
-                      <AdminButton onClick={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()); setPhotoSelectorSearch('') }} adminVariant="icon">
+                  <div className="flex flex-col gap-3 p-3 bg-muted/30 border border-border sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <AdminButton onClick={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()); setPhotoSelectorSearch(''); setPhotoTypeFilter('film') }} adminVariant="icon">
                         <X className="w-4 h-4" />
                       </AdminButton>
                       <span className="text-sm">{selectedPhotoIds.size} {t('admin.selected')}</span>
                       <input type="text" value={photoSelectorSearch} onChange={e => setPhotoSelectorSearch(e.target.value)} placeholder={t('common.search')} className="px-2 py-1 text-sm bg-transparent border border-border rounded focus:border-primary outline-none w-40" />
+                      <AdminSelect
+                        value={photoTypeFilter}
+                        onChange={(value) => setPhotoTypeFilter(value as PhotoTypeFilter)}
+                        options={[
+                          { value: 'all', label: t('common.all') },
+                          { value: 'digital', label: t('admin.upload_type_digital') },
+                          { value: 'film', label: t('admin.upload_type_film') },
+                        ]}
+                        className="min-w-[120px]"
+                      />
                     </div>
                     <AdminButton onClick={handleAddPhotos} disabled={selectedPhotoIds.size === 0 || saving} adminVariant="unstyled" className="flex items-center gap-2 px-4 py-1.5 bg-foreground text-background text-xs font-medium disabled:opacity-50 transition-colors">
                       <Check className="w-3.5 h-3.5" />
                       {t('admin.add')}
                     </AdminButton>
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                    {filteredAvailablePhotos.map(photo => {
-                      const isSelected = selectedPhotoIds.has(photo.id)
-                      return (
-                        <div
-                          key={photo.id}
-                          onClick={() => setSelectedPhotoIds(prev => {
-                            const next = new Set(prev)
-                            if (next.has(photo.id)) next.delete(photo.id)
-                            else next.add(photo.id)
-                            return next
-                          })}
-                          className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
-                        >
-                          <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
-                          {isSelected && (
-                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {filteredAvailablePhotos.length === 0 ? (
+                    <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">
+                      <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-10" />
+                      <p className="text-sm text-muted-foreground">
+                        {availablePhotos.length === 0 ? t('admin.no_photos_available') : t('admin.no_photos_match_filter')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                      {filteredAvailablePhotos.map(photo => {
+                        const isSelected = selectedPhotoIds.has(photo.id)
+                        return (
+                          <div
+                            key={photo.id}
+                            onClick={() => setSelectedPhotoIds(prev => {
+                              const next = new Set(prev)
+                              if (next.has(photo.id)) next.delete(photo.id)
+                              else next.add(photo.id)
+                              return next
+                            })}
+                            className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
+                          >
+                            <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
+                            <div className="absolute left-1 bottom-1 px-1.5 py-0.5 bg-black/55 text-white text-[9px]">
+                              {t(`admin.upload_type_${photo.photoType ?? (photo.filmRollId ? 'film' : 'digital')}`)}
+                            </div>
+                            {isSelected && (
+                              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : rollPhotos.length === 0 ? (
                 <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">

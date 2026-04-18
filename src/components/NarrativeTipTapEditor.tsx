@@ -298,7 +298,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       }
     }, [editor, syncAiSelectionState])
 
-    const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
+    const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number; photoId?: string }) => {
       if (!editor) return
 
       editor
@@ -308,13 +308,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           type: 'paragraph',
           attrs: { textAlign: 'center' },
           content: [{
-            type: 'image',
-            attrs: {
-              src: attrs.src,
-              alt: attrs.alt || '',
-              ...(attrs.width ? { width: attrs.width } : {}),
-            },
-          }],
+              type: 'image',
+              attrs: {
+                src: attrs.src,
+                alt: attrs.alt || '',
+                ...(attrs.photoId ? { photoId: attrs.photoId } : {}),
+                ...(attrs.width ? { width: attrs.width } : {}),
+              },
+            }],
         })
         .run()
 
@@ -326,7 +327,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           const targetWidth = Math.max(40, Math.round(img.naturalWidth * 0.1))
           // Find the image node we just inserted and update its width
           editor.state.doc.descendants((node, pos) => {
-            if (node.type.name === 'image' && node.attrs.src === attrs.src && !node.attrs.width) {
+            if (
+              node.type.name === 'image' &&
+              node.attrs.src === attrs.src &&
+              node.attrs.photoId === (attrs.photoId || null) &&
+              !node.attrs.width
+            ) {
               editor.chain().setNodeSelection(pos).updateAttributes('image', { width: targetWidth }).run()
               return false
             }

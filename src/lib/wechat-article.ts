@@ -1,5 +1,6 @@
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
+import { findStoryPhotoById } from '@/lib/story-rich-content'
 
 /* ------------------------------------------------------------------ */
 /*  WeChat-compatible inline style map                                 */
@@ -40,7 +41,10 @@ const CODE_INSIDE_PRE_STYLE = 'background:none;padding:0;font-size:inherit;font-
 /*  Asset URL resolution (shared with plain-text formatter)            */
 /* ------------------------------------------------------------------ */
 
-function resolveStoryCopyAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string) {
+function resolveStoryCopyAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string, photoId?: string | null) {
+  const matchedById = findStoryPhotoById(photos, photoId || undefined)
+  if (matchedById) return resolveAssetUrl(matchedById.url, cdnDomain)
+
   const trimmed = rawUrl.trim()
   if (!trimmed) return ''
 
@@ -81,7 +85,8 @@ function walkNode(node: Node, photos: PhotoDto[], cdnDomain: string | undefined,
   // Resolve <img> src
   if (tag === 'img') {
     const rawSrc = el.getAttribute('src') || ''
-    const resolved = resolveStoryCopyAssetUrl(rawSrc, photos, cdnDomain)
+    const photoId = el.getAttribute('data-photo-id')
+    const resolved = resolveStoryCopyAssetUrl(rawSrc, photos, cdnDomain, photoId)
     if (resolved) el.setAttribute('src', resolved)
 
     // Preserve editor-set width as inline style

@@ -3,6 +3,7 @@ import type { PhotoDto } from '@/lib/api/types'
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g
 const HTML_IMAGE_PATTERN = /<img\b[^>]*\bsrc=(['"])(.*?)\1[^>]*>/gi
 const HTML_IMAGE_WIDTH_PATTERN = /<img\b([^>]*?)\bsrc=(['"])(.*?)\2([^>]*?)\swidth=(?:(['"])(\d+)\5|(\d+))([^>]*?)\/?>/gi
+const HTML_IMAGE_PHOTO_ID_PATTERN = /\bdata-photo-id=(['"])(.*?)\1/i
 
 function escapeHtmlAttribute(value: string) {
   return value
@@ -17,11 +18,13 @@ export function buildStoryHtmlImage(options: {
   url: string
   alt?: string
   width?: number
+  photoId?: string
 }) {
   const alt = escapeHtmlAttribute(options.alt || '')
   const src = escapeHtmlAttribute(options.url)
   const widthAttr = Number.isFinite(options.width) ? ` width="${Math.max(40, Math.round(options.width as number))}"` : ''
-  return `\n<p style="text-align: center"><img src="${src}" alt="${alt}"${widthAttr}></p>\n`
+  const photoIdAttr = options.photoId ? ` data-photo-id="${escapeHtmlAttribute(options.photoId)}"` : ''
+  return `\n<p style="text-align: center"><img src="${src}" alt="${alt}"${photoIdAttr}${widthAttr}></p>\n`
 }
 
 /** @deprecated Use buildStoryHtmlImage instead */
@@ -45,6 +48,10 @@ export function getStoryMarkdownImageUrls(content: string) {
   }
 
   for (const match of content.matchAll(HTML_IMAGE_PATTERN)) {
+    if (HTML_IMAGE_PHOTO_ID_PATTERN.test(match[0])) {
+      continue
+    }
+
     const url = normalizeStoryImageUrl(match[2] || '')
     if (!url) continue
 
@@ -56,6 +63,18 @@ export function getStoryMarkdownImageUrls(content: string) {
   }
 
   return urls
+}
+
+export function getStoryReferencedPhotoIds(content: string) {
+  const photoIds = new Set<string>()
+
+  for (const match of content.matchAll(HTML_IMAGE_PATTERN)) {
+    const photoId = match[0].match(HTML_IMAGE_PHOTO_ID_PATTERN)?.[2]?.trim()
+    if (!photoId) continue
+    photoIds.add(photoId)
+  }
+
+  return photoIds
 }
 
 function normalizeStoryImageUrl(url: string) {

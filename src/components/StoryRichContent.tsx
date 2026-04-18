@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
+import { findStoryPhotoById } from '@/lib/story-rich-content'
 import './story-rich-content.css'
 
 interface StoryRichContentProps {
@@ -18,6 +19,15 @@ const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const HTML_ANCHOR_PATTERN = /<a\b([^>]*?)href=(['"])(.*?)\2([^>]*)>/gi
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
 const HTML_HR_TAG_PATTERN = /<hr\b[^>]*\/?>/gi
+
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
 
 function normalizeImageWidth(width?: number | string) {
   if (typeof width === 'number' && Number.isFinite(width)) return Math.max(160, Math.round(width))
@@ -37,7 +47,10 @@ function parseMarkdownImageSrc(rawSrc: string): { url: string; width?: number } 
   return { url: match[1].trim(), width: Number.isFinite(parsed) ? Math.max(160, parsed) : undefined }
 }
 
-function resolveStoryAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string) {
+function resolveStoryAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string, photoId?: string) {
+  const matchedById = findStoryPhotoById(photos, photoId)
+  if (matchedById) return resolveAssetUrl(matchedById.url, cdnDomain)
+
   const trimmed = rawUrl.trim()
   const matchedPhoto = photos.find((photo) => photo.url === trimmed || photo.thumbnailUrl === trimmed)
 
@@ -50,7 +63,9 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
   const srcMatch = tag.match(/\bsrc=(['"])(.*?)\1/i)
   if (!srcMatch) return tag
 
-  const resolvedSrc = resolveStoryAssetUrl(srcMatch[2], photos, cdnDomain)
+  const photoId = tag.match(/\bdata-photo-id=(['"])(.*?)\1/i)?.[2]?.trim()
+  const matchedPhoto = findStoryPhotoById(photos, photoId)
+  const resolvedSrc = resolveStoryAssetUrl(srcMatch[2], photos, cdnDomain, photoId)
   const widthMatch = tag.match(/\bwidth=(?:(['"])(\d+)\1|(\d+))/i)
   const alignMatch = tag.match(/\bdata-align=(['"])(.*?)\1/i)
   const styleMatch = tag.match(/\bstyle=(['"])(.*?)\1/i)
@@ -77,6 +92,14 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
   }
 
   let nextTag = tag.replace(srcMatch[0], `src="${resolvedSrc}"`)
+  const altMatch = tag.match(/\balt=(['"])(.*?)\1/i)
+  if ((!altMatch || !altMatch[2]) && matchedPhoto?.title) {
+    const escapedAlt = escapeHtmlAttribute(matchedPhoto.title)
+    nextTag = altMatch
+      ? nextTag.replace(altMatch[0], `alt="${escapedAlt}"`)
+      : nextTag.replace(/<img/i, `<img alt="${escapedAlt}"`)
+  }
+
   if (styleMatch) {
     nextTag = nextTag.replace(styleMatch[0], `style="${styleParts.join(' ')}"`)
   } else {

@@ -98,7 +98,7 @@ export function useStoryPasteUploads({
           if (existingPhoto) {
             addPhotoToCache(existingPhoto)
             addPhotoToCurrentStory(existingPhoto)
-            replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: existingPhoto.url, alt: existingPhoto.title }))
+            replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: existingPhoto.url, alt: existingPhoto.title, photoId: existingPhoto.id }))
             notify(`复用重复图片：${existingPhoto.title}`, 'info')
             continue
           }
@@ -151,7 +151,7 @@ export function useStoryPasteUploads({
 
         addPhotoToCache(uploadedPhoto)
         addPhotoToCurrentStory(uploadedPhoto)
-        replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: uploadedPhoto.url, alt: uploadedPhoto.title }))
+        replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: uploadedPhoto.url, alt: uploadedPhoto.title, photoId: uploadedPhoto.id }))
       }
 
       notify('粘贴图片已处理并插入正文', 'success')
