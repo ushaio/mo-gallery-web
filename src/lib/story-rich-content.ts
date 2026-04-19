@@ -7,7 +7,7 @@ const HTML_IMAGE_PHOTO_ID_PATTERN = /\bdata-photo-id=(['"])(.*?)\1/i
 const HTML_IMAGE_SRC_PATTERN = /\bsrc=(['"])(.*?)\1/i
 const HTML_IMAGE_WIDTH_PATTERN = /\bwidth=(?:(['"])(\d+)\1|(\d+))/i
 
-function escapeHtmlAttribute(value: string) {
+export function escapeHtmlAttribute(value: string) {
   return value
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
@@ -240,4 +240,47 @@ export function findStoryPhotoByImageUrl(
   }
 
   return null
+}
+
+export interface StoryPhotoIndex {
+  findById(photoId?: string | null): PhotoDto | null
+  findByExactUrl(url?: string | null): PhotoDto | null
+  findByImageUrl(url?: string | null): PhotoDto | null
+}
+
+export function buildStoryPhotoIndex(photos: PhotoDto[], cdnDomain?: string): StoryPhotoIndex {
+  const byId = new Map<string, PhotoDto>()
+  const byExactUrl = new Map<string, PhotoDto>()
+  const byCandidate = new Map<string, PhotoDto>()
+
+  for (const photo of photos) {
+    if (photo.id) byId.set(photo.id, photo)
+    if (photo.url && !byExactUrl.has(photo.url)) byExactUrl.set(photo.url, photo)
+    if (photo.thumbnailUrl && !byExactUrl.has(photo.thumbnailUrl)) byExactUrl.set(photo.thumbnailUrl, photo)
+
+    const candidates = getStoryImageMatchCandidates({
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      cdnDomain,
+    })
+    for (const candidate of candidates) {
+      if (!byCandidate.has(candidate)) byCandidate.set(candidate, photo)
+    }
+  }
+
+  return {
+    findById(photoId) {
+      if (!photoId) return null
+      return byId.get(photoId) ?? null
+    },
+    findByExactUrl(url) {
+      if (!url) return null
+      return byExactUrl.get(url) ?? null
+    },
+    findByImageUrl(url) {
+      const normalized = normalizeStoryImageUrl(url || '')
+      if (!normalized) return null
+      return byCandidate.get(normalized) ?? byCandidate.get(stripOrigin(normalized)) ?? null
+    },
+  }
 }
