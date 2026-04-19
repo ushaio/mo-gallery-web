@@ -12,7 +12,9 @@ import {
   MoreVertical,
   LayoutGrid,
 } from 'lucide-react'
-import { resolveAssetUrl, type StoryDto, type PhotoDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { StoryDto, PhotoDto } from '@/lib/api/types'
+import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +32,7 @@ export interface PendingImage {
 interface StoryPhotoPanelProps {
   isCollapsed: boolean
   currentStory: StoryDto | null
+  editorContent: string
   pendingImages: PendingImage[]
   pendingCoverId: string | null
   cdnDomain?: string
@@ -51,6 +54,7 @@ interface StoryPhotoPanelProps {
   onRemovePendingImage: (id: string) => void
   onSetCover: (photoId: string) => void
   onSetPendingCover: (id: string) => void
+
   onSetPhotoDate: (takenAt: string) => void
   onRetryFailedUploads: () => void
   onPhotoPanelDragOver: (e: React.DragEvent) => void
@@ -69,6 +73,7 @@ interface StoryPhotoPanelProps {
 export function StoryPhotoPanel({
   isCollapsed,
   currentStory,
+  editorContent,
   pendingImages,
   pendingCoverId,
   cdnDomain,
@@ -105,6 +110,22 @@ export function StoryPhotoPanel({
   onOpenPasteUploadSettings,
 }: StoryPhotoPanelProps) {
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
+  const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
+  const referencedPhotoIds = getStoryReferencedPhotoIds(editorContent)
+
+  const isPhotoInserted = (photo: PhotoDto) => {
+    if (referencedPhotoIds.has(photo.id)) {
+      return true
+    }
+
+    const candidates = getStoryImageMatchCandidates({
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      cdnDomain,
+    })
+
+    return Array.from(candidates).some((candidate) => insertedImageUrls.has(candidate))
+  }
 
   const getCombinedItems = () => {
     const photoItems = (currentStory?.photos || []).map((photo) => ({ id: photo.id, type: 'photo' as const }))
@@ -313,19 +334,21 @@ export function StoryPhotoPanel({
                         </div>
                       ) : null}
 
-                      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                        {currentStory?.coverPhotoId !== photo.id || pendingCoverId ? (
-                          <AdminButton
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onSetCover(photo.id)
-                            }}
-                            adminVariant="ghost"
-                            className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
-                          >
-                            {t('admin.cover')}
-                          </AdminButton>
-                        ) : null}
+                      {isPhotoInserted(photo) ? (
+                        <div className="absolute inset-0 z-10 bg-black/40" />
+                      ) : null}
+
+                      <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                        <AdminButton
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onSetCover(photo.id)
+                          }}
+                          adminVariant="ghost"
+                          className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
+                        >
+                          {t('admin.cover')}
+                        </AdminButton>
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()

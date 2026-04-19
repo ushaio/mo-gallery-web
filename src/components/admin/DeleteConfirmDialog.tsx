@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trash2, AlertTriangle, Loader2, BookOpen, X, ImageIcon, Image, ExternalLink } from 'lucide-react'
-import { type PhotoWithStories } from '@/lib/api'
+import type { PhotoWithStories } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 
 interface DeleteConfirmDialogProps {

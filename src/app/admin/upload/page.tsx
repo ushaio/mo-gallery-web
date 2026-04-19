@@ -65,6 +65,8 @@ export default function UploadPage() {
         onPreview={(item) => {
           const url = URL.createObjectURL(item.file)
           window.open(url, '_blank')
+          // Defer revoke to allow the new tab to load the blob
+          setTimeout(() => URL.revokeObjectURL(url), 60_000)
         }}
       />
     </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import type { PhotoDto, StoryDto } from '@/lib/api'
+import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import type { StoryEditorDraftData } from '@/lib/client-db'
 import { clearStoryEditorDraftFromDB, getStoryEditorDraftFromDB, saveStoryEditorDraftToDB } from '@/lib/client-db'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
@@ -56,6 +56,7 @@ function createSnapshot(story: StoryDto): StorySnapshot {
     storyDate: story.storyDate,
     photoIds: story.photos?.map((photo) => photo.id) || [],
     coverPhotoId: story.coverPhotoId,
+    coverCrop: story.coverCrop ?? null,
   }
 }
 
@@ -91,6 +92,7 @@ export function useStoryDraftState({
       currentStory.isPublished !== initialStory.isPublished ||
       currentStory.storyDate !== initialStory.storyDate ||
       currentStory.coverPhotoId !== initialStory.coverPhotoId ||
+      JSON.stringify(currentStory.coverCrop ?? null) !== JSON.stringify(initialStory.coverCrop ?? null) ||
       JSON.stringify(currentStory.photos?.map((photo) => photo.id) || []) !== JSON.stringify(initialStory.photoIds) ||
       pendingImages.length > 0 ||
       pendingCoverId !== null
@@ -116,6 +118,7 @@ export function useStoryDraftState({
         isPublished: currentStory.isPublished,
         createdAt: currentStory.createdAt,
         coverPhotoId: currentStory.coverPhotoId,
+        coverCrop: currentStory.coverCrop ?? null,
         pendingCoverId,
         photoIds: currentStory.photos?.map((photo) => photo.id) || [],
         files: pendingImages.map((image) => ({ id: image.id, file: image.file, takenAt: image.takenAt })),
@@ -150,6 +153,7 @@ export function useStoryDraftState({
       createdAt: draft.createdAt || baseStory.createdAt,
       storyDate: draft.createdAt || baseStory.storyDate,
       coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
+      coverCrop: draft.coverCrop ?? baseStory.coverCrop ?? null,
       photos: restoredPhotos,
     })
     setPendingImages(restorePendingImages(draft.files))
@@ -163,6 +167,7 @@ export function useStoryDraftState({
       storyDate: draft.createdAt || baseStory.storyDate,
       photoIds: draft.photoIds,
       coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
+      coverCrop: draft.coverCrop ?? baseStory.coverCrop ?? null,
     })
     notify(t('admin.restored_from_draft'), 'info')
   }, [allPhotos, notify, setCurrentStory, setPendingCoverId, setPendingImages, t])
@@ -271,6 +276,7 @@ export function useStoryDraftState({
         createdAt: editFromDraft.createdAt,
         updatedAt: new Date().toISOString(),
         coverPhotoId: editFromDraft.coverPhotoId ?? undefined,
+        coverCrop: editFromDraft.coverCrop ?? null,
         photos: restoredPhotos,
       })
       setPendingImages(restorePendingImages(editFromDraft.files))

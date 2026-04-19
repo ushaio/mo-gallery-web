@@ -20,8 +20,10 @@ import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admi
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
+import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
-import { getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
+import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
+import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { useAdmin } from '../layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
@@ -73,8 +75,12 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [previewPhotoIndex, setPreviewPhotoIndex] = useState<number | null>(null)
+  const [showCoverCropEditor, setShowCoverCropEditor] = useState(false)
 
   const initialLoadRef = useRef(false)
+  const savingRef = useRef(false)
+  const handledEditStoryIdRef = useRef<string | null>(null)
+  const pendingPhotoIdsRef = useRef<string[] | null>(null)
 
   const loadStories = useCallback(async () => {
     if (!token) return
@@ -132,11 +138,20 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const doSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
+    if (savingRef.current) return
 
     try {
+      savingRef.current = true
       setSaving(true)
       const isNew = !stories.find((story) => story.id === currentStory.id)
-      const photoIds = currentStory.photos?.map((photo) => photo.id) || []
+      const basePhotoIds = currentStory.photos?.map((photo) => photo.id) || []
+      // Merge any photo IDs that were just uploaded but not yet reflected in state
+      const extraIds = pendingPhotoIdsRef.current || []
+      const photoIdSet = new Set(basePhotoIds)
+      for (const id of extraIds) photoIdSet.add(id)
+      const photoIds = Array.from(photoIdSet)
+      pendingPhotoIdsRef.current = null
+
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
       if (isNew) {
@@ -146,6 +161,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
+          coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
         })
         notify(t('story.created'), 'success')
@@ -155,6 +171,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           content: currentStory.content,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
+          coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
         })
         if (photoIds.length > 0) {
@@ -182,6 +199,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       console.error('Failed to save story:', error)
       notify(t('story.save_failed'), 'error')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, router, stories, t, token])
@@ -216,6 +234,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     pendingImages,
     initialUploadSettings: DEFAULT_UPLOAD_SETTINGS,
     initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
+    pendingPhotoIdsRef,
     setCurrentStory,
     setAllPhotos,
     setPendingImages,
@@ -266,18 +285,17 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const handleSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
+    if (savingRef.current) return
     if (!currentStory.title.trim() || !currentStory.content.trim()) {
       notify(t('story.fill_title_content'), 'error')
       return
     }
 
-    const usedImageUrls = getStoryMarkdownImageUrls(currentStory.content)
-    const availablePhotoUrls = new Set(
-      (currentStory.photos || []).flatMap((photo) => [photo.url, photo.thumbnailUrl].filter((url): url is string => Boolean(url)))
-    )
-    const invalidImageUrls = Array.from(usedImageUrls).filter((url) => !availablePhotoUrls.has(url))
-    if (invalidImageUrls.length > 0) {
-      notify(`正文中引用了未关联的图片：${invalidImageUrls.slice(0, 3).join(', ')}`, 'error')
+    const referencedPhotoIds = getStoryReferencedPhotoIds(currentStory.content)
+    const availablePhotoIds = new Set((currentStory.photos || []).map((photo) => photo.id))
+    const invalidPhotoIds = Array.from(referencedPhotoIds).filter((photoId) => !availablePhotoIds.has(photoId))
+    if (invalidPhotoIds.length > 0) {
+      notify(`正文中引用了未关联的图库图片：${invalidPhotoIds.slice(0, 3).join(', ')}`, 'error')
       return
     }
 
@@ -306,27 +324,89 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       .map((id) => sourcePhotos.find((photo) => photo.id === id) || currentStory?.photos?.find((photo) => photo.id === id))
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
-    setCurrentStory((prev) => (prev ? { ...prev, photos: selectedPhotos } : prev))
+    setCurrentStory((prev) => {
+      if (!prev) return prev
+
+      const coverStillExists = prev.coverPhotoId
+        ? selectedPhotos.some((photo) => photo.id === prev.coverPhotoId)
+        : true
+
+      return {
+        ...prev,
+        photos: selectedPhotos,
+        ...(coverStillExists
+          ? {}
+          : {
+              coverPhotoId: undefined,
+              coverCrop: null,
+            }),
+      }
+    })
     setShowPhotoSelector(false)
   }, [allPhotos, currentStory?.photos])
 
   const handleRemovePhoto = useCallback((photoId: string) => {
-    setCurrentStory((prev) => (prev ? { ...prev, photos: prev.photos?.filter((photo) => photo.id !== photoId) || [] } : prev))
+    setCurrentStory((prev) => {
+      if (!prev) return prev
+
+      const nextPhotos = prev.photos?.filter((photo) => photo.id !== photoId) || []
+      const removedCover = prev.coverPhotoId === photoId
+
+      return {
+        ...prev,
+        photos: nextPhotos,
+        ...(removedCover
+          ? {
+              coverPhotoId: undefined,
+              coverCrop: null,
+            }
+          : {}),
+      }
+    })
   }, [])
 
   const handleSetCover = useCallback((photoId: string) => {
-    setCurrentStory((prev) => (prev ? { ...prev, coverPhotoId: photoId } : prev))
+    setCurrentStory((prev) => {
+      if (!prev) return prev
+      const shouldResetCrop = prev.coverPhotoId !== photoId
+      return {
+        ...prev,
+        coverPhotoId: photoId,
+        ...(shouldResetCrop
+          ? {
+              coverCrop: null,
+            }
+          : {}),
+      }
+    })
     setPendingCoverId(null)
+    setShowCoverCropEditor(true)
   }, [])
 
   const handleSetPendingCover = useCallback((id: string) => {
     setPendingCoverId(id)
-    setCurrentStory((prev) => (prev ? { ...prev, coverPhotoId: undefined } : prev))
+    setCurrentStory((prev) => (prev ? {
+      ...prev,
+      coverPhotoId: undefined,
+      coverCrop: null,
+    } : prev))
   }, [])
 
   const handleSetPhotoDate = useCallback((takenAt: string) => {
     setCurrentStory((prev) => (prev ? { ...prev, storyDate: takenAt } : prev))
     setUseCustomDate(true)
+  }, [])
+
+  const handleApplyCoverCrop = useCallback((crop: { x: number; y: number; width: number; height: number } | null) => {
+    setCurrentStory((prev) => {
+      if (!prev) return prev
+      const normalized = crop ? normalizeStoryCoverCrop(crop) : null
+      return {
+        ...prev,
+        coverCrop: toStoryCoverCropValue(normalized),
+      }
+    })
+    setShowCoverCropEditor(false)
   }, [])
 
   const handleTogglePublish = useCallback(async (story: StoryDto) => {
@@ -366,6 +446,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [editStoryWithDraftCheck])
 
   const currentPhotoIds = currentStory?.photos?.map((photo) => photo.id) || []
+  const currentCoverPhoto = currentStory ? getStoryCoverPhoto(currentStory) : null
+  const currentCoverCrop = currentStory ? getStoryCoverCrop(currentStory) : null
 
   const handlePrevPhoto = useCallback(() => {
     if (previewPhotoIndex === null || !currentStory?.photos) return
@@ -399,9 +481,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   useEffect(() => {
     if (refreshKey && refreshKey > 0) {
       void loadStories()
-      resetEditorState()
     }
-  }, [loadStories, refreshKey, resetEditorState])
+  }, [loadStories, refreshKey])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -429,13 +510,28 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [restorePasteUploadSettings, restoreUploadSettings])
 
   useEffect(() => {
-    if (editStoryId && stories.length > 0) {
-      const story = stories.find((item) => item.id === editStoryId)
-      if (story) {
-        void editStoryWithDraftCheck(story)
-      }
+    if (!editStoryId) {
+      handledEditStoryIdRef.current = null
+      return
     }
-  }, [editStoryId, editStoryWithDraftCheck, stories])
+
+    if (handledEditStoryIdRef.current === editStoryId) {
+      return
+    }
+
+    const story = stories.find((item) => item.id === editStoryId)
+    if (!story) {
+      return
+    }
+
+    if (storyEditMode === 'editor' && currentStory?.id === editStoryId) {
+      handledEditStoryIdRef.current = editStoryId
+      return
+    }
+
+    handledEditStoryIdRef.current = editStoryId
+    void editStoryWithDraftCheck(story)
+  }, [currentStory?.id, editStoryId, editStoryWithDraftCheck, stories, storyEditMode])
 
   const togglePhotoPanelCollapse = useCallback(() => {
     setIsPhotoPanelCollapsed((prev) => {
@@ -460,6 +556,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onTogglePublish={(story) => void handleTogglePublish(story)}
           onRequestDelete={setDeleteStoryId}
           t={t}
+          cdnDomain={settings?.cdn_domain}
+          onRefresh={() => void loadStories()}
         />
       ) : (
         <StoryEditorView
@@ -549,6 +647,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onPhotoClose={() => setPreviewPhotoIndex(null)}
           onPrevPhoto={handlePrevPhoto}
           onNextPhoto={handleNextPhoto}
+          t={t}
+        />
+      ) : null}
+      {showCoverCropEditor && currentCoverPhoto ? (
+        <StoryCoverCropModal
+          photo={currentCoverPhoto}
+          cdnDomain={settings?.cdn_domain}
+          initialCrop={currentCoverCrop}
+          onClose={() => setShowCoverCropEditor(false)}
+          onApply={handleApplyCoverCrop}
           t={t}
         />
       ) : null}

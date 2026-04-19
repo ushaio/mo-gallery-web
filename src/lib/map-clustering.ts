@@ -1,4 +1,4 @@
-import type { PhotoDto } from '@/lib/api'
+import type { PhotoDto } from '@/lib/api/types'
 import type { PhotoCoordinates } from '@/lib/photo-location'
 
 type GeotaggedPhoto = PhotoDto & {

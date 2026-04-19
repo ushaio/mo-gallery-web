@@ -2,7 +2,7 @@ import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { StorageProviderFactory, StorageConfig } from '~/server/lib/storage'
+import { StorageProviderFactory, getStorageConfig } from '~/server/lib/storage'
 import path from 'path'
 
 const storage = new Hono<{ Variables: AuthVariables }>()
@@ -28,39 +28,6 @@ interface FileWithStatus {
   photoTitle?: string
   missingType?: 'original' | 'thumbnail' | 'both'
   hasThumb?: boolean
-}
-
-async function getStorageConfig(providerOverride?: string): Promise<StorageConfig> {
-  const settings = await db.setting.findMany()
-  const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]))
-
-  const provider = (providerOverride || settingsMap.storage_provider || 'local') as 'local' | 'github' | 'r2'
-  const config: StorageConfig = { provider }
-
-  switch (provider) {
-    case 'local':
-      config.localBasePath = path.join(process.cwd(), 'public', 'uploads')
-      config.localBaseUrl = '/uploads'
-      break
-    case 'github':
-      config.githubToken = settingsMap.github_token
-      config.githubRepo = settingsMap.github_repo
-      config.githubPath = settingsMap.github_path || 'uploads'
-      config.githubBranch = settingsMap.github_branch || 'main'
-      config.githubAccessMethod = (settingsMap.github_access_method || 'jsdelivr') as 'raw' | 'jsdelivr' | 'pages'
-      config.githubPagesUrl = settingsMap.github_pages_url
-      break
-    case 'r2':
-      config.r2AccessKeyId = settingsMap.r2_access_key_id
-      config.r2SecretAccessKey = settingsMap.r2_secret_access_key
-      config.r2Bucket = settingsMap.r2_bucket
-      config.r2Endpoint = settingsMap.r2_endpoint
-      config.r2PublicUrl = settingsMap.r2_public_url
-      config.r2Path = settingsMap.r2_path
-      break
-  }
-
-  return config
 }
 
 storage.get('/admin/storage/scan', async (c) => {

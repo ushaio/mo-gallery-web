@@ -1,0 +1,2 @@
+ALTER TABLE "Story"
+ADD COLUMN "coverCrop" JSONB;

@@ -24,12 +24,13 @@ interface UploadProgressPopupProps {
   t: (key: string) => string
 }
 
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB']
+
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + SIZE_UNITS[i]
 }
 
 const ITEM_HEIGHT = 72 // px per task row (h-12 thumbnail + py-3 padding)

@@ -16,6 +16,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { useDropzone } from 'react-dropzone'
 import { saveDraftToDB, getDraftFromDB, clearDraftFromDB } from '@/lib/client-db'
 import { Toast, type Notification } from '@/components/Toast'
+import { formatRelativeTimeLabel } from '@/lib/utils'
 
 const AUTO_SAVE_DELAY = 2000 // 2 seconds debounce
 
@@ -66,7 +67,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
 
   // Toast notification helper
   const notify = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Math.random().toString(36).substring(7)
+    const id = crypto.randomUUID()
     setNotifications(prev => [...prev, { id, message, type }])
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 3000)
   }, [])
@@ -186,11 +187,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
   // Format relative time
   const formatRelativeTime = useMemo(() => {
     if (!lastSavedAt) return null
-    const diff = Date.now() - lastSavedAt
-    if (diff < 60000) return t('story.draft_just_now') || 'Just now'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} ${t('story.draft_minutes_ago') || 'min ago'}`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ${t('story.draft_hours_ago') || 'h ago'}`
-    return new Date(lastSavedAt).toLocaleDateString()
+    return formatRelativeTimeLabel(lastSavedAt, t)
   }, [lastSavedAt, t])
 
   // Click Outside Handler
@@ -206,7 +203,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
   // File Selection Handler (Deferred Upload)
   const handleFilesSelected = useCallback((acceptedFiles: File[]) => {
     const newPendingFiles = acceptedFiles.map(file => ({
-      id: Math.random().toString(36).substring(7),
+      id: crypto.randomUUID(),
       file,
       preview: URL.createObjectURL(file)
     }))

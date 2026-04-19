@@ -18,6 +18,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
+  batchDeletePhotos,
   batchUpdatePhotoUrls,
   checkPhotosStories,
   deletePhoto,
@@ -263,20 +264,32 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     try {
       if (deleteConfirmDialog.isBulk) {
         setPhotosLoading(true)
-        for (const id of deleteConfirmDialog.photoIds) {
-          await deletePhoto({ token, id, deleteOriginal, deleteThumbnail })
-        }
+        const force = photosWithStories.length > 0
+        const result = await batchDeletePhotos({
+          token,
+          photoIds: deleteConfirmDialog.photoIds,
+          deleteOriginal,
+          deleteThumbnail,
+          force,
+        })
         setSelectedPhotoIds(new Set())
+        await refreshPhotos()
+        notify(`${result.deleted} ${t('admin.notify_photo_deleted')}`)
+        if (result.failed > 0) {
+          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
+        }
       } else {
+        const force = photosWithStories.length > 0
         await deletePhoto({
           token,
           id: deleteConfirmDialog.photoIds[0],
           deleteOriginal,
           deleteThumbnail,
+          force,
         })
+        await refreshPhotos()
+        notify(t('admin.notify_photo_deleted'))
       }
-      await refreshPhotos()
-      notify(t('admin.notify_photo_deleted'))
       setDeleteConfirmDialog(null)
       setDeleteOriginal(true)
       setDeleteThumbnail(true)
@@ -372,18 +385,18 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const handleSaveSettings = useCallback(async () => {
     if (!token || !settings || !originalSettings) return
 
-    // Check if R2 Public URL has changed
-    const r2UrlChanged =
-      settings.storage_provider === 'r2' &&
-      settings.r2_public_url !== originalSettings.r2_public_url &&
-      originalSettings.r2_public_url?.trim()
+    // Check if S3 Public URL has changed
+    const s3UrlChanged =
+      settings.storage_provider === 's3' &&
+      settings.s3_public_url !== originalSettings.s3_public_url &&
+      originalSettings.s3_public_url?.trim()
 
     // If URL changed, show confirmation dialog
-    if (r2UrlChanged) {
+    if (s3UrlChanged) {
       setUrlUpdateParams({
-        storageProvider: 'r2',
-        oldPublicUrl: originalSettings.r2_public_url,
-        newPublicUrl: settings.r2_public_url,
+        storageProvider: 's3',
+        oldPublicUrl: originalSettings.s3_public_url,
+        newPublicUrl: settings.s3_public_url,
       })
       setShowUrlUpdateDialog(true)
       return

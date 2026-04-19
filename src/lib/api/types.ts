@@ -1,21 +1,46 @@
+export interface FilmRollDto {
+  id: string
+  name: string
+  brand: string
+  iso: number
+  frameCount: number
+  notes: string | null
+  shootDate: string | null
+  endDate: string | null
+  createdAt: string
+  updatedAt: string
+  photoCount?: number
+  filmPhotos?: FilmPhotoDto[]
+}
+
+export interface FilmPhotoDto {
+  id: string
+  filmRollId: string
+  photoId: string
+  frameNumber: number
+  createdAt: string
+  photo?: PhotoDto
+}
+
 export interface CameraDto {
   id: string
   name: string
   displayName: string
-  photoCount: number
 }
 
 export interface LensDto {
   id: string
   name: string
   displayName: string
-  photoCount: number
 }
 
 export interface PhotoDto {
   id: string
   title: string
   category: string
+  photoType?: 'digital' | 'film'
+  filmRollId?: string | null
+  filmRollName?: string | null
   url: string
   thumbnailUrl?: string
   originFlag?: 'web' | 'mobile'
@@ -51,12 +76,12 @@ export interface AdminSettingsDto {
   site_title: string
   storage_provider: string
   cdn_domain: string
-  r2_access_key_id?: string
-  r2_secret_access_key?: string
-  r2_bucket?: string
-  r2_endpoint?: string
-  r2_public_url?: string
-  r2_path?: string
+  s3_access_key_id?: string
+  s3_secret_access_key?: string
+  s3_bucket?: string
+  s3_endpoint?: string
+  s3_public_url?: string
+  s3_path?: string
   github_token?: string
   github_repo?: string
   github_path?: string
@@ -70,6 +95,26 @@ export interface AdminSettingsDto {
   comment_api_endpoint?: string
   comment_model?: string
 }
+
+export interface StorageSourceDto {
+  id: string
+  name: string
+  type: 'local' | 'github' | 's3'
+  accessKey?: string | null
+  secretKey?: string | null
+  bucket?: string | null
+  region?: string | null
+  endpoint?: string | null
+  publicUrl?: string | null
+  basePath?: string | null
+  branch?: string | null
+  accessMethod?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type StorageSourceCreateDto = Omit<StorageSourceDto, 'id' | 'createdAt' | 'updatedAt'>
+export type StorageSourceUpdateDto = Partial<Omit<StorageSourceDto, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
 
 export interface CommentDto {
   id: string
@@ -92,11 +137,19 @@ export interface PublicCommentDto {
   photoId?: string
 }
 
+export interface StoryCoverCropValue {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface StoryDto {
   id: string
   title: string
   content: string
   coverPhotoId?: string
+  coverCrop?: StoryCoverCropValue | null
   isPublished: boolean
   storyDate: string
   createdAt: string
@@ -187,6 +240,11 @@ export interface BlogDto {
   isPublished: boolean
   createdAt: string
   updatedAt: string
+}
+
+/** Lightweight DTO for blog lists — no full content, only preview text */
+export type BlogListItemDto = Omit<BlogDto, 'content'> & {
+  previewText: string
 }
 
 export interface AlbumDto {

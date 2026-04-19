@@ -187,8 +187,8 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
       uploadDateGroups.get(dateKey)!.photos.push(photo)
     }
 
-    const sortedTakenDateGroups = Array.from(takenDateGroups.values()).sort((left, right) => right.date.getTime() - left.date.getTime())
-    const sortedUploadDateGroups = Array.from(uploadDateGroups.values()).sort((left, right) => right.date.getTime() - left.date.getTime())
+    const sortedTakenDateGroups = Array.from(takenDateGroups.values()).toSorted((left, right) => right.date.getTime() - left.date.getTime())
+    const sortedUploadDateGroups = Array.from(uploadDateGroups.values()).toSorted((left, right) => right.date.getTime() - left.date.getTime())
     return [...sortedTakenDateGroups, ...sortedUploadDateGroups]
   }, [photos])
 
@@ -212,11 +212,11 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
     }
 
     return Array.from(groups.entries())
-      .sort(([leftYear], [rightYear]) => rightYear - leftYear)
+      .toSorted(([leftYear], [rightYear]) => rightYear - leftYear)
       .map(([year, months]) => ({
         year,
         months: Array.from(months.entries())
-          .sort(([leftMonth], [rightMonth]) => rightMonth - leftMonth)
+          .toSorted(([leftMonth], [rightMonth]) => rightMonth - leftMonth)
           .map(([month, days]) => ({ month, days })),
       }))
   }, [groupedByDay])
@@ -422,7 +422,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
             </div>
           </div>
 
-          <div className="ml-10 md:ml-16 pb-8 pt-2 pr-2 md:pr-0">
+          <div className="ml-10 md:ml-16 pb-8 pt-2 pr-2 md:pr-0" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 300px' }}>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
               {dayGroup.photos.map((photo, index) => (
                 <TimelinePhotoItem

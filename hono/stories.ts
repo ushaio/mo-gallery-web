@@ -1,4 +1,5 @@
 import 'server-only'
+import { Prisma } from '@prisma/client'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
@@ -15,6 +16,12 @@ const CreateStorySchema = z.object({
   isPublished: z.boolean().default(false),
   photoIds: z.array(z.string().uuid()).optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
+  coverCrop: z.object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    width: z.number().gt(0).max(1),
+    height: z.number().gt(0).max(1),
+  }).optional().nullable(),
 })
 
 const UpdateStorySchema = z.object({
@@ -22,6 +29,12 @@ const UpdateStorySchema = z.object({
   content: z.string().min(1).max(50000).optional(),
   isPublished: z.boolean().optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
+  coverCrop: z.object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    width: z.number().gt(0).max(1),
+    height: z.number().gt(0).max(1),
+  }).optional().nullable(),
   storyDate: z.string().datetime().optional().nullable(),
   createdAt: z.string().datetime().optional().nullable(),
 })
@@ -292,6 +305,12 @@ stories.post('/admin/stories', async (c) => {
         content: validated.content,
         isPublished: validated.isPublished,
         coverPhotoId: validated.coverPhotoId,
+        coverCrop:
+          validated.coverCrop === undefined
+            ? undefined
+            : validated.coverCrop === null
+              ? Prisma.JsonNull
+              : validated.coverCrop,
         photos: validated.photoIds
           ? {
               connect: validated.photoIds.map((id) => ({ id })),
@@ -332,11 +351,15 @@ stories.patch('/admin/stories/:id', async (c) => {
     const body = await c.req.json()
     const validated = UpdateStorySchema.parse(body)
 
-    const updateData: Record<string, unknown> = {}
+    const updateData: Prisma.StoryUpdateInput = {}
     if (validated.title !== undefined) updateData.title = validated.title
     if (validated.content !== undefined) updateData.content = validated.content
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
+    if (validated.coverCrop !== undefined) {
+      updateData.coverCrop =
+        validated.coverCrop === null ? Prisma.JsonNull : validated.coverCrop
+    }
     if (validated.storyDate !== undefined) {
       updateData.storyDate = validated.storyDate ? new Date(validated.storyDate) : new Date()
     } else if (validated.createdAt !== undefined) {
@@ -472,29 +495,20 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
   }
 })
 
-// Reorder photos in story
+// Reorder photos in story - single operation using set to replace the relation
 stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
     const validated = ReorderPhotosSchema.parse(body)
 
-    // First, disconnect all photos from the story
-    await db.story.update({
-      where: { id },
-      data: {
-        photos: {
-          set: [], // Disconnect all photos
-        },
-      },
-    })
-
-    // Then, reconnect photos in the new order
+    // Use set to replace the entire photos relation in one operation
+    // Prisma handles the reorder atomically without needing disconnect first
     const story = await db.story.update({
       where: { id },
       data: {
         photos: {
-          connect: validated.photoIds.map((photoId) => ({ id: photoId })),
+          set: validated.photoIds.map((photoId) => ({ id: photoId })),
         },
       },
       include: {

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState } from 'react'
-import type { PublicSettingsDto } from '@/lib/api'
+import type { PublicSettingsDto } from '@/lib/api/types'
 
 export interface SocialLink {
   title: string

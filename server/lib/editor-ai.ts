@@ -99,9 +99,9 @@ export async function ensureEditorAiConversation(input: {
   return toConversationDto(created)
 }
 
-export async function listEditorAiConversations(scopeId: string) {
+export async function listEditorAiConversations(scopeId?: string) {
   const conversations = await db.aiConversation.findMany({
-    where: { scopeId },
+    where: scopeId ? { scopeId } : undefined,
     orderBy: [
       { updatedAt: 'desc' },
       { createdAt: 'desc' },

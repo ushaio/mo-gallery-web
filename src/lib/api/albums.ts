@@ -13,6 +13,14 @@ export async function getAdminAlbums(token: string): Promise<AlbumDto[]> {
   return apiRequestData<AlbumDto[]>('/api/admin/albums', {}, token)
 }
 
+export async function getAdminAlbum(token: string, id: string): Promise<AlbumDto> {
+  return apiRequestData<AlbumDto>(
+    `/api/admin/albums/${encodeURIComponent(id)}`,
+    {},
+    token,
+  )
+}
+
 export async function createAlbum(
   token: string,
   data: { name: string; description?: string; coverUrl?: string; isPublished: boolean; sortOrder?: number; photoIds?: string[] },

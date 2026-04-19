@@ -20,20 +20,14 @@ import {
   Check,
   Clock,
 } from 'lucide-react'
-import {
-  PhotoDto,
-  resolveAssetUrl,
-  AdminSettingsDto,
-  BlogDto,
-  getAdminBlogs,
-  createBlog,
-  updateBlog,
-  deleteBlog,
-  ApiUnauthorizedError
-} from '@/lib/api'
+import type { PhotoDto, AdminSettingsDto, BlogDto } from '@/lib/api/types'
+import { resolveAssetUrl, ApiUnauthorizedError } from '@/lib/api/core'
+import { getAdminBlogs, createBlog, updateBlog, deleteBlog } from '@/lib/api/blogs'
+import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
+import { formatRelativeTimeLabel } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
-import { useRouter } from 'next/navigation'
+import { useAdmin } from '../layout'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import {
   saveBlogDraftToDB,
@@ -80,8 +74,8 @@ interface BlogFormData {
 }
 
 export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProps) {
-  const { token, logout } = useAuth()
-  const router = useRouter()
+  const { token } = useAuth()
+  const { handleUnauthorized } = useAdmin()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentBlog, setCurrentBlog] = useState<BlogFormData | null>(null)
@@ -118,11 +112,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     blog: BlogDto | null
     isNew: boolean
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
-
-  const handleUnauthorized = () => {
-    logout()
-    router.push('/login')
-  }
 
   const fetchBlogs = async () => {
     if (!token) return
@@ -206,11 +195,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   // 格式化相对时间
   const formatRelativeTime = useMemo(() => {
     if (!lastSavedAt) return null
-    const diff = Date.now() - lastSavedAt
-    if (diff < 60000) return t('story.draft_just_now') || '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} ${t('story.draft_minutes_ago') || '分钟前'}`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ${t('story.draft_hours_ago') || '小时前'}`
-    return new Date(lastSavedAt).toLocaleDateString()
+    return formatRelativeTimeLabel(lastSavedAt, t)
   }, [lastSavedAt, t])
 
   // 检查内容是否变更（脏检查）
@@ -459,10 +444,10 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const insertPhotoIntoBlog = (photo: PhotoDto) => {
-    const markdown = `\n![${photo.title}](${resolveAssetUrl(
-      photo.url,
-      settings?.cdn_domain
-    )})\n`
+    const markdown = buildStoryMarkdownImage({
+      url: resolveAssetUrl(photo.url, settings?.cdn_domain),
+      alt: photo.title,
+    })
     if (editorRef.current) {
       editorRef.current.insertMarkdown(markdown)
       const nextValue = editorRef.current.getValue()

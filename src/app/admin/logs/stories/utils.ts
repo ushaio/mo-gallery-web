@@ -1,6 +1,6 @@
 'use client'
 
-import type { PhotoDto, StoryDto } from '@/lib/api'
+import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { STORY_PHOTO_ORDER_KEY } from './constants'
 
 export function createEmptyStory(): StoryDto {
@@ -14,6 +14,7 @@ export function createEmptyStory(): StoryDto {
     createdAt: now,
     updatedAt: now,
     photos: [],
+    coverCrop: null,
   }
 }
 

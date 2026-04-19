@@ -15,11 +15,18 @@ import {
   Unlink,
   ChevronLeft,
   ChevronRight,
+  Pencil,
+  HardDrive,
+  Github,
+  Database,
 } from 'lucide-react'
 import {
   AdminSettingsDto,
   CommentDto,
   LinuxDoBinding,
+  StorageSourceDto,
+  StorageSourceCreateDto,
+  StorageSourceUpdateDto,
   getComments,
   updateCommentStatus,
   deleteComment,
@@ -27,11 +34,16 @@ import {
   unbindLinuxDoAccount,
   getLinuxDoAuthUrl,
   isLinuxDoEnabled,
+  getStorageSources,
+  createStorageSource,
+  updateStorageSource,
+  deleteStorageSource,
   ApiUnauthorizedError,
 } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminLoading } from '@/components/admin/AdminLoading'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
 interface SettingsTabProps {
   token: string | null
@@ -67,22 +79,118 @@ export function SettingsTab({
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [limit] = useState(20)
+  const [commentStatusFilter, setCommentStatusFilter] = useState('')
+
+  // Storage sources state
+  const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
+  const [storageSourcesLoading, setStorageSourcesLoading] = useState(false)
+  const [editingSource, setEditingSource] = useState<StorageSourceDto | null>(null)
+  const [addingSourceType, setAddingSourceType] = useState<'github' | 's3' | null>(null)
+  const [sourceForm, setSourceForm] = useState<Partial<StorageSourceCreateDto>>({})
+  const [sourceSaving, setSourceSaving] = useState(false)
 
   // Linux DO binding state
   const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
   const [linuxDoBinding, setLinuxDoBinding] = useState<LinuxDoBinding | null>(null)
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState<
+    | { type: 'comment'; id: string }
+    | { type: 'linuxdo-unbind' }
+    | null
+  >(null)
+
+  const refreshStorageSources = async () => {
+    if (!token) return
+    setStorageSourcesLoading(true)
+    try {
+      const sources = await getStorageSources(token)
+      setStorageSources(sources)
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+    } finally {
+      setStorageSourcesLoading(false)
+    }
+  }
+
+  const handleSaveSource = async () => {
+    if (!token) return
+    setSourceSaving(true)
+    try {
+      if (editingSource) {
+        const updated = await updateStorageSource(token, editingSource.id, sourceForm as StorageSourceUpdateDto)
+        setStorageSources(prev => prev.map(s => s.id === updated.id ? updated : s))
+      } else if (addingSourceType) {
+        const created = await createStorageSource(token, { ...sourceForm, type: addingSourceType } as StorageSourceCreateDto)
+        setStorageSources(prev => [...prev, created])
+      }
+      setEditingSource(null)
+      setAddingSourceType(null)
+      setSourceForm({})
+      notify(t('admin.notify_success'))
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+    } finally {
+      setSourceSaving(false)
+    }
+  }
+
+  const handleDeleteSource = async (id: string) => {
+    if (!token) return
+    try {
+      await deleteStorageSource(token, id)
+      setStorageSources(prev => prev.filter(s => s.id !== id))
+      notify(t('admin.notify_success'))
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+    }
+  }
+
+  const openEdit = (source: StorageSourceDto) => {
+    setEditingSource(source)
+    setAddingSourceType(null)
+    setSourceForm({
+      name: source.name,
+      accessKey: source.accessKey ?? '',
+      secretKey: source.secretKey ?? '',
+      bucket: source.bucket ?? '',
+      region: source.region ?? '',
+      endpoint: source.endpoint ?? '',
+      publicUrl: source.publicUrl ?? '',
+      basePath: source.basePath ?? '',
+      branch: source.branch ?? '',
+      accessMethod: source.accessMethod ?? '',
+    })
+  }
+
+  const openAdd = (type: 'github' | 's3') => {
+    setAddingSourceType(type)
+    setEditingSource(null)
+    setSourceForm({ name: '', accessKey: '', secretKey: '', bucket: '', region: '', endpoint: '', publicUrl: '', basePath: '', branch: type === 'github' ? 'main' : '', accessMethod: type === 'github' ? 'jsdelivr' : '' })
+  }
+
+  const cancelSourceForm = () => {
+    setEditingSource(null)
+    setAddingSourceType(null)
+    setSourceForm({})
+  }
 
   const refreshComments = async () => {
     if (!token) return
     setCommentsLoading(true)
     try {
-      const { data, meta } = await getComments(token, { page, limit })
+      const { data, meta } = await getComments(token, { page, limit, status: commentStatusFilter || undefined })
       setComments(data)
       setTotalPages(meta.totalPages)
     } catch (err) {
-      console.error(err)
+      if (err instanceof ApiUnauthorizedError) {
+        onUnauthorized()
+        return
+      }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
       setCommentsLoading(false)
     }
@@ -106,33 +214,29 @@ export function SettingsTab({
     }
   }
 
-  const handleDeleteComment = async (id: string) => {
-    if (!token || !window.confirm(t('common.confirm'))) return
+  const handleDeleteComment = (id: string) => {
+    if (!token) return
+    setDeleteDialog({ type: 'comment', id })
+  }
+
+  // Load Linux DO status and binding
+  const loadLinuxDoStatus = async () => {
+    setLinuxDoLoading(true)
     try {
-      await deleteComment(token, id)
-      await refreshComments()
-      notify(t('admin.notify_success'))
+      const enabled = await isLinuxDoEnabled()
+      setLinuxDoEnabled(enabled)
+      if (enabled && token) {
+        const binding = await getLinuxDoBinding(token)
+        setLinuxDoBinding(binding)
+      } else {
+        setLinuxDoBinding(null)
+      }
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
         onUnauthorized()
         return
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
-    }
-  }
-
-  // Load Linux DO status and binding
-  const loadLinuxDoStatus = async () => {
-    try {
-      const enabled = await isLinuxDoEnabled()
-      setLinuxDoEnabled(enabled)
-      if (enabled && token) {
-        setLinuxDoLoading(true)
-        const binding = await getLinuxDoBinding(token)
-        setLinuxDoBinding(binding)
-      }
-    } catch (err) {
-      console.error('Failed to load Linux DO status:', err)
     } finally {
       setLinuxDoLoading(false)
     }
@@ -158,13 +262,25 @@ export function SettingsTab({
   }
 
   // Handle Linux DO unbind
-  const handleLinuxDoUnbind = async () => {
-    if (!token || !window.confirm(t('common.confirm'))) return
+  const handleLinuxDoUnbind = () => {
+    if (!token) return
+    setDeleteDialog({ type: 'linuxdo-unbind' })
+  }
+
+  const confirmDeleteDialog = async () => {
+    if (!token || !deleteDialog) return
+
     try {
-      setLinuxDoBindLoading(true)
-      await unbindLinuxDoAccount(token)
-      setLinuxDoBinding(null)
+      if (deleteDialog.type === 'comment') {
+        await deleteComment(token, deleteDialog.id)
+        await refreshComments()
+      } else {
+        setLinuxDoBindLoading(true)
+        await unbindLinuxDoAccount(token)
+        setLinuxDoBinding(null)
+      }
       notify(t('admin.notify_success'))
+      setDeleteDialog(null)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
         onUnauthorized()
@@ -172,11 +288,17 @@ export function SettingsTab({
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
-      setLinuxDoBindLoading(false)
+      if (deleteDialog.type === 'linuxdo-unbind') {
+        setLinuxDoBindLoading(false)
+      }
     }
   }
 
-  // Load Linux DO status on mount
+  const handleCommentStatusChange = (status: string) => {
+    setCommentStatusFilter(status)
+    setPage(1)
+  }
+
   useEffect(() => {
     loadLinuxDoStatus()
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -188,12 +310,16 @@ export function SettingsTab({
     if (settingsTab === 'account') {
       loadLinuxDoStatus()
     }
-  }, [settingsTab, token, page]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (settingsTab === 'storage') {
+      refreshStorageSources()
+    }
+  }, [settingsTab, token, page, commentStatusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSettingsReady = !loading && !!settings
 
   return (
-    <div className="max-w-[1920px]">
+    <>
+      <div className="max-w-[1920px]">
       <div className="flex flex-col md:flex-row gap-12 relative">
         <aside className="w-full md:w-48 space-y-1 md:sticky md:top-0 md:h-fit">
           <div className="mb-6 pb-2 border-b border-border">
@@ -300,310 +426,155 @@ export function SettingsTab({
                 <div className="pb-4 border-b border-border">
                   <h3 className="font-serif text-2xl">{t('admin.engine')}</h3>
                 </div>
-                <div className="space-y-8">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                      {t('admin.active_provider')}
-                    </label>
-                    <div className="flex gap-4">
-                      {['local', 'r2', 'github'].map((p) => (
-                        <AdminButton
-                          key={p}
-                          onClick={() =>
-                            setSettings({ ...settings, storage_provider: p })
-                          }
-                          adminVariant="unstyled"
-                          className={`px-6 py-3 text-xs font-bold uppercase tracking-widest border transition-all ${
-                            settings.storage_provider === p
-                              ? 'border-primary bg-primary text-primary-foreground'
-                              : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
-                          }`}
-                        >
-                          {p}
-                        </AdminButton>
-                      ))}
-                    </div>
-                  </div>
 
-                  {settings.storage_provider === 'r2' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-border bg-muted/20">
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Endpoint
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.r2_endpoint ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              r2_endpoint: e.target.value,
-                            })
-                          }
-                          placeholder="https://<account-id>.r2.cloudflarestorage.com"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Access Key ID
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.r2_access_key_id ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              r2_access_key_id: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Secret Access Key
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="password"
-                          value={settings.r2_secret_access_key ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              r2_secret_access_key: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Bucket
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.r2_bucket ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              r2_bucket: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Path Prefix
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.r2_path ? (settings.r2_path.startsWith('/') ? settings.r2_path : `/${settings.r2_path}`) : '/'}
-                          onChange={(e) => {
-                            let v = e.target.value
-                            // Ensure starts with /
-                            if (!v.startsWith('/')) v = '/' + v
-                            // Remove duplicate slashes
-                            v = v.replace(/\/+/g, '/')
-                            setSettings({
-                              ...settings,
-                              r2_path: v === '/' ? '' : v.replace(/^\//, ''),
-                            })
-                          }}
-                          placeholder="/photos"
-                        />
-                      </div>
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Public URL <span className="text-destructive">*</span>
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.r2_public_url ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              r2_public_url: e.target.value,
-                            })
-                          }
-                          placeholder="https://pub-xxx.r2.dev"
-                        />
-                        <p className="text-[10px] text-muted-foreground font-mono">
-                          Required. Enable public access in R2 bucket settings or use a custom domain.
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                {storageSourcesLoading ? (
+                  <AdminLoading text={t('common.loading')} className="min-h-[200px]" />
+                ) : (
+                  <div className="space-y-4">
+                    {storageSources.map((source) => {
+                      const isEditing = editingSource?.id === source.id
+                      const Icon = source.type === 'local' ? HardDrive : source.type === 'github' ? Github : Database
+                      return (
+                        <div key={source.id} className="border border-border bg-muted/10">
+                          {/* Header row */}
+                          <div className="flex items-center justify-between px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <Icon className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-bold text-sm">{source.name}</span>
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 border border-border text-muted-foreground tracking-widest">
+                                {source.type}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <AdminButton
+                                onClick={() => isEditing ? cancelSourceForm() : openEdit(source)}
+                                adminVariant="icon"
+                                title={isEditing ? t('common.cancel') : t('admin.edit')}
+                              >
+                                {isEditing ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                              </AdminButton>
+                              <AdminButton
+                                onClick={() => handleDeleteSource(source.id)}
+                                adminVariant="iconDestructive"
+                                title={t('admin.delete')}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </AdminButton>
+                            </div>
+                          </div>
 
-                  {settings.storage_provider === 'github' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 border border-border bg-muted/20">
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Personal Access Token
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="password"
-                          value={settings.github_token ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              github_token: e.target.value,
-                            })
-                          }
-                          placeholder={t('admin.gh_placeholder_token')}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                            Repo (owner/repo)
-                          </label>
+                          {/* Edit form */}
+                          {isEditing && (
+                            <div className="px-6 pb-6 pt-2 border-t border-border space-y-4">
+                              <StorageSourceForm
+                                type={source.type}
+                                form={sourceForm}
+                                setForm={setSourceForm}
+                                token={token}
+                                notify={notify}
+                                t={t}
+                              />
+                              <div className="flex gap-3 pt-2">
+                                <AdminButton
+                                  onClick={handleSaveSource}
+                                  disabled={sourceSaving}
+                                  adminVariant="primary"
+                                  size="none"
+                                  className="px-6 py-3 flex items-center gap-2"
+                                >
+                                  {sourceSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                  <span>{t('admin.save')}</span>
+                                </AdminButton>
+                                <AdminButton onClick={cancelSourceForm} adminVariant="unstyled" className="px-6 py-3 border border-border text-xs font-bold uppercase tracking-widest">
+                                  {t('common.cancel')}
+                                </AdminButton>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.github_repo ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              github_repo: e.target.value,
-                            })
-                          }
-                          placeholder={t('admin.gh_placeholder_repo')}
+                      )
+                    })}
+
+                    {/* Add form */}
+                    {addingSourceType && (
+                      <div className="border border-primary/40 bg-muted/10 p-6 space-y-4">
+                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                          {addingSourceType === 'github' ? <Github className="w-4 h-4" /> : <Database className="w-4 h-4" />}
+                          <span className="text-xs font-bold uppercase tracking-widest">
+                            {t('admin.add')} {addingSourceType.toUpperCase()}
+                          </span>
+                        </div>
+                        <StorageSourceForm
+                          type={addingSourceType}
+                          form={sourceForm}
+                          setForm={setSourceForm}
+                          token={token}
+                          notify={notify}
+                          t={t}
                         />
+                        <div className="flex gap-3 pt-2">
+                          <AdminButton
+                            onClick={handleSaveSource}
+                            disabled={sourceSaving}
+                            adminVariant="primary"
+                            size="none"
+                            className="px-6 py-3 flex items-center gap-2"
+                          >
+                            {sourceSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                            <span>{t('admin.add')}</span>
+                          </AdminButton>
+                          <AdminButton onClick={cancelSourceForm} adminVariant="unstyled" className="px-6 py-3 border border-border text-xs font-bold uppercase tracking-widest">
+                            {t('common.cancel')}
+                          </AdminButton>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                            {t('admin.gh_branch')}
-                          </label>
+                    )}
+
+                    {/* Add buttons */}
+                    {!addingSourceType && !editingSource && (
+                      <div className="flex gap-3 pt-2">
+                        {!storageSources.some(s => s.type === 'local') && (
                           <AdminButton
                             onClick={async () => {
-                              if (
-                                !settings.github_token ||
-                                !settings.github_repo
-                              ) {
-                                notify('Token and Repo required', 'info')
-                                return
-                              }
+                              if (!token) return
                               try {
-                                const res = await fetch(
-                                  `https://api.github.com/repos/${settings.github_repo}/branches`,
-                                  {
-                                    headers: {
-                                      Authorization: `token ${settings.github_token}`,
-                                    },
-                                  }
-                                )
-                                if (!res.ok)
-                                  throw new Error('Failed to fetch branches')
-                                const data = await res.json()
-                                const branchNames = Array.isArray(data)
-                                  ? data
-                                      .map((b) => {
-                                        if (b && typeof b === 'object' && 'name' in b) {
-                                          const name = (b as Record<string, unknown>).name
-                                          return typeof name === 'string' ? name : null
-                                        }
-                                        return null
-                                      })
-                                      .filter((name): name is string => !!name)
-                                  : []
-                                notify(
-                                  `${t('admin.notify_gh_branches')}: ${branchNames.join(
-                                    ', '
-                                  )}`,
-                                  'info'
-                                )
-                              } catch (e) {
-                                notify('Error fetching branches', 'error')
+                                const created = await createStorageSource(token, { name: 'Local', type: 'local' } as StorageSourceCreateDto)
+                                setStorageSources(prev => [...prev, created])
+                                notify(t('admin.notify_success'))
+                              } catch (err) {
+                                notify(err instanceof Error ? err.message : t('common.error'), 'error')
                               }
                             }}
                             adminVariant="unstyled"
-                            className="text-[8px] font-bold text-primary uppercase hover:underline"
+                            className="flex items-center gap-2 px-4 py-2.5 border border-border text-xs font-bold uppercase tracking-widest hover:border-foreground transition-all"
                           >
-                            {t('admin.gh_test')}
+                            <Plus className="w-3.5 h-3.5" />
+                            <HardDrive className="w-3.5 h-3.5" />
+                            Local
                           </AdminButton>
-                        </div>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.github_branch ?? ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              github_branch: e.target.value,
-                            })
-                          }
-                          placeholder="main"
-                        />
+                        )}
+                        <AdminButton
+                          onClick={() => openAdd('github')}
+                          adminVariant="unstyled"
+                          className="flex items-center gap-2 px-4 py-2.5 border border-border text-xs font-bold uppercase tracking-widest hover:border-foreground transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <Github className="w-3.5 h-3.5" />
+                          GitHub
+                        </AdminButton>
+                        <AdminButton
+                          onClick={() => openAdd('s3')}
+                          adminVariant="unstyled"
+                          className="flex items-center gap-2 px-4 py-2.5 border border-border text-xs font-bold uppercase tracking-widest hover:border-foreground transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <Database className="w-3.5 h-3.5" />
+                          S3
+                        </AdminButton>
                       </div>
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          {t('admin.path_prefix')}
-                        </label>
-                        <AdminInput
-                          variant="config"
-                          type="text"
-                          value={settings.github_path ? (settings.github_path.startsWith('/') ? settings.github_path : `/${settings.github_path}`) : '/'}
-                          onChange={(e) => {
-                            let v = e.target.value
-                            // Ensure starts with /
-                            if (!v.startsWith('/')) v = '/' + v
-                            // Remove duplicate slashes
-                            v = v.replace(/\/+/g, '/')
-                            setSettings({
-                              ...settings,
-                              github_path: v === '/' ? '' : v.replace(/^\//, ''),
-                            })
-                          }}
-                          placeholder="/uploads"
-                        />
-                      </div>
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                          Access Method (访问方式)
-                        </label>
-                        <AdminSelect
-                          value={settings.github_access_method || 'jsdelivr'}
-                          onChange={(value) =>
-                            setSettings({
-                              ...settings,
-                              github_access_method: value,
-                            })
-                          }
-                          options={[
-                            { value: 'raw', label: 'raw.githubusercontent.com' },
-                            { value: 'jsdelivr', label: 'jsDelivr CDN (推荐)' },
-                            { value: 'pages', label: 'GitHub Pages' },
-                          ]}
-                        />
-                      </div>
-                      {settings.github_access_method === 'pages' && (
-                        <div className="md:col-span-2 space-y-2">
-                          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                            GitHub Pages URL
-                          </label>
-                          <AdminInput
-                            variant="config"
-                            type="text"
-                            value={settings.github_pages_url ?? ''}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                github_pages_url: e.target.value,
-                              })
-                            }
-                            placeholder="https://username.github.io/repo"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -758,9 +729,32 @@ export function SettingsTab({
                 {commentTab === 'manage' && (
                   <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="pb-4 border-b border-border flex items-center justify-between">
-                      <h3 className="font-serif text-2xl">
-                        {t('admin.comments_manage')}
-                      </h3>
+                      <div className="flex items-center gap-4">
+                        <h3 className="font-serif text-2xl">
+                          {t('admin.comments_manage')}
+                        </h3>
+                        <div className="flex bg-background border border-border rounded-md overflow-hidden">
+                          {[
+                            { value: '', label: t('admin.all') },
+                            { value: 'pending', label: t('admin.pending') },
+                            { value: 'approved', label: t('admin.published') },
+                            { value: 'rejected', label: t('admin.rejected') },
+                          ].map(opt => (
+                            <AdminButton
+                              key={opt.value}
+                              onClick={() => handleCommentStatusChange(opt.value)}
+                              adminVariant="unstyled"
+                              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                                commentStatusFilter === opt.value
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                              }`}
+                            >
+                              {opt.label}
+                            </AdminButton>
+                          ))}
+                        </div>
+                      </div>
                       <AdminButton
                         onClick={refreshComments}
                         adminVariant="icon"
@@ -1017,7 +1011,7 @@ export function SettingsTab({
               </div>
             )}
 
-            {settingsTab !== 'site' && settingsTab !== 'account' && (
+            {settingsTab !== 'site' && settingsTab !== 'account' && settingsTab !== 'storage' && (
               <div className="pt-8 border-t border-border flex justify-end">
                 <AdminButton
                   onClick={onSave}
@@ -1040,6 +1034,145 @@ export function SettingsTab({
           </div>
         </div>
       </div>
+      </div>
+      <SimpleDeleteDialog
+        isOpen={deleteDialog !== null}
+        title={t('common.confirm')}
+        message={
+          deleteDialog?.type === 'linuxdo-unbind'
+            ? t('common.confirm')
+            : t('admin.confirm_delete_single') + '?'
+        }
+        onConfirm={confirmDeleteDialog}
+        onCancel={() => {
+          if (!linuxDoBindLoading) {
+            setDeleteDialog(null)
+          }
+        }}
+        t={t}
+      />
+    </>
+  )
+}
+
+// ─── StorageSourceForm ────────────────────────────────────────────────────────
+
+function StorageSourceForm({
+  type,
+  form,
+  setForm,
+  token,
+  notify,
+  t,
+}: {
+  type: 'local' | 'github' | 's3'
+  form: Partial<StorageSourceCreateDto>
+  setForm: (f: Partial<StorageSourceCreateDto>) => void
+  token: string | null
+  notify: (msg: string, type?: 'success' | 'error' | 'info') => void
+  t: (key: string) => string
+}) {
+  const f = (field: string, value: string) => setForm({ ...form, [field]: value })
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Name (all types) */}
+      <div className="md:col-span-2 space-y-1.5">
+        <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Name</label>
+        <AdminInput variant="config" value={form.name ?? ''} onChange={e => f('name', e.target.value)} placeholder="My Storage" />
+      </div>
+
+      {/* Local */}
+      {type === 'local' && (
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.path_prefix')}</label>
+          <AdminInput variant="config" value={form.basePath ?? ''} onChange={e => f('basePath', e.target.value)} placeholder="photos (appended to public/uploads/)" />
+          <p className="text-[10px] text-muted-foreground font-mono">Stored under public/uploads/{'<path>'}. Leave blank for root.</p>
+        </div>
+      )}
+
+      {/* GitHub */}
+      {type === 'github' && (<>
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Personal Access Token</label>
+          <AdminInput variant="config" type="password" value={form.accessKey ?? ''} onChange={e => f('accessKey', e.target.value)} placeholder={t('admin.gh_placeholder_token')} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Repo (owner/repo)</label>
+          <AdminInput variant="config" value={form.bucket ?? ''} onChange={e => f('bucket', e.target.value)} placeholder={t('admin.gh_placeholder_repo')} />
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center">
+            <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.gh_branch')}</label>
+            <AdminButton
+              onClick={async () => {
+                if (!form.accessKey || !form.bucket) { notify('Token and Repo required', 'info'); return }
+                try {
+                  const res = await fetch(`https://api.github.com/repos/${form.bucket}/branches`, { headers: { Authorization: `token ${form.accessKey}` } })
+                  if (!res.ok) throw new Error('Failed')
+                  const data = await res.json()
+                  const names = Array.isArray(data) ? data.map((b: unknown) => typeof b === 'object' && b && 'name' in b ? (b as Record<string,unknown>).name : null).filter((n): n is string => typeof n === 'string') : []
+                  notify(`${t('admin.notify_gh_branches')}: ${names.join(', ')}`, 'info')
+                } catch { notify('Error fetching branches', 'error') }
+              }}
+              adminVariant="unstyled"
+              className="text-[8px] font-bold text-primary uppercase hover:underline"
+            >{t('admin.gh_test')}</AdminButton>
+          </div>
+          <AdminInput variant="config" value={form.branch ?? ''} onChange={e => f('branch', e.target.value)} placeholder="main" />
+        </div>
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">{t('admin.path_prefix')}</label>
+          <AdminInput variant="config" value={form.basePath ?? ''} onChange={e => f('basePath', e.target.value)} placeholder="uploads" />
+        </div>
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Method</label>
+          <AdminSelect value={form.accessMethod || 'jsdelivr'} onChange={v => f('accessMethod', v)} options={[
+            { value: 'raw', label: 'raw.githubusercontent.com' },
+            { value: 'jsdelivr', label: 'jsDelivr CDN (推荐)' },
+            { value: 'pages', label: 'GitHub Pages' },
+          ]} />
+        </div>
+        {form.accessMethod === 'pages' && (
+          <div className="md:col-span-2 space-y-1.5">
+            <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">GitHub Pages URL</label>
+            <AdminInput variant="config" value={form.publicUrl ?? ''} onChange={e => f('publicUrl', e.target.value)} placeholder="https://username.github.io/repo" />
+          </div>
+        )}
+      </>)}
+
+      {/* S3 */}
+      {type === 's3' && (<>
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Endpoint</label>
+          <AdminInput variant="config" value={form.endpoint ?? ''} onChange={e => f('endpoint', e.target.value)} placeholder="https://<account-id>.r2.cloudflarestorage.com  |  https://s3.amazonaws.com" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Key ID</label>
+          <AdminInput variant="config" value={form.accessKey ?? ''} onChange={e => f('accessKey', e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Secret Access Key</label>
+          <AdminInput variant="config" type="password" value={form.secretKey ?? ''} onChange={e => f('secretKey', e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Bucket</label>
+          <AdminInput variant="config" value={form.bucket ?? ''} onChange={e => f('bucket', e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Region</label>
+          <AdminInput variant="config" value={form.region ?? ''} onChange={e => f('region', e.target.value)} placeholder="us-east-1  (optional for R2)" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Path Prefix</label>
+          <AdminInput variant="config" value={form.basePath ?? ''} onChange={e => f('basePath', e.target.value)} placeholder="photos" />
+        </div>
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Public URL <span className="text-destructive">*</span></label>
+          <AdminInput variant="config" value={form.publicUrl ?? ''} onChange={e => f('publicUrl', e.target.value)} placeholder="https://pub-xxx.r2.dev  |  https://mybucket.s3.amazonaws.com" />
+          <p className="text-[10px] text-muted-foreground font-mono">Required. Public-accessible base URL for served files.</p>
+        </div>
+      </>)}
     </div>
   )
 }

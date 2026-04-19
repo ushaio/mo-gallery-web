@@ -16,9 +16,6 @@ equipment.get('/cameras', async (c) => {
       select: {
         id: true,
         name: true,
-        _count: {
-          select: { photos: true },
-        },
       },
     })
 
@@ -26,7 +23,6 @@ equipment.get('/cameras', async (c) => {
       id: camera.id,
       name: camera.name,
       displayName: camera.name,
-      photoCount: camera._count.photos,
     }))
 
     return c.json({
@@ -50,9 +46,6 @@ equipment.get('/lenses', async (c) => {
       select: {
         id: true,
         name: true,
-        _count: {
-          select: { photos: true },
-        },
       },
     })
 
@@ -60,7 +53,6 @@ equipment.get('/lenses', async (c) => {
       id: lens.id,
       name: lens.name,
       displayName: lens.name,
-      photoCount: lens._count.photos,
     }))
 
     return c.json({
@@ -82,13 +74,12 @@ equipment.use('/admin/*', authMiddleware)
 equipment.get('/admin/cameras/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    
+
     const camera = await db.camera.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: { photos: true },
-        },
+      select: {
+        id: true,
+        name: true,
       },
     })
 
@@ -102,7 +93,6 @@ equipment.get('/admin/cameras/:id', async (c) => {
         id: camera.id,
         name: camera.name,
         displayName: camera.name,
-        photoCount: camera._count.photos,
       },
     })
   } catch (error) {
@@ -117,13 +107,12 @@ equipment.get('/admin/cameras/:id', async (c) => {
 equipment.get('/admin/lenses/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    
+
     const lens = await db.lens.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: { photos: true },
-        },
+      select: {
+        id: true,
+        name: true,
       },
     })
 
@@ -137,7 +126,6 @@ equipment.get('/admin/lenses/:id', async (c) => {
         id: lens.id,
         name: lens.name,
         displayName: lens.name,
-        photoCount: lens._count.photos,
       },
     })
   } catch (error) {

@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { MessageSquare, LogIn, Send } from 'lucide-react'
-import { getPhotoComments, submitPhotoComment, type PublicCommentDto } from '@/lib/api'
+import { getPhotoComments, submitPhotoComment } from '@/lib/api/comments'
+import type { PublicCommentDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -58,8 +59,7 @@ export function CommentsTab({ photoId }: CommentsTabProps) {
       setLoading(true)
       setError(null)
       const data = await getPhotoComments(photoId)
-      data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      setComments(data)
+      setComments(data.toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
     } catch (err) {
       console.error('Failed to load comments:', err)
       setError(err instanceof Error ? err.message : 'Failed to load comments')

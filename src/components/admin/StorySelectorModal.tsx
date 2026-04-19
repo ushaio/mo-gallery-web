@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { BookOpen, X, Search, Check } from 'lucide-react'
-import { type StoryDto } from '@/lib/api'
+import type { StoryDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 
 interface StorySelectorModalProps {

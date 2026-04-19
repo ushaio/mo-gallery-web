@@ -1,24 +1,33 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, Clock, Image as ImageIcon } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { ArrowLeft, ArrowUp, Calendar, ChevronLeft, ChevronRight, Clock, Image as ImageIcon } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getStory } from '@/lib/api/stories'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { StoryComments } from '@/components/StoryComments'
-import { StoryMapPanel } from '@/components/StoryMapPanel'
-import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { Toast, type Notification } from '@/components/Toast'
+
+const StoryMapPanel = dynamic(
+  () => import('@/components/StoryMapPanel').then((m) => m.StoryMapPanel),
+  { ssr: false },
+)
+const PhotoDetailModal = dynamic(
+  () => import('@/components/PhotoDetailModal').then((m) => m.PhotoDetailModal),
+  { ssr: false },
+)
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
 import { buildStoryPreviewText, stripStoryContentToPlainText } from '@/lib/story-rich-content'
+import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
 
 function WechatIcon(props: React.ComponentProps<'svg'>) {
   return (
@@ -59,6 +68,8 @@ export default function StoryDetailPage() {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [isMapExpanded, setIsMapExpanded] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [showBackToTop, setShowBackToTop] = useState(false)
+  const showBackToTopRef = useRef(false)
 
   const notify = useCallback((message: string, type: Notification['type'] = 'success') => {
     const id = Math.random().toString(36).slice(2, 9)
@@ -117,18 +128,25 @@ export default function StoryDetailPage() {
     setActivePhotoIndex(0)
   }, [story?.id])
 
+  useEffect(() => {
+    const handleScroll = () => {
+      const shouldShow = window.scrollY > 400
+      if (shouldShow !== showBackToTopRef.current) {
+        showBackToTopRef.current = shouldShow
+        setShowBackToTop(shouldShow)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
   const getPhotoUrl = useCallback((photo: PhotoDto, thumbnail = false) => {
     const url = thumbnail ? photo.thumbnailUrl || photo.url : photo.url
     return resolveAssetUrl(url, settings?.cdn_domain)
   }, [settings?.cdn_domain])
 
-  const coverPhoto = useMemo(() => {
-    if (!story) return null
-    if (story.coverPhotoId) {
-      return story.photos.find((photo) => photo.id === story.coverPhotoId) || story.photos[0] || null
-    }
-    return story.photos[0] || null
-  }, [story])
+  const coverPhoto = useMemo(() => (story ? getStoryCoverPhoto(story) : null), [story])
 
   const coverUrl = coverPhoto ? getPhotoUrl(coverPhoto) : null
   const previewText = useMemo(() => (story?.content ? buildStoryPreviewText(story.content, 200) : ''), [story?.content])
@@ -142,6 +160,14 @@ export default function StoryDetailPage() {
     })
   }, [locale, story])
   const activePhoto = story?.photos[activePhotoIndex] || null
+  const activePhotoThumbnailUrl = useMemo(
+    () => (activePhoto ? getPhotoUrl(activePhoto, true) : null),
+    [activePhoto, getPhotoUrl],
+  )
+  const activePhotoFullUrl = useMemo(
+    () => (activePhoto ? getPhotoUrl(activePhoto) : null),
+    [activePhoto, getPhotoUrl],
+  )
   const targetPhotoId = story?.coverPhotoId || story?.photos[0]?.id
   const isAdmin = isReady && user?.isAdmin === true
   const hasMultiplePhotos = (story?.photos.length || 0) > 1
@@ -170,6 +196,10 @@ export default function StoryDetailPage() {
       notify(detailText.copyFailed, 'error')
     }
   }, [detailText.copyEmpty, detailText.copyFailed, detailText.copySuccess, notify, settings?.cdn_domain, story])
+
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
 
   if (loading) {
     return (
@@ -217,7 +247,8 @@ export default function StoryDetailPage() {
               priority
               unoptimized
               sizes="100vw"
-              className="h-full w-full object-cover opacity-40 transition-transform duration-1000 ease-out hover:scale-105"
+              className="h-full w-full object-cover opacity-40"
+              style={getStoryCoverImageStyle(story)}
             />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900" />
@@ -340,6 +371,7 @@ export default function StoryDetailPage() {
                   content={story.content || ''}
                   photos={story.photos || []}
                   cdnDomain={settings?.cdn_domain}
+                  onPhotoClick={setSelectedPhoto}
                 />
               </div>
             </article>
@@ -405,23 +437,17 @@ export default function StoryDetailPage() {
                 </div>
 
                 {activePhoto ? (
-                  <motion.div
-                    key={activePhoto.id}
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5 }}
-                    className="group relative mb-8 overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-900"
-                  >
+                  <div className="relative mb-8 aspect-[16/10] w-full overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-900">
                     <div
                       className="absolute inset-0 bg-cover bg-center opacity-30 blur-2xl scale-110"
-                      style={{ backgroundImage: `url(${getPhotoUrl(activePhoto, true)})` }}
+                      style={activePhotoThumbnailUrl ? { backgroundImage: `url(${activePhotoThumbnailUrl})` } : undefined}
                     />
 
-                    <div className="relative flex min-h-[50svh] items-center justify-center p-6 sm:p-10">
+                    <div className="absolute inset-0 flex items-center justify-center p-6 sm:p-10">
                       <img
-                        src={getPhotoUrl(activePhoto)}
+                        src={activePhotoFullUrl || ''}
                         alt={activePhoto.title}
-                        className="relative z-10 max-h-[70svh] w-auto max-w-full cursor-zoom-in object-contain shadow-2xl transition-transform duration-500 group-hover:scale-[1.02]"
+                        className="relative z-10 max-h-full w-auto max-w-full cursor-zoom-in object-contain shadow-2xl"
                         onClick={() => setSelectedPhoto(activePhoto)}
                       />
 
@@ -447,17 +473,14 @@ export default function StoryDetailPage() {
                       ) : null}
                     </div>
 
-                    <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-6 sm:p-8">
-                      <div className="flex items-end justify-between gap-4">
-                        <div>
-                          <h3 className="text-lg font-medium text-white sm:text-xl">{activePhoto.title}</h3>
-                        </div>
+                    <div className="absolute inset-x-0 bottom-0 z-20 p-6 sm:p-8">
+                      <div className="flex items-end justify-end gap-4">
                         <span className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
                           {activePhotoIndex + 1} / {story.photos.length}
                         </span>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 ) : null}
 
                 <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7">
@@ -528,6 +551,22 @@ export default function StoryDetailPage() {
         notifications={notifications}
         remove={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))}
       />
+
+      <AnimatePresence>
+        {showBackToTop ? (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            onClick={scrollToTop}
+            className="fixed bottom-8 right-8 z-40 rounded-full bg-primary p-3 text-primary-foreground shadow-lg"
+            aria-label={t('gallery.back_to_top')}
+          >
+            <ArrowUp className="size-6" />
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }

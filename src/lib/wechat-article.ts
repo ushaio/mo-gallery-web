@@ -1,4 +1,6 @@
-import { resolveAssetUrl, type PhotoDto, type StoryDto } from '@/lib/api'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { PhotoDto, StoryDto } from '@/lib/api/types'
+import { findStoryPhotoById } from '@/lib/story-rich-content'
 
 /* ------------------------------------------------------------------ */
 /*  WeChat-compatible inline style map                                 */
@@ -25,7 +27,7 @@ const WECHAT_STYLES: Record<string, string> = {
   table: 'width:100%;border-collapse:collapse;margin:16px 0',
   th: 'border:1px solid #ddd;padding:8px;background:#f5f5f5;font-weight:700;text-align:left',
   td: 'border:1px solid #ddd;padding:8px;text-align:left',
-  hr: 'border:none;border-top:1px solid #ddd;margin:20px 0',
+  hr: 'border:none;border-top:1px solid #333;margin:20px 0',
   a: 'color:#576b95;text-decoration:none',
   pre: 'background:#f5f5f5;padding:12px 16px;margin:16px 0;overflow-x:auto;font-size:14px;font-family:Menlo,Consolas,monospace',
   code: 'background:#f5f5f5;padding:2px 6px;font-size:14px;font-family:Menlo,Consolas,monospace',
@@ -39,7 +41,10 @@ const CODE_INSIDE_PRE_STYLE = 'background:none;padding:0;font-size:inherit;font-
 /*  Asset URL resolution (shared with plain-text formatter)            */
 /* ------------------------------------------------------------------ */
 
-function resolveStoryCopyAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string) {
+function resolveStoryCopyAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string, photoId?: string | null) {
+  const matchedById = findStoryPhotoById(photos, photoId || undefined)
+  if (matchedById) return resolveAssetUrl(matchedById.url, cdnDomain)
+
   const trimmed = rawUrl.trim()
   if (!trimmed) return ''
 
@@ -80,7 +85,8 @@ function walkNode(node: Node, photos: PhotoDto[], cdnDomain: string | undefined,
   // Resolve <img> src
   if (tag === 'img') {
     const rawSrc = el.getAttribute('src') || ''
-    const resolved = resolveStoryCopyAssetUrl(rawSrc, photos, cdnDomain)
+    const photoId = el.getAttribute('data-photo-id')
+    const resolved = resolveStoryCopyAssetUrl(rawSrc, photos, cdnDomain, photoId)
     if (resolved) el.setAttribute('src', resolved)
 
     // Preserve editor-set width as inline style

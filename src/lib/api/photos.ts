@@ -24,6 +24,32 @@ export interface BatchDuplicateCheckResult {
   hasDuplicates: boolean
 }
 
+function extractUploadErrorMessage(responseText: string, status: number, statusText: string): string {
+  const trimmed = responseText.trim()
+
+  if (trimmed) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      return extractErrorMessage(parsed) ?? `Upload failed (${status})`
+    } catch {
+      if (/payload too large|request entity too large|body exceeded|entity too large/i.test(trimmed)) {
+        return 'Upload failed: request body is too large'
+      }
+      if (trimmed.startsWith('<')) {
+        if (status === 413) return 'Upload failed: request body is too large'
+        return `Upload failed (${status}${statusText ? ` ${statusText}` : ''})`
+      }
+      return trimmed
+    }
+  }
+
+  if (status === 413) {
+    return 'Upload failed: request body is too large'
+  }
+
+  return `Upload failed (${status}${statusText ? ` ${statusText}` : ''})`
+}
+
 export async function getCategories(): Promise<string[]> {
   return apiRequestData<string[]>('/api/categories')
 }
@@ -101,6 +127,7 @@ export async function uploadPhoto(input: {
   category: string | string[]
   origin_flag?: 'web' | 'mobile'
   storage_provider?: string
+  storage_source_id?: string
   storage_path?: string
   file_hash?: string
 }): Promise<PhotoDto> {
@@ -111,6 +138,7 @@ export async function uploadPhoto(input: {
   form.set('category', categoryValue)
   if (input.origin_flag) form.set('origin_flag', input.origin_flag)
   if (input.storage_provider) form.set('storage_provider', input.storage_provider)
+  if (input.storage_source_id) form.set('storage_source_id', input.storage_source_id)
   if (input.storage_path) form.set('storage_path', input.storage_path)
   if (input.file_hash) form.set('file_hash', input.file_hash)
 
@@ -128,6 +156,7 @@ export function uploadPhotoWithProgress(input: {
   category?: string | string[]
   origin_flag?: 'web' | 'mobile'
   storage_provider?: string
+  storage_source_id?: string
   storage_path?: string
   storage_path_full?: boolean
   file_hash?: string
@@ -143,6 +172,7 @@ export function uploadPhotoWithProgress(input: {
     }
     if (input.origin_flag) form.set('origin_flag', input.origin_flag)
     if (input.storage_provider) form.set('storage_provider', input.storage_provider)
+    if (input.storage_source_id) form.set('storage_source_id', input.storage_source_id)
     if (input.storage_path) form.set('storage_path', input.storage_path)
     if (input.storage_path_full) form.set('storage_path_full', 'true')
     if (input.file_hash) form.set('file_hash', input.file_hash)
@@ -177,7 +207,12 @@ export function uploadPhotoWithProgress(input: {
           reject(new Error(extractErrorMessage(response) ?? `Upload failed (${xhr.status})`))
         }
       } catch {
-        reject(new Error('Invalid response from server'))
+        if (xhr.status >= 200 && xhr.status < 300) {
+          reject(new Error('Invalid response from server'))
+          return
+        }
+
+        reject(new Error(extractUploadErrorMessage(xhr.responseText, xhr.status, xhr.statusText)))
       }
     })
 
@@ -210,6 +245,28 @@ export async function deletePhoto(input: {
   await apiRequest(
     `/api/admin/photos/${encodeURIComponent(input.id)}${queryParam}`,
     { method: 'DELETE' },
+    input.token,
+  )
+}
+
+export async function batchDeletePhotos(input: {
+  token: string
+  photoIds: string[]
+  deleteOriginal?: boolean
+  deleteThumbnail?: boolean
+  force?: boolean
+}): Promise<{ deleted: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ deleted: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-delete',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        deleteOriginal: input.deleteOriginal,
+        deleteThumbnail: input.deleteThumbnail,
+        force: input.force,
+      }),
+    },
     input.token,
   )
 }
@@ -265,6 +322,8 @@ export async function updatePhoto(input: {
     category?: string
     takenAt?: string | null
     storagePath?: string
+    photoType?: 'digital' | 'film'
+    filmRollId?: string | null
   }
 }): Promise<PhotoDto> {
   return apiRequestData<PhotoDto>(

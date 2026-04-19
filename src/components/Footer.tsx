@@ -14,8 +14,10 @@ export default function Footer() {
   const siteTitle = settings?.site_title || 'MO GALLERY'
   const currentYear = new Date().getFullYear()
 
+  const isAdminRoute = pathname === '/admin' || pathname?.startsWith('/admin/')
+
   // Hide footer completely on admin pages
-  if (pathname?.startsWith('/admin/')) {
+  if (isAdminRoute) {
     return null
   }
 

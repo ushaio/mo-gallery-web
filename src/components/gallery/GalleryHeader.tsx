@@ -94,7 +94,9 @@ export function GalleryHeader({
                     : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                 }`}
               >
-                {nextView === 'photos' ? t('gallery.photos_tab') : t('gallery.albums_tab')}
+                {nextView === 'photos'
+                  ? t('gallery.photos_tab')
+                  : t('gallery.albums_tab')}
                 {view === nextView ? (
                   <motion.div
                     layoutId="activeViewTab"
@@ -144,6 +146,7 @@ interface GalleryToolbarProps {
   onGrayscaleChange: (grayscale: boolean) => void
   immersive: boolean
   onImmersiveChange: (immersive: boolean) => void
+  view?: GalleryView
   t: (key: string) => string
 }
 
@@ -156,6 +159,7 @@ export function GalleryToolbar({
   onGrayscaleChange,
   immersive,
   onImmersiveChange,
+  view,
   t,
 }: GalleryToolbarProps) {
   return (

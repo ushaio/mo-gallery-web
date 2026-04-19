@@ -137,7 +137,7 @@ export const PastedStyleMark = Mark.create({
   name: 'pastedStyle',
   priority: 1000,
   inclusive: true,
-  excludes: '',
+  excludes: 'pastedStyle',
 
   addAttributes() {
     return {

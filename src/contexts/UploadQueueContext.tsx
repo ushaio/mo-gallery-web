@@ -1,7 +1,10 @@
 'use client'
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { uploadPhotoWithProgress, addPhotosToAlbum } from '@/lib/api'
+import { uploadPhotoWithProgress } from '@/lib/api/photos'
+import { addPhotosToAlbum } from '@/lib/api/albums'
+import { addPhotosToStory } from '@/lib/api/stories'
+import { addPhotosToFilmRoll } from '@/lib/api/film-rolls'
 import { compressImage, CompressionMode } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
@@ -21,10 +24,12 @@ export interface UploadTask {
   title: string
   categories: string[]
   storageProvider?: string
+  storageSourceId?: string
   storagePath?: string
   storagePathFull?: boolean
   storyId?: string
   albumIds?: string[]
+  filmRollId?: string
   fileHash?: string // Original file hash for duplicate detection
   batchId: string // Unique batch identifier
   // Compression settings
@@ -43,10 +48,12 @@ interface UploadQueueContextType {
     title: string
     categories: string[]
     storageProvider?: string
+    storageSourceId?: string
     storagePath?: string
     storagePathFull?: boolean
     storyId?: string
     albumIds?: string[]
+    filmRollId?: string
     compressionMode?: CompressionMode
     maxSizeMB?: number
     token: string
@@ -106,21 +113,41 @@ export function UploadQueueProvider({
     )
   }, [])
 
-  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumIds: string[] | undefined, photoIds: string[]) => {
+  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumIds: string[] | undefined, filmRollId: string | undefined, photoIds: string[]) => {
     // Double-check we haven't already notified for this batch
     if (notifiedBatchesRef.current.has(batchId)) {
       return
     }
     notifiedBatchesRef.current.add(batchId)
 
-    // If albumIds are provided, add photos to each album
+    // If storyId is provided, add photos to the story
+    if (storyId && photoIds.length > 0 && tokenRef.current) {
+      try {
+        await addPhotosToStory(tokenRef.current, storyId, photoIds)
+      } catch (err) {
+        console.error(`Failed to add photos to story ${storyId}:`, err)
+      }
+    }
+
+    // If albumIds are provided, add photos to each album in parallel
     if (albumIds && albumIds.length > 0 && photoIds.length > 0 && tokenRef.current) {
-      for (const albumId of albumIds) {
-        try {
-          await addPhotosToAlbum(tokenRef.current, albumId, photoIds)
-        } catch (err) {
-          console.error(`Failed to add photos to album ${albumId}:`, err)
-        }
+      await Promise.all(
+        albumIds.map(async (albumId) => {
+          try {
+            await addPhotosToAlbum(tokenRef.current, albumId, photoIds)
+          } catch (err) {
+            console.error(`Failed to add photos to album ${albumId}:`, err)
+          }
+        })
+      )
+    }
+
+    // If filmRollId is provided, add photos to the film roll
+    if (filmRollId && photoIds.length > 0 && tokenRef.current) {
+      try {
+        await addPhotosToFilmRoll(tokenRef.current, filmRollId, photoIds)
+      } catch (err) {
+        console.error(`Failed to add photos to film roll ${filmRollId}:`, err)
       }
     }
 
@@ -183,8 +210,11 @@ export function UploadQueueProvider({
             )
           )
         } catch (compressError) {
-          // If compression fails, continue with original file
-          console.warn('Compression failed, using original file:', compressError)
+          const message =
+            compressError instanceof Error && compressError.message
+              ? compressError.message
+              : 'Image compression failed'
+          throw new Error(`Compression failed before upload: ${message}`)
         }
       }
 
@@ -195,6 +225,7 @@ export function UploadQueueProvider({
         title: task.title,
         category: task.categories,
         storage_provider: task.storageProvider,
+        storage_source_id: task.storageSourceId,
         storage_path: task.storagePath,
         storage_path_full: task.storagePathFull,
         file_hash: task.fileHash,
@@ -224,7 +255,7 @@ export function UploadQueueProvider({
 
           // Schedule notification outside of setState
           setTimeout(() => {
-            notifyBatchComplete(task.batchId, task.storyId, task.albumIds, photoIds)
+            notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds)
           }, 0)
         }
 
@@ -254,7 +285,7 @@ export function UploadQueueProvider({
 
           if (photoIds.length > 0) {
             setTimeout(() => {
-              notifyBatchComplete(task.batchId, task.storyId, task.albumIds, photoIds)
+              notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds)
             }, 0)
           }
         }
@@ -265,7 +296,7 @@ export function UploadQueueProvider({
       activeUploadsRef.current--
       uploadingTasksRef.current.delete(task.id) // Remove from uploading set
       // Process next in queue
-      setTimeout(processQueue, 50)
+      queueMicrotask(processQueue)
     }
   }
 
@@ -275,10 +306,12 @@ export function UploadQueueProvider({
       title: string
       categories: string[]
       storageProvider?: string
+      storageSourceId?: string
       storagePath?: string
       storagePathFull?: boolean
       storyId?: string
       albumIds?: string[]
+      filmRollId?: string
       compressionMode?: CompressionMode
       maxSizeMB?: number
       token: string
@@ -309,10 +342,12 @@ export function UploadQueueProvider({
                 : fallbackTitle,
             categories: params.categories,
             storageProvider: params.storageProvider,
+            storageSourceId: params.storageSourceId,
             storagePath: params.storagePath,
             storagePathFull: params.storagePathFull,
             storyId: params.storyId,
             albumIds: params.albumIds,
+            filmRollId: params.filmRollId,
             fileHash: item.fileHash,
             compressionMode: params.compressionMode,
             maxSizeMB: params.maxSizeMB,
@@ -325,7 +360,7 @@ export function UploadQueueProvider({
       setIsMinimized(false)
 
       // Start processing queue
-      setTimeout(processQueue, 50)
+      queueMicrotask(processQueue)
     },
     [processQueue]
   )
@@ -346,7 +381,7 @@ export function UploadQueueProvider({
             : t
         )
       })
-      setTimeout(processQueue, 50)
+      setTimeout(processQueue, 0)
     },
     [processQueue]
   )

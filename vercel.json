@@ -1,3 +1,8 @@
 {
-  "buildCommand": "pnpm run prisma:deploy && pnpm run prisma:generate && next build"
+  "buildCommand": "pnpm run prisma:deploy && pnpm run prisma:generate && next build",
+  "functions": {
+    "src/app/api/[[...route]]/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }

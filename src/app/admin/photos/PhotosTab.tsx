@@ -9,15 +9,41 @@ import {
   X,
   ImageIcon,
   Star,
-  Search,
   SlidersHorizontal,
 } from 'lucide-react'
-import { PhotoDto, resolveAssetUrl, AlbumDto, getAlbums, AdminSettingsDto, CameraDto, LensDto, getCameras, getLenses } from '@/lib/api'
+import type { PhotoDto, AlbumDto, AdminSettingsDto, CameraDto, LensDto } from '@/lib/api/types'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { getAlbums } from '@/lib/api/albums'
+import { getCameras, getLenses } from '@/lib/api/equipment'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
+import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 
 type SortOption = 'upload-desc' | 'upload-asc' | 'taken-desc' | 'taken-asc'
 type ViewMode = 'grid' | 'list'
+
+const PHOTOS_FILTER_KEY = 'admin-photos-filters'
+
+interface PersistedFilters {
+  search: string
+  categoryFilter: string
+  photoTypeFilter: string
+  channelFilter: string
+  albumFilter: string
+  cameraFilter: string
+  lensFilter: string
+  onlyFeatured: boolean
+  sortBy: SortOption
+  showFilters: boolean
+}
+
+function loadPersistedFilters(): Partial<PersistedFilters> {
+  try {
+    const stored = sessionStorage.getItem(PHOTOS_FILTER_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch {}
+  return {}
+}
 
 interface PhotosTabProps {
   photos: PhotoDto[]
@@ -35,6 +61,7 @@ interface PhotosTabProps {
   onPreview: (photo: PhotoDto) => void
   t: (key: string) => string
   settings: AdminSettingsDto | null
+  notify?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
 export function PhotosTab({
@@ -53,21 +80,35 @@ export function PhotosTab({
   onPreview,
   t,
   settings,
+  notify,
 }: PhotosTabProps) {
-  const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [channelFilter, setChannelFilter] = useState('all')
-  const [albumFilter, setAlbumFilter] = useState('all')
-  const [cameraFilter, setCameraFilter] = useState('all')
-  const [lensFilter, setLensFilter] = useState('all')
-  const [onlyFeatured, setOnlyFeatured] = useState(false)
-  const [sortBy, setSortBy] = useState<SortOption>('upload-desc')
-  const [showFilters, setShowFilters] = useState(false)
+  const [persisted] = useState(() => loadPersistedFilters())
+  const [search, setSearch] = useState(persisted.search ?? '')
+  const [categoryFilter, setCategoryFilter] = useState(persisted.categoryFilter ?? 'all')
+  const [photoTypeFilter, setPhotoTypeFilter] = useState(persisted.photoTypeFilter ?? 'all')
+  const [channelFilter, setChannelFilter] = useState(persisted.channelFilter ?? 'all')
+  const [albumFilter, setAlbumFilter] = useState(persisted.albumFilter ?? 'all')
+  const [cameraFilter, setCameraFilter] = useState(persisted.cameraFilter ?? 'all')
+  const [lensFilter, setLensFilter] = useState(persisted.lensFilter ?? 'all')
+  const [onlyFeatured, setOnlyFeatured] = useState(persisted.onlyFeatured ?? false)
+  const [sortBy, setSortBy] = useState<SortOption>(persisted.sortBy ?? 'upload-desc')
+  const [showFilters, setShowFilters] = useState(persisted.showFilters ?? false)
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [cameras, setCameras] = useState<CameraDto[]>([])
   const [lenses, setLenses] = useState<LensDto[]>([])
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+
+  // Persist filter state to sessionStorage
+  useEffect(() => {
+    try {
+      const state: PersistedFilters = {
+        search, categoryFilter, photoTypeFilter, channelFilter, albumFilter,
+        cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters,
+      }
+      sessionStorage.setItem(PHOTOS_FILTER_KEY, JSON.stringify(state))
+    } catch {}
+  }, [search, categoryFilter, photoTypeFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters])
 
   // Load albums, cameras, and lenses on mount
   useEffect(() => {
@@ -83,6 +124,7 @@ export function PhotosTab({
         setLenses(lensesData)
       } catch (err) {
         console.error('Failed to load filter data:', err)
+        notify?.(err instanceof Error ? err.message : t('common.error'), 'error')
       }
     }
     loadFilterData()
@@ -92,7 +134,7 @@ export function PhotosTab({
   const cameraOptions = useMemo(() => {
     return cameras.map(c => ({
       value: c.id,
-      label: `${c.displayName} (${c.photoCount})`
+      label: c.displayName
     }))
   }, [cameras])
 
@@ -100,7 +142,7 @@ export function PhotosTab({
   const lensOptions = useMemo(() => {
     return lenses.map(l => ({
       value: l.id,
-      label: `${l.displayName} (${l.photoCount})`
+      label: l.displayName
     }))
   }, [lenses])
 
@@ -108,13 +150,14 @@ export function PhotosTab({
   const activeFilterCount = useMemo(() => {
     let count = 0
     if (categoryFilter !== 'all') count++
+    if (photoTypeFilter !== 'all') count++
     if (channelFilter !== 'all') count++
     if (albumFilter !== 'all') count++
     if (cameraFilter !== 'all') count++
     if (lensFilter !== 'all') count++
     if (onlyFeatured) count++
     return count
-  }, [categoryFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured])
+  }, [categoryFilter, photoTypeFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured])
 
   // Get album photo IDs for filtering
   const albumPhotoIds = useMemo(() => {
@@ -132,6 +175,9 @@ export function PhotosTab({
 
       const matchesCategory =
         categoryFilter === 'all' || p.category.includes(categoryFilter)
+
+      const matchesPhotoType =
+        photoTypeFilter === 'all' || (p.photoType ?? 'digital') === photoTypeFilter
 
       const matchesChannel =
         channelFilter === 'all' || p.storageProvider === channelFilter
@@ -151,11 +197,11 @@ export function PhotosTab({
 
       const matchesFeatured = !onlyFeatured || p.isFeatured
 
-      return matchesSearch && matchesCategory && matchesChannel && matchesAlbum && matchesCamera && matchesLens && matchesFeatured
+      return matchesSearch && matchesCategory && matchesPhotoType && matchesChannel && matchesAlbum && matchesCamera && matchesLens && matchesFeatured
     })
 
     // Apply sorting
-    return filtered.sort((a, b) => {
+    return filtered.toSorted((a, b) => {
       switch (sortBy) {
         case 'upload-desc':
           return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -175,16 +221,18 @@ export function PhotosTab({
           return 0
       }
     })
-  }, [photos, search, categoryFilter, channelFilter, albumPhotoIds, cameraFilter, lensFilter, onlyFeatured, sortBy])
+  }, [photos, search, categoryFilter, photoTypeFilter, channelFilter, albumPhotoIds, cameraFilter, lensFilter, onlyFeatured, sortBy])
 
   const clearAllFilters = () => {
     setCategoryFilter('all')
+    setPhotoTypeFilter('all')
     setChannelFilter('all')
     setAlbumFilter('all')
     setCameraFilter('all')
     setLensFilter('all')
     setOnlyFeatured(false)
     setSearch('')
+    try { sessionStorage.removeItem(PHOTOS_FILTER_KEY) } catch {}
   }
 
   const sortOptions: { value: SortOption; label: string }[] = [
@@ -196,12 +244,9 @@ export function PhotosTab({
 
   return (
     <div className="space-y-4">
-      {/* Main Toolbar */}
-      <div className="bg-muted/30 border border-border rounded-lg p-4">
-        {/* Top Row: Selection, Search, Actions */}
-        <div className="flex flex-col md:flex-row md:items-center gap-4">
-          {/* Left: Selection Info */}
-          <div className="flex items-center gap-3 shrink-0">
+      <AdminCollectionToolbar
+        info={(
+          <>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -232,43 +277,21 @@ export function PhotosTab({
                 </AdminButton>
               </>
             )}
-          </div>
-
-          {/* Center: Search */}
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder={t('common.search')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-4 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-              />
-              {search && (
-                <AdminButton
-                  onClick={() => setSearch('')}
-                  adminVariant="icon"
-                  size="xs"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </AdminButton>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2 shrink-0">
+          </>
+        )}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={t('common.search')}
+        actions={(
+          <>
             {/* Filter Toggle */}
             <AdminButton
               onClick={() => setShowFilters(!showFilters)}
-              adminVariant="outline"
-              size="sm"
-              className={`gap-2 rounded-md text-xs font-medium normal-case ${
+              adminVariant="unstyled"
+              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-md transition-all ${
                 showFilters || activeFilterCount > 0
                   ? 'bg-primary/10 border-primary/30 text-primary'
-                  : 'bg-background text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                  : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
               }`}
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -284,9 +307,8 @@ export function PhotosTab({
             <div className="flex bg-background border border-border rounded-md overflow-hidden">
               <AdminButton
                 onClick={() => onViewModeChange('grid')}
-                adminVariant="icon"
-                size="xs"
-                className={`p-2 ${
+                adminVariant="unstyled"
+                className={`p-2 transition-colors ${
                   viewMode === 'grid'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -297,9 +319,8 @@ export function PhotosTab({
               </AdminButton>
               <AdminButton
                 onClick={() => onViewModeChange('list')}
-                adminVariant="icon"
-                size="xs"
-                className={`p-2 ${
+                adminVariant="unstyled"
+                className={`p-2 transition-colors ${
                   viewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -313,20 +334,16 @@ export function PhotosTab({
             {/* Refresh */}
             <AdminButton
               onClick={onRefresh}
-              adminVariant="icon"
-              size="xs"
-              className="p-2 bg-background border border-border rounded-md text-muted-foreground hover:text-foreground hover:border-foreground/30"
+              adminVariant="unstyled"
+              className="p-2 bg-background border border-border rounded-md text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
               title={t('common.refresh')}
             >
               <RefreshCw className="w-4 h-4" />
             </AdminButton>
-          </div>
-        </div>
-
-        {/* Filter Row - Collapsible */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex flex-wrap items-center gap-3">
+          </>
+        )}
+        filters={showFilters ? (
+          <div className="flex flex-wrap items-center gap-3">
               {/* Sort */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">Sort:</span>
@@ -354,6 +371,21 @@ export function PhotosTab({
                 />
               </div>
 
+              {/* Photo Type Filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.all_types')}:</span>
+                <AdminSelect
+                  value={photoTypeFilter}
+                  onChange={setPhotoTypeFilter}
+                  options={[
+                    { value: 'all', label: t('gallery.all') },
+                    { value: 'digital', label: t('admin.upload_type_digital') },
+                    { value: 'film', label: t('admin.upload_type_film') },
+                  ]}
+                  className="min-w-[120px]"
+                />
+              </div>
+
               {/* Storage Filter */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.channel_filter')}:</span>
@@ -363,7 +395,7 @@ export function PhotosTab({
                   options={[
                     { value: 'all', label: t('gallery.all') },
                     { value: 'local', label: 'Local' },
-                    { value: 'r2', label: 'Cloudflare R2' },
+                    { value: 's3', label: 'S3' },
                     { value: 'github', label: 'GitHub' },
                   ]}
                   className="min-w-[130px]"
@@ -438,28 +470,37 @@ export function PhotosTab({
                   <div className="h-5 w-px bg-border" />
                   <AdminButton
                     onClick={clearAllFilters}
-                    adminVariant="link"
-                    size="xs"
-                    className="gap-1.5 text-xs font-medium normal-case"
+                    adminVariant="unstyled"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="w-3.5 h-3.5" />
-                    <span>Clear all</span>
+                    <span>{t('admin.clear_all_filters')}</span>
                   </AdminButton>
                 </>
               )}
-            </div>
           </div>
-        )}
-
-        {/* Active Filters Tags */}
-        {activeFilterCount > 0 && !showFilters && (
+        ) : undefined}
+        activeFilters={activeFilterCount > 0 && !showFilters ? (
           <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Active filters:</span>
+            <span className="text-xs text-muted-foreground">{t('admin.active_filters_label')}:</span>
             {categoryFilter !== 'all' && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
                 {categoryFilter}
                 <AdminButton
                   onClick={() => setCategoryFilter('all')}
+                  adminVariant="icon"
+                  size="xs"
+                  className="p-0 hover:text-primary/70"
+                >
+                  <X className="w-3 h-3" />
+                </AdminButton>
+              </span>
+            )}
+            {photoTypeFilter !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
+                {t(`admin.upload_type_${photoTypeFilter}`)}
+                <AdminButton
+                  onClick={() => setPhotoTypeFilter('all')}
                   adminVariant="icon"
                   size="xs"
                   className="p-0 hover:text-primary/70"
@@ -523,7 +564,7 @@ export function PhotosTab({
             {onlyFeatured && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-500/10 text-amber-600 text-xs rounded-md">
                 <Star className="w-3 h-3 fill-current" />
-                Featured
+                {t('admin.featured_only')}
                 <AdminButton
                   onClick={() => setOnlyFeatured(false)}
                   adminVariant="icon"
@@ -536,15 +577,14 @@ export function PhotosTab({
             )}
             <AdminButton
               onClick={clearAllFilters}
-              adminVariant="link"
-              size="xs"
-              className="text-xs text-muted-foreground underline normal-case"
+              adminVariant="unstyled"
+              className="text-xs text-muted-foreground hover:text-foreground underline"
             >
-              Clear all
+              {t('admin.clear_all_filters')}
             </AdminButton>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error && (
         <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-sm flex items-center gap-2">

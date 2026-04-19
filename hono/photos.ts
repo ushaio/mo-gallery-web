@@ -5,7 +5,7 @@ import { authMiddleware, AuthVariables } from './middleware/auth'
 import { extractExifData } from '~/server/lib/exif'
 import { extractDominantColors } from '~/server/lib/colors'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
-import { StorageProviderFactory, StorageConfig, StorageError } from '~/server/lib/storage'
+import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
 
@@ -23,53 +23,70 @@ function buildThumbnailKey(originalKey: string): string {
   return parsed.dir ? `${parsed.dir}/${thumbnailFilename}` : thumbnailFilename
 }
 
-/**
- * Build storage configuration from database settings
- */
-async function getStorageConfig(
-  providerOverride?: string
-): Promise<StorageConfig> {
-  // Fetch all settings
-  const settings = await db.setting.findMany()
-  const settingsMap = Object.fromEntries(
-    settings.map((s) => [s.key, s.value])
+function isValidDate(value: Date | undefined): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime())
+}
+
+function normalizeStorageKeyCandidate(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const normalized = value.replace(/\\/g, '/').trim()
+  if (!normalized) return undefined
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      return new URL(normalized).pathname.replace(/^\/+/, '')
+    } catch {
+      return normalized
+    }
+  }
+  return normalized.replace(/^\/+/, '')
+}
+
+function deriveOriginalStorageKey(photo: {
+  storageKey?: string | null
+  url: string
+}) {
+  return (
+    normalizeStorageKeyCandidate(photo.storageKey) ||
+    normalizeStorageKeyCandidate(photo.url)
   )
+}
 
-  const provider = (
-    providerOverride ||
-    settingsMap.storage_provider ||
-    'local'
-  ) as 'local' | 'github' | 'r2'
-
-  const config: StorageConfig = { provider }
-
-  switch (provider) {
-    case 'local':
-      config.localBasePath = path.join(process.cwd(), 'public', 'uploads')
-      config.localBaseUrl = '/uploads'
-      break
-
-    case 'github':
-      config.githubToken = settingsMap.github_token
-      config.githubRepo = settingsMap.github_repo
-      config.githubPath = settingsMap.github_path || 'uploads'
-      config.githubBranch = settingsMap.github_branch || 'main'
-      config.githubAccessMethod = (settingsMap.github_access_method ||
-        'jsdelivr') as 'raw' | 'jsdelivr' | 'pages'
-      config.githubPagesUrl = settingsMap.github_pages_url
-      break
-
-    case 'r2':
-      config.r2AccessKeyId = settingsMap.r2_access_key_id
-      config.r2SecretAccessKey = settingsMap.r2_secret_access_key
-      config.r2Bucket = settingsMap.r2_bucket
-      config.r2Endpoint = settingsMap.r2_endpoint
-      config.r2PublicUrl = settingsMap.r2_public_url
-      config.r2Path = settingsMap.r2_path
-      break
+function deriveThumbnailStorageKey(photo: {
+  storageKey?: string | null
+  thumbnailUrl?: string | null
+}) {
+  if (photo.thumbnailUrl) {
+    const thumbnailFromUrl = normalizeStorageKeyCandidate(photo.thumbnailUrl)
+    if (thumbnailFromUrl) return thumbnailFromUrl
   }
 
-  return config
+  const originalKey = normalizeStorageKeyCandidate(photo.storageKey)
+  return originalKey ? buildThumbnailKey(originalKey) : undefined
+}
+
+function mapPhotoDto(
+  photo: {
+    categories: { name: string }[]
+    dominantColors: string | null
+    filmPhoto?: { filmRollId: string; filmRoll?: { name: string } | null } | null
+  } & Record<string, unknown>
+) {
+  return {
+    ...photo,
+    category: photo.categories.map((c) => c.name).join(','),
+    dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
+    photoType: photo.filmPhoto ? 'film' : 'digital',
+    filmRollId: photo.filmPhoto?.filmRollId ?? null,
+    filmRollName: photo.filmPhoto?.filmRoll?.name ?? null,
+  }
+}
+
+/** Resolve storage config preferring storageSourceId, falling back to storageProvider string. */
+async function resolveStorageConfig(photo: { storageSourceId?: string | null; storageProvider: string }) {
+  if (photo.storageSourceId) {
+    return getStorageConfigBySourceId(photo.storageSourceId)
+  }
+  return getStorageConfig(photo.storageProvider)
 }
 
 // Public endpoints
@@ -90,18 +107,19 @@ photos.get('/photos', async (c) => {
     if (allStr === 'true') {
       const photosList = await db.photo.findMany({
         where,
-        include: { categories: true, camera: true, lens: true },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
         orderBy: [
           { takenAt: { sort: 'desc', nulls: 'last' } },
           { createdAt: 'desc' },
         ],
       })
 
-      const data = photosList.map((p) => ({
-        ...p,
-        category: p.categories.map((c) => c.name).join(','),
-        dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-      }))
+      const data = photosList.map(mapPhotoDto)
 
       return c.json({
         success: true,
@@ -119,7 +137,12 @@ photos.get('/photos', async (c) => {
       db.photo.count({ where }),
       db.photo.findMany({
         where,
-        include: { categories: true, camera: true, lens: true },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
         skip,
         take: pageSize,
         orderBy: [
@@ -129,11 +152,7 @@ photos.get('/photos', async (c) => {
       })
     ])
 
-    const data = photosList.map((p) => ({
-      ...p,
-      category: p.categories.map((c) => c.name).join(','),
-      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-    }))
+    const data = photosList.map(mapPhotoDto)
 
     return c.json({
       success: true,
@@ -156,7 +175,12 @@ photos.get('/photos/featured', async (c) => {
   try {
     const photosList = await db.photo.findMany({
       where: { isFeatured: true },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
       take: 6,
       orderBy: [
         { takenAt: { sort: 'desc', nulls: 'last' } },
@@ -164,11 +188,7 @@ photos.get('/photos/featured', async (c) => {
       ],
     })
 
-    const data = photosList.map((p) => ({
-      ...p,
-      category: p.categories.map((c) => c.name).join(','),
-      dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
-    }))
+    const data = photosList.map(mapPhotoDto)
 
     return c.json({
       success: true,
@@ -285,12 +305,14 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
 
 photos.post('/admin/photos', async (c) => {
   try {
+    const startedAt = Date.now()
     const allowedOriginFlags = new Set(['web', 'mobile'])
     const formData = await c.req.formData()
     const file = formData.get('file') as File
     const titleRaw = formData.get('title') as string
     const title = titleRaw?.trim() || 'Untitled'
     const category = formData.get('category') as string
+    const storageSourceId = formData.get('storage_source_id') as string | null
     const storageProvider = formData.get('storage_provider') as string
     const storagePath = formData.get('storage_path') as string
     const storagePathFull = formData.get('storage_path_full') === 'true'
@@ -304,6 +326,16 @@ photos.post('/admin/photos', async (c) => {
     if (!file) {
       return c.json({ error: 'File is required' }, 400)
     }
+
+    console.info('[upload] request received', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      storageSourceId,
+      storageProvider: storageProvider || undefined,
+      storagePath: storagePath || undefined,
+      storagePathFull,
+    })
 
     // Check for duplicate if fileHash is provided
     if (fileHash) {
@@ -324,13 +356,20 @@ photos.post('/admin/photos', async (c) => {
     // Process image buffer
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
+    console.info('[upload] file buffered', {
+      fileName: file.name,
+      fileSize: buffer.length,
+      elapsedMs: Date.now() - startedAt,
+    })
 
     // Run these operations in parallel:
     // 1. Get storage configuration
     // 2. Extract EXIF data
     // 3. Get metadata + generate thumbnail
     const [storageConfig, exifData, { metadata, thumbnailBuffer }] = await Promise.all([
-      getStorageConfig(storageProvider || undefined),
+      storageSourceId
+        ? getStorageConfigBySourceId(storageSourceId)
+        : getStorageConfig(storageProvider || undefined),
       extractExifData(buffer),
       (async () => {
         const sharpInstance = sharp(buffer)
@@ -349,6 +388,15 @@ photos.post('/admin/photos', async (c) => {
       })(),
     ])
 
+    console.info('[upload] image processed', {
+      fileName: file.name,
+      width: metadata.width,
+      height: metadata.height,
+      thumbnailSize: thumbnailBuffer.length,
+      provider: storageConfig.provider,
+      elapsedMs: Date.now() - startedAt,
+    })
+
     // Create storage provider instance
     const storage = StorageProviderFactory.create(storageConfig)
 
@@ -364,24 +412,6 @@ photos.post('/admin/photos', async (c) => {
     const filename = `${randomName}${ext}`
     const thumbnailFilename = buildThumbnailFilename(filename)
 
-    // Upload via storage provider (original + thumbnail in parallel)
-    const uploadResult = await storage.upload(
-      {
-        buffer,
-        filename,
-        path: storagePath,
-        contentType: file.type,
-        useFullPath: storagePathFull,
-      },
-      {
-        buffer: thumbnailBuffer,
-        filename: thumbnailFilename,
-        path: storagePath,
-        contentType: 'image/webp',
-        useFullPath: storagePathFull,
-      }
-    )
-
     // Split categories by comma and trim
     const categoriesArray = category
       ? category
@@ -390,8 +420,35 @@ photos.post('/admin/photos', async (c) => {
           .filter((c) => c.length > 0)
       : []
 
-    // Extract dominant colors from the image
-    const dominantColors = await extractDominantColors(buffer)
+    // Use the generated thumbnail for color extraction to avoid decoding the
+    // large original image again inside a constrained serverless function.
+    const [uploadResult, dominantColors] = await Promise.all([
+      storage.upload(
+        {
+          buffer,
+          filename,
+          path: storagePath,
+          contentType: file.type,
+          useFullPath: storagePathFull,
+        },
+        {
+          buffer: thumbnailBuffer,
+          filename: thumbnailFilename,
+          path: storagePath,
+          contentType: 'image/webp',
+          useFullPath: storagePathFull,
+        }
+      ),
+      extractDominantColors(thumbnailBuffer),
+    ])
+
+    console.info('[upload] storage upload complete', {
+      fileName: file.name,
+      key: uploadResult.key,
+      thumbnailKey: uploadResult.thumbnailKey,
+      dominantColors: dominantColors.length,
+      elapsedMs: Date.now() - startedAt,
+    })
 
     // Find or create camera record (brand-based)
     let cameraId: string | null = null
@@ -437,6 +494,7 @@ photos.post('/admin/photos', async (c) => {
         thumbnailUrl: uploadResult.thumbnailUrl,
         originFlag,
         storageProvider: storageConfig.provider,
+        storageSourceId: storageSourceId || null,
         storageKey: uploadResult.key,
         width: metadata.width || 0,
         height: metadata.height || 0,
@@ -455,7 +513,7 @@ photos.post('/admin/photos', async (c) => {
         aperture: exifData.aperture,
         shutterSpeed: exifData.shutterSpeed,
         iso: exifData.iso,
-        takenAt: exifData.takenAt,
+        takenAt: isValidDate(exifData.takenAt) ? exifData.takenAt : undefined,
         gps: exifData.gps,
         orientation: exifData.orientation,
         software: exifData.software,
@@ -467,22 +525,25 @@ photos.post('/admin/photos', async (c) => {
           })),
         },
       },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
     })
 
     return c.json({
       success: true,
-      data: {
-        ...photo,
-        category: photo.categories.map((c) => c.name).join(','),
-      },
+      data: mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Upload photo error:', error)
     if (error instanceof StorageError) {
       return c.json({ error: error.message }, 400)
     }
-    return c.json({ error: 'Internal server error' }, 500)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    return c.json({ error: message }, 500)
   }
 })
 
@@ -519,7 +580,7 @@ photos.delete('/admin/photos/:id', async (c) => {
       // Delete files from storage based on user selection
       if (deleteOriginal || deleteThumbnail) {
         // Get storage configuration for the provider used by this photo
-        const storageConfig = await getStorageConfig(photo.storageProvider)
+        const storageConfig = await resolveStorageConfig(photo)
 
         // Create storage provider instance
         const storage = StorageProviderFactory.create(storageConfig)
@@ -563,10 +624,155 @@ photos.delete('/admin/photos/:id', async (c) => {
   }
 })
 
+photos.post('/admin/photos/batch-delete', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { photoIds, deleteOriginal, deleteThumbnail, force } = body as {
+      photoIds: string[]
+      deleteOriginal?: boolean
+      deleteThumbnail?: boolean
+      force?: boolean
+    }
+
+    if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+      return c.json({ error: 'photoIds must be a non-empty array' }, 400)
+    }
+
+    // Fetch all photos with their story associations
+    const photosList = await db.photo.findMany({
+      where: { id: { in: photoIds } },
+      include: {
+        stories: { select: { id: true, title: true } },
+      },
+    })
+
+    const errors: string[] = []
+    let deleted = 0
+    let failed = 0
+
+    // Filter out photos that have stories (unless force is true)
+    const photosToDelete: typeof photosList = []
+    for (const photo of photosList) {
+      if (photo.stories.length > 0 && !force) {
+        errors.push(`Photo "${photo.title}" (${photo.id}) has associated stories`)
+        failed++
+      } else {
+        photosToDelete.push(photo)
+      }
+    }
+
+    // Track missing photos
+    const foundIds = new Set(photosList.map((p) => p.id))
+    for (const id of photoIds) {
+      if (!foundIds.has(id)) {
+        errors.push(`Photo ${id} not found`)
+        failed++
+      }
+    }
+
+    // Group photos by exact storage source so multi-instance providers stay isolated.
+    const byStorageTarget = new Map<string, typeof photosToDelete>()
+    for (const photo of photosToDelete) {
+      const storageTarget = photo.storageSourceId
+        ? `source:${photo.storageSourceId}`
+        : `provider:${photo.storageProvider || 'default'}`
+      if (!byStorageTarget.has(storageTarget)) {
+        byStorageTarget.set(storageTarget, [])
+      }
+      byStorageTarget.get(storageTarget)!.push(photo)
+    }
+
+    // Process each storage target group in parallel
+    const providerResults = await Promise.allSettled(
+      Array.from(byStorageTarget.entries()).map(async ([storageTarget, providerPhotos]) => {
+        let storage: ReturnType<typeof StorageProviderFactory.create> | null = null
+        if (deleteOriginal || deleteThumbnail) {
+          const storageConfig = storageTarget.startsWith('source:')
+            ? await getStorageConfigBySourceId(storageTarget.slice('source:'.length))
+            : await getStorageConfig(storageTarget === 'provider:default' ? undefined : storageTarget.slice('provider:'.length))
+          storage = StorageProviderFactory.create(storageConfig)
+        }
+
+        // Delete photos within this provider group in parallel
+        const photoResults = await Promise.allSettled(
+          providerPhotos.map(async (photo) => {
+            // Delete files from storage if requested
+            if (storage && (deleteOriginal || deleteThumbnail)) {
+              let thumbnailKey: string | undefined
+              if (deleteThumbnail && photo.storageKey) {
+                thumbnailKey = buildThumbnailKey(photo.storageKey)
+              }
+
+              const originalKey = deleteOriginal ? (photo.storageKey || photo.url) : undefined
+              const thumbKey = deleteThumbnail ? thumbnailKey : undefined
+
+              if (originalKey && thumbKey) {
+                await storage.delete(originalKey, thumbKey)
+              } else if (originalKey) {
+                await storage.delete(originalKey)
+              } else if (thumbKey) {
+                await storage.delete(thumbKey)
+              }
+            }
+
+            // Delete DB record
+            await db.photo.delete({ where: { id: photo.id } })
+            return photo.id
+          })
+        )
+
+        return photoResults
+      })
+    )
+
+    // Collect results from all provider groups
+    for (const providerResult of providerResults) {
+      if (providerResult.status === 'fulfilled') {
+        for (const photoResult of providerResult.value) {
+          if (photoResult.status === 'fulfilled') {
+            deleted++
+          } else {
+            failed++
+            errors.push(
+              photoResult.reason instanceof Error
+                ? photoResult.reason.message
+                : String(photoResult.reason)
+            )
+          }
+        }
+      } else {
+        // Entire provider group failed
+        failed++
+        errors.push(
+          providerResult.reason instanceof Error
+            ? providerResult.reason.message
+            : String(providerResult.reason)
+        )
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: { deleted, failed, errors },
+    })
+  } catch (error) {
+    console.error('Batch delete photos error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
+    const requestedPhotoType =
+      body.photoType === 'digital' || body.photoType === 'film'
+        ? body.photoType
+        : undefined
+    const requestedFilmRollId =
+      body.filmRollId === null || typeof body.filmRollId === 'string'
+        ? body.filmRollId
+        : undefined
 
     // Build update data
     const updateData: Record<string, unknown> = {}
@@ -582,17 +788,19 @@ photos.patch('/admin/photos/:id', async (c) => {
         return c.json({ error: 'Photo not found' }, 404)
       }
 
-      const storageConfig = await getStorageConfig(photo.storageProvider)
+      const storageConfig = await resolveStorageConfig(photo)
       const storage = StorageProviderFactory.create(storageConfig)
 
       // Derive thumbnail key
-      let thumbnailKey: string | undefined
-      if (photo.storageKey) {
-        thumbnailKey = buildThumbnailKey(photo.storageKey)
+      const originalKey = deriveOriginalStorageKey(photo)
+      if (!originalKey) {
+        return c.json({ error: 'Photo storage key is missing' }, 400)
       }
 
+      const thumbnailKey = deriveThumbnailStorageKey(photo)
+
       const moveResult = await storage.move(
-        photo.storageKey || photo.url,
+        originalKey,
         body.storagePath,
         thumbnailKey
       )
@@ -634,23 +842,83 @@ photos.patch('/admin/photos/:id', async (c) => {
       }
     }
 
+    if (requestedPhotoType === 'film') {
+      if (!requestedFilmRollId) {
+        return c.json({ error: 'Film photos must be assigned to a film roll' }, 400)
+      }
+
+      const roll = await db.filmRoll.findUnique({
+        where: { id: requestedFilmRollId },
+        select: { id: true },
+      })
+
+      if (!roll) {
+        return c.json({ error: 'Film roll not found' }, 404)
+      }
+
+      const existingFilmPhoto = await db.filmPhoto.findUnique({
+        where: { photoId: id },
+        select: { id: true, filmRollId: true, frameNumber: true },
+      })
+
+      if (existingFilmPhoto) {
+        if (existingFilmPhoto.filmRollId !== requestedFilmRollId) {
+          const maxFrame = await db.filmPhoto.findFirst({
+            where: { filmRollId: requestedFilmRollId },
+            orderBy: { frameNumber: 'desc' },
+            select: { frameNumber: true },
+          })
+
+          await db.filmPhoto.update({
+            where: { id: existingFilmPhoto.id },
+            data: {
+              filmRollId: requestedFilmRollId,
+              frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+            },
+          })
+        }
+      } else {
+        const maxFrame = await db.filmPhoto.findFirst({
+          where: { filmRollId: requestedFilmRollId },
+          orderBy: { frameNumber: 'desc' },
+          select: { frameNumber: true },
+        })
+
+        await db.filmPhoto.create({
+          data: {
+            photoId: id,
+            filmRollId: requestedFilmRollId,
+            frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+          },
+        })
+      }
+    } else if (requestedPhotoType === 'digital') {
+      await db.filmPhoto.deleteMany({
+        where: { photoId: id },
+      })
+    }
+
     const photo = await db.photo.update({
       where: { id },
       data: updateData,
-      include: { categories: true, camera: true, lens: true }
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      }
     })
 
     return c.json({
       success: true,
-      data: {
-        ...photo,
-        category: photo.categories.map((c) => c.name).join(','),
-        dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
-      },
+      data: mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Update photo error:', error)
-    return c.json({ error: 'Internal server error' }, 500)
+    if (error instanceof StorageError) {
+      return c.json({ error: error.message }, 400)
+    }
+    return c.json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
   }
 })
 
@@ -747,7 +1015,7 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
     // Find all photos using this storage provider
     const photosList = await db.photo.findMany({
       where: {
-        storageProvider: storageProvider as 'local' | 'github' | 'r2',
+        storageProvider: storageProvider as 'local' | 'github' | 's3',
       },
     })
 
@@ -799,9 +1067,9 @@ photos.post('/admin/photos/:id/reanalyze-colors', async (c) => {
     }
 
     // Get storage config and download the image
-    const storageConfig = await getStorageConfig(photo.storageProvider)
+    const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
-    
+
     const buffer = await storage.download(photo.storageKey || photo.url)
     if (!buffer) {
       return c.json({ error: 'Failed to download image' }, 500)
@@ -856,7 +1124,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    const storageConfig = await getStorageConfig(photo.storageProvider)
+    const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
     storage.validateConfig()
 
@@ -919,7 +1187,9 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
         updateData.aperture = exifData.aperture
         updateData.shutterSpeed = exifData.shutterSpeed
         updateData.iso = exifData.iso
-        updateData.takenAt = exifData.takenAt
+        if (isValidDate(exifData.takenAt)) {
+          updateData.takenAt = exifData.takenAt
+        }
         updateData.gps = exifData.gps
         updateData.orientation = exifData.orientation
         updateData.software = exifData.software
@@ -995,7 +1265,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const photo = await db.photo.findUnique({ where: { id } })
     if (!photo) return c.json({ error: 'Photo not found' }, 404)
 
-    const storageConfig = await getStorageConfig(photo.storageProvider)
+    const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
 
     const buffer = await storage.download(photo.storageKey || photo.url)
@@ -1023,16 +1293,17 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const updated = await db.photo.update({
       where: { id },
       data: { thumbnailUrl: uploadResult.url },
-      include: { categories: true, camera: true, lens: true },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
     })
 
     return c.json({
       success: true,
-      data: {
-        ...updated,
-        category: updated.categories.map((c) => c.name).join(','),
-        dominantColors: updated.dominantColors ? JSON.parse(updated.dominantColors) : null,
-      },
+      data: mapPhotoDto(updated),
     })
   } catch (error) {
     console.error('Generate thumbnail error:', error)

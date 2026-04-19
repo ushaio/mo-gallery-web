@@ -31,7 +31,12 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   validateConfig(): void {
-    // Local storage requires no special config
+    if (process.env.VERCEL) {
+      throw new StorageError(
+        'Local storage is not supported on Vercel. Configure GitHub or S3 storage for uploads.',
+        'LOCAL_STORAGE_UNSUPPORTED_ON_VERCEL'
+      )
+    }
   }
 
   private async ensureDirectory(): Promise<void> {
@@ -59,9 +64,10 @@ export class LocalStorageProvider implements StorageProvider {
       const filePath = this.buildFilePath(file.filename, file.path)
       await writeFile(filePath, file.buffer)
 
+      const fileKey = this.buildRelativeKey(file.filename, file.path)
       const result: UploadResult = {
         url: this.getUrl(file.filename, file.path),
-        key: file.filename,
+        key: fileKey,
       }
 
       // Upload thumbnail
@@ -72,7 +78,7 @@ export class LocalStorageProvider implements StorageProvider {
         )
         await writeFile(thumbPath, thumbnail.buffer)
         result.thumbnailUrl = this.getUrl(thumbnail.filename, thumbnail.path)
-        result.thumbnailKey = thumbnail.filename
+        result.thumbnailKey = this.buildRelativeKey(thumbnail.filename, thumbnail.path)
       }
 
       return result
@@ -101,7 +107,11 @@ export class LocalStorageProvider implements StorageProvider {
       }
     } catch (error) {
       console.error('Failed to delete local file:', error)
-      // Don't throw - deletion is best-effort
+      throw new StorageError(
+        'Failed to delete from local storage',
+        'LOCAL_DELETE_FAILED',
+        error
+      )
     }
   }
 
@@ -202,5 +212,11 @@ export class LocalStorageProvider implements StorageProvider {
       targetPath = path.join(targetPath, subfolder)
     }
     return path.join(targetPath, filename)
+  }
+
+  private buildRelativeKey(filename: string, subfolder?: string): string {
+    return subfolder
+      ? path.posix.join(subfolder.replace(/\\/g, '/'), filename)
+      : filename
   }
 }

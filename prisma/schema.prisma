@@ -88,6 +88,7 @@ model Photo {
   thumbnailUrl    String?
   originFlag      String   @default("web")
   storageProvider String   @default("local")
+  storageSourceId String?
   storageKey      String?
   width           Int
   height          Int
@@ -121,10 +122,41 @@ model Photo {
   stories    Story[]    @relation("PhotoStories")
   comments   Comment[]
   albums     Album[]    @relation("AlbumPhotos")
+  filmPhoto  FilmPhoto?
 
   @@index([cameraId])
   @@index([lensId])
   @@index([fileHash])
+}
+
+model FilmRoll {
+  id         String      @id @default(cuid())
+  name       String
+  brand      String
+  iso        Int
+  frameCount Int
+  notes      String?
+  shootDate  DateTime?
+  endDate    DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  filmPhotos FilmPhoto[]
+
+  @@index([shootDate])
+}
+
+model FilmPhoto {
+  id          String   @id @default(cuid())
+  filmRollId  String
+  photoId     String   @unique
+  frameNumber Int
+  createdAt   DateTime @default(now())
+
+  filmRoll FilmRoll @relation(fields: [filmRollId], references: [id], onDelete: Cascade)
+  photo    Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+
+  @@index([filmRollId])
 }
 
 model Album {
@@ -156,11 +188,29 @@ model Setting {
   value String
 }
 
+model StorageSource {
+  id           String   @id @default(cuid())
+  name         String
+  type         String   // 'local' | 'github' | 's3'
+  accessKey    String?  // GitHub: token, S3: accessKeyId
+  secretKey    String?  // S3: secretAccessKey
+  bucket       String?  // GitHub: owner/repo, S3: bucket
+  region       String?  // S3
+  endpoint     String?  // S3
+  publicUrl    String?  // GitHub: pagesUrl, S3: publicUrl
+  basePath     String?  // Local: sub-path, GitHub/S3: path prefix
+  branch       String?  // GitHub
+  accessMethod String?  // GitHub: raw/jsdelivr/pages
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Story {
   id           String   @id @default(uuid())
   title        String
   content      String // Markdown content
   coverPhotoId String?
+  coverCrop    Json?
   isPublished  Boolean  @default(false)
   storyDate    DateTime @default(now())
   createdAt    DateTime @default(now())

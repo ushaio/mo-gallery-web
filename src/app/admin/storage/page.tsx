@@ -3,18 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { scanStorage, cleanupStorage, fixMissingPhotos, generateThumbnail, StorageFile, StorageScanStats } from '@/lib/api'
+import type { StorageFile, StorageScanStats } from '@/lib/api/types'
+import { scanStorage, cleanupStorage, fixMissingPhotos } from '@/lib/api/storage'
+import { generateThumbnail } from '@/lib/api/photos'
 import { MissingFileUploadModal } from '@/components/admin/MissingFileUploadModal'
 import { Toast, Notification } from '@/components/Toast'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB']
+
 function formatSize(bytes: number): string {
   if (bytes === 0) return '-'
   const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${SIZE_UNITS[i]}`
 }
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif']
@@ -94,7 +97,7 @@ export default function StorageCleanupPage() {
   }
 
   const groupedFiles = groupFilesByFolder(files)
-  const sortedFolders = Object.keys(groupedFiles).sort()
+  const sortedFolders = Object.keys(groupedFiles).toSorted()
 
   const toggleFolder = (folder: string) => {
     const newCollapsed = new Set(collapsedFolders)
@@ -215,7 +218,7 @@ export default function StorageCleanupPage() {
             onChange={setProvider}
             options={[
               { value: 'local', label: t('admin.storage_provider_local') },
-              { value: 'r2', label: t('admin.storage_provider_r2') },
+              { value: 's3', label: 'S3' },
               { value: 'github', label: t('admin.storage_provider_github') },
             ]}
             className="min-w-[160px]"

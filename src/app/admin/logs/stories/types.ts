@@ -1,6 +1,6 @@
 'use client'
 
-import type { StoryDto } from '@/lib/api'
+import type { StoryDto } from '@/lib/api/types'
 import type { StoryEditorDraftData } from '@/lib/client-db'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 
@@ -23,6 +23,7 @@ export interface StorySnapshot {
   storyDate: string
   photoIds: string[]
   coverPhotoId?: string
+  coverCrop?: { x: number; y: number; width: number; height: number } | null
 }
 
 export interface DraftRestoreDialogState {

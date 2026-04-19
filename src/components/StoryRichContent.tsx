@@ -1,10 +1,16 @@
-﻿'use client'
+'use client'
 
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveAssetUrl } from '@/lib/api/core'
+import { parseMusicEmbedInfoByProvider } from '@/lib/music-embed'
 import type { PhotoDto } from '@/lib/api/types'
+import {
+  buildStoryPhotoIndex,
+  escapeHtmlAttribute,
+  type StoryPhotoIndex,
+} from '@/lib/story-rich-content'
 import './story-rich-content.css'
 
 interface StoryRichContentProps {
@@ -12,11 +18,26 @@ interface StoryRichContentProps {
   photos: PhotoDto[]
   cdnDomain?: string
   className?: string
+  onPhotoClick?: (photo: PhotoDto) => void
 }
 
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const HTML_ANCHOR_PATTERN = /<a\b([^>]*?)href=(['"])(.*?)\2([^>]*)>/gi
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
+const HTML_HR_TAG_PATTERN = /<hr\b[^>]*\/?>/gi
+const HTML_MUSIC_EMBED_PATTERN = /<div\b[^>]*data-type=(['"])(?:music-embed|spotify-embed)\1[^>]*>\s*<\/div>/gi
+
+const IMG_SRC_ATTR_PATTERN = /\bsrc=(['"])(.*?)\1/i
+const IMG_PHOTO_ID_ATTR_PATTERN = /\bdata-photo-id=(['"])(.*?)\1/i
+const IMG_WIDTH_ATTR_PATTERN = /\bwidth=(?:(['"])(\d+)\1|(\d+))/i
+const IMG_ALIGN_ATTR_PATTERN = /\bdata-align=(['"])(.*?)\1/i
+const IMG_STYLE_ATTR_PATTERN = /\bstyle=(['"])(.*?)\1/i
+const IMG_ALT_ATTR_PATTERN = /\balt=(['"])(.*?)\1/i
+const IMG_TAG_PREFIX_PATTERN = /<img/i
+const EMBED_PROVIDER_ATTR_PATTERN = /\bdata-provider=(['"])(.*?)\1/i
+const EMBED_URL_ATTR_PATTERN = /\bdata-url=(['"])(.*?)\1/i
+const EXTERNAL_URL_PATTERN = /^(https?:\/\/|data:|blob:|uploading:\/\/)/i
+const MARKDOWN_IMAGE_WIDTH_PATTERN = /^(.+?)\s*=\s*(\d+)x\s*$/
 
 function normalizeImageWidth(width?: number | string) {
   if (typeof width === 'number' && Number.isFinite(width)) return Math.max(160, Math.round(width))
@@ -29,30 +50,35 @@ function normalizeImageWidth(width?: number | string) {
 
 function parseMarkdownImageSrc(rawSrc: string): { url: string; width?: number } {
   const trimmed = rawSrc.trim()
-  const match = trimmed.match(/^(.+?)\s*=\s*(\d+)x\s*$/)
+  const match = trimmed.match(MARKDOWN_IMAGE_WIDTH_PATTERN)
   if (!match) return { url: trimmed, width: undefined }
 
   const parsed = Number.parseInt(match[2], 10)
   return { url: match[1].trim(), width: Number.isFinite(parsed) ? Math.max(160, parsed) : undefined }
 }
 
-function resolveStoryAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string) {
+function resolveStoryAssetUrl(rawUrl: string, index: StoryPhotoIndex, cdnDomain?: string, photoId?: string) {
+  const matchedById = index.findById(photoId)
+  if (matchedById) return resolveAssetUrl(matchedById.url, cdnDomain)
+
   const trimmed = rawUrl.trim()
-  const matchedPhoto = photos.find((photo) => photo.url === trimmed || photo.thumbnailUrl === trimmed)
+  const matchedPhoto = index.findByExactUrl(trimmed)
 
   if (matchedPhoto) return resolveAssetUrl(matchedPhoto.url, cdnDomain)
-  if (/^(https?:\/\/|data:|blob:|uploading:\/\/)/i.test(trimmed)) return trimmed
+  if (EXTERNAL_URL_PATTERN.test(trimmed)) return trimmed
   return resolveAssetUrl(trimmed, cdnDomain)
 }
 
-function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: string) {
-  const srcMatch = tag.match(/\bsrc=(['"])(.*?)\1/i)
-  if (!srcMatch) return tag
+function normalizeHtmlImageTag(tag: string, index: StoryPhotoIndex, cdnDomain?: string) {
+  const srcMatch = tag.match(IMG_SRC_ATTR_PATTERN)
+  const photoId = tag.match(IMG_PHOTO_ID_ATTR_PATTERN)?.[2]?.trim()
+  const matchedPhoto = index.findById(photoId)
+  if (!srcMatch && !photoId) return tag
 
-  const resolvedSrc = resolveStoryAssetUrl(srcMatch[2], photos, cdnDomain)
-  const widthMatch = tag.match(/\bwidth=(?:(['"])(\d+)\1|(\d+))/i)
-  const alignMatch = tag.match(/\bdata-align=(['"])(.*?)\1/i)
-  const styleMatch = tag.match(/\bstyle=(['"])(.*?)\1/i)
+  const resolvedSrc = resolveStoryAssetUrl(srcMatch?.[2] || '', index, cdnDomain, photoId)
+  const widthMatch = tag.match(IMG_WIDTH_ATTR_PATTERN)
+  const alignMatch = tag.match(IMG_ALIGN_ATTR_PATTERN)
+  const styleMatch = tag.match(IMG_STYLE_ATTR_PATTERN)
   const normalizedWidth = normalizeImageWidth(widthMatch?.[2] || widthMatch?.[3])
   const align = alignMatch?.[2]
 
@@ -75,17 +101,65 @@ function normalizeHtmlImageTag(tag: string, photos: PhotoDto[], cdnDomain?: stri
     styleParts.push('margin-right:0;')
   }
 
-  let nextTag = tag.replace(srcMatch[0], `src="${resolvedSrc}"`)
+  let nextTag = srcMatch
+    ? tag.replace(srcMatch[0], `src="${resolvedSrc}"`)
+    : tag.replace(IMG_TAG_PREFIX_PATTERN, `<img src="${resolvedSrc}"`)
+  const altMatch = tag.match(IMG_ALT_ATTR_PATTERN)
+  if ((!altMatch || !altMatch[2]) && matchedPhoto?.title) {
+    const escapedAlt = escapeHtmlAttribute(matchedPhoto.title)
+    nextTag = altMatch
+      ? nextTag.replace(altMatch[0], `alt="${escapedAlt}"`)
+      : nextTag.replace(IMG_TAG_PREFIX_PATTERN, `<img alt="${escapedAlt}"`)
+  }
+
+  if (matchedPhoto && !photoId) {
+    nextTag = nextTag.replace(IMG_TAG_PREFIX_PATTERN, `<img data-photo-id="${escapeHtmlAttribute(matchedPhoto.id)}"`)
+  }
+
   if (styleMatch) {
     nextTag = nextTag.replace(styleMatch[0], `style="${styleParts.join(' ')}"`)
   } else {
-    nextTag = nextTag.replace(/<img/i, `<img style="${styleParts.join(' ')}"`)
+    nextTag = nextTag.replace(IMG_TAG_PREFIX_PATTERN, `<img style="${styleParts.join(' ')}"`)
   }
 
   return nextTag
 }
 
-function resolveStoryHtml(content: string, photos: PhotoDto[], cdnDomain?: string) {
+function buildMusicEmbedHtml(tag: string) {
+  const provider = tag.match(EMBED_PROVIDER_ATTR_PATTERN)?.[2]?.trim() || ''
+  const url = tag.match(EMBED_URL_ATTR_PATTERN)?.[2]?.trim() || ''
+  const embedInfo = parseMusicEmbedInfoByProvider(provider, url)
+  if (!embedInfo) {
+    return tag
+  }
+
+  const escapedUrl = escapeHtmlAttribute(embedInfo.url)
+  const escapedEmbedUrl = escapeHtmlAttribute(embedInfo.embedUrl)
+  const escapedProvider = escapeHtmlAttribute(embedInfo.provider)
+  const escapedTitle = escapeHtmlAttribute(embedInfo.title)
+  const frameBorderAttribute = embedInfo.frameBorder ? ` frameborder="${escapeHtmlAttribute(embedInfo.frameBorder)}"` : ''
+  const marginWidthAttribute = embedInfo.marginWidth !== undefined ? ` marginwidth="${escapeHtmlAttribute(String(embedInfo.marginWidth))}"` : ''
+  const marginHeightAttribute = embedInfo.marginHeight !== undefined ? ` marginheight="${escapeHtmlAttribute(String(embedInfo.marginHeight))}"` : ''
+  const allowAttribute = embedInfo.allow ? ` allow="${escapeHtmlAttribute(embedInfo.allow)}"` : ''
+  const allowFullScreenAttribute = embedInfo.allowFullScreen ? ' allowfullscreen' : ''
+  const styleAttribute = embedInfo.provider === 'spotify' ? ' style="border-radius:12px"' : ''
+
+  return `
+    <div class="story-music-card" data-type="music-embed" data-provider="${escapedProvider}">
+      <iframe
+        src="${escapedEmbedUrl}"
+        title="${escapedTitle}"
+        width="100%"
+        height="${embedInfo.height}"
+        data-music-url="${escapedUrl}"
+        loading="lazy"
+        ${allowAttribute}${allowFullScreenAttribute}${frameBorderAttribute}${marginWidthAttribute}${marginHeightAttribute}${styleAttribute}
+      ></iframe>
+    </div>
+  `
+}
+
+function resolveStoryHtml(content: string, index: StoryPhotoIndex, cdnDomain?: string) {
   const withResolvedLinks = content.replace(
     HTML_ANCHOR_PATTERN,
     (_match, beforeHref: string, quote: string, href: string, afterHref: string) => {
@@ -96,22 +170,29 @@ function resolveStoryHtml(content: string, photos: PhotoDto[], cdnDomain?: strin
     }
   )
 
-  return withResolvedLinks.replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, photos, cdnDomain))
+  return withResolvedLinks
+    .replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, index, cdnDomain))
+    .replace(HTML_MUSIC_EMBED_PATTERN, (tag) => buildMusicEmbedHtml(tag))
+    .replace(HTML_HR_TAG_PATTERN, (tag) => {
+      if (/\bstyle=/i.test(tag)) return tag
+      return tag.replace(/<hr/i, '<hr style="border: none; border-top: 1px solid currentColor; margin: 2rem 0;"')
+    })
 }
 
-function createMarkdownComponents(photos: PhotoDto[], cdnDomain?: string) {
+function createMarkdownComponents(index: StoryPhotoIndex, cdnDomain?: string) {
   return {
     img: ({ src, alt, width }: React.ComponentProps<'img'>) => {
       const rawSrc = typeof src === 'string' ? src.trim() : ''
       const { url: parsedUrl, width: parsedWidth } = parseMarkdownImageSrc(rawSrc)
-      const resolvedSrc = resolveStoryAssetUrl(parsedUrl, photos, cdnDomain)
-      const matchedPhoto = photos.find((photo) => photo.url === parsedUrl || photo.thumbnailUrl === parsedUrl)
+      const resolvedSrc = resolveStoryAssetUrl(parsedUrl, index, cdnDomain)
+      const matchedPhoto = index.findByImageUrl(parsedUrl)
       const normalizedWidth = parsedWidth ?? normalizeImageWidth(width)
 
       return (
         <img
           src={resolvedSrc}
           alt={alt ?? matchedPhoto?.title ?? ''}
+          data-photo-id={matchedPhoto?.id ?? undefined}
           width={normalizedWidth}
           style={normalizedWidth ? {
             display: 'inline-block',
@@ -141,28 +222,59 @@ export const StoryRichContent = memo(function StoryRichContent({
   photos,
   cdnDomain,
   className = '',
+  onPhotoClick,
 }: StoryRichContentProps) {
-  const markdownComponents = useMemo(
-    () => createMarkdownComponents(photos, cdnDomain),
+  const photoIndex = useMemo(
+    () => buildStoryPhotoIndex(photos, cdnDomain),
     [photos, cdnDomain],
   )
+  const markdownComponents = useMemo(
+    () => createMarkdownComponents(photoIndex, cdnDomain),
+    [photoIndex, cdnDomain],
+  )
   const isHtmlContent = HTML_TAG_PATTERN.test(content)
-  const rootClassName = ['story-rich-content', className].filter(Boolean).join(' ')
+  const rootClassName = ['story-rich-content', onPhotoClick ? 'story-rich-content--interactive' : '', className].filter(Boolean).join(' ')
   const resolvedHtml = useMemo(() => {
     if (!isHtmlContent) return null
-    return resolveStoryHtml(content, photos, cdnDomain)
-  }, [cdnDomain, content, isHtmlContent, photos])
+    return resolveStoryHtml(content, photoIndex, cdnDomain)
+  }, [cdnDomain, content, isHtmlContent, photoIndex])
+  const handleContentClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!onPhotoClick) return
+
+    const target = event.target
+    if (!(target instanceof HTMLElement)) {
+      return
+    }
+
+    const imageElement = target.closest('img')
+    if (!(imageElement instanceof HTMLImageElement)) {
+      return
+    }
+
+    const photoId = imageElement.getAttribute('data-photo-id')?.trim()
+    const matchedById = photoIndex.findById(photoId)
+    if (matchedById) {
+      onPhotoClick(matchedById)
+      return
+    }
+
+    const imageSrc = imageElement.getAttribute('src')
+    const matchedByUrl = photoIndex.findByImageUrl(imageSrc)
+    if (matchedByUrl) {
+      onPhotoClick(matchedByUrl)
+    }
+  }, [onPhotoClick, photoIndex])
 
   if (isHtmlContent) {
     return (
-      <div className={rootClassName}>
+      <div className={rootClassName} onClick={handleContentClick}>
         <div className="story-rich-html" dangerouslySetInnerHTML={{ __html: resolvedHtml ?? '' }} />
       </div>
     )
   }
 
   return (
-    <div className={rootClassName}>
+    <div className={rootClassName} onClick={handleContentClick}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {content}
       </ReactMarkdown>

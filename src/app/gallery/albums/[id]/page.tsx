@@ -4,14 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, ArrowUp } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { getAlbum } from '@/lib/api/albums'
 import type { AlbumDto, PhotoDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
-import { PhotoDetailModal } from '@/components/PhotoDetailModal'
 import { GalleryToolbar } from '@/components/gallery/GalleryHeader'
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
 import type { ViewMode } from '@/components/gallery/ViewModeToggle'
+
+const PhotoDetailModal = dynamic(
+  () => import('@/components/PhotoDetailModal').then((m) => m.PhotoDetailModal),
+  { ssr: false },
+)
 
 export default function AlbumDetailPage() {
   const { t } = useLanguage()

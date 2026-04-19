@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   Calendar,
   Check,
@@ -18,8 +19,8 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput } from '@/components/admin/AdminFormControls'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
-import type { PhotoDto, StoryDto } from '@/lib/api'
-import { countStoryCharacters, normalizeStoryContentImages } from '@/lib/story-rich-content'
+import type { PhotoDto, StoryDto } from '@/lib/api/types'
+import { countStoryCharacters, hydrateStoryContentImages, normalizeStoryContentImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
 import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
@@ -48,7 +49,9 @@ interface StoryEditorViewProps {
   dragOverItemId: string | null
   openMenuPhotoId: string | null
   openMenuPendingId: string | null
+
   showPreview: () => void
+
   onBack: () => void
   onSave: () => void
   onPasteFiles: (files: File[]) => void
@@ -133,6 +136,11 @@ export function StoryEditorView({
 }: StoryEditorViewProps) {
   const editorCharacterCount = countStoryCharacters(currentStory.content)
   const relatedPhotoCount = currentStory.photos?.length || 0
+  const hydratedEditorContent = useMemo(
+    () => hydrateStoryContentImages(currentStory.content, currentStory.photos || [], settingsCdnDomain),
+    [currentStory.content, currentStory.photos, settingsCdnDomain],
+  )
+
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-hidden">
@@ -181,7 +189,7 @@ export function StoryEditorView({
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
             <NarrativeTipTapEditor
               ref={editorRef}
-              value={currentStory.content}
+              value={hydratedEditorContent}
               onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
               onPasteFiles={onPasteFiles}
               placeholder={t('ui.markdown_placeholder')}
@@ -211,7 +219,7 @@ export function StoryEditorView({
         </div>
 
         <div className={cn('h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
-          <StoryPhotoPanel isCollapsed={isPhotoPanelCollapsed} currentStory={currentStory} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenPhotoSelector} onInsertExternalPhotoMarkdown={onInsertExternalPhotoMarkdown} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
+          <StoryPhotoPanel isCollapsed={isPhotoPanelCollapsed} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenPhotoSelector} onInsertExternalPhotoMarkdown={onInsertExternalPhotoMarkdown} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
         </div>
       </div>
     </div>
