@@ -134,7 +134,7 @@ export function PhotosTab({
   const cameraOptions = useMemo(() => {
     return cameras.map(c => ({
       value: c.id,
-      label: `${c.displayName} (${c.photoCount})`
+      label: c.displayName
     }))
   }, [cameras])
 
@@ -142,7 +142,7 @@ export function PhotosTab({
   const lensOptions = useMemo(() => {
     return lenses.map(l => ({
       value: l.id,
-      label: `${l.displayName} (${l.photoCount})`
+      label: l.displayName
     }))
   }, [lenses])
 
