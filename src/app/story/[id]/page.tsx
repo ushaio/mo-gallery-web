@@ -437,7 +437,7 @@ export default function StoryDetailPage() {
                 </div>
 
                 {activePhoto ? (
-                  <div className="group relative mb-8 aspect-[16/10] w-full overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-900">
+                  <div className="relative mb-8 aspect-[16/10] w-full overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-900">
                     <div
                       className="absolute inset-0 bg-cover bg-center opacity-30 blur-2xl scale-110"
                       style={activePhotoThumbnailUrl ? { backgroundImage: `url(${activePhotoThumbnailUrl})` } : undefined}
@@ -447,7 +447,7 @@ export default function StoryDetailPage() {
                       <img
                         src={activePhotoFullUrl || ''}
                         alt={activePhoto.title}
-                        className="relative z-10 max-h-full w-auto max-w-full cursor-zoom-in object-contain shadow-2xl transition-transform duration-500 group-hover:scale-[1.02]"
+                        className="relative z-10 max-h-full w-auto max-w-full cursor-zoom-in object-contain shadow-2xl"
                         onClick={() => setSelectedPhoto(activePhoto)}
                       />
 
@@ -473,11 +473,8 @@ export default function StoryDetailPage() {
                       ) : null}
                     </div>
 
-                    <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-6 sm:p-8">
-                      <div className="flex items-end justify-between gap-4">
-                        <div>
-                          <h3 className="text-lg font-medium text-white sm:text-xl">{activePhoto.title}</h3>
-                        </div>
+                    <div className="absolute inset-x-0 bottom-0 z-20 p-6 sm:p-8">
+                      <div className="flex items-end justify-end gap-4">
                         <span className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
                           {activePhotoIndex + 1} / {story.photos.length}
                         </span>
