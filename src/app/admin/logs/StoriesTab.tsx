@@ -22,7 +22,7 @@ import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
-import { getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
+import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { useAdmin } from '../layout'
 import {
@@ -80,6 +80,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const initialLoadRef = useRef(false)
   const savingRef = useRef(false)
   const handledEditStoryIdRef = useRef<string | null>(null)
+  const pendingPhotoIdsRef = useRef<string[] | null>(null)
 
   const loadStories = useCallback(async () => {
     if (!token) return
@@ -143,7 +144,14 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = true
       setSaving(true)
       const isNew = !stories.find((story) => story.id === currentStory.id)
-      const photoIds = currentStory.photos?.map((photo) => photo.id) || []
+      const basePhotoIds = currentStory.photos?.map((photo) => photo.id) || []
+      // Merge any photo IDs that were just uploaded but not yet reflected in state
+      const extraIds = pendingPhotoIdsRef.current || []
+      const photoIdSet = new Set(basePhotoIds)
+      for (const id of extraIds) photoIdSet.add(id)
+      const photoIds = Array.from(photoIdSet)
+      pendingPhotoIdsRef.current = null
+
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
       if (isNew) {
@@ -226,6 +234,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     pendingImages,
     initialUploadSettings: DEFAULT_UPLOAD_SETTINGS,
     initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
+    pendingPhotoIdsRef,
     setCurrentStory,
     setAllPhotos,
     setPendingImages,
@@ -282,13 +291,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       return
     }
 
-    const usedImageUrls = getStoryMarkdownImageUrls(currentStory.content)
-    const availablePhotoUrls = new Set(
-      (currentStory.photos || []).flatMap((photo) => [photo.url, photo.thumbnailUrl].filter((url): url is string => Boolean(url)))
-    )
-    const invalidImageUrls = Array.from(usedImageUrls).filter((url) => !availablePhotoUrls.has(url))
-    if (invalidImageUrls.length > 0) {
-      notify(`正文中引用了未关联的图片：${invalidImageUrls.slice(0, 3).join(', ')}`, 'error')
+    const referencedPhotoIds = getStoryReferencedPhotoIds(currentStory.content)
+    const availablePhotoIds = new Set((currentStory.photos || []).map((photo) => photo.id))
+    const invalidPhotoIds = Array.from(referencedPhotoIds).filter((photoId) => !availablePhotoIds.has(photoId))
+    if (invalidPhotoIds.length > 0) {
+      notify(`正文中引用了未关联的图库图片：${invalidPhotoIds.slice(0, 3).join(', ')}`, 'error')
       return
     }
 
@@ -373,6 +380,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       }
     })
     setPendingCoverId(null)
+    setShowCoverCropEditor(true)
   }, [])
 
   const handleSetPendingCover = useCallback((id: string) => {
@@ -440,7 +448,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const currentPhotoIds = currentStory?.photos?.map((photo) => photo.id) || []
   const currentCoverPhoto = currentStory ? getStoryCoverPhoto(currentStory) : null
   const currentCoverCrop = currentStory ? getStoryCoverCrop(currentStory) : null
-  const canEditCoverCrop = Boolean(currentCoverPhoto) && !pendingCoverId
 
   const handlePrevPhoto = useCallback(() => {
     if (previewPhotoIndex === null || !currentStory?.photos) return
@@ -576,9 +583,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           dragOverItemId={dragOverItemId}
           openMenuPhotoId={openMenuPhotoId}
           openMenuPendingId={openMenuPendingId}
-          canEditCoverCrop={canEditCoverCrop}
           showPreview={() => setShowPreview(true)}
-          onOpenCoverCropEditor={() => setShowCoverCropEditor(true)}
           onBack={resetEditorState}
           onSave={() => void handleSaveStory()}
           onPasteFiles={handlePasteFiles}

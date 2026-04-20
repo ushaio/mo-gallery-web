@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { MutableRefObject } from 'react'
 import {
@@ -31,7 +31,7 @@ interface UseEditorImperativeHandleOptions {
   currentValueRef: MutableRefObject<string>
   onChange: (value: string) => void
   focusEditor: () => void
-  insertInlineImage: (attrs: { src: string; alt?: string; width?: number }) => void
+  insertInlineImage: (attrs: { src: string; alt?: string; width?: number; photoId?: string }) => void
 }
 
 export function useEditorImperativeHandle({
@@ -90,13 +90,14 @@ export function useEditorImperativeHandle({
 
       // Convert Markdown images to HTML for TipTap
       let processedNext = nextValue
-      if (isMarkdownImageSyntax(nextValue)) {
-        const attrs = convertMarkdownImageToHtmlAttrs(nextValue)
-        if (attrs) {
-          const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
-          processedNext = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${widthAttr} />`
+        if (isMarkdownImageSyntax(nextValue)) {
+          const attrs = convertMarkdownImageToHtmlAttrs(nextValue)
+          if (attrs) {
+            const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
+            const photoIdAttr = attrs.photoId ? ` data-photo-id="${attrs.photoId}"` : ''
+            processedNext = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${photoIdAttr}${widthAttr} />`
+          }
         }
-      }
 
       const newHtml = currentHtml.replace(searchValue, processedNext)
       editor.commands.setContent(newHtml)

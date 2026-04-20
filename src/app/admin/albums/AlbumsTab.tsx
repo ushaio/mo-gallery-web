@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   FolderOpen,
   Plus,
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import {
   getAdminAlbums,
+  getAdminAlbum,
   createAlbum,
   updateAlbum,
   deleteAlbum,
@@ -86,6 +87,7 @@ export function AlbumsTab({
   const [albums, setAlbums] = useState<AlbumDto[]>([])           // 相册列表
   const [loading, setLoading] = useState(true)                   // 加载状态
   const [currentAlbum, setCurrentAlbum] = useState<AlbumDto | null>(null) // 当前编辑的相册（null 表示列表视图）
+  const [loadingCurrentAlbum, setLoadingCurrentAlbum] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'photos'>('overview') // 详情页子标签
   const [saving, setSaving] = useState(false)                    // 保存中状态
   const [showPhotoSelector, setShowPhotoSelector] = useState(false) // 是否显示照片选择器
@@ -100,9 +102,7 @@ export function AlbumsTab({
   const [searchQuery, setSearchQuery] = useState('')                   // 搜索关键字
   const [showFilters, setShowFilters] = useState(false)                // 是否展开筛选面板
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
-
-  // token 变化时重新加载相册
-  useEffect(() => { loadAlbums() }, [token])
+  const currentAlbumRequestIdRef = useRef(0)
 
   // ==================== 派生状态 ====================
 
@@ -128,6 +128,11 @@ export function AlbumsTab({
     setFilterStatus('all')
     setSearchQuery('')
   }
+
+  const summarizeAlbum = useCallback((album: AlbumDto): AlbumDto => ({
+    ...album,
+    photos: album.photos.slice(0, 1),
+  }), [])
 
   // ==================== 拖拽排序 ====================
 
@@ -181,21 +186,26 @@ export function AlbumsTab({
   // ==================== 数据操作 ====================
 
   /** 加载相册列表 */
-  async function loadAlbums() {
+  const loadAlbums = useCallback(async () => {
     if (!token) return
     try {
       setLoading(true)
-      setAlbums(await getAdminAlbums(token))
+      const data = await getAdminAlbums(token)
+      setAlbums(data.map(summarizeAlbum))
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(t('common.error'), 'error')
     } finally {
       setLoading(false)
     }
-  }
+  }, [notify, onUnauthorized, summarizeAlbum, t, token])
+
+  useEffect(() => { void loadAlbums() }, [loadAlbums])
 
   /** 初始化新相册并进入编辑视图 */
   function handleCreateAlbum() {
+    currentAlbumRequestIdRef.current += 1
+    setLoadingCurrentAlbum(false)
     setCurrentAlbum({
       id: '', name: '', description: '', coverUrl: '', isPublished: false,
       sortOrder: albums.length, createdAt: new Date().toISOString(),
@@ -203,6 +213,35 @@ export function AlbumsTab({
     })
     setActiveTab('overview')
   }
+
+  const openAlbumDetail = useCallback(async (album: AlbumDto) => {
+    if (!token) return
+
+    const requestId = currentAlbumRequestIdRef.current + 1
+    currentAlbumRequestIdRef.current = requestId
+
+    setCurrentAlbum(album)
+    setActiveTab('photos')
+    setShowPhotoSelector(false)
+    setSelectedPhotoIds(new Set())
+    setPhotoSelectorSearch('')
+    setLoadingCurrentAlbum(true)
+
+    try {
+      const full = await getAdminAlbum(token, album.id)
+      if (currentAlbumRequestIdRef.current !== requestId) return
+      setCurrentAlbum(full)
+      setAlbums(prev => prev.map(a => a.id === full.id ? summarizeAlbum(full) : a))
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      if (currentAlbumRequestIdRef.current !== requestId) return
+      notify(t('common.error'), 'error')
+    } finally {
+      if (currentAlbumRequestIdRef.current === requestId) {
+        setLoadingCurrentAlbum(false)
+      }
+    }
+  }, [notify, onUnauthorized, summarizeAlbum, t, token])
 
   /** 删除相册（需用户确认） */
   function handleDeleteAlbum(album: AlbumDto, e?: React.MouseEvent) {
@@ -224,7 +263,10 @@ export function AlbumsTab({
       const result = isNew ? await createAlbum(token, data) : await updateAlbum(token, currentAlbum.id, data)
       notify(isNew ? (t('admin.album_created') || 'Album created') : (t('admin.album_updated') || 'Album updated'), 'success')
       setCurrentAlbum(result)
-      await loadAlbums()
+      setAlbums(prev => {
+        if (isNew) return [...prev, summarizeAlbum(result)]
+        return prev.map(a => a.id === result.id ? summarizeAlbum(result) : a)
+      })
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(t('common.error'), 'error')
@@ -240,7 +282,7 @@ export function AlbumsTab({
     try {
       const updated = await updateAlbum(token, album.id, { isPublished: !album.isPublished })
       notify(t('admin.notify_success'), 'success')
-      setAlbums(prev => prev.map(a => a.id === updated.id ? updated : a))
+      setAlbums(prev => prev.map(a => a.id === updated.id ? summarizeAlbum(updated) : a))
       if (currentAlbum?.id === updated.id) setCurrentAlbum(updated)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
@@ -255,14 +297,13 @@ export function AlbumsTab({
     if (!token || !currentAlbum || selectedPhotoIds.size === 0) return
     try {
       setSaving(true)
-      await addPhotosToAlbum(token, currentAlbum.id, Array.from(selectedPhotoIds))
+      const updated = await addPhotosToAlbum(token, currentAlbum.id, Array.from(selectedPhotoIds))
       notify(t('admin.photos_added'), 'success')
+      setCurrentAlbum(updated)
+      setAlbums(prev => prev.map(a => a.id === updated.id ? summarizeAlbum(updated) : a))
       setShowPhotoSelector(false)
       setSelectedPhotoIds(new Set())
-      const updatedAlbums = await getAdminAlbums(token)
-      setAlbums(updatedAlbums)
-      const updatedCurrent = updatedAlbums.find(a => a.id === currentAlbum.id)
-      if (updatedCurrent) setCurrentAlbum(updatedCurrent)
+      setPhotoSelectorSearch('')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(t('common.error'), 'error')
@@ -277,7 +318,7 @@ export function AlbumsTab({
     try {
       const updated = await removePhotoFromAlbum(token, currentAlbum.id, photoId)
       setCurrentAlbum(updated)
-      setAlbums(prev => prev.map(a => a.id === updated.id ? updated : a))
+      setAlbums(prev => prev.map(a => a.id === updated.id ? summarizeAlbum(updated) : a))
       notify(t('admin.photo_removed'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
@@ -291,7 +332,7 @@ export function AlbumsTab({
     try {
       const updated = await setAlbumCover(token, currentAlbum.id, photoId)
       setCurrentAlbum(updated)
-      setAlbums(prev => prev.map(a => a.id === updated.id ? updated : a))
+      setAlbums(prev => prev.map(a => a.id === updated.id ? summarizeAlbum(updated) : a))
       notify(t('admin.cover_set'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
@@ -321,7 +362,8 @@ export function AlbumsTab({
   // ---------- 列表视图（未选中相册） ----------
   if (!currentAlbum) {
     return (
-      <div className="space-y-6">
+      <>
+        <div className="space-y-6">
         <AdminCollectionToolbar
           info={(
             <span className="text-sm font-medium text-foreground">
@@ -467,15 +509,18 @@ export function AlbumsTab({
               return (
                 <div
                   key={album.id}
-                  draggable
-                  onDragStart={e => handleDragStart(e, album.id)}
                   onDragOver={e => handleDragOver(e, album.id)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => { setCurrentAlbum({ ...album }); setActiveTab('photos') }}
+                  onClick={() => { void openAlbumDetail(album) }}
                   className={`group cursor-pointer bg-card border border-border/50 hover:border-border transition-all ${draggingId === album.id ? 'opacity-50' : ''}`}
                 >
                   <div className="relative aspect-[4/3] bg-muted overflow-hidden">
-                    <div className="absolute top-2 left-2 z-10 p-1 bg-black/40 text-white/70 hover:text-white cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                    <div
+                      draggable
+                      onDragStart={e => handleDragStart(e, album.id)}
+                      onDragEnd={handleDragEnd}
+                      className="absolute top-2 left-2 z-10 p-1 bg-black/40 text-white/70 hover:text-white cursor-grab opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={e => e.stopPropagation()}
+                    >
                       <GripVertical className="w-4 h-4" />
                     </div>
                     {album.coverUrl || album.photos.length > 0 ? (
@@ -484,7 +529,7 @@ export function AlbumsTab({
                       <div className="w-full h-full flex items-center justify-center"><FolderOpen className="w-10 h-10 opacity-10" /></div>
                     )}
                     <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{album.photoCount}</div>
-                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                       <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-1.5 bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm transition-colors">
                         {album.isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                       </AdminButton>
@@ -509,14 +554,17 @@ export function AlbumsTab({
             {filteredAlbums.map(album => (
               <div
                 key={album.id}
-                draggable
-                onDragStart={e => handleDragStart(e, album.id)}
                 onDragOver={e => handleDragOver(e, album.id)}
-                onDragEnd={handleDragEnd}
-                onClick={() => { setCurrentAlbum({ ...album }); setActiveTab('photos') }}
+                onClick={() => { void openAlbumDetail(album) }}
                 className={`group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all ${draggingId === album.id ? 'opacity-50' : ''}`}
               >
-                <div className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab" onClick={e => e.stopPropagation()}>
+                <div
+                  draggable
+                  onDragStart={e => handleDragStart(e, album.id)}
+                  onDragEnd={handleDragEnd}
+                  className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab"
+                  onClick={e => e.stopPropagation()}
+                >
                   <GripVertical className="w-4 h-4" />
                 </div>
                 <div className="w-16 h-12 bg-muted overflow-hidden flex-shrink-0">
@@ -533,7 +581,7 @@ export function AlbumsTab({
                   </div>
                   <p className="text-xs text-muted-foreground">{album.photoCount} {t('admin.photos_count')}</p>
                 </div>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-2 hover:bg-muted transition-colors">
                     {album.isPublished ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
                   </AdminButton>
@@ -546,6 +594,19 @@ export function AlbumsTab({
           </div>
         )}
       </div>
+      <SimpleDeleteDialog
+        isOpen={pendingAlbumDelete !== null}
+        title={t('common.confirm')}
+        message={t('admin.album_delete_confirm')}
+        onConfirm={confirmDeleteAlbum}
+        onCancel={() => {
+          if (!deletingAlbumId) {
+            setPendingAlbumDelete(null)
+          }
+        }}
+        t={t}
+      />
+      </>
     )
   }
 
@@ -555,7 +616,11 @@ export function AlbumsTab({
       <div className="space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <AdminButton onClick={() => setCurrentAlbum(null)} adminVariant="icon">
+            <AdminButton onClick={() => {
+              currentAlbumRequestIdRef.current += 1
+              setLoadingCurrentAlbum(false)
+              setCurrentAlbum(null)
+            }} adminVariant="icon">
               <ChevronLeft className="w-5 h-5" />
             </AdminButton>
             <div>
@@ -582,8 +647,9 @@ export function AlbumsTab({
             {activeTab === 'photos' && (
               <AdminButton
                 onClick={() => setShowPhotoSelector(true)}
+                disabled={loadingCurrentAlbum}
                 adminVariant="unstyled"
-                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
                 {t('admin.add_photos') || 'Add Photos'}
@@ -651,7 +717,11 @@ export function AlbumsTab({
             </div>
           ) : (
             <div className="space-y-4">
-              {showPhotoSelector ? (
+              {loadingCurrentAlbum ? (
+                <div className="py-16">
+                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                </div>
+              ) : showPhotoSelector ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-muted/30 border border-border">
                     <div className="flex items-center gap-3">
@@ -791,7 +861,7 @@ export function AlbumsTab({
       <SimpleDeleteDialog
         isOpen={pendingAlbumDelete !== null}
         title={t('common.confirm')}
-        message={t('admin.confirm_delete_single') + '?'}
+        message={t('admin.album_delete_confirm')}
         onConfirm={confirmDeleteAlbum}
         onCancel={() => {
           if (!deletingAlbumId) {

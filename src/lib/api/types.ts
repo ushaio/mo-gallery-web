@@ -26,14 +26,12 @@ export interface CameraDto {
   id: string
   name: string
   displayName: string
-  photoCount: number
 }
 
 export interface LensDto {
   id: string
   name: string
   displayName: string
-  photoCount: number
 }
 
 export interface PhotoDto {

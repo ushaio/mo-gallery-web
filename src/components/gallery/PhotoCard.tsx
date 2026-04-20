@@ -41,8 +41,7 @@ export const PhotoCard = memo(function PhotoCard({
       style={style}
     >
       <div
-        className={`relative overflow-hidden ${immersive ? '' : 'mb-4'}`}
-        style={{ backgroundColor: photo.dominantColors?.[0] || '#e5e5e5' }}
+        className={`relative overflow-hidden bg-muted ${immersive ? '' : 'mb-4'}`}
       >
         <Image
           src={coverUrl}

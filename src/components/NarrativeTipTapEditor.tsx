@@ -33,11 +33,13 @@ import {
   Redo,
   Highlighter,
   Palette,
+  Music2,
   RemoveFormatting,
 } from 'lucide-react'
 import TipTapAiAssistant from '@/components/TipTapAiAssistant'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { parseMusicEmbedInfo } from '@/lib/music-embed'
 
 import {
   DEFAULT_FONT_SIZE_LABEL,
@@ -98,6 +100,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
+    const [showMusicInput, setShowMusicInput] = useState(false)
+    const [musicUrl, setMusicUrl] = useState('')
+    const [musicInputError, setMusicInputError] = useState('')
     const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
     const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
     const [customBackgroundColor, setCustomBackgroundColor] = useState(DEFAULT_TEXT_HIGHLIGHT)
@@ -167,6 +172,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             isOrderedList: false,
             isBlockquote: false,
             isLink: false,
+            isMusicEmbed: false,
             isAlignLeft: false,
             isAlignCenter: false,
             isAlignRight: false,
@@ -193,6 +199,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isOrderedList: currentEditor.isActive('orderedList'),
           isBlockquote: currentEditor.isActive('blockquote'),
           isLink: currentEditor.isActive('link'),
+          isMusicEmbed: currentEditor.isActive('musicEmbed'),
           isAlignLeft: currentEditor.isActive({ textAlign: 'left' }),
           isAlignCenter: currentEditor.isActive({ textAlign: 'center' }),
           isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
@@ -240,6 +247,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       isOrderedList: false,
       isBlockquote: false,
       isLink: false,
+      isMusicEmbed: false,
       isAlignLeft: false,
       isAlignCenter: false,
       isAlignRight: false,
@@ -298,21 +306,48 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       }
     }, [editor, syncAiSelectionState])
 
-    const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number }) => {
+    const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number; photoId?: string }) => {
       if (!editor) return
 
       editor
         .chain()
         .focus()
         .insertContent({
-          type: 'image',
-          attrs: {
-            src: attrs.src,
-            alt: attrs.alt || '',
-            ...(attrs.width ? { width: attrs.width } : {}),
-          },
+          type: 'paragraph',
+          attrs: { textAlign: 'center' },
+          content: [{
+              type: 'image',
+              attrs: {
+                src: attrs.src,
+                alt: attrs.alt || '',
+                ...(attrs.photoId ? { photoId: attrs.photoId } : {}),
+                ...(attrs.width ? { width: attrs.width } : {}),
+              },
+            }],
         })
         .run()
+
+      // When no explicit width, auto-scale to 10% of original size after load
+      if (!attrs.width) {
+        const img = new window.Image()
+        img.onload = () => {
+          if (!editor || img.naturalWidth <= 0) return
+          const targetWidth = Math.max(40, Math.round(img.naturalWidth * 0.1))
+          // Find the image node we just inserted and update its width
+          editor.state.doc.descendants((node, pos) => {
+            if (
+              node.type.name === 'image' &&
+              node.attrs.src === attrs.src &&
+              node.attrs.photoId === (attrs.photoId || null) &&
+              !node.attrs.width
+            ) {
+              editor.chain().setNodeSelection(pos).updateAttributes('image', { width: targetWidth }).run()
+              return false
+            }
+          })
+        }
+        img.src = attrs.src
+      }
 
       focusEditor()
     }, [editor, focusEditor])
@@ -383,6 +418,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       } else {
         const previousUrl = editor.getAttributes('link').href
         setLinkUrl(previousUrl || '')
+        setShowImageInput(false)
+        setShowMusicInput(false)
+        setMusicInputError('')
         setShowLinkInput(true)
       }
     }, [editor, linkUrl, showLinkInput])
@@ -396,9 +434,47 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         setShowImageInput(false)
         setImageUrl('')
       } else {
+        setShowLinkInput(false)
+        setShowMusicInput(false)
+        setMusicInputError('')
         setShowImageInput(true)
       }
     }, [editor, imageUrl, insertInlineImage, showImageInput])
+
+    const addMusicEmbed = useCallback(() => {
+      if (!editor) return
+
+      if (!showMusicInput) {
+        setShowLinkInput(false)
+        setShowImageInput(false)
+        setMusicInputError('')
+        setShowMusicInput(true)
+        return
+      }
+
+      const embedInfo = parseMusicEmbedInfo(musicUrl)
+      if (!embedInfo) {
+        setMusicInputError(t('editor.music_invalid_url'))
+        return
+      }
+
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'musicEmbed',
+          attrs: {
+            provider: embedInfo.provider,
+            url: embedInfo.url,
+          },
+        })
+        .run()
+
+      setShowMusicInput(false)
+      setMusicUrl('')
+      setMusicInputError('')
+      focusEditor()
+    }, [editor, focusEditor, musicUrl, showMusicInput, t])
 
     const addTable = useCallback(() => {
       if (!editor) return
@@ -762,6 +838,47 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 >
                   {t('editor.confirm')}
                 </button>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <ToolbarButton onClick={addMusicEmbed} isActive={resolvedEditorUiState.isMusicEmbed} title={t('editor.music')}>
+              <Music2 className="w-4 h-4" />
+            </ToolbarButton>
+            {showMusicInput && (
+              <div className="absolute top-full left-0 z-10 mt-1 w-64 border border-border bg-background p-2 shadow-lg">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="url"
+                    value={musicUrl}
+                    onChange={(e) => {
+                      setMusicUrl(e.target.value)
+                      if (musicInputError) {
+                        setMusicInputError('')
+                      }
+                    }}
+                    placeholder={t('editor.music_placeholder')}
+                    className="w-full border border-border px-2 py-1 text-xs focus:border-primary outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addMusicEmbed()
+                      if (e.key === 'Escape') {
+                        setShowMusicInput(false)
+                        setMusicInputError('')
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={addMusicEmbed}
+                    className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                  >
+                    {t('editor.confirm')}
+                  </button>
+                </div>
+                {musicInputError ? (
+                  <p className="mt-1 text-xs text-destructive">{musicInputError}</p>
+                ) : null}
               </div>
             )}
           </div>

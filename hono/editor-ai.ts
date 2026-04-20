@@ -68,11 +68,9 @@ editorAi.post('/admin/editor-ai/conversations', async (c) => {
 
 editorAi.get('/admin/editor-ai/conversations', async (c) => {
   try {
-    const query = ConversationListSchema.parse({
-      scopeId: c.req.query('scopeId'),
-    })
+    const scopeId = c.req.query('scopeId')
 
-    const conversations = await listEditorAiConversations(query.scopeId)
+    const conversations = await listEditorAiConversations(scopeId || undefined)
 
     return c.json({
       success: true,
@@ -80,9 +78,6 @@ editorAi.get('/admin/editor-ai/conversations', async (c) => {
     })
   } catch (error) {
     console.error('List editor AI conversations error:', error)
-    if (error instanceof z.ZodError) {
-      return c.json({ error: 'Validation error', details: error.issues }, 400)
-    }
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

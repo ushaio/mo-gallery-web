@@ -157,6 +157,19 @@ export const ResizableImage = Image.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      photoId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-photo-id') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.photoId) {
+            return {}
+          }
+
+          return {
+            'data-photo-id': attributes.photoId,
+          }
+        },
+      },
       width: {
         default: null,
         parseHTML: (element) => {

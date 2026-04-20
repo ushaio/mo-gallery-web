@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { FolderOpen, MapPinOff, Minimize2, Settings, Upload, X } from 'lucide-react'
-import type { AdminSettingsDto, AlbumDto } from '@/lib/api/types'
+import type { AdminSettingsDto, AlbumDto, StorageSourceDto } from '@/lib/api/types'
 import { getAdminAlbums } from '@/lib/api/albums'
+import { getStorageSources } from '@/lib/api/storage-sources'
 import type { CompressionMode } from '@/lib/image-compress'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminMultiSelect, AdminSelect, type MultiSelectOption, type SelectOption } from '@/components/admin/AdminFormControls'
@@ -11,6 +12,7 @@ import { AdminInput, AdminMultiSelect, AdminSelect, type MultiSelectOption, type
 export interface UploadSettings {
   maxSizeMB?: number
   storageProvider?: string
+  storageSourceId?: string
   storagePath?: string
   storagePathFull?: boolean
   compressionMode?: CompressionMode
@@ -59,7 +61,8 @@ export function ImageUploadSettingsModal({
   categories = [],
 }: ImageUploadSettingsModalProps) {
   const [maxSizeMB, setMaxSizeMB] = useState('2')
-  const [storageProvider, setStorageProvider] = useState('local')
+  const [storageSourceId, setStorageSourceId] = useState('')
+  const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
   const [storagePath, setStoragePath] = useState('')
   const [useCustomPrefix, setUseCustomPrefix] = useState(false)
   const [compressionMode, setCompressionMode] = useState<CompressionMode>('size')
@@ -69,11 +72,11 @@ export function ImageUploadSettingsModal({
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
+  const selectedSource = storageSources.find(s => s.id === storageSourceId)
+
   const configPrefix = useMemo(() => {
-    if (storageProvider === 'r2' || storageProvider === 's3') return settings?.s3_path || ''
-    if (storageProvider === 'github') return settings?.github_path || ''
-    return ''
-  }, [settings?.github_path, settings?.s3_path, storageProvider])
+    return selectedSource?.basePath || ''
+  }, [selectedSource?.basePath])
 
   const categoryOptions = useMemo<MultiSelectOption[]>(() => {
     return categories
@@ -89,11 +92,10 @@ export function ImageUploadSettingsModal({
     }))
   }, [albums, t])
 
-  const providerOptions = useMemo<SelectOption[]>(() => [
-    { value: 'local', label: t('admin.storage_provider_local') },
-    { value: 's3', label: 'S3' },
-    { value: 'github', label: t('admin.storage_provider_github') },
-  ], [t])
+  const providerOptions = useMemo<SelectOption[]>(() =>
+    storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` })),
+    [storageSources]
+  )
 
   const prefixOptions = useMemo<SelectOption[]>(() => {
     if (!configPrefix) return []
@@ -110,19 +112,28 @@ export function ImageUploadSettingsModal({
 
     let cancelled = false
 
-    async function loadAlbums() {
+    async function loadData() {
       try {
         setLoadingAlbums(true)
-        const data = await getAdminAlbums(authToken)
-        if (!cancelled) setAlbums(data)
+        const [albumData, sourceData] = await Promise.all([
+          getAdminAlbums(authToken),
+          getStorageSources(authToken),
+        ])
+        if (!cancelled) {
+          setAlbums(albumData)
+          setStorageSources(sourceData)
+          if (sourceData.length > 0 && !storageSourceId) {
+            setStorageSourceId(sourceData[0].id)
+          }
+        }
       } catch (error) {
-        console.error('Failed to load albums:', error)
+        console.error('Failed to load data:', error)
       } finally {
         if (!cancelled) setLoadingAlbums(false)
       }
     }
 
-    void loadAlbums()
+    void loadData()
 
     return () => {
       cancelled = true
@@ -132,7 +143,6 @@ export function ImageUploadSettingsModal({
   useEffect(() => {
     if (!isOpen) {
       setMaxSizeMB('2')
-      setStorageProvider(settings?.storage_provider || 'local')
       setStoragePath('')
       setUseCustomPrefix(false)
       setCompressionMode('size')
@@ -142,26 +152,29 @@ export function ImageUploadSettingsModal({
       return
     }
 
-    const nextStorageProvider = initialSettings?.storageProvider || settings?.storage_provider || 'local'
     const nextCompressionMode = initialSettings?.compressionMode || 'size'
     const nextUseCustomPrefix = Boolean(initialSettings?.storagePathFull)
 
     setMaxSizeMB(initialSettings?.maxSizeMB ? String(initialSettings.maxSizeMB) : '2')
-    setStorageProvider(nextStorageProvider)
+    if (initialSettings?.storageSourceId) {
+      setStorageSourceId(initialSettings.storageSourceId)
+    } else if (storageSources.length > 0 && !storageSourceId) {
+      setStorageSourceId(storageSources[0].id)
+    }
     setStoragePath(initialSettings?.storagePath || '')
     setUseCustomPrefix(nextUseCustomPrefix)
     setCompressionMode(nextCompressionMode)
     setStripGps(Boolean(initialSettings?.stripGps))
     setSelectedCategories(getInitialCategories(initialSettings))
     setAlbumIds(getInitialAlbumIds(initialSettings))
-  }, [initialSettings, isOpen, settings?.storage_provider])
+  }, [initialSettings, isOpen])
 
   useEffect(() => {
     if (!isOpen) return
-    if (storageProvider === 'local') {
+    if (!selectedSource || selectedSource.type === 'local') {
       setUseCustomPrefix(false)
     }
-  }, [isOpen, storageProvider])
+  }, [isOpen, selectedSource])
 
   function handleConfirm() {
     const settingsToSave: UploadSettings = {
@@ -175,8 +188,9 @@ export function ImageUploadSettingsModal({
       settingsToSave.maxSizeMB = parseFloat(maxSizeMB)
     }
 
-    if (storageProvider) {
-      settingsToSave.storageProvider = storageProvider
+    if (selectedSource) {
+      settingsToSave.storageProvider = selectedSource.type
+      settingsToSave.storageSourceId = selectedSource.id
     }
 
     const trimmedPath = storagePath.trim()
@@ -247,7 +261,7 @@ export function ImageUploadSettingsModal({
               <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {t('admin.storage_provider')}
               </label>
-              <AdminSelect value={storageProvider} options={providerOptions} onChange={setStorageProvider} />
+              <AdminSelect value={storageSourceId} options={providerOptions} onChange={setStorageSourceId} />
             </div>
 
             <div>

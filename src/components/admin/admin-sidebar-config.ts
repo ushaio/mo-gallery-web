@@ -2,6 +2,7 @@
 
 import {
   BookText,
+  Bot,
   Film,
   FolderOpen,
   HardDrive,
@@ -29,6 +30,7 @@ const ADMIN_SIDEBAR_ITEMS: AdminSidebarItemDefinition[] = [
   { id: 'film-rolls', href: '/admin/film-rolls', labelKey: 'admin.film_rolls', icon: Film },
   { id: 'upload', href: '/admin/upload', labelKey: 'admin.upload', icon: UploadIcon },
   { id: 'logs', href: '/admin/logs', labelKey: 'admin.logs', icon: BookText },
+  { id: 'ai-assistant', href: '/admin/ai-assistant', labelKey: 'admin.ai_assistant', icon: Bot },
   { id: 'storage', href: '/admin/storage', labelKey: 'admin.storage_cleanup', icon: HardDrive },
   { id: 'settings', href: '/admin/settings', labelKey: 'admin.config', icon: Settings },
   { id: 'friends', href: '/admin/friends', labelKey: 'admin.friends', icon: Users },

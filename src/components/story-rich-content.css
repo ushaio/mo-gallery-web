@@ -21,6 +21,11 @@
   color: color-mix(in srgb, var(--foreground) 88%, transparent);
 }
 
+.story-rich-content p:empty,
+.story-rich-content .story-rich-html p:empty {
+  min-height: 1em;
+}
+
 .story-rich-content > p:first-of-type:not([data-drop-cap='false'])::first-letter,
 .story-rich-content .story-rich-html > p:first-of-type:not([data-drop-cap='false'])::first-letter,
 .story-rich-content > p[data-drop-cap='true']::first-letter,
@@ -174,7 +179,7 @@
 .story-rich-content .story-rich-html hr {
   margin: 2rem 0;
   border: none;
-  border-top: 1px solid color-mix(in srgb, var(--border) 100%, transparent);
+  border-top: 1px solid var(--foreground);
 }
 
 .story-rich-content img,
@@ -184,6 +189,11 @@
   margin: 0 0.75rem 0.75rem 0;
   height: auto;
   max-width: 100%;
+}
+
+.story-rich-content--interactive img[data-photo-id],
+.story-rich-content--interactive .story-rich-html img[data-photo-id] {
+  cursor: zoom-in;
 }
 
 .story-rich-content img[width],
@@ -230,6 +240,21 @@
   margin: 1.75rem 0;
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+.story-rich-content .story-music-card,
+.story-rich-content .story-rich-html .story-music-card {
+  margin: 2rem 0;
+  border-radius: 1rem;
+}
+
+.story-rich-content .story-music-card iframe,
+.story-rich-content .story-rich-html .story-music-card iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
 }
 
 .story-rich-content th,

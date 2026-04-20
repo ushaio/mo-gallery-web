@@ -1,10 +1,13 @@
+import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g
-const HTML_IMAGE_PATTERN = /<img\b[^>]*\bsrc=(['"])(.*?)\1[^>]*>/gi
-const HTML_IMAGE_WIDTH_PATTERN = /<img\b([^>]*?)\bsrc=(['"])(.*?)\2([^>]*?)\swidth=(?:(['"])(\d+)\5|(\d+))([^>]*?)\/?>/gi
+const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
+const HTML_IMAGE_PHOTO_ID_PATTERN = /\bdata-photo-id=(['"])(.*?)\1/i
+const HTML_IMAGE_SRC_PATTERN = /\bsrc=(['"])(.*?)\1/i
+const HTML_IMAGE_WIDTH_PATTERN = /\bwidth=(?:(['"])(\d+)\1|(\d+))/i
 
-function escapeHtmlAttribute(value: string) {
+export function escapeHtmlAttribute(value: string) {
   return value
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
@@ -17,11 +20,13 @@ export function buildStoryHtmlImage(options: {
   url: string
   alt?: string
   width?: number
+  photoId?: string
 }) {
   const alt = escapeHtmlAttribute(options.alt || '')
   const src = escapeHtmlAttribute(options.url)
-  const width = Number.isFinite(options.width) ? Math.max(160, Math.round(options.width as number)) : 480
-  return `\n<img src="${src}" alt="${alt}" width="${width}">\n`
+  const widthAttr = Number.isFinite(options.width) ? ` width="${Math.max(40, Math.round(options.width as number))}"` : ''
+  const photoIdAttr = options.photoId ? ` data-photo-id="${escapeHtmlAttribute(options.photoId)}"` : ''
+  return `\n<p style="text-align: center"><img src="${src}" alt="${alt}"${photoIdAttr}${widthAttr}></p>\n`
 }
 
 /** @deprecated Use buildStoryHtmlImage instead */
@@ -44,8 +49,13 @@ export function getStoryMarkdownImageUrls(content: string) {
     urls.add(url)
   }
 
-  for (const match of content.matchAll(HTML_IMAGE_PATTERN)) {
-    const url = normalizeStoryImageUrl(match[2] || '')
+  for (const match of content.matchAll(HTML_IMAGE_TAG_PATTERN)) {
+    if (HTML_IMAGE_PHOTO_ID_PATTERN.test(match[0])) {
+      continue
+    }
+
+    const rawSrc = match[0].match(HTML_IMAGE_SRC_PATTERN)?.[2] || ''
+    const url = normalizeStoryImageUrl(rawSrc)
     if (!url) continue
 
     if (/^uploading:\/\//i.test(url)) {
@@ -56,6 +66,18 @@ export function getStoryMarkdownImageUrls(content: string) {
   }
 
   return urls
+}
+
+export function getStoryReferencedPhotoIds(content: string) {
+  const photoIds = new Set<string>()
+
+  for (const match of content.matchAll(HTML_IMAGE_TAG_PATTERN)) {
+    const photoId = match[0].match(HTML_IMAGE_PHOTO_ID_PATTERN)?.[2]?.trim()
+    if (!photoId) continue
+    photoIds.add(photoId)
+  }
+
+  return photoIds
 }
 
 function normalizeStoryImageUrl(url: string) {
@@ -115,20 +137,43 @@ export function getStoryImageMatchCandidates(options: {
 }
 
 export function normalizeStoryContentImages(content: string) {
-  return content.replace(
-    HTML_IMAGE_WIDTH_PATTERN,
-    (_match, beforeSrc: string, quote: string, src: string, betweenSrcAndWidth: string, _widthQuote: string | undefined, quotedWidth: string | undefined, unquotedWidth: string | undefined, afterWidth: string) => {
-      const width = quotedWidth ?? unquotedWidth ?? '480'
-      const normalizedWidth = Math.max(160, Number.parseInt(width, 10) || 480)
-      const trimmedBefore = beforeSrc.trim()
-      const trimmedBetween = betweenSrcAndWidth.trim()
-      const trimmedAfter = afterWidth.trim().replace(/\/$/, '').trim()
-      const attrs = [trimmedBefore, `src=${quote}${src}${quote}`, trimmedBetween, `width="${normalizedWidth}"`, trimmedAfter]
-        .filter(Boolean)
-        .join(' ')
-      return `<img ${attrs}>`
+  return content.replace(HTML_IMAGE_TAG_PATTERN, (tag) => {
+    let nextTag = tag
+
+    const widthMatch = nextTag.match(HTML_IMAGE_WIDTH_PATTERN)
+    const rawWidth = widthMatch?.[2] || widthMatch?.[3]
+    if (rawWidth) {
+      const normalizedWidth = Math.max(40, Number.parseInt(rawWidth, 10) || 80)
+      nextTag = nextTag.replace(HTML_IMAGE_WIDTH_PATTERN, `width="${normalizedWidth}"`)
     }
-  )
+
+    if (HTML_IMAGE_PHOTO_ID_PATTERN.test(nextTag)) {
+      nextTag = nextTag.replace(/\s*\bsrc=(['"])(.*?)\1/i, '')
+    }
+
+    return nextTag.replace(/\s+>/g, '>')
+  })
+}
+
+export function hydrateStoryContentImages(content: string, photos: PhotoDto[], cdnDomain?: string) {
+  return content.replace(HTML_IMAGE_TAG_PATTERN, (tag) => {
+    const photoId = tag.match(HTML_IMAGE_PHOTO_ID_PATTERN)?.[2]?.trim()
+    if (!photoId) {
+      return tag
+    }
+
+    const photo = findStoryPhotoById(photos, photoId)
+    if (!photo) {
+      return tag
+    }
+
+    const resolvedSrc = resolveAssetUrl(photo.url, cdnDomain)
+    if (HTML_IMAGE_SRC_PATTERN.test(tag)) {
+      return tag.replace(HTML_IMAGE_SRC_PATTERN, `src="${resolvedSrc}"`)
+    }
+
+    return tag.replace(/<img/i, `<img src="${resolvedSrc}"`)
+  })
 }
 
 export function countStoryCharacters(content?: string | null) {
@@ -165,4 +210,77 @@ export function buildStoryPreviewText(content?: string | null, maxLength?: numbe
 export function findStoryPhotoById(photos: PhotoDto[], photoId?: string) {
   if (!photoId) return null
   return photos.find((photo) => photo.id === photoId) ?? null
+}
+
+export function findStoryPhotoByImageUrl(
+  photos: PhotoDto[],
+  imageUrl?: string | null,
+  cdnDomain?: string,
+) {
+  const normalizedTarget = normalizeStoryImageUrl(imageUrl || '')
+  if (!normalizedTarget) return null
+
+  const targetCandidates = new Set([
+    normalizedTarget,
+    stripOrigin(normalizedTarget),
+  ])
+
+  for (const photo of photos) {
+    const candidates = getStoryImageMatchCandidates({
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      cdnDomain,
+    })
+
+    for (const candidate of candidates) {
+      if (targetCandidates.has(candidate)) {
+        return photo
+      }
+    }
+  }
+
+  return null
+}
+
+export interface StoryPhotoIndex {
+  findById(photoId?: string | null): PhotoDto | null
+  findByExactUrl(url?: string | null): PhotoDto | null
+  findByImageUrl(url?: string | null): PhotoDto | null
+}
+
+export function buildStoryPhotoIndex(photos: PhotoDto[], cdnDomain?: string): StoryPhotoIndex {
+  const byId = new Map<string, PhotoDto>()
+  const byExactUrl = new Map<string, PhotoDto>()
+  const byCandidate = new Map<string, PhotoDto>()
+
+  for (const photo of photos) {
+    if (photo.id) byId.set(photo.id, photo)
+    if (photo.url && !byExactUrl.has(photo.url)) byExactUrl.set(photo.url, photo)
+    if (photo.thumbnailUrl && !byExactUrl.has(photo.thumbnailUrl)) byExactUrl.set(photo.thumbnailUrl, photo)
+
+    const candidates = getStoryImageMatchCandidates({
+      url: photo.url,
+      thumbnailUrl: photo.thumbnailUrl,
+      cdnDomain,
+    })
+    for (const candidate of candidates) {
+      if (!byCandidate.has(candidate)) byCandidate.set(candidate, photo)
+    }
+  }
+
+  return {
+    findById(photoId) {
+      if (!photoId) return null
+      return byId.get(photoId) ?? null
+    },
+    findByExactUrl(url) {
+      if (!url) return null
+      return byExactUrl.get(url) ?? null
+    },
+    findByImageUrl(url) {
+      const normalized = normalizeStoryImageUrl(url || '')
+      if (!normalized) return null
+      return byCandidate.get(normalized) ?? byCandidate.get(stripOrigin(normalized)) ?? null
+    },
+  }
 }

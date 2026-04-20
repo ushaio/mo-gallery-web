@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
-import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls } from '@/lib/story-rich-content'
+import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -54,7 +54,7 @@ interface StoryPhotoPanelProps {
   onRemovePendingImage: (id: string) => void
   onSetCover: (photoId: string) => void
   onSetPendingCover: (id: string) => void
-  onEditCoverCrop: () => void
+
   onSetPhotoDate: (takenAt: string) => void
   onRetryFailedUploads: () => void
   onPhotoPanelDragOver: (e: React.DragEvent) => void
@@ -95,7 +95,6 @@ export function StoryPhotoPanel({
   onRemovePendingImage,
   onSetCover,
   onSetPendingCover,
-  onEditCoverCrop,
   onSetPhotoDate,
   onRetryFailedUploads,
   onPhotoPanelDragOver,
@@ -112,8 +111,13 @@ export function StoryPhotoPanel({
 }: StoryPhotoPanelProps) {
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
+  const referencedPhotoIds = getStoryReferencedPhotoIds(editorContent)
 
   const isPhotoInserted = (photo: PhotoDto) => {
+    if (referencedPhotoIds.has(photo.id)) {
+      return true
+    }
+
     const candidates = getStoryImageMatchCandidates({
       url: photo.url,
       thumbnailUrl: photo.thumbnailUrl,
@@ -335,29 +339,16 @@ export function StoryPhotoPanel({
                       ) : null}
 
                       <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                        {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
-                          <AdminButton
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onEditCoverCrop()
-                            }}
-                            adminVariant="ghost"
-                            className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
-                          >
-                            {t('admin.edit_cover_crop')}
-                          </AdminButton>
-                        ) : (
-                          <AdminButton
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onSetCover(photo.id)
-                            }}
-                            adminVariant="ghost"
-                            className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
-                          >
-                            {t('admin.cover')}
-                          </AdminButton>
-                        )}
+                        <AdminButton
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onSetCover(photo.id)
+                          }}
+                          adminVariant="ghost"
+                          className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
+                        >
+                          {t('admin.cover')}
+                        </AdminButton>
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()

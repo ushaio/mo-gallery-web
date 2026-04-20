@@ -18,6 +18,9 @@ import { ResizableImage } from '@/components/tiptap-extensions/ResizableImage'
 import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import { DropCapParagraph } from '@/components/tiptap-extensions/DropCapParagraph'
+import { StyledHorizontalRule } from '@/components/tiptap-extensions/StyledHorizontalRule'
+import { MusicEmbed } from '@/components/tiptap-extensions/MusicEmbed'
+import { parseMusicEmbedInfo } from '@/lib/music-embed'
 import { convertMarkdownToHtml, ensureFirstParagraphHasDropCap, isMarkdownContent } from './markdown-converter'
 import { TAB_INDENT } from './editor-constants'
 
@@ -60,10 +63,12 @@ export function useNarrativeEditor({
       PastedBlockStyle,
       DropCapParagraph,
       StarterKit.configure({
+        horizontalRule: false,
         heading: {
           levels: [1, 2, 3, 4, 5, 6],
         },
       }),
+      StyledHorizontalRule,
       Placeholder.configure({
         placeholder: placeholder || t('editor.placeholder'),
         emptyEditorClass: 'is-editor-empty',
@@ -83,6 +88,7 @@ export function useNarrativeEditor({
           alwaysPreserveAspectRatio: true,
         },
       }),
+      MusicEmbed,
       Underline,
       PastedStyleMark,
       TextAlign.configure({
@@ -122,10 +128,33 @@ export function useNarrativeEditor({
         const files = Array.from(event.clipboardData?.files || []).filter((file) =>
           file.type.startsWith('image/')
         )
-        if (files.length === 0) return false
-        event.preventDefault()
-        void onPasteFilesRef.current?.(files)
-        return true
+        if (files.length > 0) {
+          event.preventDefault()
+          void onPasteFilesRef.current?.(files)
+          return true
+        }
+
+        const plainText = event.clipboardData?.getData('text/plain')?.trim() || ''
+        const htmlText = event.clipboardData?.getData('text/html')?.trim() || ''
+        const embedInfo = parseMusicEmbedInfo(plainText) || parseMusicEmbedInfo(htmlText)
+        const musicEmbedType = view.state.schema.nodes.musicEmbed
+
+        if (embedInfo && musicEmbedType) {
+          event.preventDefault()
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(
+                musicEmbedType.create({
+                  provider: embedInfo.provider,
+                  url: embedInfo.url,
+                })
+              )
+              .scrollIntoView()
+          )
+          return true
+        }
+
+        return false
       },
       handleKeyDown: (view, event) => {
         if (event.key !== 'Tab') {

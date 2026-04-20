@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Film,
   Plus,
@@ -16,6 +16,7 @@ import {
   Filter,
   Layout,
 } from 'lucide-react'
+import { FilmCanisterSvg } from '@/components/admin/FilmCanisterSvg'
 import {
   getFilmRolls,
   getFilmRoll,
@@ -31,11 +32,13 @@ import {
 } from '@/lib/api'
 import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
 type ViewMode = 'grid' | 'list'
+type PhotoTypeFilter = 'all' | 'digital' | 'film'
 
 interface FilmRollsTabProps {
   token: string | null
@@ -59,6 +62,7 @@ export function FilmRollsTab({
   const [rolls, setRolls] = useState<FilmRollDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentRoll, setCurrentRoll] = useState<FilmRollDto | null>(null)
+  const [loadingCurrentRoll, setLoadingCurrentRoll] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'photos'>('overview')
   const [saving, setSaving] = useState(false)
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
@@ -71,8 +75,8 @@ export function FilmRollsTab({
   const [showFilters, setShowFilters] = useState(false)
   const [filterBrand, setFilterBrand] = useState('')
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
-
-  useEffect(() => { loadRolls() }, [token])
+  const [photoTypeFilter, setPhotoTypeFilter] = useState<PhotoTypeFilter>('film')
+  const currentRollRequestIdRef = useRef(0)
 
   const brands = useMemo(() => {
     const set = new Set(rolls.map(r => r.brand))
@@ -101,7 +105,7 @@ export function FilmRollsTab({
     setSearchQuery('')
   }
 
-  async function loadRolls() {
+  const loadRolls = useCallback(async () => {
     if (!token) return
     try {
       setLoading(true)
@@ -112,9 +116,13 @@ export function FilmRollsTab({
     } finally {
       setLoading(false)
     }
-  }
+  }, [notify, onUnauthorized, t, token])
+
+  useEffect(() => { loadRolls() }, [loadRolls])
 
   function handleCreateRoll() {
+    currentRollRequestIdRef.current += 1
+    setLoadingCurrentRoll(false)
     setCurrentRoll({
       id: '', name: '', brand: '', iso: 400, frameCount: 36,
       notes: null, shootDate: null, endDate: null,
@@ -124,9 +132,39 @@ export function FilmRollsTab({
     setActiveTab('overview')
   }
 
+  const openRollDetail = useCallback(async (roll: FilmRollDto) => {
+    const requestId = currentRollRequestIdRef.current + 1
+    currentRollRequestIdRef.current = requestId
+
+    setCurrentRoll({ ...roll, filmPhotos: roll.filmPhotos ?? [] })
+    setActiveTab('photos')
+    setShowPhotoSelector(false)
+    setSelectedPhotoIds(new Set())
+    setPhotoSelectorSearch('')
+    setPhotoTypeFilter('film')
+    setLoadingCurrentRoll(true)
+
+    try {
+      const full = await getFilmRoll(roll.id)
+      if (currentRollRequestIdRef.current !== requestId) return
+      setCurrentRoll(full)
+    } catch {
+      if (currentRollRequestIdRef.current !== requestId) return
+      setCurrentRoll(prev => prev?.id === roll.id ? { ...roll, filmPhotos: roll.filmPhotos ?? [] } : prev)
+    } finally {
+      if (currentRollRequestIdRef.current === requestId) {
+        setLoadingCurrentRoll(false)
+      }
+    }
+  }, [])
+
   function handleDeleteRoll(roll: FilmRollDto, e?: React.MouseEvent) {
     e?.stopPropagation()
     if (!token) return
+    if ((roll.photoCount ?? roll.filmPhotos?.length ?? 0) > 0) {
+      notify(t('admin.film_roll_delete_not_empty'), 'error')
+      return
+    }
     setPendingRollDelete(roll)
   }
 
@@ -141,7 +179,7 @@ export function FilmRollsTab({
       await loadRolls()
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
-      notify(t('common.error'), 'error')
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
       setDeletingRollId(null)
     }
@@ -199,6 +237,7 @@ export function FilmRollsTab({
       setShowPhotoSelector(false)
       setSelectedPhotoIds(new Set())
       setPhotoSelectorSearch('')
+      setPhotoTypeFilter('film')
       notify(t('admin.photos_added'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
@@ -227,16 +266,28 @@ export function FilmRollsTab({
   }, [currentRoll])
 
   const availablePhotos = useMemo(() => {
-    return photos.filter(p => !rollPhotoIds.has(p.id))
-  }, [photos, rollPhotoIds])
+    return photos.filter((photo) => {
+      if (rollPhotoIds.has(photo.id)) return false
+      if (photo.filmRollId && photo.filmRollId !== currentRoll?.id) return false
+      return true
+    })
+  }, [currentRoll?.id, photos, rollPhotoIds])
 
   const filteredAvailablePhotos = useMemo(() => {
-    if (!photoSelectorSearch.trim()) return availablePhotos
-    const q = photoSelectorSearch.toLowerCase()
-    return availablePhotos.filter(p =>
-      p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
-    )
-  }, [availablePhotos, photoSelectorSearch])
+    const q = photoSelectorSearch.trim().toLowerCase()
+
+    return availablePhotos.filter((photo) => {
+      const resolvedPhotoType = photo.photoType ?? (photo.filmRollId ? 'film' : 'digital')
+      const matchesPhotoType = photoTypeFilter === 'all' || resolvedPhotoType === photoTypeFilter
+      if (!matchesPhotoType) return false
+      if (!q) return true
+
+      return (
+        photo.title.toLowerCase().includes(q) ||
+        photo.category.toLowerCase().includes(q)
+      )
+    })
+  }, [availablePhotos, photoSelectorSearch, photoTypeFilter])
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return '—'
@@ -255,7 +306,8 @@ export function FilmRollsTab({
   // ==================== List View ====================
   if (!currentRoll) {
     return (
-      <div className="space-y-6">
+      <>
+        <div className="space-y-6">
         <AdminCollectionToolbar
           info={<span className="text-sm font-medium text-foreground"><span className="text-muted-foreground">{filteredRolls.length} {t('admin.film_rolls')}</span></span>}
           searchValue={searchQuery}
@@ -334,229 +386,103 @@ export function FilmRollsTab({
         {loading ? (
           <div className="py-20"><AdminLoading text={t('common.loading')} className="min-h-[320px]" /></div>
         ) : filteredRolls.length === 0 ? (
-          /* ── Empty state ── */
-          <div className="py-20 text-center">
-            {/* Canister silhouette */}
-            <div className="relative w-[72px] mx-auto mb-6">
-              {/* Spool — flat disc */}
-              <div className="mx-auto w-8 h-4 rounded-full relative z-10"
-                style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #4a4a4a 30%, #555 50%, #444 70%, #2a2a2a 100%)', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
-              >
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-[#1a1a1a] border border-[#444]" />
-              </div>
-              {/* Cylinder body */}
-              <div
-                className="-mt-1.5 mx-auto h-28 flex items-center justify-center"
-                style={{
-                  width: '72px',
-                  borderRadius: '36px / 12px',
-                  background: 'linear-gradient(to right, #1a1a1a 0%, #333 20%, #3a3a3a 50%, #2a2a2a 80%, #1a1a1a 100%)',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.5), inset 0 0 12px rgba(0,0,0,0.3)',
-                }}
-              >
-                <Film className="w-7 h-7 text-[#555]/30" />
-              </div>
-            </div>
-            <p className="font-mono text-sm text-[#666] mb-4">{searchQuery || filterBrand ? t('admin.no_film_rolls_match_filters') : t('admin.no_film_rolls')}</p>
+          <div className="py-20 text-center border border-dashed border-border/50 bg-muted/5">
+            <Film className="w-12 h-12 mx-auto mb-4 opacity-10" />
+            <p className="text-sm text-muted-foreground mb-4">{searchQuery || filterBrand ? t('admin.no_film_rolls_match_filters') : t('admin.no_film_rolls')}</p>
             {!searchQuery && !filterBrand && (
-              <AdminButton onClick={handleCreateRoll} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#1a1a1a] border border-[#3a3a3a] font-mono text-xs text-[#999] hover:text-[#ccc] hover:border-[#555] transition-colors">
+              <AdminButton onClick={handleCreateRoll} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
                 <Plus className="w-4 h-4" />
                 {t('admin.create_first_film_roll')}
               </AdminButton>
             )}
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-8 gap-y-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredRolls.map(roll => {
               const cover = getRollCover(roll)
-              const photoCount = roll.photoCount ?? 0
-              const usagePercent = roll.frameCount > 0 ? Math.min(100, Math.round((photoCount / roll.frameCount) * 100)) : 0
               return (
                 <div
                   key={roll.id}
-                  onClick={async () => {
-                    try {
-                      const full = await getFilmRoll(roll.id)
-                      setCurrentRoll(full)
-                      setActiveTab('photos')
-                    } catch {
-                      setCurrentRoll({ ...roll, filmPhotos: [] })
-                      setActiveTab('photos')
-                    }
-                  }}
-                  className="group cursor-pointer transition-all duration-300 hover:-translate-y-1.5 flex flex-col items-center"
+                  onClick={() => { void openRollDetail(roll) }}
+                  className="group cursor-pointer bg-card border border-border/50 hover:border-border transition-all"
                 >
-                  {/* ── Spool hub — small flat disc peeking above body ── */}
-                  <div className="relative w-7 h-3.5 rounded-full z-10"
-                    style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #4a4a4a 30%, #555 50%, #444 70%, #2a2a2a 100%)', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
-                  >
-                    {/* Center hole */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-[#1a1a1a] border border-[#444]" />
-                  </div>
-
-                  {/* ── Canister cylinder body ── */}
-                  <div className="relative -mt-1.5 w-full" style={{ maxWidth: '140px' }}>
-                    <div
-                      className="relative overflow-hidden group-hover:shadow-[0_8px_32px_rgba(0,0,0,0.7)] transition-shadow"
-                      style={{
-                        borderRadius: '50% / 8px',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                      }}
-                    >
-                      {/* Metal shell with cylindrical curvature gradient (left-to-right) */}
-                      <div
-                        className="relative overflow-hidden"
-                        style={{
-                          background: 'linear-gradient(to right, #1e1e1e 0%, #383838 15%, #444 35%, #4a4a4a 50%, #3e3e3e 65%, #2e2e2e 85%, #1a1a1a 100%)',
-                        }}
-                      >
-                        {/* Top rim — elliptical cap of cylinder */}
-                        <div className="h-3 relative" style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #555 30%, #666 50%, #4a4a4a 70%, #222 100%)' }}>
-                          <div className="absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(to right, transparent 5%, rgba(255,255,255,0.1) 40%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.08) 60%, transparent 95%)' }} />
-                        </div>
-
-                        {/* Machined groove */}
-                        <div className="h-[3px]" style={{ background: 'linear-gradient(to right, #111 0%, #1e1e1e 30%, #222 50%, #1a1a1a 70%, #0e0e0e 100%)' }} />
-
-                        {/* ── Label area (the paper label wrapped around the canister) ── */}
-                        <div className="relative overflow-hidden">
-                          <div className="relative aspect-[3/4]">
-                            {cover ? (
-                              <img
-                                src={cover}
-                                alt={roll.name}
-                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f5f0e6, #e8e0d0)' }}>
-                                <Film className="w-10 h-10 text-[#c8a850]/25" />
-                              </div>
-                            )}
-                            {/* Cylindrical curvature shadow on label edges */}
-                            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 12px 0 16px -8px rgba(0,0,0,0.5), inset -12px 0 16px -8px rgba(0,0,0,0.5)' }} />
-                            {/* Text overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/40" />
-                            {/* Brand top */}
-                            <div className="absolute top-0 inset-x-0 px-4 pt-2.5">
-                              <p className="font-mono text-[9px] font-black uppercase tracking-[0.3em] text-white/80 drop-shadow truncate text-center">{roll.brand}</p>
-                            </div>
-                            {/* Name + info bottom */}
-                            <div className="absolute bottom-0 inset-x-0 px-4 pb-3 text-center">
-                              <p className="font-mono text-[13px] font-bold text-white drop-shadow truncate">{roll.name}</p>
-                              <div className="flex items-center justify-center gap-2 mt-1">
-                                <span className="font-mono text-[10px] font-bold text-[#c8a850] drop-shadow">ISO {roll.iso}</span>
-                                <span className="font-mono text-[9px] text-white/50">{roll.frameCount}EXP</span>
-                              </div>
-                            </div>
-                            {/* Delete */}
-                            <div className="absolute top-2 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-1 rounded-full bg-black/50 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
-                                <Trash2 className="w-3 h-3" />
-                              </AdminButton>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Machined groove */}
-                        <div className="h-[3px]" style={{ background: 'linear-gradient(to right, #111 0%, #1e1e1e 30%, #222 50%, #1a1a1a 70%, #0e0e0e 100%)' }} />
-
-                        {/* Bottom info */}
-                        <div className="px-4 py-1.5 flex items-center justify-between">
-                          <span className="font-mono text-[8px] text-[#888]">{photoCount}/{roll.frameCount}</span>
-                          <div className="flex-1 mx-2 h-[3px] rounded-full overflow-hidden" style={{ background: 'linear-gradient(to right, #111, #1a1a1a, #111)' }}>
-                            <div className="h-full rounded-full bg-[#c8a850]/70 transition-all duration-500" style={{ width: `${usagePercent}%` }} />
-                          </div>
-                          {roll.shootDate && <span className="font-mono text-[7px] text-[#666]">{formatDate(roll.shootDate)}</span>}
-                        </div>
-
-                        {/* Bottom rim */}
-                        <div className="h-3 relative" style={{ background: 'linear-gradient(to right, #2a2a2a 0%, #555 30%, #666 50%, #4a4a4a 70%, #222 100%)' }}>
-                          <div className="absolute inset-x-0 bottom-0 h-px" style={{ background: 'linear-gradient(to right, transparent 5%, rgba(255,255,255,0.08) 40%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.06) 60%, transparent 95%)' }} />
-                        </div>
+                  <div className="relative aspect-[4/3] bg-muted overflow-hidden">
+                    {cover ? (
+                      <img src={cover} alt={roll.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-muted/50">
+                        <FilmCanisterSvg
+                          brand={roll.brand}
+                          iso={roll.iso}
+                          photoCount={roll.photoCount ?? 0}
+                          frameCount={roll.frameCount}
+                          className="w-3/4 h-3/4 opacity-60"
+                        />
                       </div>
+                    )}
+                    <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{roll.photoCount ?? 0}</div>
+                    <div
+                      className="absolute bottom-2 right-2 z-10 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-1.5 bg-red-500/80 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </AdminButton>
                     </div>
                   </div>
-
-                  {/* ── Film leader tongue ── */}
-                  <div className="w-7 h-2.5 rounded-b-sm relative" style={{ background: 'linear-gradient(to right, #2a2a2a, #444, #3a3a3a, #2a2a2a)', borderLeft: '1px solid #555', borderRight: '1px solid #555', borderBottom: '1px solid #555' }}>
-                    <div className="absolute inset-x-1 top-0 h-px bg-[#1a1a1a]" />
+                  <div className="p-4">
+                    <h3 className="font-medium truncate mb-1">{roll.name}</h3>
+                    <p className="text-xs text-muted-foreground">{roll.brand} · ISO {roll.iso} · {roll.frameCount} {t('admin.film_roll_frames')}</p>
+                    {roll.shootDate && <p className="text-xs text-muted-foreground/60 mt-1">{formatDate(roll.shootDate)}</p>}
                   </div>
                 </div>
               )
             })}
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredRolls.map(roll => {
-              const photoCount = roll.photoCount ?? 0
-              const usagePercent = roll.frameCount > 0 ? Math.min(100, Math.round((photoCount / roll.frameCount) * 100)) : 0
-              return (
-                <div
-                  key={roll.id}
-                  onClick={async () => {
-                    try {
-                      const full = await getFilmRoll(roll.id)
-                      setCurrentRoll(full)
-                      setActiveTab('photos')
-                    } catch {
-                      setCurrentRoll({ ...roll, filmPhotos: [] })
-                      setActiveTab('photos')
-                    }
-                  }}
-                  className="group flex items-stretch cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
-                >
-                  {/* Left end cap — cylindrical curvature */}
-                  <div className="w-4 shrink-0 rounded-l-full flex items-center justify-center" style={{ background: 'linear-gradient(to right, #555 0%, #3a3a3a 60%, #2e2e2e 100%)', borderTop: '1px solid #555', borderBottom: '1px solid #555', borderLeft: '1px solid #555' }}>
-                    <div className="w-2 h-2 rounded-full bg-[#1a1a1a] border border-[#444]" />
-                  </div>
-                  {/* Body — horizontal cylinder surface */}
-                  <div className="flex-1 flex items-center overflow-hidden" style={{ background: 'linear-gradient(to bottom, #2a2a2a 0%, #383838 20%, #404040 50%, #353535 80%, #252525 100%)', borderTop: '1px solid #4a4a4a', borderBottom: '1px solid #4a4a4a' }}>
-                    {/* Groove */}
-                    <div className="w-[2px] self-stretch bg-[#1a1a1a]" />
-                    {/* Thumbnail */}
-                    <div className="w-12 h-12 overflow-hidden flex-shrink-0 relative">
-                      {getRollCover(roll) ? (
-                        <img src={getRollCover(roll)} alt={roll.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-[#f5f0e6]"><Film className="w-4 h-4 text-[#c8a850]/25" /></div>
-                      )}
-                      <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 4px 0 6px -3px rgba(0,0,0,0.4), inset -4px 0 6px -3px rgba(0,0,0,0.4)' }} />
-                    </div>
-                    {/* Groove */}
-                    <div className="w-[2px] self-stretch bg-[#1a1a1a]" />
-                    {/* Info */}
-                    <div className="flex-1 min-w-0 px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-mono text-sm font-medium text-[#e8e8e8] truncate">{roll.name}</h3>
-                        <span className="shrink-0 px-1.5 py-0.5 rounded-sm bg-[#c8a850] text-[#0a0a0a] font-mono text-[7px] font-black">ISO {roll.iso}</span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-[#999]">{roll.brand}</span>
-                        <span className="font-mono text-[9px] text-[#666]">{photoCount}/{roll.frameCount} EXP</span>
-                        <div className="w-14 h-[3px] rounded-full overflow-hidden bg-[#1a1a1a]">
-                          <div className="h-full rounded-full bg-[#c8a850]/60" style={{ width: `${usagePercent}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="font-mono text-[9px] text-[#555] hidden sm:block px-3">{formatDate(roll.shootDate)}</div>
-                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity pr-2">
-                      <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-2 text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50">
-                        <Trash2 className="w-4 h-4" />
-                      </AdminButton>
-                    </div>
-                    {/* Groove */}
-                    <div className="w-[2px] self-stretch bg-[#1a1a1a]" />
-                  </div>
-                  {/* Right end cap */}
-                  <div className="w-4 shrink-0 rounded-r-full flex items-center justify-center" style={{ background: 'linear-gradient(to left, #555 0%, #3a3a3a 60%, #2e2e2e 100%)', borderTop: '1px solid #555', borderBottom: '1px solid #555', borderRight: '1px solid #555' }}>
-                    <div className="w-2 h-2 rounded-full bg-[#1a1a1a] border border-[#444]" />
-                  </div>
+          <div className="space-y-2">
+            {filteredRolls.map(roll => (
+              <div
+                key={roll.id}
+                onClick={() => { void openRollDetail(roll) }}
+                className="group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all"
+              >
+                <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center">
+                  <FilmCanisterSvg
+                    brand={roll.brand}
+                    iso={roll.iso}
+                    photoCount={roll.photoCount ?? 0}
+                    frameCount={roll.frameCount}
+                    className="w-full h-full"
+                  />
                 </div>
-              )
-            })}
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium truncate">{roll.name}</h3>
+                  <p className="text-xs text-muted-foreground">{roll.brand} · ISO {roll.iso} · {roll.photoCount ?? 0}/{roll.frameCount} {t('admin.film_roll_frames')}</p>
+                </div>
+                <div className="text-xs text-muted-foreground/60 hidden sm:block">{formatDate(roll.shootDate)}</div>
+                <div
+                  className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <AdminButton onClick={e => handleDeleteRoll(roll, e)} disabled={deletingRollId === roll.id} adminVariant="unstyled" className="p-2 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
+                    <Trash2 className="w-4 h-4" />
+                  </AdminButton>
+                </div>
+              </div>
+            ))}
           </div>
         )}
-      </div>
+        </div>
+        <SimpleDeleteDialog
+          isOpen={pendingRollDelete !== null}
+          title={t('common.confirm')}
+          message={t('admin.film_roll_delete_confirm')}
+          onConfirm={confirmDeleteRoll}
+          onCancel={() => { if (!deletingRollId) setPendingRollDelete(null) }}
+          t={t}
+        />
+      </>
     )
   }
 
@@ -568,7 +494,11 @@ export function FilmRollsTab({
       <div className="space-y-6">
         <div className="flex items-center justify-between pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <AdminButton onClick={() => setCurrentRoll(null)} adminVariant="icon">
+            <AdminButton onClick={() => {
+              currentRollRequestIdRef.current += 1
+              setLoadingCurrentRoll(false)
+              setCurrentRoll(null)
+            }} adminVariant="icon">
               <ChevronLeft className="w-5 h-5" />
             </AdminButton>
             <div>
@@ -595,8 +525,9 @@ export function FilmRollsTab({
             {activeTab === 'photos' && currentRoll.id && (
               <AdminButton
                 onClick={() => setShowPhotoSelector(true)}
+                disabled={loadingCurrentRoll}
                 adminVariant="unstyled"
-                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
                 {t('admin.add_photos')}
@@ -670,43 +601,69 @@ export function FilmRollsTab({
             </div>
           ) : (
             <div className="space-y-4">
-              {showPhotoSelector ? (
+              {loadingCurrentRoll ? (
+                <div className="py-16">
+                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                </div>
+              ) : showPhotoSelector ? (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-muted/30 border border-border">
-                    <div className="flex items-center gap-3">
-                      <AdminButton onClick={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()); setPhotoSelectorSearch('') }} adminVariant="icon">
+                  <div className="flex flex-col gap-3 p-3 bg-muted/30 border border-border sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <AdminButton onClick={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()); setPhotoSelectorSearch(''); setPhotoTypeFilter('film') }} adminVariant="icon">
                         <X className="w-4 h-4" />
                       </AdminButton>
                       <span className="text-sm">{selectedPhotoIds.size} {t('admin.selected')}</span>
                       <input type="text" value={photoSelectorSearch} onChange={e => setPhotoSelectorSearch(e.target.value)} placeholder={t('common.search')} className="px-2 py-1 text-sm bg-transparent border border-border rounded focus:border-primary outline-none w-40" />
+                      <AdminSelect
+                        value={photoTypeFilter}
+                        onChange={(value) => setPhotoTypeFilter(value as PhotoTypeFilter)}
+                        options={[
+                          { value: 'all', label: t('common.all') },
+                          { value: 'digital', label: t('admin.upload_type_digital') },
+                          { value: 'film', label: t('admin.upload_type_film') },
+                        ]}
+                        className="min-w-[120px]"
+                      />
                     </div>
                     <AdminButton onClick={handleAddPhotos} disabled={selectedPhotoIds.size === 0 || saving} adminVariant="unstyled" className="flex items-center gap-2 px-4 py-1.5 bg-foreground text-background text-xs font-medium disabled:opacity-50 transition-colors">
                       <Check className="w-3.5 h-3.5" />
                       {t('admin.add')}
                     </AdminButton>
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                    {filteredAvailablePhotos.map(photo => {
-                      const isSelected = selectedPhotoIds.has(photo.id)
-                      return (
-                        <div
-                          key={photo.id}
-                          onClick={() => setSelectedPhotoIds(prev => {
-                            const next = new Set(prev)
-                            if (next.has(photo.id)) next.delete(photo.id)
-                            else next.add(photo.id)
-                            return next
-                          })}
-                          className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
-                        >
-                          <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
-                          {isSelected && (
-                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {filteredAvailablePhotos.length === 0 ? (
+                    <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">
+                      <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-10" />
+                      <p className="text-sm text-muted-foreground">
+                        {availablePhotos.length === 0 ? t('admin.no_photos_available') : t('admin.no_photos_match_filter')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                      {filteredAvailablePhotos.map(photo => {
+                        const isSelected = selectedPhotoIds.has(photo.id)
+                        return (
+                          <div
+                            key={photo.id}
+                            onClick={() => setSelectedPhotoIds(prev => {
+                              const next = new Set(prev)
+                              if (next.has(photo.id)) next.delete(photo.id)
+                              else next.add(photo.id)
+                              return next
+                            })}
+                            className={`relative aspect-square cursor-pointer ${isSelected ? 'ring-2 ring-primary' : 'hover:opacity-80'}`}
+                          >
+                            <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)} alt={photo.title} className="w-full h-full object-cover" />
+                            <div className="absolute left-1 bottom-1 px-1.5 py-0.5 bg-black/55 text-white text-[9px]">
+                              {t(`admin.upload_type_${photo.photoType ?? (photo.filmRollId ? 'film' : 'digital')}`)}
+                            </div>
+                            {isSelected && (
+                              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center"><Check className="w-5 h-5 text-primary" /></div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : rollPhotos.length === 0 ? (
                 <div className="py-16 text-center border border-dashed border-border/50 bg-muted/5">
@@ -745,7 +702,7 @@ export function FilmRollsTab({
       <SimpleDeleteDialog
         isOpen={pendingRollDelete !== null}
         title={t('common.confirm')}
-        message={t('admin.confirm_delete_single') + '?'}
+        message={t('admin.film_roll_delete_confirm')}
         onConfirm={confirmDeleteRoll}
         onCancel={() => { if (!deletingRollId) setPendingRollDelete(null) }}
         t={t}

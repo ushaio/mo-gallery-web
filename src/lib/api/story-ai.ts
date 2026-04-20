@@ -130,9 +130,10 @@ export async function getStoryAiModels(token: string): Promise<StoryAiModelsResp
   return apiRequestData<StoryAiModelsResponse>('/api/admin/editor-ai/models', {}, token)
 }
 
-export async function getEditorAiConversations(token: string, scopeId: string): Promise<EditorAiConversationDto[]> {
+export async function getEditorAiConversations(token: string, scopeId?: string): Promise<EditorAiConversationDto[]> {
+  const query = scopeId ? buildQuery({ scopeId }) : ''
   return apiRequestData<EditorAiConversationDto[]>(
-    `/api/admin/editor-ai/conversations${buildQuery({ scopeId })}`,
+    `/api/admin/editor-ai/conversations${query}`,
     {},
     token,
   )

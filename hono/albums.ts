@@ -1,5 +1,5 @@
 import 'server-only'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
@@ -30,7 +30,7 @@ const AddPhotosSchema = z.object({
 })
 
 // Helper to handle Prisma errors
-const handlePrismaError = (c: any, error: unknown, entityName = 'Record') => {
+const handlePrismaError = (c: Context, error: unknown, entityName = 'Record') => {
   console.error(`${entityName} operation error:`, error)
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2025') {
@@ -154,6 +154,8 @@ albums.get('/admin/albums', async (c) => {
     const albumsList = await db.album.findMany({
       include: {
         photos: {
+          orderBy: { createdAt: 'asc' },
+          take: 1,
           include: { categories: true },
         },
         _count: {
@@ -179,6 +181,44 @@ albums.get('/admin/albums', async (c) => {
   } catch (error) {
     console.error('Get admin albums error:', error)
     return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+albums.get('/admin/albums/:id', async (c) => {
+  try {
+    const id = c.req.param('id')
+
+    const album = await db.album.findUnique({
+      where: { id },
+      include: {
+        photos: {
+          include: { categories: true },
+        },
+        _count: {
+          select: { photos: true },
+        },
+      },
+    })
+
+    if (!album) {
+      return c.json({ error: 'Album not found' }, 404)
+    }
+
+    const data = {
+      ...album,
+      photoCount: album._count.photos,
+      photos: album.photos.map((p) => ({
+        ...p,
+        category: p.categories.map((c) => c.name).join(','),
+      })),
+    }
+
+    return c.json({
+      success: true,
+      data,
+    })
+  } catch (error) {
+    return handlePrismaError(c, error, 'Album')
   }
 })
 
