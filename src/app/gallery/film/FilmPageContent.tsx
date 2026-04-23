@@ -15,13 +15,11 @@ function getFrameTitle(photo: PhotoDto, frameIndex: number) {
 }
 
 function getRollMetaLine(roll: FilmRollDto) {
-  const parts = [`${roll.frameCount || 36} EXP`, '35MM']
-  if (roll.iso) parts.push(`ISO ${roll.iso}`)
-  return parts.join(' • ')
+  return `${roll.frameCount || 36} EXP • 35MM`
 }
 
 function getRollNote(roll: FilmRollDto) {
-  return roll.notes?.trim() || 'ARCHIVE ENTRY'
+  return roll.notes?.trim()
 }
 
 function SprocketRail({ holeCount }: { holeCount: number }) {
@@ -88,6 +86,7 @@ function ArchiveRollRow({
   onPhotoClick: (photo: PhotoDto) => void
 }) {
   const holeCount = Math.max(photos.length * 2 + 4, 14)
+  const rollNote = getRollNote(roll)
 
   return (
     <motion.article
@@ -103,7 +102,7 @@ function ArchiveRollRow({
             alt="135 film box"
             fill
             sizes="108px"
-            className="object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)]"
+            className="scale-[1.75] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)]"
             priority={rowIndex === 0}
           />
         </div>
@@ -115,15 +114,19 @@ function ArchiveRollRow({
           <h2 className="mt-3 font-serif text-[2rem] font-light leading-none tracking-[0.03em] text-[#d7b16a] sm:text-[2.2rem]">
             {roll.name}
           </h2>
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.28em] text-[#827867]">
+          <p className="mt-4 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.28em] text-[#827867]">
             {getRollMetaLine(roll)}
           </p>
-          <p className="mt-3 max-w-[18rem] font-mono text-[9px] uppercase tracking-[0.28em] text-[#6e654f]">
-            {getRollNote(roll)}
-          </p>
-          <p className="mt-6 font-mono text-[9px] uppercase tracking-[0.36em] text-[#a3803f]">
-            View Details
-          </p>
+          {roll.iso ? (
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.28em] text-[#827867]">
+              ISO {roll.iso}
+            </p>
+          ) : null}
+          {rollNote ? (
+            <p className="mt-3 max-w-[18rem] font-mono text-[9px] uppercase tracking-[0.28em] text-[#6e654f]">
+              {rollNote}
+            </p>
+          ) : null}
         </div>
       </div>
 
