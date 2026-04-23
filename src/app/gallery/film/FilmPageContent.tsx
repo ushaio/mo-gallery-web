@@ -2,32 +2,48 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Circle, CircleOff } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { useSettings } from '@/contexts/SettingsContext'
 import type { FilmRollDto, PhotoDto } from '@/lib/api/types'
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+const FILM_BOX_ASSET = '/film/general-135.png'
 
-const LEADER_MARKS = ['△', '▽', '◁', '▷', '○', '□']
+function getFrameTitle(photo: PhotoDto, frameIndex: number) {
+  const title = photo.title?.trim()
+  return title || `Frame ${String(frameIndex + 1).padStart(2, '0')}`
+}
 
-// ---------------------------------------------------------------------------
-// Film frame
-// ---------------------------------------------------------------------------
+function getRollMetaLine(roll: FilmRollDto) {
+  const parts = [`${roll.frameCount || 36} EXP`, '35MM']
+  if (roll.iso) parts.push(`ISO ${roll.iso}`)
+  return parts.join(' • ')
+}
+
+function getRollNote(roll: FilmRollDto) {
+  return roll.notes?.trim() || 'ARCHIVE ENTRY'
+}
+
+function SprocketRail({ holeCount }: { holeCount: number }) {
+  return (
+    <div className="flex h-6 items-center justify-between gap-1 bg-[#050505] px-3 sm:h-7">
+      {Array.from({ length: holeCount }, (_, index) => (
+        <span
+          key={index}
+          className="block h-[10px] w-[8px] rounded-[1px] border border-[#211a13] bg-[#100e0c] sm:h-[11px] sm:w-[9px]"
+        />
+      ))}
+    </div>
+  )
+}
 
 function FilmFrame({
   photo,
   frameIndex,
-  grayscale,
   onClick,
 }: {
   photo: PhotoDto
   frameIndex: number
-  grayscale: boolean
   onClick: () => void
 }) {
   const { settings } = useSettings()
@@ -35,125 +51,112 @@ function FilmFrame({
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
   )
-  const aspectRatio = photo.width && photo.height
-    ? Math.max(0.6, Math.min(1.8, photo.width / photo.height))
-    : 1.5
 
   return (
-    <div
-      className="group relative shrink-0 cursor-pointer overflow-hidden rounded-[2px] border border-[#2a2a2a] transition-all duration-300 hover:border-[#c8a850]/40 hover:shadow-[0_0_18px_rgba(200,168,80,0.22),0_0_4px_rgba(200,168,80,0.12)]"
-      style={{ aspectRatio }}
+    <button
+      type="button"
       onClick={onClick}
+      className="group relative h-[88px] w-[132px] shrink-0 overflow-hidden border border-[#2f2922] bg-[#111] text-left transition-colors duration-200 hover:border-[#8b6a33] sm:h-[94px] sm:w-[148px] lg:h-[100px] lg:w-[158px]"
+      aria-label={`Open ${getFrameTitle(photo, frameIndex)}`}
     >
       <Image
         src={coverUrl}
-        alt={photo.title}
+        alt={getFrameTitle(photo, frameIndex)}
         fill
-        sizes="(max-width: 640px) 30vw, (max-width: 1024px) 22vw, 18vw"
-        className={`object-cover transition-all duration-500 group-hover:scale-[1.04] group-hover:brightness-[1.08] ${
-          grayscale
-            ? 'grayscale group-hover:grayscale-0'
-            : 'sepia-[0.25] saturate-[0.8] group-hover:sepia-0 group-hover:saturate-100'
-        }`}
+        sizes="(max-width: 640px) 132px, (max-width: 1024px) 148px, 158px"
+        className="object-cover grayscale-[0.15] sepia-[0.18] brightness-[0.92] transition duration-300 group-hover:brightness-100"
       />
-      <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.18]" />
-      <div className="film-scanlines pointer-events-none absolute inset-0" />
-      <div className="film-vignette absolute inset-0 opacity-100 group-hover:opacity-30" />
-      <div className="pointer-events-none absolute left-1 top-0.5 select-none font-mono text-[7px] text-[#c8a850]/60 sm:left-1.5 sm:top-1 sm:text-[8px]">
-        {String(frameIndex + 1).padStart(2, '0')}A
+      <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.12]" />
+      <div className="film-scanlines pointer-events-none absolute inset-0 opacity-70" />
+      <div className="film-vignette pointer-events-none absolute inset-0 opacity-80" />
+      <div className="pointer-events-none absolute left-2 top-1.5 font-mono text-[8px] uppercase tracking-[0.26em] text-[#bea06a]/70">
+        {String(frameIndex + 1).padStart(3, '0')}
       </div>
-      <div className="pointer-events-none absolute right-1 top-0.5 select-none font-mono text-[8px] text-[#c8a850]/40 sm:right-1.5 sm:top-1">
-        ▷
-      </div>
-      <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/20 to-transparent p-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100 sm:p-2">
-        <p className="truncate font-mono text-[9px] text-white/95 sm:text-[10px]">{photo.title}</p>
-        {photo.category ? (
-          <p className="truncate font-mono text-[7px] uppercase tracking-wider text-[#c8a850]/90 sm:text-[8px]">
-            {photo.category.split(',')[0]}
-          </p>
-        ) : null}
-      </div>
-    </div>
+    </button>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Sprocket rail
-// ---------------------------------------------------------------------------
-
-function SprocketRail({ holeCount }: { holeCount: number }) {
-  return (
-    <div className="flex h-5 items-center justify-between bg-[#0c0c0c] px-1.5 sm:h-6 sm:px-2">
-      {Array.from({ length: holeCount }, (_, i) => (
-        <span
-          key={i}
-          className="inline-block h-2.5 w-3.5 rounded-[1.5px] border border-[#3a3a3a] bg-[#1e1e1e] shadow-[0_0_3px_rgba(200,168,80,0.15)] sm:h-3 sm:w-4"
-        />
-      ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Film strip
-// ---------------------------------------------------------------------------
-
-function FilmStrip({
+function ArchiveRollRow({
   roll,
   photos,
-  grayscale,
+  rowIndex,
   onPhotoClick,
-  frameHeight,
-  stripIndex,
 }: {
   roll: FilmRollDto
   photos: PhotoDto[]
-  grayscale: boolean
+  rowIndex: number
   onPhotoClick: (photo: PhotoDto) => void
-  frameHeight: string
-  stripIndex: number
 }) {
-  const holeCount = photos.length * 2 + 3
-  const sideLabel = `${roll.brand.toUpperCase()} ${roll.name} — ${roll.frameCount}EXP — ISO ${roll.iso}`
+  const holeCount = Math.max(photos.length * 2 + 4, 14)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 28 }}
+    <motion.article
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55, ease: [0.25, 0.1, 0.25, 1], delay: stripIndex * 0.07 }}
-      className="flex shrink-0 flex-col bg-[#0a0a0a] ring-1 ring-[#1e1e1e] transition-all duration-300 hover:ring-[#c8a850]/15 hover:shadow-[0_8px_40px_rgba(0,0,0,0.8)]"
+      transition={{ duration: 0.42, delay: rowIndex * 0.05 }}
+      className="grid overflow-hidden rounded-[18px] border border-[#2a2115] bg-[#090807]/95 shadow-[0_24px_70px_rgba(0,0,0,0.28)] lg:grid-cols-[280px_minmax(0,1fr)]"
     >
-      <SprocketRail holeCount={holeCount} />
-      <div className="flex">
-        {/* Brand sidebar */}
-        <div className="flex w-5 shrink-0 items-center justify-center bg-[#080808] sm:w-7">
-          <span
-            className="whitespace-nowrap font-mono text-[7px] font-black uppercase tracking-[0.25em] text-[#c8a850]/70 sm:text-[8px]"
-            style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}
-          >
-            {sideLabel}
-          </span>
+      <div className="flex min-h-[198px] items-center gap-5 border-b border-[#2a2115] bg-[linear-gradient(180deg,rgba(17,14,11,0.98),rgba(8,7,6,0.98))] px-5 py-5 sm:px-6 lg:min-h-[214px] lg:border-b-0 lg:border-r">
+        <div className="relative h-[138px] w-[100px] shrink-0 sm:h-[150px] sm:w-[108px]">
+          <Image
+            src={FILM_BOX_ASSET}
+            alt="135 film box"
+            fill
+            sizes="108px"
+            className="object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)]"
+            priority={rowIndex === 0}
+          />
         </div>
-        <div className="flex gap-[3px] p-[3px]" style={{ height: frameHeight }}>
-          {photos.map((photo, i) => (
-            <FilmFrame
-              key={photo.id}
-              photo={photo}
-              frameIndex={i}
-              grayscale={grayscale}
-              onClick={() => onPhotoClick(photo)}
-            />
-          ))}
+
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.34em] text-[#9d917d]">
+            {roll.brand}
+          </p>
+          <h2 className="mt-3 font-serif text-[2rem] font-light leading-none tracking-[0.03em] text-[#d7b16a] sm:text-[2.2rem]">
+            {roll.name}
+          </h2>
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.28em] text-[#827867]">
+            {getRollMetaLine(roll)}
+          </p>
+          <p className="mt-3 max-w-[18rem] font-mono text-[9px] uppercase tracking-[0.28em] text-[#6e654f]">
+            {getRollNote(roll)}
+          </p>
+          <p className="mt-6 font-mono text-[9px] uppercase tracking-[0.36em] text-[#a3803f]">
+            View Details
+          </p>
         </div>
       </div>
-      <SprocketRail holeCount={holeCount} />
-    </motion.div>
+
+      <div className="overflow-x-auto scrollbar-hide px-3 py-3 sm:px-4 lg:px-5">
+        <div className="min-w-max rounded-[14px] border border-[#1c1712] bg-[#050505]">
+          <div className="border-b border-[#17130f] px-4 pb-2 pt-3 sm:px-5">
+            <div className="flex items-center gap-4 font-mono text-[8px] uppercase tracking-[0.34em] text-[#8b7348] sm:gap-6 sm:text-[9px]">
+              <span className="min-w-[72px]">{roll.brand}</span>
+              {photos.map((_, frameIndex) => (
+                <span key={frameIndex}>{String(frameIndex + 1).padStart(3, '0')}</span>
+              ))}
+            </div>
+          </div>
+
+          <SprocketRail holeCount={holeCount} />
+
+          <div className="flex gap-[4px] bg-[#0b0908] px-[10px] py-[8px] sm:px-3">
+            {photos.map((photo, frameIndex) => (
+              <FilmFrame
+                key={photo.id}
+                photo={photo}
+                frameIndex={frameIndex}
+                onClick={() => onPhotoClick(photo)}
+              />
+            ))}
+          </div>
+
+          <SprocketRail holeCount={holeCount} />
+        </div>
+      </div>
+    </motion.article>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Lightbox
-// ---------------------------------------------------------------------------
 
 function Lightbox({
   photo,
@@ -169,8 +172,8 @@ function Lightbox({
   )
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -181,62 +184,50 @@ function Lightbox({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.25 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12"
+      transition={{ duration: 0.22 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020202]/95 p-4 md:p-10"
       onClick={onClose}
     >
-      {/* Film grain on lightbox */}
       <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.08]" />
 
       <motion.div
-        initial={{ scale: 0.92, opacity: 0 }}
+        initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.92, opacity: 0 }}
-        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-        className="relative max-h-full max-w-5xl"
-        onClick={(e) => e.stopPropagation()}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ duration: 0.24 }}
+        className="relative max-h-full max-w-6xl overflow-hidden rounded-[16px] border border-[#2b2217] bg-[#070605] shadow-[0_30px_80px_rgba(0,0,0,0.45)]"
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Top tape strip */}
-        <div className="flex h-4 items-center justify-between bg-[#0c0c0c] px-2">
-          {Array.from({ length: 12 }, (_, i) => (
-            <span key={i} className="inline-block h-2 w-2.5 rounded-[1px] border border-[#333] bg-[#1a1a1a]" />
-          ))}
-        </div>
+        <SprocketRail holeCount={16} />
 
-        <div className="relative bg-[#0a0a0a] p-1">
-          <div className="relative overflow-hidden">
+        <div className="relative bg-[#090807] p-2 sm:p-3">
+          <div className="relative overflow-hidden rounded-[8px] border border-[#221b13] bg-black">
             <Image
               src={url}
               alt={photo.title}
               width={photo.width ?? 1200}
               height={photo.height ?? 800}
-              className="block max-h-[75vh] w-auto object-contain"
+              className="block max-h-[78vh] w-auto object-contain"
               priority
             />
-            <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.12]" />
-            <div className="film-vignette absolute inset-0 opacity-60" />
+            <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.1]" />
+            <div className="film-vignette pointer-events-none absolute inset-0 opacity-60" />
           </div>
         </div>
 
-        {/* Bottom strip with metadata */}
-        <div className="flex h-auto items-center justify-between bg-[#0c0c0c] px-3 py-1.5">
-          <div className="flex items-center gap-3">
-            {LEADER_MARKS.slice(0, 3).map((m, i) => (
-              <span key={i} className="font-mono text-[8px] text-[#c8a850]/30">{m}</span>
-            ))}
-          </div>
-          <div className="flex flex-col items-center gap-0.5">
-            <span className="font-mono text-[9px] text-white/80">{photo.title}</span>
-            {photo.category && (
-              <span className="font-mono text-[7px] uppercase tracking-widest text-[#c8a850]/60">
+        <div className="flex items-center justify-between gap-4 border-t border-[#2b2217] bg-[#070605] px-4 py-3">
+          <span className="font-mono text-[9px] uppercase tracking-[0.32em] text-[#7f6b45]">
+            Frame Preview
+          </span>
+          <div className="min-w-0 text-right">
+            <p className="truncate font-serif text-sm text-[#e6dcc8]">
+              {photo.title || 'Untitled Frame'}
+            </p>
+            {photo.category ? (
+              <p className="mt-1 truncate font-mono text-[8px] uppercase tracking-[0.28em] text-[#8f7a51]">
                 {photo.category.split(',')[0]}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {LEADER_MARKS.slice(3).map((m, i) => (
-              <span key={i} className="font-mono text-[8px] text-[#c8a850]/30">{m}</span>
-            ))}
+              </p>
+            ) : null}
           </div>
         </div>
       </motion.div>
@@ -244,137 +235,89 @@ function Lightbox({
   )
 }
 
-// ---------------------------------------------------------------------------
-// Main page content
-// ---------------------------------------------------------------------------
-
 interface FilmPageContentProps {
   initialRolls: FilmRollDto[]
 }
 
 export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
   const [rolls] = useState<FilmRollDto[]>(initialRolls)
-  const [grayscale, setGrayscale] = useState(true)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
-
-  const frameHeight = '14rem'
-
-  const totalPhotos = useMemo(
-    () => rolls.reduce((sum, r) => sum + (r.filmPhotos?.length ?? 0), 0),
-    [rolls],
-  )
 
   const strips = useMemo(() => {
     return rolls
-      .filter((r) => r.filmPhotos && r.filmPhotos.length > 0)
-      .map((r) => ({
-        roll: r,
-        photos: r.filmPhotos!.map((fp) => fp.photo!).filter(Boolean),
+      .filter((roll) => (roll.filmPhotos?.length ?? 0) > 0)
+      .map((roll) => ({
+        roll,
+        photos: roll.filmPhotos!.map((item) => item.photo!).filter(Boolean),
       }))
   }, [rolls])
 
+  const totalFrames = useMemo(
+    () => strips.reduce((sum, strip) => sum + strip.photos.length, 0),
+    [strips],
+  )
+
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background">
-      {/* ── Top bar ─────────────────────────────────────────── */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-5 md:px-12">
-        <Link
-          href="/gallery"
-          className="group flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] text-[#c8a850]/50 transition-colors hover:text-[#c8a850]/90"
-        >
-          <ArrowLeft className="size-3.5 transition-transform duration-200 group-hover:-translate-x-0.5" />
-          GALLERY
-        </Link>
+    <div className="relative min-h-screen overflow-x-hidden bg-[#050505] text-[#f0e7d6]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(194,152,82,0.12),transparent_34%),radial-gradient(circle_at_top_right,rgba(120,87,36,0.09),transparent_28%),linear-gradient(180deg,#090807_0%,#050505_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:48px_48px] opacity-20" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.05]">
+        <div className="film-grain-overlay h-full w-full" />
+      </div>
 
-        <button
-          onClick={() => setGrayscale((v) => !v)}
-          className={`flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.25em] transition-colors duration-200 ${
-            grayscale ? 'text-[#c8a850]/70 hover:text-[#c8a850]' : 'text-white/40 hover:text-white/70'
-          }`}
-          aria-pressed={grayscale}
-        >
-          {grayscale ? <Circle className="size-3" /> : <CircleOff className="size-3" />}
-          B&W
-        </button>
-      </header>
-
-      {/* ── Hero title ──────────────────────────────────────── */}
       <motion.section
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
-        className="relative z-10 px-6 pb-10 pt-4 md:px-12 md:pb-14 md:pt-6"
+        transition={{ duration: 0.45 }}
+        className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 pb-10 pt-28 sm:px-6 md:px-10 lg:flex-row lg:items-start lg:justify-between lg:gap-12 lg:pt-32"
       >
-        {/* Film leader decorative line */}
-        <div className="mb-6 flex items-center gap-4">
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[#c8a850]/30 to-transparent" />
-          <div className="flex items-center gap-2">
-            {LEADER_MARKS.map((m, i) => (
-              <span key={i} className="font-mono text-[9px] text-[#c8a850]/25">{m}</span>
-            ))}
-          </div>
-          <div className="h-px flex-1 bg-gradient-to-l from-transparent via-[#c8a850]/30 to-transparent" />
+        <div className="max-w-3xl">
+          <p className="mb-5 font-mono text-[10px] uppercase tracking-[0.45em] text-[#b89452]">
+            Analog Archive • 35mm
+          </p>
+          <h1 className="font-serif text-5xl font-light tracking-[0.03em] text-[#f0e7d6] sm:text-6xl lg:text-7xl">
+            Film Archive
+          </h1>
+          <p className="mt-5 max-w-xl font-mono text-[11px] uppercase tracking-[0.32em] text-[#8e8372]">
+            A collection of moments, captured on film.
+          </p>
         </div>
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.5em] text-foreground/40">
-              ANALOG ARCHIVE · 35MM
-            </div>
-            <h1 className="font-serif text-5xl font-light tracking-tight text-foreground/90 md:text-7xl">
-              胶片
-            </h1>
-          </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/20 md:text-right">
-            <div>{rolls.length} ROLLS</div>
-            <div>{totalPhotos} FRAMES</div>
-          </div>
+        <div className="w-full max-w-[190px] self-start rounded-[14px] border border-[#5d4b2d] bg-[#0c0b09]/90 px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+          <p className="font-mono text-[9px] uppercase tracking-[0.32em] text-[#8e7b53]">
+            Total Frames
+          </p>
+          <p className="mt-3 font-serif text-4xl text-[#d4af67]">{totalFrames}</p>
+          <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.32em] text-[#8e7b53]">
+            {strips.length} Rolls
+          </p>
         </div>
-
-        {/* Bottom rule */}
-        <div className="mt-8 h-px bg-gradient-to-r from-[#c8a850]/20 via-[#c8a850]/5 to-transparent" />
       </motion.section>
 
-      {/* ── Film strips ─────────────────────────────────────── */}
-      <section className="relative z-10 pb-20">
-        <div className="flex flex-col gap-6 py-4">
-          {strips.map((strip, i) => (
-            <div key={strip.roll.id} className="relative">
-              {/* Per-strip edge fades */}
-              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent md:w-12" />
-              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent md:w-12" />
-
-              <div className="overflow-x-auto scrollbar-hide px-6 md:px-12">
-                <div className="min-w-max">
-                  <FilmStrip
-                    roll={strip.roll}
-                    photos={strip.photos}
-                    grayscale={grayscale}
-                    onPhotoClick={setSelectedPhoto}
-                    frameHeight={frameHeight}
-                    stripIndex={i}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {totalPhotos > 0 && (
-          <div className="flex items-center justify-center gap-4 py-8">
-            <div className="h-px w-12 bg-[#c8a850]/20" />
-            <span className="font-mono text-[9px] uppercase tracking-[0.4em] text-[#c8a850]/30">
-              END OF ROLL — {totalPhotos} FRAMES
-            </span>
-            <div className="h-px w-12 bg-[#c8a850]/20" />
-          </div>
-        )}
+      <section className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 pb-16 sm:px-6 md:px-10">
+        {strips.map((strip, index) => (
+          <ArchiveRollRow
+            key={strip.roll.id}
+            roll={strip.roll}
+            photos={strip.photos}
+            rowIndex={index}
+            onPhotoClick={setSelectedPhoto}
+          />
+        ))}
       </section>
 
-      {/* ── Lightbox ────────────────────────────────────────── */}
+      <div className="relative z-10 mx-auto flex w-full max-w-[1600px] items-center justify-center gap-4 px-4 pb-14 pt-2 sm:px-6 md:px-10">
+        <div className="h-px w-10 bg-[#3a2f20]" />
+        <p className="font-mono text-[10px] uppercase tracking-[0.45em] text-[#8d7244]">
+          Film Is Not Dead
+        </p>
+        <div className="h-px w-10 bg-[#3a2f20]" />
+      </div>
+
       <AnimatePresence>
-        {selectedPhoto && (
+        {selectedPhoto ? (
           <Lightbox photo={selectedPhoto} onClose={() => setSelectedPhoto(null)} />
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   )
