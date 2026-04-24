@@ -1,21 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AnimatePresence, motion } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { useSettings } from '@/contexts/SettingsContext'
+import { useLanguage } from '@/contexts/LanguageContext'
 import { getFilmStockAsset } from '@/lib/film-presets'
 import type { FilmRollDto, PhotoDto } from '@/lib/api/types'
 
 const EXPANDED_FRAME_GRID_CLASSES = {
-  '120': 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
-  '135': 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6',
+  '120': 'grid-cols-5 min-w-[760px]',
+  '135': 'grid-cols-6 min-w-[920px]',
 } as const
 
-function getFrameTitle(photo: PhotoDto, frameIndex: number) {
+function getFrameTitle(photo: PhotoDto, frameIndex: number, t: (key: string) => string) {
   const title = photo.title?.trim()
-  return title || `Frame ${String(frameIndex + 1).padStart(2, '0')}`
+  const frameNumber = String(frameIndex + 1).padStart(2, '0')
+  return title || `${t('gallery.film_frame_prefix')} ${frameNumber}${t('gallery.film_frame_suffix')}`.trim()
 }
 
 function getRollMetaLine(roll: FilmRollDto) {
@@ -26,13 +28,30 @@ function getRollNote(roll: FilmRollDto) {
   return roll.notes?.trim()
 }
 
-function SprocketRail({ holeCount }: { holeCount: number }) {
+function chunkPhotos(photos: PhotoDto[], size: number) {
+  const chunks: PhotoDto[][] = []
+  for (let index = 0; index < photos.length; index += size) {
+    chunks.push(photos.slice(index, index + size))
+  }
+  return chunks
+}
+
+function SprocketRail({ format, frameCount }: { format: FilmRollDto['format']; frameCount: number }) {
+  if (format === '120') {
+    return <div className="h-4 bg-[#5a2d18] shadow-inner sm:h-5" />
+  }
+
+  const holeCount = frameCount * 8
+
   return (
-    <div className="flex h-6 items-center justify-between gap-1 bg-[#050505] px-3 sm:h-7">
+    <div
+      className="grid h-6 items-center gap-1 bg-[#5a2d18] px-3 shadow-inner sm:h-7"
+      style={{ gridTemplateColumns: `repeat(${holeCount}, minmax(0, 1fr))` }}
+    >
       {Array.from({ length: holeCount }, (_, index) => (
         <span
           key={index}
-          className="block h-[10px] w-[8px] rounded-[1px] border border-[#211a13] bg-[#100e0c] sm:h-[11px] sm:w-[9px]"
+          className="block h-[10px] w-[8px] rounded-[1px] border border-border/70 bg-background shadow-inner sm:h-[11px] sm:w-[9px] dark:border-[#2f1b12] dark:bg-[#17100c]"
         />
       ))}
     </div>
@@ -53,6 +72,8 @@ function FilmFrame({
   onClick: () => void
 }) {
   const { settings } = useSettings()
+  const { t } = useLanguage()
+  const frameTitle = getFrameTitle(photo, frameIndex, t)
   const coverUrl = useMemo(
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
@@ -67,19 +88,17 @@ function FilmFrame({
     <button
       type="button"
       onClick={onClick}
-      className={`group relative overflow-hidden border border-[#2f2922] bg-[#111] text-left transition-colors duration-200 hover:border-[#8b6a33] ${frameClassName}`}
-      aria-label={`Open ${getFrameTitle(photo, frameIndex)}`}
+      className={`group relative overflow-hidden border border-[#6b351a] bg-transparent text-left transition-colors duration-200 hover:border-[#b77a42] ${frameClassName}`}
+      aria-label={`${t('gallery.film_open_frame')} ${frameTitle}`}
     >
       <Image
         src={coverUrl}
-        alt={getFrameTitle(photo, frameIndex)}
+        alt={frameTitle}
         fill
         sizes={isExpanded ? '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw' : '(max-width: 640px) 156px, (max-width: 1024px) 182px, 208px'}
         className="object-cover grayscale-[0.15] sepia-[0.18] brightness-[0.92] transition duration-300 group-hover:brightness-100"
       />
       <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.12]" />
-      <div className="film-scanlines pointer-events-none absolute inset-0 opacity-70" />
-      <div className="film-vignette pointer-events-none absolute inset-0 opacity-80" />
       <div className="pointer-events-none absolute left-2 top-1.5 font-mono text-[8px] uppercase tracking-[0.26em] text-[#bea06a]/70">
         {String(frameIndex + 1).padStart(3, '0')}
       </div>
@@ -102,27 +121,31 @@ function ArchiveRollRow({
   onToggle: () => void
   onPhotoClick: (photo: PhotoDto) => void
 }) {
+  const { t } = useLanguage()
   const rollNote = getRollNote(roll)
   const rollFormat = roll.format ?? '135'
   const expandedGridClassName = EXPANDED_FRAME_GRID_CLASSES[rollFormat]
-  const defaultHoleCount = Math.max(photos.length * 2 + 4, 14)
-  const expandedHoleCount = rollFormat === '120' ? 22 : 26
+  const expandedRowSize = rollFormat === '120' ? 5 : 6
+  const expandedRows = useMemo(
+    () => chunkPhotos(photos, expandedRowSize),
+    [photos, expandedRowSize],
+  )
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.42, delay: rowIndex * 0.05 }}
-      className="grid overflow-hidden rounded-[18px] border border-border bg-card/95 shadow-[0_24px_70px_rgba(0,0,0,0.12)] dark:border-[#2a2115] dark:bg-[#090807]/95 dark:shadow-[0_24px_70px_rgba(0,0,0,0.28)] lg:grid-cols-[280px_minmax(0,1fr)]"
+      className="grid overflow-hidden rounded-[18px] border border-[#6b351a]/30 bg-card/95 shadow-[0_24px_70px_rgba(0,0,0,0.12)] dark:border-[#6b351a]/45 dark:bg-card/95 dark:shadow-[0_24px_70px_rgba(0,0,0,0.28)] lg:grid-cols-[280px_minmax(0,1fr)]"
     >
-      <div className="flex min-h-[198px] self-start items-center gap-5 border-b border-border bg-secondary/60 px-5 py-5 sm:px-6 dark:border-[#2a2115] dark:bg-[linear-gradient(180deg,rgba(17,14,11,0.98),rgba(8,7,6,0.98))] lg:min-h-[214px] lg:border-b-0 lg:border-r">
+      <div className="flex min-h-[198px] self-start items-center gap-5 border-b border-border bg-secondary/60 px-5 py-5 sm:px-6 dark:border-[#2a2115] dark:bg-secondary/60 lg:min-h-[214px] lg:border-b-0 lg:border-r">
         <button
           type="button"
           onClick={onToggle}
           className="group relative h-[138px] w-[100px] shrink-0 cursor-pointer sm:h-[150px] sm:w-[108px]"
           aria-expanded={isExpanded}
           aria-controls={`film-roll-${roll.id}`}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${roll.brand} ${roll.name}`}
+          aria-label={`${isExpanded ? t('gallery.film_collapse_roll') : t('gallery.film_expand_roll')} ${roll.brand} ${roll.name}`}
         >
           <Image
             src={getFilmStockAsset(roll.brand, roll.name, roll.format ?? '135')}
@@ -157,32 +180,44 @@ function ArchiveRollRow({
         </div>
       </div>
 
-      <div id={`film-roll-${roll.id}`} className={`h-full scrollbar-hide ${isExpanded ? 'overflow-hidden bg-muted px-3 py-6 sm:px-5 dark:bg-[#e7dcc8] lg:px-8' : 'overflow-x-auto'}`}>
+      <div id={`film-roll-${roll.id}`} className={`h-full scrollbar-hide ${isExpanded ? 'overflow-x-auto bg-muted dark:bg-[#e7dcc8]' : 'overflow-x-auto'}`}>
         <motion.div
           animate={{ opacity: 1 }}
           initial={false}
           transition={{ duration: 0.16, ease: 'easeOut' }}
-          className={isExpanded ? `grid w-full ${expandedGridClassName} gap-x-1 gap-y-4` : 'h-full min-w-max'}
+          className={isExpanded ? 'w-full' : 'h-full min-w-max'}
         >
-          {isExpanded ? photos.map((photo, frameIndex) => (
-            <div key={photo.id} className="flex min-w-0 flex-col bg-[#050505] shadow-[0_10px_28px_rgba(0,0,0,0.22)]">
-              <SprocketRail holeCount={expandedHoleCount} />
-              <div className="bg-[#0b0908] px-[6px] py-[5px] sm:px-[8px]">
-                <FilmFrame
-                  photo={photo}
-                  frameIndex={frameIndex}
-                  format={rollFormat}
-                  isExpanded
-                  onClick={() => onPhotoClick(photo)}
-                />
-              </div>
-              <SprocketRail holeCount={expandedHoleCount} />
-            </div>
-          )) : (
-            <div className="flex h-full min-w-max flex-col rounded-[14px] border border-[#1c1712] bg-[#050505]">
-              <SprocketRail holeCount={defaultHoleCount} />
+          {isExpanded ? (
+            <div className="flex w-full flex-col gap-1">
+              {expandedRows.map((rowPhotos, rowPhotoIndex) => (
+                <div key={rowPhotos[0]?.id ?? rowPhotoIndex} className="flex w-full flex-col rounded-[14px] border border-[#6b351a] bg-[#5a2d18] shadow-[inset_0_0_36px_rgba(55,24,10,0.38)]">
+                  <SprocketRail format={rollFormat} frameCount={rowPhotos.length} />
 
-              <div className="flex flex-1 items-center gap-[4px] bg-[#0b0908] px-[8px] py-[6px] sm:px-[10px]">
+                  <div className={`grid ${expandedGridClassName} gap-[4px] bg-[#7b4a2b] px-[8px] py-[6px] shadow-[inset_0_0_40px_rgba(55,24,10,0.38)] sm:px-[10px]`}>
+                    {rowPhotos.map((photo, photoIndex) => {
+                      const frameIndex = rowPhotoIndex * expandedRowSize + photoIndex
+                      return (
+                        <FilmFrame
+                          key={photo.id}
+                          photo={photo}
+                          frameIndex={frameIndex}
+                          format={rollFormat}
+                          isExpanded
+                          onClick={() => onPhotoClick(photo)}
+                        />
+                      )
+                    })}
+                  </div>
+
+                  <SprocketRail format={rollFormat} frameCount={rowPhotos.length} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full min-w-max flex-col rounded-[14px] border border-[#6b351a] bg-[#5a2d18] shadow-[inset_0_0_36px_rgba(55,24,10,0.38)]">
+              <SprocketRail format={rollFormat} frameCount={photos.length} />
+
+              <div className="flex flex-1 items-center gap-[4px] bg-[#7b4a2b] px-[8px] py-[6px] shadow-[inset_0_0_40px_rgba(55,24,10,0.38)] sm:px-[10px]">
                 {photos.map((photo, frameIndex) => (
                   <FilmFrame
                     key={photo.id}
@@ -195,7 +230,7 @@ function ArchiveRollRow({
                 ))}
               </div>
 
-              <SprocketRail holeCount={defaultHoleCount} />
+              <SprocketRail format={rollFormat} frameCount={photos.length} />
             </div>
           )}
         </motion.div>
@@ -212,6 +247,7 @@ function Lightbox({
   onClose: () => void
 }) {
   const { settings } = useSettings()
+  const { t } = useLanguage()
   const url = useMemo(
     () => resolveAssetUrl(photo.url, settings?.cdn_domain),
     [photo.url, settings?.cdn_domain],
@@ -244,7 +280,7 @@ function Lightbox({
         className="relative max-h-full max-w-6xl overflow-hidden rounded-[16px] border border-[#2b2217] bg-[#070605] shadow-[0_30px_80px_rgba(0,0,0,0.45)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <SprocketRail holeCount={16} />
+        <SprocketRail format="135" frameCount={2} />
 
         <div className="relative bg-[#090807] p-2 sm:p-3">
           <div className="relative overflow-hidden rounded-[8px] border border-[#221b13] bg-black">
@@ -263,11 +299,11 @@ function Lightbox({
 
         <div className="flex items-center justify-between gap-4 border-t border-[#2b2217] bg-[#070605] px-4 py-3">
           <span className="font-mono text-[9px] uppercase tracking-[0.32em] text-[#7f6b45]">
-            Frame Preview
+            {t('gallery.film_frame_preview')}
           </span>
           <div className="min-w-0 text-right">
             <p className="truncate font-serif text-sm text-[#e6dcc8]">
-              {photo.title || 'Untitled Frame'}
+              {photo.title || t('gallery.film_untitled_frame')}
             </p>
             {photo.category ? (
               <p className="mt-1 truncate font-mono text-[8px] uppercase tracking-[0.28em] text-[#8f7a51]">
@@ -286,9 +322,11 @@ interface FilmPageContentProps {
 }
 
 export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
+  const { t } = useLanguage()
   const [rolls] = useState<FilmRollDto[]>(initialRolls)
   const [expandedRollId, setExpandedRollId] = useState<string | null>(null)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
+  const rollRefs = useRef(new Map<string, HTMLDivElement>())
 
   const strips = useMemo(() => {
     return rolls
@@ -303,6 +341,19 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
     () => strips.reduce((sum, strip) => sum + strip.photos.length, 0),
     [strips],
   )
+
+  useEffect(() => {
+    if (!expandedRollId) return
+
+    const frameId = window.requestAnimationFrame(() => {
+      rollRefs.current.get(expandedRollId)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [expandedRollId])
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -319,46 +370,51 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
         className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-8 px-4 pb-10 pt-28 sm:px-6 md:px-10 lg:flex-row lg:items-start lg:justify-between lg:gap-12 lg:pt-32"
       >
         <div className="max-w-3xl">
-          <p className="mb-5 font-mono text-[10px] uppercase tracking-[0.45em] text-primary dark:text-[#b89452]">
-            Analog Archive • 35mm
-          </p>
           <h1 className="font-serif text-5xl font-light tracking-[0.03em] text-foreground dark:text-[#f0e7d6] sm:text-6xl lg:text-7xl">
-            Film Archive
+            {t('gallery.film_title')}
           </h1>
           <p className="mt-5 max-w-xl font-mono text-[11px] uppercase tracking-[0.32em] text-muted-foreground dark:text-[#8e8372]">
-            A collection of moments, captured on film.
+            {t('gallery.film_description')}
           </p>
         </div>
 
         <div className="w-full max-w-[190px] self-start rounded-[14px] border border-border bg-card/90 px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] dark:border-[#5d4b2d] dark:bg-[#0c0b09]/90 dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
           <p className="font-mono text-[9px] uppercase tracking-[0.32em] text-muted-foreground dark:text-[#8e7b53]">
-            Total Frames
+            {t('gallery.film_total_frames')}
           </p>
           <p className="mt-3 font-serif text-4xl text-primary dark:text-[#d4af67]">{totalFrames}</p>
           <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.32em] text-muted-foreground dark:text-[#8e7b53]">
-            {strips.length} Rolls
+            {strips.length} {t('gallery.film_rolls')}
           </p>
         </div>
       </motion.section>
 
       <section className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 pb-16 sm:px-6 md:px-10">
         {strips.map((strip, index) => (
-          <ArchiveRollRow
+          <div
             key={strip.roll.id}
-            roll={strip.roll}
-            photos={strip.photos}
-            rowIndex={index}
-            isExpanded={expandedRollId === strip.roll.id}
-            onToggle={() => setExpandedRollId((currentId) => currentId === strip.roll.id ? null : strip.roll.id)}
-            onPhotoClick={setSelectedPhoto}
-          />
+            ref={(node) => {
+              if (node) rollRefs.current.set(strip.roll.id, node)
+              else rollRefs.current.delete(strip.roll.id)
+            }}
+            className="scroll-mt-4"
+          >
+            <ArchiveRollRow
+              roll={strip.roll}
+              photos={strip.photos}
+              rowIndex={index}
+              isExpanded={expandedRollId === strip.roll.id}
+              onToggle={() => setExpandedRollId((currentId) => currentId === strip.roll.id ? null : strip.roll.id)}
+              onPhotoClick={setSelectedPhoto}
+            />
+          </div>
         ))}
       </section>
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1600px] items-center justify-center gap-4 px-4 pb-14 pt-2 sm:px-6 md:px-10">
         <div className="h-px w-10 bg-border dark:bg-[#3a2f20]" />
         <p className="font-mono text-[10px] uppercase tracking-[0.45em] text-muted-foreground dark:text-[#8d7244]">
-          Film Is Not Dead
+          {t('gallery.film_footer')}
         </p>
         <div className="h-px w-10 bg-border dark:bg-[#3a2f20]" />
       </div>

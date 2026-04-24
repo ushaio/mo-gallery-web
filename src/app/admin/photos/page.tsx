@@ -12,9 +12,11 @@ export default function PhotosPage() {
     photosViewMode: viewMode,
     setPhotosViewMode: onViewModeChange,
     selectedPhotoIds: selectedIds,
+    setSelectedPhotoIds: onSelectionChange,
     handleSelectPhotoToggle: onSelect,
     handleSelectAllPhotos: onSelectAll,
     handleDelete: onDelete,
+    handleBatchAction: onBatchAction,
     refreshPhotos: onRefresh,
     handleToggleFeatured: onToggleFeatured,
     setSelectedPhoto: onPreview,
@@ -33,8 +35,10 @@ export default function PhotosPage() {
       onViewModeChange={onViewModeChange}
       selectedIds={selectedIds}
       onSelect={onSelect}
+      onSelectionChange={onSelectionChange}
       onSelectAll={onSelectAll}
       onDelete={onDelete}
+      onBatchAction={onBatchAction}
       onRefresh={onRefresh}
       onToggleFeatured={onToggleFeatured}
       onPreview={onPreview}

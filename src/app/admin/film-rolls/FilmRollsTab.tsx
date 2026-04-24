@@ -15,6 +15,7 @@ import {
   List,
   Filter,
   Layout,
+  RefreshCw,
 } from 'lucide-react'
 import {
   getFilmRolls,
@@ -23,6 +24,7 @@ import {
   updateFilmRoll,
   deleteFilmRoll,
   addPhotosToFilmRoll,
+  reorderFilmRollFrames,
   removePhotoFromFilmRoll,
   type FilmRollDto,
   type PhotoDto,
@@ -324,6 +326,21 @@ export function FilmRollsTab({
     }
   }
 
+  async function handleReorderFrames() {
+    if (!token || !currentRoll?.id) return
+    try {
+      setSaving(true)
+      const updated = await reorderFilmRollFrames(token, currentRoll.id)
+      setCurrentRoll(updated)
+      notify(t('admin.film_roll_frames_reordered'), 'success')
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      notify(t('common.error'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleRemovePhoto(photoId: string) {
     if (!token || !currentRoll?.id) return
     try {
@@ -589,15 +606,28 @@ export function FilmRollsTab({
               </AdminButton>
             )}
             {activeTab === 'photos' && currentRoll.id && (
-              <AdminButton
-                onClick={() => setShowPhotoSelector(true)}
-                disabled={loadingCurrentRoll}
-                adminVariant="unstyled"
-                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4" />
-                {t('admin.add_photos')}
-              </AdminButton>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <AdminButton
+                  onClick={handleReorderFrames}
+                  disabled={loadingCurrentRoll || saving || rollPhotos.length === 0}
+                  adminVariant="outline"
+                  size="md"
+                  className="gap-2"
+                  title={t('admin.reorder_frames_by_filename')}
+                >
+                  <RefreshCw className={`w-4 h-4 ${saving ? 'animate-spin' : ''}`} />
+                  {t('admin.reorder_frames')}
+                </AdminButton>
+                <AdminButton
+                  onClick={() => setShowPhotoSelector(true)}
+                  disabled={loadingCurrentRoll}
+                  adminVariant="unstyled"
+                  className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('admin.add_photos')}
+                </AdminButton>
+              </div>
             )}
           </div>
         </div>
@@ -755,10 +785,23 @@ export function FilmRollsTab({
                   <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-10" />
                   <p className="text-sm text-muted-foreground mb-3">{t('admin.album_empty')}</p>
                   {currentRoll.id && (
-                    <AdminButton onClick={() => setShowPhotoSelector(true)} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
-                      <Plus className="w-4 h-4" />
-                      {t('admin.add_photos')}
-                    </AdminButton>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <AdminButton
+                        onClick={handleReorderFrames}
+                        disabled={saving}
+                        adminVariant="outline"
+                        size="md"
+                        className="gap-2"
+                        title={t('admin.reorder_frames_by_filename')}
+                      >
+                        <RefreshCw className={`w-4 h-4 ${saving ? 'animate-spin' : ''}`} />
+                        {t('admin.reorder_frames')}
+                      </AdminButton>
+                      <AdminButton onClick={() => setShowPhotoSelector(true)} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
+                        <Plus className="w-4 h-4" />
+                        {t('admin.add_photos')}
+                      </AdminButton>
+                    </div>
                   )}
                 </div>
               ) : (

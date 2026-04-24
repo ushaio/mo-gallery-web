@@ -19,6 +19,7 @@ import {
   ApiUnauthorizedError,
   addPhotosToStory,
   batchDeletePhotos,
+  batchUpdatePhotoType,
   batchUpdatePhotoUrls,
   checkPhotosStories,
   deletePhoto,
@@ -34,6 +35,7 @@ import {
 import { Toast, type Notification } from '@/components/Toast'
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
 import { UrlUpdateConfirmDialog } from '@/components/admin/UrlUpdateConfirmDialog'
+import { BatchPhotoActionDialog } from '@/components/admin/BatchPhotoActionDialog'
 import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
@@ -56,6 +58,7 @@ interface AdminContextType {
   refreshCategories: () => Promise<void>
   handleSaveSettings: () => Promise<void>
   handleDelete: (photoId?: string) => void
+  handleBatchAction: () => void
   handleToggleFeatured: (photo: PhotoDto) => Promise<void>
   selectedPhotoIds: Set<string>
   setSelectedPhotoIds: React.Dispatch<React.SetStateAction<Set<string>>>
@@ -144,6 +147,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [photosViewMode, setPhotosViewMode] = useState<'grid' | 'list'>('grid')
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
+  const [showBatchActionDialog, setShowBatchActionDialog] = useState(false)
+  const [batchActionSaving, setBatchActionSaving] = useState(false)
 
   // Delete Dialog State
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
@@ -304,6 +309,46 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const handleBatchAction = useCallback(() => {
+    if (selectedPhotoIds.size === 0) return
+    setShowBatchActionDialog(true)
+  }, [selectedPhotoIds.size])
+
+  const confirmBatchAction = useCallback(async (input: {
+    action: 'photoType'
+    photoType: 'digital' | 'film'
+    filmRollId?: string | null
+  }) => {
+    if (!token || selectedPhotoIds.size === 0) return
+    setBatchActionSaving(true)
+
+    try {
+      if (input.action === 'photoType') {
+        const result = await batchUpdatePhotoType({
+          token,
+          photoIds: Array.from(selectedPhotoIds),
+          photoType: input.photoType,
+          filmRollId: input.filmRollId,
+        })
+        setSelectedPhotoIds(new Set())
+        await refreshPhotos()
+        notify(`${result.updated} ${t('admin.batch_update_completed') || 'photos updated'}`)
+        if (result.failed > 0) {
+          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
+        }
+      }
+      setShowBatchActionDialog(false)
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) {
+        handleUnauthorized()
+        return
+      }
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+    } finally {
+      setBatchActionSaving(false)
+    }
+  }, [token, selectedPhotoIds, refreshPhotos, notify, t, handleUnauthorized])
+
   const handleToggleFeatured = useCallback(async (photo: PhotoDto) => {
     if (!token) return
     try {
@@ -463,6 +508,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     refreshCategories,
     handleSaveSettings,
     handleDelete,
+    handleBatchAction,
     handleToggleFeatured,
     selectedPhotoIds,
     setSelectedPhotoIds,
@@ -626,6 +672,18 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             setUrlUpdateParams(null)
           }}
           t={t}
+        />
+
+        <BatchPhotoActionDialog
+          isOpen={showBatchActionDialog}
+          count={selectedPhotoIds.size}
+          isSubmitting={batchActionSaving}
+          onConfirm={confirmBatchAction}
+          onCancel={() => {
+            if (!batchActionSaving) setShowBatchActionDialog(false)
+          }}
+          t={t}
+          notify={notify}
         />
 
         {/* Logout Confirmation Dialog */}
