@@ -2,6 +2,7 @@ export interface FilmRollDto {
   id: string
   name: string
   brand: string
+  format?: '135' | '120'
   iso: number
   frameCount: number
   notes: string | null

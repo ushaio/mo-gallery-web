@@ -5,9 +5,10 @@ import Image from 'next/image'
 import { AnimatePresence, motion } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { useSettings } from '@/contexts/SettingsContext'
+import { getFilmStockAsset } from '@/lib/film-presets'
 import type { FilmRollDto, PhotoDto } from '@/lib/api/types'
 
-const FILM_BOX_ASSET = '/film/general-135.png'
+const FRAMES_PER_STRIP_ROW = 6
 
 function getFrameTitle(photo: PhotoDto, frameIndex: number) {
   const title = photo.title?.trim()
@@ -15,7 +16,7 @@ function getFrameTitle(photo: PhotoDto, frameIndex: number) {
 }
 
 function getRollMetaLine(roll: FilmRollDto) {
-  return `${roll.frameCount || 36} EXP • 35MM`
+  return `${roll.frameCount || 36} EXP • ${roll.format ?? '135'}`
 }
 
 function getRollNote(roll: FilmRollDto) {
@@ -33,6 +34,16 @@ function SprocketRail({ holeCount }: { holeCount: number }) {
       ))}
     </div>
   )
+}
+
+function chunkPhotos(photos: PhotoDto[], size: number) {
+  const rows: PhotoDto[][] = []
+
+  for (let index = 0; index < photos.length; index += size) {
+    rows.push(photos.slice(index, index + size))
+  }
+
+  return rows
 }
 
 function FilmFrame({
@@ -54,14 +65,14 @@ function FilmFrame({
     <button
       type="button"
       onClick={onClick}
-      className="group relative h-[88px] w-[132px] shrink-0 overflow-hidden border border-[#2f2922] bg-[#111] text-left transition-colors duration-200 hover:border-[#8b6a33] sm:h-[94px] sm:w-[148px] lg:h-[100px] lg:w-[158px]"
+      className="group relative h-[104px] w-[156px] shrink-0 overflow-hidden border border-[#2f2922] bg-[#111] text-left transition-colors duration-200 hover:border-[#8b6a33] sm:h-[116px] sm:w-[182px] lg:h-[132px] lg:w-[208px]"
       aria-label={`Open ${getFrameTitle(photo, frameIndex)}`}
     >
       <Image
         src={coverUrl}
         alt={getFrameTitle(photo, frameIndex)}
         fill
-        sizes="(max-width: 640px) 132px, (max-width: 1024px) 148px, 158px"
+        sizes="(max-width: 640px) 156px, (max-width: 1024px) 182px, 208px"
         className="object-cover grayscale-[0.15] sepia-[0.18] brightness-[0.92] transition duration-300 group-hover:brightness-100"
       />
       <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.12]" />
@@ -78,36 +89,46 @@ function ArchiveRollRow({
   roll,
   photos,
   rowIndex,
+  isExpanded,
+  onToggle,
   onPhotoClick,
 }: {
   roll: FilmRollDto
   photos: PhotoDto[]
   rowIndex: number
+  isExpanded: boolean
+  onToggle: () => void
   onPhotoClick: (photo: PhotoDto) => void
 }) {
-  const holeCount = Math.max(photos.length * 2 + 4, 14)
   const rollNote = getRollNote(roll)
+  const photoRows = useMemo(() => chunkPhotos(photos, FRAMES_PER_STRIP_ROW), [photos])
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.42, delay: rowIndex * 0.05 }}
-      className="grid overflow-hidden rounded-[18px] border border-[#2a2115] bg-[#090807]/95 shadow-[0_24px_70px_rgba(0,0,0,0.28)] lg:grid-cols-[280px_minmax(0,1fr)]"
+      className="overflow-hidden rounded-[18px] border border-[#2a2115] bg-[#090807]/95 shadow-[0_24px_70px_rgba(0,0,0,0.28)]"
     >
-      <div className="flex min-h-[198px] items-center gap-5 border-b border-[#2a2115] bg-[linear-gradient(180deg,rgba(17,14,11,0.98),rgba(8,7,6,0.98))] px-5 py-5 sm:px-6 lg:min-h-[214px] lg:border-b-0 lg:border-r">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="group flex w-full items-center gap-5 border-b border-[#2a2115] bg-[linear-gradient(180deg,rgba(17,14,11,0.98),rgba(8,7,6,0.98))] px-5 py-5 text-left transition-colors duration-300 hover:bg-[#17120c] sm:px-6"
+        aria-expanded={isExpanded}
+        aria-controls={`film-roll-${roll.id}`}
+      >
         <div className="relative h-[138px] w-[100px] shrink-0 sm:h-[150px] sm:w-[108px]">
           <Image
-            src={FILM_BOX_ASSET}
-            alt="135 film box"
+            src={getFilmStockAsset(roll.brand, roll.name, roll.format ?? '135')}
+            alt={`${roll.brand} ${roll.name}`}
             fill
             sizes="108px"
-            className="scale-[1.75] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)]"
+            className="scale-[1.75] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)] transition-transform duration-300 group-hover:scale-[1.86]"
             priority={rowIndex === 0}
           />
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-mono text-[10px] uppercase tracking-[0.34em] text-[#9d917d]">
             {roll.brand}
           </p>
@@ -128,35 +149,57 @@ function ArchiveRollRow({
             </p>
           ) : null}
         </div>
-      </div>
 
-      <div className="overflow-x-auto scrollbar-hide px-3 py-3 sm:px-4 lg:px-5">
-        <div className="min-w-max rounded-[14px] border border-[#1c1712] bg-[#050505]">
-          <div className="border-b border-[#17130f] px-4 pb-2 pt-3 sm:px-5">
-            <div className="flex items-center gap-4 font-mono text-[8px] uppercase tracking-[0.34em] text-[#8b7348] sm:gap-6 sm:text-[9px]">
-              <span className="min-w-[72px]">{roll.brand}</span>
-              {photos.map((_, frameIndex) => (
-                <span key={frameIndex}>{String(frameIndex + 1).padStart(3, '0')}</span>
-              ))}
-            </div>
-          </div>
-
-          <SprocketRail holeCount={holeCount} />
-
-          <div className="flex gap-[4px] bg-[#0b0908] px-[10px] py-[8px] sm:px-3">
-            {photos.map((photo, frameIndex) => (
-              <FilmFrame
-                key={photo.id}
-                photo={photo}
-                frameIndex={frameIndex}
-                onClick={() => onPhotoClick(photo)}
-              />
-            ))}
-          </div>
-
-          <SprocketRail holeCount={holeCount} />
+        <div className="hidden shrink-0 text-right sm:block">
+          <p className="font-mono text-[9px] uppercase tracking-[0.32em] text-[#8e7b53]">
+            {photos.length} Frames
+          </p>
+          <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.32em] text-[#b89452]">
+            {isExpanded ? 'Close Strip' : 'Open Strip'}
+          </p>
         </div>
-      </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isExpanded ? (
+          <motion.div
+            id={`film-roll-${roll.id}`}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.32, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-6 bg-[#e7dcc8] px-3 py-6 shadow-inner sm:px-5 lg:px-8">
+              {photoRows.map((rowPhotos, rowIndexInRoll) => {
+                const startFrameIndex = rowIndexInRoll * FRAMES_PER_STRIP_ROW
+                const holeCount = Math.max(rowPhotos.length * 5 + 4, 24)
+
+                return (
+                  <div key={`${roll.id}-${rowIndexInRoll}`} className="overflow-x-auto scrollbar-hide">
+                    <div className="mx-auto flex min-w-max max-w-max flex-col bg-[#050505] shadow-[0_14px_38px_rgba(0,0,0,0.28)]">
+                      <SprocketRail holeCount={holeCount} />
+
+                      <div className="flex items-center gap-[4px] bg-[#0b0908] px-[8px] py-[6px] sm:px-[10px]">
+                        {rowPhotos.map((photo, frameIndex) => (
+                          <FilmFrame
+                            key={photo.id}
+                            photo={photo}
+                            frameIndex={startFrameIndex + frameIndex}
+                            onClick={() => onPhotoClick(photo)}
+                          />
+                        ))}
+                      </div>
+
+                      <SprocketRail holeCount={holeCount} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </motion.article>
   )
 }
@@ -244,6 +287,7 @@ interface FilmPageContentProps {
 
 export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
   const [rolls] = useState<FilmRollDto[]>(initialRolls)
+  const [expandedRollId, setExpandedRollId] = useState<string | null>(null)
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
 
   const strips = useMemo(() => {
@@ -304,6 +348,8 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
             roll={strip.roll}
             photos={strip.photos}
             rowIndex={index}
+            isExpanded={expandedRollId === strip.roll.id}
+            onToggle={() => setExpandedRollId((currentId) => currentId === strip.roll.id ? null : strip.roll.id)}
             onPhotoClick={setSelectedPhoto}
           />
         ))}

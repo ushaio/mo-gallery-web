@@ -4,6 +4,7 @@ import type { FilmRollDto } from './types'
 export interface FilmRollCreateInput {
   name: string
   brand: string
+  format?: '135' | '120'
   iso: number
   frameCount: number
   notes?: string | null
