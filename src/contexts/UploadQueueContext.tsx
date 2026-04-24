@@ -229,6 +229,7 @@ export function UploadQueueProvider({
         storage_path: task.storagePath,
         storage_path_full: task.storagePathFull,
         file_hash: task.fileHash,
+        film_roll_id: task.filmRollId,
         onProgress: (progress) => {
           // Always set status to uploading when receiving upload progress
           updateTaskProgress(task.id, progress, 'uploading')

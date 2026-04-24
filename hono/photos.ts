@@ -355,6 +355,7 @@ photos.post('/admin/photos', async (c) => {
     const storagePath = formData.get('storage_path') as string
     const storagePathFull = formData.get('storage_path_full') === 'true'
     const fileHash = formData.get('file_hash') as string | null
+    const filmRollId = formData.get('film_roll_id') as string | null
     const originFlagInput = formData.get('origin_flag')
     const originFlag =
       typeof originFlagInput === 'string' && allowedOriginFlags.has(originFlagInput)
@@ -373,7 +374,15 @@ photos.post('/admin/photos', async (c) => {
       storageProvider: storageProvider || undefined,
       storagePath: storagePath || undefined,
       storagePathFull,
+      filmRollId: filmRollId || undefined,
     })
+
+    if (filmRollId) {
+      const roll = await db.filmRoll.findUnique({ where: { id: filmRollId }, select: { id: true } })
+      if (!roll) {
+        return c.json({ error: 'Film roll not found' }, 404)
+      }
+    }
 
     // Check for duplicate if fileHash is provided
     if (fileHash) {
@@ -570,6 +579,26 @@ photos.post('/admin/photos', async (c) => {
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
       },
     })
+
+    if (filmRollId) {
+      await setPhotoFilmRoll(photo.id, filmRollId)
+      const photoWithFilmRoll = await db.photo.findUnique({
+        where: { id: photo.id },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
+      })
+
+      if (photoWithFilmRoll) {
+        return c.json({
+          success: true,
+          data: mapPhotoDto(photoWithFilmRoll),
+        })
+      }
+    }
 
     return c.json({
       success: true,

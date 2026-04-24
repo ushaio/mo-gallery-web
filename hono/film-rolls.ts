@@ -20,6 +20,58 @@ const FilmRollSchema = z.object({
 
 const UpdateFilmRollSchema = FilmRollSchema.partial()
 
+const filmRollPhotoInclude = {
+  filmPhotos: {
+    orderBy: { frameNumber: 'asc' as const },
+    include: { photo: { include: { categories: true, camera: true, lens: true } } },
+  },
+}
+
+function mapFilmRollWithPhotos(roll: NonNullable<Awaited<ReturnType<typeof db.filmRoll.findUnique>>>) {
+  const rollWithPhotos = roll as typeof roll & {
+    filmPhotos: Array<{
+      createdAt: Date
+      photo: {
+        categories: { name: string }[]
+        dominantColors: string | null
+        createdAt: Date
+        takenAt: Date | null
+      } & Record<string, unknown>
+    } & Record<string, unknown>>
+  }
+
+  return {
+    ...rollWithPhotos,
+    shootDate: rollWithPhotos.shootDate?.toISOString() ?? null,
+    endDate: rollWithPhotos.endDate?.toISOString() ?? null,
+    createdAt: rollWithPhotos.createdAt.toISOString(),
+    updatedAt: rollWithPhotos.updatedAt.toISOString(),
+    photoCount: rollWithPhotos.filmPhotos.length,
+    filmPhotos: rollWithPhotos.filmPhotos.map((fp) => ({
+      ...fp,
+      createdAt: fp.createdAt.toISOString(),
+      photo: {
+        ...fp.photo,
+        category: fp.photo.categories.map((c) => c.name).join(','),
+        dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
+        createdAt: fp.photo.createdAt.toISOString(),
+        takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
+        categories: undefined,
+      },
+    })),
+  }
+}
+
+function extractTitleSequenceNumber(title: string, totalFrames: number) {
+  const basename = title.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, '') ?? title
+  const trailingDigits = basename.match(/\d+$/)?.[0]
+  if (!trailingDigits) return null
+
+  const sequenceWidth = Math.max(String(totalFrames).length, 1)
+  const sequence = Number(trailingDigits.slice(-sequenceWidth))
+  return Number.isInteger(sequence) && sequence > 0 ? sequence : null
+}
+
 // Auth for admin routes
 filmRolls.use('/admin/*', authMiddleware)
 
@@ -289,6 +341,65 @@ filmRolls.post('/admin/film-rolls/:id/photos', async (c) => {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
     }
     console.error('Add photos to film roll error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// Admin: reorder film frame numbers by numeric filename
+filmRolls.post('/admin/film-rolls/:id/reorder-frames', async (c) => {
+  try {
+    const id = c.req.param('id')
+
+    const roll = await db.filmRoll.findUnique({
+      where: { id },
+      include: {
+        filmPhotos: {
+          orderBy: { frameNumber: 'asc' },
+          include: { photo: { select: { title: true } } },
+        },
+      },
+    })
+    if (!roll) return c.json({ error: 'Film roll not found' }, 404)
+    const totalFrames = roll.filmPhotos.length
+
+    const changedRows = roll.filmPhotos
+      .map((filmPhoto) => ({
+        id: filmPhoto.id,
+        frameNumber: filmPhoto.frameNumber,
+        sequenceNumber: extractTitleSequenceNumber(filmPhoto.photo.title, totalFrames),
+      }))
+      .filter((filmPhoto): filmPhoto is { id: string; frameNumber: number; sequenceNumber: number } => filmPhoto.sequenceNumber !== null)
+      .map((filmPhoto) => ({
+        id: filmPhoto.id,
+        frameNumber: totalFrames - filmPhoto.sequenceNumber + 1,
+        oldFrameNumber: filmPhoto.frameNumber,
+      }))
+      .filter((row) => row.frameNumber >= 1 && row.frameNumber <= totalFrames && row.oldFrameNumber !== row.frameNumber)
+
+    if (changedRows.length > 0) {
+      const values = Prisma.join(
+        changedRows.map((row) => Prisma.sql`(${row.id}, ${row.frameNumber})`),
+      )
+      await db.$executeRaw`
+        UPDATE "FilmPhoto" fp
+        SET "frameNumber" = data."frameNumber"::integer
+        FROM (VALUES ${values}) AS data(id, "frameNumber")
+        WHERE fp.id = data.id::text
+      `
+    }
+
+    const updated = await db.filmRoll.findUnique({
+      where: { id },
+      include: filmRollPhotoInclude,
+    })
+    if (!updated) return c.json({ error: 'Film roll not found' }, 404)
+
+    return c.json({ success: true, data: mapFilmRollWithPhotos(updated) })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    console.error('Reorder film frames error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

@@ -54,6 +54,17 @@ export async function addPhotosToFilmRoll(token: string, id: string, photoIds: s
   )
 }
 
+export async function reorderFilmRollFrames(
+  token: string,
+  id: string,
+): Promise<FilmRollDto> {
+  return apiRequestData<FilmRollDto>(
+    `/api/admin/film-rolls/${encodeURIComponent(id)}/reorder-frames`,
+    { method: 'POST' },
+    token,
+  )
+}
+
 export async function removePhotoFromFilmRoll(token: string, rollId: string, photoId: string): Promise<FilmRollDto> {
   return apiRequestData<FilmRollDto>(
     `/api/admin/film-rolls/${encodeURIComponent(rollId)}/photos/${encodeURIComponent(photoId)}`,
