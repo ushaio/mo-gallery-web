@@ -3,13 +3,14 @@ import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 
 const filmRolls = new Hono<{ Variables: AuthVariables }>()
 
 const FilmRollSchema = z.object({
   name: z.string().min(1).max(200),
   brand: z.string().min(1).max(100),
+  format: z.enum(['135', '120']).default('135'),
   iso: z.number().int().min(1).max(102400),
   frameCount: z.number().int().min(1).max(1000),
   notes: z.string().max(2000).optional().nullable(),
@@ -108,6 +109,7 @@ filmRolls.post('/admin/film-rolls', async (c) => {
       data: {
         name: parsed.name,
         brand: parsed.brand,
+        format: parsed.format,
         iso: parsed.iso,
         frameCount: parsed.frameCount,
         notes: parsed.notes ?? null,
@@ -148,6 +150,7 @@ filmRolls.patch('/admin/film-rolls/:id', async (c) => {
       data: {
         ...(parsed.name !== undefined && { name: parsed.name }),
         ...(parsed.brand !== undefined && { brand: parsed.brand }),
+        ...(parsed.format !== undefined && { format: parsed.format }),
         ...(parsed.iso !== undefined && { iso: parsed.iso }),
         ...(parsed.frameCount !== undefined && { frameCount: parsed.frameCount }),
         ...(parsed.notes !== undefined && { notes: parsed.notes }),

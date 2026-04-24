@@ -1,5 +1,6 @@
 import 'server-only'
-import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '@/generated/prisma/client'
 
 // Timezone offset in hours (UTC+8 for Asia/Shanghai)
 const TIMEZONE_OFFSET_HOURS = 8
@@ -31,7 +32,8 @@ function processResult<T>(data: T): T {
 }
 
 const prismaClientSingleton = () => {
-  const client = new PrismaClient()
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+  const client = new PrismaClient({ adapter })
 
   return client.$extends({
     query: {

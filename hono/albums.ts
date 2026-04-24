@@ -3,7 +3,7 @@ import { Hono, type Context } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 
 const albums = new Hono<{ Variables: AuthVariables }>()
 
