@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { getFilmStockAsset } from '@/lib/film-presets'
+import { getFilmStockDisplay, getFilmStockDisplayStyle } from '@/lib/film-presets'
 import type { FilmRollDto, PhotoDto } from '@/lib/api/types'
 
 const EXPANDED_FRAME_GRID_CLASSES = {
@@ -126,6 +126,7 @@ function ArchiveRollRow({
   const rollFormat = roll.format ?? '135'
   const expandedGridClassName = EXPANDED_FRAME_GRID_CLASSES[rollFormat]
   const expandedRowSize = rollFormat === '120' ? 5 : 6
+  const filmStockDisplay = getFilmStockDisplay(roll.brand, roll.name, rollFormat)
   const expandedRows = useMemo(
     () => chunkPhotos(photos, expandedRowSize),
     [photos, expandedRowSize],
@@ -147,14 +148,19 @@ function ArchiveRollRow({
           aria-controls={`film-roll-${roll.id}`}
           aria-label={`${isExpanded ? t('gallery.film_collapse_roll') : t('gallery.film_expand_roll')} ${roll.brand} ${roll.name}`}
         >
-          <Image
-            src={getFilmStockAsset(roll.brand, roll.name, roll.format ?? '135')}
-            alt={`${roll.brand} ${roll.name}`}
-            fill
-            sizes="108px"
-            className="scale-[1.75] object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)] transition-transform duration-300 group-hover:scale-[1.86]"
-            priority={rowIndex === 0}
-          />
+          <span
+            className="absolute inset-0 transition-transform duration-300 group-hover:scale-[1.06]"
+            style={getFilmStockDisplayStyle({ ...filmStockDisplay, scale: filmStockDisplay.scale * 1.75 })}
+          >
+            <Image
+              src={filmStockDisplay.asset}
+              alt={`${roll.brand} ${roll.name}`}
+              fill
+              sizes="108px"
+              className="object-contain drop-shadow-[0_22px_28px_rgba(0,0,0,0.55)]"
+              priority={rowIndex === 0}
+            />
+          </span>
         </button>
 
         <div className="min-w-0">

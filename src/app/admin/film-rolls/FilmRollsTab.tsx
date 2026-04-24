@@ -42,7 +42,8 @@ import {
   FILM_STOCK_BRANDS,
   FILM_STOCK_PRESETS,
   getFilmStockNames,
-  getFilmStockAsset,
+  getFilmStockDisplay,
+  getFilmStockDisplayStyle,
   type FilmFormat,
 } from '@/lib/film-presets'
 
@@ -494,7 +495,7 @@ export function FilmRollsTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredRolls.map(roll => {
               const cover = getRollCover(roll)
-              const filmStockAsset = getFilmStockAsset(roll.brand, roll.name, roll.format ?? '135')
+              const filmStockDisplay = getFilmStockDisplay(roll.brand, roll.name, roll.format ?? '135', 4 / 3)
               return (
                 <div
                   key={roll.id}
@@ -506,7 +507,12 @@ export function FilmRollsTab({
                       <img src={cover} alt={roll.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-muted/50 p-6">
-                        <img src={filmStockAsset} alt={`${roll.brand} ${roll.name}`} className="max-h-full max-w-full object-contain opacity-90" />
+                        <img
+                          src={filmStockDisplay.asset}
+                          alt={`${roll.brand} ${roll.name}`}
+                          style={getFilmStockDisplayStyle(filmStockDisplay)}
+                          className="max-h-full max-w-full object-contain opacity-90"
+                        />
                       </div>
                     )}
                     <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium">{roll.photoCount ?? 0}</div>
@@ -537,7 +543,17 @@ export function FilmRollsTab({
                 className="group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all"
               >
                 <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center bg-muted/40 p-1.5">
-                  <img src={getFilmStockAsset(roll.brand, roll.name, roll.format ?? '135')} alt={`${roll.brand} ${roll.name}`} className="max-h-full max-w-full object-contain" />
+                  {(() => {
+                    const filmStockDisplay = getFilmStockDisplay(roll.brand, roll.name, roll.format ?? '135', 20 / 14)
+                    return (
+                      <img
+                        src={filmStockDisplay.asset}
+                        alt={`${roll.brand} ${roll.name}`}
+                        style={getFilmStockDisplayStyle(filmStockDisplay)}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    )
+                  })()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium truncate">{roll.name}</h3>
