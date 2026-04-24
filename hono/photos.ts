@@ -81,6 +81,44 @@ function mapPhotoDto(
   }
 }
 
+async function setPhotoFilmRoll(photoId: string, filmRollId: string) {
+  const existingFilmPhoto = await db.filmPhoto.findUnique({
+    where: { photoId },
+    select: { id: true, filmRollId: true },
+  })
+
+  if (existingFilmPhoto?.filmRollId === filmRollId) return
+
+  const maxFrame = await db.filmPhoto.findFirst({
+    where: { filmRollId },
+    orderBy: { frameNumber: 'desc' },
+    select: { frameNumber: true },
+  })
+
+  if (existingFilmPhoto) {
+    await db.filmPhoto.update({
+      where: { id: existingFilmPhoto.id },
+      data: {
+        filmRollId,
+        frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+      },
+    })
+    return
+  }
+
+  await db.filmPhoto.create({
+    data: {
+      photoId,
+      filmRollId,
+      frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
+    },
+  })
+}
+
+async function setPhotoDigital(photoId: string) {
+  await db.filmPhoto.deleteMany({ where: { photoId } })
+}
+
 /** Resolve storage config preferring storageSourceId, falling back to storageProvider string. */
 async function resolveStorageConfig(photo: { storageSourceId?: string | null; storageProvider: string }) {
   if (photo.storageSourceId) {
@@ -761,6 +799,68 @@ photos.post('/admin/photos/batch-delete', async (c) => {
   }
 })
 
+photos.post('/admin/photos/batch-update-type', async (c) => {
+  try {
+    const body = await c.req.json()
+    const photoIds = Array.isArray(body.photoIds)
+      ? body.photoIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+      : []
+    const photoType = body.photoType === 'digital' || body.photoType === 'film' ? body.photoType : undefined
+    const filmRollId = typeof body.filmRollId === 'string' && body.filmRollId.length > 0
+      ? body.filmRollId
+      : null
+
+    if (photoIds.length === 0) {
+      return c.json({ error: 'Photo IDs are required' }, 400)
+    }
+    if (!photoType) {
+      return c.json({ error: 'Photo type is required' }, 400)
+    }
+    if (photoType === 'film') {
+      if (!filmRollId) {
+        return c.json({ error: 'Film photos must be assigned to a film roll' }, 400)
+      }
+      const roll = await db.filmRoll.findUnique({ where: { id: filmRollId }, select: { id: true } })
+      if (!roll) {
+        return c.json({ error: 'Film roll not found' }, 404)
+      }
+    }
+
+    const existingPhotos = await db.photo.findMany({
+      where: { id: { in: photoIds } },
+      select: { id: true },
+    })
+    const existingPhotoIds = new Set(existingPhotos.map((photo) => photo.id))
+    const errors = photoIds
+      .filter((id: string) => !existingPhotoIds.has(id))
+      .map((id: string) => `${id}: Photo not found`)
+
+    for (const photoId of existingPhotoIds) {
+      try {
+        if (photoType === 'film' && filmRollId) {
+          await setPhotoFilmRoll(photoId, filmRollId)
+        } else {
+          await setPhotoDigital(photoId)
+        }
+      } catch (error) {
+        errors.push(`${photoId}: ${error instanceof Error ? error.message : 'Failed to update photo type'}`)
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        updated: existingPhotoIds.size - (errors.length - (photoIds.length - existingPhotoIds.size)),
+        failed: errors.length,
+        errors,
+      },
+    })
+  } catch (error) {
+    console.error('Batch update photo type error:', error)
+    return c.json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
+  }
+})
+
 photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')
@@ -855,47 +955,9 @@ photos.patch('/admin/photos/:id', async (c) => {
       if (!roll) {
         return c.json({ error: 'Film roll not found' }, 404)
       }
-
-      const existingFilmPhoto = await db.filmPhoto.findUnique({
-        where: { photoId: id },
-        select: { id: true, filmRollId: true, frameNumber: true },
-      })
-
-      if (existingFilmPhoto) {
-        if (existingFilmPhoto.filmRollId !== requestedFilmRollId) {
-          const maxFrame = await db.filmPhoto.findFirst({
-            where: { filmRollId: requestedFilmRollId },
-            orderBy: { frameNumber: 'desc' },
-            select: { frameNumber: true },
-          })
-
-          await db.filmPhoto.update({
-            where: { id: existingFilmPhoto.id },
-            data: {
-              filmRollId: requestedFilmRollId,
-              frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
-            },
-          })
-        }
-      } else {
-        const maxFrame = await db.filmPhoto.findFirst({
-          where: { filmRollId: requestedFilmRollId },
-          orderBy: { frameNumber: 'desc' },
-          select: { frameNumber: true },
-        })
-
-        await db.filmPhoto.create({
-          data: {
-            photoId: id,
-            filmRollId: requestedFilmRollId,
-            frameNumber: (maxFrame?.frameNumber ?? 0) + 1,
-          },
-        })
-      }
+      await setPhotoFilmRoll(id, requestedFilmRollId)
     } else if (requestedPhotoType === 'digital') {
-      await db.filmPhoto.deleteMany({
-        where: { photoId: id },
-      })
+      await setPhotoDigital(id)
     }
 
     const photo = await db.photo.update({

@@ -336,6 +336,26 @@ export async function updatePhoto(input: {
   )
 }
 
+export async function batchUpdatePhotoType(input: {
+  token: string
+  photoIds: string[]
+  photoType: 'digital' | 'film'
+  filmRollId?: string | null
+}): Promise<{ updated: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ updated: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-update-type',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        photoType: input.photoType,
+        filmRollId: input.filmRollId,
+      }),
+    },
+    input.token,
+  )
+}
+
 export async function batchUpdatePhotoUrls(
   token: string,
   params: {
