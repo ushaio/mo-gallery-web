@@ -309,30 +309,6 @@ export function PhotosTab({
                 )}
               </span>
             </label>
-            
-            {selectedIds.size > 0 && (
-              <>
-                <div className="h-5 w-px bg-border" />
-                <AdminButton
-                  onClick={onBatchAction}
-                  adminVariant="outline"
-                  size="sm"
-                  className="gap-1.5 rounded-md text-xs font-medium normal-case"
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>{t('admin.batch_actions') || 'Batch actions'}</span>
-                </AdminButton>
-                <AdminButton
-                  onClick={() => onDelete()}
-                  adminVariant="destructiveOutline"
-                  size="sm"
-                  className="gap-1.5 rounded-md text-xs font-medium normal-case"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{t('common.delete')}</span>
-                </AdminButton>
-              </>
-            )}
           </>
         )}
         searchValue={search}
@@ -340,6 +316,14 @@ export function PhotosTab({
         searchPlaceholder={t('common.search')}
         actions={(
           <>
+            {/* Sort */}
+            <AdminSelect
+              value={sortBy}
+              onChange={(v) => setSortBy(v as SortOption)}
+              options={sortOptions.map(opt => ({ value: opt.value, label: opt.label }))}
+              className="min-w-[140px]"
+            />
+
             {/* Filter Toggle */}
             <AdminButton
               onClick={() => setShowFilters(!showFilters)}
@@ -398,21 +382,30 @@ export function PhotosTab({
             </AdminButton>
           </>
         )}
+        endActions={selectedIds.size > 0 ? (
+          <div className="flex items-center gap-2">
+            <AdminButton
+              onClick={onBatchAction}
+              adminVariant="outline"
+              size="sm"
+              className="gap-1.5 rounded-md text-xs font-medium normal-case"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>{t('admin.batch_actions') || 'Batch actions'}</span>
+            </AdminButton>
+            <AdminButton
+              onClick={() => onDelete()}
+              adminVariant="destructiveOutline"
+              size="sm"
+              className="gap-1.5 rounded-md text-xs font-medium normal-case"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{t('common.delete')}</span>
+            </AdminButton>
+          </div>
+        ) : null}
         filters={showFilters ? (
           <div className="flex flex-wrap items-center gap-3">
-              {/* Sort */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Sort:</span>
-                <AdminSelect
-                  value={sortBy}
-                  onChange={(v) => setSortBy(v as SortOption)}
-                  options={sortOptions.map(opt => ({ value: opt.value, label: opt.label }))}
-                  className="min-w-[140px]"
-                />
-              </div>
-
-              <div className="h-5 w-px bg-border hidden sm:block" />
-
               {/* Category Filter */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.category_filter')}:</span>

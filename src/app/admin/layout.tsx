@@ -19,6 +19,7 @@ import {
   ApiUnauthorizedError,
   addPhotosToStory,
   batchDeletePhotos,
+  batchUpdatePhotoTakenAt,
   batchUpdatePhotoType,
   batchUpdatePhotoUrls,
   checkPhotosStories,
@@ -35,7 +36,7 @@ import {
 import { Toast, type Notification } from '@/components/Toast'
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
 import { UrlUpdateConfirmDialog } from '@/components/admin/UrlUpdateConfirmDialog'
-import { BatchPhotoActionDialog } from '@/components/admin/BatchPhotoActionDialog'
+import { BatchPhotoActionDialog, type BatchPhotoActionInput } from '@/components/admin/BatchPhotoActionDialog'
 import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
@@ -314,11 +315,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     setShowBatchActionDialog(true)
   }, [selectedPhotoIds.size])
 
-  const confirmBatchAction = useCallback(async (input: {
-    action: 'photoType'
-    photoType: 'digital' | 'film'
-    filmRollId?: string | null
-  }) => {
+  const confirmBatchAction = useCallback(async (input: BatchPhotoActionInput) => {
     if (!token || selectedPhotoIds.size === 0) return
     setBatchActionSaving(true)
 
@@ -327,8 +324,21 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         const result = await batchUpdatePhotoType({
           token,
           photoIds: Array.from(selectedPhotoIds),
-          photoType: input.photoType,
+          photoType: input.photoType || 'digital',
           filmRollId: input.filmRollId,
+        })
+        setSelectedPhotoIds(new Set())
+        await refreshPhotos()
+        notify(`${result.updated} ${t('admin.batch_update_completed') || 'photos updated'}`)
+        if (result.failed > 0) {
+          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
+        }
+      }
+      if (input.action === 'takenAt' && input.takenAt) {
+        const result = await batchUpdatePhotoTakenAt({
+          token,
+          photoIds: Array.from(selectedPhotoIds),
+          takenAt: input.takenAt,
         })
         setSelectedPhotoIds(new Set())
         await refreshPhotos()

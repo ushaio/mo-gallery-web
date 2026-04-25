@@ -890,6 +890,51 @@ photos.post('/admin/photos/batch-update-type', async (c) => {
   }
 })
 
+photos.post('/admin/photos/batch-update-taken-at', async (c) => {
+  try {
+    const body = await c.req.json()
+    const photoIds = Array.isArray(body.photoIds)
+      ? body.photoIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+      : []
+    const takenAt = typeof body.takenAt === 'string' ? new Date(body.takenAt) : undefined
+
+    if (photoIds.length === 0) {
+      return c.json({ error: 'Photo IDs are required' }, 400)
+    }
+    if (!isValidDate(takenAt)) {
+      return c.json({ error: 'Valid date taken is required' }, 400)
+    }
+
+    const existingPhotos = await db.photo.findMany({
+      where: { id: { in: photoIds } },
+      select: { id: true },
+    })
+    const existingPhotoIds = new Set(existingPhotos.map((photo) => photo.id))
+    const errors = photoIds
+      .filter((id: string) => !existingPhotoIds.has(id))
+      .map((id: string) => `${id}: Photo not found`)
+
+    const result = existingPhotoIds.size > 0
+      ? await db.photo.updateMany({
+          where: { id: { in: Array.from(existingPhotoIds) } },
+          data: { takenAt },
+        })
+      : { count: 0 }
+
+    return c.json({
+      success: true,
+      data: {
+        updated: result.count,
+        failed: errors.length,
+        errors,
+      },
+    })
+  } catch (error) {
+    console.error('Batch update photo taken date error:', error)
+    return c.json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
+  }
+})
+
 photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')

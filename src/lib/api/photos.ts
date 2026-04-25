@@ -360,6 +360,24 @@ export async function batchUpdatePhotoType(input: {
   )
 }
 
+export async function batchUpdatePhotoTakenAt(input: {
+  token: string
+  photoIds: string[]
+  takenAt: string
+}): Promise<{ updated: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ updated: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-update-taken-at',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        takenAt: input.takenAt,
+      }),
+    },
+    input.token,
+  )
+}
+
 export async function batchUpdatePhotoUrls(
   token: string,
   params: {

@@ -6,16 +6,23 @@ import { Loader2, SlidersHorizontal, X } from 'lucide-react'
 import { getFilmRolls } from '@/lib/api/film-rolls'
 import type { FilmRollDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminSelect } from '@/components/admin/AdminFormControls'
+import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
-type BatchAction = 'photoType'
+type BatchAction = 'photoType' | 'takenAt'
 type PhotoType = 'digital' | 'film'
+
+export interface BatchPhotoActionInput {
+  action: BatchAction
+  photoType?: PhotoType
+  filmRollId?: string | null
+  takenAt?: string
+}
 
 interface BatchPhotoActionDialogProps {
   isOpen: boolean
   count: number
   isSubmitting?: boolean
-  onConfirm: (input: { action: BatchAction; photoType: PhotoType; filmRollId?: string | null }) => Promise<void> | void
+  onConfirm: (input: BatchPhotoActionInput) => Promise<void> | void
   onCancel: () => void
   t: (key: string) => string
   notify?: (message: string, type?: 'success' | 'error' | 'info') => void
@@ -33,6 +40,7 @@ export function BatchPhotoActionDialog({
   const [action, setAction] = useState<BatchAction>('photoType')
   const [photoType, setPhotoType] = useState<PhotoType>('digital')
   const [filmRollId, setFilmRollId] = useState('')
+  const [takenAt, setTakenAt] = useState('')
   const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
   const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
 
@@ -41,6 +49,7 @@ export function BatchPhotoActionDialog({
     setAction('photoType')
     setPhotoType('digital')
     setFilmRollId('')
+    setTakenAt('')
   }, [isOpen])
 
   useEffect(() => {
@@ -67,6 +76,7 @@ export function BatchPhotoActionDialog({
 
   const actionOptions = useMemo(() => [
     { value: 'photoType', label: t('admin.batch_action_photo_type') || 'Modify photo type' },
+    { value: 'takenAt', label: t('admin.batch_action_taken_at') || 'Modify date taken' },
   ], [t])
 
   const photoTypeOptions = useMemo(() => [
@@ -79,10 +89,22 @@ export function BatchPhotoActionDialog({
     label: `${roll.name} · ${roll.brand} ${roll.iso}`,
   })), [filmRolls])
 
-  const canConfirm = !isSubmitting && (photoType !== 'film' || filmRollId.length > 0)
+  const canConfirm = !isSubmitting && (
+    action === 'photoType'
+      ? photoType !== 'film' || filmRollId.length > 0
+      : takenAt.length > 0 && Number.isFinite(new Date(takenAt).getTime())
+  )
 
   const handleConfirm = async () => {
     if (!canConfirm) return
+    if (action === 'takenAt') {
+      await onConfirm({
+        action,
+        takenAt: new Date(takenAt).toISOString(),
+      })
+      return
+    }
+
     await onConfirm({
       action,
       photoType,
@@ -183,6 +205,23 @@ export function BatchPhotoActionDialog({
                           )}
                         </div>
                       )}
+                    </div>
+                  )}
+                  {action === 'takenAt' && (
+                    <div className="space-y-4 border border-border bg-muted/20 p-4 min-h-[144px]">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                          {t('admin.batch_taken_at') || 'Date taken'}
+                        </label>
+                        <AdminInput
+                          type="datetime-local"
+                          value={takenAt}
+                          onChange={(event) => setTakenAt(event.target.value)}
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t('admin.batch_taken_at_hint') || 'Applies the same date and time to all selected photos.'}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
