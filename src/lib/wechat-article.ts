@@ -36,6 +36,7 @@ const WECHAT_STYLES: Record<string, string> = {
 
 /** Style keys that should only apply when code is inline (not inside pre). */
 const CODE_INSIDE_PRE_STYLE = 'background:none;padding:0;font-size:inherit;font-family:inherit'
+const BLANK_LINE_PLACEHOLDER = '<span style="color:transparent;font-size:1px;line-height:1px">.</span>'
 
 /* ------------------------------------------------------------------ */
 /*  Asset URL resolution (shared with plain-text formatter)            */
@@ -63,6 +64,13 @@ function resolveStoryCopyAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?
 function mergeStyle(existing: string, extra: string) {
   const base = existing.trim().replace(/;?$/, '')
   return base ? `${base};${extra}` : extra
+}
+
+function isBlankLineElement(el: HTMLElement) {
+  const tag = el.tagName.toLowerCase()
+  if (tag !== 'p') return false
+  if (el.querySelector('img,video,audio,iframe,table,hr')) return false
+  return !el.textContent?.replace(/\u00a0/g, '').trim()
 }
 
 function walkNode(node: Node, photos: PhotoDto[], cdnDomain: string | undefined, insidePre: boolean) {
@@ -118,6 +126,12 @@ function walkNode(node: Node, photos: PhotoDto[], cdnDomain: string | undefined,
   const inlineFontFamily = el.style.fontFamily?.trim()
   if (inlineFontFamily) {
     el.setAttribute('style', mergeStyle(el.getAttribute('style') || '', `font-family:${inlineFontFamily}`))
+  }
+
+  if (isBlankLineElement(el)) {
+    el.innerHTML = BLANK_LINE_PLACEHOLDER
+    el.setAttribute('style', mergeStyle(el.getAttribute('style') || '', 'height:1.6em;line-height:1.6em'))
+    return
   }
 
   // Walk children

@@ -33,13 +33,12 @@ import {
   Redo,
   Highlighter,
   Palette,
-  Music2,
+  Clapperboard,
   RemoveFormatting,
 } from 'lucide-react'
 import TipTapAiAssistant from '@/components/TipTapAiAssistant'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { parseMusicEmbedInfo } from '@/lib/music-embed'
 
 import {
   DEFAULT_FONT_SIZE_LABEL,
@@ -100,9 +99,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
-    const [showMusicInput, setShowMusicInput] = useState(false)
-    const [musicUrl, setMusicUrl] = useState('')
-    const [musicInputError, setMusicInputError] = useState('')
     const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
     const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
     const [customBackgroundColor, setCustomBackgroundColor] = useState(DEFAULT_TEXT_HIGHLIGHT)
@@ -128,6 +124,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       onChange,
       placeholder,
       onPasteFiles,
+      token: aiOptions?.token,
       t,
     })
 
@@ -172,7 +169,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             isOrderedList: false,
             isBlockquote: false,
             isLink: false,
-            isMusicEmbed: false,
+            isMediaEmbed: false,
             isAlignLeft: false,
             isAlignCenter: false,
             isAlignRight: false,
@@ -199,7 +196,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isOrderedList: currentEditor.isActive('orderedList'),
           isBlockquote: currentEditor.isActive('blockquote'),
           isLink: currentEditor.isActive('link'),
-          isMusicEmbed: currentEditor.isActive('musicEmbed'),
+          isMediaEmbed: currentEditor.isActive('mediaEmbed'),
           isAlignLeft: currentEditor.isActive({ textAlign: 'left' }),
           isAlignCenter: currentEditor.isActive({ textAlign: 'center' }),
           isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
@@ -247,7 +244,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       isOrderedList: false,
       isBlockquote: false,
       isLink: false,
-      isMusicEmbed: false,
+      isMediaEmbed: false,
       isAlignLeft: false,
       isAlignCenter: false,
       isAlignRight: false,
@@ -419,8 +416,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         const previousUrl = editor.getAttributes('link').href
         setLinkUrl(previousUrl || '')
         setShowImageInput(false)
-        setShowMusicInput(false)
-        setMusicInputError('')
         setShowLinkInput(true)
       }
     }, [editor, linkUrl, showLinkInput])
@@ -435,46 +430,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         setImageUrl('')
       } else {
         setShowLinkInput(false)
-        setShowMusicInput(false)
-        setMusicInputError('')
         setShowImageInput(true)
       }
     }, [editor, imageUrl, insertInlineImage, showImageInput])
-
-    const addMusicEmbed = useCallback(() => {
-      if (!editor) return
-
-      if (!showMusicInput) {
-        setShowLinkInput(false)
-        setShowImageInput(false)
-        setMusicInputError('')
-        setShowMusicInput(true)
-        return
-      }
-
-      const embedInfo = parseMusicEmbedInfo(musicUrl)
-      if (!embedInfo) {
-        setMusicInputError(t('editor.music_invalid_url'))
-        return
-      }
-
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: 'musicEmbed',
-          attrs: {
-            provider: embedInfo.provider,
-            url: embedInfo.url,
-          },
-        })
-        .run()
-
-      setShowMusicInput(false)
-      setMusicUrl('')
-      setMusicInputError('')
-      focusEditor()
-    }, [editor, focusEditor, musicUrl, showMusicInput, t])
 
     const addTable = useCallback(() => {
       if (!editor) return
@@ -843,44 +801,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           </div>
 
           <div className="relative">
-            <ToolbarButton onClick={addMusicEmbed} isActive={resolvedEditorUiState.isMusicEmbed} title={t('editor.music')}>
-              <Music2 className="w-4 h-4" />
+            <ToolbarButton
+              onMouseDown={preserveSelectionOnToolbarMouseDown}
+              onClick={focusEditor}
+              isActive={resolvedEditorUiState.isMediaEmbed}
+              title={t('editor.media')}
+            >
+              <Clapperboard className="w-4 h-4" />
             </ToolbarButton>
-            {showMusicInput && (
-              <div className="absolute top-full left-0 z-10 mt-1 w-64 border border-border bg-background p-2 shadow-lg">
-                <div className="flex items-center gap-1">
-                  <input
-                    type="url"
-                    value={musicUrl}
-                    onChange={(e) => {
-                      setMusicUrl(e.target.value)
-                      if (musicInputError) {
-                        setMusicInputError('')
-                      }
-                    }}
-                    placeholder={t('editor.music_placeholder')}
-                    className="w-full border border-border px-2 py-1 text-xs focus:border-primary outline-none"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addMusicEmbed()
-                      if (e.key === 'Escape') {
-                        setShowMusicInput(false)
-                        setMusicInputError('')
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <button
-                    onClick={addMusicEmbed}
-                    className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
-                  >
-                    {t('editor.confirm')}
-                  </button>
-                </div>
-                {musicInputError ? (
-                  <p className="mt-1 text-xs text-destructive">{musicInputError}</p>
-                ) : null}
-              </div>
-            )}
           </div>
 
           <ToolbarButton onClick={addTable} title={t('editor.table')}>

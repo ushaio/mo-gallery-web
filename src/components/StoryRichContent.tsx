@@ -4,7 +4,7 @@ import { memo, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveAssetUrl } from '@/lib/api/core'
-import { parseMusicEmbedInfoByProvider } from '@/lib/music-embed'
+import { resolveStoredMediaEmbedInfo } from '@/lib/media-embed'
 import type { PhotoDto } from '@/lib/api/types'
 import {
   buildStoryPhotoIndex,
@@ -25,7 +25,8 @@ const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 const HTML_ANCHOR_PATTERN = /<a\b([^>]*?)href=(['"])(.*?)\2([^>]*)>/gi
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
 const HTML_HR_TAG_PATTERN = /<hr\b[^>]*\/?>/gi
-const HTML_MUSIC_EMBED_PATTERN = /<div\b[^>]*data-type=(['"])(?:music-embed|spotify-embed)\1[^>]*>\s*<\/div>/gi
+const HTML_MEDIA_EMBED_PATTERN = /<div\b[^>]*data-type=(['"])(?:media-embed|music-embed|spotify-embed)\1[^>]*>\s*<\/div>/gi
+const HTML_STORY_LINK_CARD_PATTERN = /<div\b[^>]*data-type=(['"])story-link-card\1[^>]*>\s*<\/div>/gi
 
 const IMG_SRC_ATTR_PATTERN = /\bsrc=(['"])(.*?)\1/i
 const IMG_PHOTO_ID_ATTR_PATTERN = /\bdata-photo-id=(['"])(.*?)\1/i
@@ -36,6 +37,24 @@ const IMG_ALT_ATTR_PATTERN = /\balt=(['"])(.*?)\1/i
 const IMG_TAG_PREFIX_PATTERN = /<img/i
 const EMBED_PROVIDER_ATTR_PATTERN = /\bdata-provider=(['"])(.*?)\1/i
 const EMBED_URL_ATTR_PATTERN = /\bdata-url=(['"])(.*?)\1/i
+const EMBED_SRC_ATTR_PATTERN = /\bdata-src=(['"])(.*?)\1/i
+const EMBED_TITLE_ATTR_PATTERN = /\bdata-title=(['"])(.*?)\1/i
+const EMBED_HEIGHT_ATTR_PATTERN = /\bdata-height=(['"])(.*?)\1/i
+const EMBED_ALLOW_ATTR_PATTERN = /\bdata-allow=(['"])(.*?)\1/i
+const EMBED_ALLOW_FULLSCREEN_ATTR_PATTERN = /\bdata-allowfullscreen=(['"])(.*?)\1/i
+const EMBED_FRAME_BORDER_ATTR_PATTERN = /\bdata-frameborder=(['"])(.*?)\1/i
+const EMBED_MARGIN_WIDTH_ATTR_PATTERN = /\bdata-marginwidth=(['"])(.*?)\1/i
+const EMBED_MARGIN_HEIGHT_ATTR_PATTERN = /\bdata-marginheight=(['"])(.*?)\1/i
+const EMBED_SCROLLING_ATTR_PATTERN = /\bdata-scrolling=(['"])(.*?)\1/i
+const EMBED_BORDER_ATTR_PATTERN = /\bdata-border=(['"])(.*?)\1/i
+const EMBED_FRAME_SPACING_ATTR_PATTERN = /\bdata-framespacing=(['"])(.*?)\1/i
+const STORY_CARD_STORY_ID_ATTR_PATTERN = /\bdata-story-id=(['"])(.*?)\1/i
+const STORY_CARD_URL_ATTR_PATTERN = /\bdata-url=(['"])(.*?)\1/i
+const STORY_CARD_TITLE_ATTR_PATTERN = /\bdata-title=(['"])(.*?)\1/i
+const STORY_CARD_SUMMARY_ATTR_PATTERN = /\bdata-summary=(['"])(.*?)\1/i
+const STORY_CARD_COVER_ATTR_PATTERN = /\bdata-cover-url=(['"])(.*?)\1/i
+const STORY_CARD_DATE_ATTR_PATTERN = /\bdata-date=(['"])(.*?)\1/i
+const STORY_CARD_PUBLISHED_ATTR_PATTERN = /\bdata-published=(['"])(.*?)\1/i
 const EXTERNAL_URL_PATTERN = /^(https?:\/\/|data:|blob:|uploading:\/\/)/i
 const MARKDOWN_IMAGE_WIDTH_PATTERN = /^(.+?)\s*=\s*(\d+)x\s*$/
 
@@ -125,37 +144,90 @@ function normalizeHtmlImageTag(tag: string, index: StoryPhotoIndex, cdnDomain?: 
   return nextTag
 }
 
-function buildMusicEmbedHtml(tag: string) {
+function buildMediaEmbedHtml(tag: string) {
   const provider = tag.match(EMBED_PROVIDER_ATTR_PATTERN)?.[2]?.trim() || ''
   const url = tag.match(EMBED_URL_ATTR_PATTERN)?.[2]?.trim() || ''
-  const embedInfo = parseMusicEmbedInfoByProvider(provider, url)
+  const embedInfo = resolveStoredMediaEmbedInfo({
+    provider,
+    url,
+    src: tag.match(EMBED_SRC_ATTR_PATTERN)?.[2]?.trim() || '',
+    title: tag.match(EMBED_TITLE_ATTR_PATTERN)?.[2]?.trim() || '',
+    height: tag.match(EMBED_HEIGHT_ATTR_PATTERN)?.[2]?.trim() || '',
+    allow: tag.match(EMBED_ALLOW_ATTR_PATTERN)?.[2]?.trim() || '',
+    allowFullScreen: tag.match(EMBED_ALLOW_FULLSCREEN_ATTR_PATTERN)?.[2] === 'true',
+    frameBorder: tag.match(EMBED_FRAME_BORDER_ATTR_PATTERN)?.[2]?.trim() || '',
+    marginWidth: (() => {
+      const value = tag.match(EMBED_MARGIN_WIDTH_ATTR_PATTERN)?.[2]?.trim()
+      return value ? Number.parseInt(value, 10) : undefined
+    })(),
+    marginHeight: (() => {
+      const value = tag.match(EMBED_MARGIN_HEIGHT_ATTR_PATTERN)?.[2]?.trim()
+      return value ? Number.parseInt(value, 10) : undefined
+    })(),
+    scrolling: tag.match(EMBED_SCROLLING_ATTR_PATTERN)?.[2]?.trim() || '',
+    border: tag.match(EMBED_BORDER_ATTR_PATTERN)?.[2]?.trim() || '',
+    frameSpacing: tag.match(EMBED_FRAME_SPACING_ATTR_PATTERN)?.[2]?.trim() || '',
+  })
   if (!embedInfo) {
     return tag
   }
 
-  const escapedUrl = escapeHtmlAttribute(embedInfo.url)
-  const escapedEmbedUrl = escapeHtmlAttribute(embedInfo.embedUrl)
-  const escapedProvider = escapeHtmlAttribute(embedInfo.provider)
+  const escapedUrl = embedInfo.url ? escapeHtmlAttribute(embedInfo.url) : ''
+  const escapedEmbedUrl = escapeHtmlAttribute(embedInfo.src)
+  const escapedProviderAttribute = embedInfo.provider ? ` data-provider="${escapeHtmlAttribute(embedInfo.provider)}"` : ''
   const escapedTitle = escapeHtmlAttribute(embedInfo.title)
   const frameBorderAttribute = embedInfo.frameBorder ? ` frameborder="${escapeHtmlAttribute(embedInfo.frameBorder)}"` : ''
   const marginWidthAttribute = embedInfo.marginWidth !== undefined ? ` marginwidth="${escapeHtmlAttribute(String(embedInfo.marginWidth))}"` : ''
   const marginHeightAttribute = embedInfo.marginHeight !== undefined ? ` marginheight="${escapeHtmlAttribute(String(embedInfo.marginHeight))}"` : ''
   const allowAttribute = embedInfo.allow ? ` allow="${escapeHtmlAttribute(embedInfo.allow)}"` : ''
   const allowFullScreenAttribute = embedInfo.allowFullScreen ? ' allowfullscreen' : ''
+  const scrollingAttribute = embedInfo.scrolling ? ` scrolling="${escapeHtmlAttribute(embedInfo.scrolling)}"` : ''
+  const borderAttribute = embedInfo.border ? ` border="${escapeHtmlAttribute(embedInfo.border)}"` : ''
+  const frameSpacingAttribute = embedInfo.frameSpacing ? ` framespacing="${escapeHtmlAttribute(embedInfo.frameSpacing)}"` : ''
   const styleAttribute = embedInfo.provider === 'spotify' ? ' style="border-radius:12px"' : ''
+  const dataUrlAttribute = escapedUrl ? ` data-media-url="${escapedUrl}"` : ''
 
   return `
-    <div class="story-music-card" data-type="music-embed" data-provider="${escapedProvider}">
+    <div class="story-media-card" data-type="media-embed"${escapedProviderAttribute}>
       <iframe
         src="${escapedEmbedUrl}"
         title="${escapedTitle}"
         width="100%"
-        height="${embedInfo.height}"
-        data-music-url="${escapedUrl}"
+        ${embedInfo.height ? `height="${escapeHtmlAttribute(embedInfo.height)}"` : ''}
+        ${dataUrlAttribute}
         loading="lazy"
-        ${allowAttribute}${allowFullScreenAttribute}${frameBorderAttribute}${marginWidthAttribute}${marginHeightAttribute}${styleAttribute}
+        ${allowAttribute}${allowFullScreenAttribute}${frameBorderAttribute}${marginWidthAttribute}${marginHeightAttribute}${scrollingAttribute}${borderAttribute}${frameSpacingAttribute}${styleAttribute}
       ></iframe>
     </div>
+  `
+}
+
+function formatStoryCardDate(value: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function buildStoryLinkCardHtml(tag: string) {
+  const storyId = tag.match(STORY_CARD_STORY_ID_ATTR_PATTERN)?.[2]?.trim() || ''
+  const url = tag.match(STORY_CARD_URL_ATTR_PATTERN)?.[2]?.trim() || (storyId ? `/story/${storyId}` : '#')
+  const title = tag.match(STORY_CARD_TITLE_ATTR_PATTERN)?.[2]?.trim() || 'Untitled story'
+  const summary = tag.match(STORY_CARD_SUMMARY_ATTR_PATTERN)?.[2]?.trim() || ''
+  const coverUrl = tag.match(STORY_CARD_COVER_ATTR_PATTERN)?.[2]?.trim() || ''
+  const date = formatStoryCardDate(tag.match(STORY_CARD_DATE_ATTR_PATTERN)?.[2]?.trim() || '')
+  const isPublished = tag.match(STORY_CARD_PUBLISHED_ATTR_PATTERN)?.[2] !== 'false'
+
+  return `
+    <a class="story-link-card" data-type="story-link-card" href="${escapeHtmlAttribute(url)}" target="_blank" rel="noreferrer">
+      ${coverUrl ? `<img class="story-link-card__cover" src="${escapeHtmlAttribute(coverUrl)}" alt="">` : ''}
+      <span class="story-link-card__body">
+        <span class="story-link-card__eyebrow"><span>Story</span>${isPublished ? '' : '<span>Draft</span>'}</span>
+        <span class="story-link-card__title">${escapeHtmlAttribute(title)}</span>
+        ${summary ? `<span class="story-link-card__summary">${escapeHtmlAttribute(summary)}</span>` : ''}
+        ${date ? `<span class="story-link-card__meta">${escapeHtmlAttribute(date)}</span>` : ''}
+      </span>
+    </a>
   `
 }
 
@@ -172,7 +244,8 @@ function resolveStoryHtml(content: string, index: StoryPhotoIndex, cdnDomain?: s
 
   return withResolvedLinks
     .replace(HTML_IMAGE_TAG_PATTERN, (tag) => normalizeHtmlImageTag(tag, index, cdnDomain))
-    .replace(HTML_MUSIC_EMBED_PATTERN, (tag) => buildMusicEmbedHtml(tag))
+    .replace(HTML_MEDIA_EMBED_PATTERN, (tag) => buildMediaEmbedHtml(tag))
+    .replace(HTML_STORY_LINK_CARD_PATTERN, (tag) => buildStoryLinkCardHtml(tag))
     .replace(HTML_HR_TAG_PATTERN, (tag) => {
       if (/\bstyle=/i.test(tag)) return tag
       return tag.replace(/<hr/i, '<hr style="border: none; border-top: 1px solid currentColor; margin: 2rem 0;"')
