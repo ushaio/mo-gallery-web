@@ -9,7 +9,7 @@ function applyImageContainerStyles(element: HTMLElement, includeMargin = true) {
   element.style.width = 'fit-content'
   element.style.maxWidth = '100%'
   if (includeMargin) {
-    element.style.margin = '0 0.75rem 0.75rem 0'
+    element.style.margin = '0 0 0.75rem 0'
   } else {
     element.style.margin = '0'
   }
@@ -106,23 +106,20 @@ function createSizeLabel(): HTMLElement {
 }
 
 /**
- * Update the size label with percentage of original size
+ * Update the size label with percentage of editor content width
  */
 function updateSizeLabel(
   label: HTMLElement,
   currentWidth: number,
-  imageElement: HTMLElement
+  imageElement: HTMLElement,
+  contentWidth: number
 ) {
-  const imgElement = imageElement as HTMLImageElement
-  const naturalWidth = imgElement.naturalWidth || 0
-
-  // Calculate percentage of original size
+  // Calculate percentage of editor content width
   let displayText: string
-  if (naturalWidth > 0) {
-    const percentage = Math.round((currentWidth / naturalWidth) * 100)
+  if (contentWidth > 0) {
+    const percentage = Math.round((currentWidth / contentWidth) * 100)
     displayText = `${percentage}%`
   } else {
-    // Fallback to pixel width if naturalWidth not available
     displayText = `${Math.round(currentWidth)}px`
   }
 
@@ -236,29 +233,31 @@ export const ResizableImage = Image.extend({
       // Create size label for resize feedback
       const sizeLabel = createSizeLabel()
       let isResizing = false
-      let originalNaturalWidth = 0
 
-      // Get natural width after image loads
-      const captureNaturalWidth = () => {
-        if (imageElement.naturalWidth > 0) {
-          originalNaturalWidth = imageElement.naturalWidth
-        }
+      const getContentWidth = () => {
+        const dom = editor.view.dom
+        const style = window.getComputedStyle(dom)
+        const paddingLeft = parseFloat(style.paddingLeft) || 0
+        const paddingRight = parseFloat(style.paddingRight) || 0
+        return dom.clientWidth - paddingLeft - paddingRight
       }
 
       /**
-       * Snap width to 1% increments of original size
+       * Snap width to 5% increments of editor content width
        */
       const snapToPercentageStep = (width: number): number => {
-        if (originalNaturalWidth <= 0) return width
+        const contentWidth = getContentWidth()
+        if (contentWidth <= 0) return width
 
-        // Calculate percentage and round to integer
-        const percentage = Math.round((width / originalNaturalWidth) * 100)
+        // Calculate percentage relative to content width, snap to nearest 5%
+        const percentage = Math.round((width / contentWidth) * 100)
+        const snapped = Math.round(percentage / 5) * 5
 
-        // Clamp percentage to reasonable bounds (1% - 100%)
-        const clampedPercentage = Math.max(1, Math.min(100, percentage))
+        // Clamp to 5% - 100% range
+        const clamped = Math.max(5, Math.min(100, snapped))
 
         // Convert back to pixels
-        return Math.round((clampedPercentage / 100) * originalNaturalWidth)
+        return Math.round((clamped / 100) * contentWidth)
       }
 
       const syncImageState = (attrs: Record<string, unknown>, container?: HTMLElement) => {
@@ -283,12 +282,7 @@ export const ResizableImage = Image.extend({
         node,
         getPos,
         onResize: (width) => {
-          // Capture natural width if not yet available
-          if (originalNaturalWidth <= 0) {
-            captureNaturalWidth()
-          }
-
-          // Snap to 1% increments
+          // Snap to 1% increments of content width
           const snappedWidth = snapToPercentageStep(width)
           applyImageDimensions(imageElement, snappedWidth)
 
@@ -297,7 +291,7 @@ export const ResizableImage = Image.extend({
             isResizing = true
             document.body.appendChild(sizeLabel)
           }
-          updateSizeLabel(sizeLabel, snappedWidth, imageElement)
+          updateSizeLabel(sizeLabel, snappedWidth, imageElement, getContentWidth())
         },
         onCommit: (width) => {
           const pos = getPos()
@@ -306,12 +300,7 @@ export const ResizableImage = Image.extend({
             return
           }
 
-          // Capture natural width if not yet available
-          if (originalNaturalWidth <= 0) {
-            captureNaturalWidth()
-          }
-
-          // Snap to 1% increments for final value
+          // Snap to 1% increments of content width for final value
           const snappedWidth = snapToPercentageStep(width)
 
           // Hide and remove size label
@@ -375,8 +364,6 @@ export const ResizableImage = Image.extend({
       const revealNodeView = () => {
         dom.style.visibility = ''
         dom.style.pointerEvents = ''
-        // Capture natural width when image loads
-        captureNaturalWidth()
       }
 
       dom.style.visibility = 'hidden'

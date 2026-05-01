@@ -50,8 +50,12 @@ export function useStoryPasteUploads({
   setIsUploading,
   pendingPasteFilesRef,
 }: UseStoryPasteUploadsParams) {
-  const buildPasteUploadPlaceholder = useCallback((id: string, fileName: string) => {
-    return `\n<!-- story-paste-upload:${id} -->\n![正在上传 ${fileName}...](uploading://${id})\n`
+  const buildProcessingPlaceholder = useCallback((id: string, fileName: string) => {
+    return `\n<!-- story-paste-upload:${id} -->\n[正在处理：${fileName}…]\n`
+  }, [])
+
+  const buildUploadingPlaceholder = useCallback((id: string, fileName: string) => {
+    return `\n<!-- story-paste-upload:${id} -->\n[正在上传：${fileName}…]()\n`
   }, [])
 
   const uploadAndInsertFiles = useCallback(async (files: File[], settings: UploadSettings) => {
@@ -64,10 +68,15 @@ export function useStoryPasteUploads({
 
     const placeholders = files.map((file) => {
       const id = crypto.randomUUID()
-      return { id, file, text: buildPasteUploadPlaceholder(id, file.name) }
+      return {
+        id,
+        file,
+        processingText: buildProcessingPlaceholder(id, file.name),
+        uploadingText: buildUploadingPlaceholder(id, file.name),
+      }
     })
 
-    placeholders.forEach((item) => insertDirective(item.text))
+    placeholders.forEach((item) => insertDirective(item.processingText))
     persistPasteUploadSettings(nextSettings)
     setShowPasteUploadSettings(false)
     pendingPasteFilesRef.current = null
@@ -78,6 +87,9 @@ export function useStoryPasteUploads({
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index]
         const placeholder = placeholders[index]
+
+        // Show uploading state
+        replaceEditorText(placeholder.processingText, placeholder.uploadingText)
         setUploadProgress({ current: index + 1, total: files.length, currentFile: file.name })
 
         const fileHash = await calculateFileHash(file)
@@ -98,7 +110,7 @@ export function useStoryPasteUploads({
           if (existingPhoto) {
             addPhotoToCache(existingPhoto)
             addPhotoToCurrentStory(existingPhoto)
-            replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: existingPhoto.url, alt: existingPhoto.title, photoId: existingPhoto.id }))
+            replaceEditorText(placeholder.uploadingText, buildStoryMarkdownImage({ url: existingPhoto.url, alt: existingPhoto.title, photoId: existingPhoto.id }))
             notify(`复用重复图片：${existingPhoto.title}`, 'info')
             continue
           }
@@ -151,7 +163,7 @@ export function useStoryPasteUploads({
 
         addPhotoToCache(uploadedPhoto)
         addPhotoToCurrentStory(uploadedPhoto)
-        replaceEditorText(placeholder.text, buildStoryMarkdownImage({ url: uploadedPhoto.url, alt: uploadedPhoto.title, photoId: uploadedPhoto.id }))
+        replaceEditorText(placeholder.uploadingText, buildStoryMarkdownImage({ url: uploadedPhoto.url, alt: uploadedPhoto.title, photoId: uploadedPhoto.id }))
       }
 
       notify('粘贴图片已处理并插入正文', 'success')
@@ -166,7 +178,8 @@ export function useStoryPasteUploads({
     addPhotoToCache,
     addPhotoToCurrentStory,
     allPhotos,
-    buildPasteUploadPlaceholder,
+    buildProcessingPlaceholder,
+    buildUploadingPlaceholder,
     currentStory?.photos,
     insertDirective,
     notify,

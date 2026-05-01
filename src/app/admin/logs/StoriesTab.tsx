@@ -51,7 +51,7 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 2,
   compressionMode: 'size',
   storageProvider: 'local',
-  categories: ['story-inline'],
+  categories: [],
   albumIds: [],
   stripGps: false,
 }

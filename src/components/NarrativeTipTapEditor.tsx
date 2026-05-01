@@ -306,6 +306,15 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number; photoId?: string }) => {
       if (!editor) return
 
+      // Compute default width from editor content width before inserting to avoid flicker
+      let width = attrs.width
+      if (!width) {
+        const editorDom = editor.view.dom
+        const computedStyle = window.getComputedStyle(editorDom)
+        const contentWidth = editorDom.clientWidth - (parseFloat(computedStyle.paddingLeft) || 0) - (parseFloat(computedStyle.paddingRight) || 0)
+        width = Math.max(40, Math.round(contentWidth * 0.5))
+      }
+
       editor
         .chain()
         .focus()
@@ -317,34 +326,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               attrs: {
                 src: attrs.src,
                 alt: attrs.alt || '',
+                width,
                 ...(attrs.photoId ? { photoId: attrs.photoId } : {}),
-                ...(attrs.width ? { width: attrs.width } : {}),
               },
             }],
         })
         .run()
-
-      // When no explicit width, auto-scale to 10% of original size after load
-      if (!attrs.width) {
-        const img = new window.Image()
-        img.onload = () => {
-          if (!editor || img.naturalWidth <= 0) return
-          const targetWidth = Math.max(40, Math.round(img.naturalWidth * 0.1))
-          // Find the image node we just inserted and update its width
-          editor.state.doc.descendants((node, pos) => {
-            if (
-              node.type.name === 'image' &&
-              node.attrs.src === attrs.src &&
-              node.attrs.photoId === (attrs.photoId || null) &&
-              !node.attrs.width
-            ) {
-              editor.chain().setNodeSelection(pos).updateAttributes('image', { width: targetWidth }).run()
-              return false
-            }
-          })
-        }
-        img.src = attrs.src
-      }
 
       focusEditor()
     }, [editor, focusEditor])

@@ -2,10 +2,11 @@
  * TipTap editor constants - colors, fonts, sizes, and other configuration values
  */
 
+/** Multipliers relative to editor content width */
 export const IMAGE_WIDTH_PRESETS: Record<'sm' | 'md' | 'lg', number> = {
-  sm: 320,
-  md: 480,
-  lg: 720,
+  sm: 0.33,
+  md: 0.5,
+  lg: 0.75,
 }
 
 export const TAB_INDENT = '\u3000\u3000'
