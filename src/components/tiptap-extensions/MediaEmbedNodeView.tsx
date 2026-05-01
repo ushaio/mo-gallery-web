@@ -1,35 +1,33 @@
 'use client'
 
 import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react'
-import { parseMusicEmbedInfoByProvider } from '@/lib/music-embed'
+import { resolveStoredMediaEmbedInfo } from '@/lib/media-embed'
 
-export function MusicEmbedNodeView({ node, selected }: ReactNodeViewProps) {
-  const url = typeof node.attrs.url === 'string' ? node.attrs.url : ''
-  const provider = typeof node.attrs.provider === 'string' ? node.attrs.provider : ''
-  const embedInfo = parseMusicEmbedInfoByProvider(provider, url)
+export function MediaEmbedNodeView({ node, selected }: ReactNodeViewProps) {
+  const embedInfo = resolveStoredMediaEmbedInfo(node.attrs)
 
   if (!embedInfo) {
     return (
       <NodeViewWrapper
-        className="music-embed-node music-embed-node--invalid"
-        data-type="music-embed"
+        className="media-embed-node media-embed-node--invalid"
+        data-type="media-embed"
         data-selected={selected ? 'true' : undefined}
       >
-        <div className="music-embed-node__fallback">Invalid music link</div>
+        <div className="media-embed-node__fallback">Invalid media embed</div>
       </NodeViewWrapper>
     )
   }
 
   return (
     <NodeViewWrapper
-      className="music-embed-node"
-      data-type="music-embed"
+      className="media-embed-node"
+      data-type="media-embed"
       data-provider={embedInfo.provider}
       data-selected={selected ? 'true' : undefined}
     >
       <iframe
-        className="music-embed-node__frame"
-        src={embedInfo.embedUrl}
+        className="media-embed-node__frame"
+        src={embedInfo.src}
         title={embedInfo.title}
         width="100%"
         height={embedInfo.height}
@@ -38,6 +36,7 @@ export function MusicEmbedNodeView({ node, selected }: ReactNodeViewProps) {
         marginHeight={embedInfo.marginHeight}
         allow={embedInfo.allow}
         loading="lazy"
+        scrolling={embedInfo.scrolling}
         allowFullScreen={embedInfo.allowFullScreen}
         style={embedInfo.provider === 'spotify' ? { borderRadius: '12px' } : undefined}
       />
@@ -45,4 +44,4 @@ export function MusicEmbedNodeView({ node, selected }: ReactNodeViewProps) {
   )
 }
 
-export default MusicEmbedNodeView
+export default MediaEmbedNodeView

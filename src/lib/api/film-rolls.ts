@@ -4,6 +4,7 @@ import type { FilmRollDto } from './types'
 export interface FilmRollCreateInput {
   name: string
   brand: string
+  format?: '135' | '120'
   iso: number
   frameCount: number
   notes?: string | null
@@ -49,6 +50,17 @@ export async function addPhotosToFilmRoll(token: string, id: string, photoIds: s
   return apiRequestData<FilmRollDto>(
     `/api/admin/film-rolls/${encodeURIComponent(id)}/photos`,
     { method: 'POST', body: JSON.stringify({ photoIds }) },
+    token,
+  )
+}
+
+export async function reorderFilmRollFrames(
+  token: string,
+  id: string,
+): Promise<FilmRollDto> {
+  return apiRequestData<FilmRollDto>(
+    `/api/admin/film-rolls/${encodeURIComponent(id)}/reorder-frames`,
+    { method: 'POST' },
     token,
   )
 }

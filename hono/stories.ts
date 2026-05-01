@@ -1,5 +1,5 @@
 import 'server-only'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
@@ -290,6 +290,41 @@ stories.get('/admin/stories', async (c) => {
     })
   } catch (error) {
     console.error('Get admin stories error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+stories.get('/admin/stories/:id', async (c) => {
+  try {
+    const id = c.req.param('id')
+
+    const story = await db.story.findUnique({
+      where: { id },
+      include: {
+        photos: {
+          include: { categories: true },
+        },
+      },
+    })
+
+    if (!story) {
+      return c.json({ error: 'Story not found' }, 404)
+    }
+
+    const data = {
+      ...story,
+      photos: story.photos.map((p) => ({
+        ...p,
+        category: p.categories.map((c) => c.name).join(','),
+      })),
+    }
+
+    return c.json({
+      success: true,
+      data,
+    })
+  } catch (error) {
+    console.error('Get admin story error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })

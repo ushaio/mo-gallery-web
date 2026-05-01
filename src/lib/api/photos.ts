@@ -130,6 +130,7 @@ export async function uploadPhoto(input: {
   storage_source_id?: string
   storage_path?: string
   file_hash?: string
+  film_roll_id?: string
 }): Promise<PhotoDto> {
   const form = new FormData()
   form.set('file', input.file)
@@ -141,6 +142,7 @@ export async function uploadPhoto(input: {
   if (input.storage_source_id) form.set('storage_source_id', input.storage_source_id)
   if (input.storage_path) form.set('storage_path', input.storage_path)
   if (input.file_hash) form.set('file_hash', input.file_hash)
+  if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
 
   return apiRequestData<PhotoDto>(
     '/api/admin/photos',
@@ -160,6 +162,7 @@ export function uploadPhotoWithProgress(input: {
   storage_path?: string
   storage_path_full?: boolean
   file_hash?: string
+  film_roll_id?: string
   onProgress?: (progress: number) => void
 }): Promise<PhotoDto> {
   return new Promise((resolve, reject) => {
@@ -176,6 +179,7 @@ export function uploadPhotoWithProgress(input: {
     if (input.storage_path) form.set('storage_path', input.storage_path)
     if (input.storage_path_full) form.set('storage_path_full', 'true')
     if (input.file_hash) form.set('file_hash', input.file_hash)
+    if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
 
     const xhr = new XMLHttpRequest()
     const url = buildApiUrl('/api/admin/photos')
@@ -331,6 +335,44 @@ export async function updatePhoto(input: {
     {
       method: 'PATCH',
       body: JSON.stringify(input.patch),
+    },
+    input.token,
+  )
+}
+
+export async function batchUpdatePhotoType(input: {
+  token: string
+  photoIds: string[]
+  photoType: 'digital' | 'film'
+  filmRollId?: string | null
+}): Promise<{ updated: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ updated: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-update-type',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        photoType: input.photoType,
+        filmRollId: input.filmRollId,
+      }),
+    },
+    input.token,
+  )
+}
+
+export async function batchUpdatePhotoTakenAt(input: {
+  token: string
+  photoIds: string[]
+  takenAt: string
+}): Promise<{ updated: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ updated: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-update-taken-at',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        takenAt: input.takenAt,
+      }),
     },
     input.token,
   )

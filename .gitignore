@@ -48,6 +48,7 @@ public/uploads
 .ace-tool/
 .env.local
 .codex
+.worktrees
 .vscode
 .gemini
 .opencode

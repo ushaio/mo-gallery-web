@@ -333,7 +333,7 @@ export default function AiAssistantPage() {
   const activeConvoTitle = conversations.find((c) => c.id === activeConversation)?.title
 
   return (
-    <div className="h-full flex overflow-hidden rounded-lg border border-border/60">
+    <div className="h-full flex overflow-hidden">
       {/* Conversation sidebar */}
       <AnimatePresence initial={false}>
         {showSidebar && (
@@ -793,9 +793,14 @@ function ModelSelector({
     ? models.filter((m) => m.label.toLowerCase().includes(search.trim().toLowerCase()))
     : models
 
+  const handleToggle = () => {
+    const nextIsOpen = !isOpen
+    if (nextIsOpen) setSearch('')
+    setIsOpen(nextIsOpen)
+  }
+
   useEffect(() => {
     if (isOpen) {
-      setSearch('')
       // Focus search input after animation
       requestAnimationFrame(() => searchRef.current?.focus())
     }
@@ -815,7 +820,7 @@ function ModelSelector({
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border/40 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:border-border transition-colors cursor-pointer"
       >
         <Sparkles className="w-3 h-3 text-primary/60" />

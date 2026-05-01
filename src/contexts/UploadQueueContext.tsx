@@ -5,7 +5,7 @@ import { uploadPhotoWithProgress } from '@/lib/api/photos'
 import { addPhotosToAlbum } from '@/lib/api/albums'
 import { addPhotosToStory } from '@/lib/api/stories'
 import { addPhotosToFilmRoll } from '@/lib/api/film-rolls'
-import { compressImage, CompressionMode } from '@/lib/image-compress'
+import { compressImage, CompressionMode, convertImageToJpeg } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
 
@@ -189,11 +189,23 @@ export function UploadQueueProvider({
       let fileToUpload = task.file
       let compressedSize: number | undefined
 
-      // Step 1: Compress if needed
+      // Step 1: Convert unsupported browser-upload formats if needed, then compress
+      if (fileToUpload.type === 'image/bmp') {
+        fileToUpload = await convertImageToJpeg(fileToUpload)
+        compressedSize = fileToUpload.size
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id
+              ? { ...t, compressedSize, fileSize: compressedSize! }
+              : t
+          )
+        )
+      }
+
       if (task.compressionMode && task.compressionMode !== 'none') {
         try {
           fileToUpload = await compressImage(
-            task.file,
+            fileToUpload,
             { mode: task.compressionMode, maxSizeMB: task.maxSizeMB },
             (progress) => {
               updateTaskProgress(task.id, Math.round(progress))
@@ -229,6 +241,7 @@ export function UploadQueueProvider({
         storage_path: task.storagePath,
         storage_path_full: task.storagePathFull,
         file_hash: task.fileHash,
+        film_roll_id: task.filmRollId,
         onProgress: (progress) => {
           // Always set status to uploading when receiving upload progress
           updateTaskProgress(task.id, progress, 'uploading')

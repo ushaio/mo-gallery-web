@@ -15,8 +15,8 @@ import {
   List,
   Filter,
   Layout,
+  RefreshCw,
 } from 'lucide-react'
-import { FilmCanisterSvg } from '@/components/admin/FilmCanisterSvg'
 import {
   getFilmRolls,
   getFilmRoll,
@@ -24,6 +24,7 @@ import {
   updateFilmRoll,
   deleteFilmRoll,
   addPhotosToFilmRoll,
+  reorderFilmRollFrames,
   removePhotoFromFilmRoll,
   type FilmRollDto,
   type PhotoDto,
@@ -36,9 +37,28 @@ import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import {
+  FILM_FORMATS,
+  FILM_STOCK_BRANDS,
+  FILM_STOCK_PRESETS,
+  getFilmStockNames,
+  getFilmStockDisplay,
+  getFilmStockDisplayStyle,
+  type FilmFormat,
+} from '@/lib/film-presets'
 
 type ViewMode = 'grid' | 'list'
 type PhotoTypeFilter = 'all' | 'digital' | 'film'
+
+const FILM_STOCK_BRAND_OPTIONS = FILM_STOCK_BRANDS.map((brand) => ({
+  value: brand,
+  label: brand,
+}))
+
+const FILM_FORMAT_OPTIONS = FILM_FORMATS.map((format) => ({
+  value: format,
+  label: format,
+}))
 
 interface FilmRollsTabProps {
   token: string | null
@@ -100,6 +120,17 @@ export function FilmRollsTab({
     })
   }, [rolls, filterBrand, searchQuery])
 
+  const currentRollFormat = (currentRoll?.format ?? '135') as FilmFormat
+
+  const currentNameOptions = useMemo(() => {
+    if (!currentRoll?.brand) return []
+
+    return getFilmStockNames(currentRoll.brand, currentRollFormat).map((name) => ({
+      value: name,
+      label: name,
+    }))
+  }, [currentRoll?.brand, currentRollFormat])
+
   const clearAllFilters = () => {
     setFilterBrand('')
     setSearchQuery('')
@@ -121,15 +152,63 @@ export function FilmRollsTab({
   useEffect(() => { loadRolls() }, [loadRolls])
 
   function handleCreateRoll() {
+    const defaultPreset = FILM_STOCK_PRESETS[0]
+
     currentRollRequestIdRef.current += 1
     setLoadingCurrentRoll(false)
     setCurrentRoll({
-      id: '', name: '', brand: '', iso: 400, frameCount: 36,
+      id: '', name: defaultPreset.name, brand: defaultPreset.brand, format: defaultPreset.format, iso: defaultPreset.iso, frameCount: defaultPreset.frameCount,
       notes: null, shootDate: null, endDate: null,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       photoCount: 0, filmPhotos: [],
     })
     setActiveTab('overview')
+  }
+
+  function getPresetForStock(brand: string, name: string, format: FilmFormat) {
+    return FILM_STOCK_PRESETS.find((item) => item.brand === brand && item.name === name && item.format === format)
+  }
+
+  function handleFilmBrandChange(brand: string) {
+    if (!currentRoll) return
+    const names = getFilmStockNames(brand, currentRollFormat)
+    const name = names.includes(currentRoll.name) ? currentRoll.name : names[0] ?? currentRoll.name
+    const preset = getPresetForStock(brand, name, currentRollFormat)
+
+    setCurrentRoll({
+      ...currentRoll,
+      brand,
+      name,
+      iso: preset?.iso ?? currentRoll.iso,
+      frameCount: preset?.frameCount ?? currentRoll.frameCount,
+    })
+  }
+
+  function handleFilmFormatChange(format: string) {
+    if (!currentRoll) return
+    const nextFormat = format as FilmFormat
+    const names = getFilmStockNames(currentRoll.brand, nextFormat)
+    const name = names.includes(currentRoll.name) ? currentRoll.name : names[0] ?? currentRoll.name
+    const preset = getPresetForStock(currentRoll.brand, name, nextFormat)
+    setCurrentRoll({
+      ...currentRoll,
+      format: nextFormat,
+      name,
+      iso: preset?.iso ?? currentRoll.iso,
+      frameCount: preset?.frameCount ?? currentRoll.frameCount,
+    })
+  }
+
+  function handleFilmNameChange(name: string) {
+    if (!currentRoll) return
+    const preset = getPresetForStock(currentRoll.brand, name, currentRollFormat)
+
+    setCurrentRoll({
+      ...currentRoll,
+      name,
+      iso: preset?.iso ?? currentRoll.iso,
+      frameCount: preset?.frameCount ?? currentRoll.frameCount,
+    })
   }
 
   const openRollDetail = useCallback(async (roll: FilmRollDto) => {
@@ -201,6 +280,7 @@ export function FilmRollsTab({
       const data = {
         name: currentRoll.name,
         brand: currentRoll.brand,
+        format: currentRollFormat,
         iso: currentRoll.iso,
         frameCount: currentRoll.frameCount,
         notes: currentRoll.notes || null,
@@ -239,6 +319,21 @@ export function FilmRollsTab({
       setPhotoSelectorSearch('')
       setPhotoTypeFilter('film')
       notify(t('admin.photos_added'), 'success')
+    } catch (err) {
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+      notify(t('common.error'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleReorderFrames() {
+    if (!token || !currentRoll?.id) return
+    try {
+      setSaving(true)
+      const updated = await reorderFilmRollFrames(token, currentRoll.id)
+      setCurrentRoll(updated)
+      notify(t('admin.film_roll_frames_reordered'), 'success')
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(t('common.error'), 'error')
@@ -400,6 +495,7 @@ export function FilmRollsTab({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredRolls.map(roll => {
               const cover = getRollCover(roll)
+              const filmStockDisplay = getFilmStockDisplay(roll.brand, roll.name, roll.format ?? '135', 4 / 3)
               return (
                 <div
                   key={roll.id}
@@ -410,13 +506,12 @@ export function FilmRollsTab({
                     {cover ? (
                       <img src={cover} alt={roll.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-muted/50">
-                        <FilmCanisterSvg
-                          brand={roll.brand}
-                          iso={roll.iso}
-                          photoCount={roll.photoCount ?? 0}
-                          frameCount={roll.frameCount}
-                          className="w-3/4 h-3/4 opacity-60"
+                      <div className="w-full h-full flex items-center justify-center bg-muted/50 p-6">
+                        <img
+                          src={filmStockDisplay.asset}
+                          alt={`${roll.brand} ${roll.name}`}
+                          style={getFilmStockDisplayStyle(filmStockDisplay)}
+                          className="max-h-full max-w-full object-contain opacity-90"
                         />
                       </div>
                     )}
@@ -447,14 +542,18 @@ export function FilmRollsTab({
                 onClick={() => { void openRollDetail(roll) }}
                 className="group flex items-center gap-4 p-4 bg-card border border-border/50 hover:border-border cursor-pointer transition-all"
               >
-                <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center">
-                  <FilmCanisterSvg
-                    brand={roll.brand}
-                    iso={roll.iso}
-                    photoCount={roll.photoCount ?? 0}
-                    frameCount={roll.frameCount}
-                    className="w-full h-full"
-                  />
+                <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center bg-muted/40 p-1.5">
+                  {(() => {
+                    const filmStockDisplay = getFilmStockDisplay(roll.brand, roll.name, roll.format ?? '135', 20 / 14)
+                    return (
+                      <img
+                        src={filmStockDisplay.asset}
+                        alt={`${roll.brand} ${roll.name}`}
+                        style={getFilmStockDisplayStyle(filmStockDisplay)}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    )
+                  })()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium truncate">{roll.name}</h3>
@@ -523,15 +622,28 @@ export function FilmRollsTab({
               </AdminButton>
             )}
             {activeTab === 'photos' && currentRoll.id && (
-              <AdminButton
-                onClick={() => setShowPhotoSelector(true)}
-                disabled={loadingCurrentRoll}
-                adminVariant="unstyled"
-                className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4" />
-                {t('admin.add_photos')}
-              </AdminButton>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <AdminButton
+                  onClick={handleReorderFrames}
+                  disabled={loadingCurrentRoll || saving || rollPhotos.length === 0}
+                  adminVariant="outline"
+                  size="md"
+                  className="gap-2"
+                  title={t('admin.reorder_frames_by_filename')}
+                >
+                  <RefreshCw className={`w-4 h-4 ${saving ? 'animate-spin' : ''}`} />
+                  {t('admin.reorder_frames')}
+                </AdminButton>
+                <AdminButton
+                  onClick={() => setShowPhotoSelector(true)}
+                  disabled={loadingCurrentRoll}
+                  adminVariant="unstyled"
+                  className="flex items-center gap-2 px-5 py-2 bg-foreground text-background text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('admin.add_photos')}
+                </AdminButton>
+              </div>
             )}
           </div>
         </div>
@@ -561,15 +673,34 @@ export function FilmRollsTab({
         <div className="pt-2">
           {activeTab === 'overview' ? (
             <div className="max-w-xl space-y-6">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-2">{t('admin.film_roll_name')}</label>
-                <CustomInput variant="config" value={currentRoll.name} onChange={e => setCurrentRoll({ ...currentRoll, name: e.target.value })} placeholder={t('admin.film_roll_name')} />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-2">{t('admin.film_roll_brand')}</label>
-                <CustomInput variant="config" value={currentRoll.brand} onChange={e => setCurrentRoll({ ...currentRoll, brand: e.target.value })} placeholder={t('admin.film_roll_brand')} />
-              </div>
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-2">画幅</label>
+                  <AdminSelect
+                    value={currentRollFormat}
+                    onChange={handleFilmFormatChange}
+                    options={FILM_FORMAT_OPTIONS}
+                    placeholder="135 / 120"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-2">{t('admin.film_roll_brand')}</label>
+                  <AdminSelect
+                    value={currentRoll.brand}
+                    onChange={handleFilmBrandChange}
+                    options={FILM_STOCK_BRAND_OPTIONS}
+                    placeholder={t('admin.film_roll_brand')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-2">{t('admin.film_roll_name')}</label>
+                  <AdminSelect
+                    value={currentRoll.name}
+                    onChange={handleFilmNameChange}
+                    options={currentNameOptions}
+                    placeholder={t('admin.film_roll_name')}
+                  />
+                </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-2">{t('admin.film_roll_iso')}</label>
                   <CustomInput variant="config" type="number" value={String(currentRoll.iso)} onChange={e => setCurrentRoll({ ...currentRoll, iso: parseInt(e.target.value) || 0 })} />
@@ -670,10 +801,23 @@ export function FilmRollsTab({
                   <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-10" />
                   <p className="text-sm text-muted-foreground mb-3">{t('admin.album_empty')}</p>
                   {currentRoll.id && (
-                    <AdminButton onClick={() => setShowPhotoSelector(true)} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
-                      <Plus className="w-4 h-4" />
-                      {t('admin.add_photos')}
-                    </AdminButton>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <AdminButton
+                        onClick={handleReorderFrames}
+                        disabled={saving}
+                        adminVariant="outline"
+                        size="md"
+                        className="gap-2"
+                        title={t('admin.reorder_frames_by_filename')}
+                      >
+                        <RefreshCw className={`w-4 h-4 ${saving ? 'animate-spin' : ''}`} />
+                        {t('admin.reorder_frames')}
+                      </AdminButton>
+                      <AdminButton onClick={() => setShowPhotoSelector(true)} adminVariant="unstyled" className="inline-flex items-center gap-2 px-4 py-2 border border-border text-xs font-medium hover:bg-muted transition-colors">
+                        <Plus className="w-4 h-4" />
+                        {t('admin.add_photos')}
+                      </AdminButton>
+                    </div>
                   )}
                 </div>
               ) : (

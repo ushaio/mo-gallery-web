@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   LayoutGrid,
   List as ListIcon,
@@ -54,8 +54,10 @@ interface PhotosTabProps {
   onViewModeChange: (mode: ViewMode) => void
   selectedIds: Set<string>
   onSelect: (id: string) => void
+  onSelectionChange: React.Dispatch<React.SetStateAction<Set<string>>>
   onSelectAll: () => void
   onDelete: (id?: string) => void
+  onBatchAction: () => void
   onRefresh: () => void
   onToggleFeatured: (photo: PhotoDto) => void
   onPreview: (photo: PhotoDto) => void
@@ -73,8 +75,10 @@ export function PhotosTab({
   onViewModeChange,
   selectedIds,
   onSelect,
+  onSelectionChange,
   onSelectAll,
   onDelete,
+  onBatchAction,
   onRefresh,
   onToggleFeatured,
   onPreview,
@@ -96,6 +100,7 @@ export function PhotosTab({
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [cameras, setCameras] = useState<CameraDto[]>([])
   const [lenses, setLenses] = useState<LensDto[]>([])
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
 
@@ -242,6 +247,48 @@ export function PhotosTab({
     { value: 'taken-asc', label: t('admin.sort_taken_asc') },
   ]
 
+  const handleSelectPhoto = useCallback((photoId: string, shiftKey = false) => {
+    if (!shiftKey || !lastSelectedId) {
+      onSelect(photoId)
+      setLastSelectedId(photoId)
+      return
+    }
+
+    const startIndex = filteredPhotos.findIndex((photo) => photo.id === lastSelectedId)
+    const endIndex = filteredPhotos.findIndex((photo) => photo.id === photoId)
+
+    if (startIndex === -1 || endIndex === -1) {
+      onSelect(photoId)
+      setLastSelectedId(photoId)
+      return
+    }
+
+    const [rangeStart, rangeEnd] = startIndex < endIndex
+      ? [startIndex, endIndex]
+      : [endIndex, startIndex]
+    const rangeIds = filteredPhotos.slice(rangeStart, rangeEnd + 1).map((photo) => photo.id)
+    const shouldSelectRange = !selectedIds.has(photoId)
+
+    onSelectionChange((prev) => {
+      const next = new Set(prev)
+      for (const id of rangeIds) {
+        if (shouldSelectRange) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+    setLastSelectedId(photoId)
+  }, [filteredPhotos, lastSelectedId, onSelect, onSelectionChange, selectedIds])
+
+  const handlePhotoClick = useCallback((event: React.MouseEvent, photo: PhotoDto) => {
+    if (event.shiftKey) {
+      event.preventDefault()
+      handleSelectPhoto(photo.id, true)
+      return
+    }
+    onPreview(photo)
+  }, [handleSelectPhoto, onPreview])
+
   return (
     <div className="space-y-4">
       <AdminCollectionToolbar
@@ -262,21 +309,6 @@ export function PhotosTab({
                 )}
               </span>
             </label>
-            
-            {selectedIds.size > 0 && (
-              <>
-                <div className="h-5 w-px bg-border" />
-                <AdminButton
-                  onClick={() => onDelete()}
-                  adminVariant="destructiveOutline"
-                  size="sm"
-                  className="gap-1.5 rounded-md text-xs font-medium normal-case"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{t('common.delete')}</span>
-                </AdminButton>
-              </>
-            )}
           </>
         )}
         searchValue={search}
@@ -284,6 +316,14 @@ export function PhotosTab({
         searchPlaceholder={t('common.search')}
         actions={(
           <>
+            {/* Sort */}
+            <AdminSelect
+              value={sortBy}
+              onChange={(v) => setSortBy(v as SortOption)}
+              options={sortOptions.map(opt => ({ value: opt.value, label: opt.label }))}
+              className="min-w-[140px]"
+            />
+
             {/* Filter Toggle */}
             <AdminButton
               onClick={() => setShowFilters(!showFilters)}
@@ -342,21 +382,30 @@ export function PhotosTab({
             </AdminButton>
           </>
         )}
+        endActions={selectedIds.size > 0 ? (
+          <div className="flex items-center gap-2">
+            <AdminButton
+              onClick={onBatchAction}
+              adminVariant="outline"
+              size="sm"
+              className="gap-1.5 rounded-md text-xs font-medium normal-case"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>{t('admin.batch_actions') || 'Batch actions'}</span>
+            </AdminButton>
+            <AdminButton
+              onClick={() => onDelete()}
+              adminVariant="destructiveOutline"
+              size="sm"
+              className="gap-1.5 rounded-md text-xs font-medium normal-case"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{t('common.delete')}</span>
+            </AdminButton>
+          </div>
+        ) : null}
         filters={showFilters ? (
           <div className="flex flex-wrap items-center gap-3">
-              {/* Sort */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground whitespace-nowrap">Sort:</span>
-                <AdminSelect
-                  value={sortBy}
-                  onChange={(v) => setSortBy(v as SortOption)}
-                  options={sortOptions.map(opt => ({ value: opt.value, label: opt.label }))}
-                  className="min-w-[140px]"
-                />
-              </div>
-
-              <div className="h-5 w-px bg-border hidden sm:block" />
-
               {/* Category Filter */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.category_filter')}:</span>
@@ -618,7 +667,7 @@ export function PhotosTab({
                       ? 'border-primary ring-2 ring-primary/20'
                       : 'border-transparent hover:border-border'
                   }`}
-                  onClick={() => onPreview(photo)}
+                  onClick={(event) => handlePhotoClick(event, photo)}
                 >
                   <div className="relative w-full aspect-[4/5]">
                     <img
@@ -640,7 +689,8 @@ export function PhotosTab({
                     <input
                       type="checkbox"
                       checked={selectedIds.has(photo.id)}
-                      onChange={() => onSelect(photo.id)}
+                      onClick={(event) => handleSelectPhoto(photo.id, event.shiftKey)}
+                      onChange={() => undefined}
                       className="w-4 h-4 accent-primary cursor-pointer rounded border-2 border-white/80 shadow-sm"
                     />
                   </div>
@@ -710,7 +760,7 @@ export function PhotosTab({
                   className={`flex items-center gap-4 p-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer ${
                     selectedIds.has(photo.id) ? 'bg-primary/5' : ''
                   }`}
-                  onClick={() => onPreview(photo)}
+                  onClick={(event) => handlePhotoClick(event, photo)}
                 >
                   <div
                     className="flex items-center"
@@ -719,7 +769,8 @@ export function PhotosTab({
                     <input
                       type="checkbox"
                       checked={selectedIds.has(photo.id)}
-                      onChange={() => onSelect(photo.id)}
+                      onClick={(event) => handleSelectPhoto(photo.id, event.shiftKey)}
+                      onChange={() => undefined}
                       className="w-4 h-4 accent-primary cursor-pointer rounded"
                     />
                   </div>

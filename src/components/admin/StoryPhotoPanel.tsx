@@ -31,6 +31,7 @@ export interface PendingImage {
 
 interface StoryPhotoPanelProps {
   isCollapsed: boolean
+  isImmersiveMode: boolean
   currentStory: StoryDto | null
   editorContent: string
   pendingImages: PendingImage[]
@@ -72,6 +73,7 @@ interface StoryPhotoPanelProps {
 
 export function StoryPhotoPanel({
   isCollapsed,
+  isImmersiveMode,
   currentStory,
   editorContent,
   pendingImages,
@@ -138,7 +140,8 @@ export function StoryPhotoPanel({
       <div
         className={cn(
           'flex h-full w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
-          isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
+          isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
+          isImmersiveMode && 'border-t-0'
         )}
         onDragOver={onPhotoPanelDragOver}
         onDragLeave={onPhotoPanelDragLeave}
@@ -173,7 +176,8 @@ export function StoryPhotoPanel({
     <div
       className={cn(
         'flex h-full min-w-[320px] flex-col overflow-hidden border border-border bg-card',
-        isDraggingOver ? 'border-primary bg-primary/5' : 'border-border'
+        isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
+        isImmersiveMode && 'border-t-0'
       )}
       onDragOver={onPhotoPanelDragOver}
       onDragLeave={onPhotoPanelDragLeave}

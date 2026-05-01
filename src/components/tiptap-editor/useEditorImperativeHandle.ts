@@ -110,7 +110,10 @@ export function useEditorImperativeHandle({
 
     scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => {
       if (!editor) return false
-      const width = IMAGE_WIDTH_PRESETS[mode]
+      const editorDom = editor.view.dom
+      const computedStyle = window.getComputedStyle(editorDom)
+      const contentWidth = editorDom.clientWidth - (parseFloat(computedStyle.paddingLeft) || 0) - (parseFloat(computedStyle.paddingRight) || 0)
+      const width = Math.round(contentWidth * IMAGE_WIDTH_PRESETS[mode])
 
       // Find the first image node and update its width
       const { state } = editor

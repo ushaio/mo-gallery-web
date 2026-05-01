@@ -35,6 +35,10 @@ export async function getAdminStories(token: string): Promise<StoryDto[]> {
   return apiRequestData<StoryDto[]>('/api/admin/stories', {}, token)
 }
 
+export async function getAdminStory(token: string, id: string): Promise<StoryDto> {
+  return apiRequestData<StoryDto>(`/api/admin/stories/${encodeURIComponent(id)}`, {}, token)
+}
+
 export async function createStory(
   token: string,
   data: {

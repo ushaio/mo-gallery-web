@@ -2,13 +2,12 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -133,6 +132,7 @@ model FilmRoll {
   id         String      @id @default(cuid())
   name       String
   brand      String
+  format     String      @default("135")
   iso        Int
   frameCount Int
   notes      String?

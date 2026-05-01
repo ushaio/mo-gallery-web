@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useEditor } from '@tiptap/react'
+import type { EditorView } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
@@ -19,16 +20,41 @@ import { PastedStyleMark } from '@/components/tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '@/components/tiptap-extensions/PastedBlockStyle'
 import { DropCapParagraph } from '@/components/tiptap-extensions/DropCapParagraph'
 import { StyledHorizontalRule } from '@/components/tiptap-extensions/StyledHorizontalRule'
-import { MusicEmbed } from '@/components/tiptap-extensions/MusicEmbed'
-import { parseMusicEmbedInfo } from '@/lib/music-embed'
-import { convertMarkdownToHtml, ensureFirstParagraphHasDropCap, isMarkdownContent } from './markdown-converter'
+import { MediaEmbed } from '@/components/tiptap-extensions/MediaEmbed'
+import { StoryLinkCard } from '@/components/tiptap-extensions/StoryLinkCard'
+import { getAdminStory } from '@/lib/api/stories'
+import { parseMediaEmbedInfo } from '@/lib/media-embed'
+import { buildStoryLinkCardAttrs, parseStoryLink } from '@/lib/story-link-card'
+import { convertMarkdownToHtml, isMarkdownContent } from './markdown-converter'
 import { TAB_INDENT } from './editor-constants'
+
+function updateStoryLinkCardNode(
+  view: EditorView,
+  storyId: string,
+  attrs: object,
+) {
+  const storyLinkCardType = view.state.schema.nodes.storyLinkCard
+  if (!storyLinkCardType) return
+
+  let targetPos: number | null = null
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name === 'storyLinkCard' && node.attrs.storyId === storyId) {
+      targetPos = pos
+      return false
+    }
+    return true
+  })
+
+  if (targetPos === null) return
+  view.dispatch(view.state.tr.setNodeMarkup(targetPos, storyLinkCardType, attrs))
+}
 
 interface UseNarrativeEditorOptions {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   onPasteFiles?: (files: File[]) => void | Promise<void>
+  token?: string | null
   t: (key: string) => string
 }
 
@@ -37,10 +63,12 @@ export function useNarrativeEditor({
   onChange,
   placeholder,
   onPasteFiles,
+  token,
   t,
 }: UseNarrativeEditorOptions) {
   const currentValueRef = useRef(value)
   const onPasteFilesRef = useRef(onPasteFiles)
+  const tokenRef = useRef(token)
 
   useEffect(() => {
     currentValueRef.current = value
@@ -49,6 +77,10 @@ export function useNarrativeEditor({
   useEffect(() => {
     onPasteFilesRef.current = onPasteFiles
   }, [onPasteFiles])
+
+  useEffect(() => {
+    tokenRef.current = token
+  }, [token])
 
   const processedContent = useCallback(() => {
     if (!value) return ''
@@ -88,7 +120,8 @@ export function useNarrativeEditor({
           alwaysPreserveAspectRatio: true,
         },
       }),
-      MusicEmbed,
+      MediaEmbed,
+      StoryLinkCard,
       Underline,
       PastedStyleMark,
       TextAlign.configure({
@@ -123,6 +156,7 @@ export function useNarrativeEditor({
     editorProps: {
       attributes: {
         class: 'tiptap focus:outline-none',
+        autocapitalize: 'off',
       },
       handlePaste: (view, event) => {
         const files = Array.from(event.clipboardData?.files || []).filter((file) =>
@@ -136,17 +170,65 @@ export function useNarrativeEditor({
 
         const plainText = event.clipboardData?.getData('text/plain')?.trim() || ''
         const htmlText = event.clipboardData?.getData('text/html')?.trim() || ''
-        const embedInfo = parseMusicEmbedInfo(plainText) || parseMusicEmbedInfo(htmlText)
-        const musicEmbedType = view.state.schema.nodes.musicEmbed
+        const storyLink = parseStoryLink(plainText)
+        const storyLinkCardType = view.state.schema.nodes.storyLinkCard
 
-        if (embedInfo && musicEmbedType) {
+        if (storyLink && storyLinkCardType) {
+          const authToken = tokenRef.current
+          if (!authToken) return false
+
+          event.preventDefault()
+          const { state } = view
+          view.dispatch(
+            state.tr
+              .replaceSelectionWith(storyLinkCardType.create({
+                storyId: storyLink.storyId,
+                url: storyLink.url,
+                title: t('common.loading'),
+              }))
+              .scrollIntoView()
+          )
+
+          void getAdminStory(authToken, storyLink.storyId)
+            .then((story) => {
+              const attrs = buildStoryLinkCardAttrs(story, storyLink.url)
+              updateStoryLinkCardNode(view, storyLink.storyId, attrs)
+            })
+            .catch(() => {
+              updateStoryLinkCardNode(view, storyLink.storyId, {
+                storyId: storyLink.storyId,
+                url: storyLink.url,
+                title: 'Story not found',
+                summary: storyLink.url,
+                isPublished: false,
+              })
+            })
+
+          return true
+        }
+
+        const embedInfo = parseMediaEmbedInfo(plainText) || parseMediaEmbedInfo(htmlText)
+        const mediaEmbedType = view.state.schema.nodes.mediaEmbed
+
+        if (embedInfo && mediaEmbedType) {
           event.preventDefault()
           view.dispatch(
             view.state.tr
               .replaceSelectionWith(
-                musicEmbedType.create({
+                mediaEmbedType.create({
                   provider: embedInfo.provider,
                   url: embedInfo.url,
+                  src: embedInfo.src,
+                  title: embedInfo.title,
+                  height: embedInfo.height,
+                  allow: embedInfo.allow,
+                  allowFullScreen: embedInfo.allowFullScreen,
+                  frameBorder: embedInfo.frameBorder,
+                  marginWidth: embedInfo.marginWidth,
+                  marginHeight: embedInfo.marginHeight,
+                  scrolling: embedInfo.scrolling,
+                  border: embedInfo.border,
+                  frameSpacing: embedInfo.frameSpacing,
                 })
               )
               .scrollIntoView()
@@ -176,10 +258,6 @@ export function useNarrativeEditor({
     },
   })
 
-  useEffect(() => {
-    if (!editor) return
-    ensureFirstParagraphHasDropCap(editor)
-  }, [editor, processedContent])
 
   return {
     editor,
