@@ -25,7 +25,7 @@ import { StoryLinkCard } from '@/components/tiptap-extensions/StoryLinkCard'
 import { getAdminStory } from '@/lib/api/stories'
 import { parseMediaEmbedInfo } from '@/lib/media-embed'
 import { buildStoryLinkCardAttrs, parseStoryLink } from '@/lib/story-link-card'
-import { convertMarkdownToHtml, ensureFirstParagraphHasDropCap, isMarkdownContent } from './markdown-converter'
+import { convertMarkdownToHtml, isMarkdownContent } from './markdown-converter'
 import { TAB_INDENT } from './editor-constants'
 
 function updateStoryLinkCardNode(
@@ -156,6 +156,7 @@ export function useNarrativeEditor({
     editorProps: {
       attributes: {
         class: 'tiptap focus:outline-none',
+        autocapitalize: 'off',
       },
       handlePaste: (view, event) => {
         const files = Array.from(event.clipboardData?.files || []).filter((file) =>
@@ -257,10 +258,6 @@ export function useNarrativeEditor({
     },
   })
 
-  useEffect(() => {
-    if (!editor) return
-    ensureFirstParagraphHasDropCap(editor)
-  }, [editor, processedContent])
 
   return {
     editor,

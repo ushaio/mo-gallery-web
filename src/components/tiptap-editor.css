@@ -164,7 +164,6 @@
   margin: 1.2rem 0;
 }
 
-.tiptap-editor .tiptap > p:first-of-type:not([data-drop-cap='false'])::first-letter,
 .tiptap-editor .tiptap > p[data-drop-cap='true']::first-letter {
   float: left;
   margin-right: 0.12em;
