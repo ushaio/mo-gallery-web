@@ -315,9 +315,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         width = Math.max(40, Math.round(contentWidth * 0.5))
       }
 
+      // Focus first as a separate step so that ProseMirror's selection is
+      // properly restored from EditorState before insertContent runs.
+      // Previously focus() was in the same chain as insertContent, which could
+      // cause the insert to happen at a stale position when the editor lost
+      // focus due to clicking an external button (e.g. the photo panel).
+      focusEditor()
       editor
         .chain()
-        .focus()
         .insertContent({
           type: 'paragraph',
           attrs: { textAlign: 'center' },
@@ -332,8 +337,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             }],
         })
         .run()
-
-      focusEditor()
     }, [editor, focusEditor])
 
     const applyAiResult = useCallback((

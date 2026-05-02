@@ -175,6 +175,12 @@ export interface StoryAiGenerateInput {
   currentParagraph?: string
   contextBefore?: string
   contextAfter?: string
+  images?: string[]
+}
+
+export interface AiImageUploadResult {
+  url: string
+  key: string
 }
 
 export interface StoryAiModelOption {
@@ -193,6 +199,7 @@ export interface EditorAiConversationDto {
   title?: string
   summary?: string
   lastModel?: string
+  systemPrompt?: string
   createdAt: string
   updatedAt: string
 }
@@ -217,11 +224,18 @@ export interface EditorAiMessageDto {
 export interface EditorAiConversationInput {
   scopeId: string
   title?: string
+  systemPrompt?: string
 }
 
 export interface EditorAiConversationCreateInput {
   scopeId: string
   title?: string
+  systemPrompt?: string
+}
+
+export interface EditorAiConversationUpdateInput {
+  title?: string
+  systemPrompt?: string | null
 }
 
 export interface EditorAiConversationsQuery {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react'
@@ -24,6 +24,14 @@ export function SimpleDeleteDialog({
   t,
 }: SimpleDeleteDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false)
+  const isDeletingRef = useRef(isDeleting)
+  const onConfirmRef = useRef(onConfirm)
+  const onCancelRef = useRef(onCancel)
+
+  // Keep refs in sync every render so the keyboard handler never reads stale closures
+  onConfirmRef.current = onConfirm
+  onCancelRef.current = onCancel
+  isDeletingRef.current = isDeleting
 
   const handleConfirm = async () => {
     setIsDeleting(true)
@@ -38,6 +46,33 @@ export function SimpleDeleteDialog({
     if (isDeleting) return
     onCancel()
   }
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        if (isDeletingRef.current) return
+        void (async () => {
+          setIsDeleting(true)
+          try {
+            await onConfirmRef.current()
+          } finally {
+            setIsDeleting(false)
+          }
+        })()
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        if (isDeletingRef.current) return
+        onCancelRef.current()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen])
 
   if (typeof document === 'undefined') return null
 

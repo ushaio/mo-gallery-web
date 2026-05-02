@@ -31,13 +31,14 @@ model User {
 }
 
 model AiConversation {
-  id        String      @id @default(cuid())
-  scopeId   String
-  title     String?
-  summary   String?
-  lastModel String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id           String      @id @default(cuid())
+  scopeId      String
+  title        String?
+  summary      String?
+  lastModel    String?
+  systemPrompt String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   messages AiMessage[]
 
