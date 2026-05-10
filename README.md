@@ -6,7 +6,7 @@
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![Hono](https://img.shields.io/badge/Hono-API-orange?style=flat-square)](https://hono.dev/)
-[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS_4-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
@@ -14,8 +14,6 @@
 [English](README_EN.md) | 中文
 
 </div>
-
-建议 Vercel 部署，Docker 部署未做充分测试！
 
 ---
 
@@ -34,6 +32,7 @@
 ### 📖 故事 / 叙事
 - 将多张照片组合成故事，附以富文本叙事内容
 - **TipTap 富文本编辑器** — 所见即所得编辑，支持图片缩放、表格、对齐等
+- 故事地图面板，支持地理位置展示（MapLibre GL）
 - 沉浸式编辑模式，优化长篇写作体验
 - 故事内照片管理（添加 / 移除 / 排序）
 - 支持设置封面照片
@@ -45,6 +44,18 @@
 - 一键插入图库照片
 - 发布 / 草稿状态管理
 - 本地草稿自动保存
+
+### 🎞️ 胶片
+- 模拟胶片卷的摄影展示方式
+- 将照片分组到"胶卷"中，按顺序排列
+- 支持胶卷封面和元数据管理
+- 批量添加 / 排序胶卷内照片
+
+### 🤖 AI 写作助手
+- 集成 AI 对话辅助写作功能
+- 支持 OpenAI 兼容 API（DeepSeek、OpenAI 等）
+- 可自定义系统提示词，支持多模态图片输入
+- 对话历史管理，支持多轮会话
 
 ### 👥 友链（They 页面）
 - 展示朋友及其网站
@@ -62,12 +73,14 @@
 ### 🔐 后台管理系统
 - **照片管理** — 全面的照片管理，支持筛选和分页
 - **相册管理** — 创建、编辑和组织相册
-- **故事管理** — 创建和管理照片故事，支持照片选择和排序
-- **博客编辑器** — TipTap 所见即所得编辑器
+- **胶片管理** — 创建和管理胶片，支持照片选择和排序
+- **上传中心** — 批量上传照片，可选择目标相册或胶片
 - **友链管理** — 添加、编辑和删除友链
-- **存储整理** — 扫描存储状态，检测孤立文件和缺失文件
-- **系统设置** — 配置站点标题、描述、社交链接等
+- **存储整理** — 扫描存储状态，检测孤立文件和缺失文件，支持存储源配置
+- **系统设置** — 配置站点标题、描述、社交链接、存储后端等
 - **评论审核** — 审核和管理用户评论
+- **AI 助手** — AI 对话管理，自定义系统提示词
+- **操作日志** — 查看系统操作日志
 
 ### 🏠 首页
 - **动态英雄区域** — 从图库随机展示英雄图片
@@ -86,8 +99,9 @@
 
 ### ☁️ 多种存储后端
 - **本地存储** — 存储在本地文件系统
-- **Cloudflare R2** — S3 兼容的对象存储
+- **S3 兼容** — AWS S3 / Cloudflare R2 等对象存储
 - **GitHub** — 使用 GitHub 仓库作为存储
+- 存储配置通过后台系统设置管理，支持动态切换
 
 ---
 
@@ -98,11 +112,12 @@
 | **框架** | Next.js 16 (App Router) + React 19 |
 | **语言** | TypeScript 5（严格模式） |
 | **API** | Hono.js（嵌入 Next.js） |
-| **数据库** | PostgreSQL + Prisma 6 |
+| **数据库** | PostgreSQL + Prisma 7 |
 | **样式** | Tailwind CSS 4 |
 | **动画** | Framer Motion |
 | **图片处理** | Sharp、ExifReader |
 | **富文本编辑器** | TipTap 3 |
+| **地图** | MapLibre GL + react-map-gl |
 | **认证** | JWT + Linux DO OAuth |
 | **状态管理** | React Context |
 | **编译优化** | React Compiler |
@@ -178,11 +193,19 @@ ADMIN_PASSWORD="admin123"
 | `CDN_DOMAIN` | CDN 域名 | — |
 | `API_ORIGIN_CHECK` | 启用 API 来源检查 | `false` |
 
+### AI 编辑器（可选）
+
+| 变量 | 描述 |
+|------|------|
+| `AI_BASE_URL` | OpenAI 兼容 API 地址（如 `https://api.openai.com/v1`） |
+| `AI_API_KEY` | API 密钥 |
+| `AI_MODEL` | 默认模型名称 |
+
 ### 评论系统（可选）
 
 | 变量 | 描述 |
 |------|------|
-| `COMMENTS_STORAGE` | 评论存储源：留空为本地数据库，`LEANCLOUD` 使用 Waline |
+| `COMMENTS_STORAGE` | 评论存储源：`LOCAL` 为本地数据库，`LEANCLOUD` 使用 Waline |
 | `WALINE_SERVER_URL` | Waline 服务器 URL（使用 LeanCloud 时配置） |
 | `LEAN_ID` | LeanCloud App ID |
 | `LEAN_KEY` | LeanCloud App Key |
@@ -218,7 +241,7 @@ SOCIAL_LINKS='[
 ```bash
 # 配置环境变量
 cp .env.example .env
-# 编辑 .env 文件
+# 编辑 .env 文件，配置数据库密码等信息
 
 # 启动（包含 PostgreSQL）
 docker-compose up -d
@@ -244,7 +267,7 @@ docker run -p 3000:3000 --env-file .env mo-gallery
 4. **设置** 构建命令为 `pnpm run build:vercel`
 5. **使用** Neon 或 Supabase 作为数据库
 
-> ⚠️ **注意**: Vercel 不支持本地存储，请使用 Cloudflare R2 或 GitHub 存储。
+> ⚠️ **注意**: Vercel 不支持本地文件存储，请使用 S3 兼容存储或 GitHub 存储。
 
 ### Vercel 数据库选项
 
@@ -266,18 +289,21 @@ mo-gallery-web/
 │   ├── jwt.ts               # JWT 工具
 │   ├── exif.ts              # EXIF 提取
 │   ├── colors.ts            # 主色调提取
-│   └── storage/             # 存储抽象层（local / R2 / GitHub）
+│   └── storage/             # 存储抽象层（local / S3 / GitHub）
 ├── hono/                    # API 路由（Hono.js）
 │   ├── index.ts             # 路由注册
 │   ├── auth.ts              # 认证 & OAuth
 │   ├── photos.ts            # 照片管理
 │   ├── albums.ts            # 相册管理
+│   ├── film-rolls.ts        # 胶片管理
 │   ├── stories.ts           # 故事 / 叙事
 │   ├── blogs.ts             # 博客
 │   ├── comments.ts          # 评论
 │   ├── friends.ts           # 友链
 │   ├── storage.ts           # 存储管理
+│   ├── storage-sources.ts   # 存储源管理
 │   ├── equipment.ts         # 器材管理
+│   ├── editor-ai.ts         # AI 编辑器
 │   ├── settings.ts          # 系统设置
 │   ├── waline.ts            # Waline 评论代理
 │   └── middleware/          # 认证与来源检查中间件
@@ -294,9 +320,12 @@ mo-gallery-web/
 │   ├── components/          # React 组件
 │   │   ├── NarrativeTipTapEditor.tsx  # TipTap 富文本编辑器
 │   │   ├── StoryRichContent.tsx       # 统一内容渲染
+│   │   ├── StoryMapPanel.tsx          # 故事地图面板
+│   │   ├── TipTapAiAssistant.tsx      # AI 写作助手
 │   │   ├── tiptap-extensions/         # TipTap 自定义扩展
 │   │   ├── admin/           # 后台专用组件
 │   │   ├── gallery/         # 画廊视图（Grid / Masonry / Timeline）
+│   │   ├── story/           # 故事展示组件
 │   │   └── ui/              # 通用 UI 组件
 │   ├── contexts/            # React Context
 │   │   ├── AuthContext.tsx
