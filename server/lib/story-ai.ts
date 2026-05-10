@@ -8,6 +8,20 @@ export type StoryAiAction =
   | 'summarize'
   | 'custom'
 
+export interface TextContentPart {
+  type: 'text'
+  text: string
+}
+
+export interface ImageContentPart {
+  type: 'image_url'
+  image_url: { url: string; detail?: 'auto' | 'low' | 'high' }
+}
+
+export type ContentPart = TextContentPart | ImageContentPart
+
+type UpstreamMessageContent = string | ContentPart[]
+
 export interface StoryAiGeneratePayload {
   action: StoryAiAction
   model?: string
@@ -17,6 +31,8 @@ export interface StoryAiGeneratePayload {
   currentParagraph?: string
   contextBefore?: string
   contextAfter?: string
+  systemPrompt?: string
+  images?: string[]
   historyMessages?: Array<{
     role: 'user' | 'assistant'
     content: string
@@ -45,7 +61,9 @@ const ACTION_INSTRUCTIONS: Record<StoryAiAction, string> = {
   custom: '严格按用户指令完成改写或生成。',
 }
 
-const SYSTEM_PROMPT = '你是一名中文叙事编辑助手，帮助用户编辑摄影故事。只输出最终可直接放进正文的内容，不要解释，不要加引号，不要用“修改如下”之类的前缀。'
+const SYSTEM_PROMPT = '你是一名中文叙事编辑助手，帮助用户编辑摄影故事。只输出最终可直接放进正文的内容，不要解释，不要加引号，不要用”修改如下”之类的前缀。'
+
+const CHAT_SYSTEM_PROMPT = '你是一名友善的AI写作助手，与用户协作进行摄影叙事创作。请用自然对话的方式回复，可以给建议、讨论想法、回答问题。不要假装成编辑工具——你是聊天伙伴，不是文本处理器。用中文回复。'
 
 function getStoryAiConfig(): StoryAiConfig {
   const baseUrl = process.env.AI_BASE_URL?.trim()
@@ -63,7 +81,15 @@ function getStoryAiConfig(): StoryAiConfig {
   }
 }
 
+function isConversationalMode(payload: StoryAiGeneratePayload): boolean {
+  return !payload.selectedText && !payload.currentParagraph
+}
+
 function buildUserPrompt(payload: StoryAiGeneratePayload): string {
+  if (isConversationalMode(payload)) {
+    return payload.prompt || ''
+  }
+
   const sections = [
     payload.title ? `标题：${payload.title}` : '',
     payload.selectedText ? `选中文本：\n${payload.selectedText}` : '',
@@ -79,10 +105,13 @@ function buildUserPrompt(payload: StoryAiGeneratePayload): string {
 }
 
 function buildUpstreamMessages(payload: StoryAiGeneratePayload) {
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+  const systemPrompt = payload.systemPrompt
+    || (isConversationalMode(payload) ? CHAT_SYSTEM_PROMPT : SYSTEM_PROMPT)
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: UpstreamMessageContent }> = [
     {
       role: 'system',
-      content: SYSTEM_PROMPT,
+      content: systemPrompt,
     },
   ]
 
@@ -94,10 +123,20 @@ function buildUpstreamMessages(payload: StoryAiGeneratePayload) {
     })
   }
 
-  messages.push({
-    role: 'user',
-    content: buildUserPrompt(payload),
-  })
+  const userText = buildUserPrompt(payload)
+  const images = payload.images?.filter(Boolean)
+  if (images && images.length > 0) {
+    const parts: ContentPart[] = [
+      { type: 'text', text: userText },
+      ...images.map((url): ImageContentPart => ({
+        type: 'image_url',
+        image_url: { url, detail: 'auto' },
+      })),
+    ]
+    messages.push({ role: 'user', content: parts })
+  } else {
+    messages.push({ role: 'user', content: userText })
+  }
 
   return messages
 }

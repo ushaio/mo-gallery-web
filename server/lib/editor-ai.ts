@@ -18,6 +18,7 @@ export interface EditorAiConversationDto {
   title?: string
   summary?: string
   lastModel?: string
+  systemPrompt?: string
   createdAt: string
   updatedAt: string
 }
@@ -45,6 +46,7 @@ function toConversationDto(conversation: {
   title: string | null
   summary: string | null
   lastModel: string | null
+  systemPrompt: string | null
   createdAt: Date
   updatedAt: Date
 }): EditorAiConversationDto {
@@ -54,6 +56,7 @@ function toConversationDto(conversation: {
     title: conversation.title ?? undefined,
     summary: conversation.summary ?? undefined,
     lastModel: conversation.lastModel ?? undefined,
+    systemPrompt: conversation.systemPrompt ?? undefined,
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
   }
@@ -88,11 +91,13 @@ function toMessageDto(message: {
 export async function ensureEditorAiConversation(input: {
   scopeId: string
   title?: string
+  systemPrompt?: string
 }) {
   const created = await db.aiConversation.create({
     data: {
       scopeId: input.scopeId,
       title: input.title,
+      systemPrompt: input.systemPrompt,
     },
   })
 
@@ -227,6 +232,7 @@ export async function touchEditorAiConversation(
     title?: string
     lastModel?: string
     summary?: string
+    systemPrompt?: string | null
   },
 ) {
   const conversation = await db.aiConversation.update({

@@ -1,7 +1,9 @@
 import { apiRequest, apiRequestData, buildApiUrl, buildQuery, extractErrorMessage } from './core'
 import type {
+  AiImageUploadResult,
   EditorAiConversationCreateInput,
   EditorAiConversationDto,
+  EditorAiConversationUpdateInput,
   EditorAiConversationWithMessagesDto,
   EditorAiGenerateInput,
   StoryAiGenerateInput,
@@ -150,6 +152,13 @@ export async function getEditorAiConversation(token: string, conversationId: str
   return apiRequestData<EditorAiConversationWithMessagesDto>(`/api/admin/editor-ai/conversations/${conversationId}`, {}, token)
 }
 
+export async function updateEditorAiConversation(token: string, conversationId: string, input: EditorAiConversationUpdateInput): Promise<EditorAiConversationDto> {
+  return apiRequestData<EditorAiConversationDto>(`/api/admin/editor-ai/conversations/${conversationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  }, token)
+}
+
 export async function deleteEditorAiConversation(token: string, conversationId: string): Promise<void> {
   await apiRequest(`/api/admin/editor-ai/conversations/${conversationId}`, {
     method: 'DELETE',
@@ -160,6 +169,27 @@ export async function clearEditorAiConversation(token: string, conversationId: s
   return apiRequestData<EditorAiConversationDto>(`/api/admin/editor-ai/conversations/${conversationId}/clear`, {
     method: 'POST',
   }, token)
+}
+
+export async function uploadAiImage(token: string, file: File): Promise<AiImageUploadResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(buildApiUrl('/api/admin/editor-ai/upload'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(extractErrorMessage(payload) ?? 'Image upload failed')
+  }
+
+  const result = await response.json() as { success: boolean; data: AiImageUploadResult }
+  return result.data
 }
 
 export async function polishStoryAiPrompt(
