@@ -9,7 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { notFound } from 'next/navigation'
 
 // Get admin login URL from environment variable
-const ADMIN_LOGIN_URL = process.env.NEXT_PUBLIC_ADMIN_LOGIN_URL || ''
+const ADMIN_LOGIN_URL = process.env.NEXT_PUBLIC_ADMIN_LOGIN_URL || 'admin'
 
 export default function AdminLoginPage() {
   const params = useParams()
