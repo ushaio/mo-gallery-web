@@ -1,44 +1,35 @@
 
 'use client'
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   Upload,
   Loader2,
   X,
   Trash2,
   Plus,
-  BookOpen,
-  Minimize2,
-  FolderOpen,
   GripVertical,
   Eye,
-  Settings2,
   CloudUpload,
-  MapPinOff,
   AlertTriangle,
   ExternalLink,
-  ChevronDown,
-  Check,
   Camera,
   Film,
+  Zap,
+  MapPinOff,
+  Minimize2,
 } from 'lucide-react'
-import type { AdminSettingsDto, StorageSourceDto, StoryDto, AlbumDto, FilmRollDto } from '@/lib/api/types'
-import { getAdminStories } from '@/lib/api/stories'
-import { getAdminAlbums } from '@/lib/api/albums'
-import { getFilmRolls } from '@/lib/api/film-rolls'
+import type { AdminSettingsDto } from '@/lib/api/types'
 import { checkDuplicatePhotos } from '@/lib/api/photos'
-import { getStorageSources } from '@/lib/api/storage-sources'
-import { type CompressionMode } from '@/lib/image-compress'
+import { compressImage } from '@/lib/image-compress'
 import { stripGpsData } from '@/lib/privacy-strip'
-import { calculateFileHash } from '@/lib/file-hash'
+import { calculateFileHash, calculateFileHashes } from '@/lib/file-hash'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
 import { DuplicatePhotosDialog, type DuplicateInfo } from '@/components/admin/DuplicatePhotosDialog'
-import { StorySelectorModal } from '@/components/admin/StorySelectorModal'
-import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
+import { DigitalPhotoUploadParams, type DigitalPhotoUploadSettings } from '@/components/admin/DigitalPhotoUploadParams'
+import { FilmPhotoUploadParams, type FilmPhotoUploadSettings } from '@/components/admin/FilmPhotoUploadParams'
 
 interface UploadTabProps {
   token: string | null
@@ -136,7 +127,7 @@ function ConfirmModal({
           </div>
           <div className="flex justify-between py-3">
             <span className="text-muted-foreground text-sm">{t('admin.image_compression')}</span>
-            <span className="font-medium">{compressionEnabled ? t('common.enabled') : t('common.disabled')}</span>
+       <span className="font-medium">{compressionEnabled ? t('common.enabled') : t('common.disabled')}</span>
           </div>
         </div>
 
@@ -157,71 +148,12 @@ function ConfirmModal({
           >
             <CloudUpload className="w-4 h-4" />
             {t('admin.start_upload')}
-          </AdminButton>
+       </AdminButton>
         </div>
       </div>
     </div>
-  )
-}
-
-// Inline Prefix Dropdown - matches admin style, integrates with input group
-function PrefixDropdown({
-  value,
-  options,
-  onChange,
-}: {
-  value: string
-  options: { value: string; label: string }[]
-  onChange: (value: string) => void
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  const selectedOption = options.find((opt) => opt.value === value)
-  const displayLabel = selectedOption?.label || value
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isOpen && containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
-      }
-    }
-    document.addEventListener('click', handleClickOutside, true)
-    return () => document.removeEventListener('click', handleClickOutside, true)
-  }, [isOpen])
-
-  return (
-    <div ref={containerRef} className="relative self-stretch">
-      <div
-        className="h-full px-3 bg-muted/50 border border-r-0 border-border text-[10px] text-muted-foreground font-mono flex items-center gap-0.5 cursor-pointer hover:bg-muted/80 transition-colors select-none"
-        onClick={() => setIsOpen(!isOpen)}
-        title={displayLabel}
-      >
-        <span className="truncate max-w-[80px]">{displayLabel}</span>
-        <ChevronDown className={`w-2.5 h-2.5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </div>
-      {isOpen && (
-        <div className="absolute z-20 left-0 top-full mt-0.5 min-w-full bg-background border border-border shadow-2xl">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => {
-                onChange(option.value)
-                setIsOpen(false)
-              }}
-              className={`w-full text-left px-3 py-2 text-[10px] font-mono hover:bg-primary hover:text-primary-foreground flex items-center justify-between gap-2 transition-colors whitespace-nowrap ${
-                value === option.value ? 'bg-primary/10 text-primary' : ''
-              }`}
-            >
-              <span>{option.label}</span>
-              {value === option.value && <Check className="w-2.5 h-2.5" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+    )
+  }
 
 // Draggable File Item
 function DraggableFileItem({
@@ -229,9 +161,12 @@ function DraggableFileItem({
   index,
   selected,
   duplicateInfo,
+  estimatedSize,
+  isActualSize,
   onSelect,
   onRemove,
   onPreview,
+  onTestCompression,
   onDragStart,
   onDragOver,
   onDrop,
@@ -242,9 +177,12 @@ function DraggableFileItem({
   index: number
   selected: boolean
   duplicateInfo?: DuplicateInfo
+  estimatedSize?: number
+  isActualSize?: boolean
   onSelect: (id: string) => void
   onRemove: (id: string) => void
   onPreview: (item: UploadFile) => void
+  onTestCompression?: (item: UploadFile) => void
   onDragStart: (e: React.DragEvent, index: number) => void
   onDragOver: (e: React.DragEvent, index: number) => void
   onDrop: (e: React.DragEvent) => void
@@ -255,6 +193,7 @@ function DraggableFileItem({
 
   useEffect(() => {
     const url = URL.createObjectURL(item.file)
+    let revoked = false
     const img = new Image()
     img.src = url
     img.onload = () => {
@@ -268,9 +207,9 @@ function DraggableFileItem({
       canvas.height = h
       ctx?.drawImage(img, 0, 0, w, h)
       setPreview(canvas.toDataURL('image/webp', 0.7))
-      URL.revokeObjectURL(url)
+      if (!revoked) { URL.revokeObjectURL(url); revoked = true }
     }
-    return () => URL.revokeObjectURL(url)
+    return () => { if (!revoked) { URL.revokeObjectURL(url); revoked = true } }
   }, [item.file])
 
   return (
@@ -312,7 +251,20 @@ function DraggableFileItem({
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{item.file.name}</p>
-        <p className="text-xs text-muted-foreground font-mono">{formatFileSize(item.file.size)}</p>
+        <p className="text-xs text-muted-foreground font-mono tabular-nums">
+          {formatFileSize(item.file.size)}
+          {estimatedSize !== undefined && estimatedSize < item.file.size && (
+            <>
+              <span className="mx-1 text-muted-foreground/50">→</span>
+              <span className="text-primary">
+                {isActualSize ? '' : '~'}{formatFileSize(estimatedSize)}
+              </span>
+              <span className="ml-1.5 text-[10px] text-emerald-600 dark:text-emerald-500">
+                ↓{Math.round((1 - estimatedSize / item.file.size) * 100)}%
+              </span>
+            </>
+          )}
+        </p>
         {duplicateInfo && (
           <div className="mt-1 flex items-center gap-2 text-[10px] text-amber-600">
             <AlertTriangle className="w-3 h-3" />
@@ -339,17 +291,166 @@ function DraggableFileItem({
         )}
       </div>
 
-      <AdminButton
-        onClick={() => onRemove(item.id)}
-        adminVariant="iconDestructive"
-        size="sm"
-        className="p-2 text-muted-foreground/50 opacity-0 group-hover:opacity-100"
-      >
-        <X className="w-4 h-4" />
-      </AdminButton>
+      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+        {onTestCompression && (
+          <AdminButton
+            onClick={() => onTestCompression(item)}
+            adminVariant="link"
+            size="sm"
+            className="p-2 text-muted-foreground/60 hover:text-primary"
+            title={t('admin.compression_test') || '试压一下'}
+          >
+            <Zap className="w-4 h-4" />
+          </AdminButton>
+        )}
+        <AdminButton
+          onClick={() => onRemove(item.id)}
+          adminVariant="iconDestructive"
+          size="sm"
+          className="p-2 text-muted-foreground/50"
+        >
+          <X className="w-4 h-4" />
+        </AdminButton>
+      </div>
     </div>
   )
 }
+
+// Test Compression Modal - runs compression on a single file and shows before/after
+function TestCompressionModal({
+  file,
+  maxSizeMB,
+  onClose,
+  onResult,
+  t,
+}: {
+  file: UploadFile | null
+  maxSizeMB: number
+  onClose: () => void
+  onResult?: (fileId: string, compressedSize: number) => void
+  t: (key: string) => string
+}) {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<{ compressed: File; durationMs: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [beforeUrl, setBeforeUrl] = useState<string | null>(null)
+  const [afterUrl, setAfterUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!file) return
+    setRunning(true)
+    setResult(null)
+    setError(null)
+    if (beforeUrl) URL.revokeObjectURL(beforeUrl)
+    if (afterUrl) URL.revokeObjectURL(afterUrl)
+    setBeforeUrl(URL.createObjectURL(file.file))
+    setAfterUrl(null)
+
+    const start = performance.now()
+    compressImage(file.file, { mode: 'compress', maxSizeMB })
+      .then(compressed => {
+        setResult({ compressed, durationMs: performance.now() - start })
+        setAfterUrl(URL.createObjectURL(compressed))
+        onResult?.(file.id, compressed.size)
+      })
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setRunning(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, maxSizeMB])
+
+  useEffect(() => {
+    return () => {
+      if (beforeUrl) URL.revokeObjectURL(beforeUrl)
+      if (afterUrl) URL.revokeObjectURL(afterUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (!file) return null
+
+  const savings = result ? Math.round((1 - result.compressed.size / file.file.size) * 100) : 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-background border border-border w-full max-w-2xl mx-4 shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 className="text-sm font-medium tracking-wide flex items-center gap-2">
+            <Zap className="w-4 h-4 text-primary" />
+            {t('admin.compression_test_title') || '压缩预览'}
+          </h3>
+          <button onClick={onClose} className="text-muted-foreground/60 hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Before */}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                {t('admin.compression_test_before') || '原图'}
+              </div>
+              <div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+                {beforeUrl && <img src={beforeUrl} alt="" className="w-full h-full object-contain" />}
+              </div>
+              <div className="mt-2 space-y-0.5">
+                <div className="text-sm font-mono tabular-nums">{formatFileSize(file.file.size)}</div>
+                <div className="text-[10px] text-muted-foreground font-mono">{file.file.type || 'unknown'}</div>
+              </div>
+            </div>
+
+            {/* After */}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                {t('admin.compression_test_after') || '压缩后'}
+              </div>
+              <div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+                {running ? (
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="text-[10px]">{t('admin.compressing') || '压缩中'}</span>
+                  </div>
+                ) : error ? (
+                  <div className="text-xs text-destructive p-4 text-center">{error}</div>
+                ) : afterUrl ? (
+                  <img src={afterUrl} alt="" className="w-full h-full object-contain" />
+                ) : null}
+              </div>
+              <div className="mt-2 space-y-0.5">
+                {result ? (
+                  <>
+                    <div className="text-sm font-mono tabular-nums flex items-center gap-2">
+                      {formatFileSize(result.compressed.size)}
+                      {savings > 0 && (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-500 tabular-nums">
+                          ↓{savings}%
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-mono">
+                      {result.compressed.type} · {Math.round(result.durationMs)}ms
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
+            </div>
+          </div>
+
+         {/* Settings used */}
+         <div className="mt-5 pt-4 border-t border-border/50 flex justify-end text-[10px]">
+        <div className="flex justify-between">
+        <span className="text-muted-foreground">{t('admin.compression_size_label')}</span>
+        <span className="font-mono tabular-nums">{maxSizeMB.toFixed(1)} MB</span>
+         </div>
+         </div>
+     </div>
+    </div>
+    </div>
+   )
+  }
 
 export function UploadTab({
   token,
@@ -370,37 +471,32 @@ export function UploadTab({
   // Upload type: digital or film
   const [uploadType, setUploadType] = useState<'digital' | 'film'>('digital')
 
-  const [uploadTitle, setUploadTitle] = useState('')
-  const [uploadCategories, setUploadCategories] = useState<string[]>([])
+  // Settings from child components
+  const [digitalSettings, setDigitalSettings] = useState<DigitalPhotoUploadSettings>({
+    title: '',
+    categories: [],
+    compressionEnabled: false,
+    maxSizeMB: 2,
+    privacyStripEnabled: false,
+  })
+  const [filmSettings, setFilmSettings] = useState<FilmPhotoUploadSettings>({
+    title: '',
+    categories: [],
+    compressionEnabled: false,
+    maxSizeMB: 2,
+    privacyStripEnabled: false,
+  })
 
-  const [uploadStoryId, setUploadStoryId] = useState('')
-  const [uploadStoryTitle, setUploadStoryTitle] = useState('')
-  const [stories, setStories] = useState<StoryDto[]>([])
-  const [loadingStories, setLoadingStories] = useState(false)
-  const [showStorySelector, setShowStorySelector] = useState(false)
+  const [testCompressionFile, setTestCompressionFile] = useState<UploadFile | null>(null)
+  const [testedSizeMap, setTestedSizeMap] = useState<Map<string, number>>(new Map())
 
-  const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>([])
-  const [albums, setAlbums] = useState<AlbumDto[]>([])
-  const [loadingAlbums, setLoadingAlbums] = useState(false)
-
-  // Film roll state
-  const [uploadFilmRollId, setUploadFilmRollId] = useState('')
-  const [uploadFilmRollName, setUploadFilmRollName] = useState('')
-  const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
-  const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
-  const [showFilmRollSelector, setShowFilmRollSelector] = useState(false)
-
-  const [uploadSourceId, setUploadSourceId] = useState<string>('')
-  const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
-  const [useCustomPrefix, setUseCustomPrefix] = useState(false)
-  const [uploadPath, setUploadPath] = useState('')
-  const [isInitialized, setIsInitialized] = useState(false)
-
-  const [compressionMode, setCompressionMode] = useState<CompressionMode>('none')
-  const [maxSizeMB, setMaxSizeMB] = useState(4)
+  // Invalidate cached test results whenever compression settings change
+  const currentSettings = uploadType === 'digital' ? digitalSettings : filmSettings
+  useEffect(() => {
+    setTestedSizeMap(new Map())
+  }, [currentSettings.maxSizeMB, currentSettings.compressionEnabled])
 
   // Privacy strip - remove GPS/location data
-  const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
   const [strippingPrivacy, setStrippingPrivacy] = useState(false)
   const [privacyProgress, setPrivacyProgress] = useState({ current: 0, total: 0 })
 
@@ -414,111 +510,85 @@ export function UploadTab({
 
   const [uploadError, setUploadError] = useState('')
 
-  useEffect(() => {
-    if (!token || isInitialized) return
-    getStorageSources(token).then(sources => {
-      setStorageSources(sources)
-      if (sources.length > 0) setUploadSourceId(sources[0].id)
-      setIsInitialized(true)
-    }).catch(() => setIsInitialized(true))
-  }, [token, isInitialized])
-
-  // Reset custom prefix when storage source changes
-  useEffect(() => {
-    if (!isInitialized) return
-    setUseCustomPrefix(false)
-    setUploadPath('')
-  }, [uploadSourceId, isInitialized])
-
-  const selectedSource = storageSources.find(s => s.id === uploadSourceId)
-
-  // Get the configured prefix for the selected source
-  const configPrefix = selectedSource?.basePath || undefined
-
-  // Load stories only when modal opens
-  const loadStories = useCallback(async () => {
-    if (!token || stories.length > 0) return
-    setLoadingStories(true)
-    try {
-      const data = await getAdminStories(token)
-      setStories(data)
-    } finally {
-      setLoadingStories(false)
-    }
-  }, [token, stories.length])
-
-  useEffect(() => {
-    if (showStorySelector) {
-      loadStories()
-    }
-  }, [showStorySelector, loadStories])
-
-  useEffect(() => {
-    if (!token) return
-    let cancelled = false
-    queueMicrotask(() => !cancelled && setLoadingAlbums(true))
-    getAdminAlbums(token).then(data => !cancelled && setAlbums(data)).finally(() => !cancelled && setLoadingAlbums(false))
-    return () => { cancelled = true }
-  }, [token])
-
-  const loadFilmRolls = useCallback(async () => {
-    if (filmRolls.length > 0) return
-    setLoadingFilmRolls(true)
-    try {
-      const data = await getFilmRolls()
-      setFilmRolls(data)
-    } finally {
-      setLoadingFilmRolls(false)
-    }
-  }, [filmRolls.length])
-
-  useEffect(() => {
-    if (showFilmRollSelector) {
-      loadFilmRolls()
-    }
-  }, [showFilmRollSelector, loadFilmRolls])
-
-  const categoryOptions = useMemo(
-    () =>
-      categories
-        .filter((c) => c !== 'all' && c !== '全部')
-        .map((c) => ({ value: c, label: c })),
-    [categories]
-  )
-
-  const albumOptions = useMemo(
-    () =>
-      albums.map((a) => ({
-        value: a.id,
-        label: a.name,
-        suffix: !a.isPublished ? `(${t('admin.draft')})` : undefined,
-      })),
-    [albums, t]
-  )
-
   const duplicateInfoMap = useMemo(() => {
     const map = new Map<string, DuplicateInfo>()
     duplicateInfos.forEach(info => map.set(info.fileId, info))
     return map
   }, [duplicateInfos])
+
+  const totalOriginalSize = useMemo(
+    () => uploadFiles.reduce((sum, f) => sum + f.file.size, 0),
+    [uploadFiles]
+  )
+
+  const estimateFileSize = useCallback((file: File): number => {
+    if (!currentSettings.compressionEnabled) return file.size
+    const target = currentSettings.maxSizeMB * 1024 * 1024
+    if (file.size <= target) return file.size
+    return Math.min(file.size * 0.45, target)
+  }, [currentSettings.compressionEnabled, currentSettings.maxSizeMB])
+
+  const estimatedTotalSize = useMemo(() => {
+    if (!currentSettings.compressionEnabled || uploadFiles.length === 0) return totalOriginalSize
+    return uploadFiles.reduce((sum, f) => {
+      const tested = testedSizeMap.get(f.id)
+      return sum + (tested ?? estimateFileSize(f.file))
+    }, 0)
+  }, [uploadFiles, currentSettings.compressionEnabled, totalOriginalSize, estimateFileSize, testedSizeMap])
+
+  const savingsPercent = useMemo(() => {
+    if (!currentSettings.compressionEnabled || totalOriginalSize === 0) return 0
+    return Math.round((1 - estimatedTotalSize / totalOriginalSize) * 100)
+  }, [currentSettings.compressionEnabled, totalOriginalSize, estimatedTotalSize])
+
+  const compressionSuggestion = useMemo(() => {
+    if (uploadFiles.length === 0) return null
+    const targetBytes = currentSettings.maxSizeMB * 1024 * 1024
+    const filesUnderTarget = uploadFiles.filter(f => f.file.size <= targetBytes).length
+    const filesOverTarget = uploadFiles.length - filesUnderTarget
+    const avgSize = totalOriginalSize / uploadFiles.length
+
+    if (!currentSettings.compressionEnabled) {
+      // Off + most files would benefit
+      if (avgSize > 5 * 1024 * 1024) {
+        return { type: 'suggest_enable' as const, text: t('admin.compression_suggest_enable') || '图片较大，启用压缩可显著节省体积' }
+      }
+      // Off + all small
+      if (avgSize < 1024 * 1024) {
+        return { type: 'info' as const, text: t('admin.compression_already_small') || '图片已较小，可保持关闭' }
+      }
+      return null
+    }
+
+    // On + all already small
+    if (filesUnderTarget === uploadFiles.length) {
+      return { type: 'suggest_disable' as const, text: t('admin.compression_suggest_disable') || '所有图片已小于上限，可关闭压缩' }
+    }
+
+    // On + mixed
+    if (filesUnderTarget > 0) {
+      const tmpl = t('admin.compression_partial_skip') || '{under}/{total} 张已小于上限，将原样上传'
+      return { type: 'info' as const, text: tmpl.replace('{under}', String(filesUnderTarget)).replace('{total}', String(uploadFiles.length)) }
+    }
+
+    // On + all need compression: silence
+    if (filesOverTarget === uploadFiles.length) return null
+    return null
+  }, [uploadFiles, currentSettings.compressionEnabled, currentSettings.maxSizeMB, totalOriginalSize, t])
   
   const checkDuplicatesForFiles = async (files: UploadFile[]) => {
     if (!token || files.length === 0) return
     setCheckingDuplicates(true)
     setDuplicateProgress({ current: 0, total: files.length })
     
+    const hashInput = files.map(f => ({ id: f.id, file: f.file }))
+    const hashResults = await calculateFileHashes(hashInput)
+    
     const nextHashMap = new Map(fileHashMap)
-    for (let i = 0; i < files.length; i++) {
-      const item = files[i]
-      try {
-        const hash = await calculateFileHash(item.file)
-        nextHashMap.set(item.id, hash)
-      } catch (err) {
-        console.error('Failed to calculate hash for', item.file.name, err)
-      }
-      setDuplicateProgress({ current: i + 1, total: files.length })
-    }
+    hashResults.forEach((hash, id) => nextHashMap.set(id, hash))
     setFileHashMap(nextHashMap)
+    
+    setDuplicateProgress({ current: files.length, total: files.length })
     
     const hashes = files
       .map(f => nextHashMap.get(f.id))
@@ -564,13 +634,28 @@ export function UploadTab({
   }
   
   const addUploadFiles = (files: File[]) => {
-    const imageFiles = files.filter(f => f.type.startsWith('image/'))
-    if (!imageFiles.length) return
+    const MAX_FRONTEND_SIZE = 100 * 1024 * 1024
+    const imageFiles = files.filter(f => {
+      if (!f.type.startsWith('image/') || f.type === 'image/svg+xml') return false
+      return true
+    })
 
-    const existingFileKeys = new Set(uploadFiles.map(f => `${f.file.name}-${f.file.size}`))
+    const oversized = files.filter(f => f.type.startsWith('image/') && f.size > MAX_FRONTEND_SIZE)
+    const svgFiles = files.filter(f => f.type === 'image/svg+xml')
+    if (oversized.length > 0) {
+      notify(`${oversized.length} file(s) exceed 100 MB limit and were skipped`, 'error')
+    }
+    if (svgFiles.length > 0) {
+      notify(`${svgFiles.length} SVG file(s) skipped (not supported)`, 'info')
+    }
 
-    const newItems = imageFiles
-      .filter(f => !existingFileKeys.has(`${f.name}-${f.size}`))
+    const validFiles = imageFiles.filter(f => f.size <= MAX_FRONTEND_SIZE)
+    if (!validFiles.length) return
+
+    const existingFileKeys = new Set(uploadFiles.map(f => `${f.file.name}::${f.file.size}::${f.file.lastModified}`))
+
+    const newItems = validFiles
+      .filter(f => !existingFileKeys.has(`${f.name}::${f.size}::${f.lastModified}`))
       .map(f => ({ id: crypto.randomUUID(), file: f }))
 
     if (newItems.length === 0) {
@@ -578,7 +663,7 @@ export function UploadTab({
       return
     }
 
-    if (newItems.length < imageFiles.length) {
+    if (newItems.length < validFiles.length) {
       notify(t('admin.duplicate_files_ignored') || '部分重复的文件已忽略', 'info')
     }
 
@@ -648,18 +733,7 @@ export function UploadTab({
   const handleUploadTypeChange = (type: 'digital' | 'film') => {
     if (type === uploadType) return
     setUploadType(type)
-    // Reset params but keep files
-    setUploadTitle('')
-    setUploadCategories([])
-    setUploadStoryId('')
-    setUploadStoryTitle('')
-    setUploadAlbumIds([])
-    setUploadFilmRollId('')
-    setUploadFilmRollName('')
-    setUseCustomPrefix(false)
-    setUploadPath('')
-    setCompressionMode('none')
-    setPrivacyStripEnabled(false)
+    // Settings will be reset by child components
   }
 
   const handleUploadClick = () => {
@@ -687,21 +761,36 @@ export function UploadTab({
   const proceedWithUpload = async (filesToUpload: UploadFile[], hashMap: Map<string, string>) => {
     if (!token) return
 
+    let stripFailureCount = 0
+
     // Step 1: Strip GPS/location data if enabled
-    if (privacyStripEnabled) {
+    if (currentSettings.privacyStripEnabled) {
       setStrippingPrivacy(true)
       setPrivacyProgress({ current: 0, total: filesToUpload.length })
       const stripped: UploadFile[] = []
+      const updatedHashMap = new Map(hashMap)
       for (let i = 0; i < filesToUpload.length; i++) {
         const item = filesToUpload[i]
         try {
           const file = await stripGpsData(item.file)
+          if (file !== item.file) {
+            const newHash = await calculateFileHash(file)
+            updatedHashMap.set(item.id, newHash)
+          }
           stripped.push({ id: item.id, file })
-        } catch { stripped.push(item) }
+        } catch {
+          stripped.push(item)
+          stripFailureCount++
+        }
         setPrivacyProgress({ current: i + 1, total: filesToUpload.length })
       }
       filesToUpload = stripped
+      hashMap = updatedHashMap
       setStrippingPrivacy(false)
+
+      if (stripFailureCount > 0) {
+        notify(`GPS data could not be stripped from ${stripFailureCount} file(s). They were uploaded with original location data.`, 'error')
+      }
     }
 
     // Step 2: Upload with file hashes (compression happens in upload queue)
@@ -711,26 +800,22 @@ export function UploadTab({
         file: f.file,
         fileHash: hashMap.get(f.id),
       })),
-      title: uploadTitle.trim(),
-      categories: uploadCategories,
-      storageProvider: selectedSource?.type || 'local',
-      storageSourceId: uploadSourceId || undefined,
-      storagePath: useCustomPrefix ? (uploadPath.trim() || undefined) : (uploadPath.trim() || undefined),
-      storagePathFull: useCustomPrefix,
-      storyId: uploadStoryId || undefined,
-      albumIds: uploadAlbumIds.length ? uploadAlbumIds : undefined,
-      filmRollId: uploadType === 'film' && uploadFilmRollId ? uploadFilmRollId : undefined,
-      compressionMode: compressionMode !== 'none' ? compressionMode : undefined,
-      maxSizeMB: compressionMode !== 'none' ? maxSizeMB : undefined,
+      title: currentSettings.title.trim(),
+      categories: currentSettings.categories,
+      storageProvider: currentSettings.storageSourceId ? undefined : 'local',
+      storageSourceId: currentSettings.storageSourceId,
+      storagePath: currentSettings.storagePath,
+      storagePathFull: currentSettings.storagePathFull,
+      storyId: currentSettings.storyId,
+      albumIds: currentSettings.albumIds,
+      filmRollId: uploadType === 'film' ? (filmSettings.filmRollId || undefined) : undefined,
+      compressionMode: currentSettings.compressionEnabled ? 'compress' : undefined,
+      maxSizeMB: currentSettings.compressionEnabled ? currentSettings.maxSizeMB : undefined,
       token,
     })
 
     setUploadFiles([])
     setSelectedIds(new Set())
-    setUploadTitle('')
-    setUploadStoryId('')
-    setUploadStoryTitle('')
-    setUploadAlbumIds([])
     setDuplicateInfos([])
     setFileHashMap(new Map())
     setPendingUploadFiles([])
@@ -763,16 +848,6 @@ export function UploadTab({
     await proceedWithUpload(pendingUploadFiles, newHashMap)
   }
 
-  const selectedAlbumNames = uploadAlbumIds.map(id => albums.find(a => a.id === id)?.name || '').filter(Boolean)
-  const selectedStoryName = stories.find(s => s.id === uploadStoryId)?.title
-  
-  // Calculate full storage path for display
-  const fullStoragePath = useCustomPrefix
-    ? (uploadPath.trim() || undefined)
-    : (configPrefix
-      ? (uploadPath.trim() ? `${configPrefix}/${uploadPath.trim()}` : configPrefix)
-      : uploadPath.trim() || undefined)
-
   return (
     <>
       {/* Upload Type Tabs */}
@@ -804,219 +879,36 @@ export function UploadTab({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
         {/* Left Panel - Settings */}
         <div className="lg:col-span-4">
-          <div className="sticky top-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Settings2 className="w-4 h-4 text-muted-foreground" />
-              <h2 className="text-xs font-medium tracking-wide uppercase text-muted-foreground">{t('admin.upload_params')}</h2>
-            </div>
-
-            <div className="space-y-4">
-              {/* Title */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.photo_title')}</label>
-                <AdminInput
-                  value={uploadTitle}
-                  onChange={e => setUploadTitle(e.target.value)}
-                  disabled={uploadFiles.length > 1}
-                  placeholder={uploadFiles.length > 1 ? t('admin.title_hint_multi') : t('admin.title_hint_single')}
-                />
-              </div>
-
-              {/* Categories & Albums - 2 column grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.categories')}</label>
-                  <AdminMultiSelect
-                    values={uploadCategories}
-                    options={categoryOptions}
-                    onChange={setUploadCategories}
-                    placeholder={t('admin.search_create')}
-                    inputPlaceholder={t('admin.search_create')}
-                    allowCreate
-                  />
-                </div>
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                    <FolderOpen className="w-3 h-3" />
-                    {t('admin.album_select')}
-                  </label>
-                  <AdminMultiSelect
-                    values={uploadAlbumIds}
-                    options={albumOptions}
-                    onChange={setUploadAlbumIds}
-                    placeholder={t('admin.search_album')}
-                    inputPlaceholder={t('admin.search_album')}
-                    disabled={loadingAlbums}
-                  />
-                </div>
-              </div>
-
-              {/* Story */}
-              <div>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                  <BookOpen className="w-3 h-3" />
-                  {t('ui.photo_story')}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowStorySelector(true)}
-                  disabled={loadingStories}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
-                >
-                  <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
-                    {uploadStoryTitle || t('ui.no_association')}
-                  </span>
-                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
-              </div>
-
-              {/* Film Roll - only visible in film mode */}
-              {uploadType === 'film' && (
-                <div>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                    <Film className="w-3 h-3" />
-                    {t('admin.film_roll_select')}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowFilmRollSelector(true)}
-                    disabled={loadingFilmRolls}
-                    className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
-                  >
-                    <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
-                      {uploadFilmRollName || t('admin.no_film_roll')}
-                    </span>
-                    <Film className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
-                </div>
-              )}
-
-              {/* Storage - compact layout */}
-              <div className="pt-3 border-t border-border/50">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
-                    <AdminSelect
-                      value={uploadSourceId}
-                      onChange={setUploadSourceId}
-                      options={storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.path_prefix')}</label>
-                    <div className="flex items-stretch">
-                      {configPrefix ? (
-                        <PrefixDropdown
-                          value={useCustomPrefix ? '/' : configPrefix}
-                          options={[
-                            { value: configPrefix, label: `${configPrefix}/` },
-                            { value: '/', label: '/' },
-                          ]}
-                          onChange={(v) => {
-                            setUseCustomPrefix(v === '/')
-                            setUploadPath('')
-                          }}
-                        />
-                      ) : (
-                        <div className="self-stretch px-3 bg-muted/50 border border-r-0 border-border text-[10px] text-muted-foreground font-mono flex items-center">
-                          <span>/</span>
-                        </div>
-                      )}
-                      <AdminInput
-                        value={uploadPath}
-                        onChange={e => setUploadPath(e.target.value)}
-                        placeholder="path"
-                        className="flex-1 rounded-l-none border-l-0"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Privacy & Compression - inline toggles */}
-              <div className="pt-3 border-t border-border/50 space-y-3">
-                {/* Privacy Strip */}
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <MapPinOff className="w-3 h-3" />
-                    {t('admin.strip_gps') || '移除地理位置'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setPrivacyStripEnabled(!privacyStripEnabled)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      privacyStripEnabled ? 'bg-primary' : 'bg-muted'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none block size-4 rounded-full bg-background shadow-lg transition-transform ${
-                        privacyStripEnabled ? 'translate-x-4' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Compression */}
-                <div className="flex items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Minimize2 className="w-3 h-3" />
-                    {t('admin.image_compression')}
-                  </label>
-                  <AdminSelect
-                    value={compressionMode}
-                    onChange={(v) => setCompressionMode(v as CompressionMode)}
-                    className="w-28"
-                    options={[
-                      { value: 'none', label: t('admin.compression_none') || '原图' },
-                      { value: 'quality', label: t('admin.compression_quality') || '质量优先' },
-                      { value: 'size', label: t('admin.compression_size') || '体积优先' },
-                    ]}
-                  />
-                </div>
-                {compressionMode === 'quality' && (
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="text-[10px] text-muted-foreground">{t('admin.max_size_mb')}</span>
-                    <AdminInput
-                      type="number"
-                      min="0.5"
-                      max="10"
-                      step="0.5"
-                      value={maxSizeMB}
-                      onChange={e => setMaxSizeMB(parseFloat(e.target.value) || 4)}
-                      className="w-16 text-center text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Upload Button */}
-              <AdminButton
-                onClick={handleUploadClick}
-                disabled={strippingPrivacy || checkingDuplicates || !uploadFiles.length}
-                adminVariant="primary"
-                size="lg"
-                className="w-full py-3 mt-2 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {checkingDuplicates ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {t('admin.checking_duplicates')} ({duplicateProgress.current}/{duplicateProgress.total})
-                  </>
-                ) : strippingPrivacy ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {t('admin.stripping_privacy') || '擦除隐私'} ({privacyProgress.current}/{privacyProgress.total})
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    {t('admin.start_upload')}
-                  </>
-                )}
-              </AdminButton>
-              {uploadError && <p className="text-xs text-destructive text-center mt-1">{uploadError}</p>}
-            </div>
-          </div>
+          {uploadType === 'digital' ? (
+            <DigitalPhotoUploadParams
+              token={token}
+              categories={categories}
+              t={t}
+              fileCount={uploadFiles.length}
+              totalOriginalSize={totalOriginalSize}
+              estimatedTotalSize={estimatedTotalSize}
+              savingsPercent={savingsPercent}
+              compressionSuggestion={compressionSuggestion}
+              onSettingsChange={setDigitalSettings}
+              onUploadClick={handleUploadClick}
+              uploading={checkingDuplicates || strippingPrivacy}
+              uploadError={uploadError}
+            />
+          ) : (
+            <FilmPhotoUploadParams
+              token={token}
+              categories={categories}
+              t={t}
+              fileCount={uploadFiles.length}
+              estimatedTotalSize={estimatedTotalSize}
+              savingsPercent={savingsPercent}
+              compressionSuggestion={compressionSuggestion}
+              onSettingsChange={setFilmSettings}
+              onUploadClick={handleUploadClick}
+              uploading={checkingDuplicates || strippingPrivacy}
+              uploadError={uploadError}
+            />
+          )}
         </div>
 
         {/* Right Panel - Files */}
@@ -1043,6 +935,24 @@ export function UploadTab({
                     <span className="text-sm text-muted-foreground">
                       {selectedIds.size ? `${selectedIds.size} ${t('admin.selected')}` : `${uploadFiles.length} ${t('admin.files')}`}
                     </span>
+                    {uploadFiles.length > 0 && (
+                      <span className="text-xs text-muted-foreground font-mono transition-colors">
+                        {!currentSettings.compressionEnabled || estimatedTotalSize >= totalOriginalSize ? (
+                          formatFileSize(totalOriginalSize)
+                        ) : (
+                          <>
+                            {formatFileSize(totalOriginalSize)}
+                            <span className="mx-1 text-muted-foreground/50">→</span>
+                            <span className="text-primary tabular-nums">~{formatFileSize(estimatedTotalSize)}</span>
+                            {savingsPercent > 0 && (
+                              <span className="ml-1.5 text-[10px] text-emerald-600 dark:text-emerald-500 tabular-nums">
+                                ↓{savingsPercent}%
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    )}
                     {selectedIds.size > 0 && (
                       <AdminButton
                         onClick={removeSelectedFiles}
@@ -1095,9 +1005,12 @@ export function UploadTab({
                       index={index}
                       selected={selectedIds.has(item.id)}
                       duplicateInfo={duplicateInfoMap.get(item.id)}
+                      estimatedSize={currentSettings.compressionEnabled ? (testedSizeMap.get(item.id) ?? estimateFileSize(item.file)) : undefined}
+                      isActualSize={testedSizeMap.has(item.id)}
                       onSelect={id => setSelectedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })}
                       onRemove={removeUploadFile}
                       onPreview={() => onPreview(item)}
+                      onTestCompression={currentSettings.compressionEnabled ? setTestCompressionFile : undefined}
                       onDragStart={handleDragStart}
                       onDragOver={handleDragOver}
                       onDrop={handleDragEnd}
@@ -1137,13 +1050,13 @@ export function UploadTab({
         onClose={() => setShowConfirm(false)}
         onConfirm={handleConfirmUpload}
         fileCount={uploadFiles.length}
-        categories={uploadCategories}
-        albumNames={selectedAlbumNames}
-        storyName={selectedStoryName}
-        storageProvider={selectedSource ? `${selectedSource.name} (${selectedSource.type})` : uploadSourceId}
-        storagePath={fullStoragePath}
-        compressionEnabled={compressionMode !== 'none'}
-        privacyStripEnabled={privacyStripEnabled}
+        categories={currentSettings.categories}
+        albumNames={currentSettings.albumIds?.map(id => id) || []}
+        storyName={currentSettings.storyId}
+        storageProvider={currentSettings.storageSourceId || 'local'}
+        storagePath={currentSettings.storagePath}
+        compressionEnabled={currentSettings.compressionEnabled}
+        privacyStripEnabled={currentSettings.privacyStripEnabled}
         t={t}
       />
 
@@ -1159,28 +1072,17 @@ export function UploadTab({
         t={t}
       />
 
-      <StorySelectorModal
-        isOpen={showStorySelector}
-        onClose={() => setShowStorySelector(false)}
-        onSelect={(storyId, storyTitle) => {
-          setUploadStoryId(storyId || '')
-          setUploadStoryTitle(storyTitle || '')
+      <TestCompressionModal
+        file={testCompressionFile}
+        maxSizeMB={currentSettings.maxSizeMB}
+        onClose={() => setTestCompressionFile(null)}
+        onResult={(fileId, compressedSize) => {
+          setTestedSizeMap(prev => {
+            const next = new Map(prev)
+            next.set(fileId, compressedSize)
+            return next
+          })
         }}
-        stories={stories}
-        selectedStoryId={uploadStoryId}
-        loading={loadingStories}
-        t={t}
-      />
-      <FilmRollSelectorModal
-        isOpen={showFilmRollSelector}
-        onClose={() => setShowFilmRollSelector(false)}
-        onSelect={(rollId, rollName) => {
-          setUploadFilmRollId(rollId || '')
-          setUploadFilmRollName(rollName || '')
-        }}
-        filmRolls={filmRolls}
-        selectedRollId={uploadFilmRollId}
-        loading={loadingFilmRolls}
         t={t}
       />
     </>

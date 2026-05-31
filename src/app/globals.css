@@ -308,6 +308,25 @@
     background: var(--background);
   }
 
+  /* Range Slider Optimization - Smooth performance */
+  input[type="range"] {
+    /* Use GPU acceleration for smooth dragging */
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    /* Optimize thumb rendering */
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    /* Optimize thumb rendering for Firefox */
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
   /* Modern Gallery Utilities */
   .gallery-grid {
     display: grid;

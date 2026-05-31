@@ -3,12 +3,10 @@
  */
 'use client'
 
-import React, { useState, useRef, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Upload,
-  Save,
   Loader2,
-  Check,
   X,
   Trash2,
   List as ListIcon,
@@ -16,16 +14,15 @@ import {
   Plus,
   BookOpen,
   Edit3,
-  Minimize2,
 } from 'lucide-react'
-import type { AdminSettingsDto, StorageSourceDto } from '@/lib/api/types'
+import type { AdminSettingsDto } from '@/lib/api/types'
 import { createStory } from '@/lib/api/stories'
-import { getStorageSources } from '@/lib/api/storage-sources'
-import { compressImage, type CompressionMode } from '@/lib/image-compress'
+import { compressImage } from '@/lib/image-compress'
 import { formatFileSize } from '@/lib/utils'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
+import { AdminInput } from '@/components/admin/AdminFormControls'
+import { DigitalPhotoUploadParams, type DigitalPhotoUploadSettings } from '@/components/admin/DigitalPhotoUploadParams'
 
 interface StoryUploadFile {
   id: string
@@ -64,65 +61,69 @@ export function StoryUploadTab({
   const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
 
-  // 分类
-  const [uploadCategories, setUploadCategories] = useState<string[]>([])
-
-  // 批量标题
-  const [batchPhotoTitle, setBatchPhotoTitle] = useState('')
-
-  // 存储配置
-  const [uploadSourceId, setUploadSourceId] = useState('')
-  const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
-  const [isInitialized, setIsInitialized] = useState(false)
-  const [uploadPath, setUploadPath] = useState('')
+  // 上传设置（从子组件获取）
+  const [uploadSettings, setUploadSettings] = useState<DigitalPhotoUploadSettings>({
+    title: '',
+    categories: [],
+    compressionEnabled: false,
+    maxSizeMB: 2,
+    privacyStripEnabled: false,
+  })
 
   // 上传状态
   const [uploadError, setUploadError] = useState('')
-
-  // 压缩设置
-  const [compressionMode, setCompressionMode] = useState<CompressionMode>('none')
-  const [maxSizeMB, setMaxSizeMB] = useState(4)
   const [compressing, setCompressing] = useState(false)
   const [compressionProgress, setCompressionProgress] = useState({ current: 0, total: 0 })
 
-  // 从设置初始化默认值
-  useEffect(() => {
-    if (!token || isInitialized) return
-
-    let cancelled = false
-    getStorageSources(token)
-      .then((sources) => {
-        if (cancelled) return
-        setStorageSources(sources)
-        if (sources.length > 0) {
-          setUploadSourceId(sources[0].id)
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('Failed to load storage sources:', error)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsInitialized(true)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [token, isInitialized])
-
-  const selectedSource = storageSources.find((source) => source.id === uploadSourceId)
-
-  const categoryOptions = useMemo(
-    () =>
-      categories
-        .filter((c) => c !== 'all' && c !== '全部')
-        .map((c) => ({ value: c, label: c })),
-    [categories]
+  const totalOriginalSize = useMemo(
+    () => uploadFiles.reduce((sum, f) => sum + f.file.size, 0),
+    [uploadFiles]
   )
+
+  const estimateFileSize = (file: File): number => {
+    if (!uploadSettings.compressionEnabled) return file.size
+    const target = uploadSettings.maxSizeMB * 1024 * 1024
+    if (file.size <= target) return file.size
+    return Math.min(file.size * 0.45, target)
+  }
+
+  const estimatedTotalSize = useMemo(() => {
+    if (!uploadSettings.compressionEnabled || uploadFiles.length === 0) return totalOriginalSize
+    return uploadFiles.reduce((sum, f) => sum + estimateFileSize(f.file), 0)
+  }, [uploadFiles, uploadSettings.compressionEnabled, uploadSettings.maxSizeMB, totalOriginalSize])
+
+  const savingsPercent = useMemo(() => {
+    if (!uploadSettings.compressionEnabled || totalOriginalSize === 0) return 0
+    return Math.round((1 - estimatedTotalSize / totalOriginalSize) * 100)
+  }, [uploadSettings.compressionEnabled, totalOriginalSize, estimatedTotalSize])
+
+  const compressionSuggestion = useMemo(() => {
+    if (uploadFiles.length === 0) return null
+    const targetBytes = uploadSettings.maxSizeMB * 1024 * 1024
+    const avgSize = totalOriginalSize / uploadFiles.length
+
+    if (!uploadSettings.compressionEnabled) {
+      if (avgSize > 5 * 1024 * 1024) {
+        return { type: 'suggest_enable' as const, text: t('admin.compression_suggest_enable') || '图片较大，启用压缩可显著节省体积' }
+      }
+      if (avgSize < 1024 * 1024) {
+        return { type: 'info' as const, text: t('admin.compression_already_small') || '图片已较小，可保持关闭' }
+      }
+      return null
+    }
+
+    const filesUnderTarget = uploadFiles.filter(f => f.file.size <= targetBytes).length
+    if (filesUnderTarget === uploadFiles.length) {
+      return { type: 'suggest_disable' as const, text: t('admin.compression_suggest_disable') || '所有图片已小于上限，可关闭压缩' }
+    }
+
+    if (filesUnderTarget > 0) {
+      const tmpl = t('admin.compression_partial_skip') || '{under}/{total} 张已小于上限，将原样上传'
+      return { type: 'info' as const, text: tmpl.replace('{under}', String(filesUnderTarget)).replace('{total}', String(uploadFiles.length)) }
+    }
+
+    return null
+  }, [uploadFiles, uploadSettings.compressionEnabled, uploadSettings.maxSizeMB, totalOriginalSize, t])
 
   // 生成文件缩略图预览
   const generatePreview = (file: File): Promise<string> => {
@@ -213,12 +214,8 @@ export function StoryUploadTab({
       setUploadError(t('admin.story_title'))
       return
     }
-    if (uploadCategories.length === 0) {
+    if (uploadSettings.categories.length === 0) {
       setUploadError(t('admin.categories'))
-      return
-    }
-    if (storageSources.length === 0 || !selectedSource) {
-      setUploadError('No storage source configured')
       return
     }
 
@@ -228,7 +225,7 @@ export function StoryUploadTab({
     let filesToUpload = uploadFiles.filter(f => f.status === 'pending')
 
     // 如果启用了压缩，先压缩图片
-    if (compressionMode !== 'none') {
+    if (uploadSettings.compressionEnabled) {
       setCompressing(true)
       setCompressionProgress({ current: 0, total: filesToUpload.length })
 
@@ -236,7 +233,10 @@ export function StoryUploadTab({
       for (let i = 0; i < filesToUpload.length; i++) {
         const item = filesToUpload[i]
         try {
-          const file = await compressImage(item.file, { mode: compressionMode, maxSizeMB })
+          const file = await compressImage(item.file, {
+            mode: 'compress',
+            maxSizeMB: uploadSettings.maxSizeMB
+          })
           compressedFiles.push({ ...item, file })
         } catch {
           compressedFiles.push(item)
@@ -259,13 +259,16 @@ export function StoryUploadTab({
       // 将任务添加到上传队列，队列将处理上传并关联照片到故事
       await addTasks({
         files: filesToUpload.map(item => ({ id: item.id, file: item.file })),
-        title: batchPhotoTitle.trim() || '', // Will use filename if empty
-        categories: uploadCategories,
-        storageProvider: selectedSource.type,
-        storageSourceId: uploadSourceId || undefined,
-        storagePath: uploadPath.trim() || undefined,
+        title: uploadSettings.title.trim() || '', // Will use filename if empty
+        categories: uploadSettings.categories,
+        storageProvider: uploadSettings.storageSourceId ? undefined : 'local',
+        storageSourceId: uploadSettings.storageSourceId,
+        storagePath: uploadSettings.storagePath,
+        storagePathFull: uploadSettings.storagePathFull,
         storyId: story.id,
-        albumIds: undefined,
+        albumIds: uploadSettings.albumIds,
+        compressionMode: uploadSettings.compressionEnabled ? 'compress' : undefined,
+        maxSizeMB: uploadSettings.compressionEnabled ? uploadSettings.maxSizeMB : undefined,
         token,
       })
 
@@ -304,7 +307,12 @@ export function StoryUploadTab({
     })
   }
 
-  const handleSelectAllUploads = () => {
+  const handleRemoveSelected = () => {
+    setUploadFiles((prev) => prev.filter((item) => !selectedUploadIds.has(item.id)))
+    setSelectedUploadIds(new Set())
+  }
+
+  const handleSelectAll = () => {
     if (selectedUploadIds.size === uploadFiles.length) {
       setSelectedUploadIds(new Set())
     } else {
@@ -312,24 +320,13 @@ export function StoryUploadTab({
     }
   }
 
-  const handleBulkRemoveUploads = () => {
-    if (selectedUploadIds.size === 0) return
-    setUploadFiles((prev) => prev.filter((item) => !selectedUploadIds.has(item.id)))
-    setSelectedUploadIds(new Set())
-  }
-
-  const handleTitleChange = (id: string, title: string) => {
-    setUploadFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, title } : f))
-    )
-  }
-
-  const pendingCount = uploadFiles.filter(f => f.status === 'pending').length
+  const pendingCount = uploadFiles.filter((f) => f.status === 'pending').length
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-      {/* 左侧面板 - 故事信息 */}
+      {/* 左侧面板 - 故事信息 + 上传设置 */}
       <div className="lg:col-span-4 space-y-8">
+        {/* 故事信息 */}
         <div className="border border-border p-8 space-y-8 bg-card/50">
           <h3 className="font-serif text-xl font-light uppercase tracking-tight flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary" />
@@ -362,133 +359,28 @@ export function StoryUploadTab({
                 placeholder={t('admin.story_description_hint')}
               />
             </div>
-
-            {/* 分类（多选、可搜索、可创建） */}
-            <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                {t('admin.categories')} *
-              </label>
-              <AdminMultiSelect
-                values={uploadCategories}
-                options={categoryOptions}
-                onChange={setUploadCategories}
-                placeholder={t('admin.search_create')}
-                inputPlaceholder={t('admin.search_create')}
-                allowCreate
-              />
-            </div>
-
-            {/* 批量照片标题 */}
-            <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                {t('admin.batch_photo_title')}
-              </label>
-              <AdminInput
-                type="text"
-                value={batchPhotoTitle}
-                onChange={(e) => setBatchPhotoTitle(e.target.value)}
-                placeholder={t('admin.batch_photo_title_hint')}
-              />
-            </div>
-
-            {/* 存储配置 */}
-            <div className="space-y-6">
-              <div>
-                <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                  {t('admin.storage_provider')}
-                </label>
-                <AdminSelect
-                  value={uploadSourceId}
-                  onChange={setUploadSourceId}
-                  options={storageSources.map((source) => ({
-                    value: source.id,
-                    label: `${source.name} (${source.type})`,
-                  }))}
-                  disabled={!isInitialized || storageSources.length === 0}
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                  {t('admin.path_prefix')}
-                </label>
-                <AdminInput
-                  type="text"
-                  value={uploadPath}
-                  onChange={(e) => setUploadPath(e.target.value)}
-                  placeholder="e.g., 2025/stories"
-                />
-              </div>
-            </div>
-
-            {/* 图片压缩 */}
-            <div className="border-t border-border pt-6">
-              <label className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                <Minimize2 className="w-3 h-3" />
-                {t('admin.image_compression')}
-              </label>
-              <select
-                value={compressionMode}
-                onChange={(e) => setCompressionMode(e.target.value as CompressionMode)}
-                className="w-full p-3 bg-background border-b border-border focus:border-primary outline-none text-xs font-bold uppercase tracking-wider"
-              >
-                <option value="none">{t('admin.compression_none')}</option>
-                <option value="quality">{t('admin.compression_quality')}</option>
-                <option value="size">{t('admin.compression_size')}</option>
-              </select>
-              {compressionMode === 'quality' && (
-                <div className="flex items-center gap-3 mt-3">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap">
-                    {t('admin.max_size_mb')}
-                  </label>
-                  <AdminInput
-                    type="number"
-                    min="0.5"
-                    max="10"
-                    step="0.5"
-                    value={maxSizeMB}
-                    onChange={(e) => setMaxSizeMB(parseFloat(e.target.value) || 4)}
-                    className="w-20 text-center"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 上传按钮 */}
-          <div className="pt-4">
-            <AdminButton
-              onClick={handleUpload}
-              disabled={compressing || pendingCount === 0}
-              adminVariant="primary"
-              size="lg"
-              className="w-full py-4 bg-foreground text-background text-xs font-bold uppercase tracking-[0.2em] hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-            >
-              {compressing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>
-                    {t('admin.compressing')} ({compressionProgress.current}/
-                    {compressionProgress.total})
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>{t('admin.create_story_upload')}</span>
-                </>
-              )}
-            </AdminButton>
-            {uploadError && (
-              <p className="mt-4 text-[10px] text-destructive text-center font-bold uppercase tracking-widest">
-                {uploadError}
-              </p>
-            )}
           </div>
         </div>
+
+        {/* 照片上传设置 - 使用复用组件 */}
+        <DigitalPhotoUploadParams
+          token={token}
+          categories={categories}
+          t={t}
+          fileCount={uploadFiles.length}
+          totalOriginalSize={totalOriginalSize}
+          estimatedTotalSize={estimatedTotalSize}
+          savingsPercent={savingsPercent}
+          compressionSuggestion={compressionSuggestion}
+          onSettingsChange={setUploadSettings}
+          onUploadClick={handleUpload}
+          uploading={compressing}
+          uploadError={uploadError}
+        />
       </div>
 
-      {/* 右侧面板 - 上传区域 */}
-      <div className="lg:col-span-8 flex flex-col">
+      {/* 右侧面板 - 照片列表 */}
+      <div className="lg:col-span-8">
         <div
           onDragOver={(e) => {
             e.preventDefault()
@@ -496,81 +388,77 @@ export function StoryUploadTab({
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`h-[600px] border border-dashed transition-all flex flex-col relative ${isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-border bg-muted/20'
-            }`}
+          className={`min-h-[600px] border-2 border-dashed transition-all ${
+            isDragging ? 'border-primary bg-primary/5' : 'border-border/50 bg-muted/10'
+          }`}
         >
           {uploadFiles.length > 0 ? (
-            <div className="flex-1 flex flex-col p-6 overflow-hidden">
+            <div className="p-6">
               {/* 工具栏 */}
-              <div className="flex items-center justify-between mb-4 px-2">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/50">
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 mr-2">
-                    <input
-                      type="checkbox"
-                      checked={
-                        uploadFiles.length > 0 &&
-                        selectedUploadIds.size === uploadFiles.length
-                      }
-                      onChange={handleSelectAllUploads}
-                      className="w-4 h-4 accent-primary cursor-pointer"
-                    />
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                      {selectedUploadIds.size > 0
-                        ? `${selectedUploadIds.size} ${t('admin.selected')}`
-                        : `${uploadFiles.length} ${t('admin.items')}`}
+                  <input
+                    type="checkbox"
+                    checked={uploadFiles.length > 0 && selectedUploadIds.size === uploadFiles.length}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 accent-primary cursor-pointer"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {selectedUploadIds.size
+                      ? `${selectedUploadIds.size} ${t('admin.selected')}`
+                      : `${uploadFiles.length} ${t('admin.files')}`}
+                  </span>
+                  {uploadFiles.length > 0 && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {formatFileSize(totalOriginalSize)}
+                      {uploadSettings.compressionEnabled && estimatedTotalSize < totalOriginalSize && (
+                        <>
+                          <span className="mx-1">→</span>
+                          <span className="text-primary">~{formatFileSize(estimatedTotalSize)}</span>
+                          {savingsPercent > 0 && (
+                            <span className="ml-1.5 text-[10px] text-emerald-600">
+                              ↓{savingsPercent}%
+                            </span>
+                          )}
+                        </>
+                      )}
                     </span>
-                  </div>
+                  )}
                   {selectedUploadIds.size > 0 && (
                     <AdminButton
-                      onClick={handleBulkRemoveUploads}
+                      onClick={handleRemoveSelected}
                       adminVariant="iconDestructive"
                       size="xs"
-                      className="p-1.5 rounded"
-                      title={t('admin.delete_selected')}
+                      className="p-1.5"
                     >
                       <Trash2 className="w-4 h-4" />
                     </AdminButton>
                   )}
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex bg-muted p-1 border border-border">
-                    <AdminButton
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 border border-border rounded">
+                    <button
                       onClick={() => setUploadViewMode('list')}
-                      adminVariant="icon"
-                      size="xs"
-                      className={`p-1.5 ${uploadViewMode === 'list'
-                        ? 'bg-background text-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                        }`}
+                      className={`p-2 transition-colors ${
+                        uploadViewMode === 'list'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     >
-                      <ListIcon className="w-3.5 h-3.5" />
-                    </AdminButton>
-                    <AdminButton
+                      <ListIcon className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => setUploadViewMode('grid')}
-                      adminVariant="icon"
-                      size="xs"
-                      className={`p-1.5 ${uploadViewMode === 'grid'
-                        ? 'bg-background text-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                        }`}
+                      className={`p-2 transition-colors ${
+                        uploadViewMode === 'grid'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     >
-                      <LayoutGrid className="w-3.5 h-3.5" />
-                    </AdminButton>
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
                   </div>
-                  <AdminButton
-                    onClick={() => {
-                      setUploadFiles([])
-                    }}
-                    adminVariant="link"
-                    size="xs"
-                    className="text-destructive hover:opacity-80 text-[10px] font-bold uppercase tracking-widest"
-                  >
-                    {t('admin.clear_all')}
-                  </AdminButton>
-                  <div className="h-4 w-[1px] bg-border"></div>
-                  <label className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors text-[10px] font-bold uppercase tracking-widest">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary cursor-pointer transition-colors">
                     <Plus className="w-3.5 h-3.5" />
                     {t('admin.add_more')}
                     <input
@@ -585,40 +473,82 @@ export function StoryUploadTab({
               </div>
 
               {/* 文件列表 */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                <div
-                  className={
-                    uploadViewMode === 'grid'
-                      ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
-                      : 'flex flex-col'
-                  }
-                >
+              {uploadViewMode === 'list' ? (
+                <div className="space-y-1">
                   {uploadFiles.map((item) => (
-                    <StoryUploadFileItem
+                    <div
                       key={item.id}
-                      item={item}
-                      viewMode={uploadViewMode}
-                      selected={selectedUploadIds.has(item.id)}
-                      uploading={false}
-                      onSelect={handleSelectUploadToggle}
-                      onRemove={handleRemoveUpload}
-                      onTitleChange={handleTitleChange}
-                      t={t}
-                    />
+                      className="group flex items-center gap-4 p-4 bg-background border border-transparent hover:border-border transition-all"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedUploadIds.has(item.id)}
+                        onChange={() => handleSelectUploadToggle(item.id)}
+                        className="w-4 h-4 accent-primary cursor-pointer"
+                      />
+                      <div className="w-14 h-14 bg-muted/50 overflow-hidden flex-shrink-0">
+                        {item.previewUrl && (
+                          <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.file.name}</p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {formatFileSize(item.file.size)}
+                        </p>
+                      </div>
+                      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <AdminButton
+                          onClick={() => handleRemoveUpload(item.id)}
+                          adminVariant="iconDestructive"
+                          size="sm"
+                          className="p-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </AdminButton>
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {uploadFiles.map((item) => (
+                    <div
+                      key={item.id}
+                      className="group relative aspect-square bg-muted/50 overflow-hidden border border-transparent hover:border-border transition-all"
+                    >
+                      {item.previewUrl && (
+                        <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <AdminButton
+                          onClick={() => handleRemoveUpload(item.id)}
+                          adminVariant="iconDestructive"
+                          size="sm"
+                          className="p-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </AdminButton>
+                      </div>
+                      <div className="absolute top-2 left-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedUploadIds.has(item.id)}
+                          onChange={() => handleSelectUploadToggle(item.id)}
+                          className="w-4 h-4 accent-primary cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
+            <div className="h-full min-h-[600px] flex flex-col items-center justify-center text-muted-foreground p-8">
               <Upload className="w-16 h-16 mb-6 opacity-10" />
-              <p className="text-sm font-bold uppercase tracking-[0.2em] mb-4">
-                {t('admin.drop_here')}
-              </p>
-              <p className="text-[10px] font-mono opacity-50 mb-8">
-                {t('admin.support_types')}
-              </p>
-              <label className="px-8 py-3 border border-border hover:border-primary hover:text-primary transition-all cursor-pointer text-xs font-bold uppercase tracking-[0.2em]">
+              <p className="text-sm font-medium mb-2">{t('admin.drop_here')}</p>
+              <p className="text-xs text-muted-foreground/60 mb-8">{t('admin.support_types')}</p>
+              <label className="px-6 py-3 border border-border hover:border-primary hover:text-primary transition-all cursor-pointer text-sm">
                 {t('admin.select_files')}
                 <input
                   type="file"
@@ -630,258 +560,25 @@ export function StoryUploadTab({
               </label>
             </div>
           )}
-
         </div>
       </div>
-    </div>
-  )
-}
 
-// 文件项组件 - 支持标题编辑
-function StoryUploadFileItem({
-  item,
-  viewMode,
-  selected,
-  uploading,
-  onSelect,
-  onRemove,
-  onTitleChange,
-  t,
-}: {
-  item: StoryUploadFile
-  viewMode: 'list' | 'grid'
-  selected: boolean
-  uploading: boolean
-  onSelect: (id: string) => void
-  onRemove: (id: string) => void
-  onTitleChange: (id: string, title: string) => void
-  t: (key: string) => string
-}) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editTitle, setEditTitle] = useState(item.title)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [isEditing])
-
-  const handleSaveTitle = () => {
-    onTitleChange(item.id, editTitle.trim() || item.file.name.replace(/\.[^/.]+$/, ''))
-    setIsEditing(false)
-  }
-
-  const statusIcon = () => {
-    switch (item.status) {
-      case 'uploading':
-        return <Loader2 className="w-4 h-4 animate-spin text-primary" />
-      case 'success':
-        return <Check className="w-4 h-4 text-green-500" />
-      case 'failed':
-        return <X className="w-4 h-4 text-destructive" />
-      default:
-        return null
-    }
-  }
-
-  if (viewMode === 'grid') {
-    return (
-      <div
-        className={`relative aspect-square border border-border transition-all group overflow-hidden ${item.status === 'uploading' ? 'ring-2 ring-primary' : ''
-          } ${item.status === 'failed' ? 'ring-2 ring-destructive' : ''} ${selected ? 'border-primary bg-primary/5' : 'bg-background'
-          }`}
-      >
-        {item.previewUrl ? (
-          <img
-            src={item.previewUrl}
-            alt=""
-            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-muted">
-            <Upload className="w-6 h-6 text-muted-foreground/20" />
-          </div>
-        )}
-
-        {/* 选择复选框 */}
-        <div
-          className={`absolute top-2 left-2 z-20 transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-        >
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onSelect(item.id)}
-            disabled={uploading}
-            className="w-4 h-4 accent-primary cursor-pointer border-border bg-background"
-          />
-        </div>
-
-        {/* 状态遮罩 */}
-        {item.status !== 'pending' && (
-          <div
-            className={`absolute inset-0 flex items-center justify-center z-20 ${item.status === 'success'
-              ? 'bg-green-500/20'
-              : item.status === 'failed'
-                ? 'bg-destructive/20'
-                : 'bg-background/40'
-              }`}
-          >
-            {statusIcon()}
-          </div>
-        )}
-
-        {/* 删除按钮 */}
-        {!uploading && item.status !== 'success' && (
-          <AdminButton
-            onClick={() => onRemove(item.id)}
-            adminVariant="iconDestructive"
-            size="xs"
-            className="absolute top-2 right-2 p-1.5 bg-background/80 opacity-0 group-hover:opacity-100 transition-all z-20"
-          >
-            <X className="w-3 h-3" />
-          </AdminButton>
-        )}
-
-        {/* 底部标题 */}
-        <div className="absolute bottom-0 left-0 w-full p-2 bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity">
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              onBlur={handleSaveTitle}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveTitle()
-                if (e.key === 'Escape') {
-                  setEditTitle(item.title)
-                  setIsEditing(false)
-                }
-              }}
-              className="w-full bg-transparent border-b border-primary text-[10px] font-mono outline-none"
-            />
-          ) : (
-            <div
-              className="text-[10px] font-mono truncate cursor-pointer hover:text-primary flex items-center gap-1"
-              onClick={() => !uploading && setIsEditing(true)}
-            >
-              <span className="truncate">{item.title}</span>
-              <Edit3 className="w-2.5 h-2.5 flex-shrink-0 opacity-50" />
+      {/* 压缩进度提示 */}
+      {compressing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-background border border-border p-8 shadow-2xl">
+            <div className="flex items-center gap-4">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <div>
+                <p className="text-sm font-medium">{t('admin.compressing')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {compressionProgress.current} / {compressionProgress.total}
+                </p>
+              </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
-    )
-  }
-
-  // 列表视图
-  return (
-    <div
-      className={`flex items-center gap-4 p-3 border border-border mb-2 transition-colors ${item.status === 'uploading'
-        ? 'bg-primary/5 border-primary/30'
-        : item.status === 'failed'
-          ? 'bg-destructive/5 border-destructive/30'
-          : 'bg-background hover:bg-muted/30'
-        } ${selected ? 'border-primary/50 bg-primary/5' : ''}`}
-    >
-      {/* 复选框 */}
-      <div className="flex items-center">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onSelect(item.id)}
-          disabled={uploading}
-          className="w-4 h-4 accent-primary cursor-pointer"
-        />
-      </div>
-
-      {/* 缩略图预览 */}
-      <div className="w-12 h-12 flex-shrink-0 bg-muted overflow-hidden border border-border">
-        {item.previewUrl ? (
-          <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Upload className="w-4 h-4 text-muted-foreground/20" />
-          </div>
-        )}
-      </div>
-
-      {/* 标题（可编辑） */}
-      <div className="flex-1 min-w-0">
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            onBlur={handleSaveTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveTitle()
-              if (e.key === 'Escape') {
-                setEditTitle(item.title)
-                setIsEditing(false)
-              }
-            }}
-            className="w-full bg-transparent border-b border-primary text-xs font-bold uppercase tracking-wider outline-none"
-          />
-        ) : (
-          <div
-            className="flex items-center gap-2 cursor-pointer group/title"
-            onClick={() => !uploading && setIsEditing(true)}
-          >
-            <p className="text-xs font-bold uppercase tracking-wider truncate text-foreground group-hover/title:text-primary transition-colors">
-              {item.title}
-            </p>
-            <Edit3 className="w-3 h-3 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0" />
-          </div>
-        )}
-        <p className="text-[10px] font-mono text-muted-foreground">
-          {formatFileSize(item.file.size)}
-        </p>
-      </div>
-
-      {/* 状态 / 操作 */}
-      <div className="flex items-center gap-3">
-        {item.status === 'success' ? (
-          <div className="flex items-center gap-1 text-green-500">
-            <Check className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
-              {t('admin.done')}
-            </span>
-          </div>
-        ) : item.status === 'uploading' ? (
-          <div className="flex items-center gap-2 text-primary">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline animate-pulse">
-              {t('admin.processing')}
-            </span>
-          </div>
-        ) : item.status === 'failed' ? (
-          <div className="flex items-center gap-1 text-destructive">
-            <X className="w-4 h-4" />
-            <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
-              {t('admin.failed')}
-            </span>
-          </div>
-        ) : uploading ? (
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground opacity-50">
-            {t('admin.waiting')}
-          </span>
-        ) : (
-          <AdminButton
-            onClick={() => onRemove(item.id)}
-            adminVariant="iconDestructive"
-            size="xs"
-            className="p-2"
-          >
-            <X className="w-4 h-4" />
-          </AdminButton>
-        )}
-      </div>
+      )}
     </div>
   )
 }
-
