@@ -144,7 +144,7 @@ export function DigitalPhotoUploadParams({
   const [uploadPath, setUploadPath] = useState('')
   const [isInitialized, setIsInitialized] = useState(false)
 
-  const [compressionEnabled, setCompressionEnabled] = useState(false)
+  const [compressionEnabled, setCompressionEnabled] = useState(true)
   const [maxSizeMB, setMaxSizeMB] = useState(2)
   const [sliderValue, setSliderValue] = useState(2)
 

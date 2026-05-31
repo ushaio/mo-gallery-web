@@ -65,7 +65,7 @@ export function StoryUploadTab({
   const [uploadSettings, setUploadSettings] = useState<DigitalPhotoUploadSettings>({
     title: '',
     categories: [],
-    compressionEnabled: false,
+    compressionEnabled: true,
     maxSizeMB: 2,
     privacyStripEnabled: false,
   })
