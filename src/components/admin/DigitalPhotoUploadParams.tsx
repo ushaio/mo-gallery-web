@@ -46,6 +46,8 @@ interface DigitalPhotoUploadParamsProps {
   onUploadClick: () => void
   uploading?: boolean
   uploadError?: string
+  hideStorySelector?: boolean
+  initialStoryId?: string
 }
 
 // Inline Prefix Dropdown
@@ -120,6 +122,8 @@ export function DigitalPhotoUploadParams({
   onUploadClick,
   uploading = false,
   uploadError,
+  hideStorySelector = false,
+  initialStoryId,
 }: DigitalPhotoUploadParamsProps) {
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
@@ -145,6 +149,13 @@ export function DigitalPhotoUploadParams({
   const [sliderValue, setSliderValue] = useState(2)
 
   const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
+
+  // Initialize storyId from prop
+  useEffect(() => {
+    if (initialStoryId) {
+      setUploadStoryId(initialStoryId)
+    }
+  }, [initialStoryId])
 
   // Debounce slider value to maxSizeMB
   useEffect(() => {
@@ -300,24 +311,26 @@ export function DigitalPhotoUploadParams({
             </div>
           </div>
 
-          {/* Story */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <BookOpen className="w-3 h-3" />
-              {t('ui.photo_story')}
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowStorySelector(true)}
-              disabled={loadingStories}
-              className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
-            >
-              <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
-                {uploadStoryTitle || t('ui.no_association')}
-              </span>
-              <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </div>
+          {/* Story - conditionally hidden */}
+          {!hideStorySelector && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <BookOpen className="w-3 h-3" />
+                {t('ui.photo_story')}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowStorySelector(true)}
+                disabled={loadingStories}
+                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+              >
+                <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
+                  {uploadStoryTitle || t('ui.no_association')}
+                </span>
+                <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </div>
+          )}
 
           {/* Storage - compact layout */}
           <div className="pt-3 border-t border-border/50">

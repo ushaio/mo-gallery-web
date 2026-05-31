@@ -24,6 +24,7 @@ import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
+import { normalizeCompressionMode } from '@/lib/image-compress'
 import { useAdmin } from '../layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
@@ -40,7 +41,7 @@ import { applySavedOrder, savePhotoOrder } from './stories/utils'
 
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 2,
-  compressionMode: 'size',
+  compressionMode: 'compress',
   storageProvider: 'local',
   categories: [],
   albumIds: [],
@@ -49,7 +50,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
 
 const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 2,
-  compressionMode: 'size',
+  compressionMode: 'compress',
   storageProvider: 'local',
   categories: [],
   albumIds: [],
@@ -492,6 +493,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as UploadSettings
+        if (parsed.compressionMode) parsed.compressionMode = normalizeCompressionMode(parsed.compressionMode)
         restorePasteUploadSettings({ ...DEFAULT_PASTE_UPLOAD_SETTINGS, ...parsed })
       } catch (error) {
         console.error('Failed to restore paste upload settings:', error)
@@ -503,6 +505,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
     try {
       const parsed = JSON.parse(uploadRaw) as UploadSettings
+      if (parsed.compressionMode) parsed.compressionMode = normalizeCompressionMode(parsed.compressionMode)
       restoreUploadSettings({ ...DEFAULT_UPLOAD_SETTINGS, ...parsed })
     } catch (error) {
       console.error('Failed to restore upload settings:', error)
@@ -619,7 +622,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       )}
 
       <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
-      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} />
+      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} currentStoryId={currentStory?.id} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}
         onClose={() => {
@@ -634,6 +637,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         settings={settings}
         categories={categories}
         confirmLabel={t('admin.save_and_process_pasted_images')}
+        currentStoryId={currentStory?.id}
       />
       <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
       <DraftRestoreDialog isOpen={draftRestoreDialog.isOpen} draftTime={draftRestoreDialog.draft?.savedAt || 0} onRestore={handleDraftRestore} onDiscard={handleDraftDiscard} onCancel={handleDraftCancel} t={t} />

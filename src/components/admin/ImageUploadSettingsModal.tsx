@@ -33,6 +33,7 @@ interface ImageUploadSettingsModalProps {
   confirmLabel?: string
   settings?: AdminSettingsDto | null
   categories?: string[]
+  currentStoryId?: string
 }
 
 function getInitialCategories(initialSettings?: UploadSettings) {
@@ -57,6 +58,7 @@ export function ImageUploadSettingsModal({
   initialSettings,
   confirmLabel,
   categories = [],
+  currentStoryId,
 }: ImageUploadSettingsModalProps) {
   const [uploadSettings, setUploadSettings] = useState<DigitalPhotoUploadSettings>({
     title: '',
@@ -149,6 +151,8 @@ export function ImageUploadSettingsModal({
               onUploadClick={handleConfirm}
               uploading={false}
               uploadError=""
+              hideStorySelector={!!currentStoryId}
+              initialStoryId={currentStoryId}
             />
           </div>
         </div>
