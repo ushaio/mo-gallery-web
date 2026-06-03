@@ -2,11 +2,12 @@
 
 import { useState, useEffect, FormEvent } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
-import { login as apiLogin, getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
 import { ArrowRight, Loader2 } from 'lucide-react'
-import { useLanguage } from '@/contexts/LanguageContext'
 import { notFound } from 'next/navigation'
+import { login as apiLogin, getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
+import { setLoginReturnUrl, setOAuthState } from '@/lib/auth-session'
+import { useAuth } from '@/contexts/AuthContext'
+import { useLanguage } from '@/contexts/LanguageContext'
 
 // Get admin login URL from environment variable
 const ADMIN_LOGIN_URL = process.env.NEXT_PUBLIC_ADMIN_LOGIN_URL || 'admin'
@@ -72,10 +73,8 @@ export default function AdminLoginPage() {
 
     try {
       const { url, state } = await getLinuxDoAuthUrl()
-      // Store state for CSRF verification
-      sessionStorage.setItem('linuxdo_oauth_state', state)
-      // Admin login via Linux DO should redirect to admin panel
-      sessionStorage.setItem('login_return_url', '/admin')
+      setOAuthState(state)
+      setLoginReturnUrl('/admin')
       // Redirect to Linux DO authorization page
       window.location.href = url
     } catch (err) {

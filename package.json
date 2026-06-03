@@ -60,7 +60,8 @@
     "server-only": "^0.0.1",
     "sharp": "^0.34.5",
     "shiki": "^3.20.0",
-    "zod": "^4.2.1"
+    "zod": "^4.2.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

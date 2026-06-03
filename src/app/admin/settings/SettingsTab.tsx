@@ -40,6 +40,7 @@ import {
   deleteStorageSource,
   ApiUnauthorizedError,
 } from '@/lib/api'
+import { setAdminBindSession, setOAuthState } from '@/lib/auth-session'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminLoading } from '@/components/admin/AdminLoading'
@@ -248,11 +249,8 @@ export function SettingsTab({
     try {
       setLinuxDoBindLoading(true)
       const { url, state } = await getLinuxDoAuthUrl()
-      // Store state and mark as admin binding flow
-      sessionStorage.setItem('linuxdo_oauth_state', state)
-      sessionStorage.setItem('linuxdo_admin_bind', 'true')
-      // Store current URL to return to after binding
-      sessionStorage.setItem('linuxdo_bind_return_url', window.location.pathname)
+      setOAuthState(state)
+      setAdminBindSession(window.location.pathname)
       // Redirect to Linux DO auth
       window.location.href = url
     } catch (err) {

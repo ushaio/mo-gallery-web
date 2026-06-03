@@ -7,6 +7,7 @@ import { ArrowUp, Loader2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { getAlbums } from '@/lib/api/albums'
 import { getCategories, getPhotosWithMeta } from '@/lib/api/photos'
+import { setAlbumPreview } from '@/lib/gallery-session'
 import type { AlbumDto, PhotoDto, PhotoPaginationMeta } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -223,7 +224,7 @@ export function GalleryContent({
   const handleAlbumClick = useCallback((albumId: string) => {
     const album = albums.find((item) => item.id === albumId)
     if (album) {
-      sessionStorage.setItem(`album_preview_${albumId}`, JSON.stringify(album))
+      setAlbumPreview(albumId, album)
     }
     router.push(`/gallery/albums/${albumId}`)
   }, [albums, router])

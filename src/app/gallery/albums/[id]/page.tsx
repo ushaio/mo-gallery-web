@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, ArrowUp } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { getAlbum } from '@/lib/api/albums'
+import { getAlbumPreview } from '@/lib/gallery-session'
 import type { AlbumDto, PhotoDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -26,14 +27,7 @@ export default function AlbumDetailPage() {
   const albumId = params.id
 
   const [album, setAlbum] = useState<AlbumDto | null>(() => {
-    if (typeof window === 'undefined') return null
-
-    try {
-      const cachedAlbum = sessionStorage.getItem(`album_preview_${albumId}`)
-      return cachedAlbum ? (JSON.parse(cachedAlbum) as AlbumDto) : null
-    } catch {
-      return null
-    }
+    return getAlbumPreview(albumId)
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)

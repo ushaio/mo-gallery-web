@@ -11,39 +11,25 @@ import {
   Star,
   SlidersHorizontal,
 } from 'lucide-react'
-import type { PhotoDto, AlbumDto, AdminSettingsDto, CameraDto, LensDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getAlbums } from '@/lib/api/albums'
 import { getCameras, getLenses } from '@/lib/api/equipment'
+import {
+  MAX_PHOTO_GRID_COLUMNS,
+  MIN_PHOTO_GRID_COLUMNS,
+  type PhotosSortOption,
+  useAdminPreferenceStore,
+  useAdminSessionPreferenceStore,
+} from '@/lib/admin-preferences'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
+import type { PhotoDto, AlbumDto, AdminSettingsDto, CameraDto, LensDto } from '@/lib/api/types'
 
-type SortOption = 'upload-desc' | 'upload-asc' | 'taken-desc' | 'taken-asc'
 type ViewMode = 'grid' | 'list'
 
-const PHOTOS_FILTER_KEY = 'admin-photos-filters'
-
-interface PersistedFilters {
-  search: string
-  categoryFilter: string
-  photoTypeFilter: string
-  channelFilter: string
-  albumFilter: string
-  cameraFilter: string
-  lensFilter: string
-  onlyFeatured: boolean
-  sortBy: SortOption
-  showFilters: boolean
-}
-
-function loadPersistedFilters(): Partial<PersistedFilters> {
-  try {
-    const stored = sessionStorage.getItem(PHOTOS_FILTER_KEY)
-    if (stored) return JSON.parse(stored)
-  } catch {}
-  return {}
-}
+const PHOTO_GRID_CLASS_NAME =
+  'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(var(--admin-photo-grid-columns),minmax(0,1fr))] gap-0.5'
 
 interface PhotosTabProps {
   photos: PhotoDto[]
@@ -86,34 +72,40 @@ export function PhotosTab({
   settings,
   notify,
 }: PhotosTabProps) {
-  const [persisted] = useState(() => loadPersistedFilters())
-  const [search, setSearch] = useState(persisted.search ?? '')
-  const [categoryFilter, setCategoryFilter] = useState(persisted.categoryFilter ?? 'all')
-  const [photoTypeFilter, setPhotoTypeFilter] = useState(persisted.photoTypeFilter ?? 'all')
-  const [channelFilter, setChannelFilter] = useState(persisted.channelFilter ?? 'all')
-  const [albumFilter, setAlbumFilter] = useState(persisted.albumFilter ?? 'all')
-  const [cameraFilter, setCameraFilter] = useState(persisted.cameraFilter ?? 'all')
-  const [lensFilter, setLensFilter] = useState(persisted.lensFilter ?? 'all')
-  const [onlyFeatured, setOnlyFeatured] = useState(persisted.onlyFeatured ?? false)
-  const [sortBy, setSortBy] = useState<SortOption>(persisted.sortBy ?? 'upload-desc')
-  const [showFilters, setShowFilters] = useState(persisted.showFilters ?? false)
+  const photosFilters = useAdminSessionPreferenceStore((state) => state.photosFilters)
+  const setPhotosFilters = useAdminSessionPreferenceStore((state) => state.setPhotosFilters)
+  const gridColumns = useAdminPreferenceStore((state) => state.photoGridColumns)
+  const setPhotoGridColumns = useAdminPreferenceStore((state) => state.setPhotoGridColumns)
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [cameras, setCameras] = useState<CameraDto[]>([])
   const [lenses, setLenses] = useState<LensDto[]>([])
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
 
-  const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+  const {
+    search,
+    categoryFilter,
+    photoTypeFilter,
+    channelFilter,
+    albumFilter,
+    cameraFilter,
+    lensFilter,
+    onlyFeatured,
+    sortBy,
+    showFilters,
+  } = photosFilters
 
-  // Persist filter state to sessionStorage
-  useEffect(() => {
-    try {
-      const state: PersistedFilters = {
-        search, categoryFilter, photoTypeFilter, channelFilter, albumFilter,
-        cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters,
-      }
-      sessionStorage.setItem(PHOTOS_FILTER_KEY, JSON.stringify(state))
-    } catch {}
-  }, [search, categoryFilter, photoTypeFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured, sortBy, showFilters])
+  const setSearch = useCallback((value: string) => setPhotosFilters({ search: value }), [setPhotosFilters])
+  const setCategoryFilter = useCallback((value: string) => setPhotosFilters({ categoryFilter: value }), [setPhotosFilters])
+  const setPhotoTypeFilter = useCallback((value: string) => setPhotosFilters({ photoTypeFilter: value }), [setPhotosFilters])
+  const setChannelFilter = useCallback((value: string) => setPhotosFilters({ channelFilter: value }), [setPhotosFilters])
+  const setAlbumFilter = useCallback((value: string) => setPhotosFilters({ albumFilter: value }), [setPhotosFilters])
+  const setCameraFilter = useCallback((value: string) => setPhotosFilters({ cameraFilter: value }), [setPhotosFilters])
+  const setLensFilter = useCallback((value: string) => setPhotosFilters({ lensFilter: value }), [setPhotosFilters])
+  const setOnlyFeatured = useCallback((value: boolean) => setPhotosFilters({ onlyFeatured: value }), [setPhotosFilters])
+  const setSortBy = useCallback((value: PhotosSortOption) => setPhotosFilters({ sortBy: value }), [setPhotosFilters])
+  const setShowFilters = useCallback((value: boolean) => setPhotosFilters({ showFilters: value }), [setPhotosFilters])
+
+  const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
 
   // Load albums, cameras, and lenses on mount
   useEffect(() => {
@@ -229,18 +221,19 @@ export function PhotosTab({
   }, [photos, search, categoryFilter, photoTypeFilter, channelFilter, albumPhotoIds, cameraFilter, lensFilter, onlyFeatured, sortBy])
 
   const clearAllFilters = () => {
-    setCategoryFilter('all')
-    setPhotoTypeFilter('all')
-    setChannelFilter('all')
-    setAlbumFilter('all')
-    setCameraFilter('all')
-    setLensFilter('all')
-    setOnlyFeatured(false)
-    setSearch('')
-    try { sessionStorage.removeItem(PHOTOS_FILTER_KEY) } catch {}
+    setPhotosFilters({
+      search: '',
+      categoryFilter: 'all',
+      photoTypeFilter: 'all',
+      channelFilter: 'all',
+      albumFilter: 'all',
+      cameraFilter: 'all',
+      lensFilter: 'all',
+      onlyFeatured: false,
+    })
   }
 
-  const sortOptions: { value: SortOption; label: string }[] = [
+  const sortOptions: { value: PhotosSortOption; label: string }[] = [
     { value: 'upload-desc', label: t('admin.sort_upload_desc') },
     { value: 'upload-asc', label: t('admin.sort_upload_asc') },
     { value: 'taken-desc', label: t('admin.sort_taken_desc') },
@@ -289,6 +282,15 @@ export function PhotosTab({
     onPreview(photo)
   }, [handleSelectPhoto, onPreview])
 
+  const hasSelectedPhotos = selectedIds.size >= 1
+  const photoGridStyle = useMemo(() => ({
+    '--admin-photo-grid-columns': String(gridColumns),
+  }) as React.CSSProperties, [gridColumns])
+
+  const handleGridColumnsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setPhotoGridColumns(Number(event.target.value))
+  }, [setPhotoGridColumns])
+
   return (
     <div className="space-y-4">
       <AdminCollectionToolbar
@@ -302,7 +304,7 @@ export function PhotosTab({
                 className="w-4 h-4 accent-primary cursor-pointer rounded"
               />
               <span className="text-sm font-medium text-foreground">
-                {selectedIds.size > 0 ? (
+                {hasSelectedPhotos ? (
                   <span className="text-primary">{selectedIds.size} {t('admin.selected') || 'selected'}</span>
                 ) : (
                   <span className="text-muted-foreground">{filteredPhotos.length} {t('admin.photos')}</span>
@@ -319,7 +321,7 @@ export function PhotosTab({
             {/* Sort */}
             <AdminSelect
               value={sortBy}
-              onChange={(v) => setSortBy(v as SortOption)}
+              onChange={(v) => setSortBy(v as PhotosSortOption)}
               options={sortOptions.map(opt => ({ value: opt.value, label: opt.label }))}
               className="min-w-[140px]"
             />
@@ -371,6 +373,28 @@ export function PhotosTab({
               </AdminButton>
             </div>
 
+            {viewMode === 'grid' ? (
+              <div
+                className="hidden h-9 items-center gap-2 rounded-md border border-border bg-background px-3 sm:flex"
+                title="Grid columns"
+              >
+                <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+                <input
+                  type="range"
+                  min={MIN_PHOTO_GRID_COLUMNS}
+                  max={MAX_PHOTO_GRID_COLUMNS}
+                  step={1}
+                  value={gridColumns}
+                  onChange={handleGridColumnsChange}
+                  aria-label="Grid columns"
+                  className="w-24 accent-primary"
+                />
+                <span className="w-5 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                  {gridColumns}
+                </span>
+              </div>
+            ) : null}
+
             {/* Refresh */}
             <AdminButton
               onClick={onRefresh}
@@ -382,7 +406,7 @@ export function PhotosTab({
             </AdminButton>
           </>
         )}
-        endActions={selectedIds.size > 0 ? (
+        endActions={hasSelectedPhotos ? (
           <div className="flex items-center gap-2">
             <AdminButton
               onClick={onBatchAction}
@@ -645,7 +669,7 @@ export function PhotosTab({
       {/* Photo Grid/List */}
       <div>
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div className={PHOTO_GRID_CLASS_NAME} style={photoGridStyle}>
             {[...Array(12)].map((_, i) => (
               <div key={i} className="aspect-[4/5] bg-muted animate-pulse rounded-lg" />
             ))}
@@ -654,9 +678,10 @@ export function PhotosTab({
           <div
             className={
               viewMode === 'grid'
-                ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4'
+                ? PHOTO_GRID_CLASS_NAME
                 : 'flex flex-col border border-border rounded-lg overflow-hidden'
             }
+            style={viewMode === 'grid' ? photoGridStyle : undefined}
           >
             {filteredPhotos.map((photo) =>
               viewMode === 'grid' ? (

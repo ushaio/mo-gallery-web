@@ -2,9 +2,10 @@
 
 import { Suspense, useEffect, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
-import { loginWithLinuxDo, bindLinuxDoAccount } from '@/lib/api/auth'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { loginWithLinuxDo, bindLinuxDoAccount } from '@/lib/api/auth'
+import { consumeAdminBindSession, consumeLoginReturnUrl, consumeOAuthState } from '@/lib/auth-session'
+import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 function OAuthCallbackContent() {
@@ -45,21 +46,17 @@ function OAuthCallbackContent() {
       }
 
       // Verify state for CSRF protection (optional but recommended)
-      const savedState = sessionStorage.getItem('linuxdo_oauth_state')
+      const savedState = consumeOAuthState()
       if (savedState && state !== savedState) {
         setStatus('error')
         setError(t('login.oauth_state_mismatch'))
         return
       }
-      sessionStorage.removeItem('linuxdo_oauth_state')
 
       // Check if this is an admin bind flow
-      const adminBindFlow = sessionStorage.getItem('linuxdo_admin_bind') === 'true'
-      const bindReturnUrl = sessionStorage.getItem('linuxdo_bind_return_url')
-      sessionStorage.removeItem('linuxdo_admin_bind')
-      sessionStorage.removeItem('linuxdo_bind_return_url')
+      const adminBindSession = consumeAdminBindSession()
 
-      if (adminBindFlow) {
+      if (adminBindSession) {
         // Admin binding flow - need existing token from localStorage (more reliable)
         setIsBindFlow(true)
         const storedToken = token || localStorage.getItem('token')
@@ -72,11 +69,11 @@ function OAuthCallbackContent() {
         try {
           await bindLinuxDoAccount(storedToken, code)
           setStatus('success')
-          setRedirectUrl(bindReturnUrl || '/admin/settings')
+          setRedirectUrl(adminBindSession.returnUrl || '/admin/settings')
 
           // Return to admin settings page
           setTimeout(() => {
-            router.push(bindReturnUrl || '/admin/settings')
+            router.push(adminBindSession.returnUrl || '/admin/settings')
           }, 1500)
         } catch (err) {
           setStatus('error')
@@ -87,8 +84,7 @@ function OAuthCallbackContent() {
 
       // Normal login flow
       // Get the return URL (where user came from before login)
-      const returnUrl = sessionStorage.getItem('login_return_url') || '/'
-      sessionStorage.removeItem('login_return_url')
+      const returnUrl = consumeLoginReturnUrl('/')
 
       try {
         const { token: newToken, user } = await loginWithLinuxDo(code)

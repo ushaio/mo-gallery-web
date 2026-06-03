@@ -2,8 +2,9 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
 import { Loader2 } from 'lucide-react'
+import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
+import { setLoginReturnUrl, setOAuthState } from '@/lib/auth-session'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 function LoginContent() {
@@ -23,8 +24,7 @@ function LoginContent() {
 
     try {
       const { url, state } = await getLinuxDoAuthUrl()
-      // Store state for CSRF verification
-      sessionStorage.setItem('linuxdo_oauth_state', state)
+      setOAuthState(state)
       
       // Get return URL from query parameter, or use referrer, or default to '/'
       const returnUrlParam = searchParams.get('returnUrl')
@@ -49,7 +49,7 @@ function LoginContent() {
         }
       }
       
-      sessionStorage.setItem('login_return_url', returnUrl)
+      setLoginReturnUrl(returnUrl)
       
       // Redirect to Linux DO authorization page
       window.location.href = url
