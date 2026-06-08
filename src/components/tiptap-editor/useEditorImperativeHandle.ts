@@ -15,6 +15,11 @@ import {
   ensureFirstParagraphHasDropCap,
 } from './markdown-converter'
 import { IMAGE_WIDTH_PRESETS } from './editor-constants'
+import {
+  convertStoryPasteUploadPlaceholderToHtml,
+  isStoryPasteUploadPlaceholder,
+  replaceStoryPasteUploadPlaceholderHtml,
+} from './story-paste-upload-placeholder'
 
 export interface NarrativeTipTapEditorHandle {
   getValue: () => string
@@ -87,19 +92,28 @@ export function useEditorImperativeHandle({
       if (!searchValue || !editor) return false
       const currentHtml = editor.getHTML()
 
-      // Try direct match first
-      if (currentHtml.includes(searchValue)) {
-        // Convert Markdown images to HTML for TipTap
-        let processedNext = nextValue
-        if (isMarkdownImageSyntax(nextValue)) {
-          const attrs = convertMarkdownImageToHtmlAttrs(nextValue)
-          if (attrs) {
-            const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
-            const photoIdAttr = attrs.photoId ? ` data-photo-id="${attrs.photoId}"` : ''
-            processedNext = `<img src="${attrs.src}" alt="${attrs.alt || ''}"${photoIdAttr}${widthAttr} />`
-          }
+      const prepareNextValue = () => {
+        if (isStoryPasteUploadPlaceholder(nextValue)) {
+          return convertStoryPasteUploadPlaceholderToHtml(nextValue)
         }
 
+        if (!isMarkdownImageSyntax(nextValue)) {
+          return nextValue
+        }
+
+        const attrs = convertMarkdownImageToHtmlAttrs(nextValue)
+        if (!attrs) {
+          return nextValue
+        }
+
+        const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
+        const photoIdAttr = attrs.photoId ? ` data-photo-id="${attrs.photoId}"` : ''
+        return `<img src="${attrs.src}" alt="${attrs.alt || ''}"${photoIdAttr}${widthAttr} />`
+      }
+
+      // Try direct match first
+      if (currentHtml.includes(searchValue)) {
+        const processedNext = prepareNextValue()
         const newHtml = currentHtml.replace(searchValue, processedNext)
         editor.commands.setContent(newHtml)
         ensureFirstParagraphHasDropCap(editor)
@@ -109,46 +123,18 @@ export function useEditorImperativeHandle({
         return true
       }
 
-      // Try to find story-paste-upload comment marker
-      const commentMatch = searchValue.match(/<!-- story-paste-upload:([a-f0-9-]+) -->/)
-      if (commentMatch) {
-        const uploadId = commentMatch[1]
-        const commentPattern = `<!-- story-paste-upload:${uploadId} -->`
-
-        if (currentHtml.includes(commentPattern)) {
-          // Find the comment and the following content until next paragraph or end
-          const commentIndex = currentHtml.indexOf(commentPattern)
-          const afterComment = currentHtml.substring(commentIndex)
-
-          // Match the comment and the following paragraph with the placeholder text
-          // Pattern: <!-- comment --></p><p><a>text</a> or <!-- comment -->\n[text]
-          const placeholderPattern = new RegExp(
-            `${commentPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?(?:</p>\\s*<p>.*?</p>|\\n\\[.*?\\]\\(\\)\\n?)`,
-            'i'
-          )
-
-          const match = currentHtml.match(placeholderPattern)
-          if (match) {
-            // Convert Markdown images to HTML for TipTap
-            let processedNext = nextValue
-            if (isMarkdownImageSyntax(nextValue)) {
-              const attrs = convertMarkdownImageToHtmlAttrs(nextValue)
-              if (attrs) {
-                const widthAttr = attrs.width ? ` width="${attrs.width}"` : ''
-                const photoIdAttr = attrs.photoId ? ` data-photo-id="${attrs.photoId}"` : ''
-                processedNext = `<p><img src="${attrs.src}" alt="${attrs.alt || ''}"${photoIdAttr}${widthAttr} /></p>`
-              }
-            }
-
-            const newHtml = currentHtml.replace(match[0], processedNext)
-            editor.commands.setContent(newHtml)
-            ensureFirstParagraphHasDropCap(editor)
-            currentValueRef.current = newHtml
-            onChange(newHtml)
-            focusEditor()
-            return true
-          }
-        }
+      const placeholderReplacement = replaceStoryPasteUploadPlaceholderHtml(
+        currentHtml,
+        searchValue,
+        prepareNextValue(),
+      )
+      if (placeholderReplacement?.replaced) {
+        editor.commands.setContent(placeholderReplacement.html)
+        ensureFirstParagraphHasDropCap(editor)
+        currentValueRef.current = placeholderReplacement.html
+        onChange(placeholderReplacement.html)
+        focusEditor()
+        return true
       }
 
       return false
