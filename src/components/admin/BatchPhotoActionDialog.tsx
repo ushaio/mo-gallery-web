@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Loader2, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronDown, Loader2, SlidersHorizontal, X } from 'lucide-react'
 import { getFilmRolls } from '@/lib/api/film-rolls'
 import type { FilmRollDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -171,92 +171,99 @@ export function BatchPhotoActionDialog({
                 </AdminButton>
               </div>
 
-              <div className="grid gap-5 md:grid-cols-[220px_1fr]">
+              <div className="space-y-3">
                 <div className="space-y-3">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     {t('admin.batch_action') || 'Action'}
                   </label>
-                  <div className="border border-border bg-muted/20 p-2">
+                  <div className="space-y-2">
                     {actionOptions.map((option) => (
-                      <AdminButton
-                        key={option.value}
-                        onClick={() => setAction(option.value as BatchAction)}
-                        adminVariant="unstyled"
-                        className={`w-full justify-start px-3 py-2 text-left text-xs font-bold uppercase tracking-wider transition-colors ${
-                          action === option.value
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
-                      >
-                        {option.label}
-                      </AdminButton>
+                      <div key={option.value} className="border border-border bg-muted/20">
+                        <AdminButton
+                          onClick={() => setAction(option.value as BatchAction)}
+                          adminVariant="unstyled"
+                          className={`flex w-full items-center justify-between px-4 py-3 text-left text-xs font-bold uppercase tracking-wider transition-colors ${
+                            action === option.value
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                          aria-expanded={action === option.value}
+                        >
+                          <span>{option.label}</span>
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${
+                              action === option.value ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </AdminButton>
+
+                        {action === option.value && (
+                          <div className="border-t border-border bg-background/60 p-4">
+                            {action === 'photoType' && (
+                              <div className="space-y-4">
+                                <div>
+                                  <AdminSelect value={photoType} onChange={(value) => setPhotoType(value as PhotoType)} options={photoTypeOptions} />
+                                </div>
+
+                                {photoType === 'film' && (
+                                  <div>
+                                    <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                                      {t('admin.film_roll_select')}
+                                    </label>
+                                    <AdminSelect
+                                      value={filmRollId}
+                                      onChange={setFilmRollId}
+                                      options={filmRollOptions}
+                                      placeholder={loadingFilmRolls ? t('common.loading') : t('admin.film_roll_select')}
+                                      disabled={loadingFilmRolls || filmRollOptions.length === 0}
+                                    />
+                                    {filmRollOptions.length === 0 && !loadingFilmRolls && (
+                                      <p className="mt-2 text-xs text-muted-foreground">{t('admin.no_film_roll')}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {action === 'takenAt' && (
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                                  {t('admin.batch_taken_at') || 'Date taken'}
+                                </label>
+                                <AdminInput
+                                  type="datetime-local"
+                                  value={takenAt}
+                                  onChange={(event) => setTakenAt(event.target.value)}
+                                />
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {t('admin.batch_taken_at_hint') || 'Applies the same date and time to all selected photos.'}
+                                </p>
+                              </div>
+                            )}
+
+                            {action === 'showFlag' && (
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                                  {t('admin.show_in_gallery')}
+                                </label>
+                                <AdminSelect
+                                  value={showFlag ? 'true' : 'false'}
+                                  onChange={(value) => setShowFlag(value === 'true')}
+                                  options={[
+                                    { value: 'true', label: t('common.enabled') },
+                                    { value: 'false', label: t('common.disabled') },
+                                  ]}
+                                />
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  {t('admin.batch_show_flag_hint') || 'Controls whether selected photos appear in the public gallery.'}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
-                </div>
-
-                <div>
-                  {action === 'photoType' && (
-                    <div className="space-y-4 border border-border bg-muted/20 p-4 min-h-[144px]">
-                      <div>
-                        <AdminSelect value={photoType} onChange={(value) => setPhotoType(value as PhotoType)} options={photoTypeOptions} />
-                      </div>
-
-                      {photoType === 'film' && (
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                            {t('admin.film_roll_select')}
-                          </label>
-                          <AdminSelect
-                            value={filmRollId}
-                            onChange={setFilmRollId}
-                            options={filmRollOptions}
-                            placeholder={loadingFilmRolls ? t('common.loading') : t('admin.film_roll_select')}
-                            disabled={loadingFilmRolls || filmRollOptions.length === 0}
-                          />
-                          {filmRollOptions.length === 0 && !loadingFilmRolls && (
-                            <p className="mt-2 text-xs text-muted-foreground">{t('admin.no_film_roll')}</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {action === 'takenAt' && (
-                    <div className="space-y-4 border border-border bg-muted/20 p-4 min-h-[144px]">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                          {t('admin.batch_taken_at') || 'Date taken'}
-                        </label>
-                        <AdminInput
-                          type="datetime-local"
-                          value={takenAt}
-                          onChange={(event) => setTakenAt(event.target.value)}
-                        />
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t('admin.batch_taken_at_hint') || 'Applies the same date and time to all selected photos.'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  {action === 'showFlag' && (
-                    <div className="space-y-4 border border-border bg-muted/20 p-4 min-h-[144px]">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                          {t('admin.show_in_gallery')}
-                        </label>
-                        <AdminSelect
-                          value={showFlag ? 'true' : 'false'}
-                          onChange={(value) => setShowFlag(value === 'true')}
-                          options={[
-                            { value: 'true', label: t('common.enabled') },
-                            { value: 'false', label: t('common.disabled') },
-                          ]}
-                        />
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t('admin.batch_show_flag_hint') || 'Controls whether selected photos appear in the public gallery.'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
