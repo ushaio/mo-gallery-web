@@ -39,6 +39,17 @@ export class LocalStorageProvider implements StorageProvider {
     }
   }
 
+  private assertSafePath(inputPath: string | undefined): void {
+    if (!inputPath) return
+    const resolved = path.resolve(this.basePath, inputPath)
+    if (!resolved.startsWith(this.basePath + path.sep) && resolved !== this.basePath) {
+      throw new StorageError(
+        `Unsafe storage path: ${inputPath}`,
+        'LOCAL_UNSAFE_PATH'
+      )
+    }
+  }
+
   private async ensureDirectory(): Promise<void> {
     if (!existsSync(this.basePath)) {
       await mkdir(this.basePath, { recursive: true })
@@ -51,6 +62,8 @@ export class LocalStorageProvider implements StorageProvider {
   ): Promise<UploadResult> {
     try {
       await this.ensureDirectory()
+
+      this.assertSafePath(file.path)
 
       // Ensure subfolder exists if specified
       if (file.path) {
@@ -94,6 +107,9 @@ export class LocalStorageProvider implements StorageProvider {
 
   async delete(key: string, thumbnailKey?: string): Promise<void> {
     try {
+      this.assertSafePath(key)
+      if (thumbnailKey) this.assertSafePath(thumbnailKey)
+
       const filePath = path.join(this.basePath, key)
       if (existsSync(filePath)) {
         await unlink(filePath)
@@ -116,11 +132,16 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async download(key: string): Promise<Buffer> {
+    this.assertSafePath(key)
     const filePath = path.join(this.basePath, key)
     return readFile(filePath)
   }
 
   async move(oldKey: string, newPath: string, thumbnailKey?: string): Promise<MoveResult> {
+    this.assertSafePath(oldKey)
+    this.assertSafePath(newPath)
+    if (thumbnailKey) this.assertSafePath(thumbnailKey)
+
     const filename = path.basename(oldKey)
     const newKey = newPath ? `${newPath}/${filename}` : filename
 
@@ -203,7 +224,13 @@ export class LocalStorageProvider implements StorageProvider {
     const parts = [this.baseUrl]
     if (subfolder) parts.push(subfolder)
     parts.push(filename)
-    return parts.join('/').replace(/\/+/g, '/')
+    const joined = parts.join('/')
+    const isAbsoluteUrl = /^https?:\/\//i.test(joined)
+    const [scheme, rest] = isAbsoluteUrl
+      ? joined.split('://')
+      : ['', joined]
+    const cleaned = rest.replace(/\/+/g, '/')
+    return isAbsoluteUrl ? `${scheme}://${cleaned}` : cleaned
   }
 
   private buildFilePath(filename: string, subfolder?: string): string {
