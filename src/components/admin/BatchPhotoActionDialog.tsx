@@ -8,7 +8,7 @@ import type { FilmRollDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
-type BatchAction = 'photoType' | 'takenAt'
+type BatchAction = 'photoType' | 'takenAt' | 'showFlag'
 type PhotoType = 'digital' | 'film'
 
 export interface BatchPhotoActionInput {
@@ -16,6 +16,7 @@ export interface BatchPhotoActionInput {
   photoType?: PhotoType
   filmRollId?: string | null
   takenAt?: string
+  showFlag?: boolean
 }
 
 interface BatchPhotoActionDialogProps {
@@ -41,6 +42,7 @@ export function BatchPhotoActionDialog({
   const [photoType, setPhotoType] = useState<PhotoType>('digital')
   const [filmRollId, setFilmRollId] = useState('')
   const [takenAt, setTakenAt] = useState('')
+  const [showFlag, setShowFlag] = useState(true)
   const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
   const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
 
@@ -50,6 +52,7 @@ export function BatchPhotoActionDialog({
     setPhotoType('digital')
     setFilmRollId('')
     setTakenAt('')
+    setShowFlag(true)
   }, [isOpen])
 
   useEffect(() => {
@@ -77,6 +80,7 @@ export function BatchPhotoActionDialog({
   const actionOptions = useMemo(() => [
     { value: 'photoType', label: t('admin.batch_action_photo_type') || 'Modify photo type' },
     { value: 'takenAt', label: t('admin.batch_action_taken_at') || 'Modify date taken' },
+    { value: 'showFlag', label: t('admin.batch_action_show_flag') || 'Modify gallery visibility' },
   ], [t])
 
   const photoTypeOptions = useMemo(() => [
@@ -92,7 +96,9 @@ export function BatchPhotoActionDialog({
   const canConfirm = !isSubmitting && (
     action === 'photoType'
       ? photoType !== 'film' || filmRollId.length > 0
-      : takenAt.length > 0 && Number.isFinite(new Date(takenAt).getTime())
+      : action === 'takenAt'
+        ? takenAt.length > 0 && Number.isFinite(new Date(takenAt).getTime())
+        : true
   )
 
   const handleConfirm = async () => {
@@ -101,6 +107,13 @@ export function BatchPhotoActionDialog({
       await onConfirm({
         action,
         takenAt: new Date(takenAt).toISOString(),
+      })
+      return
+    }
+    if (action === 'showFlag') {
+      await onConfirm({
+        action,
+        showFlag,
       })
       return
     }
@@ -220,6 +233,26 @@ export function BatchPhotoActionDialog({
                         />
                         <p className="mt-2 text-xs text-muted-foreground">
                           {t('admin.batch_taken_at_hint') || 'Applies the same date and time to all selected photos.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {action === 'showFlag' && (
+                    <div className="space-y-4 border border-border bg-muted/20 p-4 min-h-[144px]">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                          {t('admin.show_in_gallery')}
+                        </label>
+                        <AdminSelect
+                          value={showFlag ? 'true' : 'false'}
+                          onChange={(value) => setShowFlag(value === 'true')}
+                          options={[
+                            { value: 'true', label: t('common.enabled') },
+                            { value: 'false', label: t('common.disabled') },
+                          ]}
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t('admin.batch_show_flag_hint') || 'Controls whether selected photos appear in the public gallery.'}
                         </p>
                       </div>
                     </div>

@@ -20,6 +20,7 @@ import {
   addPhotosToStory,
   batchDeletePhotos,
   batchUpdatePhotoTakenAt,
+  batchUpdatePhotoShowFlag,
   batchUpdatePhotoType,
   batchUpdatePhotoUrls,
   checkPhotosStories,
@@ -339,6 +340,19 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           token,
           photoIds: Array.from(selectedPhotoIds),
           takenAt: input.takenAt,
+        })
+        setSelectedPhotoIds(new Set())
+        await refreshPhotos()
+        notify(`${result.updated} ${t('admin.batch_update_completed') || 'photos updated'}`)
+        if (result.failed > 0) {
+          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
+        }
+      }
+      if (input.action === 'showFlag' && input.showFlag !== undefined) {
+        const result = await batchUpdatePhotoShowFlag({
+          token,
+          photoIds: Array.from(selectedPhotoIds),
+          showFlag: input.showFlag,
         })
         setSelectedPhotoIds(new Set())
         await refreshPhotos()

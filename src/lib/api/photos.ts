@@ -389,6 +389,24 @@ export async function batchUpdatePhotoTakenAt(input: {
   )
 }
 
+export async function batchUpdatePhotoShowFlag(input: {
+  token: string
+  photoIds: string[]
+  showFlag: boolean
+}): Promise<{ updated: number; failed: number; errors: string[] }> {
+  return apiRequestData<{ updated: number; failed: number; errors: string[] }>(
+    '/api/admin/photos/batch-update-show-flag',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        photoIds: input.photoIds,
+        showFlag: input.showFlag,
+      }),
+    },
+    input.token,
+  )
+}
+
 export async function batchUpdatePhotoUrls(
   token: string,
   params: {
