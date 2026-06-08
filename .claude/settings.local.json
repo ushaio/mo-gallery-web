@@ -12,7 +12,10 @@
       "Bash(curl:*)",
       "Bash(echo:*)",
       "Bash(npm run build)",
-      "Bash(tree -L 2 -I 'node_modules|.next|.git' --dirsfirst)"
+      "Bash(tree -L 2 -I 'node_modules|.next|.git' --dirsfirst)",
+      "Bash(npx eslint *)",
+      "Bash(pnpm run *)",
+      "Bash(git add *)"
     ]
   }
 }
