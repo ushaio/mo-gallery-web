@@ -169,12 +169,13 @@ photos.get('/photos', async (c) => {
     const page = pageStr ? parseInt(pageStr) : 1
     const pageSize = pageSizeStr ? parseInt(pageSizeStr) : (limitStr ? parseInt(limitStr) : 20)
     const skip = (page - 1) * pageSize
+    const publicWhere = { ...where, showFlag: true }
 
     // Get total count and photos in parallel
     const [total, photosList] = await Promise.all([
-      db.photo.count({ where }),
+      db.photo.count({ where: publicWhere }),
       db.photo.findMany({
-        where,
+        where: publicWhere,
         include: {
           categories: true,
           camera: true,
@@ -212,7 +213,7 @@ photos.get('/photos', async (c) => {
 photos.get('/photos/featured', async (c) => {
   try {
     const photosList = await db.photo.findMany({
-      where: { isFeatured: true },
+      where: { isFeatured: true, showFlag: true },
       include: {
         categories: true,
         camera: true,
@@ -356,6 +357,7 @@ photos.post('/admin/photos', async (c) => {
     const storagePathFull = formData.get('storage_path_full') === 'true'
     const fileHash = formData.get('file_hash') as string | null
     const filmRollId = formData.get('film_roll_id') as string | null
+    const showFlag = formData.get('show_flag') !== 'false'
     const originFlagInput = formData.get('origin_flag')
     const originFlag =
       typeof originFlagInput === 'string' && allowedOriginFlags.has(originFlagInput)
@@ -547,6 +549,7 @@ photos.post('/admin/photos', async (c) => {
         height: metadata.height || 0,
         size: buffer.length,
         isFeatured: false,
+        showFlag,
         dominantColors: dominantColors.length > 0 ? JSON.stringify(dominantColors) : null,
         fileHash: fileHash || null,
         // Equipment relations
@@ -953,6 +956,7 @@ photos.patch('/admin/photos/:id', async (c) => {
 
     if (body.title !== undefined) updateData.title = body.title
     if (body.isFeatured !== undefined) updateData.isFeatured = body.isFeatured
+    if (body.showFlag !== undefined) updateData.showFlag = Boolean(body.showFlag)
     if (body.takenAt !== undefined) updateData.takenAt = body.takenAt ? new Date(body.takenAt) : null
 
     // Handle storage path change (move file)

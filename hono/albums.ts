@@ -50,10 +50,11 @@ albums.get('/albums', async (c) => {
       where: { isPublished: true },
       include: {
         photos: {
+          where: { showFlag: true },
           include: { categories: true },
         },
         _count: {
-          select: { photos: true },
+          select: { photos: { where: { showFlag: true } } },
         },
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
@@ -86,10 +87,11 @@ albums.get('/albums/:id', async (c) => {
       where: { id, isPublished: true },
       include: {
         photos: {
+          where: { showFlag: true },
           include: { categories: true },
         },
         _count: {
-          select: { photos: true },
+          select: { photos: { where: { showFlag: true } } },
         },
       },
     })

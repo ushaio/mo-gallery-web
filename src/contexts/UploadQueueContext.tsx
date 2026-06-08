@@ -31,6 +31,7 @@ export interface UploadTask {
   storyId?: string
   albumIds?: string[]
   filmRollId?: string
+  showFlag?: boolean
   fileHash?: string // Original file hash for duplicate detection
   batchId: string // Unique batch identifier
   // Compression settings
@@ -56,6 +57,7 @@ interface UploadQueueContextType {
     storyId?: string
     albumIds?: string[]
     filmRollId?: string
+    showFlag?: boolean
     compressionMode?: CompressionMode
     maxSizeMB?: number
     maxWidthOrHeight?: number
@@ -282,6 +284,7 @@ export function UploadQueueProvider({
         storage_path_full: task.storagePathFull,
         file_hash: task.fileHash,
         film_roll_id: task.filmRollId,
+        show_flag: task.showFlag,
         onProgress: (progress) => {
           const mappedProgress = Math.round(uploadProgressOffset + (progress / 100) * uploadProgressRange)
           updateTaskProgress(task.id, mappedProgress, 'uploading')
@@ -387,10 +390,11 @@ export function UploadQueueProvider({
       storyId?: string
       albumIds?: string[]
       filmRollId?: string
-    compressionMode?: CompressionMode
-     maxSizeMB?: number
-       maxWidthOrHeight?: number
-       token: string
+      showFlag?: boolean
+      compressionMode?: CompressionMode
+      maxSizeMB?: number
+      maxWidthOrHeight?: number
+      token: string
     }) => {
       tokenRef.current = params.token
 
@@ -424,11 +428,12 @@ export function UploadQueueProvider({
             storyId: params.storyId,
             albumIds: params.albumIds,
             filmRollId: params.filmRollId,
+            showFlag: params.showFlag ?? true,
             fileHash: item.fileHash,
             compressionMode: params.compressionMode,
-         maxSizeMB: params.maxSizeMB,
-           maxWidthOrHeight: params.maxWidthOrHeight,
-           batchId,
+            maxSizeMB: params.maxSizeMB,
+            maxWidthOrHeight: params.maxWidthOrHeight,
+            batchId,
           }
         })
       )

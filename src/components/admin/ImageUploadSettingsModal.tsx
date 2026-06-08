@@ -15,6 +15,7 @@ export interface UploadSettings {
   storagePath?: string
   storagePathFull?: boolean
   compressionMode?: CompressionMode
+  showFlag?: boolean
   stripGps?: boolean
   categories?: string[]
   albumIds?: string[]
@@ -65,6 +66,7 @@ export function ImageUploadSettingsModal({
     categories: [],
     compressionEnabled: true,
     maxSizeMB: 0,
+    showFlag: true,
     privacyStripEnabled: false,
   })
 
@@ -84,6 +86,7 @@ export function ImageUploadSettingsModal({
       storagePathFull: initialSettings?.storagePathFull,
       compressionEnabled: compressionMode !== 'none',
       maxSizeMB: initialSettings?.maxSizeMB ?? 0,
+      showFlag: initialSettings?.showFlag ?? true,
       privacyStripEnabled: Boolean(initialSettings?.stripGps),
     })
   }, [initialSettings, isOpen])
@@ -91,6 +94,7 @@ export function ImageUploadSettingsModal({
   const handleConfirm = () => {
     const settingsToSave: UploadSettings = {
       compressionMode: uploadSettings.compressionEnabled ? 'compress' : 'none',
+      showFlag: uploadSettings.showFlag,
       stripGps: uploadSettings.privacyStripEnabled,
       categories: uploadSettings.categories,
       albumIds: uploadSettings.albumIds,

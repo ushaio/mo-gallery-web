@@ -34,6 +34,7 @@ export interface FilmPhotoUploadSettings {
   storagePathFull?: boolean
   compressionEnabled: boolean
   maxSizeMB: number
+  showFlag: boolean
   privacyStripEnabled: boolean
 }
 
@@ -151,6 +152,7 @@ export function FilmPhotoUploadParams({
   const [compressionEnabled, setCompressionEnabled] = useState(true)
   const [maxSizeMB, setMaxSizeMB] = useState(0)
   const [sliderValue, setSliderValue] = useState(0)
+  const [showFlag, setShowFlag] = useState(true)
 
   const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
 
@@ -260,6 +262,7 @@ export function FilmPhotoUploadParams({
       storagePathFull: useCustomPrefix,
       compressionEnabled,
       maxSizeMB,
+      showFlag,
       privacyStripEnabled,
     })
   }, [
@@ -274,6 +277,7 @@ export function FilmPhotoUploadParams({
     configPrefix,
     compressionEnabled,
     maxSizeMB,
+    showFlag,
     privacyStripEnabled,
     onSettingsChange,
   ])
@@ -409,6 +413,27 @@ export function FilmPhotoUploadParams({
 
           {/* Privacy & Compression - inline toggles */}
           <div className="pt-3 border-t border-border/50 space-y-3">
+            {/* Gallery Visibility */}
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <FolderOpen className="w-3 h-3" />
+                {t('admin.show_in_gallery')}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowFlag(prev => !prev)}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                  showFlag ? 'bg-primary' : 'bg-muted'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none block size-4 rounded-full bg-background shadow-lg transition-transform ${
+                    showFlag ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+
             {/* Privacy Strip */}
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">

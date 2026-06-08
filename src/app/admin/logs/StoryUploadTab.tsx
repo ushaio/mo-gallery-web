@@ -67,6 +67,7 @@ export function StoryUploadTab({
     categories: [],
     compressionEnabled: true,
     maxSizeMB: 0,
+    showFlag: true,
     privacyStripEnabled: false,
   })
 
@@ -270,6 +271,7 @@ export function StoryUploadTab({
         storagePathFull: uploadSettings.storagePathFull,
         storyId: story.id,
         albumIds: uploadSettings.albumIds,
+        showFlag: uploadSettings.showFlag,
         compressionMode: uploadSettings.compressionEnabled ? 'compress' : undefined,
         maxSizeMB: uploadSettings.compressionEnabled && uploadSettings.maxSizeMB > 0 ? uploadSettings.maxSizeMB : undefined,
         token,

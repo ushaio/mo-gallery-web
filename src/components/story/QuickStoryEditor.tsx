@@ -362,6 +362,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
               file: fileToUpload,
               title: fileToUpload.name,
               file_hash: fileHash,
+              show_flag: true,
               onProgress: (progress) => {
                 setUploadQueue(prev => prev.map(p => p.id === pending.id ? { ...p, progress } : p))
               }

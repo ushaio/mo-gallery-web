@@ -480,6 +480,7 @@ export function UploadTab({
     categories: [],
     compressionEnabled: false,
     maxSizeMB: 0,
+    showFlag: true,
     privacyStripEnabled: false,
   })
   const [filmSettings, setFilmSettings] = useState<FilmPhotoUploadSettings>({
@@ -487,6 +488,7 @@ export function UploadTab({
     categories: [],
     compressionEnabled: false,
     maxSizeMB: 0,
+    showFlag: true,
     privacyStripEnabled: false,
   })
 
@@ -812,6 +814,7 @@ export function UploadTab({
       storyId: currentSettings.storyId,
       albumIds: currentSettings.albumIds,
       filmRollId: uploadType === 'film' ? (filmSettings.filmRollId || undefined) : undefined,
+      showFlag: currentSettings.showFlag,
       compressionMode: currentSettings.compressionEnabled ? 'compress' : undefined,
       maxSizeMB: currentSettings.compressionEnabled && currentSettings.maxSizeMB > 0 ? currentSettings.maxSizeMB : undefined,
       token,

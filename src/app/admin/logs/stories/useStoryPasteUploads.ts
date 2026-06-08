@@ -139,6 +139,7 @@ export function useStoryPasteUploads({
           storage_source_id: nextSettings.storageSourceId,
           storage_path: nextSettings.storagePath,
           storage_path_full: nextSettings.storagePathFull,
+          show_flag: nextSettings.showFlag,
           file_hash: fileHash,
           onProgress: (progress) => {
             setUploadProgress({ current: index + 1, total: files.length, currentFile: `${file.name} ${progress}%` })

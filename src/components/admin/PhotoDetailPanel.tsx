@@ -71,6 +71,7 @@ export function PhotoDetailPanel({
     title: '',
     category: '',
     isFeatured: false,
+    showFlag: true,
     storagePath: '',
     photoType: 'digital' as 'digital' | 'film',
     filmRollId: '',
@@ -112,6 +113,7 @@ export function PhotoDetailPanel({
         title: photo.title || '',
         category: photo.category || '',
         isFeatured: photo.isFeatured || false,
+        showFlag: photo.showFlag ?? true,
         storagePath,
         photoType: photo.photoType || 'digital',
         filmRollId: photo.filmRollId || '',
@@ -219,6 +221,7 @@ export function PhotoDetailPanel({
           title: editData.title,
           category: editData.category,
           isFeatured: editData.isFeatured,
+          showFlag: editData.showFlag,
           photoType: editData.photoType,
           filmRollId: editData.photoType === 'film' ? editData.filmRollId : null,
           ...(pathChanged && { storagePath: editData.storagePath }),
@@ -431,6 +434,7 @@ export function PhotoDetailPanel({
                             title: editData.title,
                             category: editData.category,
                             isFeatured: newFeatured,
+                            showFlag: editData.showFlag,
                             photoType: editData.photoType,
                             filmRollId: editData.photoType === 'film' ? editData.filmRollId : null,
                           },
@@ -535,6 +539,32 @@ export function PhotoDetailPanel({
                               { value: 'film', label: t('admin.upload_type_film') },
                             ]}
                           />
+                        </div>
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                            <ImageIcon className="w-4 h-4" />
+                            {t('admin.show_in_gallery')}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setEditData((prev) => ({ ...prev, showFlag: !prev.showFlag }))}
+                            className="flex w-full items-center justify-between border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-primary/50"
+                          >
+                            <span className={editData.showFlag ? 'text-foreground' : 'text-muted-foreground'}>
+                              {editData.showFlag ? t('common.enabled') : t('common.disabled')}
+                            </span>
+                            <span
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                                editData.showFlag ? 'bg-primary' : 'bg-muted'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none block size-4 rounded-full bg-background shadow-lg transition-transform ${
+                                  editData.showFlag ? 'translate-x-4' : 'translate-x-0.5'
+                                }`}
+                              />
+                            </span>
+                          </button>
                         </div>
                         {editData.photoType === 'film' && (
                           <div className="space-y-3 md:col-span-2">

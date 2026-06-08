@@ -42,6 +42,7 @@ import { applySavedOrder, savePhotoOrder } from './stories/utils'
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
   compressionMode: 'compress',
+  showFlag: true,
   storageProvider: 'local',
   categories: [],
   albumIds: [],
@@ -51,6 +52,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
 const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
   compressionMode: 'compress',
+  showFlag: true,
   storageProvider: 'local',
   categories: [],
   albumIds: [],

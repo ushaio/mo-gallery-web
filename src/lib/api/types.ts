@@ -49,6 +49,7 @@ export interface PhotoDto {
   height: number
   size?: number
   isFeatured: boolean
+  showFlag?: boolean
   createdAt: string
   storageProvider?: string
   storageKey?: string

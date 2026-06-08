@@ -76,7 +76,7 @@ function mapStoryToDto(s: any): StoryDto {
 
 export async function queryFeaturedPhotos(): Promise<PhotoDto[]> {
   const photos = await db.photo.findMany({
-    where: { isFeatured: true },
+    where: { isFeatured: true, showFlag: true },
     include: PHOTO_INCLUDE,
     take: 6,
     orderBy: PHOTO_ORDER,
@@ -95,8 +95,8 @@ export async function queryPhotosWithMeta(params?: {
 
   const where =
     params?.category && params.category !== '全部'
-      ? { categories: { some: { name: params.category } } }
-      : {}
+      ? { categories: { some: { name: params.category } }, showFlag: true }
+      : { showFlag: true }
 
   const [total, photos] = await Promise.all([
     db.photo.count({ where }),
@@ -161,7 +161,7 @@ export async function queryBlogCategories(): Promise<string[]> {
 export async function queryStories(): Promise<StoryDto[]> {
   const stories = await db.story.findMany({
     where: { isPublished: true },
-    include: { photos: { include: PHOTO_INCLUDE } },
+    include: { photos: { where: { showFlag: true }, include: PHOTO_INCLUDE } },
     orderBy: { createdAt: 'desc' },
   })
   return stories.map(mapStoryToDto)
@@ -170,7 +170,7 @@ export async function queryStories(): Promise<StoryDto[]> {
 export const queryStory = cache(async (id: string): Promise<StoryDto | null> => {
   const story = await db.story.findFirst({
     where: { id, isPublished: true },
-    include: { photos: { include: PHOTO_INCLUDE } },
+    include: { photos: { where: { showFlag: true }, include: PHOTO_INCLUDE } },
   })
   return story ? mapStoryToDto(story) : null
 })
@@ -184,6 +184,7 @@ export async function queryFilmRollsWithPhotos(): Promise<FilmRollDto[]> {
     orderBy: [{ shootDate: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
     include: {
       filmPhotos: {
+        where: { photo: { showFlag: true } },
         orderBy: { frameNumber: 'asc' },
         include: {
           photo: { include: PHOTO_INCLUDE },

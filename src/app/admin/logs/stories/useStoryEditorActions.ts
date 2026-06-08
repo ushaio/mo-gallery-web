@@ -284,6 +284,7 @@ export function useStoryEditorActions({
           storage_source_id: settings.storageSourceId,
           storage_path: settings.storagePath,
           storage_path_full: settings.storagePathFull,
+          show_flag: settings.showFlag,
           file_hash: fileHash,
           onProgress: (progress) => {
             setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, progress } : image))
