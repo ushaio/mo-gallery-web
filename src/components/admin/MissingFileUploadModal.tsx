@@ -185,8 +185,7 @@ export function MissingFileUploadModal({
               onChange={v => setCompressionMode(v as CompressionMode)}
               options={[
                 { value: 'none', label: t('admin.compression_none') },
-                { value: 'quality', label: t('admin.compression_quality') },
-                { value: 'size', label: t('admin.compression_size') },
+                { value: 'compress', label: t('admin.compression_enabled') || '压缩' },
               ]}
             />
           </div>

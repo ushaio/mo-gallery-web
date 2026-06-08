@@ -1,25 +1,43 @@
 import imageCompression from 'browser-image-compression'
 
-export type CompressionMode = 'none' | 'quality' | 'size'
+export type CompressionMode = 'none' | 'compress'
 
 export interface CompressionOptions {
   mode?: CompressionMode
   maxSizeMB?: number
   maxWidthOrHeight?: number
-  initialQuality?: number
+  fileType?: string
 }
 
-const PRESETS: Record<CompressionMode, Partial<CompressionOptions>> = {
-  none: {},
-  quality: { maxSizeMB: 8, maxWidthOrHeight: 8192, initialQuality: 0.92 },
-  size: { maxSizeMB: 1.5, maxWidthOrHeight: 2048, initialQuality: 0.65 },
+const COMPRESS_DEFAULTS = {
+  maxSizeMB: 2,
+  maxWidthOrHeight: 4096,
+  fileType: 'image/webp',
 }
 
 const MIN_QUALITY = 0.45
 const MIN_LONG_EDGE = 1280
+const KEEP_RESOLUTION_SENTINEL = 9999
+
+// Backward compat: legacy values 'quality'/'size' map to 'compress'
+export function normalizeCompressionMode(value: unknown): CompressionMode {
+  if (value === 'none') return 'none'
+  if (value === 'compress' || value === 'quality' || value === 'size') return 'compress'
+  return 'none'
+}
 
 function replaceExtension(filename: string, extension: string) {
-  return filename.replace(/\.[^.]*$/, '') + extension
+  return filename.replace(/\.[^.]*$/,'') + extension
+}
+
+function extensionForType(fileType: string): string {
+  switch (fileType) {
+    case 'image/webp': return '.webp'
+    case 'image/jpeg': return '.jpg'
+    case 'image/png': return '.png'
+    case 'image/avif': return '.avif'
+    default: return ''
+  }
 }
 
 export async function convertImageToJpeg(file: File, quality = 0.92): Promise<File> {
@@ -81,7 +99,7 @@ export async function compressImage(
   options: CompressionOptions = {},
   onProgress?: (progress: number) => void
 ): Promise<File> {
-  const mode = options.mode || 'quality'
+  const mode = normalizeCompressionMode(options.mode ?? 'compress')
   const sourceFile = file.type === 'image/bmp' ? await convertImageToJpeg(file) : file
 
   if (mode === 'none') {
@@ -89,14 +107,14 @@ export async function compressImage(
     return sourceFile
   }
 
-  const preset = PRESETS[mode]
-  const maxSizeMB = options.maxSizeMB ?? preset.maxSizeMB ?? 4
-  const maxWidthOrHeight = options.maxWidthOrHeight ?? preset.maxWidthOrHeight ?? 4096
-  const initialQuality = options.initialQuality ?? preset.initialQuality ?? 0.8
+  const maxSizeMB = options.maxSizeMB ?? COMPRESS_DEFAULTS.maxSizeMB
+  const requestedMax = options.maxWidthOrHeight
+  const keepResolution = !requestedMax || !Number.isFinite(requestedMax)
+  const maxWidthOrHeight = keepResolution ? KEEP_RESOLUTION_SENTINEL : requestedMax
+  const fileType = options.fileType ?? COMPRESS_DEFAULTS.fileType
   const maxSizeBytes = maxSizeMB * 1024 * 1024
-  const totalPasses = mode === 'quality' ? 8 : 4
+  const totalPasses = keepResolution ? 8 : 4
 
-  // Skip if already smaller than target
   if (sourceFile.size <= maxSizeBytes) {
     onProgress?.(100)
     return sourceFile
@@ -105,29 +123,33 @@ export async function compressImage(
   const baseOptions = {
     maxSizeMB,
     maxWidthOrHeight,
-    initialQuality,
+    fileType,
     useWebWorker: true,
     preserveExif: true,
   }
 
   let blob: Blob = await imageCompression(sourceFile, {
     ...baseOptions,
-    alwaysKeepResolution: mode === 'quality',
+    initialQuality: 1.0,
+    alwaysKeepResolution: keepResolution,
     onProgress: mapCompressionProgress(0, totalPasses, onProgress),
   })
 
   if (blob.size > maxSizeBytes) {
     let passIndex = 1
-    let quality = Math.min(initialQuality, 0.86)
+    let quality = 0.9
     let longEdge = maxWidthOrHeight
 
     while (blob.size > maxSizeBytes && passIndex < totalPasses) {
-      const sizeRatio = Math.sqrt(maxSizeBytes / blob.size)
-      quality = Math.max(MIN_QUALITY, Math.min(quality - 0.08, quality * 0.92))
-      longEdge = Math.max(
-        MIN_LONG_EDGE,
-        Math.floor(longEdge * Math.max(0.72, Math.min(sizeRatio, 0.9))),
-      )
+      if (quality > MIN_QUALITY) {
+        quality = Math.max(MIN_QUALITY, quality - 0.08)
+      } else {
+        const sizeRatio = Math.sqrt(maxSizeBytes / blob.size)
+        longEdge = Math.max(
+          MIN_LONG_EDGE,
+          Math.floor(longEdge * Math.max(0.72, Math.min(sizeRatio, 0.9))),
+        )
+      }
 
       const nextBlob = await imageCompression(sourceFile, {
         ...baseOptions,
@@ -145,7 +167,8 @@ export async function compressImage(
 
   onProgress?.(100)
 
-  return new File([blob], sourceFile.name, { type: blob.type, lastModified: Date.now() })
+  const outputName = replaceExtension(sourceFile.name, extensionForType(fileType))
+  return new File([blob], outputName, { type: fileType, lastModified: Date.now() })
 }
 
 export async function compressImages(
