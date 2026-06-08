@@ -136,7 +136,6 @@ export function useStoryEditorActions({
 
   const restorePasteUploadSettings = useCallback((settings: UploadSettings) => {
     setPasteUploadSettings(settings)
-    setHasConfirmedPasteSettings(true)
   }, [])
 
   const restoreUploadSettings = useCallback((settings: UploadSettings) => {
