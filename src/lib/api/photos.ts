@@ -129,8 +129,8 @@ export async function uploadPhoto(input: {
   storage_provider?: string
   storage_source_id?: string
   storage_path?: string
-  file_hash?: string
-  film_roll_id?: string
+   file_hash?: string
+   film_roll_id?: string
 }): Promise<PhotoDto> {
   const form = new FormData()
   form.set('file', input.file)
@@ -142,9 +142,9 @@ export async function uploadPhoto(input: {
   if (input.storage_source_id) form.set('storage_source_id', input.storage_source_id)
   if (input.storage_path) form.set('storage_path', input.storage_path)
   if (input.file_hash) form.set('file_hash', input.file_hash)
-  if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
+   if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
 
-  return apiRequestData<PhotoDto>(
+   return apiRequestData<PhotoDto>(
     '/api/admin/photos',
     { method: 'POST', body: form },
     input.token,
@@ -161,9 +161,9 @@ export function uploadPhotoWithProgress(input: {
   storage_source_id?: string
   storage_path?: string
   storage_path_full?: boolean
-  file_hash?: string
-  film_roll_id?: string
-  onProgress?: (progress: number) => void
+   file_hash?: string
+   film_roll_id?: string
+   onProgress?: (progress: number) => void
 }): Promise<PhotoDto> {
   return new Promise((resolve, reject) => {
     const form = new FormData()
@@ -179,16 +179,22 @@ export function uploadPhotoWithProgress(input: {
     if (input.storage_path) form.set('storage_path', input.storage_path)
     if (input.storage_path_full) form.set('storage_path_full', 'true')
     if (input.file_hash) form.set('file_hash', input.file_hash)
-    if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
+     if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
 
-    const xhr = new XMLHttpRequest()
+     const xhr = new XMLHttpRequest()
     const url = buildApiUrl('/api/admin/photos')
+
+    xhr.timeout = 5 * 60 * 1000
 
     xhr.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable && input.onProgress) {
         const progress = Math.round((event.loaded / event.total) * 100)
         input.onProgress(progress)
       }
+    })
+
+    xhr.addEventListener('timeout', () => {
+      reject(new Error('Upload timeout: request took longer than 5 minutes'))
     })
 
     xhr.addEventListener('load', () => {

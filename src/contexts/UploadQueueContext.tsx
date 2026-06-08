@@ -20,6 +20,7 @@ export interface UploadTask {
   status: UploadTaskStatus
   progress: number
   error: string | null
+  retryCount?: number
   // Upload params
   title: string
   categories: string[]
@@ -34,7 +35,8 @@ export interface UploadTask {
   batchId: string // Unique batch identifier
   // Compression settings
   compressionMode?: CompressionMode
-  maxSizeMB?: number
+    maxSizeMB?: number
+   maxWidthOrHeight?: number
   // Result
   photoId?: string
 }
@@ -56,6 +58,7 @@ interface UploadQueueContextType {
     filmRollId?: string
     compressionMode?: CompressionMode
     maxSizeMB?: number
+    maxWidthOrHeight?: number
     token: string
   }) => void
   retryTask: (taskId: string, token: string) => void
@@ -75,13 +78,29 @@ export function useUploadQueue() {
 }
 
 const CONCURRENCY = 4
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 2000
+const RETRYABLE_ERROR_PATTERNS = [
+  /^Network error/i,
+  /^Upload timeout/i,
+  /^Failed to fetch/i,
+  /TypeError/i,
+  /network/i,
+  /ECONNRESET/i,
+  /ETIMEDOUT/i,
+]
+
+function isRetryableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  return RETRYABLE_ERROR_PATTERNS.some((p) => p.test(err.message))
+}
 
 export function UploadQueueProvider({
   children,
   onUploadComplete,
 }: {
   children: React.ReactNode
-  onUploadComplete?: (photoIds: string[], storyId?: string, albumIds?: string[]) => void
+  onUploadComplete?: (photoIds: string[], storyId?: string, albumIds?: string[], failedCount?: number) => void
 }) {
   const [tasks, setTasks] = useState<UploadTask[]>([])
   const [isMinimized, setIsMinimized] = useState(false)
@@ -113,7 +132,7 @@ export function UploadQueueProvider({
     )
   }, [])
 
-  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumIds: string[] | undefined, filmRollId: string | undefined, photoIds: string[]) => {
+  const notifyBatchComplete = useCallback(async (batchId: string, storyId: string | undefined, albumIds: string[] | undefined, filmRollId: string | undefined, photoIds: string[], failedCount: number) => {
     // Double-check we haven't already notified for this batch
     if (notifiedBatchesRef.current.has(batchId)) {
       return
@@ -151,8 +170,8 @@ export function UploadQueueProvider({
       }
     }
 
-    if (photoIds.length > 0 && onUploadCompleteRef.current) {
-      onUploadCompleteRef.current(photoIds, storyId, albumIds)
+    if ((photoIds.length > 0 || failedCount > 0) && onUploadCompleteRef.current) {
+      onUploadCompleteRef.current(photoIds, storyId, albumIds, failedCount)
     }
   }, [])
 
@@ -178,7 +197,13 @@ export function UploadQueueProvider({
 
       return currentTasks.map((t) =>
         tasksToStart.some((ts) => ts.id === t.id)
-          ? { ...t, status: (t.compressionMode && t.compressionMode !== 'none' ? 'compressing' : 'uploading') as UploadTaskStatus, progress: 0 }
+          ? {
+              ...t,
+              status: (t.compressionMode && t.compressionMode !== 'none'
+                ? 'compressing'
+                : 'uploading') as UploadTaskStatus,
+              progress: 0,
+            }
           : t
       )
     })
@@ -188,6 +213,9 @@ export function UploadQueueProvider({
     try {
       let fileToUpload = task.file
       let compressedSize: number | undefined
+
+      const latestToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      if (latestToken) tokenRef.current = latestToken
 
       // Step 1: Convert unsupported browser-upload formats if needed, then compress
       if (fileToUpload.type === 'image/bmp') {
@@ -206,9 +234,9 @@ export function UploadQueueProvider({
         try {
           fileToUpload = await compressImage(
             fileToUpload,
-            { mode: task.compressionMode, maxSizeMB: task.maxSizeMB },
+           { mode: task.compressionMode, maxSizeMB: task.maxSizeMB, maxWidthOrHeight: task.maxWidthOrHeight },
             (progress) => {
-              updateTaskProgress(task.id, Math.round(progress))
+              updateTaskProgress(task.id, Math.round(progress * 0.3))
             }
           )
           compressedSize = fileToUpload.size
@@ -226,11 +254,23 @@ export function UploadQueueProvider({
             compressError instanceof Error && compressError.message
               ? compressError.message
               : 'Image compression failed'
-          throw new Error(`Compression failed before upload: ${message}`)
+          console.warn(`[upload] Compression failed for ${task.fileName}, falling back to original: ${message}`)
+          compressedSize = fileToUpload.size
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === task.id
+                ? { ...t, compressedSize: undefined, fileSize: fileToUpload.size, error: null }
+                : t
+            )
+          )
         }
       }
 
-      // Step 2: Upload
+      // Step 2: Upload (progress mapped from 30% to 100% if browser compression ran, else 0% to 100%)
+      const browserCompressed = task.compressionMode && task.compressionMode !== 'none'
+      const uploadProgressOffset = browserCompressed ? 30 : 0
+      const uploadProgressRange = 100 - uploadProgressOffset
+
       const photo = await uploadPhotoWithProgress({
         token: tokenRef.current,
         file: fileToUpload,
@@ -243,8 +283,8 @@ export function UploadQueueProvider({
         file_hash: task.fileHash,
         film_roll_id: task.filmRollId,
         onProgress: (progress) => {
-          // Always set status to uploading when receiving upload progress
-          updateTaskProgress(task.id, progress, 'uploading')
+          const mappedProgress = Math.round(uploadProgressOffset + (progress / 100) * uploadProgressRange)
+          updateTaskProgress(task.id, mappedProgress, 'uploading')
         },
       })
 
@@ -262,49 +302,71 @@ export function UploadQueueProvider({
 
         if (allDone && !notifiedBatchesRef.current.has(task.batchId)) {
           const completedTasks = batchTasks.filter((t) => t.status === 'completed')
+          const failedTasks = batchTasks.filter((t) => t.status === 'failed')
           const photoIds = completedTasks
             .map((t) => t.photoId)
             .filter((id): id is string => !!id)
 
           // Schedule notification outside of setState
           setTimeout(() => {
-            notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds)
+            notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds, failedTasks.length)
           }, 0)
         }
 
         return updated
       })
     } catch (err) {
-      setTasks((prev) => {
-        const updated = prev.map((t) =>
-          t.id === task.id
-            ? {
-                ...t,
-                status: 'failed' as UploadTaskStatus,
-                error: err instanceof Error ? err.message : 'Upload failed',
-              }
-            : t
+      const currentRetry = task.retryCount ?? 0
+      const canRetry = isRetryableError(err) && currentRetry < MAX_RETRIES
+
+      if (canRetry) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id
+              ? {
+                  ...t,
+                  status: 'pending' as UploadTaskStatus,
+                  error: `Retry ${currentRetry + 1}/${MAX_RETRIES}...`,
+                  progress: 0,
+                  retryCount: currentRetry + 1,
+                }
+              : t
+          )
         )
+        setTimeout(processQueue, RETRY_DELAY_MS)
+      } else {
+        setTasks((prev) => {
+          const updated = prev.map((t) =>
+            t.id === task.id
+              ? {
+                  ...t,
+                  status: 'failed' as UploadTaskStatus,
+                  error: err instanceof Error ? err.message : 'Upload failed',
+                }
+              : t
+          )
 
-        // Check if this batch is complete (all done, even with failures)
-        const batchTasks = updated.filter((t) => t.batchId === task.batchId)
-        const allDone = batchTasks.every((t) => t.status === 'completed' || t.status === 'failed')
+          // Check if this batch is complete (all done, even with failures)
+          const batchTasks = updated.filter((t) => t.batchId === task.batchId)
+          const allDone = batchTasks.every((t) => t.status === 'completed' || t.status === 'failed')
 
-        if (allDone && !notifiedBatchesRef.current.has(task.batchId)) {
-          const completedTasks = batchTasks.filter((t) => t.status === 'completed')
-          const photoIds = completedTasks
-            .map((t) => t.photoId)
-            .filter((id): id is string => !!id)
+          if (allDone && !notifiedBatchesRef.current.has(task.batchId)) {
+            const completedTasks = batchTasks.filter((t) => t.status === 'completed')
+            const failedTasks = batchTasks.filter((t) => t.status === 'failed')
+            const photoIds = completedTasks
+              .map((t) => t.photoId)
+              .filter((id): id is string => !!id)
 
-          if (photoIds.length > 0) {
-            setTimeout(() => {
-              notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds)
-            }, 0)
+            if (photoIds.length > 0 || failedTasks.length > 0) {
+              setTimeout(() => {
+                notifyBatchComplete(task.batchId, task.storyId, task.albumIds, task.filmRollId, photoIds, failedTasks.length)
+              }, 0)
+            }
           }
-        }
 
-        return updated
-      })
+          return updated
+        })
+      }
     } finally {
       activeUploadsRef.current--
       uploadingTasksRef.current.delete(task.id) // Remove from uploading set
@@ -325,9 +387,10 @@ export function UploadQueueProvider({
       storyId?: string
       albumIds?: string[]
       filmRollId?: string
-      compressionMode?: CompressionMode
-      maxSizeMB?: number
-      token: string
+    compressionMode?: CompressionMode
+     maxSizeMB?: number
+       maxWidthOrHeight?: number
+       token: string
     }) => {
       tokenRef.current = params.token
 
@@ -363,8 +426,9 @@ export function UploadQueueProvider({
             filmRollId: params.filmRollId,
             fileHash: item.fileHash,
             compressionMode: params.compressionMode,
-            maxSizeMB: params.maxSizeMB,
-            batchId,
+         maxSizeMB: params.maxSizeMB,
+           maxWidthOrHeight: params.maxWidthOrHeight,
+           batchId,
           }
         })
       )

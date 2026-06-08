@@ -537,7 +537,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     setIsImmersiveMode,
   }
 
-  const handleUploadComplete = useCallback(async (photoIds: string[], storyId?: string) => {
+  const handleUploadComplete = useCallback(async (photoIds: string[], storyId?: string, _albumIds?: string[], failedCount?: number) => {
     if (storyId && token && photoIds.length > 0) {
       try {
         await addPhotosToStory(token, storyId, photoIds)
@@ -546,7 +546,12 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       }
     }
     await refreshPhotos()
-    notify(`${photoIds.length} ${t('admin.notify_upload_success')}`)
+    if (photoIds.length > 0) {
+      notify(`${photoIds.length} ${t('admin.notify_upload_success')}`, failedCount && failedCount > 0 ? 'info' : 'success')
+    }
+    if (failedCount && failedCount > 0) {
+      notify(`${failedCount} ${t('admin.notify_upload_failed') || 'photo(s) failed to upload. You can retry them from the upload queue.'}`, 'error')
+    }
   }, [token, refreshPhotos, notify, t])
 
   return (
