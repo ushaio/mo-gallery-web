@@ -13,6 +13,7 @@ import React, {
   useState,
 } from 'react'
 import { useEditorState, EditorContent } from '@tiptap/react'
+import type { JSONContent } from '@tiptap/core'
 import {
   Bold,
   Italic,
@@ -71,7 +72,9 @@ import './tiptap-editor.css'
 
 export interface NarrativeTipTapEditorProps {
   value: string
+  jsonValue?: JSONContent | null
   onChange: (value: string) => void
+  onJsonChange?: (value: JSONContent) => void
   placeholder?: string
   onPasteFiles?: (files: File[]) => void | Promise<void>
   className?: string
@@ -86,7 +89,7 @@ export interface NarrativeTipTapEditorProps {
 export type { NarrativeTipTapEditorHandle }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
-  ({ value, onChange, placeholder, onPasteFiles, className, aiOptions }, ref) => {
+  ({ value, jsonValue, onChange, onJsonChange, placeholder, onPasteFiles, className, aiOptions }, ref) => {
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
     const backgroundColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const backgroundColorMenuRef = useRef<HTMLDivElement | null>(null)
@@ -121,7 +124,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const { editor, currentValueRef } = useNarrativeEditor({
       value,
+      jsonValue,
       onChange,
+      onJsonChange,
       placeholder,
       onPasteFiles,
       token: aiOptions?.token,
@@ -377,6 +382,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor,
       currentValueRef,
       onChange,
+      onJsonChange,
       focusEditor,
       insertInlineImage,
     })

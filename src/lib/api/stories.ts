@@ -1,5 +1,5 @@
 import { apiRequest, apiRequestData } from './core'
-import type { StoryCoverCropValue, StoryDto } from './types'
+import type { StoryCoverCropValue, StoryDto, TiptapJsonContent } from './types'
 
 export async function getStories(): Promise<StoryDto[]> {
   return apiRequestData<StoryDto[]>('/api/stories')
@@ -44,6 +44,7 @@ export async function createStory(
   data: {
     title: string
     content: string
+    contentJson?: TiptapJsonContent | null
     isPublished: boolean
     photoIds?: string[]
     coverPhotoId?: string
@@ -67,6 +68,7 @@ export async function updateStory(
   data: {
     title?: string
     content?: string
+    contentJson?: TiptapJsonContent | null
     isPublished?: boolean
     coverPhotoId?: string | null
     coverCrop?: StoryCoverCropValue | null

@@ -7,12 +7,14 @@ export interface CompressionOptions {
   maxSizeMB?: number
   maxWidthOrHeight?: number
   fileType?: string
+  quality?: number
 }
 
 const COMPRESS_DEFAULTS = {
-  maxSizeMB: 2,
+  maxSizeMB: 0,
   maxWidthOrHeight: 4096,
-  fileType: 'image/webp',
+  fileType: 'image/avif',
+  quality: 0.9,
 }
 
 const MIN_QUALITY = 0.45
@@ -37,6 +39,59 @@ function extensionForType(fileType: string): string {
     case 'image/png': return '.png'
     case 'image/avif': return '.avif'
     default: return ''
+  }
+}
+
+function normalizeQuality(value: number | undefined) {
+  if (!Number.isFinite(value)) return COMPRESS_DEFAULTS.quality
+  return Math.max(0.1, Math.min(1, value as number))
+}
+
+async function encodeImageByQuality(
+  file: File,
+  options: {
+    fileType: string
+    maxWidthOrHeight: number
+    quality: number
+  },
+): Promise<File> {
+  const bitmap = await createImageBitmap(file)
+
+  try {
+    const scale = Math.min(
+      1,
+      options.maxWidthOrHeight / Math.max(bitmap.width, bitmap.height),
+    )
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Failed to create canvas context')
+    context.drawImage(bitmap, 0, 0, width, height)
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (result) => {
+          if (result) resolve(result)
+          else reject(new Error('Failed to compress image'))
+        },
+        options.fileType,
+        options.quality,
+      )
+    })
+
+    const outputName = replaceExtension(file.name, extensionForType(options.fileType))
+    const output = new File([blob], outputName, {
+      type: options.fileType,
+      lastModified: Date.now(),
+    })
+
+    return output.size < file.size ? output : file
+  } finally {
+    bitmap.close()
   }
 }
 
@@ -108,10 +163,23 @@ export async function compressImage(
   }
 
   const maxSizeMB = options.maxSizeMB ?? COMPRESS_DEFAULTS.maxSizeMB
+  const hasTargetSize = Number.isFinite(maxSizeMB) && maxSizeMB > 0
   const requestedMax = options.maxWidthOrHeight
   const keepResolution = !requestedMax || !Number.isFinite(requestedMax)
   const maxWidthOrHeight = keepResolution ? KEEP_RESOLUTION_SENTINEL : requestedMax
   const fileType = options.fileType ?? COMPRESS_DEFAULTS.fileType
+  const quality = normalizeQuality(options.quality)
+
+  if (!hasTargetSize) {
+    const output = await encodeImageByQuality(sourceFile, {
+      fileType,
+      maxWidthOrHeight,
+      quality,
+    })
+    onProgress?.(100)
+    return output
+  }
+
   const maxSizeBytes = maxSizeMB * 1024 * 1024
   const totalPasses = keepResolution ? 8 : 4
 

@@ -18,6 +18,7 @@ export interface StoriesTabProps {
 export interface StorySnapshot {
   title: string
   content: string
+  contentJson?: StoryDto['contentJson']
   isPublished: boolean
   createdAt: string
   storyDate: string

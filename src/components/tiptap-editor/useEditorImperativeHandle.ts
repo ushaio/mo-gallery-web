@@ -5,6 +5,7 @@
 
 import { useMemo } from 'react'
 import type { Editor } from '@tiptap/core'
+import type { JSONContent } from '@tiptap/core'
 import type { MutableRefObject } from 'react'
 import {
   convertMarkdownToHtml,
@@ -23,6 +24,7 @@ import {
 
 export interface NarrativeTipTapEditorHandle {
   getValue: () => string
+  getJsonValue: () => JSONContent | null
   setValue: (html: string) => void
   insertValue: (html: string) => void
   insertMarkdown: (markdown: string) => void
@@ -35,6 +37,7 @@ interface UseEditorImperativeHandleOptions {
   editor: Editor | null
   currentValueRef: MutableRefObject<string>
   onChange: (value: string) => void
+  onJsonChange?: (value: JSONContent) => void
   focusEditor: () => void
   insertInlineImage: (attrs: { src: string; alt?: string; width?: number; photoId?: string }) => void
 }
@@ -43,6 +46,7 @@ export function useEditorImperativeHandle({
   editor,
   currentValueRef,
   onChange,
+  onJsonChange,
   focusEditor,
   insertInlineImage,
 }: UseEditorImperativeHandleOptions): NarrativeTipTapEditorHandle {
@@ -51,12 +55,18 @@ export function useEditorImperativeHandle({
       return editor?.getHTML() || currentValueRef.current || ''
     },
 
+    getJsonValue: () => {
+      return editor?.getJSON() || null
+    },
+
     setValue: (html: string) => {
       if (editor) {
         const processed = isMarkdownContent(html) ? convertMarkdownToHtml(html) : html
         editor.commands.setContent(processed)
         ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = html
+        onChange(editor.getHTML())
+        onJsonChange?.(editor.getJSON())
       }
     },
 
@@ -119,6 +129,7 @@ export function useEditorImperativeHandle({
         ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = newHtml
         onChange(newHtml)
+        onJsonChange?.(editor.getJSON())
         focusEditor()
         return true
       }
@@ -133,6 +144,7 @@ export function useEditorImperativeHandle({
         ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = placeholderReplacement.html
         onChange(placeholderReplacement.html)
+        onJsonChange?.(editor.getJSON())
         focusEditor()
         return true
       }
@@ -176,6 +188,7 @@ export function useEditorImperativeHandle({
         const latestHtml = editor.getHTML()
         currentValueRef.current = latestHtml
         onChange(latestHtml)
+        onJsonChange?.(editor.getJSON())
         return true
       }
 
@@ -183,7 +196,7 @@ export function useEditorImperativeHandle({
     },
 
     focus: focusEditor,
-  }), [editor, focusEditor, insertInlineImage, onChange, currentValueRef])
+  }), [editor, focusEditor, insertInlineImage, onChange, onJsonChange, currentValueRef])
 
   return handle
 }

@@ -68,6 +68,7 @@ interface BlogFormData {
   id?: string
   title: string
   content: string
+  contentJson?: BlogDto['contentJson']
   category: string
   tags: string
   isPublished: boolean
@@ -94,6 +95,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const initialBlogRef = useRef<{
     title: string
     content: string
+    contentJson?: BlogDto['contentJson']
     category: string
     tags: string
     isPublished: boolean
@@ -170,6 +172,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         blogId: currentBlog.id,
         title: currentBlog.title,
         content: currentBlog.content,
+        contentJson: currentBlog.contentJson ?? null,
         category: currentBlog.category,
         tags: currentBlog.tags,
         isPublished: currentBlog.isPublished,
@@ -209,12 +212,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     const hasChanged =
       currentBlog.title !== initial.title ||
       currentBlog.content !== initial.content ||
+      JSON.stringify(currentBlog.contentJson ?? null) !== JSON.stringify(initial.contentJson ?? null) ||
       currentBlog.category !== initial.category ||
       currentBlog.tags !== initial.tags ||
       currentBlog.isPublished !== initial.isPublished
     
     setIsDirty(hasChanged)
-  }, [editMode, currentBlog?.title, currentBlog?.content, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished])
+  }, [editMode, currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished])
 
   // 内容变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
@@ -236,7 +240,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         clearTimeout(autoSaveTimerRef.current)
       }
     }
-  }, [currentBlog?.title, currentBlog?.content, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isDirty])
+  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isDirty])
 
   // 将草稿应用到当前博客
   const applyDraft = useCallback((draft: BlogDraftData, blogId?: string) => {
@@ -244,6 +248,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       id: blogId,
       title: draft.title,
       content: draft.content,
+      contentJson: draft.contentJson ?? null,
       category: draft.category || t('blog.uncategorized'),
       tags: draft.tags || '',
       isPublished: draft.isPublished,
@@ -253,6 +258,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     initialBlogRef.current = {
       title: draft.title,
       content: draft.content,
+      contentJson: draft.contentJson ?? null,
       category: draft.category || t('blog.uncategorized'),
       tags: draft.tags || '',
       isPublished: draft.isPublished,
@@ -275,6 +281,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setCurrentBlog({
         title: '',
         content: '',
+        contentJson: null,
         category: t('blog.uncategorized'),
         tags: '',
         isPublished: false,
@@ -284,6 +291,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         id: draftRestoreDialog.blog.id,
         title: draftRestoreDialog.blog.title,
         content: draftRestoreDialog.blog.content,
+        contentJson: draftRestoreDialog.blog.contentJson ?? null,
         category: draftRestoreDialog.blog.category || t('blog.uncategorized'),
         tags: draftRestoreDialog.blog.tags || '',
         isPublished: draftRestoreDialog.blog.isPublished,
@@ -305,6 +313,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     initialBlogRef.current = {
       title: '',
       content: '',
+      contentJson: null,
       category: t('blog.uncategorized'),
       tags: '',
       isPublished: false,
@@ -317,6 +326,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setCurrentBlog({
         title: '',
         content: '',
+        contentJson: null,
         category: t('blog.uncategorized'),
         tags: '',
         isPublished: false,
@@ -328,6 +338,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setCurrentBlog({
       title: '',
       content: '',
+      contentJson: null,
       category: t('blog.uncategorized'),
       tags: '',
       isPublished: false,
@@ -340,6 +351,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     initialBlogRef.current = {
       title: blog.title,
       content: blog.content,
+      contentJson: blog.contentJson ?? null,
       category: blog.category || t('blog.uncategorized'),
       tags: blog.tags || '',
       isPublished: blog.isPublished,
@@ -353,6 +365,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         id: blog.id,
         title: blog.title,
         content: blog.content,
+        contentJson: blog.contentJson ?? null,
         category: blog.category || t('blog.uncategorized'),
         tags: blog.tags || '',
         isPublished: blog.isPublished,
@@ -365,6 +378,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       id: blog.id,
       title: blog.title,
       content: blog.content,
+      contentJson: blog.contentJson ?? null,
       category: blog.category || t('blog.uncategorized'),
       tags: blog.tags || '',
       isPublished: blog.isPublished,
@@ -409,6 +423,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         await updateBlog(token, currentBlog.id, {
           title: currentBlog.title,
           content: currentBlog.content,
+          contentJson: currentBlog.contentJson ?? null,
           category: currentBlog.category,
           tags: currentBlog.tags,
           isPublished: currentBlog.isPublished,
@@ -418,6 +433,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         await createBlog(token, {
           title: currentBlog.title,
           content: currentBlog.content,
+          contentJson: currentBlog.contentJson ?? null,
           category: currentBlog.category,
           tags: currentBlog.tags,
           isPublished: currentBlog.isPublished,
@@ -451,7 +467,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     if (editorRef.current) {
       editorRef.current.insertMarkdown(markdown)
       const nextValue = editorRef.current.getValue()
-      setCurrentBlog((prev) => (prev ? { ...prev, content: nextValue } : prev))
+      const nextJsonValue = editorRef.current.getJsonValue()
+      setCurrentBlog((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
     } else if (currentBlog) {
       setCurrentBlog({ ...currentBlog, content: currentBlog.content + markdown })
     }
@@ -460,9 +477,11 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const handleContentChange = (content: string) => {
-    if (currentBlog) {
-      setCurrentBlog({ ...currentBlog, content })
-    }
+    setCurrentBlog((prev) => (prev ? { ...prev, content } : prev))
+  }
+
+  const handleJsonContentChange = (contentJson: NonNullable<BlogDto['contentJson']>) => {
+    setCurrentBlog((prev) => (prev ? { ...prev, contentJson } : prev))
   }
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
@@ -687,7 +706,9 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                     key={currentBlog.id || 'new'}
                     ref={editorRef}
                     value={currentBlog.content}
+                    jsonValue={currentBlog.contentJson ?? null}
                     onChange={handleContentChange}
+                    onJsonChange={handleJsonContentChange}
                     placeholder={t('ui.markdown_placeholder')}
                     className="overflow-hidden bg-background"
                   />

@@ -1,4 +1,5 @@
 import 'server-only'
+import { Prisma } from '@/generated/prisma/client'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
@@ -6,10 +7,18 @@ import { z } from 'zod'
 
 const blogs = new Hono<{ Variables: AuthVariables }>()
 
+const TiptapJsonContentSchema = z.record(z.string(), z.unknown())
+type TiptapJsonContentInput = z.infer<typeof TiptapJsonContentSchema>
+
+function toPrismaJsonInput(value: TiptapJsonContentInput): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue
+}
+
 // Validation schemas
 const CreateBlogSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1).max(50000),
+  contentJson: TiptapJsonContentSchema.optional().nullable(),
   category: z.string().default('未分类'),
   tags: z.string().default(''),
   isPublished: z.boolean().default(false),
@@ -18,6 +27,7 @@ const CreateBlogSchema = z.object({
 const UpdateBlogSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().min(1).max(50000).optional(),
+  contentJson: TiptapJsonContentSchema.optional().nullable(),
   category: z.string().optional(),
   tags: z.string().optional(),
   isPublished: z.boolean().optional(),
@@ -116,7 +126,15 @@ blogs.post('/admin/blogs', async (c) => {
     const validated = CreateBlogSchema.parse(body)
 
     const blog = await db.blog.create({
-      data: validated,
+      data: {
+        ...validated,
+        contentJson:
+          validated.contentJson === undefined
+            ? undefined
+            : validated.contentJson === null
+              ? Prisma.JsonNull
+              : toPrismaJsonInput(validated.contentJson),
+      },
     })
 
     return c.json({
@@ -139,9 +157,20 @@ blogs.patch('/admin/blogs/:id', async (c) => {
     const body = await c.req.json()
     const validated = UpdateBlogSchema.parse(body)
 
+    const updateData: Prisma.BlogUpdateInput = {}
+    if (validated.title !== undefined) updateData.title = validated.title
+    if (validated.content !== undefined) updateData.content = validated.content
+    if (validated.contentJson !== undefined) {
+      updateData.contentJson =
+        validated.contentJson === null ? Prisma.JsonNull : toPrismaJsonInput(validated.contentJson)
+    }
+    if (validated.category !== undefined) updateData.category = validated.category
+    if (validated.tags !== undefined) updateData.tags = validated.tags
+    if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
+
     const blog = await db.blog.update({
       where: { id },
-      data: validated,
+      data: updateData,
     })
 
     return c.json({

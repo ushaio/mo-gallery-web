@@ -40,7 +40,7 @@ import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
 import { applySavedOrder, savePhotoOrder } from './stories/utils'
 
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
-  maxSizeMB: 2,
+  maxSizeMB: 0,
   compressionMode: 'compress',
   storageProvider: 'local',
   categories: [],
@@ -49,7 +49,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
 }
 
 const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
-  maxSizeMB: 2,
+  maxSizeMB: 0,
   compressionMode: 'compress',
   storageProvider: 'local',
   categories: [],
@@ -159,6 +159,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         await createStory(token, {
           title: currentStory.title,
           content: currentStory.content,
+          contentJson: currentStory.contentJson ?? null,
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
@@ -170,6 +171,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         await updateStory(token, currentStory.id, {
           title: currentStory.title,
           content: currentStory.content,
+          contentJson: currentStory.contentJson ?? null,
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
           coverCrop: currentStory.coverCrop ?? null,

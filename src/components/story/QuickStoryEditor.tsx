@@ -51,7 +51,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
   // Configuration State
   const [selectedAlbumIds, setSelectedAlbumIds] = useState<string[]>([])
   const [compressionEnabled, setCompressionEnabled] = useState(false)
-  const [maxSizeMB, setMaxSizeMB] = useState(4)
+  const [maxSizeMB, setMaxSizeMB] = useState(0)
 
   // Auto-save timer ref
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -228,7 +228,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
 
   const { getRootProps, getInputProps, isDragActive, open: openFileDialog } = useDropzone({
     onDrop: handleFilesSelected,
-    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.avif'] },
     noClick: true,
     noDrag: isInternalDragging, // Disable dropzone when dragging internal items
     noDragEventsBubbling: true
@@ -317,7 +317,10 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
 
           // Compression Logic
           if (compressionEnabled) {
-            fileToUpload = await compressImage(fileToUpload, { maxSizeMB, maxWidthOrHeight: 4096 })
+            fileToUpload = await compressImage(fileToUpload, {
+              maxSizeMB: maxSizeMB > 0 ? maxSizeMB : undefined,
+              maxWidthOrHeight: 4096,
+            })
           }
 
           try {
@@ -698,7 +701,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
                                 className="flex items-center gap-2 whitespace-nowrap overflow-hidden pl-1"
                               >
                                 <input
-                                  type="range" min="0.5" max="10" step="0.5"
+                                  type="range" min="0" max="10" step="0.5"
                                   value={maxSizeMB}
                                   onChange={(e) => setMaxSizeMB(parseFloat(e.target.value))}
                                   onClick={(e) => e.stopPropagation()}
@@ -706,7 +709,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
                                 />
                                 <div className="relative flex items-center">
                                   <input
-                                    type="number" min="0.1" max="20" step="0.1"
+                                    type="number" min="0" max="20" step="0.1"
                                     value={maxSizeMB || ''}
                                     onChange={(e) => { const val = parseFloat(e.target.value); setMaxSizeMB(isNaN(val) ? 0 : val) }}
                                     onClick={(e) => e.stopPropagation()}

@@ -1,5 +1,5 @@
 import { resolveAssetUrl } from '@/lib/api/core'
-import type { PhotoDto } from '@/lib/api/types'
+import type { PhotoDto, TiptapJsonContent } from '@/lib/api/types'
 
 const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g
 const HTML_IMAGE_TAG_PATTERN = /<img\b[^>]*>/gi
@@ -174,6 +174,72 @@ export function hydrateStoryContentImages(content: string, photos: PhotoDto[], c
 
     return tag.replace(/<img/i, `<img src="${resolvedSrc}"`)
   })
+}
+
+export function normalizeStoryContentJsonImages(
+  contentJson: TiptapJsonContent | null | undefined,
+): TiptapJsonContent | null {
+  if (!contentJson) return null
+
+  const normalizeNode = (node: TiptapJsonContent): TiptapJsonContent => {
+    const nextNode: TiptapJsonContent = { ...node }
+
+    if (node.attrs) {
+      nextNode.attrs = { ...node.attrs }
+      if (node.type === 'image') {
+        const rawWidth = nextNode.attrs.width
+        if (typeof rawWidth === 'number' && Number.isFinite(rawWidth)) {
+          nextNode.attrs.width = Math.max(40, Math.round(rawWidth))
+        } else if (typeof rawWidth === 'string') {
+          const parsedWidth = Number.parseInt(rawWidth, 10)
+          if (Number.isFinite(parsedWidth)) {
+            nextNode.attrs.width = Math.max(40, parsedWidth)
+          }
+        }
+
+        if (typeof nextNode.attrs.photoId === 'string' && nextNode.attrs.photoId.trim()) {
+          delete nextNode.attrs.src
+        }
+      }
+    }
+
+    if (node.content) {
+      nextNode.content = node.content.map(normalizeNode)
+    }
+
+    return nextNode
+  }
+
+  return normalizeNode(contentJson)
+}
+
+export function hydrateStoryContentJsonImages(
+  contentJson: TiptapJsonContent | null | undefined,
+  photos: PhotoDto[],
+  cdnDomain?: string,
+): TiptapJsonContent | null {
+  if (!contentJson) return null
+
+  const hydrateNode = (node: TiptapJsonContent): TiptapJsonContent => {
+    const nextNode: TiptapJsonContent = { ...node }
+
+    if (node.attrs) {
+      nextNode.attrs = { ...node.attrs }
+      const photoId = typeof nextNode.attrs.photoId === 'string' ? nextNode.attrs.photoId : ''
+      const photo = findStoryPhotoById(photos, photoId)
+      if (node.type === 'image' && photo) {
+        nextNode.attrs.src = resolveAssetUrl(photo.url, cdnDomain)
+      }
+    }
+
+    if (node.content) {
+      nextNode.content = node.content.map(hydrateNode)
+    }
+
+    return nextNode
+  }
+
+  return hydrateNode(contentJson)
 }
 
 export function countStoryCharacters(content?: string | null) {

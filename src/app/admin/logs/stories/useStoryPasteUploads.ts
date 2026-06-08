@@ -122,10 +122,10 @@ export function useStoryPasteUploads({
           fileToUpload = await stripGpsData(fileToUpload)
         }
 
-        if (nextSettings.compressionMode && nextSettings.compressionMode !== 'none' && nextSettings.maxSizeMB) {
+        if (nextSettings.compressionMode && nextSettings.compressionMode !== 'none') {
           fileToUpload = await compressImage(fileToUpload, {
             mode: nextSettings.compressionMode,
-            maxSizeMB: nextSettings.maxSizeMB,
+            maxSizeMB: nextSettings.maxSizeMB && nextSettings.maxSizeMB > 0 ? nextSettings.maxSizeMB : undefined,
             maxWidthOrHeight: 4096,
           })
         }

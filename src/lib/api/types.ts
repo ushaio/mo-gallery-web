@@ -149,6 +149,7 @@ export interface StoryDto {
   id: string
   title: string
   content: string
+  contentJson?: TiptapJsonContent | null
   coverPhotoId?: string
   coverCrop?: StoryCoverCropValue | null
   isPublished: boolean
@@ -250,11 +251,24 @@ export interface BlogDto {
   id: string
   title: string
   content: string
+  contentJson?: TiptapJsonContent | null
   category: string
   tags: string
   isPublished: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface TiptapJsonContent {
+  type?: string
+  attrs?: Record<string, unknown>
+  content?: TiptapJsonContent[]
+  marks?: Array<{
+    type: string
+    attrs?: Record<string, unknown>
+  }>
+  text?: string
+  [key: string]: unknown
 }
 
 /** Lightweight DTO for blog lists — no full content, only preview text */

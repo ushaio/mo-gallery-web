@@ -1,3 +1,5 @@
+import type { TiptapJsonContent } from '@/lib/api/types';
+
 // ============ Story Draft Types ============
 export interface StoryDraftData {
   id: string;
@@ -14,6 +16,7 @@ export interface StoryEditorDraftData {
   storyId?: string;
   title: string;
   content: string;
+  contentJson?: TiptapJsonContent | null;
   isPublished: boolean;
   createdAt: string;
   coverPhotoId?: string | null;
@@ -30,6 +33,7 @@ export interface BlogDraftData {
   blogId?: string; // Original blog ID if editing an existing blog
   title: string;
   content: string;
+  contentJson?: TiptapJsonContent | null;
   category: string;
   tags: string;
   isPublished: boolean;
@@ -140,6 +144,7 @@ export async function saveBlogDraftToDB(data: {
   blogId?: string;
   title: string;
   content: string;
+  contentJson?: TiptapJsonContent | null;
   category: string;
   tags: string;
   isPublished: boolean;
@@ -155,6 +160,7 @@ export async function saveBlogDraftToDB(data: {
         blogId: data.blogId,
         title: data.title,
         content: data.content,
+        contentJson: data.contentJson,
         category: data.category,
         tags: data.tags,
         isPublished: data.isPublished,
@@ -263,6 +269,7 @@ export async function saveStoryEditorDraftToDB(data: {
   storyId?: string;
   title: string;
   content: string;
+  contentJson?: TiptapJsonContent | null;
   isPublished: boolean;
   createdAt: string;
   coverPhotoId?: string | null;
@@ -282,6 +289,7 @@ export async function saveStoryEditorDraftToDB(data: {
         storyId: data.storyId,
         title: data.title,
         content: data.content,
+        contentJson: data.contentJson,
         isPublished: data.isPublished,
         createdAt: data.createdAt,
         coverPhotoId: data.coverPhotoId,

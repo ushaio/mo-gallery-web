@@ -51,6 +51,7 @@ function createSnapshot(story: StoryDto): StorySnapshot {
   return {
     title: story.title,
     content: story.content,
+    contentJson: story.contentJson ?? null,
     isPublished: story.isPublished,
     createdAt: story.createdAt,
     storyDate: story.storyDate,
@@ -89,6 +90,7 @@ export function useStoryDraftState({
     (
       currentStory.title !== initialStory.title ||
       currentStory.content !== initialStory.content ||
+      JSON.stringify(currentStory.contentJson ?? null) !== JSON.stringify(initialStory.contentJson ?? null) ||
       currentStory.isPublished !== initialStory.isPublished ||
       currentStory.storyDate !== initialStory.storyDate ||
       currentStory.coverPhotoId !== initialStory.coverPhotoId ||
@@ -115,6 +117,7 @@ export function useStoryDraftState({
         storyId: existingStory ? currentStory.id : undefined,
         title: currentStory.title,
         content: currentStory.content,
+        contentJson: currentStory.contentJson ?? null,
         isPublished: currentStory.isPublished,
         createdAt: currentStory.createdAt,
         coverPhotoId: currentStory.coverPhotoId,
@@ -149,6 +152,7 @@ export function useStoryDraftState({
       ...baseStory,
       title: draft.title || baseStory.title,
       content: draft.content || baseStory.content,
+      contentJson: draft.contentJson ?? baseStory.contentJson ?? null,
       isPublished: draft.isPublished,
       createdAt: draft.createdAt || baseStory.createdAt,
       storyDate: draft.createdAt || baseStory.storyDate,
@@ -162,6 +166,7 @@ export function useStoryDraftState({
     setInitialStory({
       title: draft.title || baseStory.title,
       content: draft.content || baseStory.content,
+      contentJson: draft.contentJson ?? baseStory.contentJson ?? null,
       isPublished: draft.isPublished,
       createdAt: draft.createdAt || baseStory.createdAt,
       storyDate: draft.createdAt || baseStory.storyDate,
@@ -271,6 +276,7 @@ export function useStoryDraftState({
         id: editFromDraft.storyId || crypto.randomUUID(),
         title: editFromDraft.title,
         content: editFromDraft.content,
+        contentJson: editFromDraft.contentJson ?? null,
         isPublished: editFromDraft.isPublished,
         storyDate: editFromDraft.createdAt,
         createdAt: editFromDraft.createdAt,

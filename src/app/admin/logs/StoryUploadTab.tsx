@@ -66,7 +66,7 @@ export function StoryUploadTab({
     title: '',
     categories: [],
     compressionEnabled: true,
-    maxSizeMB: 2,
+    maxSizeMB: 0,
     privacyStripEnabled: false,
   })
 
@@ -82,6 +82,7 @@ export function StoryUploadTab({
 
   const estimateFileSize = (file: File): number => {
     if (!uploadSettings.compressionEnabled) return file.size
+    if (uploadSettings.maxSizeMB <= 0) return Math.min(file.size * 0.7, file.size)
     const target = uploadSettings.maxSizeMB * 1024 * 1024
     if (file.size <= target) return file.size
     return Math.min(file.size * 0.45, target)
@@ -111,6 +112,8 @@ export function StoryUploadTab({
       }
       return null
     }
+
+    if (uploadSettings.maxSizeMB <= 0) return null
 
     const filesUnderTarget = uploadFiles.filter(f => f.file.size <= targetBytes).length
     if (filesUnderTarget === uploadFiles.length) {
@@ -235,7 +238,7 @@ export function StoryUploadTab({
         try {
           const file = await compressImage(item.file, {
             mode: 'compress',
-            maxSizeMB: uploadSettings.maxSizeMB
+            maxSizeMB: uploadSettings.maxSizeMB > 0 ? uploadSettings.maxSizeMB : undefined,
           })
           compressedFiles.push({ ...item, file })
         } catch {
@@ -268,7 +271,7 @@ export function StoryUploadTab({
         storyId: story.id,
         albumIds: uploadSettings.albumIds,
         compressionMode: uploadSettings.compressionEnabled ? 'compress' : undefined,
-        maxSizeMB: uploadSettings.compressionEnabled ? uploadSettings.maxSizeMB : undefined,
+        maxSizeMB: uploadSettings.compressionEnabled && uploadSettings.maxSizeMB > 0 ? uploadSettings.maxSizeMB : undefined,
         token,
       })
 

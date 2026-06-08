@@ -64,7 +64,7 @@ export function ImageUploadSettingsModal({
     title: '',
     categories: [],
     compressionEnabled: true,
-    maxSizeMB: 2,
+    maxSizeMB: 0,
     privacyStripEnabled: false,
   })
 
@@ -83,7 +83,7 @@ export function ImageUploadSettingsModal({
       storagePath: initialSettings?.storagePath,
       storagePathFull: initialSettings?.storagePathFull,
       compressionEnabled: compressionMode !== 'none',
-      maxSizeMB: initialSettings?.maxSizeMB || 2,
+      maxSizeMB: initialSettings?.maxSizeMB ?? 0,
       privacyStripEnabled: Boolean(initialSettings?.stripGps),
     })
   }, [initialSettings, isOpen])

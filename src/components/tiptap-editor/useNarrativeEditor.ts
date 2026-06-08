@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useEditor } from '@tiptap/react'
+import type { JSONContent } from '@tiptap/core'
 import type { EditorView } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -51,7 +52,9 @@ function updateStoryLinkCardNode(
 
 interface UseNarrativeEditorOptions {
   value: string
+  jsonValue?: JSONContent | null
   onChange: (value: string) => void
+  onJsonChange?: (value: JSONContent) => void
   placeholder?: string
   onPasteFiles?: (files: File[]) => void | Promise<void>
   token?: string | null
@@ -60,7 +63,9 @@ interface UseNarrativeEditorOptions {
 
 export function useNarrativeEditor({
   value,
+  jsonValue,
   onChange,
+  onJsonChange,
   placeholder,
   onPasteFiles,
   token,
@@ -83,12 +88,13 @@ export function useNarrativeEditor({
   }, [token])
 
   const processedContent = useCallback(() => {
+    if (jsonValue) return jsonValue
     if (!value) return ''
     if (isMarkdownContent(value)) {
       return convertMarkdownToHtml(value)
     }
     return value
-  }, [value])
+  }, [jsonValue, value])
 
   const editor = useEditor({
     extensions: [
@@ -152,6 +158,7 @@ export function useNarrativeEditor({
       const html = editor.getHTML()
       currentValueRef.current = html
       onChange(html)
+      onJsonChange?.(editor.getJSON())
     },
     editorProps: {
       attributes: {

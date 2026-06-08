@@ -9,6 +9,7 @@ export function createEmptyStory(): StoryDto {
     id: crypto.randomUUID(),
     title: '',
     content: '',
+    contentJson: null,
     isPublished: false,
     storyDate: now,
     createdAt: now,

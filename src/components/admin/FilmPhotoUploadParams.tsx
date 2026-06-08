@@ -149,8 +149,8 @@ export function FilmPhotoUploadParams({
   const [isInitialized, setIsInitialized] = useState(false)
 
   const [compressionEnabled, setCompressionEnabled] = useState(true)
-  const [maxSizeMB, setMaxSizeMB] = useState(2)
-  const [sliderValue, setSliderValue] = useState(2)
+  const [maxSizeMB, setMaxSizeMB] = useState(0)
+  const [sliderValue, setSliderValue] = useState(0)
 
   const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
 
@@ -465,11 +465,13 @@ export function FilmPhotoUploadParams({
                     <label className="text-[10px] text-muted-foreground">
                       {t('admin.compression_size_label')}
                     </label>
-                    <span className="text-[10px] font-mono text-foreground tabular-nums">{sliderValue.toFixed(1)} MB</span>
+                    <span className="text-[10px] font-mono text-foreground tabular-nums">
+                      {sliderValue > 0 ? `${sliderValue.toFixed(1)} MB` : t('admin.compression_none')}
+                    </span>
                   </div>
                   <input
                     type="range"
-                    min="0.3"
+                    min="0"
                     max="20"
                     step="0.1"
                     value={sliderValue}

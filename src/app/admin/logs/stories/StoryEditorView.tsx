@@ -20,7 +20,7 @@ import { AdminInput } from '@/components/admin/AdminFormControls'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
-import { countStoryCharacters, hydrateStoryContentImages, normalizeStoryContentImages } from '@/lib/story-rich-content'
+import { countStoryCharacters, hydrateStoryContentImages, hydrateStoryContentJsonImages, normalizeStoryContentImages, normalizeStoryContentJsonImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
 import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
@@ -140,6 +140,10 @@ export function StoryEditorView({
     () => hydrateStoryContentImages(currentStory.content, currentStory.photos || [], settingsCdnDomain),
     [currentStory.content, currentStory.photos, settingsCdnDomain],
   )
+  const hydratedEditorJsonContent = useMemo(
+    () => hydrateStoryContentJsonImages(currentStory.contentJson, currentStory.photos || [], settingsCdnDomain),
+    [currentStory.contentJson, currentStory.photos, settingsCdnDomain],
+  )
 
 
   return (
@@ -190,7 +194,9 @@ export function StoryEditorView({
             <NarrativeTipTapEditor
               ref={editorRef}
               value={hydratedEditorContent}
+              jsonValue={hydratedEditorJsonContent}
               onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
+              onJsonChange={(contentJson) => setCurrentStory((prev) => (prev ? { ...prev, contentJson: normalizeStoryContentJsonImages(contentJson) } : prev))}
               onPasteFiles={onPasteFiles}
               placeholder={t('ui.markdown_placeholder')}
               className="overflow-hidden bg-background"

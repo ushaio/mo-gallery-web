@@ -347,7 +347,10 @@ function TestCompressionModal({
     setAfterUrl(null)
 
     const start = performance.now()
-    compressImage(file.file, { mode: 'compress', maxSizeMB })
+    compressImage(file.file, {
+      mode: 'compress',
+      maxSizeMB: maxSizeMB > 0 ? maxSizeMB : undefined,
+    })
       .then(compressed => {
         setResult({ compressed, durationMs: performance.now() - start })
         setAfterUrl(URL.createObjectURL(compressed))
@@ -476,14 +479,14 @@ export function UploadTab({
     title: '',
     categories: [],
     compressionEnabled: false,
-    maxSizeMB: 2,
+    maxSizeMB: 0,
     privacyStripEnabled: false,
   })
   const [filmSettings, setFilmSettings] = useState<FilmPhotoUploadSettings>({
     title: '',
     categories: [],
     compressionEnabled: false,
-    maxSizeMB: 2,
+    maxSizeMB: 0,
     privacyStripEnabled: false,
   })
 
@@ -810,7 +813,7 @@ export function UploadTab({
       albumIds: currentSettings.albumIds,
       filmRollId: uploadType === 'film' ? (filmSettings.filmRollId || undefined) : undefined,
       compressionMode: currentSettings.compressionEnabled ? 'compress' : undefined,
-      maxSizeMB: currentSettings.compressionEnabled ? currentSettings.maxSizeMB : undefined,
+      maxSizeMB: currentSettings.compressionEnabled && currentSettings.maxSizeMB > 0 ? currentSettings.maxSizeMB : undefined,
       token,
     })
 

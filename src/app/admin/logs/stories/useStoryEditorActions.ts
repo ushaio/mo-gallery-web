@@ -145,14 +145,16 @@ export function useStoryEditorActions({
   const insertDirective = useCallback((markdown: string) => {
     editorRef.current?.insertValue(markdown)
     const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
-    setCurrentStory((prev) => (prev ? { ...prev, content: nextValue } : prev))
-  }, [currentStory?.content, setCurrentStory])
+    const nextJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
+    setCurrentStory((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
+  }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
 
   const replaceEditorText = useCallback((searchValue: string, nextValue: string) => {
     editorRef.current?.replaceText(searchValue, nextValue)
     const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
-    setCurrentStory((prev) => (prev ? { ...prev, content: latestValue } : prev))
-  }, [currentStory?.content, setCurrentStory])
+    const latestJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
+    setCurrentStory((prev) => (prev ? { ...prev, content: latestValue, contentJson: latestJsonValue } : prev))
+  }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
 
   const addPhotoToCurrentStory = useCallback((photo: PhotoDto) => {
     setCurrentStory((prev) => {
@@ -265,10 +267,10 @@ export function useStoryEditorActions({
           fileToUpload = await stripGpsData(fileToUpload)
         }
 
-        if (settings.compressionMode && settings.compressionMode !== 'none' && settings.maxSizeMB) {
+        if (settings.compressionMode && settings.compressionMode !== 'none') {
           fileToUpload = await compressImage(fileToUpload, {
             mode: settings.compressionMode,
-            maxSizeMB: settings.maxSizeMB,
+            maxSizeMB: settings.maxSizeMB && settings.maxSizeMB > 0 ? settings.maxSizeMB : undefined,
             maxWidthOrHeight: 4096,
           })
         }

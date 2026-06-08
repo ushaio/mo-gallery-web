@@ -9,10 +9,18 @@ import { z } from 'zod'
 
 const stories = new Hono<{ Variables: AuthVariables }>()
 
+const TiptapJsonContentSchema = z.record(z.string(), z.unknown())
+type TiptapJsonContentInput = z.infer<typeof TiptapJsonContentSchema>
+
+function toPrismaJsonInput(value: TiptapJsonContentInput): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue
+}
+
 // Validation schemas
 const CreateStorySchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string().min(1).max(50000),
+  contentJson: TiptapJsonContentSchema.optional().nullable(),
   isPublished: z.boolean().default(false),
   photoIds: z.array(z.string().uuid()).optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
@@ -27,6 +35,7 @@ const CreateStorySchema = z.object({
 const UpdateStorySchema = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().min(1).max(50000).optional(),
+  contentJson: TiptapJsonContentSchema.optional().nullable(),
   isPublished: z.boolean().optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
   coverCrop: z.object({
@@ -338,6 +347,12 @@ stories.post('/admin/stories', async (c) => {
       data: {
         title: validated.title,
         content: validated.content,
+        contentJson:
+          validated.contentJson === undefined
+            ? undefined
+            : validated.contentJson === null
+              ? Prisma.JsonNull
+              : toPrismaJsonInput(validated.contentJson),
         isPublished: validated.isPublished,
         coverPhotoId: validated.coverPhotoId,
         coverCrop:
@@ -389,6 +404,10 @@ stories.patch('/admin/stories/:id', async (c) => {
     const updateData: Prisma.StoryUpdateInput = {}
     if (validated.title !== undefined) updateData.title = validated.title
     if (validated.content !== undefined) updateData.content = validated.content
+    if (validated.contentJson !== undefined) {
+      updateData.contentJson =
+        validated.contentJson === null ? Prisma.JsonNull : toPrismaJsonInput(validated.contentJson)
+    }
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
     if (validated.coverCrop !== undefined) {
