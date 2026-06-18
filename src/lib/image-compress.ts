@@ -220,26 +220,66 @@ export async function convertImageToJpeg(file: File, quality = 0.92): Promise<Fi
 }
 
 /**
- * Encode ImageData to AVIF using @jsquash/avif (WASM libavif).
+ * Encode ImageData to AVIF in a dedicated Web Worker.
  *
- * The WASM module (~700KB) is loaded lazily via dynamic import so it never
- * affects first paint — it is only fetched when the user actually compresses
- * an image. libavif produces higher-quality, more consistent AVIF output than
- * the browser's built-in Canvas AVIF encoder (which varies between Chrome and
- * Safari, and is unavailable entirely on Safari < 16.4).
+ * The WASM module (~700KB) is loaded lazily inside the worker so it never
+ * affects first paint. Running libavif off the main thread keeps the browser
+ * responsive during heavy AVIF encoding — the main thread only blocks on the
+ * trivial Canvas → ImageData step.
  *
  * @param quality 0-100 (NOT 0-1 like Canvas). ~63 = visually lossless.
- * @param speed 0-10, lower = slower + higher quality. Default 6.
+ * @param speed 0-10, higher = faster + slightly lower quality. Default 8.
  */
+let avifWorker: Worker | null = null
+let avifWorkerTaskId = 0
+const avifWorkerTasks = new Map<
+  number,
+  { resolve: (buf: ArrayBuffer) => void; reject: (err: Error) => void }
+>()
+
+function getAvifWorker(): Worker {
+  if (!avifWorker) {
+    avifWorker = new Worker(new URL('./avif-worker.ts', import.meta.url))
+    avifWorker.onmessage = (e) => {
+      const { id, result, error } = e.data as {
+        id: number
+        result?: ArrayBuffer
+        error?: string
+      }
+      const task = avifWorkerTasks.get(id)
+      if (!task) return
+      avifWorkerTasks.delete(id)
+      if (error) {
+        task.reject(new Error(error))
+      } else {
+        task.resolve(result!)
+      }
+    }
+  }
+  return avifWorker
+}
+
 async function encodeAvifWithWasm(
   imageData: ImageData,
   options: { quality: number; speed?: number } = { quality: 63 },
 ): Promise<ArrayBuffer> {
-  const { encode } = await import('@jsquash/avif')
-  return encode(imageData, {
-    quality: options.quality,
-    speed: options.speed ?? 6,
-    subsample: 1, // YUV422 — balances quality and size
+  const worker = getAvifWorker()
+  const id = ++avifWorkerTaskId
+
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    avifWorkerTasks.set(id, { resolve, reject })
+    const buffer = imageData.data.buffer as ArrayBuffer
+    worker.postMessage(
+      {
+        id,
+        imageDataBuffer: buffer,
+        width: imageData.width,
+        height: imageData.height,
+        quality: options.quality,
+        speed: options.speed ?? 8,
+      },
+      [buffer],
+    )
   })
 }
 
