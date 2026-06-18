@@ -109,6 +109,19 @@ function replaceFileExtension(filename: string, extension: string) {
   return filename.replace(/\.[^.]*$/, '') + extension
 }
 
+function getFilenameFromStorageValue(value: string | null | undefined) {
+  if (!value) return undefined
+  try {
+    const pathname = /^https?:\/\//i.test(value) ? new URL(value).pathname : value
+    const normalized = pathname.replace(/\\/g, '/')
+    const filename = normalized.split('/').filter(Boolean).pop()
+    return filename || undefined
+  } catch {
+    const normalized = value.replace(/\\/g, '/')
+    return normalized.split('/').filter(Boolean).pop() || undefined
+  }
+}
+
 function inferFileTypeFromName(filename: string | undefined, fallback?: string) {
   const extension = filename?.split('.').pop()?.toLowerCase()
   switch (extension) {
@@ -377,7 +390,7 @@ export function UploadQueueProvider({
                 status: 'completed' as UploadTaskStatus,
                 progress: 100,
                 photoId: photo.id,
-                targetFileName: t.targetFileName ?? fileToUpload.name,
+                targetFileName: getFilenameFromStorageValue(photo.storageKey || photo.url) ?? t.targetFileName ?? fileToUpload.name,
                 targetFileSize: photo.size ?? t.targetFileSize ?? fileToUpload.size,
                 targetFileType: inferFileTypeFromName(photo.storageKey || photo.url, t.targetFileType ?? fileToUpload.type),
                 compressedSize: photo.size ?? t.compressedSize,
