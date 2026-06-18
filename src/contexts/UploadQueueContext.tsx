@@ -517,6 +517,9 @@ export function UploadQueueProvider({
             status: 'pending' as UploadTaskStatus,
             progress: 0,
             error: null,
+            targetFileName: params.compressionMode && params.compressionMode !== 'none'
+              ? replaceFileExtension(item.file.name, AVIF_EXTENSION)
+              : undefined,
             title:
               params.files.length === 1
                 ? normalizedTitle
