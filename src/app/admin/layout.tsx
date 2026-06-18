@@ -321,7 +321,13 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     setBatchActionSaving(true)
 
     try {
+      let didUpdate = false
+
       if (input.action === 'photoType') {
+        if (!input.photoType) {
+          setShowBatchActionDialog(false)
+          return
+        }
         const result = await batchUpdatePhotoType({
           token,
           photoIds: Array.from(selectedPhotoIds),
@@ -334,8 +340,13 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         if (result.failed > 0) {
           notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
         }
+        didUpdate = true
       }
-      if (input.action === 'takenAt' && input.takenAt) {
+      if (input.action === 'takenAt') {
+        if (!input.takenAt) {
+          setShowBatchActionDialog(false)
+          return
+        }
         const result = await batchUpdatePhotoTakenAt({
           token,
           photoIds: Array.from(selectedPhotoIds),
@@ -347,8 +358,13 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         if (result.failed > 0) {
           notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
         }
+        didUpdate = true
       }
-      if (input.action === 'showFlag' && input.showFlag !== undefined) {
+      if (input.action === 'showFlag') {
+        if (input.showFlag === undefined) {
+          setShowBatchActionDialog(false)
+          return
+        }
         const result = await batchUpdatePhotoShowFlag({
           token,
           photoIds: Array.from(selectedPhotoIds),
@@ -360,8 +376,10 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         if (result.failed > 0) {
           notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
         }
+        didUpdate = true
       }
-      setShowBatchActionDialog(false)
+
+      if (didUpdate) setShowBatchActionDialog(false)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
         handleUnauthorized()

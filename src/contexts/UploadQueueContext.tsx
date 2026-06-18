@@ -5,7 +5,7 @@ import { uploadPhotoWithProgress } from '@/lib/api/photos'
 import { addPhotosToAlbum } from '@/lib/api/albums'
 import { addPhotosToStory } from '@/lib/api/stories'
 import { addPhotosToFilmRoll } from '@/lib/api/film-rolls'
-import { compressImage, CompressionMode, convertImageToJpeg } from '@/lib/image-compress'
+import { compressImage, CompressionMode, convertImageToJpeg, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
 
@@ -16,6 +16,9 @@ export interface UploadTask {
   fileSize: number
   originalSize: number // Original file size before compression
   compressedSize?: number // Size after compression
+  targetFileName?: string
+  targetFileSize?: number
+  targetFileType?: string
   preview: string | null
   status: UploadTaskStatus
   progress: number
@@ -36,8 +39,10 @@ export interface UploadTask {
   batchId: string // Unique batch identifier
   // Compression settings
   compressionMode?: CompressionMode
-    maxSizeMB?: number
-   maxWidthOrHeight?: number
+  maxSizeMB?: number
+  maxWidthOrHeight?: number
+  // Privacy: strip GPS from EXIF before upload
+  stripGps?: boolean
   // Result
   photoId?: string
 }
@@ -61,6 +66,7 @@ interface UploadQueueContextType {
     compressionMode?: CompressionMode
     maxSizeMB?: number
     maxWidthOrHeight?: number
+    stripGps?: boolean
     token: string
   }) => void
   retryTask: (taskId: string, token: string) => void
@@ -82,6 +88,8 @@ export function useUploadQueue() {
 const CONCURRENCY = 4
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 2000
+const AVIF_FILE_TYPE = 'image/avif'
+const AVIF_EXTENSION = '.avif'
 const RETRYABLE_ERROR_PATTERNS = [
   /^Network error/i,
   /^Upload timeout/i,
@@ -95,6 +103,42 @@ const RETRYABLE_ERROR_PATTERNS = [
 function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false
   return RETRYABLE_ERROR_PATTERNS.some((p) => p.test(err.message))
+}
+
+function replaceFileExtension(filename: string, extension: string) {
+  return filename.replace(/\.[^.]*$/, '') + extension
+}
+
+function getFilenameFromStorageValue(value: string | null | undefined) {
+  if (!value) return undefined
+  try {
+    const pathname = /^https?:\/\//i.test(value) ? new URL(value).pathname : value
+    const normalized = pathname.replace(/\\/g, '/')
+    const filename = normalized.split('/').filter(Boolean).pop()
+    return filename || undefined
+  } catch {
+    const normalized = value.replace(/\\/g, '/')
+    return normalized.split('/').filter(Boolean).pop() || undefined
+  }
+}
+
+function inferFileTypeFromName(filename: string | undefined, fallback?: string) {
+  const extension = filename?.split('.').pop()?.toLowerCase()
+  switch (extension) {
+    case 'avif':
+      return 'image/avif'
+    case 'webp':
+      return 'image/webp'
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'gif':
+      return 'image/gif'
+    default:
+      return fallback
+  }
 }
 
 export function UploadQueueProvider({
@@ -215,9 +259,26 @@ export function UploadQueueProvider({
     try {
       let fileToUpload = task.file
       let compressedSize: number | undefined
+      const shouldCompress = task.compressionMode && task.compressionMode !== 'none'
 
       const latestToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       if (latestToken) tokenRef.current = latestToken
+
+      // Extract EXIF from the original file before compression (compression
+      // discards EXIF). GPS is stripped from the JSON here when enabled;
+      // the server also strips GPS as a fallback via strip_gps.
+      let exifJsonString: string | undefined
+      try {
+        let exifJson = await extractExifToJson(task.file)
+        if (task.stripGps) {
+          exifJson = stripGpsFromExifJson(exifJson)
+        }
+        if (Object.keys(exifJson).length > 0) {
+          exifJsonString = JSON.stringify(exifJson)
+        }
+      } catch {
+        // EXIF read failure should not block upload
+      }
 
       // Step 1: Convert unsupported browser-upload formats if needed, then compress
       if (fileToUpload.type === 'image/bmp') {
@@ -226,17 +287,24 @@ export function UploadQueueProvider({
         setTasks((prev) =>
           prev.map((t) =>
             t.id === task.id
-              ? { ...t, compressedSize, fileSize: compressedSize! }
+              ? {
+                  ...t,
+                  compressedSize,
+                  fileSize: compressedSize!,
+                  targetFileName: fileToUpload.name,
+                  targetFileSize: compressedSize,
+                  targetFileType: fileToUpload.type,
+                }
               : t
           )
         )
       }
 
-      if (task.compressionMode && task.compressionMode !== 'none') {
+      if (shouldCompress) {
         try {
           fileToUpload = await compressImage(
             fileToUpload,
-           { mode: task.compressionMode, maxSizeMB: task.maxSizeMB, maxWidthOrHeight: task.maxWidthOrHeight },
+            { mode: task.compressionMode, maxSizeMB: task.maxSizeMB, maxWidthOrHeight: task.maxWidthOrHeight },
             (progress) => {
               updateTaskProgress(task.id, Math.round(progress * 0.3))
             }
@@ -244,10 +312,20 @@ export function UploadQueueProvider({
           compressedSize = fileToUpload.size
 
           // Update compressed size info
+          const targetFileName = fileToUpload.type === AVIF_FILE_TYPE
+            ? fileToUpload.name
+            : replaceFileExtension(fileToUpload.name, AVIF_EXTENSION)
           setTasks((prev) =>
             prev.map((t) =>
               t.id === task.id
-                ? { ...t, compressedSize, fileSize: compressedSize! }
+                ? {
+                    ...t,
+                    compressedSize,
+                    fileSize: compressedSize!,
+                    targetFileName,
+                    targetFileSize: compressedSize,
+                    targetFileType: AVIF_FILE_TYPE,
+                  }
                 : t
             )
           )
@@ -261,7 +339,15 @@ export function UploadQueueProvider({
           setTasks((prev) =>
             prev.map((t) =>
               t.id === task.id
-                ? { ...t, compressedSize: undefined, fileSize: fileToUpload.size, error: null }
+                ? {
+                    ...t,
+                    compressedSize: undefined,
+                    fileSize: fileToUpload.size,
+                    targetFileName: replaceFileExtension(fileToUpload.name, AVIF_EXTENSION),
+                    targetFileSize: fileToUpload.size,
+                    targetFileType: AVIF_FILE_TYPE,
+                    error: null,
+                  }
                 : t
             )
           )
@@ -285,6 +371,10 @@ export function UploadQueueProvider({
         file_hash: task.fileHash,
         film_roll_id: task.filmRollId,
         show_flag: task.showFlag,
+        compression_mode: task.compressionMode,
+        max_size_mb: task.maxSizeMB,
+        exif_json: exifJsonString,
+        strip_gps: task.stripGps ? 'true' : undefined,
         onProgress: (progress) => {
           const mappedProgress = Math.round(uploadProgressOffset + (progress / 100) * uploadProgressRange)
           updateTaskProgress(task.id, mappedProgress, 'uploading')
@@ -295,7 +385,17 @@ export function UploadQueueProvider({
       setTasks((prev) => {
         const updated = prev.map((t) =>
           t.id === task.id
-            ? { ...t, status: 'completed' as UploadTaskStatus, progress: 100, photoId: photo.id }
+            ? {
+                ...t,
+                status: 'completed' as UploadTaskStatus,
+                progress: 100,
+                photoId: photo.id,
+                targetFileName: getFilenameFromStorageValue(photo.storageKey || photo.url) ?? t.targetFileName ?? fileToUpload.name,
+                targetFileSize: photo.size ?? t.targetFileSize ?? fileToUpload.size,
+                targetFileType: inferFileTypeFromName(photo.storageKey || photo.url, t.targetFileType ?? fileToUpload.type),
+                compressedSize: photo.size ?? t.compressedSize,
+                fileSize: photo.size ?? t.fileSize,
+              }
             : t
         )
 
@@ -394,6 +494,7 @@ export function UploadQueueProvider({
       compressionMode?: CompressionMode
       maxSizeMB?: number
       maxWidthOrHeight?: number
+      stripGps?: boolean
       token: string
     }) => {
       tokenRef.current = params.token
@@ -433,6 +534,7 @@ export function UploadQueueProvider({
             compressionMode: params.compressionMode,
             maxSizeMB: params.maxSizeMB,
             maxWidthOrHeight: params.maxWidthOrHeight,
+            stripGps: params.stripGps,
             batchId,
           }
         })

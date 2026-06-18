@@ -45,7 +45,7 @@ export function CustomSelect({
           'min-h-10 px-3 py-2 bg-background border border-border rounded-md flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
         label: 'text-sm',
         dropdown:
-          'absolute z-20 w-full mt-1 bg-background border border-border rounded-md shadow-xl max-h-56 overflow-y-auto',
+          'absolute z-40 w-full mt-1 bg-background border border-border rounded-md shadow-xl max-h-56 overflow-y-auto',
         option:
           'w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between group transition-colors',
         optionActive: 'bg-muted text-foreground',
@@ -57,7 +57,7 @@ export function CustomSelect({
         'min-h-10 px-3 py-2 bg-background border-b border-border flex items-center justify-between cursor-pointer transition-colors hover:border-primary',
       label: 'text-xs font-mono',
       dropdown:
-        'absolute z-20 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto',
+        'absolute z-40 w-full mt-1 bg-background border border-border shadow-2xl max-h-48 overflow-y-auto',
       option:
         'w-full text-left px-4 py-3 text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground flex items-center justify-between group transition-colors',
       optionActive: 'bg-primary/10 text-primary',

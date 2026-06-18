@@ -2,19 +2,35 @@ import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { extractExifData } from '~/server/lib/exif'
+import { extractExifData, parseExifJson } from '~/server/lib/exif'
 import { extractDominantColors } from '~/server/lib/colors'
+import {
+  compressToTargetSize,
+  enforceDimensionLimit,
+  generateThumbnailBuffer,
+  getMetadataAndThumbnail,
+  withSharpTimeout,
+} from '~/server/lib/image-processing'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
+import { resolvePhotoThumbnailUrl, resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
 import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
-const THUMBNAIL_EXTENSION = '.webp'
+const THUMBNAIL_EXTENSION = '.avif'
+const ORIGINAL_AVIF_EXTENSION = '.avif'
+const DEFAULT_AVIF_QUALITY = 82
+const AVIF_CONTENT_TYPE = 'image/avif'
 
 function buildThumbnailFilename(filename: string): string {
   const parsed = path.parse(filename)
   return `thumb-${parsed.name}${THUMBNAIL_EXTENSION}`
+}
+
+function replaceFileExtension(filename: string, extension: string): string {
+  const parsed = path.parse(filename)
+  return `${parsed.name}${extension}`
 }
 
 function buildThumbnailKey(originalKey: string): string {
@@ -358,6 +374,10 @@ photos.post('/admin/photos', async (c) => {
     const fileHash = formData.get('file_hash') as string | null
     const filmRollId = formData.get('film_roll_id') as string | null
     const showFlag = formData.get('show_flag') !== 'false'
+    const compressionMode = formData.get('compression_mode') as string | null
+    const maxSizeMBInput = formData.get('max_size_mb')
+    const maxSizeMB = typeof maxSizeMBInput === 'string' ? Number(maxSizeMBInput) : undefined
+    const shouldCompressOriginal = compressionMode === 'compress'
     const originFlagInput = formData.get('origin_flag')
     const originFlag =
       typeof originFlagInput === 'string' && allowedOriginFlags.has(originFlagInput)
@@ -366,6 +386,16 @@ photos.post('/admin/photos', async (c) => {
 
     if (!file) {
       return c.json({ error: 'File is required' }, 400)
+    }
+
+    // Explicit body size guard (Vercel plan limits are enforced upstream, but
+    // self-hosted Node has no default cap).
+    const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB) || 50 * 1024 * 1024
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return c.json(
+        { error: `File too large. Max ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB` },
+        413,
+      )
     }
 
     console.info('[upload] request received', {
@@ -404,44 +434,96 @@ photos.post('/admin/photos', async (c) => {
 
     // Process image buffer
     const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    let buffer: Buffer<ArrayBufferLike> = Buffer.from(arrayBuffer)
+    let originalContentType = file.type
+    let originalFilename = file.name
+    const targetMaxSizeMB = Number.isFinite(maxSizeMB) && maxSizeMB !== undefined && maxSizeMB > 0
+      ? maxSizeMB
+      : null
+    const reuseUploadedFileAsThumbnail = shouldCompressOriginal
+
+    // P0: Extract EXIF BEFORE compression — sharp AVIF encoding discards EXIF.
+    // Prefer exif_json transmitted from the frontend (read before browser-side
+    // compression); fall back to extracting from the raw uploaded buffer.
+    const exifJsonRaw = formData.get('exif_json') as string | null
+    const stripGpsFlag = formData.get('strip_gps') === 'true'
+
+    let exifData: Awaited<ReturnType<typeof extractExifData>>
+    if (exifJsonRaw) {
+      try {
+        exifData = parseExifJson(exifJsonRaw)
+      } catch {
+        exifData = await extractExifData(buffer)
+      }
+    } else {
+      exifData = await extractExifData(buffer)
+    }
+
+    // Server-side GPS stripping fallback (covers cases where the frontend
+    // could not read/strip EXIF, or uploads bypassed the client).
+    if (stripGpsFlag && exifData.gps) {
+      exifData.gps = undefined
+    }
+
+    // Downscale oversized images before heavy AVIF encoding to avoid
+    // serverless timeouts on very large source files.
+    try {
+      buffer = await withSharpTimeout(enforceDimensionLimit(buffer))
+    } catch (error) {
+      console.warn('[upload] Dimension limit enforcement failed:', error)
+    }
+
+    if (shouldCompressOriginal && file.type !== 'image/avif') {
+      try {
+        buffer = await withSharpTimeout(
+          sharp(buffer).rotate().avif({ quality: DEFAULT_AVIF_QUALITY }).toBuffer(),
+        )
+        originalContentType = 'image/avif'
+        originalFilename = replaceFileExtension(file.name, ORIGINAL_AVIF_EXTENSION)
+      } catch (error) {
+        console.warn('[upload] Server AVIF compression failed, keeping uploaded file:', error)
+      }
+    }
+
+    // P1: Target-size fallback — if the client could not hit max_size_mb (or
+    // uploaded uncompressed), iteratively re-encode toward the target.
+    if (targetMaxSizeMB && buffer.length > targetMaxSizeMB * 1024 * 1024) {
+      try {
+        buffer = await withSharpTimeout(compressToTargetSize(buffer, targetMaxSizeMB))
+        if (originalContentType !== 'image/avif') {
+          originalContentType = 'image/avif'
+          originalFilename = replaceFileExtension(file.name, ORIGINAL_AVIF_EXTENSION)
+        }
+      } catch (error) {
+        console.warn('[upload] Target size compression failed:', error)
+      }
+    }
+
     console.info('[upload] file buffered', {
-      fileName: file.name,
+      fileName: originalFilename,
       fileSize: buffer.length,
+      contentType: originalContentType,
+      maxSizeMB: targetMaxSizeMB,
       elapsedMs: Date.now() - startedAt,
     })
 
     // Run these operations in parallel:
     // 1. Get storage configuration
-    // 2. Extract EXIF data
-    // 3. Get metadata + generate thumbnail
-    const [storageConfig, exifData, { metadata, thumbnailBuffer }] = await Promise.all([
+    // 2. Get metadata and generate a separate thumbnail only when needed
+    //    (EXIF already extracted above, before compression)
+    const [storageConfig, { metadata, thumbnailBuffer }] = await Promise.all([
       storageSourceId
         ? getStorageConfigBySourceId(storageSourceId)
         : getStorageConfig(storageProvider || undefined),
-      extractExifData(buffer),
-      (async () => {
-        const sharpInstance = sharp(buffer)
-        const [metadata, thumbnailBuffer] = await Promise.all([
-          sharpInstance.metadata(),
-          sharp(buffer)
-            .rotate() // Auto-rotate based on EXIF orientation
-            .resize(800, 800, {
-              fit: 'inside',
-              withoutEnlargement: true,
-            })
-            .webp({ quality: 80 })
-            .toBuffer(),
-        ])
-        return { metadata, thumbnailBuffer }
-      })(),
+      getMetadataAndThumbnail(buffer, { generateThumbnail: !reuseUploadedFileAsThumbnail }),
     ])
 
     console.info('[upload] image processed', {
-      fileName: file.name,
+      fileName: originalFilename,
       width: metadata.width,
       height: metadata.height,
-      thumbnailSize: thumbnailBuffer.length,
+      thumbnailSize: thumbnailBuffer?.length ?? buffer.length,
+      reusedOriginalAsThumbnail: reuseUploadedFileAsThumbnail,
       provider: storageConfig.provider,
       elapsedMs: Date.now() - startedAt,
     })
@@ -457,7 +539,7 @@ photos.post('/admin/photos', async (c) => {
       .fill(null)
       .map(() => Math.round(Math.random() * 16).toString(16))
       .join('')
-    const ext = path.extname(file.name)
+    const ext = path.extname(originalFilename)
     const filename = `${randomName}${ext}`
     const thumbnailFilename = buildThumbnailFilename(filename)
 
@@ -469,30 +551,34 @@ photos.post('/admin/photos', async (c) => {
           .filter((c) => c.length > 0)
       : []
 
-    // Use the generated thumbnail for color extraction to avoid decoding the
-    // large original image again inside a constrained serverless function.
+    const uploadAssets = resolvePhotoUploadAssets({
+      reuseUploadedFileAsThumbnail,
+      originalBuffer: buffer,
+      thumbnailBuffer,
+      thumbnailFilename,
+      storagePath,
+      storagePathFull,
+      thumbnailContentType: AVIF_CONTENT_TYPE,
+    })
+
+    // Use the generated thumbnail for color extraction when available to avoid
+    // decoding the large original image again inside a constrained serverless function.
     const [uploadResult, dominantColors] = await Promise.all([
       storage.upload(
         {
           buffer,
           filename,
           path: storagePath,
-          contentType: file.type,
+          contentType: originalContentType,
           useFullPath: storagePathFull,
         },
-        {
-          buffer: thumbnailBuffer,
-          filename: thumbnailFilename,
-          path: storagePath,
-          contentType: 'image/webp',
-          useFullPath: storagePathFull,
-        }
+        uploadAssets.thumbnailUpload
       ),
-      extractDominantColors(thumbnailBuffer),
+      extractDominantColors(uploadAssets.dominantColorBuffer),
     ])
 
     console.info('[upload] storage upload complete', {
-      fileName: file.name,
+      fileName: originalFilename,
       key: uploadResult.key,
       thumbnailKey: uploadResult.thumbnailKey,
       dominantColors: dominantColors.length,
@@ -540,7 +626,7 @@ photos.post('/admin/photos', async (c) => {
       data: {
         title,
         url: uploadResult.url,
-        thumbnailUrl: uploadResult.thumbnailUrl,
+        thumbnailUrl: resolvePhotoThumbnailUrl(uploadResult, reuseUploadedFileAsThumbnail),
         originFlag,
         storageProvider: storageConfig.provider,
         storageSourceId: storageSourceId || null,
@@ -1330,30 +1416,23 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     if (uploadOriginal) {
       [exifData, { metadata, thumbnailBuffer }] = await Promise.all([
         extractExifData(buffer),
-        (async () => {
-          const sharpInstance = sharp(buffer)
-          const [meta, thumb] = await Promise.all([
-            sharpInstance.metadata(),
-            uploadThumb ? sharp(buffer).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer() : null,
-          ])
-          return { metadata: meta, thumbnailBuffer: thumb }
-        })(),
+        getMetadataAndThumbnail(buffer, { generateThumbnail: uploadThumb }),
       ])
       dominantColors = await extractDominantColors(buffer)
     } else if (uploadThumb) {
-      thumbnailBuffer = await sharp(buffer).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80 }).toBuffer()
+      thumbnailBuffer = await generateThumbnailBuffer(buffer)
     }
 
     let uploadResult
     if (uploadOriginal && uploadThumb && thumbnailBuffer) {
       uploadResult = await storage.upload(
         { buffer, filename, path: storagePath, contentType: file.type },
-        { buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: 'image/webp' }
+        { buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: AVIF_CONTENT_TYPE }
       )
     } else if (uploadOriginal) {
       uploadResult = await storage.upload({ buffer, filename, path: storagePath, contentType: file.type })
     } else if (uploadThumb && thumbnailBuffer) {
-      uploadResult = await storage.upload({ buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: 'image/webp' })
+      uploadResult = await storage.upload({ buffer: thumbnailBuffer, filename: thumbnailFilename, path: storagePath, contentType: AVIF_CONTENT_TYPE })
     }
 
     const updateData: Record<string, unknown> = {}
@@ -1456,11 +1535,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const buffer = await storage.download(photo.storageKey || photo.url)
     if (!buffer) return c.json({ error: 'Failed to download image' }, 500)
 
-    const thumbnailBuffer = await sharp(buffer)
-      .rotate()
-      .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 80 })
-      .toBuffer()
+    const thumbnailBuffer = await generateThumbnailBuffer(buffer)
 
     const storageKey = photo.storageKey || ''
     const lastSlash = storageKey.lastIndexOf('/')
@@ -1472,7 +1547,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
       buffer: thumbnailBuffer,
       filename: thumbnailFilename,
       path: storagePath,
-      contentType: 'image/webp',
+      contentType: AVIF_CONTENT_TYPE,
     })
 
     const updated = await db.photo.update({

@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Next.js 16 uses Turbopack by default, which has native async WebAssembly
+  // support — @jsquash/avif's dynamic import + WASM works out of the box with
+  // no extra rules. The empty turbopack object silences the "webpack config
+  // present but no turbopack config" error.
+  turbopack: {},
 };
 
 export default nextConfig;

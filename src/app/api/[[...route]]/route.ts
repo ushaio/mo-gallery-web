@@ -31,3 +31,6 @@ export const PATCH = handle(app)
 export const DELETE = handle(app)
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+// Self-hosted Node default cap; Vercel enforces plan limits upstream.
+// The Hono handler also performs an explicit file.size check returning 413.
+export const bodySizeLimit = '50mb'

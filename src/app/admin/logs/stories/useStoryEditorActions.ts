@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { DragEvent } from 'react'
 import ExifReader from 'exifreader'
-import { compressImage } from '@/lib/image-compress'
+import { compressImage, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
 import { calculateFileHash } from '@/lib/file-hash'
 import { stripGpsData } from '@/lib/privacy-strip'
 import {
@@ -263,6 +263,20 @@ export function useStoryEditorActions({
 
         let fileToUpload = pending.file
 
+        // Extract EXIF before compression/GPS-strip (compression discards EXIF).
+        let exifJsonString: string | undefined
+        try {
+          let exifJson = await extractExifToJson(fileToUpload)
+          if (settings.stripGps) {
+            exifJson = stripGpsFromExifJson(exifJson)
+          }
+          if (Object.keys(exifJson).length > 0) {
+            exifJsonString = JSON.stringify(exifJson)
+          }
+        } catch {
+          // EXIF read failure should not block upload
+        }
+
         if (settings.stripGps) {
           fileToUpload = await stripGpsData(fileToUpload)
         }
@@ -285,6 +299,10 @@ export function useStoryEditorActions({
           storage_path: settings.storagePath,
           storage_path_full: settings.storagePathFull,
           show_flag: settings.showFlag,
+          compression_mode: settings.compressionMode,
+          max_size_mb: settings.maxSizeMB,
+          exif_json: exifJsonString,
+          strip_gps: settings.stripGps ? 'true' : undefined,
           file_hash: fileHash,
           onProgress: (progress) => {
             setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, progress } : image))

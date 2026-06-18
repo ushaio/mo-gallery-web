@@ -33,7 +33,15 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + SIZE_UNITS[i]
 }
 
-const ITEM_HEIGHT = 72 // px per task row (h-12 thumbnail + py-3 padding)
+function formatFileType(type: string | undefined, filename?: string): string {
+  const extension = filename?.split('.').pop()?.toLowerCase()
+  if (extension) return extension.toUpperCase()
+  if (!type) return 'FILE'
+  const subtype = type.split('/')[1]
+  return subtype ? subtype.toUpperCase() : type.toUpperCase()
+}
+
+const ITEM_HEIGHT = 86 // px per task row (thumbnail + metadata lines)
 const CONTAINER_MAX_HEIGHT = 320 // max-h-80 = 320px
 const OVERSCAN = 3 // extra items rendered above/below viewport
 

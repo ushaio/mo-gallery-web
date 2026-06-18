@@ -245,11 +245,7 @@ export function FilmPhotoUploadParams({
 
   // Notify parent of settings changes
   useEffect(() => {
-    const fullStoragePath = useCustomPrefix
-      ? (uploadPath.trim() || undefined)
-      : (configPrefix
-        ? (uploadPath.trim() ? `${configPrefix}/${uploadPath.trim()}` : configPrefix)
-        : uploadPath.trim() || undefined)
+    const fullStoragePath = uploadPath.trim() || undefined
 
     onSettingsChange({
       title: uploadTitle,
@@ -274,7 +270,6 @@ export function FilmPhotoUploadParams({
     uploadSourceId,
     uploadPath,
     useCustomPrefix,
-    configPrefix,
     compressionEnabled,
     maxSizeMB,
     showFlag,

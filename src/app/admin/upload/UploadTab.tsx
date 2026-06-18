@@ -22,8 +22,7 @@ import {
 import type { AdminSettingsDto } from '@/lib/api/types'
 import { checkDuplicatePhotos } from '@/lib/api/photos'
 import { compressImage } from '@/lib/image-compress'
-import { stripGpsData } from '@/lib/privacy-strip'
-import { calculateFileHash, calculateFileHashes } from '@/lib/file-hash'
+import { calculateFileHashes } from '@/lib/file-hash'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -501,10 +500,6 @@ export function UploadTab({
     setTestedSizeMap(new Map())
   }, [currentSettings.maxSizeMB, currentSettings.compressionEnabled])
 
-  // Privacy strip - remove GPS/location data
-  const [strippingPrivacy, setStrippingPrivacy] = useState(false)
-  const [privacyProgress, setPrivacyProgress] = useState({ current: 0, total: 0 })
-
   // Duplicate check
   const [checkingDuplicates, setCheckingDuplicates] = useState(false)
   const [duplicateProgress, setDuplicateProgress] = useState({ current: 0, total: 0 })
@@ -528,6 +523,7 @@ export function UploadTab({
 
   const estimateFileSize = useCallback((file: File): number => {
     if (!currentSettings.compressionEnabled) return file.size
+    if (currentSettings.maxSizeMB <= 0) return Math.min(file.size * 0.7, file.size)
     const target = currentSettings.maxSizeMB * 1024 * 1024
     if (file.size <= target) return file.size
     return Math.min(file.size * 0.45, target)
@@ -564,6 +560,8 @@ export function UploadTab({
       }
       return null
     }
+
+    if (currentSettings.maxSizeMB <= 0) return null
 
     // On + all already small
     if (filesUnderTarget === uploadFiles.length) {
@@ -639,7 +637,7 @@ export function UploadTab({
   }
   
   const addUploadFiles = (files: File[]) => {
-    const MAX_FRONTEND_SIZE = 100 * 1024 * 1024
+    const MAX_FRONTEND_SIZE = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 50) * 1024 * 1024
     const imageFiles = files.filter(f => {
       if (!f.type.startsWith('image/') || f.type === 'image/svg+xml') return false
       return true
@@ -766,39 +764,11 @@ export function UploadTab({
   const proceedWithUpload = async (filesToUpload: UploadFile[], hashMap: Map<string, string>) => {
     if (!token) return
 
-    let stripFailureCount = 0
-
-    // Step 1: Strip GPS/location data if enabled
-    if (currentSettings.privacyStripEnabled) {
-      setStrippingPrivacy(true)
-      setPrivacyProgress({ current: 0, total: filesToUpload.length })
-      const stripped: UploadFile[] = []
-      const updatedHashMap = new Map(hashMap)
-      for (let i = 0; i < filesToUpload.length; i++) {
-        const item = filesToUpload[i]
-        try {
-          const file = await stripGpsData(item.file)
-          if (file !== item.file) {
-            const newHash = await calculateFileHash(file)
-            updatedHashMap.set(item.id, newHash)
-          }
-          stripped.push({ id: item.id, file })
-        } catch {
-          stripped.push(item)
-          stripFailureCount++
-        }
-        setPrivacyProgress({ current: i + 1, total: filesToUpload.length })
-      }
-      filesToUpload = stripped
-      hashMap = updatedHashMap
-      setStrippingPrivacy(false)
-
-      if (stripFailureCount > 0) {
-        notify(`GPS data could not be stripped from ${stripFailureCount} file(s). They were uploaded with original location data.`, 'error')
-      }
-    }
-
-    // Step 2: Upload with file hashes (compression happens in upload queue)
+    // GPS stripping now happens inside the upload queue via EXIF JSON
+    // (see UploadQueueContext.extractExifToJson + stripGpsFromExifJson), so
+    // there is no separate binary pass here. fileHash stays anchored to the
+    // original file content so duplicate detection is stable regardless of
+    // whether GPS stripping is enabled.
     await addTasks({
       files: filesToUpload.map(f => ({
         id: f.id,
@@ -817,6 +787,7 @@ export function UploadTab({
       showFlag: currentSettings.showFlag,
       compressionMode: currentSettings.compressionEnabled ? 'compress' : undefined,
       maxSizeMB: currentSettings.compressionEnabled && currentSettings.maxSizeMB > 0 ? currentSettings.maxSizeMB : undefined,
+      stripGps: currentSettings.privacyStripEnabled,
       token,
     })
 
@@ -897,7 +868,7 @@ export function UploadTab({
               compressionSuggestion={compressionSuggestion}
               onSettingsChange={setDigitalSettings}
               onUploadClick={handleUploadClick}
-              uploading={checkingDuplicates || strippingPrivacy}
+              uploading={checkingDuplicates}
               uploadError={uploadError}
             />
           ) : (
@@ -911,7 +882,7 @@ export function UploadTab({
               compressionSuggestion={compressionSuggestion}
               onSettingsChange={setFilmSettings}
               onUploadClick={handleUploadClick}
-              uploading={checkingDuplicates || strippingPrivacy}
+              uploading={checkingDuplicates}
               uploadError={uploadError}
             />
           )}

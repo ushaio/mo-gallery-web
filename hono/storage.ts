@@ -6,7 +6,7 @@ import { StorageProviderFactory, getStorageConfig } from '~/server/lib/storage'
 import path from 'path'
 
 const storage = new Hono<{ Variables: AuthVariables }>()
-const THUMBNAIL_EXTENSION = '.webp'
+const THUMBNAIL_EXTENSION = '.avif'
 
 function buildThumbnailKey(originalKey: string): string {
   const parsed = path.posix.parse(originalKey)
@@ -52,8 +52,8 @@ storage.get('/admin/storage/scan', async (c) => {
   const getThumbnailKeyFromUrl = (thumbnailUrl: string | null) => {
     if (!thumbnailUrl) return null
     // Extract key from URL - handle different URL formats
-    // e.g., /uploads/thumb-xxx.webp -> thumb-xxx.webp
-    // e.g., https://cdn.example.com/path/thumb-xxx.webp -> path/thumb-xxx.webp
+    // e.g., /uploads/thumb-xxx.avif -> thumb-xxx.avif
+    // e.g., https://cdn.example.com/path/thumb-xxx.avif -> path/thumb-xxx.avif
     const match = thumbnailUrl.match(/(?:\/uploads\/|\/)?([^/]*thumb-[^/]+)$/)
     if (match) return match[1]
     // For full paths like path/to/thumb-xxx.jpg

@@ -10,6 +10,7 @@ import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 
 type BatchAction = 'photoType' | 'takenAt' | 'showFlag'
 type PhotoType = 'digital' | 'film'
+type ShowFlagValue = '' | 'true' | 'false'
 
 export interface BatchPhotoActionInput {
   action: BatchAction
@@ -39,20 +40,20 @@ export function BatchPhotoActionDialog({
   notify,
 }: BatchPhotoActionDialogProps) {
   const [action, setAction] = useState<BatchAction>('photoType')
-  const [photoType, setPhotoType] = useState<PhotoType>('digital')
+  const [photoType, setPhotoType] = useState<PhotoType | ''>('')
   const [filmRollId, setFilmRollId] = useState('')
   const [takenAt, setTakenAt] = useState('')
-  const [showFlag, setShowFlag] = useState(true)
+  const [showFlag, setShowFlag] = useState<ShowFlagValue>('')
   const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
   const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
     setAction('photoType')
-    setPhotoType('digital')
+    setPhotoType('')
     setFilmRollId('')
     setTakenAt('')
-    setShowFlag(true)
+    setShowFlag('')
   }, [isOpen])
 
   useEffect(() => {
@@ -84,6 +85,7 @@ export function BatchPhotoActionDialog({
   ], [t])
 
   const photoTypeOptions = useMemo(() => [
+    { value: '', label: t('admin.batch_no_change') || 'No change' },
     { value: 'digital', label: t('admin.upload_type_digital') },
     { value: 'film', label: t('admin.upload_type_film') },
   ], [t])
@@ -97,7 +99,7 @@ export function BatchPhotoActionDialog({
     action === 'photoType'
       ? photoType !== 'film' || filmRollId.length > 0
       : action === 'takenAt'
-        ? takenAt.length > 0 && Number.isFinite(new Date(takenAt).getTime())
+        ? takenAt.length === 0 || Number.isFinite(new Date(takenAt).getTime())
         : true
   )
 
@@ -106,21 +108,21 @@ export function BatchPhotoActionDialog({
     if (action === 'takenAt') {
       await onConfirm({
         action,
-        takenAt: new Date(takenAt).toISOString(),
+        takenAt: takenAt ? new Date(takenAt).toISOString() : undefined,
       })
       return
     }
     if (action === 'showFlag') {
       await onConfirm({
         action,
-        showFlag,
+        showFlag: showFlag ? showFlag === 'true' : undefined,
       })
       return
     }
 
     await onConfirm({
       action,
-      photoType,
+      photoType: photoType || undefined,
       filmRollId: photoType === 'film' ? filmRollId : null,
     })
   }
@@ -204,7 +206,15 @@ export function BatchPhotoActionDialog({
                   {action === 'photoType' && (
                     <div className="space-y-4">
                       <div>
-                        <AdminSelect value={photoType} onChange={(value) => setPhotoType(value as PhotoType)} options={photoTypeOptions} />
+                        <AdminSelect
+                          value={photoType}
+                          onChange={(value) => {
+                            const nextPhotoType = value as PhotoType | ''
+                            setPhotoType(nextPhotoType)
+                            if (nextPhotoType !== 'film') setFilmRollId('')
+                          }}
+                          options={photoTypeOptions}
+                        />
                       </div>
 
                       {photoType === 'film' && (
@@ -249,9 +259,10 @@ export function BatchPhotoActionDialog({
                         {t('admin.show_in_gallery')}
                       </label>
                       <AdminSelect
-                        value={showFlag ? 'true' : 'false'}
-                        onChange={(value) => setShowFlag(value === 'true')}
+                        value={showFlag}
+                        onChange={(value) => setShowFlag(value as ShowFlagValue)}
                         options={[
+                          { value: '', label: t('admin.batch_no_change') || 'No change' },
                           { value: 'true', label: t('common.enabled') },
                           { value: 'false', label: t('common.disabled') },
                         ]}

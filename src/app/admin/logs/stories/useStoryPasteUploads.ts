@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useCallback } from 'react'
-import { compressImage } from '@/lib/image-compress'
+import { compressImage, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
 import { calculateFileHash } from '@/lib/file-hash'
 import { stripGpsData } from '@/lib/privacy-strip'
 import {
@@ -118,6 +118,20 @@ export function useStoryPasteUploads({
 
         let fileToUpload = file
 
+        // Extract EXIF before compression/GPS-strip (compression discards EXIF).
+        let exifJsonString: string | undefined
+        try {
+          let exifJson = await extractExifToJson(fileToUpload)
+          if (nextSettings.stripGps) {
+            exifJson = stripGpsFromExifJson(exifJson)
+          }
+          if (Object.keys(exifJson).length > 0) {
+            exifJsonString = JSON.stringify(exifJson)
+          }
+        } catch {
+          // EXIF read failure should not block upload
+        }
+
         if (nextSettings.stripGps) {
           fileToUpload = await stripGpsData(fileToUpload)
         }
@@ -140,6 +154,10 @@ export function useStoryPasteUploads({
           storage_path: nextSettings.storagePath,
           storage_path_full: nextSettings.storagePathFull,
           show_flag: nextSettings.showFlag,
+          compression_mode: nextSettings.compressionMode,
+          max_size_mb: nextSettings.maxSizeMB,
+          exif_json: exifJsonString,
+          strip_gps: nextSettings.stripGps ? 'true' : undefined,
           file_hash: fileHash,
           onProgress: (progress) => {
             setUploadProgress({ current: index + 1, total: files.length, currentFile: `${file.name} ${progress}%` })

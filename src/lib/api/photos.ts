@@ -132,6 +132,10 @@ export async function uploadPhoto(input: {
   file_hash?: string
   film_roll_id?: string
   show_flag?: boolean
+  compression_mode?: string
+  max_size_mb?: number
+  exif_json?: string
+  strip_gps?: string
 }): Promise<PhotoDto> {
   const form = new FormData()
   form.set('file', input.file)
@@ -145,6 +149,10 @@ export async function uploadPhoto(input: {
   if (input.file_hash) form.set('file_hash', input.file_hash)
   if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
   if (input.show_flag !== undefined) form.set('show_flag', input.show_flag ? 'true' : 'false')
+  if (input.compression_mode) form.set('compression_mode', input.compression_mode)
+  if (input.max_size_mb !== undefined) form.set('max_size_mb', String(input.max_size_mb))
+  if (input.exif_json) form.set('exif_json', input.exif_json)
+  if (input.strip_gps) form.set('strip_gps', input.strip_gps)
 
   return apiRequestData<PhotoDto>(
     '/api/admin/photos',
@@ -166,6 +174,10 @@ export function uploadPhotoWithProgress(input: {
   file_hash?: string
   film_roll_id?: string
   show_flag?: boolean
+  compression_mode?: string
+  max_size_mb?: number
+  exif_json?: string
+  strip_gps?: string
   onProgress?: (progress: number) => void
 }): Promise<PhotoDto> {
   return new Promise((resolve, reject) => {
@@ -184,6 +196,10 @@ export function uploadPhotoWithProgress(input: {
     if (input.file_hash) form.set('file_hash', input.file_hash)
     if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
     if (input.show_flag !== undefined) form.set('show_flag', input.show_flag ? 'true' : 'false')
+    if (input.compression_mode) form.set('compression_mode', input.compression_mode)
+    if (input.max_size_mb !== undefined) form.set('max_size_mb', String(input.max_size_mb))
+    if (input.exif_json) form.set('exif_json', input.exif_json)
+    if (input.strip_gps) form.set('strip_gps', input.strip_gps)
 
     const xhr = new XMLHttpRequest()
     const url = buildApiUrl('/api/admin/photos')

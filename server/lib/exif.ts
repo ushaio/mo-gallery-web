@@ -20,7 +20,7 @@ function isValidDate(value: Date | undefined): value is Date {
   return value instanceof Date && Number.isFinite(value.getTime())
 }
 
-function parseExifDate(dateStr: string): Date | undefined {
+export function parseExifDate(dateStr: string): Date | undefined {
   const normalized = dateStr.replace(/\0/g, '').trim()
   const match = normalized.match(
     /^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/
@@ -201,6 +201,49 @@ export async function extractExifData(buffer: Buffer): Promise<ExifData> {
     console.warn('Failed to extract EXIF data:', error)
     return {}
   }
+}
+
+/**
+ * Parse EXIF JSON string transmitted from the frontend into ExifData.
+ *
+ * The frontend reads EXIF before browser-side compression (Canvas/AVIF encoding
+ * discards EXIF) and sends it via FormData `exif_json`. `takenAt` is parsed
+ * with the same parseExifDate used for raw buffers, keeping date validation
+ * consistent between client-JSON and server-buffer paths.
+ */
+export function parseExifJson(json: string): ExifData {
+  const raw = JSON.parse(json) as {
+    cameraMake?: string
+    cameraModel?: string
+    lens?: string
+    focalLength?: string
+    aperture?: string
+    shutterSpeed?: string
+    iso?: number
+    takenAt?: string
+    orientation?: number
+    software?: string
+    exifRaw?: string
+    gps?: string
+  }
+
+  const data: ExifData = {}
+  if (raw.cameraMake) data.cameraMake = raw.cameraMake
+  if (raw.cameraModel) data.cameraModel = raw.cameraModel
+  if (raw.lens) data.lens = raw.lens
+  if (raw.focalLength) data.focalLength = raw.focalLength
+  if (raw.aperture) data.aperture = raw.aperture
+  if (raw.shutterSpeed) data.shutterSpeed = raw.shutterSpeed
+  if (typeof raw.iso === 'number') data.iso = raw.iso
+  if (raw.takenAt) {
+    const parsed = parseExifDate(raw.takenAt)
+    if (parsed) data.takenAt = parsed
+  }
+  if (typeof raw.orientation === 'number') data.orientation = raw.orientation
+  if (raw.software) data.software = raw.software
+  if (raw.exifRaw) data.exifRaw = raw.exifRaw
+  if (raw.gps) data.gps = raw.gps
+  return data
 }
 
 /**

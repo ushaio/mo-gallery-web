@@ -363,6 +363,8 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
               title: fileToUpload.name,
               file_hash: fileHash,
               show_flag: true,
+              compression_mode: compressionEnabled ? 'compress' : undefined,
+              max_size_mb: compressionEnabled && maxSizeMB > 0 ? maxSizeMB : undefined,
               onProgress: (progress) => {
                 setUploadQueue(prev => prev.map(p => p.id === pending.id ? { ...p, progress } : p))
               }
