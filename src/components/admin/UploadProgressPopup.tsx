@@ -109,7 +109,7 @@ function VirtualTaskList({
 
               {/* File Info */}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate mb-0.5">{task.fileName}</p>
+                <p className="text-xs font-medium truncate mb-0.5">{task.targetFileName ?? task.fileName}</p>
                 <div className="flex items-center gap-2">
                   {task.compressedSize && task.compressedSize < task.originalSize ? (
                     <span className="text-[10px] text-muted-foreground font-mono">
