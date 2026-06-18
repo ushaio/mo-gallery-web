@@ -312,9 +312,6 @@ export function UploadQueueProvider({
           compressedSize = fileToUpload.size
 
           // Update compressed size info
-          const targetFileName = fileToUpload.type === AVIF_FILE_TYPE
-            ? fileToUpload.name
-            : replaceFileExtension(fileToUpload.name, AVIF_EXTENSION)
           setTasks((prev) =>
             prev.map((t) =>
               t.id === task.id
@@ -322,7 +319,6 @@ export function UploadQueueProvider({
                     ...t,
                     compressedSize,
                     fileSize: compressedSize!,
-                    targetFileName,
                     targetFileSize: compressedSize,
                     targetFileType: AVIF_FILE_TYPE,
                   }
@@ -339,11 +335,10 @@ export function UploadQueueProvider({
           setTasks((prev) =>
             prev.map((t) =>
               t.id === task.id
-                ? {
+                ?                 {
                     ...t,
                     compressedSize: undefined,
                     fileSize: fileToUpload.size,
-                    targetFileName: replaceFileExtension(fileToUpload.name, AVIF_EXTENSION),
                     targetFileSize: fileToUpload.size,
                     targetFileType: AVIF_FILE_TYPE,
                     error: null,
@@ -517,9 +512,6 @@ export function UploadQueueProvider({
             status: 'pending' as UploadTaskStatus,
             progress: 0,
             error: null,
-            targetFileName: params.compressionMode && params.compressionMode !== 'none'
-              ? replaceFileExtension(item.file.name, AVIF_EXTENSION)
-              : undefined,
             title:
               params.files.length === 1
                 ? normalizedTitle
