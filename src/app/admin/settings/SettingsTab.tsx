@@ -96,10 +96,23 @@ export function SettingsTab({
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<
-    | { type: 'comment'; id: string }
     | { type: 'linuxdo-unbind' }
     | null
   >(null)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+
+  // Reset confirm state when clicking outside
+  useEffect(() => {
+    if (!confirmingDeleteId) return
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-confirm-delete]')) {
+        setConfirmingDeleteId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [confirmingDeleteId])
 
   const refreshStorageSources = async () => {
     if (!token) return
@@ -215,9 +228,24 @@ export function SettingsTab({
     }
   }
 
-  const handleDeleteComment = (id: string) => {
+  const handleDeleteComment = async (id: string) => {
     if (!token) return
-    setDeleteDialog({ type: 'comment', id })
+    if (confirmingDeleteId === id) {
+      // Second click — confirm delete
+      try {
+        await deleteComment(token, id)
+        await refreshComments()
+        notify(t('admin.notify_success'))
+      } catch (err) {
+        if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
+        notify(err instanceof Error ? err.message : t('common.error'), 'error')
+      } finally {
+        setConfirmingDeleteId(null)
+      }
+    } else {
+      // First click — enter confirm state
+      setConfirmingDeleteId(id)
+    }
   }
 
   // Load Linux DO status and binding
@@ -269,26 +297,16 @@ export function SettingsTab({
     if (!token || !deleteDialog) return
 
     try {
-      if (deleteDialog.type === 'comment') {
-        await deleteComment(token, deleteDialog.id)
-        await refreshComments()
-      } else {
-        setLinuxDoBindLoading(true)
-        await unbindLinuxDoAccount(token)
-        setLinuxDoBinding(null)
-      }
+      setLinuxDoBindLoading(true)
+      await unbindLinuxDoAccount(token)
+      setLinuxDoBinding(null)
       notify(t('admin.notify_success'))
       setDeleteDialog(null)
     } catch (err) {
-      if (err instanceof ApiUnauthorizedError) {
-        onUnauthorized()
-        return
-      }
+      if (err instanceof ApiUnauthorizedError) { onUnauthorized(); return }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
     } finally {
-      if (deleteDialog.type === 'linuxdo-unbind') {
-        setLinuxDoBindLoading(false)
-      }
+      setLinuxDoBindLoading(false)
     }
   }
 
@@ -320,11 +338,6 @@ export function SettingsTab({
       <div className="max-w-[1920px]">
       <div className="flex flex-col md:flex-row gap-12 relative">
         <aside className="w-full md:w-48 space-y-1 md:sticky md:top-0 md:h-fit">
-          <div className="mb-6 pb-2 border-b border-border">
-            <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">
-              {t('admin.config')}
-            </h4>
-          </div>
           {[
             { id: 'site', label: t('admin.general') },
             { id: 'categories', label: t('admin.taxonomy') },
@@ -859,10 +872,16 @@ export function SettingsTab({
                                   onClick={() =>
                                     handleDeleteComment(comment.id)
                                   }
-                                  adminVariant="iconDestructive"
-                                  title="Delete"
+                                  adminVariant={confirmingDeleteId === comment.id ? 'unstyled' : 'iconDestructive'}
+                                  className={confirmingDeleteId === comment.id ? 'p-2 bg-destructive text-destructive-foreground hover:bg-destructive/80 rounded' : ''}
+                                  title={t('common.delete')}
+                                  data-confirm-delete={confirmingDeleteId === comment.id ? '' : undefined}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {confirmingDeleteId === comment.id ? (
+                                    <Check className="w-4 h-4" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
                                 </AdminButton>
                               </div>
                             </div>
@@ -1009,7 +1028,7 @@ export function SettingsTab({
               </div>
             )}
 
-            {settingsTab !== 'site' && settingsTab !== 'account' && settingsTab !== 'storage' && (
+            {settingsTab !== 'site' && settingsTab !== 'account' && settingsTab !== 'storage' && settingsTab !== 'comments' && (
               <div className="pt-8 border-t border-border flex justify-end">
                 <AdminButton
                   onClick={onSave}
@@ -1036,11 +1055,7 @@ export function SettingsTab({
       <SimpleDeleteDialog
         isOpen={deleteDialog !== null}
         title={t('common.confirm')}
-        message={
-          deleteDialog?.type === 'linuxdo-unbind'
-            ? t('common.confirm')
-            : t('admin.confirm_delete_single') + '?'
-        }
+        message={t('admin.linuxdo_unbind_confirm')}
         onConfirm={confirmDeleteDialog}
         onCancel={() => {
           if (!linuxDoBindLoading) {

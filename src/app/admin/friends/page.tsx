@@ -28,6 +28,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { useAdmin } from '../layout'
 
 // 友链表单数据接口
@@ -569,49 +570,14 @@ export default function FriendsPage() {
         </div>
       )}
 
-      {/* 删除确认对话框 */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-background/95 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-background border border-border shadow-2xl p-8">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-destructive/10 flex items-center justify-center">
-                <Trash2 className="w-6 h-6 text-destructive" />
-              </div>
-              <div>
-                <h3 className="font-serif text-xl font-light uppercase tracking-tight">
-                  {t('common.delete')}
-                </h3>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                  {t('common.confirm')}
-                </p>
-              </div>
-            </div>
-
-            <p className="text-sm text-foreground leading-relaxed mb-6">
-              {t('admin.friends_delete_confirm')}
-            </p>
-
-            <div className="flex gap-3">
-              <AdminButton
-                onClick={() => setDeleteConfirm(null)}
-                adminVariant="outline"
-                size="xl"
-                className="flex-1"
-              >
-                {t('common.cancel')}
-              </AdminButton>
-              <AdminButton
-                onClick={() => handleDelete(deleteConfirm)}
-                adminVariant="destructive"
-                size="xl"
-                className="flex-1"
-              >
-                {t('common.delete')}
-              </AdminButton>
-            </div>
-          </div>
-        </div>
-      )}
+      <SimpleDeleteDialog
+        isOpen={deleteConfirm !== null}
+        title={t('common.delete')}
+        message={t('admin.friends_delete_confirm')}
+        onConfirm={() => handleDelete(deleteConfirm!)}
+        onCancel={() => setDeleteConfirm(null)}
+        t={t}
+      />
     </div>
   )
 }
