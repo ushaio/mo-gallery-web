@@ -31,7 +31,7 @@ export const DEFAULT_PHOTOS_FILTERS: PhotosFilterPreference = {
   cameraFilter: 'all',
   lensFilter: 'all',
   onlyFeatured: false,
-  sortBy: 'upload-desc',
+  sortBy: 'taken-desc',
   showFilters: false,
 }
 
