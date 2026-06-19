@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { AnimatePresence, motion } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -119,7 +120,7 @@ function ArchiveRollRow({
   rowIndex: number
   isExpanded: boolean
   onToggle: () => void
-  onPhotoClick: (photo: PhotoDto) => void
+  onPhotoClick: (photo: PhotoDto, index: number, rollPhotos: PhotoDto[]) => void
 }) {
   const { t } = useLanguage()
   const rollNote = getRollNote(roll)
@@ -209,7 +210,7 @@ function ArchiveRollRow({
                           frameIndex={frameIndex}
                           format={rollFormat}
                           isExpanded
-                          onClick={() => onPhotoClick(photo)}
+                          onClick={() => onPhotoClick(photo, frameIndex, photos)}
                         />
                       )
                     })}
@@ -231,7 +232,7 @@ function ArchiveRollRow({
                     frameIndex={frameIndex}
                     format={rollFormat}
                     isExpanded={false}
-                    onClick={() => onPhotoClick(photo)}
+                    onClick={() => onPhotoClick(photo, frameIndex, photos)}
                   />
                 ))}
               </div>
@@ -247,9 +248,15 @@ function ArchiveRollRow({
 
 function Lightbox({
   photo,
+  photos,
+  currentIndex,
+  onNavigate,
   onClose,
 }: {
   photo: PhotoDto
+  photos: PhotoDto[]
+  currentIndex: number
+  onNavigate: (index: number) => void
   onClose: () => void
 }) {
   const { settings } = useSettings()
@@ -262,10 +269,21 @@ function Lightbox({
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        onNavigate((currentIndex - 1 + photos.length) % photos.length)
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        onNavigate((currentIndex + 1) % photos.length)
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  }, [onClose, onNavigate, currentIndex, photos.length])
+
+  const handlePrev = () => onNavigate((currentIndex - 1 + photos.length) % photos.length)
+  const handleNext = () => onNavigate((currentIndex + 1) % photos.length)
 
   return (
     <motion.div
@@ -277,6 +295,35 @@ function Lightbox({
       onClick={onClose}
     >
       <div className="film-grain-overlay pointer-events-none absolute inset-0 opacity-[0.08]" />
+
+      {/* Counter badge */}
+      <div className="absolute right-6 top-6 z-[101] rounded-md border border-[#2b2217] bg-[#070605]/80 px-3 py-1.5 backdrop-blur-sm">
+        <span className="font-mono text-[10px] uppercase tracking-[0.32em] text-[#bea06a]/80">
+          {currentIndex + 1} / {photos.length}
+        </span>
+      </div>
+
+      {/* Prev arrow */}
+      {photos.length > 1 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handlePrev() }}
+          className="absolute left-4 top-1/2 z-[101] -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full border border-[#2b2217] bg-[#070605]/60 text-[#bea06a]/70 backdrop-blur-sm transition-colors hover:bg-[#070605]/90 hover:text-[#e6dcc8] md:left-8"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+      )}
+
+      {/* Next arrow */}
+      {photos.length > 1 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleNext() }}
+          className="absolute right-4 top-1/2 z-[101] -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full border border-[#2b2217] bg-[#070605]/60 text-[#bea06a]/70 backdrop-blur-sm transition-colors hover:bg-[#070605]/90 hover:text-[#e6dcc8] md:right-8"
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+      )}
 
       <motion.div
         initial={{ scale: 0.96, opacity: 0 }}
@@ -331,7 +378,11 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
   const { t } = useLanguage()
   const [rolls] = useState<FilmRollDto[]>(initialRolls)
   const [expandedRollId, setExpandedRollId] = useState<string | null>(null)
-  const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
+  const [selectedPhoto, setSelectedPhoto] = useState<{
+    photo: PhotoDto
+    index: number
+    rollPhotos: PhotoDto[]
+  } | null>(null)
   const rollRefs = useRef(new Map<string, HTMLDivElement>())
 
   const strips = useMemo(() => {
@@ -411,7 +462,7 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
               rowIndex={index}
               isExpanded={expandedRollId === strip.roll.id}
               onToggle={() => setExpandedRollId((currentId) => currentId === strip.roll.id ? null : strip.roll.id)}
-              onPhotoClick={setSelectedPhoto}
+              onPhotoClick={(photo, index, rollPhotos) => setSelectedPhoto({ photo, index, rollPhotos })}
             />
           </div>
         ))}
@@ -427,7 +478,17 @@ export function FilmPageContent({ initialRolls }: FilmPageContentProps) {
 
       <AnimatePresence>
         {selectedPhoto ? (
-          <Lightbox photo={selectedPhoto} onClose={() => setSelectedPhoto(null)} />
+          <Lightbox
+            photo={selectedPhoto.photo}
+            photos={selectedPhoto.rollPhotos}
+            currentIndex={selectedPhoto.index}
+            onNavigate={(index) =>
+              setSelectedPhoto((prev) =>
+                prev ? { ...prev, photo: prev.rollPhotos[index], index } : null
+              )
+            }
+            onClose={() => setSelectedPhoto(null)}
+          />
         ) : null}
       </AnimatePresence>
     </div>
