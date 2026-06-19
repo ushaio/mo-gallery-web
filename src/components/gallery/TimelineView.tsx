@@ -69,7 +69,7 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({
       ref={ref}
       className="group relative aspect-square cursor-pointer overflow-hidden bg-muted"
       onClick={onClick}
-      style={style}
+      style={{ ...style, contentVisibility: 'auto', containIntrinsicSize: 'auto 300px' }}
     >
       <img
         src={coverUrl}
@@ -422,7 +422,7 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
             </div>
           </div>
 
-          <div className="ml-10 md:ml-16 pb-8 pt-2 pr-2 md:pr-0" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 300px' }}>
+          <div className="ml-10 md:ml-16 pb-8 pt-2 pr-2 md:pr-0">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
               {dayGroup.photos.map((photo, index) => (
                 <TimelinePhotoItem

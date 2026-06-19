@@ -38,7 +38,7 @@ export const PhotoCard = memo(function PhotoCard({
       ref={ref}
       className={`break-inside-avoid group cursor-pointer ${immersive ? 'mb-1' : 'mb-12'}`}
       onClick={onClick}
-      style={style}
+      style={{ ...style, contentVisibility: 'auto', containIntrinsicSize: 'auto 400px' }}
     >
       <div
         className={`relative overflow-hidden bg-muted ${immersive ? '' : 'mb-4'}`}
