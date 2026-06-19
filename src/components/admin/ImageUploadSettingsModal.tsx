@@ -6,7 +6,7 @@ import type { AdminSettingsDto } from '@/lib/api/types'
 import type { CompressionMode } from '@/lib/image-compress'
 import { normalizeCompressionMode } from '@/lib/image-compress'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { DigitalPhotoUploadParams, type DigitalPhotoUploadSettings } from '@/components/admin/DigitalPhotoUploadParams'
+import { PhotoUploadParams, type PhotoUploadSettings } from '@/components/admin/PhotoUploadParams'
 
 export interface UploadSettings {
   maxSizeMB?: number
@@ -61,7 +61,7 @@ export function ImageUploadSettingsModal({
   categories = [],
   currentStoryId,
 }: ImageUploadSettingsModalProps) {
-  const [uploadSettings, setUploadSettings] = useState<DigitalPhotoUploadSettings>({
+  const [uploadSettings, setUploadSettings] = useState<PhotoUploadSettings>({
     title: '',
     categories: [],
     compressionEnabled: true,
@@ -142,7 +142,8 @@ export function ImageUploadSettingsModal({
         {/* Content - Hide upload button, we'll use footer buttons */}
         <div className="p-8">
           <div className="space-y-4">
-            <DigitalPhotoUploadParams
+            <PhotoUploadParams
+              mode="digital"
               token={token}
               categories={categories}
               t={t}

@@ -19,16 +19,16 @@ import {
   MapPinOff,
   Minimize2,
 } from 'lucide-react'
-import type { AdminSettingsDto } from '@/lib/api/types'
+import type { AdminSettingsDto, AlbumDto } from '@/lib/api/types'
 import { checkDuplicatePhotos } from '@/lib/api/photos'
+import { getAdminAlbums } from '@/lib/api/albums'
 import { compressImage } from '@/lib/image-compress'
 import { calculateFileHashes } from '@/lib/file-hash'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { formatFileSize } from '@/lib/utils'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { DuplicatePhotosDialog, type DuplicateInfo } from '@/components/admin/DuplicatePhotosDialog'
-import { DigitalPhotoUploadParams, type DigitalPhotoUploadSettings } from '@/components/admin/DigitalPhotoUploadParams'
-import { FilmPhotoUploadParams, type FilmPhotoUploadSettings } from '@/components/admin/FilmPhotoUploadParams'
+import { PhotoUploadParams, type PhotoUploadSettings } from '@/components/admin/PhotoUploadParams'
 
 interface UploadTabProps {
   token: string | null
@@ -473,8 +473,8 @@ export function UploadTab({
   // Upload type: digital or film
   const [uploadType, setUploadType] = useState<'digital' | 'film'>('digital')
 
-  // Settings from child components
-  const [digitalSettings, setDigitalSettings] = useState<DigitalPhotoUploadSettings>({
+  // Settings from child component
+  const [uploadSettings, setUploadSettings] = useState<PhotoUploadSettings>({
     title: '',
     categories: [],
     compressionEnabled: false,
@@ -482,20 +482,26 @@ export function UploadTab({
     showFlag: true,
     privacyStripEnabled: false,
   })
-  const [filmSettings, setFilmSettings] = useState<FilmPhotoUploadSettings>({
-    title: '',
-    categories: [],
-    compressionEnabled: false,
-    maxSizeMB: 0,
-    showFlag: true,
-    privacyStripEnabled: false,
-  })
+
+  const [albums, setAlbums] = useState<AlbumDto[]>([])
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    getAdminAlbums(token).then(data => { if (!cancelled) setAlbums(data) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [token])
+
+  const albumNameMap = useMemo(() => {
+    const map = new Map<string, string>()
+    albums.forEach(a => map.set(a.id, a.name))
+    return map
+  }, [albums])
 
   const [testCompressionFile, setTestCompressionFile] = useState<UploadFile | null>(null)
   const [testedSizeMap, setTestedSizeMap] = useState<Map<string, number>>(new Map())
 
   // Invalidate cached test results whenever compression settings change
-  const currentSettings = uploadType === 'digital' ? digitalSettings : filmSettings
+  const currentSettings = uploadSettings
   useEffect(() => {
     setTestedSizeMap(new Map())
   }, [currentSettings.maxSizeMB, currentSettings.compressionEnabled])
@@ -783,7 +789,7 @@ export function UploadTab({
       storagePathFull: currentSettings.storagePathFull,
       storyId: currentSettings.storyId,
       albumIds: currentSettings.albumIds,
-      filmRollId: uploadType === 'film' ? (filmSettings.filmRollId || undefined) : undefined,
+      filmRollId: uploadType === 'film' ? (uploadSettings.filmRollId || undefined) : undefined,
       showFlag: currentSettings.showFlag,
       compressionMode: currentSettings.compressionEnabled ? 'compress' : undefined,
       maxSizeMB: currentSettings.compressionEnabled && currentSettings.maxSizeMB > 0 ? currentSettings.maxSizeMB : undefined,
@@ -856,36 +862,21 @@ export function UploadTab({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
         {/* Left Panel - Settings */}
         <div className="lg:col-span-4">
-          {uploadType === 'digital' ? (
-            <DigitalPhotoUploadParams
-              token={token}
-              categories={categories}
-              t={t}
-              fileCount={uploadFiles.length}
-              totalOriginalSize={totalOriginalSize}
-              estimatedTotalSize={estimatedTotalSize}
-              savingsPercent={savingsPercent}
-              compressionSuggestion={compressionSuggestion}
-              onSettingsChange={setDigitalSettings}
-              onUploadClick={handleUploadClick}
-              uploading={checkingDuplicates}
-              uploadError={uploadError}
-            />
-          ) : (
-            <FilmPhotoUploadParams
-              token={token}
-              categories={categories}
-              t={t}
-              fileCount={uploadFiles.length}
-              estimatedTotalSize={estimatedTotalSize}
-              savingsPercent={savingsPercent}
-              compressionSuggestion={compressionSuggestion}
-              onSettingsChange={setFilmSettings}
-              onUploadClick={handleUploadClick}
-              uploading={checkingDuplicates}
-              uploadError={uploadError}
-            />
-          )}
+          <PhotoUploadParams
+            mode={uploadType}
+            token={token}
+            categories={categories}
+            t={t}
+            fileCount={uploadFiles.length}
+            totalOriginalSize={totalOriginalSize}
+            estimatedTotalSize={estimatedTotalSize}
+            savingsPercent={savingsPercent}
+            compressionSuggestion={compressionSuggestion}
+            onSettingsChange={setUploadSettings}
+            onUploadClick={handleUploadClick}
+            uploading={checkingDuplicates}
+            uploadError={uploadError}
+          />
         </div>
 
         {/* Right Panel - Files */}
@@ -1028,7 +1019,7 @@ export function UploadTab({
         onConfirm={handleConfirmUpload}
         fileCount={uploadFiles.length}
         categories={currentSettings.categories}
-        albumNames={currentSettings.albumIds?.map(id => id) || []}
+        albumNames={currentSettings.albumIds?.map(id => albumNameMap.get(id) || id) || []}
         storyName={currentSettings.storyId}
         storageProvider={currentSettings.storageSourceId || 'local'}
         storagePath={currentSettings.storagePath}

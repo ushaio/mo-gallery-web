@@ -23,7 +23,7 @@ import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/Ad
 import { StorySelectorModal } from '@/components/admin/StorySelectorModal'
 import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
 
-export interface FilmPhotoUploadSettings {
+export interface PhotoUploadSettings {
   title: string
   categories: string[]
   storyId?: string
@@ -38,18 +38,22 @@ export interface FilmPhotoUploadSettings {
   privacyStripEnabled: boolean
 }
 
-interface FilmPhotoUploadParamsProps {
+interface PhotoUploadParamsProps {
+  mode: 'digital' | 'film'
   token: string | null
   categories: string[]
   t: (key: string) => string
   fileCount: number
+  totalOriginalSize?: number
   estimatedTotalSize: number
   savingsPercent: number
   compressionSuggestion?: { type: 'suggest_enable' | 'suggest_disable' | 'info'; text: string } | null
-  onSettingsChange: (settings: FilmPhotoUploadSettings) => void
+  onSettingsChange: (settings: PhotoUploadSettings) => void
   onUploadClick: () => void
   uploading?: boolean
   uploadError?: string
+  hideStorySelector?: boolean
+  initialStoryId?: string
 }
 
 // Inline Prefix Dropdown
@@ -111,7 +115,8 @@ function PrefixDropdown({
   )
 }
 
-export function FilmPhotoUploadParams({
+export function PhotoUploadParams({
+  mode,
   token,
   categories,
   t,
@@ -123,7 +128,9 @@ export function FilmPhotoUploadParams({
   onUploadClick,
   uploading = false,
   uploadError,
-}: FilmPhotoUploadParamsProps) {
+  hideStorySelector = false,
+  initialStoryId,
+}: PhotoUploadParamsProps) {
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadCategories, setUploadCategories] = useState<string[]>([])
 
@@ -137,6 +144,7 @@ export function FilmPhotoUploadParams({
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
+  // Film roll state (only used in film mode)
   const [uploadFilmRollId, setUploadFilmRollId] = useState('')
   const [uploadFilmRollName, setUploadFilmRollName] = useState('')
   const [filmRolls, setFilmRolls] = useState<FilmRollDto[]>([])
@@ -155,6 +163,13 @@ export function FilmPhotoUploadParams({
   const [showFlag, setShowFlag] = useState(true)
 
   const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
+
+  // Initialize storyId from prop
+  useEffect(() => {
+    if (initialStoryId) {
+      setUploadStoryId(initialStoryId)
+    }
+  }, [initialStoryId])
 
   // Debounce slider value to maxSizeMB
   useEffect(() => {
@@ -252,7 +267,7 @@ export function FilmPhotoUploadParams({
       categories: uploadCategories,
       storyId: uploadStoryId || undefined,
       albumIds: uploadAlbumIds.length ? uploadAlbumIds : undefined,
-      filmRollId: uploadFilmRollId || undefined,
+      filmRollId: mode === 'film' ? (uploadFilmRollId || undefined) : undefined,
       storageSourceId: uploadSourceId || undefined,
       storagePath: fullStoragePath,
       storagePathFull: useCustomPrefix,
@@ -275,6 +290,7 @@ export function FilmPhotoUploadParams({
     showFlag,
     privacyStripEnabled,
     onSettingsChange,
+    mode,
   ])
 
   return (
@@ -326,43 +342,47 @@ export function FilmPhotoUploadParams({
             </div>
           </div>
 
-          {/* Story */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <BookOpen className="w-3 h-3" />
-              {t('ui.photo_story')}
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowStorySelector(true)}
-              disabled={loadingStories}
-              className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
-            >
-              <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
-                {uploadStoryTitle || t('ui.no_association')}
-              </span>
-              <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </div>
+          {/* Story - conditionally hidden */}
+          {!hideStorySelector && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <BookOpen className="w-3 h-3" />
+                {t('ui.photo_story')}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowStorySelector(true)}
+                disabled={loadingStories}
+                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+              >
+                <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
+                  {uploadStoryTitle || t('ui.no_association')}
+                </span>
+                <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </div>
+          )}
 
-          {/* Film Roll */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <Film className="w-3 h-3" />
-              {t('admin.film_roll_select')}
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowFilmRollSelector(true)}
-              disabled={loadingFilmRolls}
-              className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
-            >
-              <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
-                {uploadFilmRollName || t('admin.no_film_roll')}
-              </span>
-              <Film className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </div>
+          {/* Film Roll - only in film mode */}
+          {mode === 'film' && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Film className="w-3 h-3" />
+                {t('admin.film_roll_select')}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowFilmRollSelector(true)}
+                disabled={loadingFilmRolls}
+                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+              >
+                <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
+                  {uploadFilmRollName || t('admin.no_film_roll')}
+                </span>
+                <Film className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </div>
+          )}
 
           {/* Storage - compact layout */}
           <div className="pt-3 border-t border-border/50">
@@ -411,7 +431,7 @@ export function FilmPhotoUploadParams({
             {/* Gallery Visibility */}
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <FolderOpen className="w-3 h-3" />
+                <BookOpen className="w-3 h-3" />
                 {t('admin.show_in_gallery')}
               </label>
               <button
@@ -543,18 +563,20 @@ export function FilmPhotoUploadParams({
         t={t}
       />
 
-      <FilmRollSelectorModal
-        isOpen={showFilmRollSelector}
-        onClose={() => setShowFilmRollSelector(false)}
-        onSelect={(rollId, rollName) => {
-          setUploadFilmRollId(rollId || '')
-          setUploadFilmRollName(rollName || '')
-        }}
-        filmRolls={filmRolls}
-        selectedRollId={uploadFilmRollId}
-        loading={loadingFilmRolls}
-        t={t}
-      />
+      {mode === 'film' && (
+        <FilmRollSelectorModal
+          isOpen={showFilmRollSelector}
+          onClose={() => setShowFilmRollSelector(false)}
+          onSelect={(rollId, rollName) => {
+            setUploadFilmRollId(rollId || '')
+            setUploadFilmRollName(rollName || '')
+          }}
+          filmRolls={filmRolls}
+          selectedRollId={uploadFilmRollId}
+          loading={loadingFilmRolls}
+          t={t}
+        />
+      )}
     </>
   )
 }
