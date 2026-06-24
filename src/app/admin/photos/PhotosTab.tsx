@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   LayoutGrid,
   List as ListIcon,
@@ -30,6 +30,239 @@ type ViewMode = 'grid' | 'list'
 
 const PHOTO_GRID_CLASS_NAME =
   'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(var(--admin-photo-grid-columns),minmax(0,1fr))] gap-0.5'
+
+interface PhotoGridCardProps {
+  photo: PhotoDto
+  isSelected: boolean
+  resolvedCdnDomain: string | undefined
+  onSelect: (id: string, shiftKey?: boolean) => void
+  onDelete: (id: string) => void
+  onToggleFeatured: (photo: PhotoDto) => void
+  onClick: (event: React.MouseEvent, photo: PhotoDto) => void
+}
+
+const PhotoGridCard = React.memo(function PhotoGridCard({
+  photo,
+  isSelected,
+  resolvedCdnDomain,
+  onSelect,
+  onDelete,
+  onToggleFeatured,
+  onClick,
+}: PhotoGridCardProps) {
+  return (
+    <div
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 4/5' }}
+      className={`group relative cursor-pointer bg-muted rounded-lg overflow-hidden border-2 transition-colors w-full ${
+        isSelected
+          ? 'border-primary'
+          : 'border-transparent hover:border-border'
+      }`}
+      onClick={(event) => onClick(event, photo)}
+    >
+      <div className="relative w-full aspect-[4/5]">
+        <img
+          src={resolveAssetUrl(
+            photo.thumbnailUrl || photo.url,
+            resolvedCdnDomain
+          )}
+          alt={photo.title}
+          className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+          loading="lazy"
+        />
+      </div>
+
+      <div
+        className="absolute top-2 left-2 z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onClick={(event) => onSelect(photo.id, event.shiftKey)}
+          onChange={() => undefined}
+          className="w-4 h-4 accent-primary cursor-pointer rounded border-2 border-white/80 shadow-sm"
+        />
+      </div>
+
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+      <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+        <AdminButton
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFeatured(photo)
+          }}
+          adminVariant={photo.isFeatured ? 'iconAccent' : 'iconOnDark'}
+          size="xs"
+          className="p-1.5 backdrop-blur-sm rounded"
+          title={photo.isFeatured ? "Remove from featured" : "Add to featured"}
+        >
+          <Star className={`w-3.5 h-3.5 ${photo.isFeatured ? 'fill-current' : ''}`} />
+        </AdminButton>
+        <AdminButton
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(photo.id)
+          }}
+          adminVariant="iconOnDarkDanger"
+          size="xs"
+          className="p-1.5 backdrop-blur-sm rounded"
+          title="Delete photo"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </AdminButton>
+      </div>
+
+      {photo.isFeatured && (
+        <AdminButton
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFeatured(photo)
+          }}
+          adminVariant="iconAccent"
+          size="xs"
+          className="absolute top-2 right-2 p-1.5 z-30 shadow-lg group-hover:opacity-0 pointer-events-auto"
+          title="Remove from featured"
+        >
+          <Star className="w-3 h-3 fill-current" />
+        </AdminButton>
+      )}
+
+      <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-[opacity,transform] duration-300 translate-y-2 group-hover:translate-y-0 pointer-events-none z-10">
+        <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-0.5 truncate">
+          {photo.category.split(',')[0]}
+        </p>
+        <h3 className="text-sm font-medium text-white leading-tight truncate">
+          {photo.title}
+        </h3>
+      </div>
+    </div>
+  )
+}, (prev, next) => {
+  return (
+    prev.photo.id === next.photo.id &&
+    prev.isSelected === next.isSelected &&
+    prev.photo.isFeatured === next.photo.isFeatured &&
+    prev.photo.thumbnailUrl === next.photo.thumbnailUrl &&
+    prev.photo.url === next.photo.url &&
+    prev.photo.title === next.photo.title &&
+    prev.photo.category === next.photo.category &&
+    prev.resolvedCdnDomain === next.resolvedCdnDomain &&
+    prev.onSelect === next.onSelect &&
+    prev.onDelete === next.onDelete &&
+    prev.onToggleFeatured === next.onToggleFeatured &&
+    prev.onClick === next.onClick
+  )
+})
+
+interface PhotoListRowProps {
+  photo: PhotoDto
+  isSelected: boolean
+  resolvedCdnDomain: string | undefined
+  onSelect: (id: string, shiftKey?: boolean) => void
+  onDelete: (id: string) => void
+  onToggleFeatured: (photo: PhotoDto) => void
+  onClick: (event: React.MouseEvent, photo: PhotoDto) => void
+}
+
+const PhotoListRow = React.memo(function PhotoListRow({
+  photo,
+  isSelected,
+  resolvedCdnDomain,
+  onSelect,
+  onDelete,
+  onToggleFeatured,
+  onClick,
+}: PhotoListRowProps) {
+  return (
+    <div
+      className={`flex items-center gap-4 p-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer ${
+        isSelected ? 'bg-primary/5' : ''
+      }`}
+      onClick={(event) => onClick(event, photo)}
+    >
+      <div
+        className="flex items-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onClick={(event) => onSelect(photo.id, event.shiftKey)}
+          onChange={() => undefined}
+          className="w-4 h-4 accent-primary cursor-pointer rounded"
+        />
+      </div>
+      <div className="w-12 h-12 flex-shrink-0 bg-muted rounded overflow-hidden">
+        <img
+          src={resolveAssetUrl(
+            photo.thumbnailUrl || photo.url,
+            resolvedCdnDomain
+          )}
+          alt=""
+          className="w-full h-full object-cover"
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate text-foreground">
+          {photo.title}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">
+          {photo.category}
+        </p>
+      </div>
+      <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
+        <span className="font-mono">{photo.width} × {photo.height}</span>
+        <span className="uppercase">{photo.storageProvider}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <AdminButton
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleFeatured(photo)
+          }}
+          adminVariant="icon"
+          size="xs"
+          className={`p-2 ${
+            photo.isFeatured ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'
+          }`}
+        >
+          <Star className={`w-4 h-4 ${photo.isFeatured ? 'fill-current' : ''}`} />
+        </AdminButton>
+        <AdminButton
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(photo.id)
+          }}
+          adminVariant="iconDestructive"
+          size="xs"
+          className="p-2"
+        >
+          <Trash2 className="w-4 h-4" />
+        </AdminButton>
+      </div>
+    </div>
+  )
+}, (prev, next) => {
+  return (
+    prev.photo.id === next.photo.id &&
+    prev.isSelected === next.isSelected &&
+    prev.photo.isFeatured === next.photo.isFeatured &&
+    prev.photo.thumbnailUrl === next.photo.thumbnailUrl &&
+    prev.photo.url === next.photo.url &&
+    prev.photo.title === next.photo.title &&
+    prev.photo.category === next.photo.category &&
+    prev.photo.width === next.photo.width &&
+    prev.photo.height === next.photo.height &&
+    prev.photo.storageProvider === next.photo.storageProvider &&
+    prev.resolvedCdnDomain === next.resolvedCdnDomain &&
+    prev.onSelect === next.onSelect &&
+    prev.onDelete === next.onDelete &&
+    prev.onToggleFeatured === next.onToggleFeatured &&
+    prev.onClick === next.onClick
+  )
+})
 
 interface PhotosTabProps {
   photos: PhotoDto[]
@@ -80,6 +313,28 @@ export function PhotosTab({
   const [cameras, setCameras] = useState<CameraDto[]>([])
   const [lenses, setLenses] = useState<LensDto[]>([])
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [toolbarScrolled, setToolbarScrolled] = useState(false)
+  const gridContainerRef = useRef<HTMLDivElement>(null)
+  const sliderRef = useRef<HTMLInputElement>(null)
+  const columnsLabelRef = useRef<HTMLSpanElement>(null)
+  const pendingColumnsRef = useRef<number>(gridColumns)
+  const rafIdRef = useRef(0)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        document.querySelector<HTMLInputElement>('[data-search-input]')?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    setToolbarScrolled((scrollContainerRef.current?.scrollTop ?? 0) > 0)
+  }, [])
 
   const {
     search,
@@ -104,6 +359,13 @@ export function PhotosTab({
   const setOnlyFeatured = useCallback((value: boolean) => setPhotosFilters({ onlyFeatured: value }), [setPhotosFilters])
   const setSortBy = useCallback((value: PhotosSortOption) => setPhotosFilters({ sortBy: value }), [setPhotosFilters])
   const setShowFilters = useCallback((value: boolean) => setPhotosFilters({ showFilters: value }), [setPhotosFilters])
+
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(rafIdRef.current)
+      setPhotoGridColumns(pendingColumnsRef.current)
+    }
+  }, [setPhotoGridColumns])
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
 
@@ -283,17 +545,32 @@ export function PhotosTab({
   }, [handleSelectPhoto, onPreview])
 
   const hasSelectedPhotos = selectedIds.size >= 1
-  const photoGridStyle = useMemo(() => ({
-    '--admin-photo-grid-columns': String(gridColumns),
-  }) as React.CSSProperties, [gridColumns])
 
   const handleGridColumnsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setPhotoGridColumns(Number(event.target.value))
-  }, [setPhotoGridColumns])
+    const value = Number(event.target.value)
+    pendingColumnsRef.current = value
+    if (columnsLabelRef.current) {
+      columnsLabelRef.current.textContent = String(value)
+    }
+    cancelAnimationFrame(rafIdRef.current)
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (gridContainerRef.current) {
+        gridContainerRef.current.style.setProperty('--admin-photo-grid-columns', String(value))
+      }
+    })
+  }, [])
+
+  const persistGridColumns = useCallback(() => {
+    const value = pendingColumnsRef.current
+    if (value !== gridColumns) {
+      setPhotoGridColumns(value)
+    }
+  }, [gridColumns, setPhotoGridColumns])
 
   return (
-    <div className="space-y-4">
+    <div className="h-full flex flex-col overflow-hidden relative">
       <AdminCollectionToolbar
+        scrolled={toolbarScrolled}
         info={(
           <>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -303,12 +580,8 @@ export function PhotosTab({
                 onChange={onSelectAll}
                 className="w-4 h-4 accent-primary cursor-pointer rounded"
               />
-              <span className="text-sm font-medium text-foreground">
-                {hasSelectedPhotos ? (
-                  <span className="text-primary">{selectedIds.size} {t('admin.selected') || 'selected'}</span>
-                ) : (
-                  <span className="text-muted-foreground">{filteredPhotos.length} {t('admin.photos')}</span>
-                )}
+              <span className="text-sm font-medium text-muted-foreground">
+                {filteredPhotos.length} {t('admin.photos')}
               </span>
             </label>
           </>
@@ -345,6 +618,8 @@ export function PhotosTab({
               )}
             </AdminButton>
 
+            <div className="h-5 w-px bg-border mx-0.5" />
+
             {/* View Mode Toggle */}
             <div className="flex bg-background border border-border rounded-md overflow-hidden">
               <AdminButton
@@ -380,20 +655,26 @@ export function PhotosTab({
               >
                 <LayoutGrid className="h-4 w-4 text-muted-foreground" />
                 <input
+                  ref={sliderRef}
+                  key={gridColumns}
                   type="range"
                   min={MIN_PHOTO_GRID_COLUMNS}
                   max={MAX_PHOTO_GRID_COLUMNS}
                   step={1}
-                  value={gridColumns}
+                  defaultValue={gridColumns}
                   onChange={handleGridColumnsChange}
+                  onMouseUp={persistGridColumns}
+                  onTouchEnd={persistGridColumns}
                   aria-label="Grid columns"
                   className="w-24 accent-primary"
                 />
-                <span className="w-5 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                <span ref={columnsLabelRef} className="w-5 text-right font-mono text-xs tabular-nums text-muted-foreground">
                   {gridColumns}
                 </span>
               </div>
             ) : null}
+
+            <div className="h-5 w-px bg-border mx-0.5" />
 
             {/* Refresh */}
             <AdminButton
@@ -406,28 +687,6 @@ export function PhotosTab({
             </AdminButton>
           </>
         )}
-        endActions={hasSelectedPhotos ? (
-          <div className="flex items-center gap-2">
-            <AdminButton
-              onClick={onBatchAction}
-              adminVariant="outline"
-              size="sm"
-              className="gap-1.5 rounded-md text-xs font-medium normal-case"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>{t('admin.batch_actions') || 'Batch actions'}</span>
-            </AdminButton>
-            <AdminButton
-              onClick={() => onDelete()}
-              adminVariant="destructiveOutline"
-              size="sm"
-              className="gap-1.5 rounded-md text-xs font-medium normal-case"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>{t('common.delete')}</span>
-            </AdminButton>
-          </div>
-        ) : null}
         filters={showFilters ? (
           <div className="flex flex-wrap items-center gap-3">
               {/* Category Filter */}
@@ -659,6 +918,7 @@ export function PhotosTab({
         ) : undefined}
       />
 
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto custom-scrollbar">
       {error && (
         <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-sm flex items-center gap-2">
           <X className="w-4 h-4 shrink-0" />
@@ -667,187 +927,46 @@ export function PhotosTab({
       )}
 
       {/* Photo Grid/List */}
-      <div>
+      <div className="space-y-4">
         {loading ? (
-          <div className={PHOTO_GRID_CLASS_NAME} style={photoGridStyle}>
+          <div className={PHOTO_GRID_CLASS_NAME} style={{ '--admin-photo-grid-columns': String(gridColumns) } as React.CSSProperties}>
             {[...Array(12)].map((_, i) => (
               <div key={i} className="aspect-[4/5] bg-muted animate-pulse rounded-lg" />
             ))}
           </div>
         ) : (
           <div
+            ref={viewMode === 'grid' ? gridContainerRef : undefined}
             className={
               viewMode === 'grid'
                 ? PHOTO_GRID_CLASS_NAME
                 : 'flex flex-col border border-border rounded-lg overflow-hidden'
             }
-            style={viewMode === 'grid' ? photoGridStyle : undefined}
+            style={viewMode === 'grid' ? { '--admin-photo-grid-columns': String(gridColumns) } as React.CSSProperties : undefined}
           >
             {filteredPhotos.map((photo) =>
               viewMode === 'grid' ? (
-                <div
+                <PhotoGridCard
                   key={photo.id}
-                  className={`group relative cursor-pointer bg-muted rounded-lg overflow-hidden border-2 transition-all w-full ${
-                    selectedIds.has(photo.id)
-                      ? 'border-primary ring-2 ring-primary/20'
-                      : 'border-transparent hover:border-border'
-                  }`}
-                  onClick={(event) => handlePhotoClick(event, photo)}
-                >
-                  <div className="relative w-full aspect-[4/5]">
-                    <img
-                      src={resolveAssetUrl(
-                        photo.thumbnailUrl || photo.url,
-                        resolvedCdnDomain
-                      )}
-                      alt={photo.title}
-                      className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  </div>
-
-                  {/* Checkbox - Clean style without background */}
-                  <div
-                    className="absolute top-2 left-2 z-10"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(photo.id)}
-                      onClick={(event) => handleSelectPhoto(photo.id, event.shiftKey)}
-                      onChange={() => undefined}
-                      className="w-4 h-4 accent-primary cursor-pointer rounded border-2 border-white/80 shadow-sm"
-                    />
-                  </div>
-
-                  {/* Hover Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-
-                  {/* Action Buttons - Fixed positions */}
-                  <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    {/* Star button - toggle featured status */}
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onToggleFeatured(photo)
-                      }}
-                      adminVariant={photo.isFeatured ? 'iconAccent' : 'iconOnDark'}
-                      size="xs"
-                      className="p-1.5 backdrop-blur-sm rounded"
-                      title={photo.isFeatured ? "Remove from featured" : "Add to featured"}
-                    >
-                      <Star className={`w-3.5 h-3.5 ${photo.isFeatured ? 'fill-current' : ''}`} />
-                    </AdminButton>
-                    {/* Delete button - always in same position */}
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete(photo.id)
-                      }}
-                      adminVariant="iconOnDarkDanger"
-                      size="xs"
-                      className="p-1.5 backdrop-blur-sm rounded"
-                      title="Delete photo"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </AdminButton>
-                  </div>
-
-                  {/* Featured Badge - Always visible when featured, higher z-index than hover overlay */}
-                  {photo.isFeatured && (
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onToggleFeatured(photo)
-                      }}
-                      adminVariant="iconAccent"
-                      size="xs"
-                      className="absolute top-2 right-2 p-1.5 z-30 shadow-lg group-hover:opacity-0 pointer-events-auto"
-                      title="Remove from featured"
-                    >
-                      <Star className="w-3 h-3 fill-current" />
-                    </AdminButton>
-                  )}
-
-                  {/* Bottom Info */}
-                  <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 pointer-events-none z-10">
-                    <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-0.5 truncate">
-                      {photo.category.split(',')[0]}
-                    </p>
-                    <h3 className="text-sm font-medium text-white leading-tight truncate">
-                      {photo.title}
-                    </h3>
-                  </div>
-                </div>
+                  photo={photo}
+                  isSelected={selectedIds.has(photo.id)}
+                  resolvedCdnDomain={resolvedCdnDomain}
+                  onSelect={handleSelectPhoto}
+                  onDelete={onDelete}
+                  onToggleFeatured={onToggleFeatured}
+                  onClick={handlePhotoClick}
+                />
               ) : (
-                <div
+                <PhotoListRow
                   key={photo.id}
-                  className={`flex items-center gap-4 p-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer ${
-                    selectedIds.has(photo.id) ? 'bg-primary/5' : ''
-                  }`}
-                  onClick={(event) => handlePhotoClick(event, photo)}
-                >
-                  <div
-                    className="flex items-center"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(photo.id)}
-                      onClick={(event) => handleSelectPhoto(photo.id, event.shiftKey)}
-                      onChange={() => undefined}
-                      className="w-4 h-4 accent-primary cursor-pointer rounded"
-                    />
-                  </div>
-                  <div className="w-12 h-12 flex-shrink-0 bg-muted rounded overflow-hidden">
-                    <img
-                      src={resolveAssetUrl(
-                        photo.thumbnailUrl || photo.url,
-                        resolvedCdnDomain
-                      )}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate text-foreground">
-                      {photo.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {photo.category}
-                    </p>
-                  </div>
-                  <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="font-mono">{photo.width} × {photo.height}</span>
-                    <span className="uppercase">{photo.storageProvider}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onToggleFeatured(photo)
-                      }}
-                      adminVariant="icon"
-                      size="xs"
-                      className={`p-2 ${
-                        photo.isFeatured ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'
-                      }`}
-                    >
-                      <Star className={`w-4 h-4 ${photo.isFeatured ? 'fill-current' : ''}`} />
-                    </AdminButton>
-                    <AdminButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete(photo.id)
-                      }}
-                      adminVariant="iconDestructive"
-                      size="xs"
-                      className="p-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </AdminButton>
-                  </div>
-                </div>
+                  photo={photo}
+                  isSelected={selectedIds.has(photo.id)}
+                  resolvedCdnDomain={resolvedCdnDomain}
+                  onSelect={handleSelectPhoto}
+                  onDelete={onDelete}
+                  onToggleFeatured={onToggleFeatured}
+                  onClick={handlePhotoClick}
+                />
               )
             )}
             {filteredPhotos.length === 0 && (
@@ -870,6 +989,38 @@ export function PhotosTab({
             )}
           </div>
         )}
+      </div>
+      </div>
+
+      <div
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-5 py-3 bg-background/95 backdrop-blur-xl border border-border rounded-xl shadow-lg shadow-black/10 dark:shadow-black/30 transition-all duration-200 ease-out ${
+          hasSelectedPhotos
+            ? 'translate-y-0 opacity-100'
+            : 'translate-y-5 opacity-0 pointer-events-none'
+        }`}
+      >
+        <span className="text-sm font-medium text-primary">
+          {selectedIds.size} {t('admin.selected') || 'selected'}
+        </span>
+        <div className="w-px h-5 bg-border" />
+        <AdminButton
+          onClick={onBatchAction}
+          adminVariant="outline"
+          size="sm"
+          className="gap-1.5 rounded-lg text-xs font-medium"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <span>{t('admin.batch_actions') || 'Batch actions'}</span>
+        </AdminButton>
+        <AdminButton
+          onClick={() => onDelete()}
+          adminVariant="destructiveOutline"
+          size="sm"
+          className="gap-1.5 rounded-lg text-xs font-medium"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>{t('common.delete')}</span>
+        </AdminButton>
       </div>
     </div>
   )
