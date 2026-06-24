@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm run prisma:deploy && pnpm run prisma:generate && next build",
+  "buildCommand": "pnpm run prisma:deploy && pnpm run prisma:generate && next build --webpack",
   "functions": {
     "src/app/api/[[...route]]/route.ts": {
       "maxDuration": 60

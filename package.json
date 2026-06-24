@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "build:vercel": "pnpm run prisma:deploy && pnpm run prisma:generate && pnpm run prisma:seed && next build",
-    "build:node": "pnpm run prisma:deploy && pnpm run prisma:generate && next build",
+    "build": "next build --webpack",
+    "build:vercel": "pnpm run prisma:deploy && pnpm run prisma:generate && pnpm run prisma:seed && next build --webpack",
+    "build:node": "pnpm run prisma:deploy && pnpm run prisma:generate && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "prisma:generate": "npx prisma generate",
