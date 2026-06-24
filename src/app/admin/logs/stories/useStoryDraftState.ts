@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
-import type { StoryEditorDraftData } from '@/lib/client-db'
+import { STORY_EDITOR_DRAFT_PREFIX, type StoryEditorDraftData } from '@/lib/client-db'
 import { clearStoryEditorDraftFromDB, getStoryEditorDraftFromDB, saveStoryEditorDraftToDB } from '@/lib/client-db'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { AUTO_SAVE_DELAY } from './constants'
@@ -61,6 +61,15 @@ function createSnapshot(story: StoryDto): StorySnapshot {
   }
 }
 
+function getNewStoryIdFromDraft(draft: StoryEditorDraftData): string {
+  if (draft.storyId) return draft.storyId
+  if (draft.id.startsWith(STORY_EDITOR_DRAFT_PREFIX)) {
+    const draftId = draft.id.slice(STORY_EDITOR_DRAFT_PREFIX.length)
+    if (draftId && draftId !== 'new') return draftId
+  }
+  return crypto.randomUUID()
+}
+
 export function useStoryDraftState({
   allPhotos,
   currentStory,
@@ -115,6 +124,7 @@ export function useStoryDraftState({
     try {
       await saveStoryEditorDraftToDB({
         storyId: existingStory ? currentStory.id : undefined,
+        draftId: existingStory ? undefined : currentStory.id,
         title: currentStory.title,
         content: currentStory.content,
         contentJson: currentStory.contentJson ?? null,
@@ -261,7 +271,7 @@ export function useStoryDraftState({
         .filter((photo): photo is PhotoDto => Boolean(photo))
 
       setCurrentStory({
-        id: editFromDraft.storyId || crypto.randomUUID(),
+        id: getNewStoryIdFromDraft(editFromDraft),
         title: editFromDraft.title,
         content: editFromDraft.content,
         contentJson: editFromDraft.contentJson ?? null,
@@ -276,6 +286,17 @@ export function useStoryDraftState({
       setPendingImages(restorePendingImages(editFromDraft.files))
       setPendingCoverId(editFromDraft.pendingCoverId || null)
       setLastSavedAt(editFromDraft.savedAt)
+      setInitialStory({
+        title: editFromDraft.title,
+        content: editFromDraft.content,
+        contentJson: editFromDraft.contentJson ?? null,
+        isPublished: editFromDraft.isPublished,
+        createdAt: editFromDraft.createdAt,
+        storyDate: editFromDraft.createdAt,
+        photoIds: editFromDraft.photoIds,
+        coverPhotoId: editFromDraft.coverPhotoId ?? undefined,
+        coverCrop: editFromDraft.coverCrop ?? null,
+      })
       setStoryEditMode('editor')
       notify(t('admin.restored_from_draft'), 'info')
       onDraftConsumed?.()

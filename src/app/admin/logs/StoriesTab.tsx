@@ -186,7 +186,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         notify(t('story.updated'), 'success')
       }
 
-      await clearDraft(isNew ? undefined : currentStory.id)
+      await clearDraft(currentStory.id)
       pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
       setPendingImages([])
       setPendingCoverId(null)

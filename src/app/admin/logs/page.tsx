@@ -165,7 +165,7 @@ export default function LogsPage() {
       } else if (deleteDialog.type === 'storyEditor') {
         // 删除指定故事编辑器草稿
         await clearStoryEditorDraftFromDB(deleteDialog.id)
-        setStoryEditorDrafts(prev => prev.filter(d => d.storyId !== deleteDialog.id))
+        setStoryEditorDrafts(prev => prev.filter(d => d.id !== deleteDialog.id))
       }
       notify(t('admin.draft_deleted'))
     } catch (err) {
@@ -495,7 +495,7 @@ export default function LogsPage() {
                                     <Eye className="w-4 h-4" />
                                   </AdminButton>
                                   <AdminButton
-                                    onClick={() => setDeleteDialog({ isOpen: true, type: 'storyEditor', id: draft.storyId })}
+                                    onClick={() => setDeleteDialog({ isOpen: true, type: 'storyEditor', id: draft.id })}
                                     adminVariant="iconDestructive"
                                     size="xs"
                                     className="p-2 rounded-md"

@@ -12,7 +12,7 @@ export interface StoryDraftData {
 
 // ============ Story Editor Draft Types (for StoriesTab) ============
 export interface StoryEditorDraftData {
-  id: string; // 'story_editor_new' or 'story_editor_<storyId>'
+  id: string; // 'story_editor_<storyId>' for existing stories, or 'story_editor_<draftId>' for new stories
   storyId?: string;
   title: string;
   content: string;
@@ -259,14 +259,18 @@ export async function clearAllBlogDraftsFromDB(): Promise<void> {
 }
 
 // ============ Story Editor Draft Functions (for StoriesTab) ============
-const STORY_EDITOR_DRAFT_PREFIX = 'story_editor_';
+export const STORY_EDITOR_DRAFT_PREFIX = 'story_editor_';
 
-function getStoryEditorDraftKey(storyId?: string): string {
-  return storyId ? `${STORY_EDITOR_DRAFT_PREFIX}${storyId}` : `${STORY_EDITOR_DRAFT_PREFIX}new`;
+function getStoryEditorDraftKey(storyIdOrDraftId?: string): string {
+  if (!storyIdOrDraftId) return `${STORY_EDITOR_DRAFT_PREFIX}new`;
+  return storyIdOrDraftId.startsWith(STORY_EDITOR_DRAFT_PREFIX)
+    ? storyIdOrDraftId
+    : `${STORY_EDITOR_DRAFT_PREFIX}${storyIdOrDraftId}`;
 }
 
 export async function saveStoryEditorDraftToDB(data: {
   storyId?: string;
+  draftId?: string;
   title: string;
   content: string;
   contentJson?: TiptapJsonContent | null;
@@ -285,7 +289,7 @@ export async function saveStoryEditorDraftToDB(data: {
       const store = transaction.objectStore(STORE_NAME);
       
       const draftData: StoryEditorDraftData = {
-        id: getStoryEditorDraftKey(data.storyId),
+        id: getStoryEditorDraftKey(data.storyId || data.draftId),
         storyId: data.storyId,
         title: data.title,
         content: data.content,
@@ -327,13 +331,13 @@ export async function getStoryEditorDraftFromDB(storyId?: string): Promise<Story
   }
 }
 
-export async function clearStoryEditorDraftFromDB(storyId?: string): Promise<void> {
+export async function clearStoryEditorDraftFromDB(storyIdOrDraftId?: string): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.delete(getStoryEditorDraftKey(storyId));
+      const request = store.delete(getStoryEditorDraftKey(storyIdOrDraftId));
 
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
@@ -376,7 +380,7 @@ export async function clearAllStoryEditorDraftsFromDB(): Promise<void> {
   try {
     const drafts = await getAllStoryEditorDraftsFromDB();
     for (const draft of drafts) {
-      await clearStoryEditorDraftFromDB(draft.storyId);
+      await clearStoryEditorDraftFromDB(draft.id);
     }
   } catch (error) {
     console.error('Failed to clear all story editor drafts:', error);
