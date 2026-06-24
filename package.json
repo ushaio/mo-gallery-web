@@ -24,6 +24,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@radix-ui/react-slot": "^1.1.0",
+    "@tanstack/react-virtual": "^3.14.3",
     "@tiptap/core": "^3.20.1",
     "@tiptap/extension-horizontal-rule": "^3.22.3",
     "@tiptap/extension-image": "^3.20.1",

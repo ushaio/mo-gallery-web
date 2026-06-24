@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   LayoutGrid,
   List as ListIcon,
@@ -31,6 +32,20 @@ type ViewMode = 'grid' | 'list'
 const PHOTO_GRID_CLASS_NAME =
   'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(var(--admin-photo-grid-columns),minmax(0,1fr))] gap-0.5'
 
+function useContainerWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    if (!ref.current) return
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry.contentRect.width)
+    })
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+  return { ref, width }
+}
+
 interface PhotoGridCardProps {
   photo: PhotoDto
   isSelected: boolean
@@ -52,7 +67,6 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
 }: PhotoGridCardProps) {
   return (
     <div
-      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 4/5' }}
       className={`group relative cursor-pointer bg-muted rounded-lg overflow-hidden border-2 transition-colors w-full ${
         isSelected
           ? 'border-primary'
@@ -315,11 +329,9 @@ export function PhotosTab({
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [toolbarScrolled, setToolbarScrolled] = useState(false)
-  const gridContainerRef = useRef<HTMLDivElement>(null)
-  const sliderRef = useRef<HTMLInputElement>(null)
+  const { ref: gridMeasureRef, width: gridWidth } = useContainerWidth<HTMLDivElement>()
+  const [virtualColumns, setVirtualColumns] = useState(gridColumns)
   const columnsLabelRef = useRef<HTMLSpanElement>(null)
-  const pendingColumnsRef = useRef<number>(gridColumns)
-  const rafIdRef = useRef(0)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -359,13 +371,6 @@ export function PhotosTab({
   const setOnlyFeatured = useCallback((value: boolean) => setPhotosFilters({ onlyFeatured: value }), [setPhotosFilters])
   const setSortBy = useCallback((value: PhotosSortOption) => setPhotosFilters({ sortBy: value }), [setPhotosFilters])
   const setShowFilters = useCallback((value: boolean) => setPhotosFilters({ showFilters: value }), [setPhotosFilters])
-
-  useEffect(() => {
-    return () => {
-      cancelAnimationFrame(rafIdRef.current)
-      setPhotoGridColumns(pendingColumnsRef.current)
-    }
-  }, [setPhotoGridColumns])
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
 
@@ -482,6 +487,29 @@ export function PhotosTab({
     })
   }, [photos, search, categoryFilter, photoTypeFilter, channelFilter, albumPhotoIds, cameraFilter, lensFilter, onlyFeatured, sortBy])
 
+  const columnCount = useMemo(() => {
+    if (gridWidth < 480) return 1
+    if (gridWidth < 640) return 2
+    if (gridWidth < 768) return 3
+    if (gridWidth < 1024) return 4
+    if (gridWidth < 1280) return 5
+    return virtualColumns
+  }, [gridWidth, virtualColumns])
+
+  const rowHeight = useMemo(() => {
+    if (!gridWidth || !columnCount) return 0
+    return (gridWidth / columnCount) * (5 / 4)
+  }, [gridWidth, columnCount])
+
+  const virtualizer = useVirtualizer({
+    count: filteredPhotos.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 5,
+    lanes: columnCount,
+    gap: 2,
+  })
+
   const clearAllFilters = () => {
     setPhotosFilters({
       search: '',
@@ -548,24 +576,17 @@ export function PhotosTab({
 
   const handleGridColumnsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(event.target.value)
-    pendingColumnsRef.current = value
+    setVirtualColumns(value)
     if (columnsLabelRef.current) {
       columnsLabelRef.current.textContent = String(value)
     }
-    cancelAnimationFrame(rafIdRef.current)
-    rafIdRef.current = requestAnimationFrame(() => {
-      if (gridContainerRef.current) {
-        gridContainerRef.current.style.setProperty('--admin-photo-grid-columns', String(value))
-      }
-    })
   }, [])
 
   const persistGridColumns = useCallback(() => {
-    const value = pendingColumnsRef.current
-    if (value !== gridColumns) {
-      setPhotoGridColumns(value)
+    if (virtualColumns !== gridColumns) {
+      setPhotoGridColumns(virtualColumns)
     }
-  }, [gridColumns, setPhotoGridColumns])
+  }, [virtualColumns, gridColumns, setPhotoGridColumns])
 
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
@@ -655,13 +676,11 @@ export function PhotosTab({
               >
                 <LayoutGrid className="h-4 w-4 text-muted-foreground" />
                 <input
-                  ref={sliderRef}
-                  key={gridColumns}
                   type="range"
                   min={MIN_PHOTO_GRID_COLUMNS}
                   max={MAX_PHOTO_GRID_COLUMNS}
                   step={1}
-                  defaultValue={gridColumns}
+                  value={virtualColumns}
                   onChange={handleGridColumnsChange}
                   onMouseUp={persistGridColumns}
                   onTouchEnd={persistGridColumns}
@@ -669,7 +688,7 @@ export function PhotosTab({
                   className="w-24 accent-primary"
                 />
                 <span ref={columnsLabelRef} className="w-5 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                  {gridColumns}
+                  {virtualColumns}
                 </span>
               </div>
             ) : null}
@@ -934,43 +953,77 @@ export function PhotosTab({
               <div key={i} className="aspect-[4/5] bg-muted animate-pulse rounded-lg" />
             ))}
           </div>
-        ) : (
-          <div
-            ref={viewMode === 'grid' ? gridContainerRef : undefined}
-            className={
-              viewMode === 'grid'
-                ? PHOTO_GRID_CLASS_NAME
-                : 'flex flex-col border border-border rounded-lg overflow-hidden'
-            }
-            style={viewMode === 'grid' ? { '--admin-photo-grid-columns': String(gridColumns) } as React.CSSProperties : undefined}
-          >
-            {filteredPhotos.map((photo) =>
-              viewMode === 'grid' ? (
-                <PhotoGridCard
-                  key={photo.id}
-                  photo={photo}
-                  isSelected={selectedIds.has(photo.id)}
-                  resolvedCdnDomain={resolvedCdnDomain}
-                  onSelect={handleSelectPhoto}
-                  onDelete={onDelete}
-                  onToggleFeatured={onToggleFeatured}
-                  onClick={handlePhotoClick}
-                />
-              ) : (
-                <PhotoListRow
-                  key={photo.id}
-                  photo={photo}
-                  isSelected={selectedIds.has(photo.id)}
-                  resolvedCdnDomain={resolvedCdnDomain}
-                  onSelect={handleSelectPhoto}
-                  onDelete={onDelete}
-                  onToggleFeatured={onToggleFeatured}
-                  onClick={handlePhotoClick}
-                />
-              )
+        ) : viewMode === 'grid' ? (
+          <div ref={gridMeasureRef}>
+            {filteredPhotos.length === 0 ? (
+              <div className="py-24 flex flex-col items-center justify-center text-muted-foreground">
+                <ImageIcon className="w-16 h-16 mb-4 opacity-10" />
+                <p className="text-sm font-medium mb-2">
+                  {t('admin.no_photos')}
+                </p>
+                {activeFilterCount > 0 && (
+                  <AdminButton
+                    onClick={clearAllFilters}
+                    adminVariant="link"
+                    size="xs"
+                    className="text-xs text-primary hover:underline normal-case"
+                  >
+                    Clear filters to see all photos
+                  </AdminButton>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const photo = filteredPhotos[virtualRow.index]
+                  if (!photo) return null
+                  return (
+                    <div
+                      key={photo.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: `${virtualRow.lane * (100 / columnCount)}%`,
+                        width: `${100 / columnCount}%`,
+                        height: virtualRow.size,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="p-[1px] h-full">
+                        <PhotoGridCard
+                          photo={photo}
+                          isSelected={selectedIds.has(photo.id)}
+                          resolvedCdnDomain={resolvedCdnDomain}
+                          onSelect={handleSelectPhoto}
+                          onDelete={onDelete}
+                          onToggleFeatured={onToggleFeatured}
+                          onClick={handlePhotoClick}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
+          </div>
+        ) : (
+          <div className="flex flex-col border border-border rounded-lg overflow-hidden">
+            {filteredPhotos.map((photo) => (
+              <PhotoListRow
+                key={photo.id}
+                photo={photo}
+                isSelected={selectedIds.has(photo.id)}
+                resolvedCdnDomain={resolvedCdnDomain}
+                onSelect={handleSelectPhoto}
+                onDelete={onDelete}
+                onToggleFeatured={onToggleFeatured}
+                onClick={handlePhotoClick}
+              />
+            ))}
             {filteredPhotos.length === 0 && (
-              <div className="col-span-full py-24 flex flex-col items-center justify-center text-muted-foreground">
+              <div className="py-24 flex flex-col items-center justify-center text-muted-foreground">
                 <ImageIcon className="w-16 h-16 mb-4 opacity-10" />
                 <p className="text-sm font-medium mb-2">
                   {t('admin.no_photos')}
