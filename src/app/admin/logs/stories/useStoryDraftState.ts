@@ -180,18 +180,6 @@ export function useStoryDraftState({
   const createStoryWithDraftCheck = useCallback(async () => {
     const newStory = createEmptyStory()
     setInitialStory(createSnapshot(newStory))
-
-    try {
-      const draft = await getStoryEditorDraftFromDB(undefined)
-      if (draft && draft.savedAt && (draft.title || draft.content || draft.files?.length)) {
-        setCurrentStory(newStory)
-        setDraftRestoreDialog({ isOpen: true, draft, story: newStory })
-        return
-      }
-    } catch (error) {
-      console.error('Failed to check draft:', error)
-    }
-
     setPendingImages([])
     setPendingCoverId(null)
     setCurrentStory(newStory)
