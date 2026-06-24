@@ -43,7 +43,7 @@ export default function Navbar() {
   }, [pathname])
 
   // Pages where navbar hides on scroll down
-  const shouldAutoHide = pathname.startsWith('/gallery') || pathname.startsWith('/story')
+  const shouldAutoHide = pathname.startsWith('/gallery') || pathname.startsWith('/story') || pathname.startsWith('/curated')
 
   // Handle scroll effect
   useEffect(() => {
@@ -299,6 +299,7 @@ export default function Navbar() {
 
                 {/* Story / They / About */}
                 {[
+                  { name: t('nav.curated'), path: '/curated' },
                   { name: t('nav.story'), path: '/story' },
                   { name: t('nav.they'), path: '/they' },
                   { name: t('nav.about'), path: '/about' },
@@ -430,6 +431,7 @@ export default function Navbar() {
                   return [
                     { name: t('nav.home'), path: '/' },
                     galleryItem,
+                    { name: t('nav.curated'), path: '/curated' },
                     { name: t('nav.story'), path: '/story' },
                     { name: t('nav.they'), path: '/they' },
                     { name: t('nav.about'), path: '/about' },
