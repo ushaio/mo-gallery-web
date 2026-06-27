@@ -226,6 +226,92 @@ photos.get('/photos', async (c) => {
   }
 })
 
+// ─── 管理端照片列表（不过滤 showFlag，支持分页） ──────
+photos.get('/admin/photos', authMiddleware, async (c) => {
+  try {
+    const category = c.req.query('category')
+    const search = c.req.query('search')
+    const pageStr = c.req.query('page')
+    const pageSizeStr = c.req.query('pageSize')
+    const sortBy = c.req.query('sortBy') || 'createdAt'
+    const sortOrder = c.req.query('sortOrder') || 'desc'
+
+    const page = pageStr ? parseInt(pageStr) : 1
+    const pageSize = pageSizeStr ? parseInt(pageSizeStr) : 50
+    const skip = (page - 1) * pageSize
+
+    // 构造查询条件（不过滤 showFlag）
+    const where: any = {}
+    if (category && category !== '全部') {
+      where.categories = { some: { name: category } }
+    }
+    if (search) {
+      where.title = { contains: search, mode: 'insensitive' }
+    }
+
+    // 排序
+    const orderBy = sortBy === 'takenAt'
+      ? [{ takenAt: { sort: sortOrder, nulls: 'last' } }, { createdAt: 'desc' }]
+      : [{ createdAt: sortOrder }]
+
+    const [total, photosList] = await Promise.all([
+      db.photo.count({ where }),
+      db.photo.findMany({
+        where,
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
+        skip,
+        take: pageSize,
+        orderBy,
+      })
+    ])
+
+    const data = photosList.map(mapPhotoDto)
+
+    return c.json({
+      success: true,
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+        hasMore: page * pageSize < total,
+      }
+    })
+  } catch (error) {
+    console.error('Get admin photos error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ─── 管理端单张照片详情 ──────────────────────────────
+photos.get('/admin/photos/:id', authMiddleware, async (c) => {
+  try {
+    const id = c.req.param('id')
+    const photo = await db.photo.findUnique({
+      where: { id },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
+    })
+    if (!photo) {
+      return c.json({ error: 'Photo not found' }, 404)
+    }
+    return c.json({ success: true, data: mapPhotoDto(photo) })
+  } catch (error) {
+    console.error('Get admin photo error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 photos.get('/photos/featured', async (c) => {
   try {
     const photosList = await db.photo.findMany({
@@ -355,6 +441,166 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
   } catch (error) {
     console.error('Check duplicate error:', error)
     return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ─── 注册已上传的照片（Go 桌面端处理文件+存储后调用） ─────────
+photos.post('/admin/photos/register', async (c) => {
+  try {
+    const body = await c.req.json()
+
+    const {
+      title: titleRaw,
+      url,
+      thumbnailUrl,
+      storageProvider,
+      storageSourceId,
+      storageKey,
+      width,
+      height,
+      size,
+      fileHash,
+      showFlag = true,
+      originFlag = 'web',
+      category,
+      filmRollId,
+      // EXIF 数据
+      exif,
+      // 主色
+      dominantColors,
+    } = body
+
+    const title = titleRaw?.trim() || 'Untitled'
+
+    if (!url) {
+      return c.json({ error: 'url is required' }, 400)
+    }
+
+    // 重复检查
+    if (fileHash) {
+      const existing = await db.photo.findFirst({
+        where: { fileHash },
+        select: { id: true, title: true },
+      })
+      if (existing) {
+        return c.json({
+          error: 'DUPLICATE_PHOTO',
+          message: `A photo with the same content already exists: "${existing.title}"`,
+          existingPhotoId: existing.id,
+        }, 409)
+      }
+    }
+
+    // 胶卷检查
+    if (filmRollId) {
+      const roll = await db.filmRoll.findUnique({ where: { id: filmRollId }, select: { id: true } })
+      if (!roll) {
+        return c.json({ error: 'Film roll not found' }, 404)
+      }
+    }
+
+    // 设备 upsert
+    let cameraId: string | null = null
+    if (exif?.cameraMake) {
+      const normalizedMake = normalizeMake(exif.cameraMake) || exif.cameraMake
+      const brandKey = makeBrandKey(normalizedMake)
+      if (brandKey) {
+        const camera = await db.camera.upsert({
+          where: { id: brandKey },
+          update: { name: normalizedMake },
+          create: { id: brandKey, name: normalizedMake },
+        })
+        cameraId = camera.id
+      }
+    }
+
+    let lensId: string | null = null
+    if (exif?.lensModel) {
+      const lensMake = normalizeMake(extractLensMakeFromModel(exif.lensModel))
+      const brandKey = makeBrandKey(lensMake)
+      if (brandKey && lensMake) {
+        const lens = await db.lens.upsert({
+          where: { id: brandKey },
+          update: { name: lensMake },
+          create: { id: brandKey, name: lensMake },
+        })
+        lensId = lens.id
+      }
+    }
+
+    // 分类
+    const categoriesArray = category
+      ? category.split(',').map((c: string) => c.trim()).filter((c: string) => c.length > 0)
+      : []
+
+    // 创建照片记录
+    const photo = await db.photo.create({
+      data: {
+        title,
+        url,
+        thumbnailUrl: thumbnailUrl || null,
+        originFlag: ['web', 'mobile'].includes(originFlag) ? originFlag : 'web',
+        storageProvider: storageProvider || 'local',
+        storageSourceId: storageSourceId || null,
+        storageKey: storageKey || null,
+        width: width || 0,
+        height: height || 0,
+        size: size || null,
+        isFeatured: false,
+        showFlag,
+        dominantColors: dominantColors?.length > 0 ? JSON.stringify(dominantColors) : null,
+        fileHash: fileHash || null,
+        cameraId,
+        lensId,
+        cameraMake: exif?.cameraMake || null,
+        cameraModel: exif?.cameraModel || null,
+        lensModel: exif?.lensModel || null,
+        focalLength: exif?.focalLength || null,
+        aperture: exif?.aperture || null,
+        shutterSpeed: exif?.shutterSpeed || null,
+        iso: exif?.iso || null,
+        takenAt: exif?.takenAt ? new Date(exif.takenAt) : null,
+        gps: exif?.gps || null,
+        orientation: exif?.orientation || null,
+        software: exif?.software || null,
+        exifRaw: exif?.raw || null,
+        categories: {
+          connectOrCreate: categoriesArray.map((name: string) => ({
+            where: { name },
+            create: { name },
+          })),
+        },
+      },
+      include: {
+        categories: true,
+        camera: true,
+        lens: true,
+        filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+      },
+    })
+
+    // 胶卷关联
+    if (filmRollId) {
+      await setPhotoFilmRoll(photo.id, filmRollId)
+      const withFilmRoll = await db.photo.findUnique({
+        where: { id: photo.id },
+        include: {
+          categories: true,
+          camera: true,
+          lens: true,
+          filmPhoto: { include: { filmRoll: { select: { name: true } } } },
+        },
+      })
+      if (withFilmRoll) {
+        return c.json({ success: true, data: mapPhotoDto(withFilmRoll) })
+      }
+    }
+
+    return c.json({ success: true, data: mapPhotoDto(photo) })
+  } catch (error) {
+    console.error('Register photo error:', error)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    return c.json({ error: message }, 500)
   }
 })
 

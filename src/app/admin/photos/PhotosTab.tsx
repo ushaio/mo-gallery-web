@@ -31,6 +31,58 @@ type ViewMode = 'grid' | 'list'
 const PHOTO_GRID_CLASS_NAME =
   'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(var(--admin-photo-grid-columns),minmax(0,1fr))] gap-0.5'
 
+const GRID_OBSERVER_ROOT_MARGIN = '1000px'
+
+function LazyGridCard({
+  photo,
+  isSelected,
+  resolvedCdnDomain,
+  onSelect,
+  onDelete,
+  onToggleFeatured,
+  onClick,
+}: PhotoGridCardProps) {
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: GRID_OBSERVER_ROOT_MARGIN },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  if (!visible) {
+    return (
+      <div
+        ref={sentinelRef}
+        className="bg-muted rounded-lg w-full aspect-[4/5]"
+      />
+    )
+  }
+
+  return (
+    <PhotoGridCard
+      photo={photo}
+      isSelected={isSelected}
+      resolvedCdnDomain={resolvedCdnDomain}
+      onSelect={onSelect}
+      onDelete={onDelete}
+      onToggleFeatured={onToggleFeatured}
+      onClick={onClick}
+    />
+  )
+}
+
 interface PhotoGridCardProps {
   photo: PhotoDto
   isSelected: boolean
@@ -52,7 +104,7 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
 }: PhotoGridCardProps) {
   return (
     <div
-      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 4/5' }}
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 300px' }}
       className={`group relative cursor-pointer bg-muted rounded-lg overflow-hidden border-2 transition-colors w-full ${
         isSelected
           ? 'border-primary'
@@ -68,7 +120,7 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
           )}
           alt={photo.title}
           className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-          loading="lazy"
+          decoding="async"
         />
       </div>
 
@@ -202,6 +254,7 @@ const PhotoListRow = React.memo(function PhotoListRow({
           )}
           alt=""
           className="w-full h-full object-cover"
+          decoding="async"
         />
       </div>
       <div className="flex-1 min-w-0">
@@ -946,7 +999,7 @@ export function PhotosTab({
           >
             {filteredPhotos.map((photo) =>
               viewMode === 'grid' ? (
-                <PhotoGridCard
+                <LazyGridCard
                   key={photo.id}
                   photo={photo}
                   isSelected={selectedIds.has(photo.id)}
