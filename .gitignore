@@ -53,3 +53,13 @@ public/uploads
 .gemini
 .opencode
 .npm-cache
+
+# kilo / kilocode tooling
+.kilo
+.kilocode
+
+# desktop client build artifacts
+/desktop/frontend/node_modules
+/desktop/frontend/dist
+/desktop/frontend/package.json.md5
+/desktop/build/bin
