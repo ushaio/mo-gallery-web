@@ -1,0 +1,29 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "mo-gallery-desktop",
+  "outputfilename": "mo-gallery-desktop",
+  "frontend:dir": "frontend",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm build",
+  "frontend:dev:watcher": "pnpm dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "ushaio",
+    "email": "admin@mo.gallery"
+  },
+  "info": {
+    "companyName": "MO Gallery",
+    "productName": "MO Gallery Desktop",
+    "productVersion": "0.1.0",
+    "copyright": "2026 ushaio",
+    "comments": "MO Gallery 桌面管理端"
+  },
+  "dev": {
+    "loglevel": "WARNING",
+    "debounce": 1000,
+    "frontendServer": {
+      "address": "localhost",
+      "port": 5173
+    }
+  }
+}

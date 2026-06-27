@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/* ── 主题 token：对齐 web 端 src/app/globals.css ─────────────────
+   通过 @theme inline 把 CSS 变量映射为 Tailwind 语义 utility，
+   使复用的 web 组件（bg-card / border-border / text-primary 等）正常渲染。 */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+:root {
+  /* 字体大小系统 */
+  --text-body: 1rem;
+  --text-body-sm: 0.9375rem;
+  --text-ui: 0.875rem;
+  --text-ui-sm: 0.8125rem;
+  --text-label: 0.75rem;
+  --text-label-sm: 0.6875rem;
+  --text-caption: 0.625rem;
+  --text-xs: 0.8125rem;
+  --text-xxs: 0.75rem;
+  --text-micro: 0.6875rem;
+  --text-nano: 0.625rem;
+
+  /* Light Mode */
+  --background: #FFFFFF;
+  --foreground: #0F0F0F;
+  --card: #F9F9F9;
+  --card-foreground: #0F0F0F;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F0F0F;
+  --primary: #111111;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F4F4F4;
+  --secondary-foreground: #111111;
+  --muted: #F5F5F5;
+  --muted-foreground: #666666;
+  --accent: #E0E0E0;
+  --accent-foreground: #111111;
+  --destructive: #CC0000;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E5E5;
+  --input: #FFFFFF;
+  --ring: #111111;
+  --radius: 0.5rem;
+  --sidebar-width: 240px;
+}
+
+.dark {
+  /* Dark Mode */
+  --background: #050505;
+  --foreground: #E0E0E0;
+  --card: #0F0F0F;
+  --card-foreground: #E0E0E0;
+  --popover: #0F0F0F;
+  --popover-foreground: #E0E0E0;
+  --primary: #D4AF37;
+  --primary-foreground: #000000;
+  --secondary: #1A1A1A;
+  --secondary-foreground: #D4AF37;
+  --muted: #141414;
+  --muted-foreground: #888888;
+  --accent: #1F1F1F;
+  --accent-foreground: #D4AF37;
+  --destructive: #CF6679;
+  --destructive-foreground: #000000;
+  --border: #222222;
+  --input: #141414;
+  --ring: #D4AF37;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    margin: 0;
+    overflow: hidden;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif font-medium tracking-tight;
+  }
+  ::selection {
+    @apply bg-primary/30 text-primary-foreground;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .text-body { font-size: var(--text-body); line-height: 1.6; }
+  .text-body-sm { font-size: var(--text-body-sm); line-height: 1.6; }
+  .text-ui { font-size: var(--text-ui); line-height: 1.5; }
+  .text-ui-sm { font-size: var(--text-ui-sm); line-height: 1.5; }
+  .text-label { font-size: var(--text-label); line-height: 1.5; }
+  .text-label-sm { font-size: var(--text-label-sm); line-height: 1.5; }
+  .text-caption { font-size: var(--text-caption); line-height: 1.4; }
+  .text-ui-xs { font-size: var(--text-xs); line-height: 1.5; }
+  .text-ui-xxs { font-size: var(--text-xxs); line-height: 1.5; }
+  .text-ui-micro { font-size: var(--text-micro); line-height: 1.5; }
+  .text-ui-nano { font-size: var(--text-nano); line-height: 1.5; }
+
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  .custom-scrollbar { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 3px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: var(--muted-foreground); }
+}
+
+/* 全局滚动条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--muted-foreground); border-radius: 3px; opacity: 0.5; }
+::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
+
+/* TipTap 编辑器内容样式（来自 web src/components/tiptap-editor.css 摘要） */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  height: 0;
+  opacity: 0.5;
+}

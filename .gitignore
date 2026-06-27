@@ -63,3 +63,4 @@ public/uploads
 /desktop/frontend/dist
 /desktop/frontend/package.json.md5
 /desktop/build/bin
+*.bak
