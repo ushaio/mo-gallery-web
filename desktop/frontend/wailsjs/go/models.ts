@@ -613,6 +613,139 @@ export namespace services {
 		}
 	}
 	
+	export class EditorAiConversationCreateInput {
+	    scopeId: string;
+	    title?: string;
+	    systemPrompt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiConversationCreateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scopeId = source["scopeId"];
+	        this.title = source["title"];
+	        this.systemPrompt = source["systemPrompt"];
+	    }
+	}
+	export class EditorAiConversationDTO {
+	    id: string;
+	    scopeId: string;
+	    title?: string;
+	    summary?: string;
+	    lastModel?: string;
+	    systemPrompt?: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiConversationDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.scopeId = source["scopeId"];
+	        this.title = source["title"];
+	        this.summary = source["summary"];
+	        this.lastModel = source["lastModel"];
+	        this.systemPrompt = source["systemPrompt"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class EditorAiConversationUpdateInput {
+	    title?: string;
+	    systemPrompt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiConversationUpdateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.systemPrompt = source["systemPrompt"];
+	    }
+	}
+	export class EditorAiMessageDTO {
+	    id: string;
+	    conversationId: string;
+	    role: string;
+	    content: string;
+	    status: string;
+	    model?: string;
+	    action?: string;
+	    metadata?: any;
+	    error?: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiMessageDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.conversationId = source["conversationId"];
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.status = source["status"];
+	        this.model = source["model"];
+	        this.action = source["action"];
+	        this.metadata = source["metadata"];
+	        this.error = source["error"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class EditorAiConversationWithMessagesDTO {
+	    id: string;
+	    scopeId: string;
+	    title?: string;
+	    summary?: string;
+	    lastModel?: string;
+	    systemPrompt?: string;
+	    createdAt: string;
+	    updatedAt: string;
+	    messages: EditorAiMessageDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiConversationWithMessagesDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.scopeId = source["scopeId"];
+	        this.title = source["title"];
+	        this.summary = source["summary"];
+	        this.lastModel = source["lastModel"];
+	        this.systemPrompt = source["systemPrompt"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.messages = this.convertValues(source["messages"], EditorAiMessageDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class FilmRollDTO {
 	    id: string;
 	    name: string;
@@ -671,6 +804,18 @@ export namespace services {
 		    return a;
 		}
 	}
+	export class FixMissingPhotosResult {
+	    deleted: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FixMissingPhotosResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deleted = source["deleted"];
+	    }
+	}
 	export class FriendDTO {
 	    id: string;
 	    name: string;
@@ -722,6 +867,36 @@ export namespace services {
 		}
 	}
 	
+	export class LinuxDoAuthUrlDTO {
+	    url: string;
+	    state: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinuxDoAuthUrlDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.state = source["state"];
+	    }
+	}
+	export class LinuxDoBindingDTO {
+	    username: string;
+	    avatarUrl?: string;
+	    trustLevel?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinuxDoBindingDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.avatarUrl = source["avatarUrl"];
+	        this.trustLevel = source["trustLevel"];
+	    }
+	}
 	export class ListCommentsParams {
 	    status: string;
 	    photoId: string;
@@ -934,6 +1109,167 @@ export namespace services {
 	        this.hash = source["hash"];
 	        this.exif = this.convertValues(source["exif"], image.ExifData);
 	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StorageCleanupResult {
+	    deleted: number;
+	    failed: number;
+	    errors: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StorageCleanupResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deleted = source["deleted"];
+	        this.failed = source["failed"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class StorageFileDTO {
+	    key: string;
+	    url: string;
+	    size: number;
+	    lastModified: string;
+	    status: string;
+	    photoId?: string;
+	    photoTitle?: string;
+	    missingType?: string;
+	    hasThumb?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StorageFileDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.url = source["url"];
+	        this.size = source["size"];
+	        this.lastModified = source["lastModified"];
+	        this.status = source["status"];
+	        this.photoId = source["photoId"];
+	        this.photoTitle = source["photoTitle"];
+	        this.missingType = source["missingType"];
+	        this.hasThumb = source["hasThumb"];
+	    }
+	}
+	export class StorageScanParams {
+	    provider: string;
+	    status?: string;
+	    search?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StorageScanParams(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.status = source["status"];
+	        this.search = source["search"];
+	    }
+	}
+	export class StorageScanStats {
+	    total: number;
+	    linked: number;
+	    orphan: number;
+	    missing: number;
+	    missingOriginal: number;
+	    missingThumbnail: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new StorageScanStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.linked = source["linked"];
+	        this.orphan = source["orphan"];
+	        this.missing = source["missing"];
+	        this.missingOriginal = source["missingOriginal"];
+	        this.missingThumbnail = source["missingThumbnail"];
+	    }
+	}
+	export class StorageScanResult {
+	    files: StorageFileDTO[];
+	    stats: StorageScanStats;
+	
+	    static createFrom(source: any = {}) {
+	        return new StorageScanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = this.convertValues(source["files"], StorageFileDTO);
+	        this.stats = this.convertValues(source["stats"], StorageScanStats);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class StoryAiModelOption {
+	    id: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StoryAiModelOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	    }
+	}
+	export class StoryAiModelsResponseDTO {
+	    defaultModel: string;
+	    models: StoryAiModelOption[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StoryAiModelsResponseDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.defaultModel = source["defaultModel"];
+	        this.models = this.convertValues(source["models"], StoryAiModelOption);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

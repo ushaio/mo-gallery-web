@@ -78,13 +78,13 @@ export function StoriesPage() {
   return (
     <>
       <PageHeader
-        title={t('stories.title', language)}
+        title={t('admin.page_stories', language)}
         description={`${stories.length} stories`}
         actions={
           <button onClick={handleCreate}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
             style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-            <Plus size={14} /> {t('stories.create', language)}
+            <Plus size={14} /> {t('admin.create_story', language)}
           </button>
         }
       />
@@ -132,7 +132,7 @@ export function StoriesPage() {
                     backgroundColor: story.isPublished ? 'var(--accent)' : 'var(--muted)',
                     color: story.isPublished ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
                   }}>
-                  {story.isPublished ? t('stories.published', language) : t('stories.draft', language)}
+                  {story.isPublished ? t('admin.stories_status_published', language) : t('admin.stories_status_draft', language)}
                 </span>
 
                 {/* 操作按钮 */}

@@ -1,27 +1,57 @@
+import { useState, useRef, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Image, BookOpen, Film, Upload, BookMarked,
-  Bot, HardDrive, Settings, Users, LogOut
+  Bot, HardDrive, Settings, Users, LogOut,
+  Sun, Moon, Monitor, Globe, Check, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 
 const navItems = [
-  { path: '/photos', icon: Image, key: 'nav.photos' },
-  { path: '/albums', icon: BookOpen, key: 'nav.albums' },
-  { path: '/film-rolls', icon: Film, key: 'nav.filmRolls' },
-  { path: '/upload', icon: Upload, key: 'nav.upload' },
-  { path: '/photo-journal', icon: BookMarked, key: 'nav.photoJournal' },
-  { path: '/ai-assistant', icon: Bot, key: 'nav.aiAssistant' },
-  { path: '/storage', icon: HardDrive, key: 'nav.storage' },
-  { path: '/settings', icon: Settings, key: 'nav.settings' },
-  { path: '/friends', icon: Users, key: 'nav.friends' },
+  { path: '/photos', icon: Image, key: 'admin.library' },
+  { path: '/albums', icon: BookOpen, key: 'admin.albums' },
+  { path: '/film-rolls', icon: Film, key: 'admin.film_rolls' },
+  { path: '/upload', icon: Upload, key: 'admin.upload' },
+  { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
+  { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
+  { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
+  { path: '/settings', icon: Settings, key: 'admin.config' },
+  { path: '/friends', icon: Users, key: 'admin.friends' },
+]
+
+const themeOptions = [
+  { value: 'light' as const, label: 'common.light', icon: Sun },
+  { value: 'dark' as const, label: 'common.dark', icon: Moon },
+  { value: 'system' as const, label: 'common.system', icon: Monitor },
+]
+
+const languageOptions = [
+  { value: 'zh' as const, label: '中文' },
+  { value: 'en' as const, label: 'English' },
 ]
 
 export function Sidebar() {
   const { user, logout } = useAuth()
-  const { language } = usePreferences()
+  const { language, theme, setLanguage, setTheme } = usePreferences()
+
+  const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!openMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openMenu])
+
+  const currentThemeLabel = t(themeOptions.find((o) => o.value === theme)?.label ?? 'common.system', language)
+  const currentLanguageLabel = languageOptions.find((o) => o.value === language)?.label ?? '中文'
 
   return (
     <aside
@@ -65,6 +95,100 @@ export function Sidebar() {
         ))}
       </nav>
 
+      {/* 外观 + 语言切换（用户区上方） */}
+      <div ref={menuRef} className="border-t px-2 py-2 flex flex-col gap-1" style={{ borderColor: 'var(--border)' }}>
+        {/* 外观切换 */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setOpenMenu(openMenu === 'theme' ? null : 'theme')}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
+            style={{ color: 'var(--muted-foreground)' }}
+          >
+            {theme === 'dark' ? <Moon size={14} /> : theme === 'light' ? <Sun size={14} /> : <Monitor size={14} />}
+            <span className="flex-1 text-left">{currentThemeLabel}</span>
+            <ChevronDown
+              size={12}
+              style={{
+                transform: openMenu === 'theme' ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 200ms',
+              }}
+            />
+          </button>
+          {openMenu === 'theme' && (
+            <div
+              className="absolute bottom-full left-0 right-0 mb-1 rounded-md border shadow-lg overflow-hidden"
+              style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
+            >
+              {themeOptions.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setTheme(value)
+                    setOpenMenu(null)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors hover:opacity-80"
+                  style={{
+                    color: 'var(--popover-foreground)',
+                    backgroundColor: theme === value ? 'var(--accent)' : 'transparent',
+                  }}
+                >
+                  <Icon size={14} />
+                  <span className="flex-1 text-left">{t(label, language)}</span>
+                  {theme === value && <Check size={12} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 语言切换 */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setOpenMenu(openMenu === 'language' ? null : 'language')}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
+            style={{ color: 'var(--muted-foreground)' }}
+          >
+            <Globe size={14} />
+            <span className="flex-1 text-left">{currentLanguageLabel}</span>
+            <ChevronDown
+              size={12}
+              style={{
+                transform: openMenu === 'language' ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 200ms',
+              }}
+            />
+          </button>
+          {openMenu === 'language' && (
+            <div
+              className="absolute bottom-full left-0 right-0 mb-1 rounded-md border shadow-lg overflow-hidden"
+              style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
+            >
+              {languageOptions.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setLanguage(value)
+                    setOpenMenu(null)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors hover:opacity-80"
+                  style={{
+                    color: 'var(--popover-foreground)',
+                    backgroundColor: language === value ? 'var(--accent)' : 'transparent',
+                  }}
+                >
+                  <span className="flex-1 text-left">{label}</span>
+                  {language === value && <Check size={12} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 用户信息 */}
       <div className="border-t px-3 py-3" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center justify-between">
@@ -81,7 +205,7 @@ export function Sidebar() {
             onClick={logout}
             className="p-1.5 rounded-md transition-colors hover:opacity-80"
             style={{ color: 'var(--muted-foreground)' }}
-            title={t('auth.logout', language)}
+            title={t('admin.logout', language)}
           >
             <LogOut size={15} />
           </button>

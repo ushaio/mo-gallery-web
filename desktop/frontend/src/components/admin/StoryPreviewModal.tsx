@@ -1,7 +1,6 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import Image from 'next/image'
 import {
   X,
   Calendar,
@@ -66,13 +65,10 @@ export function StoryPreviewModal({
       <section className="relative h-screen w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
           {coverPhoto ? (
-            <Image
+            <img
               src={getPhotoUrl(coverPhoto)}
               alt={story.title}
-              fill
-              unoptimized
-              sizes="100vw"
-              className="w-full h-full object-cover opacity-60"
+              className="absolute inset-0 w-full h-full object-cover opacity-60"
               style={getStoryCoverImageStyle(story)}
             />
           ) : (
@@ -168,13 +164,10 @@ export function StoryPreviewModal({
               viewport={{ once: true }}
               className="relative my-32 -mx-6 md:-mx-24 lg:-mx-48 aspect-[21/9] overflow-hidden bg-muted"
             >
-              <Image
+              <img
                 src={getPhotoUrl(story.photos[1])}
                 alt={t('admin.featured_visual')}
-                fill
-                unoptimized
-                sizes="(min-width: 1024px) 1200px, 100vw"
-                className="w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-cover"
               />
             </motion.div>
           )}

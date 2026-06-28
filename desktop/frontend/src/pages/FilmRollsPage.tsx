@@ -43,13 +43,13 @@ export function FilmRollsPage() {
   return (
     <>
       <PageHeader
-        title={t('filmRolls.title', language)}
+        title={t('admin.page_film_rolls', language)}
         description={`${rolls.length} rolls`}
         actions={
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
             style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-            <Plus size={14} /> {t('filmRolls.create', language)}
+            <Plus size={14} /> {t('admin.create_film_roll', language)}
           </button>
         }
       />

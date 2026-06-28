@@ -43,13 +43,13 @@ export function FriendsPage() {
   return (
     <>
       <PageHeader
-        title={t('friends.title', language)}
+        title={t('admin.page_friends', language)}
         description={`${friends.length} links`}
         actions={
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
             style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-            <Plus size={14} /> {t('friends.create', language)}
+            <Plus size={14} /> {t('admin.create_friend', language)}
           </button>
         }
       />

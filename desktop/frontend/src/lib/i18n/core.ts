@@ -25,6 +25,11 @@ export const coreMessages: LocaleDictionaryGroup = {
       reset: '重置',
       enabled: '已启用',
       disabled: '已禁用',
+      no_results: '未找到结果',
+      retry: '重试',
+      create: '新建',
+      noData: '暂无数据',
+      batchDelete: '批量删除',
     },
     nav: {
       home: '首页',
@@ -74,6 +79,11 @@ export const coreMessages: LocaleDictionaryGroup = {
       reset: 'Reset',
       enabled: 'Enabled',
       disabled: 'Disabled',
+      no_results: 'No results',
+      retry: 'Retry',
+      create: 'Create',
+      noData: 'No data',
+      batchDelete: 'Batch Delete',
     },
     nav: {
       home: 'HOME',

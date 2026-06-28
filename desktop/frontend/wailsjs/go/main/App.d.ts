@@ -12,9 +12,15 @@ export function BatchUpdateShowFlag(arg1:Array<string>,arg2:boolean):Promise<ser
 
 export function CheckDuplicates(arg1:Array<string>):Promise<services.DuplicateCheckResult>;
 
+export function CleanupStorage(arg1:Array<string>,arg2:string):Promise<services.StorageCleanupResult>;
+
+export function ClearEditorAiConversation(arg1:string):Promise<services.EditorAiConversationDTO>;
+
 export function CreateAlbum(arg1:services.CreateAlbumParams):Promise<services.AlbumDTO>;
 
 export function CreateBlog(arg1:services.CreateBlogParams):Promise<services.BlogDTO>;
+
+export function CreateEditorAiConversation(arg1:services.EditorAiConversationCreateInput):Promise<services.EditorAiConversationDTO>;
 
 export function CreateFilmRoll(arg1:services.CreateFilmRollParams):Promise<services.FilmRollDTO>;
 
@@ -30,6 +36,8 @@ export function DeleteBlog(arg1:string):Promise<void>;
 
 export function DeleteComment(arg1:string):Promise<void>;
 
+export function DeleteEditorAiConversation(arg1:string):Promise<void>;
+
 export function DeleteFilmRoll(arg1:string):Promise<void>;
 
 export function DeleteFriend(arg1:string):Promise<void>;
@@ -39,6 +47,12 @@ export function DeletePhoto(arg1:string,arg2:services.DeletePhotoParams):Promise
 export function DeleteStorageSource(arg1:string):Promise<void>;
 
 export function DeleteStory(arg1:string):Promise<void>;
+
+export function FixMissingPhotos(arg1:Array<string>):Promise<services.FixMissingPhotosResult>;
+
+export function GenerateThumbnail(arg1:string):Promise<services.PhotoDTO>;
+
+export function GetAiHttpPort():Promise<number>;
 
 export function GetAlbum(arg1:string):Promise<services.AlbumDTO>;
 
@@ -52,11 +66,19 @@ export function GetCategories():Promise<Array<string>>;
 
 export function GetComments(arg1:services.ListCommentsParams):Promise<services.PaginatedResponse_mo_gallery_desktop_services_CommentDTO_>;
 
+export function GetEditorAiConversation(arg1:string):Promise<services.EditorAiConversationWithMessagesDTO>;
+
+export function GetEditorAiConversations(arg1:string):Promise<Array<services.EditorAiConversationDTO>>;
+
 export function GetFilmRoll(arg1:string):Promise<services.FilmRollDTO>;
 
 export function GetFilmRolls():Promise<Array<services.FilmRollDTO>>;
 
 export function GetFriends():Promise<Array<services.FriendDTO>>;
+
+export function GetLinuxDoAuthUrl():Promise<services.LinuxDoAuthUrlDTO>;
+
+export function GetLinuxDoBinding():Promise<services.LinuxDoBindingDTO>;
 
 export function GetPhoto(arg1:string):Promise<services.PhotoDTO>;
 
@@ -70,6 +92,10 @@ export function GetStories():Promise<Array<services.StoryDTO>>;
 
 export function GetStory(arg1:string):Promise<services.StoryDTO>;
 
+export function GetStoryAiModels():Promise<services.StoryAiModelsResponseDTO>;
+
+export function IsLinuxDoEnabled():Promise<boolean>;
+
 export function Login(arg1:string,arg2:string,arg3:string):Promise<services.LoginResult>;
 
 export function PrepareUpload(arg1:Array<string>):Promise<Array<services.PreparedFile>>;
@@ -77,6 +103,8 @@ export function PrepareUpload(arg1:Array<string>):Promise<Array<services.Prepare
 export function RemoveStoryPhoto(arg1:string,arg2:string):Promise<void>;
 
 export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<services.StoryDTO>;
+
+export function ScanStorage(arg1:services.StorageScanParams):Promise<services.StorageScanResult>;
 
 export function SelectFiles():Promise<Array<string>>;
 
@@ -88,11 +116,15 @@ export function ToggleFeatured(arg1:string):Promise<services.PhotoDTO>;
 
 export function ToggleShowFlag(arg1:string):Promise<services.PhotoDTO>;
 
+export function UnbindLinuxDoAccount():Promise<void>;
+
 export function UpdateAlbum(arg1:string,arg2:services.UpdateAlbumParams):Promise<services.AlbumDTO>;
 
 export function UpdateBlog(arg1:string,arg2:services.UpdateBlogParams):Promise<services.BlogDTO>;
 
 export function UpdateCommentStatus(arg1:string,arg2:string):Promise<void>;
+
+export function UpdateEditorAiConversation(arg1:string,arg2:services.EditorAiConversationUpdateInput):Promise<services.EditorAiConversationDTO>;
 
 export function UpdateFilmRoll(arg1:string,arg2:services.UpdateFilmRollParams):Promise<services.FilmRollDTO>;
 

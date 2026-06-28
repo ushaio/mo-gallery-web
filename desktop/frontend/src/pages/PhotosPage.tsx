@@ -120,7 +120,7 @@ export function PhotosPage() {
   }
 
   const deletePhoto = async (id: string) => {
-    if (!confirm(t('photos.deleteConfirm', language))) return
+    if (!confirm(t('admin.photos_delete_confirm', language))) return
     try {
       await (window as any).go.main.App.DeletePhoto(id, { deleteOriginal: false, deleteThumbnail: true, force: false })
       setPhotos(prev => prev.filter(p => p.id !== id))
@@ -131,7 +131,7 @@ export function PhotosPage() {
   return (
     <>
       <PageHeader
-        title={t('photos.title', language)}
+        title={t('admin.page_photos', language)}
         description={`${total} photos`}
         actions={
           <div className="flex items-center gap-2">
@@ -150,7 +150,7 @@ export function PhotosPage() {
 
             {selected.size > 0 && (
               <button onClick={async () => {
-                if (!confirm(t('photos.batchDeleteConfirm', language, { count: selected.size }))) return
+                if (!confirm(t('admin.photos_batch_delete_confirm', language, { count: selected.size }))) return
                 await (window as any).go.main.App.BatchDeletePhotos({
                   photoIds: Array.from(selected), deleteOriginal: false, deleteThumbnail: true, force: false,
                 })
@@ -186,8 +186,8 @@ export function PhotosPage() {
           className="px-2 py-1 text-xs rounded-md border outline-none"
           style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
           <option value="">全部类型</option>
-          <option value="digital">{t('photos.digital', language)}</option>
-          <option value="film">{t('photos.film', language)}</option>
+          <option value="digital">{t('admin.photos_type_digital', language)}</option>
+          <option value="film">{t('admin.photos_type_film', language)}</option>
         </select>
         <select value={filters.sortBy}
           onChange={(e) => filters.setSortBy(e.target.value as any)}

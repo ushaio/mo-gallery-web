@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MO Gallery Desktop</title>
+    <script>
+      // 全局错误捕获 — 渲染崩溃时显示错误而非空白页
+      window.__showErr = function (label, error) {
+        var r = document.getElementById('root');
+        if (!r || r.hasChildNodes()) return;
+        var msg = error && error.stack ? error.stack : String(error);
+        r.innerHTML =
+          '<div style="padding:24px;font-family:Consolas,monospace;font-size:13px;color:#dc2626;white-space:pre-wrap;word-break:break-word;max-width:960px">' +
+          '<b style="font-size:15px;display:block;margin-bottom:12px">' + label + '</b>' +
+          msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+          '</div>';
+      };
+      window.addEventListener('error', function (e) {
+        window.__showErr('JS 运行时错误', e.error || e.message);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        window.__showErr('未处理 Promise 错误', e.reason);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

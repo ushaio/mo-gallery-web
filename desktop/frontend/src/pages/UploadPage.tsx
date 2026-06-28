@@ -190,7 +190,7 @@ export function UploadPage() {
   return (
     <>
       <PageHeader
-        title={t('nav.upload', language)}
+        title={t('admin.page_upload', language)}
         description={items.length > 0 ? `${items.length} 个文件 · ${doneCount} 已上传 · ${pendingCount} 待上传` : undefined}
         actions={items.length > 0 ? (
           <div className="flex items-center gap-2">

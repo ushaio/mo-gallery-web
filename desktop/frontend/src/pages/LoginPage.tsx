@@ -35,10 +35,10 @@ export function LoginPage() {
         login(result.token, result.user)
         navigate('/', { replace: true })
       } else {
-        setError(t('auth.loginFailed', language))
+        setError(t('admin.loginFailed', language))
       }
     } catch (err: any) {
-      setError(err?.message || t('auth.loginFailed', language))
+      setError(err?.message || t('admin.loginFailed', language))
     } finally {
       setLoading(false)
     }
@@ -56,7 +56,7 @@ export function LoginPage() {
           </div>
           <h1 className="text-xl font-semibold">MO Gallery Desktop</h1>
           <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
-            {t('auth.login', language)}
+            {t('admin.login', language)}
           </p>
         </div>
 
@@ -85,7 +85,7 @@ export function LoginPage() {
           {/* 用户名 */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
-              {t('auth.username', language)}
+              {t('admin.username', language)}
             </label>
             <input
               type="text"
@@ -104,7 +104,7 @@ export function LoginPage() {
           {/* 密码 */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
-              {t('auth.password', language)}
+              {t('admin.password', language)}
             </label>
             <input
               type="password"
@@ -133,7 +133,7 @@ export function LoginPage() {
               color: 'var(--primary-foreground)',
             }}
           >
-            {loading ? '...' : t('auth.loginButton', language)}
+            {loading ? '...' : t('admin.loginButton', language)}
           </button>
         </form>
 

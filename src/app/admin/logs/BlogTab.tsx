@@ -33,7 +33,6 @@ import {
   saveBlogDraftToDB,
   getBlogDraftFromDB,
   clearBlogDraftFromDB,
-  getAllBlogDraftsFromDB,
   type BlogDraftData
 } from '@/lib/client-db'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -115,8 +114,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     isNew: boolean
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
 
-  const fetchBlogs = async () => {
-    if (!token) return
+  const fetchBlogs = useCallback(async () => {
+    if (!token) {
+      setBlogs([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
       const data = await getAdminBlogs(token)
@@ -131,22 +135,17 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     } finally {
       setLoading(false)
     }
-  }
-
-  const initialLoadRef = useRef(false)
+  }, [handleUnauthorized, notify, t, token])
   
   useEffect(() => {
-    if (!initialLoadRef.current) {
-      fetchBlogs()
-      initialLoadRef.current = true
-    }
-  }, [token])
+    void fetchBlogs()
+  }, [fetchBlogs])
   
   useEffect(() => {
     if (refreshKey && refreshKey > 0) {
-      fetchBlogs()
+      void fetchBlogs()
     }
-  }, [refreshKey])
+  }, [fetchBlogs, refreshKey])
 
   // 进入编辑模式时加载草稿
   const loadDraftForBlog = useCallback(async (blogId?: string) => {

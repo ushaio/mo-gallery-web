@@ -10,6 +10,11 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  // avif-worker.ts 导入 @jsquash/avif（WASM 模块含动态导入），
+  // Vite 默认 worker.format=iife 不支持代码分割，必须用 es 格式
+  worker: {
+    format: 'es',
+  },
   build: {
     outDir: 'dist',
   },

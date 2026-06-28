@@ -18,12 +18,24 @@ export function CheckDuplicates(arg1) {
   return window['go']['main']['App']['CheckDuplicates'](arg1);
 }
 
+export function CleanupStorage(arg1, arg2) {
+  return window['go']['main']['App']['CleanupStorage'](arg1, arg2);
+}
+
+export function ClearEditorAiConversation(arg1) {
+  return window['go']['main']['App']['ClearEditorAiConversation'](arg1);
+}
+
 export function CreateAlbum(arg1) {
   return window['go']['main']['App']['CreateAlbum'](arg1);
 }
 
 export function CreateBlog(arg1) {
   return window['go']['main']['App']['CreateBlog'](arg1);
+}
+
+export function CreateEditorAiConversation(arg1) {
+  return window['go']['main']['App']['CreateEditorAiConversation'](arg1);
 }
 
 export function CreateFilmRoll(arg1) {
@@ -54,6 +66,10 @@ export function DeleteComment(arg1) {
   return window['go']['main']['App']['DeleteComment'](arg1);
 }
 
+export function DeleteEditorAiConversation(arg1) {
+  return window['go']['main']['App']['DeleteEditorAiConversation'](arg1);
+}
+
 export function DeleteFilmRoll(arg1) {
   return window['go']['main']['App']['DeleteFilmRoll'](arg1);
 }
@@ -72,6 +88,18 @@ export function DeleteStorageSource(arg1) {
 
 export function DeleteStory(arg1) {
   return window['go']['main']['App']['DeleteStory'](arg1);
+}
+
+export function FixMissingPhotos(arg1) {
+  return window['go']['main']['App']['FixMissingPhotos'](arg1);
+}
+
+export function GenerateThumbnail(arg1) {
+  return window['go']['main']['App']['GenerateThumbnail'](arg1);
+}
+
+export function GetAiHttpPort() {
+  return window['go']['main']['App']['GetAiHttpPort']();
 }
 
 export function GetAlbum(arg1) {
@@ -98,6 +126,14 @@ export function GetComments(arg1) {
   return window['go']['main']['App']['GetComments'](arg1);
 }
 
+export function GetEditorAiConversation(arg1) {
+  return window['go']['main']['App']['GetEditorAiConversation'](arg1);
+}
+
+export function GetEditorAiConversations(arg1) {
+  return window['go']['main']['App']['GetEditorAiConversations'](arg1);
+}
+
 export function GetFilmRoll(arg1) {
   return window['go']['main']['App']['GetFilmRoll'](arg1);
 }
@@ -108,6 +144,14 @@ export function GetFilmRolls() {
 
 export function GetFriends() {
   return window['go']['main']['App']['GetFriends']();
+}
+
+export function GetLinuxDoAuthUrl() {
+  return window['go']['main']['App']['GetLinuxDoAuthUrl']();
+}
+
+export function GetLinuxDoBinding() {
+  return window['go']['main']['App']['GetLinuxDoBinding']();
 }
 
 export function GetPhoto(arg1) {
@@ -134,6 +178,14 @@ export function GetStory(arg1) {
   return window['go']['main']['App']['GetStory'](arg1);
 }
 
+export function GetStoryAiModels() {
+  return window['go']['main']['App']['GetStoryAiModels']();
+}
+
+export function IsLinuxDoEnabled() {
+  return window['go']['main']['App']['IsLinuxDoEnabled']();
+}
+
 export function Login(arg1, arg2, arg3) {
   return window['go']['main']['App']['Login'](arg1, arg2, arg3);
 }
@@ -148,6 +200,10 @@ export function RemoveStoryPhoto(arg1, arg2) {
 
 export function ReorderStoryPhotos(arg1, arg2) {
   return window['go']['main']['App']['ReorderStoryPhotos'](arg1, arg2);
+}
+
+export function ScanStorage(arg1) {
+  return window['go']['main']['App']['ScanStorage'](arg1);
 }
 
 export function SelectFiles() {
@@ -170,6 +226,10 @@ export function ToggleShowFlag(arg1) {
   return window['go']['main']['App']['ToggleShowFlag'](arg1);
 }
 
+export function UnbindLinuxDoAccount() {
+  return window['go']['main']['App']['UnbindLinuxDoAccount']();
+}
+
 export function UpdateAlbum(arg1, arg2) {
   return window['go']['main']['App']['UpdateAlbum'](arg1, arg2);
 }
@@ -180,6 +240,10 @@ export function UpdateBlog(arg1, arg2) {
 
 export function UpdateCommentStatus(arg1, arg2) {
   return window['go']['main']['App']['UpdateCommentStatus'](arg1, arg2);
+}
+
+export function UpdateEditorAiConversation(arg1, arg2) {
+  return window['go']['main']['App']['UpdateEditorAiConversation'](arg1, arg2);
 }
 
 export function UpdateFilmRoll(arg1, arg2) {

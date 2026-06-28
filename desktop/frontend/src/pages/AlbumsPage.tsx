@@ -51,7 +51,7 @@ export function AlbumsPage() {
   return (
     <>
       <PageHeader
-        title={t('albums.title', language)}
+        title={t('admin.page_albums', language)}
         description={`${albums.length} albums`}
         actions={
           <button
@@ -59,7 +59,7 @@ export function AlbumsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
             style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
           >
-            <Plus size={14} /> {t('albums.create', language)}
+            <Plus size={14} /> {t('admin.create_album', language)}
           </button>
         }
       />
@@ -137,7 +137,7 @@ export function AlbumsPage() {
                         backgroundColor: album.isPublished ? 'var(--accent)' : 'var(--muted)',
                         color: album.isPublished ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
                       }}>
-                      {album.isPublished ? t('albums.published', language) : t('albums.draft', language)}
+                      {album.isPublished ? t('admin.albums_status_published', language) : t('admin.albums_status_draft', language)}
                     </span>
                   </div>
                   <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>

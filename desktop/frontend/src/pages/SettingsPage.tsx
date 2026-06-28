@@ -7,6 +7,7 @@ import {
   Settings, Moon, Sun, Monitor,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
+  Unlink, Link,
 } from 'lucide-react'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
@@ -70,7 +71,7 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader
-        title={t('settings.title', language)}
+        title={t('admin.page_settings', language)}
         actions={dirty && showSaveButton ? (
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md disabled:opacity-50"
@@ -741,16 +742,187 @@ function CommentsConfigTab({ config, updateConfig }: {
   )
 }
 
-// ─── Tab 5: 账户（与 Web 端一致） ────────────────────
+// ─── Tab 5: 账户（与 Web 端一致：Linux DO 绑定） ────────────
 
 function AccountTab() {
+  const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
+  const [linuxDoBinding, setLinuxDoBinding] = useState<any>(null)
+  const [linuxDoLoading, setLinuxDoLoading] = useState(false)
+  const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState(false)
+
+  const loadLinuxDoStatus = async () => {
+    setLinuxDoLoading(true)
+    try {
+      const enabled = await (window as any).go.main.App.IsLinuxDoEnabled()
+      setLinuxDoEnabled(enabled)
+      if (enabled) {
+        const binding = await (window as any).go.main.App.GetLinuxDoBinding()
+        setLinuxDoBinding(binding)
+      } else {
+        setLinuxDoBinding(null)
+      }
+    } catch (err: any) {
+      toast.error('加载 Linux DO 状态失败: ' + (err?.message || '未知错误'))
+    } finally {
+      setLinuxDoLoading(false)
+    }
+  }
+
+  useEffect(() => { loadLinuxDoStatus() }, [])
+
+  const handleLinuxDoBind = async () => {
+    try {
+      setLinuxDoBindLoading(true)
+      const { url, state } = await (window as any).go.main.App.GetLinuxDoAuthUrl()
+      // 保存 state 和当前路径到 sessionStorage
+      sessionStorage.setItem('linuxdo_oauth_state', state)
+      sessionStorage.setItem('linuxdo_redirect', window.location.pathname)
+      // 跳转到 Linux DO 授权页
+      window.location.href = url
+    } catch (err: any) {
+      toast.error('获取授权 URL 失败: ' + (err?.message || '未知错误'))
+      setLinuxDoBindLoading(false)
+    }
+  }
+
+  const handleLinuxDoUnbind = async () => {
+    try {
+      await (window as any).go.main.App.UnbindLinuxDoAccount()
+      toast.success('已解绑 Linux DO 账户')
+      setDeleteDialog(false)
+      loadLinuxDoStatus()
+    } catch (err: any) {
+      toast.error('解绑失败: ' + (err?.message || '未知错误'))
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <Section title="账户信息">
-        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-          账户管理通过 Web 端进行。桌面端使用相同的登录凭据。
-        </p>
+      <Section title="Linux DO 绑定">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+            </svg>
+            <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+              Linux DO
+            </h4>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            绑定 Linux DO 账户后，可以使用 Linux DO 登录。
+          </p>
+        </div>
+
+        {!linuxDoEnabled ? (
+          <div className="p-6 border border-dashed border-border text-center">
+            <p className="text-xs text-muted-foreground">
+              Linux DO 未配置
+            </p>
+            <p className="text-[10px] text-muted-foreground/70 mt-2 font-mono">
+              请在 .env 中配置 LINUXDO_CLIENT_ID 和 LINUXDO_CLIENT_SECRET
+            </p>
+          </div>
+        ) : linuxDoLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 size={16} className="animate-spin" />
+          </div>
+        ) : linuxDoBinding ? (
+          <div className="p-6 border border-border bg-muted/10 space-y-6">
+            <div className="flex items-center gap-4">
+              {linuxDoBinding.avatarUrl ? (
+                <img
+                  src={linuxDoBinding.avatarUrl}
+                  alt={linuxDoBinding.username || ''}
+                  className="w-12 h-12 rounded-full border border-border"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full border border-border bg-muted flex items-center justify-center">
+                  <User size={20} className="text-muted-foreground" />
+                </div>
+              )}
+              <div>
+                <p className="font-bold text-foreground">
+                  {linuxDoBinding.username}
+                </p>
+                {linuxDoBinding.trustLevel !== null && (
+                  <p className="text-[10px] text-muted-foreground font-mono">
+                    Trust Level: {linuxDoBinding.trustLevel}
+                  </p>
+                )}
+              </div>
+              <div className="ml-auto">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-widest border border-primary/20">
+                  ✓ 已绑定
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setDeleteDialog(true)}
+              disabled={linuxDoBindLoading}
+              className="w-full py-3 border border-destructive/50 text-destructive hover:bg-destructive/10 text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {linuxDoBindLoading ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Unlink size={14} />
+              )}
+              解绑 Linux DO
+            </button>
+          </div>
+        ) : (
+          <div className="p-6 border border-dashed border-border text-center space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                未绑定 Linux DO 账户
+              </p>
+              <p className="text-[10px] text-muted-foreground/70">
+                绑定后可以使用 Linux DO 登录
+              </p>
+            </div>
+            <button
+              onClick={handleLinuxDoBind}
+              disabled={linuxDoBindLoading}
+              className="px-6 py-3 bg-[#f8d568] text-[#1a1a1a] hover:bg-[#f5c842] text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
+            >
+              {linuxDoBindLoading ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Link size={14} />
+              )}
+              绑定 Linux DO
+            </button>
+          </div>
+        )}
       </Section>
+
+      {/* 确认解绑对话框 */}
+      {deleteDialog && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-8">
+          <div className="bg-card border border-border p-6 max-w-sm w-full">
+            <h3 className="text-sm font-medium mb-4">确认解绑</h3>
+            <p className="text-xs text-muted-foreground mb-6">
+              确定要解绑 Linux DO 账户吗？解绑后无法使用 Linux DO 登录。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDeleteDialog(false)}
+                className="px-3 py-1.5 text-xs rounded-md"
+                style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleLinuxDoUnbind}
+                className="px-3 py-1.5 text-xs rounded-md"
+                style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
+              >
+                确认解绑
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
