@@ -13,6 +13,14 @@ type Config struct {
 	Database DatabaseConfig `json:"database"`
 	API      APIConfig      `json:"api"`
 	UI       UIConfig       `json:"ui"`
+	AI       AIConfig       `json:"ai"`
+}
+
+// AIConfig AI 服务配置
+type AIConfig struct {
+	BaseURL string `json:"base_url"` // OpenAI 兼容 API 地址
+	APIKey  string `json:"api_key"`  // API 密钥
+	Model   string `json:"model"`    // 默认模型
 }
 
 // DatabaseConfig 数据库配置

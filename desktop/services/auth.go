@@ -15,10 +15,24 @@ import (
 	"mo-gallery-desktop/config"
 )
 
+// LinuxDoBindingDTO Linux DO 绑定信息
+type LinuxDoBindingDTO struct {
+	Username   string `json:"username"`
+	AvatarURL  string `json:"avatarUrl,omitempty"`
+	TrustLevel *int   `json:"trustLevel,omitempty"`
+}
+
+// LinuxDoAuthUrlDTO Linux DO 授权 URL
+type LinuxDoAuthUrlDTO struct {
+	URL   string `json:"url"`
+	State string `json:"state"`
+}
+
 // AuthService 处理认证逻辑
 type AuthService struct {
 	cfg        *config.Config
 	httpClient *http.Client
+	proxy      *ProxyClient
 }
 
 func NewAuthService(cfg *config.Config) *AuthService {
@@ -28,6 +42,11 @@ func NewAuthService(cfg *config.Config) *AuthService {
 			Timeout: 10 * time.Second,
 		},
 	}
+}
+
+// SetProxy 设置 ProxyClient（用于需要认证的 API 调用）
+func (s *AuthService) SetProxy(proxy *ProxyClient) {
+	s.proxy = proxy
 }
 
 // LoginResult 登录结果
@@ -184,4 +203,88 @@ func (s *AuthService) parseTokenPayload(tokenStr string) (*UserInfo, error) {
 		Username: claims.Username,
 		IsAdmin:  claims.IsAdmin,
 	}, nil
+}
+
+// ─── Linux DO OAuth ───────────────────────────────────
+
+type linuxDoEnabledResponse struct {
+	Enabled bool `json:"enabled"`
+}
+
+type linuxDoBindingResponse struct {
+	Binding *LinuxDoBindingDTO `json:"binding"`
+}
+
+type linuxDoAuthUrlResponse struct {
+	URL   string `json:"url"`
+	State string `json:"state"`
+}
+
+// IsLinuxDoEnabled 检查 Linux DO OAuth 是否已配置
+func (s *AuthService) IsLinuxDoEnabled() (bool, error) {
+	serverURL := s.cfg.API.BaseURL
+	if serverURL == "" {
+		return false, nil
+	}
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	resp, err := s.httpClient.Get(serverURL + "/api/auth/linuxdo/enabled")
+	if err != nil {
+		return false, nil // 网络错误时返回 false 而非报错
+	}
+	defer resp.Body.Close()
+
+	var result linuxDoEnabledResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, nil
+	}
+	return result.Enabled, nil
+}
+
+// GetLinuxDoBinding 获取管理员绑定的 Linux DO 账户信息
+func (s *AuthService) GetLinuxDoBinding() (*LinuxDoBindingDTO, error) {
+	if s.proxy == nil || !s.proxy.IsReady() {
+		return nil, errors.New("未连接到服务器")
+	}
+
+	var resp linuxDoBindingResponse
+	if err := s.proxy.GET("/auth/linuxdo/binding", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Binding, nil
+}
+
+// GetLinuxDoAuthUrl 获取 Linux DO OAuth 授权 URL
+func (s *AuthService) GetLinuxDoAuthUrl() (*LinuxDoAuthUrlDTO, error) {
+	serverURL := s.cfg.API.BaseURL
+	if serverURL == "" {
+		return nil, errors.New("未连接到服务器")
+	}
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	resp, err := s.httpClient.Get(serverURL + "/api/auth/linuxdo")
+	if err != nil {
+		return nil, fmt.Errorf("获取授权 URL 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("服务器返回错误: %s", string(body))
+	}
+
+	var result linuxDoAuthUrlResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	return &LinuxDoAuthUrlDTO{URL: result.URL, State: result.State}, nil
+}
+
+// UnbindLinuxDoAccount 解绑管理员的 Linux DO 账户
+func (s *AuthService) UnbindLinuxDoAccount() error {
+	if s.proxy == nil || !s.proxy.IsReady() {
+		return errors.New("未连接到服务器")
+	}
+
+	return s.proxy.DELETE("/auth/linuxdo/bind")
 }

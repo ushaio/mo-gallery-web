@@ -261,16 +261,16 @@ func (FriendLink) TableName() string { return "FriendLink" }
 // ─── AiConversation ──────────────────────────────────
 
 type AiConversation struct {
-	ID           string    `gorm:"type:text;primaryKey" json:"id"`
-	ScopeID      string    `gorm:"type:text" json:"scopeId"`
-	Title        *string   `gorm:"type:text" json:"title,omitempty"`
-	Summary      *string   `gorm:"type:text" json:"summary,omitempty"`
-	LastModel    *string   `gorm:"type:text" json:"lastModel,omitempty"`
-	SystemPrompt *string   `gorm:"type:text" json:"systemPrompt,omitempty"`
-	CreatedAt    time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID           string    `gorm:"column:id;type:text;primaryKey" json:"id"`
+	ScopeID      string    `gorm:"column:scopeId;type:text" json:"scopeId"`
+	Title        *string   `gorm:"column:title;type:text" json:"title,omitempty"`
+	Summary      *string   `gorm:"column:summary;type:text" json:"summary,omitempty"`
+	LastModel    *string   `gorm:"column:lastModel;type:text" json:"lastModel,omitempty"`
+	SystemPrompt *string   `gorm:"column:systemPrompt;type:text" json:"systemPrompt,omitempty"`
+	CreatedAt    time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt    time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
-	Messages []AiMessage `json:"messages,omitempty"`
+	Messages []AiMessage `gorm:"foreignKey:ConversationID" json:"messages,omitempty"`
 }
 
 func (AiConversation) TableName() string { return "AiConversation" }
@@ -278,16 +278,16 @@ func (AiConversation) TableName() string { return "AiConversation" }
 // ─── AiMessage ───────────────────────────────────────
 
 type AiMessage struct {
-	ID             string         `gorm:"type:text;primaryKey" json:"id"`
-	ConversationID string         `gorm:"type:text" json:"conversationId"`
-	Role           string         `gorm:"type:text" json:"role"`
-	Content        string         `gorm:"type:text" json:"content"`
-	Status         string         `gorm:"type:text;default:completed" json:"status"`
-	Model          *string        `gorm:"type:text" json:"model,omitempty"`
-	Action         *string        `gorm:"type:text" json:"action,omitempty"`
-	Metadata       datatypes.JSON `gorm:"type:jsonb" json:"metadata,omitempty"`
-	Error          *string        `gorm:"type:text" json:"error,omitempty"`
-	CreatedAt      time.Time      `gorm:"autoCreateTime" json:"createdAt"`
+	ID             string         `gorm:"column:id;type:text;primaryKey" json:"id"`
+	ConversationID string         `gorm:"column:conversationId;type:text" json:"conversationId"`
+	Role           string         `gorm:"column:role;type:text" json:"role"`
+	Content        string         `gorm:"column:content;type:text" json:"content"`
+	Status         string         `gorm:"column:status;type:text;default:completed" json:"status"`
+	Model          *string        `gorm:"column:model;type:text" json:"model,omitempty"`
+	Action         *string        `gorm:"column:action;type:text" json:"action,omitempty"`
+	Metadata       datatypes.JSON `gorm:"column:metadata;type:jsonb" json:"metadata,omitempty"`
+	Error          *string        `gorm:"column:error;type:text" json:"error,omitempty"`
+	CreatedAt      time.Time      `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 
 	Conversation AiConversation `gorm:"foreignKey:ConversationID" json:"conversation,omitempty"`
 }

@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"log"
+	"net"
+	"net/http"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -24,8 +28,10 @@ type App struct {
 	FilmRoll *services.FilmRollService
 	Friend  *services.FriendService
 	Comment *services.CommentService
-	Upload  *services.UploadService
-	Settings *services.SettingsService
+	Upload    *services.UploadService
+	Storage   *services.StorageService
+	Settings  *services.SettingsService
+	EditorAi  *services.EditorAiService
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -38,6 +44,7 @@ func NewApp(cfg *config.Config) *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.Auth = services.NewAuthService(a.cfg)
+	a.Auth.SetProxy(a.Proxy)
 	a.Photo = services.NewPhotoService(a.Proxy)
 	a.Album = services.NewAlbumService(a.Proxy)
 	a.Story = services.NewStoryService(a.Proxy)
@@ -46,7 +53,55 @@ func (a *App) startup(ctx context.Context) {
 	a.Friend = services.NewFriendService(a.Proxy)
 	a.Comment = services.NewCommentService(a.Proxy)
 	a.Upload = services.NewUploadService(a.Proxy)
+	a.Storage = services.NewStorageService(a.Proxy)
 	a.Settings = services.NewSettingsService(a.Proxy)
+	a.EditorAi = services.NewEditorAiService(a.cfg)
+
+	// 启动本地 AI 流式 HTTP 服务
+	a.startAiHTTPServer()
+}
+
+// startAiHTTPServer 启动本地 HTTP 服务用于 AI 流式生成
+func (a *App) startAiHTTPServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ai/generate", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var input services.EditorAiGenerateInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := a.EditorAi.GenerateStream(input, w); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Printf("启动 AI HTTP 服务失败: %v", err)
+		return
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	a.EditorAi.SetHTTPPort(port)
+	log.Printf("AI HTTP 服务已启动: http://127.0.0.1:%d", port)
+
+	go func() {
+		if err := http.Serve(listener, mux); err != nil && err != http.ErrServerClosed {
+			log.Printf("AI HTTP 服务异常退出: %v", err)
+		}
+	}()
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -196,3 +251,61 @@ func (a *App) GetStorageSources() ([]types.StorageSourceDTO, error) { return a.S
 func (a *App) CreateStorageSource(data map[string]string) (*types.StorageSourceDTO, error) { return a.Settings.CreateStorageSource(data) }
 func (a *App) UpdateStorageSource(id string, data map[string]string) (*types.StorageSourceDTO, error) { return a.Settings.UpdateStorageSource(id, data) }
 func (a *App) DeleteStorageSource(id string) error { return a.Settings.DeleteStorageSource(id) }
+
+// ─── Storage Scan/Cleanup ─────────────────────────────
+
+func (a *App) ScanStorage(params services.StorageScanParams) (*services.StorageScanResult, error) {
+	return a.Storage.Scan(params)
+}
+func (a *App) CleanupStorage(keys []string, provider string) (*services.StorageCleanupResult, error) {
+	return a.Storage.Cleanup(keys, provider)
+}
+func (a *App) FixMissingPhotos(photoIDs []string) (*services.FixMissingPhotosResult, error) {
+	return a.Storage.FixMissing(photoIDs)
+}
+func (a *App) GenerateThumbnail(photoID string) (*services.PhotoDTO, error) {
+	return a.Storage.GenerateThumbnail(photoID)
+}
+
+// ─── Linux DO OAuth ───────────────────────────────────
+
+func (a *App) IsLinuxDoEnabled() (bool, error) {
+	return a.Auth.IsLinuxDoEnabled()
+}
+func (a *App) GetLinuxDoBinding() (*services.LinuxDoBindingDTO, error) {
+	return a.Auth.GetLinuxDoBinding()
+}
+func (a *App) GetLinuxDoAuthUrl() (*services.LinuxDoAuthUrlDTO, error) {
+	return a.Auth.GetLinuxDoAuthUrl()
+}
+func (a *App) UnbindLinuxDoAccount() error {
+	return a.Auth.UnbindLinuxDoAccount()
+}
+
+// ─── Editor AI ────────────────────────────────────────
+
+func (a *App) GetAiHttpPort() int {
+	return a.EditorAi.GetHTTPPort()
+}
+
+func (a *App) GetEditorAiConversations(scopeId string) ([]services.EditorAiConversationDTO, error) {
+	return a.EditorAi.ListConversations(scopeId)
+}
+func (a *App) CreateEditorAiConversation(input services.EditorAiConversationCreateInput) (*services.EditorAiConversationDTO, error) {
+	return a.EditorAi.CreateConversation(input)
+}
+func (a *App) GetEditorAiConversation(conversationId string) (*services.EditorAiConversationWithMessagesDTO, error) {
+	return a.EditorAi.GetConversation(conversationId)
+}
+func (a *App) UpdateEditorAiConversation(conversationId string, input services.EditorAiConversationUpdateInput) (*services.EditorAiConversationDTO, error) {
+	return a.EditorAi.UpdateConversation(conversationId, input)
+}
+func (a *App) DeleteEditorAiConversation(conversationId string) error {
+	return a.EditorAi.DeleteConversation(conversationId)
+}
+func (a *App) ClearEditorAiConversation(conversationId string) (*services.EditorAiConversationDTO, error) {
+	return a.EditorAi.ClearConversation(conversationId)
+}
+func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
+	return a.EditorAi.GetModels()
+}

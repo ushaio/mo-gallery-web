@@ -457,3 +457,69 @@
     max-width: none;
   }
 }
+
+/* AI 对话 Markdown 渲染 */
+.ai-markdown p { margin: 0.4em 0; }
+.ai-markdown p:first-child { margin-top: 0; }
+.ai-markdown p:last-child { margin-bottom: 0; }
+.ai-markdown ul, .ai-markdown ol { margin: 0.4em 0; padding-left: 1.5em; }
+.ai-markdown li { margin: 0.2em 0; }
+.ai-markdown code {
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+}
+.ai-markdown pre {
+  background: var(--muted);
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.ai-markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+.ai-markdown blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75em;
+  margin: 0.5em 0;
+  color: var(--muted-foreground);
+}
+.ai-markdown h1, .ai-markdown h2, .ai-markdown h3, .ai-markdown h4 {
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+.ai-markdown h1 { font-size: 1.25em; }
+.ai-markdown h2 { font-size: 1.15em; }
+.ai-markdown h3 { font-size: 1.05em; }
+.ai-markdown table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: 100%;
+  font-size: 0.9em;
+}
+.ai-markdown th, .ai-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+.ai-markdown th {
+  background: var(--muted);
+  font-weight: 600;
+}
+.ai-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ai-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.6em 0;
+}
+.ai-markdown strong { font-weight: 600; }
+.ai-markdown em { font-style: italic; }

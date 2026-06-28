@@ -1,6 +1,8 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   Plus,
   Send,
@@ -95,13 +97,19 @@ export default function AiAssistantPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const isSwitchingRef = useRef(false)
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToBottom = useCallback((instant?: boolean) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' })
   }, [])
 
   useEffect(() => {
-    scrollToBottom()
+    if (isSwitchingRef.current) {
+      scrollToBottom(true)
+      isSwitchingRef.current = false
+    } else {
+      scrollToBottom()
+    }
   }, [messages, streamingContent, scrollToBottom])
 
   // Load conversations and models
@@ -139,6 +147,7 @@ export default function AiAssistantPage() {
       setShowSystemPrompt(false)
       return
     }
+    isSwitchingRef.current = true
     const loadMessages = async () => {
       try {
         const convo = await getEditorAiConversation(token, activeConversation)
@@ -351,7 +360,7 @@ export default function AiAssistantPage() {
             setStreamingContent(accumulated)
           },
           onDone: () => {
-            setStreamingContent('')
+            // 不在 done 事件中清空 streamingContent，等消息加载完再清
           },
           signal: abortController.signal,
         },
@@ -368,7 +377,11 @@ export default function AiAssistantPage() {
           ),
         )
       }
+      setStreamingContent('')
+      setSending(false)
     } catch (error) {
+      setStreamingContent('')
+      setSending(false)
       if (error instanceof DOMException && error.name === 'AbortError') {
         // User cancelled
       } else if (error instanceof ApiUnauthorizedError) {
@@ -385,8 +398,6 @@ export default function AiAssistantPage() {
         } catch { /* ignore */ }
       }
     } finally {
-      setSending(false)
-      setStreamingContent('')
       abortRef.current = null
     }
   }
@@ -722,8 +733,10 @@ export default function AiAssistantPage() {
                   <div className="max-w-[78%] min-w-0">
                     <div className="relative rounded-2xl rounded-tl-md bg-gradient-to-br from-muted/20 to-muted/5 border border-border/30 px-4 py-3">
                       <div className="absolute inset-0 rounded-2xl rounded-tl-md bg-gradient-to-br from-amber-500/[0.02] to-transparent pointer-events-none" />
-                      <div className="relative whitespace-pre-wrap text-sm leading-relaxed text-foreground/90 break-words">
-                        {streamingContent}
+                      <div className="relative text-sm leading-relaxed text-foreground/90 break-words">
+                        <div className="ai-markdown">
+                          <Markdown remarkPlugins={[remarkGfm]}>{streamingContent}</Markdown>
+                        </div>
                         <span className="inline-block w-[3px] h-4 bg-amber-500/60 animate-pulse ml-0.5 align-middle rounded-full" />
                       </div>
                     </div>
@@ -1052,8 +1065,10 @@ function MessageBubble({
         <div className="relative rounded-2xl rounded-tl-md bg-gradient-to-br from-muted/20 to-transparent border border-border/30 px-4 py-3">
           {/* Subtle warm glow */}
           <div className="absolute inset-0 rounded-2xl rounded-tl-md bg-gradient-to-br from-amber-500/[0.02] to-transparent pointer-events-none" />
-          <div className="relative whitespace-pre-wrap text-sm leading-relaxed text-foreground/90 break-words">
-            {message.content}
+          <div className="relative text-sm leading-relaxed text-foreground/90 break-words">
+            <div className="ai-markdown">
+              <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            </div>
           </div>
           {messageImages && messageImages.length > 0 && (
             <div className="relative mt-2.5 flex flex-wrap gap-2">
