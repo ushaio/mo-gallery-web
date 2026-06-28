@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import {
-  Settings, Moon, Sun, Monitor,
+  Settings,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
   Unlink, Link, Sparkles, Eye, EyeOff,
@@ -16,7 +16,7 @@ type Tab = 'site' | 'categories' | 'storage' | 'comments' | 'account' | 'ai'
 type CommentsSubTab = 'manage' | 'config'
 
 export function SettingsPage() {
-  const { language, theme, setTheme, setLanguage } = usePreferences()
+  const { language } = usePreferences()
   const [tab, setTab] = useState<Tab>('site')
   const [config, setConfig] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
@@ -62,7 +62,7 @@ export function SettingsPage() {
     { key: 'storage', label: '存储', icon: HardDrive },
     { key: 'comments', label: '评论', icon: MessageSquare },
     { key: 'account', label: '账户', icon: User },
-    { key: 'ai', label: 'AI 模型', icon: Sparkles },
+    { key: 'ai', label: '模型配置', icon: Sparkles },
   ]
 
   // 与 Web 端一致：只有 categories 标签显示保存按钮（其他标签要么只读要么有独立保存）
@@ -100,42 +100,6 @@ export function SettingsPage() {
             ))}
           </div>
 
-          {/* 本地偏好（与 Web 端一致，放在标签栏底部） */}
-          <div className="mt-auto border-t pt-4" style={{ borderColor: 'var(--border)' }}>
-            <p className="text-xs font-medium mb-3 px-3" style={{ color: 'var(--muted-foreground)' }}>外观</p>
-            <div className="px-3 mb-3 flex gap-1">
-              {[
-                { value: 'light' as const, icon: Sun },
-                { value: 'dark' as const, icon: Moon },
-                { value: 'system' as const, icon: Monitor },
-              ].map(({ value, icon: Icon }) => (
-                <button key={value} onClick={() => setTheme(value)}
-                  className="p-1.5 rounded transition-colors"
-                  style={{
-                    backgroundColor: theme === value ? 'var(--accent)' : 'transparent',
-                    color: theme === value ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-                  }}>
-                  <Icon size={14} />
-                </button>
-              ))}
-            </div>
-            <p className="text-xs font-medium mb-3 px-3" style={{ color: 'var(--muted-foreground)' }}>语言</p>
-            <div className="px-3 flex gap-1">
-              {[
-                { value: 'zh' as const, label: '中文' },
-                { value: 'en' as const, label: 'EN' },
-              ].map(({ value, label }) => (
-                <button key={value} onClick={() => setLanguage(value)}
-                  className="px-2 py-1 text-xs rounded transition-colors"
-                  style={{
-                    backgroundColor: language === value ? 'var(--accent)' : 'transparent',
-                    color: language === value ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-                  }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* 右侧内容 */}
@@ -968,8 +932,9 @@ function AiTab() {
   const [aiConfig, setAiConfig] = useState({ base_url: '', api_key: '', model: '' })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [dirty, setDirty] = useState(false)
   const [showKey, setShowKey] = useState(false)
+  const [models, setModels] = useState<string[]>([])
+  const [fetchingModels, setFetchingModels] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -988,18 +953,35 @@ function AiTab() {
 
   const update = (key: string, value: string) => {
     setAiConfig(prev => ({ ...prev, [key]: value }))
-    setDirty(true)
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
       await (window as any).go.main.App.UpdateAiConfig(aiConfig)
-      setDirty(false)
-      toast.success('AI 配置已保存，重启后生效')
+      toast.success('配置已保存')
     } catch (err: any) {
       toast.error('保存失败: ' + (err?.message || '未知错误'))
     } finally { setSaving(false) }
+  }
+
+  const handleFetchModels = async () => {
+    if (!aiConfig.base_url || !aiConfig.api_key) {
+      toast.error('请先填写 API 地址和 Key')
+      return
+    }
+    setFetchingModels(true)
+    try {
+      const result = await (window as any).go.main.App.GetStoryAiModels()
+      const list = result?.models?.map((m: any) => m.id) || []
+      setModels(list)
+      if (list.length > 0 && !list.includes(aiConfig.model)) {
+        setAiConfig(prev => ({ ...prev, model: result?.defaultModel || list[0] }))
+      }
+      toast.success(`获取到 ${list.length} 个模型`)
+    } catch (err: any) {
+      toast.error('获取模型失败: ' + (err?.message || '未知错误'))
+    } finally { setFetchingModels(false) }
   }
 
   if (loading) {
@@ -1012,11 +994,7 @@ function AiTab() {
 
   return (
     <div className="space-y-6">
-      <Section title="AI 模型配置">
-        <p className="text-xs mb-4" style={{ color: 'var(--muted-foreground)' }}>
-          配置 OpenAI 兼容的 AI 服务，用于 AI 对话功能。支持 OpenAI、DeepSeek、硅基流动等。
-        </p>
-
+      <Section title="模型配置">
         <Field label="API 地址" description="OpenAI 兼容的 API 地址">
           <input type="text" value={aiConfig.base_url}
             onChange={e => update('base_url', e.target.value)}
@@ -1025,7 +1003,7 @@ function AiTab() {
             style={inputStyle} />
         </Field>
 
-        <Field label="API Key" description="API 密钥">
+        <Field label="API Key">
           <div className="relative">
             <input type={showKey ? 'text' : 'password'} value={aiConfig.api_key}
               onChange={e => update('api_key', e.target.value)}
@@ -1040,40 +1018,38 @@ function AiTab() {
           </div>
         </Field>
 
-        <Field label="默认模型" description="默认使用的模型名称">
-          <input type="text" value={aiConfig.model}
-            onChange={e => update('model', e.target.value)}
-            placeholder="gpt-4o"
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
-            style={inputStyle} />
-        </Field>
-
-        {dirty && (
-          <div className="pt-2">
-            <button onClick={handleSave} disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md disabled:opacity-50"
-              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {saving ? '保存中...' : '保存配置'}
+        <Field label="默认模型">
+          <div className="flex gap-2">
+            {models.length > 0 ? (
+              <select value={aiConfig.model}
+                onChange={e => update('model', e.target.value)}
+                className="flex-1 px-3 py-1.5 text-sm rounded border outline-none"
+                style={inputStyle}>
+                {models.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            ) : (
+              <input type="text" value={aiConfig.model}
+                onChange={e => update('model', e.target.value)}
+                placeholder="gpt-4o"
+                className="flex-1 px-3 py-1.5 text-sm rounded border outline-none"
+                style={inputStyle} />
+            )}
+            <button onClick={handleFetchModels} disabled={fetchingModels}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border shrink-0 disabled:opacity-50"
+              style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+              {fetchingModels ? <Loader2 size={12} className="animate-spin" /> : null}
+              获取模型
             </button>
           </div>
-        )}
-      </Section>
+        </Field>
 
-      <Section title="常见配置">
-        <div className="space-y-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-          <div>
-            <span className="font-medium" style={{ color: 'var(--foreground)' }}>OpenAI：</span>
-            <span className="ml-2 font-mono">https://api.openai.com/v1</span>
-          </div>
-          <div>
-            <span className="font-medium" style={{ color: 'var(--foreground)' }}>DeepSeek：</span>
-            <span className="ml-2 font-mono">https://api.deepseek.com/v1</span>
-          </div>
-          <div>
-            <span className="font-medium" style={{ color: 'var(--foreground)' }}>硅基流动：</span>
-            <span className="ml-2 font-mono">https://api.siliconflow.cn/v1</span>
-          </div>
+        <div className="pt-2">
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {saving ? '保存中...' : '保存'}
+          </button>
         </div>
       </Section>
     </div>
