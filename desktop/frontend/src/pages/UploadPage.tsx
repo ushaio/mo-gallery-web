@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import {
   Upload, X, CheckCircle, AlertCircle, Loader2, FileImage,
   Image as ImageIcon, Trash2, CloudUpload, GripVertical, Eye,
@@ -72,8 +73,31 @@ export function UploadPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [categoryInput, setCategoryInput] = useState('')
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Wails 原生文件拖放（可获取完整路径）
+  useEffect(() => {
+    OnFileDrop((_x, _y, paths) => {
+      if (paths && paths.length > 0) {
+        processFiles(paths)
+      }
+      setIsDragging(false)
+    }, true)
+
+    const handleDragEnter = (e: DragEvent) => { e.preventDefault(); setIsDragging(true) }
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault()
+      if (e.relatedTarget === null) setIsDragging(false)
+    }
+    window.addEventListener('dragenter', handleDragEnter)
+    window.addEventListener('dragleave', handleDragLeave)
+
+    return () => {
+      OnFileDropOff()
+      window.removeEventListener('dragenter', handleDragEnter)
+      window.removeEventListener('dragleave', handleDragLeave)
+    }
+  }, [])
 
   // 关联数据
   const [albums, setAlbums] = useState<any[]>([])
@@ -143,12 +167,6 @@ export function UploadPage() {
       setPreparing(false)
     }
   }
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    handleSelectFiles(e.dataTransfer.files)
-  }, [handleSelectFiles])
 
   const handleUpload = async () => {
     const pending = items.filter(i => i.status === 'pending')
@@ -471,9 +489,6 @@ export function UploadPage() {
           {/* 右侧：文件列表 */}
           <div className="lg:col-span-8">
             <div
-              onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
               className={`min-h-[600px] rounded-xl border-2 border-dashed transition-all ${isDragging ? 'border-primary bg-primary/5' : ''}`}
               style={{ borderColor: isDragging ? undefined : 'var(--border)' }}
             >
