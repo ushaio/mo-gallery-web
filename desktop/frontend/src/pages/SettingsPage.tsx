@@ -7,12 +7,12 @@ import {
   Settings, Moon, Sun, Monitor,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
-  Unlink, Link,
+  Unlink, Link, Sparkles,
 } from 'lucide-react'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
 
-type Tab = 'site' | 'categories' | 'storage' | 'comments' | 'account'
+type Tab = 'site' | 'categories' | 'storage' | 'comments' | 'account' | 'ai'
 type CommentsSubTab = 'manage' | 'config'
 
 export function SettingsPage() {
@@ -62,6 +62,7 @@ export function SettingsPage() {
     { key: 'storage', label: '存储', icon: HardDrive },
     { key: 'comments', label: '评论', icon: MessageSquare },
     { key: 'account', label: '账户', icon: User },
+    { key: 'ai', label: 'AI 模型', icon: Sparkles },
   ]
 
   // 与 Web 端一致：只有 categories 标签显示保存按钮（其他标签要么只读要么有独立保存）
@@ -150,6 +151,7 @@ export function SettingsPage() {
               {tab === 'storage' && <StorageTab />}
               {tab === 'comments' && <CommentsTab config={config} updateConfig={updateConfig} />}
               {tab === 'account' && <AccountTab />}
+              {tab === 'ai' && <AiTab />}
             </div>
           )}
         </div>
@@ -956,6 +958,116 @@ function Field({ label, description, children }: {
       {description && (
         <p className="text-[11px] mt-1" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
       )}
+    </div>
+  )
+}
+
+// ─── Tab 6: AI 模型配置 ──────────────────────────────
+
+function AiTab() {
+  const [aiConfig, setAiConfig] = useState({ base_url: '', api_key: '', model: '' })
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    try {
+      const result = (window as any).go?.main?.App?.GetAiConfig?.()
+      if (result && typeof result.then === 'function') {
+        result.then((r: any) => { if (r) setAiConfig(r) }).finally(() => setLoading(false))
+      } else if (result) {
+        setAiConfig(result)
+        setLoading(false)
+      } else {
+        setLoading(false)
+      }
+    } catch { setLoading(false) }
+  }, [])
+
+  const update = (key: string, value: string) => {
+    setAiConfig(prev => ({ ...prev, [key]: value }))
+    setDirty(true)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await (window as any).go.main.App.UpdateAiConfig(aiConfig)
+      setDirty(false)
+      toast.success('AI 配置已保存，重启后生效')
+    } catch (err: any) {
+      toast.error('保存失败: ' + (err?.message || '未知错误'))
+    } finally { setSaving(false) }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8" style={{ color: 'var(--muted-foreground)' }}>
+        <Loader2 size={16} className="animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <Section title="AI 模型配置">
+        <p className="text-xs mb-4" style={{ color: 'var(--muted-foreground)' }}>
+          配置 OpenAI 兼容的 AI 服务，用于 AI 对话功能。支持 OpenAI、DeepSeek、硅基流动等。
+        </p>
+
+        <Field label="API 地址" description="OpenAI 兼容的 API 地址">
+          <input type="text" value={aiConfig.base_url}
+            onChange={e => update('base_url', e.target.value)}
+            placeholder="https://api.openai.com/v1"
+            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
+            style={inputStyle} />
+        </Field>
+
+        <Field label="API Key" description="API 密钥">
+          <input type="password" value={aiConfig.api_key}
+            onChange={e => update('api_key', e.target.value)}
+            placeholder="sk-xxx"
+            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
+            style={inputStyle} />
+        </Field>
+
+        <Field label="默认模型" description="默认使用的模型名称">
+          <input type="text" value={aiConfig.model}
+            onChange={e => update('model', e.target.value)}
+            placeholder="gpt-4o"
+            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
+            style={inputStyle} />
+        </Field>
+
+        {dirty && (
+          <div className="pt-2">
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md disabled:opacity-50"
+              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {saving ? '保存中...' : '保存配置'}
+            </button>
+          </div>
+        )}
+      </Section>
+
+      <Section title="常见配置">
+        <div className="space-y-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <div>
+            <span className="font-medium" style={{ color: 'var(--foreground)' }}>OpenAI：</span>
+            <span className="ml-2 font-mono">https://api.openai.com/v1</span>
+          </div>
+          <div>
+            <span className="font-medium" style={{ color: 'var(--foreground)' }}>DeepSeek：</span>
+            <span className="ml-2 font-mono">https://api.deepseek.com/v1</span>
+          </div>
+          <div>
+            <span className="font-medium" style={{ color: 'var(--foreground)' }}>硅基流动：</span>
+            <span className="ml-2 font-mono">https://api.siliconflow.cn/v1</span>
+          </div>
+        </div>
+      </Section>
     </div>
   )
 }

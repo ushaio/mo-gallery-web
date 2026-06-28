@@ -288,6 +288,27 @@ func (a *App) GetAiHttpPort() int {
 	return a.EditorAi.GetHTTPPort()
 }
 
+func (a *App) GetAiConfig() map[string]string {
+	return map[string]string{
+		"base_url": a.cfg.AI.BaseURL,
+		"api_key":  a.cfg.AI.APIKey,
+		"model":    a.cfg.AI.Model,
+	}
+}
+
+func (a *App) UpdateAiConfig(data map[string]string) error {
+	if v, ok := data["base_url"]; ok {
+		a.cfg.AI.BaseURL = v
+	}
+	if v, ok := data["api_key"]; ok {
+		a.cfg.AI.APIKey = v
+	}
+	if v, ok := data["model"]; ok {
+		a.cfg.AI.Model = v
+	}
+	return a.cfg.Save("")
+}
+
 func (a *App) GetEditorAiConversations(scopeId string) ([]services.EditorAiConversationDTO, error) {
 	return a.EditorAi.ListConversations(scopeId)
 }
