@@ -7,7 +7,7 @@ import {
   Settings, Moon, Sun, Monitor,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
-  Unlink, Link, Sparkles,
+  Unlink, Link, Sparkles, Eye, EyeOff,
 } from 'lucide-react'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
@@ -969,6 +969,7 @@ function AiTab() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [showKey, setShowKey] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -1025,11 +1026,18 @@ function AiTab() {
         </Field>
 
         <Field label="API Key" description="API 密钥">
-          <input type="password" value={aiConfig.api_key}
-            onChange={e => update('api_key', e.target.value)}
-            placeholder="sk-xxx"
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
-            style={inputStyle} />
+          <div className="relative">
+            <input type={showKey ? 'text' : 'password'} value={aiConfig.api_key}
+              onChange={e => update('api_key', e.target.value)}
+              placeholder="sk-xxx"
+              className="w-full px-3 py-1.5 pr-9 text-sm rounded border outline-none"
+              style={inputStyle} />
+            <button type="button" onClick={() => setShowKey(!showKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
+              style={{ color: 'var(--muted-foreground)' }}>
+              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
         </Field>
 
         <Field label="默认模型" description="默认使用的模型名称">
