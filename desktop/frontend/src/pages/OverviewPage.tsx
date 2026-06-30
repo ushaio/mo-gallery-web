@@ -18,6 +18,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Skeleton } from '@/components/admin/Skeleton'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   getEquipmentItemsCache,
   getOverviewCache,
@@ -27,8 +28,10 @@ import {
   type EquipmentItem,
   type EquipmentKind,
 } from '@/lib/app-cache'
-import { resolveAssetUrl } from '@/lib/api'
+import { AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage, getErrorMessage, isAuthError } from '@/lib/auth-errors'
+import { buildApiUrl, resolveAssetUrl } from '@/lib/api'
 import { t } from '@/lib/i18n'
+import { formatBytes } from '@/lib/utils'
 import { usePreferences } from '@/store/preferences'
 import { GetCameras, GetLenses, GetOverview } from '../../wailsjs/go/main/App'
 import type { services } from '../../wailsjs/go/models'
@@ -40,24 +43,21 @@ type RecentTextItem = services.RecentStoryDTO | services.RecentBlogDTO
 
 const OVERVIEW_PAGE_CLASS = 'p-6 space-y-6 w-full min-w-0 max-w-6xl mx-auto h-full overflow-y-scroll'
 const OVERVIEW_PAGE_STYLE: CSSProperties = { scrollbarGutter: 'stable' }
-const SERVER_KEY = 'mo-gallery-server'
+
+function getPublicContentUrl(path: 'story' | 'blog', id: string) {
+  const url = buildApiUrl(`/${path}/${encodeURIComponent(id)}`)
+  return /^https?:\/\//i.test(url) ? url : null
+}
 
 function openPublicContent(path: 'story' | 'blog', id: string) {
-  const server = localStorage.getItem(SERVER_KEY)?.replace(/\/+$/, '')
-  if (!server) return
-  BrowserOpenURL(`${server}/${path}/${encodeURIComponent(id)}`)
+  const url = getPublicContentUrl(path, id)
+  if (!url) return
+  BrowserOpenURL(url)
 }
 
 function handleRecentTextClick(path: 'story' | 'blog' | undefined, id: string, isPublished: boolean) {
   if (!path || !isPublished) return
   openPublicContent(path, id)
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
 }
 
 function formatDate(dateStr: string): string {
@@ -319,7 +319,7 @@ function RecentList({ icon: Icon, title, items, loading, noDataLabel, publicPath
       ) : items.length > 0 ? (
         <div className="space-y-2">
           {items.map((item) => {
-            const canOpen = !!publicPath && item.isPublished
+            const contentUrl = publicPath && item.isPublished ? getPublicContentUrl(publicPath, item.id) : null
             const statusLabel = item.isPublished
               ? t('admin.overview_published', language)
               : t('admin.overview_draft', language)
@@ -327,11 +327,22 @@ function RecentList({ icon: Icon, title, items, loading, noDataLabel, publicPath
             return (
               <div key={item.id} className="flex min-w-0 items-center gap-2 py-1">
                 <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--primary)' }} />
-                <span
-                  className="text-xs truncate flex-1"
-                  style={{ color: 'var(--foreground)' }}
-                  onClick={() => handleRecentTextClick(publicPath, item.id, item.isPublished)}
-                >{item.title}</span>
+                {contentUrl ? (
+                  <a
+                    href={contentUrl}
+                    className="text-xs truncate flex-1 cursor-pointer underline-offset-2 hover:underline"
+                    style={{ color: 'var(--foreground)' }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      handleRecentTextClick(publicPath, item.id, item.isPublished)
+                    }}
+                  >{item.title}</a>
+                ) : (
+                  <span
+                    className="text-xs truncate flex-1"
+                    style={{ color: 'var(--foreground)' }}
+                  >{item.title}</span>
+                )}
                 <span
                   className="rounded px-1.5 py-0.5 text-[10px] shrink-0"
                   style={{
@@ -362,9 +373,12 @@ function RecentList({ icon: Icon, title, items, loading, noDataLabel, publicPath
 
 export function OverviewPage() {
   const { language } = usePreferences()
+  const { logout } = useAuth()
+  const navigate = useNavigate()
   const cachedOverview = getOverviewCache()
   const [data, setData] = useState<OverviewDTO | null>(cachedOverview)
   const [loading, setLoading] = useState(!cachedOverview)
+  const [error, setError] = useState<string | null>(null)
   const [equipmentItems, setEquipmentItems] = useState<Record<EquipmentKind, EquipmentItem[]>>(() => ({
     camera: getEquipmentItemsCache('camera'),
     lens: getEquipmentItemsCache('lens'),
@@ -381,20 +395,28 @@ export function OverviewPage() {
     if (!force && cache) {
       setData(cache)
       setLoading(false)
-      return
+      setError(null)
     }
 
-    setLoading(true)
+    setLoading(!cache)
+    setError(null)
     try {
       const result = await GetOverview()
       setOverviewCache(result)
       setData(result)
     } catch (err) {
       console.error('Failed to fetch overview:', err)
+      if (isAuthError(err)) {
+        sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage(err))
+        logout()
+        navigate('/login', { replace: true })
+        return
+      }
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [logout, navigate])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -540,6 +562,12 @@ export function OverviewPage() {
           {t('admin.refresh', language)}
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border p-4 text-sm" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--destructive)', color: 'var(--destructive)' }}>
+          {error}
+        </div>
+      )}
 
       <div className="grid min-w-0 grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {statItems.map((item) => (

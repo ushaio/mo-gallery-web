@@ -26,3 +26,9 @@ export function formatFileSize(bytes?: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
+
+export function formatBytes(bytes: number, units = ['B', 'KB', 'MB', 'GB', 'TB']): string {
+  if (!bytes) return '0 B'
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  return `${(bytes / Math.pow(1024, unitIndex)).toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
