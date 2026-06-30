@@ -38,7 +38,13 @@ export function Sidebar() {
   const { language, theme, setLanguage, setTheme } = usePreferences()
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+
+  const handleLogoutConfirm = () => {
+    setShowLogoutConfirm(false)
+    logout()
+  }
 
   useEffect(() => {
     if (!openMenu) return
@@ -203,7 +209,7 @@ export function Sidebar() {
             </span>
           </div>
           <button
-            onClick={logout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="p-1.5 rounded-md transition-colors hover:opacity-80"
             style={{ color: 'var(--muted-foreground)' }}
             title={t('admin.logout', language)}
@@ -212,6 +218,46 @@ export function Sidebar() {
           </button>
         </div>
       </div>
+
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <button
+            type="button"
+            aria-label={t('common.cancel', language)}
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowLogoutConfirm(false)}
+          />
+          <div
+            className="relative w-full max-w-sm rounded-lg border p-5 shadow-xl"
+            style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
+          >
+            <h3 className="text-sm font-medium" style={{ color: 'var(--popover-foreground)' }}>
+              {t('admin.logout_confirm_title', language)}
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+              {t('admin.logout_confirm', language)}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="rounded-md border px-3 py-1.5 text-xs transition-colors hover:opacity-80"
+                style={{ borderColor: 'var(--border)', color: 'var(--popover-foreground)' }}
+              >
+                {t('common.cancel', language)}
+              </button>
+              <button
+                type="button"
+                onClick={handleLogoutConfirm}
+                className="rounded-md px-3 py-1.5 text-xs transition-colors hover:opacity-90"
+                style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
+              >
+                {t('admin.logout', language)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
