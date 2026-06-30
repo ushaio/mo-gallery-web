@@ -51,9 +51,9 @@ func (s *AuthService) SetProxy(proxy *ProxyClient) {
 
 // LoginResult 登录结果
 type LoginResult struct {
-	Token   string   `json:"token"`
-	User    UserInfo `json:"user"`
-	Server  string   `json:"server"` // 实际使用的服务器地址
+	Token  string   `json:"token"`
+	User   UserInfo `json:"user"`
+	Server string   `json:"server"` // 实际使用的服务器地址
 }
 
 // UserInfo 用户信息
@@ -82,13 +82,19 @@ type webLoginResponse struct {
 
 // Login 通过 Web API 验证管理员凭据
 // serverURL: Web 端地址，如 http://localhost:3000
-func (s *AuthService) Login(serverURL, username, password string) (*LoginResult, error) {
+// rememberLogin: 是否记住登录凭据（仅开发使用，明文存储，不安全）
+func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rememberLogin bool) (*LoginResult, error) {
 	if serverURL == "" {
 		return nil, errors.New("请输入服务器地址")
 	}
 	if username == "" || password == "" {
 		return nil, errors.New("用户名和密码不能为空")
 	}
+	jwtSecret = strings.TrimSpace(jwtSecret)
+	if jwtSecret == "" {
+		return nil, errors.New("JWT Secret 不能为空")
+	}
+	s.cfg.API.JWTSecret = jwtSecret
 
 	// 规范化地址
 	serverURL = strings.TrimRight(serverURL, "/")
@@ -140,9 +146,27 @@ func (s *AuthService) Login(serverURL, username, password string) (*LoginResult,
 	if loginResp.Token == "" {
 		return nil, errors.New("服务器未返回 token")
 	}
+	if _, err := s.ValidateToken(loginResp.Token); err != nil {
+		return nil, fmt.Errorf("服务器返回的 token 无效: %w", err)
+	}
 
-	// 保存服务器地址到配置
+	// 保存配置到文件
 	s.cfg.API.BaseURL = serverURL
+	s.cfg.API.JWTSecret = jwtSecret
+	if rememberLogin {
+		s.cfg.API.RememberLogin = true
+		s.cfg.API.SavedUsername = username
+		// 加密密码后保存
+		encryptedPassword, err := config.EncryptPassword(password)
+		if err != nil {
+			return nil, fmt.Errorf("加密密码失败: %w", err)
+		}
+		s.cfg.API.SavedPassword = encryptedPassword
+	} else {
+		s.cfg.API.RememberLogin = false
+		s.cfg.API.SavedUsername = ""
+		s.cfg.API.SavedPassword = ""
+	}
 	_ = s.cfg.Save("")
 
 	return &LoginResult{
@@ -152,54 +176,36 @@ func (s *AuthService) Login(serverURL, username, password string) (*LoginResult,
 	}, nil
 }
 
-// ValidateToken 验证 JWT token（本地解析，不请求网络）
+// ValidateToken 验证 JWT token（本地签名校验，不请求网络）
 func (s *AuthService) ValidateToken(tokenStr string) (*UserInfo, error) {
+	secret := strings.TrimSpace(s.cfg.API.JWTSecret)
+	if secret == "" {
+		return nil, errors.New("未配置 JWT 密钥")
+	}
+
 	token, err := jwt.ParseWithClaims(tokenStr, &JWTClaims{}, func(t *jwt.Token) (interface{}, error) {
-		// 注意：本地无法验证签名（没有 JWT secret），只解析 payload
-		// 真正的鉴权由 Web API 的 auth middleware 完成
-		return []byte{}, nil
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %s", t.Header["alg"])
+		}
+		return []byte(secret), nil
 	})
 	if err != nil {
-		// JWT 解析失败，但可能只是签名不匹配
-		// 尝试手动解析 payload
-		return s.parseTokenPayload(tokenStr)
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, errors.New("登录已过期，请重新登录")
+		}
+		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
+			return nil, errors.New("Token 签名无效，请检查 JWT 密钥配置后重新登录")
+		}
+		return nil, fmt.Errorf("invalid token: %w", err)
 	}
 
 	claims, ok := token.Claims.(*JWTClaims)
-	if !ok {
+	if !ok || !token.Valid {
 		return nil, errors.New("invalid token claims")
 	}
 
 	return &UserInfo{
-		Username: claims.Username,
-		IsAdmin:  claims.IsAdmin,
-	}, nil
-}
-
-// parseTokenPayload 手动解析 JWT payload（跳过签名验证）
-func (s *AuthService) parseTokenPayload(tokenStr string) (*UserInfo, error) {
-	parts := strings.Split(tokenStr, ".")
-	if len(parts) != 3 {
-		return nil, errors.New("invalid token format")
-	}
-
-	// 解码 payload (第二段)
-	payload, err := jwt.NewParser().DecodeSegment(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("decode payload failed: %w", err)
-	}
-
-	var claims JWTClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, fmt.Errorf("parse payload failed: %w", err)
-	}
-
-	// 检查过期时间
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, errors.New("token 已过期")
-	}
-
-	return &UserInfo{
+		ID:       claims.Sub,
 		Username: claims.Username,
 		IsAdmin:  claims.IsAdmin,
 	}, nil

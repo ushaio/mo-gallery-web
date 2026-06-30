@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -22,23 +23,23 @@ import (
 )
 
 type App struct {
-	ctx     context.Context
-	cfg     *config.Config
-	Proxy   *services.ProxyClient
-	Auth    *services.AuthService
-	Photo   *services.PhotoService
-	Album   *services.AlbumService
-	Story   *services.StoryService
-	Blog    *services.BlogService
+	ctx      context.Context
+	cfg      *config.Config
+	Proxy    *services.ProxyClient
+	Auth     *services.AuthService
+	Photo    *services.PhotoService
+	Album    *services.AlbumService
+	Story    *services.StoryService
+	Blog     *services.BlogService
 	FilmRoll *services.FilmRollService
-	Friend  *services.FriendService
-	Comment *services.CommentService
-	Upload    *services.UploadService
-	Storage   *services.StorageService
-	Settings  *services.SettingsService
-	EditorAi  *services.EditorAiService
-	Logger    *services.Logger
-	Overview  *services.OverviewService
+	Friend   *services.FriendService
+	Comment  *services.CommentService
+	Upload   *services.UploadService
+	Storage  *services.StorageService
+	Settings *services.SettingsService
+	EditorAi *services.EditorAiService
+	Logger   *services.Logger
+	Overview *services.OverviewService
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -125,8 +126,8 @@ func (a *App) shutdown(ctx context.Context) {
 
 // ─── Auth ────────────────────────────────────────────
 
-func (a *App) Login(serverURL, username, password string) (*services.LoginResult, error) {
-	result, err := a.Auth.Login(serverURL, username, password)
+func (a *App) Login(serverURL, username, password, jwtSecret string, rememberLogin bool) (*services.LoginResult, error) {
+	result, err := a.Auth.Login(serverURL, username, password, jwtSecret, rememberLogin)
 	if err != nil {
 		a.Logger.Error(services.LogCategoryAuth, "login_failed", "登录失败", err.Error())
 		return nil, err
@@ -137,13 +138,39 @@ func (a *App) Login(serverURL, username, password string) (*services.LoginResult
 	return result, nil
 }
 
-func (a *App) SetAuth(serverURL, token string) {
+func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
+	user, err := a.Auth.ValidateToken(token)
+	if err != nil {
+		a.Proxy.SetToken("")
+		a.Logger.Warn(services.LogCategoryAuth, "restore_auth_failed", "恢复登录态失败", err.Error())
+		return nil, err
+	}
+
 	a.Proxy.SetServer(serverURL)
 	a.Proxy.SetToken(token)
+	return user, nil
 }
 
 func (a *App) ValidateToken(token string) (*services.UserInfo, error) {
 	return a.Auth.ValidateToken(token)
+}
+
+func (a *App) GetApiConfig() map[string]interface{} {
+	// 解密密码
+	decryptedPassword := ""
+	if a.cfg.API.RememberLogin && a.cfg.API.SavedPassword != "" {
+		if pwd, err := config.DecryptPassword(a.cfg.API.SavedPassword); err == nil {
+			decryptedPassword = pwd
+		}
+	}
+
+	return map[string]interface{}{
+		"base_url":       a.cfg.API.BaseURL,
+		"jwt_secret":     a.cfg.API.JWTSecret,
+		"remember_login": a.cfg.API.RememberLogin,
+		"saved_username": a.cfg.API.SavedUsername,
+		"saved_password": decryptedPassword,
+	}
 }
 
 // ─── Photos ──────────────────────────────────────────
@@ -193,15 +220,19 @@ func (a *App) GetLenses() ([]services.LensDTO, error) {
 
 // ─── Albums ──────────────────────────────────────────
 
-func (a *App) GetAlbums() ([]services.AlbumDTO, error) { return a.Album.List() }
+func (a *App) GetAlbums() ([]services.AlbumDTO, error)        { return a.Album.List() }
 func (a *App) GetAlbum(id string) (*services.AlbumDTO, error) { return a.Album.GetByID(id) }
-func (a *App) CreateAlbum(params services.CreateAlbumParams) (*services.AlbumDTO, error) { return a.Album.Create(params) }
-func (a *App) UpdateAlbum(id string, params services.UpdateAlbumParams) (*services.AlbumDTO, error) { return a.Album.Update(id, params) }
+func (a *App) CreateAlbum(params services.CreateAlbumParams) (*services.AlbumDTO, error) {
+	return a.Album.Create(params)
+}
+func (a *App) UpdateAlbum(id string, params services.UpdateAlbumParams) (*services.AlbumDTO, error) {
+	return a.Album.Update(id, params)
+}
 func (a *App) DeleteAlbum(id string) error { return a.Album.Delete(id) }
 
 // ─── Stories ─────────────────────────────────────────
 
-func (a *App) GetStories() ([]services.StoryDTO, error) { return a.Story.List() }
+func (a *App) GetStories() ([]services.StoryDTO, error)       { return a.Story.List() }
 func (a *App) GetStory(id string) (*services.StoryDTO, error) { return a.Story.GetByID(id) }
 func (a *App) CreateStory(params services.CreateStoryParams) (*services.StoryDTO, error) {
 	result, err := a.Story.Create(params)
@@ -230,13 +261,19 @@ func (a *App) DeleteStory(id string) error {
 	}
 	return err
 }
-func (a *App) AddStoryPhoto(storyID, photoID string) error { return a.Story.AddStoryPhoto(storyID, photoID) }
-func (a *App) RemoveStoryPhoto(storyID, photoID string) error { return a.Story.RemoveStoryPhoto(storyID, photoID) }
-func (a *App) ReorderStoryPhotos(storyID string, photoIDs []string) (*services.StoryDTO, error) { return a.Story.ReorderPhotos(storyID, photoIDs) }
+func (a *App) AddStoryPhoto(storyID, photoID string) error {
+	return a.Story.AddStoryPhoto(storyID, photoID)
+}
+func (a *App) RemoveStoryPhoto(storyID, photoID string) error {
+	return a.Story.RemoveStoryPhoto(storyID, photoID)
+}
+func (a *App) ReorderStoryPhotos(storyID string, photoIDs []string) (*services.StoryDTO, error) {
+	return a.Story.ReorderPhotos(storyID, photoIDs)
+}
 
 // ─── Blogs ───────────────────────────────────────────
 
-func (a *App) GetBlogs() ([]services.BlogDTO, error) { return a.Blog.List() }
+func (a *App) GetBlogs() ([]services.BlogDTO, error)        { return a.Blog.List() }
 func (a *App) GetBlog(id string) (*services.BlogDTO, error) { return a.Blog.GetByID(id) }
 func (a *App) CreateBlog(params services.CreateBlogParams) (*services.BlogDTO, error) {
 	result, err := a.Blog.Create(params)
@@ -268,20 +305,34 @@ func (a *App) DeleteBlog(id string) error {
 
 // ─── Film Rolls ──────────────────────────────────────
 
-func (a *App) GetFilmRolls() ([]services.FilmRollDTO, error) { return a.FilmRoll.List() }
+func (a *App) GetFilmRolls() ([]services.FilmRollDTO, error)        { return a.FilmRoll.List() }
 func (a *App) GetFilmRoll(id string) (*services.FilmRollDTO, error) { return a.FilmRoll.GetByID(id) }
-func (a *App) CreateFilmRoll(params services.CreateFilmRollParams) (*services.FilmRollDTO, error) { return a.FilmRoll.Create(params) }
-func (a *App) UpdateFilmRoll(id string, params services.UpdateFilmRollParams) (*services.FilmRollDTO, error) { return a.FilmRoll.Update(id, params) }
+func (a *App) CreateFilmRoll(params services.CreateFilmRollParams) (*services.FilmRollDTO, error) {
+	return a.FilmRoll.Create(params)
+}
+func (a *App) UpdateFilmRoll(id string, params services.UpdateFilmRollParams) (*services.FilmRollDTO, error) {
+	return a.FilmRoll.Update(id, params)
+}
 func (a *App) DeleteFilmRoll(id string) error { return a.FilmRoll.Delete(id) }
-func (a *App) AddPhotosToFilmRoll(id string, photoIDs []string) (*services.FilmRollDTO, error) { return a.FilmRoll.AddPhotos(id, photoIDs) }
-func (a *App) RemovePhotoFromFilmRoll(rollID, photoID string) (*services.FilmRollDTO, error) { return a.FilmRoll.RemovePhoto(rollID, photoID) }
-func (a *App) ReorderFilmRollFrames(id string) (*services.FilmRollDTO, error) { return a.FilmRoll.ReorderFrames(id) }
+func (a *App) AddPhotosToFilmRoll(id string, photoIDs []string) (*services.FilmRollDTO, error) {
+	return a.FilmRoll.AddPhotos(id, photoIDs)
+}
+func (a *App) RemovePhotoFromFilmRoll(rollID, photoID string) (*services.FilmRollDTO, error) {
+	return a.FilmRoll.RemovePhoto(rollID, photoID)
+}
+func (a *App) ReorderFilmRollFrames(id string) (*services.FilmRollDTO, error) {
+	return a.FilmRoll.ReorderFrames(id)
+}
 
 // ─── Friends ─────────────────────────────────────────
 
 func (a *App) GetFriends() ([]services.FriendDTO, error) { return a.Friend.List() }
-func (a *App) CreateFriend(params services.CreateFriendParams) (*services.FriendDTO, error) { return a.Friend.Create(params) }
-func (a *App) UpdateFriend(id string, params services.UpdateFriendParams) (*services.FriendDTO, error) { return a.Friend.Update(id, params) }
+func (a *App) CreateFriend(params services.CreateFriendParams) (*services.FriendDTO, error) {
+	return a.Friend.Create(params)
+}
+func (a *App) UpdateFriend(id string, params services.UpdateFriendParams) (*services.FriendDTO, error) {
+	return a.Friend.Update(id, params)
+}
 func (a *App) DeleteFriend(id string) error { return a.Friend.Delete(id) }
 
 // ─── Comments ────────────────────────────────────────
@@ -289,7 +340,9 @@ func (a *App) DeleteFriend(id string) error { return a.Friend.Delete(id) }
 func (a *App) GetComments(params services.ListCommentsParams) (*services.PaginatedResponse[services.CommentDTO], error) {
 	return a.Comment.List(params)
 }
-func (a *App) UpdateCommentStatus(id string, status string) error { return a.Comment.UpdateStatus(id, status) }
+func (a *App) UpdateCommentStatus(id string, status string) error {
+	return a.Comment.UpdateStatus(id, status)
+}
 func (a *App) DeleteComment(id string) error { return a.Comment.Delete(id) }
 
 // ─── Upload ──────────────────────────────────────────
@@ -354,10 +407,18 @@ func (a *App) GetFileThumbnail(filePath string) (string, error) {
 // ─── Settings ────────────────────────────────────────
 
 func (a *App) GetSettings() (map[string]string, error) { return a.Settings.GetSettings() }
-func (a *App) UpdateSettings(data map[string]string) (map[string]string, error) { return a.Settings.UpdateSettings(data) }
-func (a *App) GetStorageSources() ([]types.StorageSourceDTO, error) { return a.Settings.GetStorageSources() }
-func (a *App) CreateStorageSource(data map[string]string) (*types.StorageSourceDTO, error) { return a.Settings.CreateStorageSource(data) }
-func (a *App) UpdateStorageSource(id string, data map[string]string) (*types.StorageSourceDTO, error) { return a.Settings.UpdateStorageSource(id, data) }
+func (a *App) UpdateSettings(data map[string]string) (map[string]string, error) {
+	return a.Settings.UpdateSettings(data)
+}
+func (a *App) GetStorageSources() ([]types.StorageSourceDTO, error) {
+	return a.Settings.GetStorageSources()
+}
+func (a *App) CreateStorageSource(data map[string]string) (*types.StorageSourceDTO, error) {
+	return a.Settings.CreateStorageSource(data)
+}
+func (a *App) UpdateStorageSource(id string, data map[string]string) (*types.StorageSourceDTO, error) {
+	return a.Settings.UpdateStorageSource(id, data)
+}
 func (a *App) DeleteStorageSource(id string) error { return a.Settings.DeleteStorageSource(id) }
 
 // ─── Storage Scan/Cleanup ─────────────────────────────
@@ -396,24 +457,14 @@ func (a *App) GetAiHttpPort() int {
 	return a.EditorAi.GetHTTPPort()
 }
 
-func (a *App) GetAiConfig() map[string]string {
-	return map[string]string{
-		"base_url": a.cfg.AI.BaseURL,
-		"api_key":  a.cfg.AI.APIKey,
-		"model":    a.cfg.AI.Model,
-	}
+func (a *App) GetAiConfig() config.AIConfig {
+	a.cfg.AI.Normalize()
+	return a.cfg.AI
 }
 
-func (a *App) UpdateAiConfig(data map[string]string) error {
-	if v, ok := data["base_url"]; ok {
-		a.cfg.AI.BaseURL = v
-	}
-	if v, ok := data["api_key"]; ok {
-		a.cfg.AI.APIKey = v
-	}
-	if v, ok := data["model"]; ok {
-		a.cfg.AI.Model = v
-	}
+func (a *App) UpdateAiConfig(data config.AIConfig) error {
+	data.Normalize()
+	a.cfg.AI = data
 	return a.cfg.Save("")
 }
 
@@ -438,10 +489,16 @@ func (a *App) ClearEditorAiConversation(conversationId string) (*services.Editor
 func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetModels()
 }
+func (a *App) GetStoryAiProviderModels(providerID string) (*services.StoryAiModelsResponseDTO, error) {
+	return a.EditorAi.GetProviderModels(providerID)
+}
 
 // ─── Overview ─────────────────────────────────────────
 
 func (a *App) GetOverview() (*services.OverviewDTO, error) {
+	if a.Proxy == nil || !a.Proxy.IsReady() {
+		return nil, errors.New("登录状态未就绪，请稍后重试")
+	}
 	return a.Overview.GetOverview()
 }
 

@@ -1,11 +1,19 @@
 package config
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Config 应用配置
@@ -19,9 +27,66 @@ type Config struct {
 
 // AIConfig AI 服务配置
 type AIConfig struct {
-	BaseURL string `json:"base_url"` // OpenAI 兼容 API 地址
-	APIKey  string `json:"api_key"`  // API 密钥
-	Model   string `json:"model"`    // 默认模型
+	BaseURL      string                      `json:"base_url,omitempty"` // 旧版单源配置
+	APIKey       string                      `json:"api_key,omitempty"`  // 旧版单源配置
+	Model        string                      `json:"model,omitempty"`    // 旧版单源配置
+	DefaultModel string                      `json:"default_model"`      // provider:model
+	Providers    map[string]AIProviderConfig `json:"providers"`
+}
+
+// AIProviderConfig AI 模型源配置
+type AIProviderConfig struct {
+	BaseURL string   `json:"base_url"`
+	APIKey  string   `json:"api_key"`
+	Models  []string `json:"models"`
+}
+
+// Normalize 迁移旧版单源配置并补齐默认值
+func (c *AIConfig) Normalize() {
+	if c.Providers == nil {
+		c.Providers = map[string]AIProviderConfig{}
+	}
+	if len(c.Providers) == 0 && (c.BaseURL != "" || c.APIKey != "" || c.Model != "") {
+		models := []string{}
+		if c.Model != "" {
+			models = []string{c.Model}
+		}
+		c.Providers["default"] = AIProviderConfig{
+			BaseURL: c.BaseURL,
+			APIKey:  c.APIKey,
+			Models:  models,
+		}
+		if c.Model != "" {
+			c.DefaultModel = "default:" + c.Model
+		}
+	}
+	if c.DefaultModel == "" {
+		for providerID, provider := range c.Providers {
+			if len(provider.Models) > 0 && provider.Models[0] != "" {
+				c.DefaultModel = providerID + ":" + provider.Models[0]
+				break
+			}
+		}
+	}
+}
+
+// ResolveModel 根据 provider:model 选择模型源和实际模型名
+func (c AIConfig) ResolveModel(selected string) (string, AIProviderConfig, string, error) {
+	if selected == "" {
+		selected = c.DefaultModel
+	}
+	providerID, model, ok := strings.Cut(selected, ":")
+	if !ok || providerID == "" || model == "" {
+		return "", AIProviderConfig{}, "", errors.New("AI 模型必须使用 provider:model 格式")
+	}
+	provider, ok := c.Providers[providerID]
+	if !ok {
+		return "", AIProviderConfig{}, "", fmt.Errorf("AI 模型源不存在: %s", providerID)
+	}
+	if provider.BaseURL == "" || provider.APIKey == "" || model == "" {
+		return "", AIProviderConfig{}, "", errors.New("AI 服务未配置")
+	}
+	return providerID, provider, model, nil
 }
 
 // DatabaseConfig 数据库配置
@@ -47,8 +112,11 @@ func (d DatabaseConfig) DSN() string {
 
 // APIConfig 外部 API 配置
 type APIConfig struct {
-	BaseURL   string `json:"base_url"`   // mo-gallery-web API 地址
-	JWTSecret string `json:"jwt_secret"` // JWT 密钥（需与 Web 端一致）
+	BaseURL       string `json:"base_url"`        // mo-gallery-web API 地址
+	JWTSecret     string `json:"jwt_secret"`      // JWT 密钥（需与 Web 端一致）
+	RememberLogin bool   `json:"remember_login"`  // 是否记住登录凭据
+	SavedUsername string `json:"saved_username"`  // 保存的用户名
+	SavedPassword string `json:"saved_password"`  // 保存的密码（AES-256-GCM 加密）
 }
 
 // UIConfig 界面配置
@@ -135,6 +203,7 @@ func Load(customPath string) (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
+	cfg.AI.Normalize()
 
 	return cfg, nil
 }
@@ -160,4 +229,77 @@ func (c *Config) Save(path string) error {
 	}
 
 	return nil
+}
+
+// ─── 密码加密/解密 ───────────────────────────────────────────────
+
+// getEncryptionKey 生成基于机器的加密密钥
+func getEncryptionKey() []byte {
+	// 使用机器特征生成密钥（hostname + 固定 salt）
+	hostname, _ := os.Hostname()
+	salt := "mo-gallery-desktop-v1"
+	key := sha256.Sum256([]byte(hostname + salt))
+	return key[:]
+}
+
+// EncryptPassword 使用 AES-256-GCM 加密密码
+func EncryptPassword(plaintext string) (string, error) {
+	if plaintext == "" {
+		return "", nil
+	}
+
+	key := getEncryptionKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// DecryptPassword 解密密码
+func DecryptPassword(encrypted string) (string, error) {
+	if encrypted == "" {
+		return "", nil
+	}
+
+	key := getEncryptionKey()
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }
