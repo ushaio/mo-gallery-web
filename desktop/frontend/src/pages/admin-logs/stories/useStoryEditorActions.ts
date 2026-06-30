@@ -11,7 +11,6 @@ import {
   addPhotosToAlbum,
   addPhotosToStory,
   checkDuplicatePhoto,
-  getPhotos,
   uploadPhotoWithProgress,
   type PhotoDto,
   type StoryDto,
@@ -176,9 +175,9 @@ export function useStoryEditorActions({
       return cachedPhoto
     }
 
-    const photos = await getPhotos({ all: true })
-    setAllPhotos(photos)
-    return photos.find((photo) => photo.id === photoId) ?? null
+    const photos = await (window as any).go.main.App.GetAllPhotos()
+    setAllPhotos(photos || [])
+    return (photos || []).find((photo: PhotoDto) => photo.id === photoId) ?? null
   }, [allPhotos, currentStory?.photos, setAllPhotos])
 
   const { uploadAndInsertFiles } = useStoryPasteUploads({

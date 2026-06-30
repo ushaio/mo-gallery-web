@@ -18,7 +18,7 @@ import {
 import type { SelectOption } from '@/components/admin/AdminFormControls'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { ListSkeleton } from '@/components/admin/Skeleton'
 import type { StoryDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { countStoryCharacters } from '@/lib/story-rich-content'
@@ -119,7 +119,7 @@ export function StoryListView({
 
       <div className="custom-scrollbar flex-1 overflow-y-auto">
         {loading ? (
-          <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+          <div className="p-6"><ListSkeleton count={5} /></div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {filteredStories.map((story) => (

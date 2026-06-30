@@ -6,12 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  createStory,
-  deleteStory,
-  getAdminStories,
   getPhotos,
-  reorderStoryPhotos,
-  updateStory,
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
@@ -86,24 +81,22 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const pendingPhotoIdsRef = useRef<string[] | null>(null)
 
   const loadStories = useCallback(async () => {
-    if (!token) return
-
     try {
       setLoading(true)
-      const data = await getAdminStories(token)
-      setStories(applySavedOrder(data))
+      const data = await (window as any).go.main.App.GetStories()
+      setStories(applySavedOrder(data || []))
     } catch (error) {
       console.error('Failed to load stories:', error)
       notify(t('story.load_failed'), 'error')
     } finally {
       setLoading(false)
     }
-  }, [notify, t, token])
+  }, [notify, t])
 
   const loadAllPhotos = useCallback(async () => {
     try {
-      const data = await getPhotos({ all: true })
-      setAllPhotos(data)
+      const data = await (window as any).go.main.App.GetAllPhotos()
+      setAllPhotos(data || [])
     } catch (error) {
       console.error('Failed to load photos:', error)
     }
@@ -140,7 +133,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   })
 
   const doSaveStory = useCallback(async () => {
-    if (!token || !currentStory) return
+    if (!currentStory) return
     if (savingRef.current) return
 
     try {
@@ -148,7 +141,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       setSaving(true)
       const isNew = !stories.find((story) => story.id === currentStory.id)
       const basePhotoIds = currentStory.photos?.map((photo) => photo.id) || []
-      // Merge any photo IDs that were just uploaded but not yet reflected in state
       const extraIds = pendingPhotoIdsRef.current || []
       const photoIdSet = new Set(basePhotoIds)
       for (const id of extraIds) photoIdSet.add(id)
@@ -158,7 +150,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
       if (isNew) {
-        await createStory(token, {
+        await (window as any).go.main.App.CreateStory({
           title: currentStory.title,
           content: currentStory.content,
           contentJson: currentStory.contentJson ?? null,
@@ -170,7 +162,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         })
         notify(t('story.created'), 'success')
       } else {
-        await updateStory(token, currentStory.id, {
+        await (window as any).go.main.App.UpdateStory(currentStory.id, {
           title: currentStory.title,
           content: currentStory.content,
           contentJson: currentStory.contentJson ?? null,
@@ -180,7 +172,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
         })
         if (photoIds.length > 0) {
-          await reorderStoryPhotos(token, currentStory.id, photoIds)
+          await (window as any).go.main.App.ReorderStoryPhotos(currentStory.id, photoIds)
         }
         savePhotoOrder(currentStory.id, photoIds)
         notify(t('story.updated'), 'success')
@@ -207,7 +199,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = false
       setSaving(false)
     }
-  }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, navigate, stories, t, token])
+  }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, navigate, stories, t])
 
   const {
     editorRef,
@@ -415,23 +407,21 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [])
 
   const handleTogglePublish = useCallback(async (story: StoryDto) => {
-    if (!token) return
-
     try {
-      await updateStory(token, story.id, { isPublished: !story.isPublished })
+      await (window as any).go.main.App.UpdateStory(story.id, { isPublished: !story.isPublished })
       notify(story.isPublished ? t('story.unpublished') : t('story.published'), 'success')
       await loadStories()
     } catch (error) {
       console.error('Failed to toggle publish:', error)
       notify(t('story.operation_failed'), 'error')
     }
-  }, [loadStories, notify, t, token])
+  }, [loadStories, notify, t])
 
   const confirmDeleteStory = useCallback(async () => {
-    if (!token || !deleteStoryId) return
+    if (!deleteStoryId) return
 
     try {
-      await deleteStory(token, deleteStoryId)
+      await (window as any).go.main.App.DeleteStory(deleteStoryId)
       notify(t('story.deleted'), 'success')
       await loadStories()
     } catch (error) {
@@ -440,7 +430,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     } finally {
       setDeleteStoryId(null)
     }
-  }, [deleteStoryId, loadStories, notify, t, token])
+  }, [deleteStoryId, loadStories, notify, t])
 
   const handleCreateStory = useCallback(async () => {
     await createStoryWithDraftCheck()

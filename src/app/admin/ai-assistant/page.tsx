@@ -42,7 +42,7 @@ import type {
   StoryAiModelsResponse,
 } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { Skeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { useAdmin } from '../layout'
 
@@ -434,7 +434,16 @@ export default function AiAssistantPage() {
   }
 
   if (loading) {
-    return <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+    return (
+      <div className="h-full flex overflow-hidden rounded-2xl">
+        <div className="w-64 border-r border-border p-3 space-y-2 shrink-0">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+        </div>
+        <div className="flex-1 p-6 space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-3/4" />)}
+        </div>
+      </div>
+    )
   }
 
   return (

@@ -4,6 +4,8 @@ import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { LanguageProvider } from '@/contexts/LanguageContext'
+import { UploadQueueProvider } from '@/contexts/UploadQueueContext'
+import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { PhotosPage } from '@/pages/PhotosPage'
@@ -15,6 +17,7 @@ import { AiAssistantPage } from '@/pages/AiAssistantPage'
 import { StoragePage } from '@/pages/StoragePage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { FriendsPage } from '@/pages/FriendsPage'
+import { OverviewPage } from '@/pages/OverviewPage'
 import type { ReactNode } from 'react'
 
 const SERVER_KEY = 'mo-gallery-server'
@@ -52,7 +55,8 @@ function AppRoutes() {
           <AdminLayout />
         </ProtectedRoute>
       }>
-        <Route index element={<Navigate to="/photos" replace />} />
+        <Route index element={<Navigate to="/overview" replace />} />
+        <Route path="overview" element={<OverviewPage />} />
         <Route path="photos" element={<PhotosPage />} />
         <Route path="albums" element={<AlbumsPage />} />
         <Route path="film-rolls" element={<FilmRollsPage />} />
@@ -89,9 +93,12 @@ export default function App() {
     <LanguageProvider>
       <SettingsProvider>
         <AuthProvider>
-          <AuthSync />
-          <Toaster position="top-right" richColors closeButton />
-          <AppRoutes />
+          <UploadQueueProvider>
+            <AuthSync />
+            <Toaster position="top-right" richColors closeButton />
+            <AppRoutes />
+            <UploadProgressPopup />
+          </UploadQueueProvider>
         </AuthProvider>
       </SettingsProvider>
     </LanguageProvider>

@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { Album } from '@/types'
+import { CardGridSkeleton } from '@/components/admin/Skeleton'
 import { Plus, Trash2, Eye, EyeOff, GripVertical } from 'lucide-react'
 
 export function AlbumsPage() {
@@ -104,9 +105,7 @@ export function AlbumsPage() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
-            {t('common.loading', language)}
-          </div>
+          <CardGridSkeleton count={8} cols={4} />
         ) : albums.length === 0 ? (
           <div className="flex items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
             {t('common.noData', language)}

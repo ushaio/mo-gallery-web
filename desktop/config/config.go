@@ -14,6 +14,7 @@ type Config struct {
 	API      APIConfig      `json:"api"`
 	UI       UIConfig       `json:"ui"`
 	AI       AIConfig       `json:"ai"`
+	Log      LogConfig      `json:"log"`
 }
 
 // AIConfig AI 服务配置
@@ -56,6 +57,12 @@ type UIConfig struct {
 	Theme    string `json:"theme"`    // light / dark / system
 }
 
+// LogConfig 日志配置
+type LogConfig struct {
+	Enabled    bool `json:"enabled"`     // 是否启用日志
+	MaxEntries int  `json:"max_entries"` // 最大日志条数
+}
+
 // defaultConfig 返回默认配置
 func defaultConfig() *Config {
 	return &Config{
@@ -73,6 +80,10 @@ func defaultConfig() *Config {
 		UI: UIConfig{
 			Language: "zh",
 			Theme:    "system",
+		},
+		Log: LogConfig{
+			Enabled:    false,
+			MaxEntries: 1000,
 		},
 	}
 }

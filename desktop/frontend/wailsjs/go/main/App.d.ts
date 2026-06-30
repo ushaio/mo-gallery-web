@@ -4,6 +4,8 @@ import {services} from '../models';
 import {types} from '../models';
 import {image} from '../models';
 
+export function AddPhotosToFilmRoll(arg1:string,arg2:Array<string>):Promise<services.FilmRollDTO>;
+
 export function AddStoryPhoto(arg1:string,arg2:string):Promise<void>;
 
 export function BatchDeletePhotos(arg1:services.BatchDeleteParams):Promise<services.BatchResult>;
@@ -15,6 +17,8 @@ export function CheckDuplicates(arg1:Array<string>):Promise<services.DuplicateCh
 export function CleanupStorage(arg1:Array<string>,arg2:string):Promise<services.StorageCleanupResult>;
 
 export function ClearEditorAiConversation(arg1:string):Promise<services.EditorAiConversationDTO>;
+
+export function ClearLogs():Promise<void>;
 
 export function CreateAlbum(arg1:services.CreateAlbumParams):Promise<services.AlbumDTO>;
 
@@ -52,15 +56,21 @@ export function FixMissingPhotos(arg1:Array<string>):Promise<services.FixMissing
 
 export function GenerateThumbnail(arg1:string):Promise<services.PhotoDTO>;
 
+export function GetAiConfig():Promise<Record<string, string>>;
+
 export function GetAiHttpPort():Promise<number>;
 
 export function GetAlbum(arg1:string):Promise<services.AlbumDTO>;
 
 export function GetAlbums():Promise<Array<services.AlbumDTO>>;
 
+export function GetAllPhotos():Promise<Array<services.PhotoDTO>>;
+
 export function GetBlog(arg1:string):Promise<services.BlogDTO>;
 
 export function GetBlogs():Promise<Array<services.BlogDTO>>;
+
+export function GetCameras():Promise<Array<services.CameraDTO>>;
 
 export function GetCategories():Promise<Array<string>>;
 
@@ -70,15 +80,29 @@ export function GetEditorAiConversation(arg1:string):Promise<services.EditorAiCo
 
 export function GetEditorAiConversations(arg1:string):Promise<Array<services.EditorAiConversationDTO>>;
 
+export function GetFileThumbnail(arg1:string):Promise<string>;
+
 export function GetFilmRoll(arg1:string):Promise<services.FilmRollDTO>;
 
 export function GetFilmRolls():Promise<Array<services.FilmRollDTO>>;
 
 export function GetFriends():Promise<Array<services.FriendDTO>>;
 
+export function GetLenses():Promise<Array<services.LensDTO>>;
+
 export function GetLinuxDoAuthUrl():Promise<services.LinuxDoAuthUrlDTO>;
 
 export function GetLinuxDoBinding():Promise<services.LinuxDoBindingDTO>;
+
+export function GetLogConfig():Promise<Record<string, any>>;
+
+export function GetLogDir():Promise<string>;
+
+export function GetLogStats():Promise<Record<string, any>>;
+
+export function GetLogs(arg1:string,arg2:string,arg3:number):Promise<Array<services.LogEntry>>;
+
+export function GetOverview():Promise<services.OverviewDTO>;
 
 export function GetPhoto(arg1:string):Promise<services.PhotoDTO>;
 
@@ -98,9 +122,15 @@ export function IsLinuxDoEnabled():Promise<boolean>;
 
 export function Login(arg1:string,arg2:string,arg3:string):Promise<services.LoginResult>;
 
+export function OpenLogDir():Promise<void>;
+
 export function PrepareUpload(arg1:Array<string>):Promise<Array<services.PreparedFile>>;
 
+export function RemovePhotoFromFilmRoll(arg1:string,arg2:string):Promise<services.FilmRollDTO>;
+
 export function RemoveStoryPhoto(arg1:string,arg2:string):Promise<void>;
+
+export function ReorderFilmRollFrames(arg1:string):Promise<services.FilmRollDTO>;
 
 export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<services.StoryDTO>;
 
@@ -118,6 +148,8 @@ export function ToggleShowFlag(arg1:string):Promise<services.PhotoDTO>;
 
 export function UnbindLinuxDoAccount():Promise<void>;
 
+export function UpdateAiConfig(arg1:Record<string, string>):Promise<void>;
+
 export function UpdateAlbum(arg1:string,arg2:services.UpdateAlbumParams):Promise<services.AlbumDTO>;
 
 export function UpdateBlog(arg1:string,arg2:services.UpdateBlogParams):Promise<services.BlogDTO>;
@@ -129,6 +161,8 @@ export function UpdateEditorAiConversation(arg1:string,arg2:services.EditorAiCon
 export function UpdateFilmRoll(arg1:string,arg2:services.UpdateFilmRollParams):Promise<services.FilmRollDTO>;
 
 export function UpdateFriend(arg1:string,arg2:services.UpdateFriendParams):Promise<services.FriendDTO>;
+
+export function UpdateLogConfig(arg1:Record<string, any>):Promise<void>;
 
 export function UpdatePhoto(arg1:string,arg2:services.UpdatePhotoParams):Promise<services.PhotoDTO>;
 

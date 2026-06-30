@@ -304,7 +304,7 @@ export function PhotoUploadParams({
         <div className="space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.photo_title')}</label>
+            <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.photo_title')} <span className="text-destructive">*</span></label>
             <AdminInput
               value={uploadTitle}
               onChange={e => setUploadTitle(e.target.value)}
@@ -388,7 +388,7 @@ export function PhotoUploadParams({
           <div className="pt-3 border-t border-border/50">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
+                <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')} <span className="text-destructive">*</span></label>
                 <AdminSelect
                   value={uploadSourceId}
                   onChange={setUploadSourceId}

@@ -7,11 +7,10 @@
 import React, { createContext, useContext, useCallback, useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { getAdminSettings, getCategories, type AdminSettingsDto } from '@/lib/api'
 
 interface AdminContextType {
   handleUnauthorized: () => void
-  settings: AdminSettingsDto | null
+  settings: Record<string, string> | null
   categories: string[]
   isImmersiveMode: boolean
   setIsImmersiveMode: React.Dispatch<React.SetStateAction<boolean>>
@@ -24,7 +23,7 @@ export function useAdmin() {
   if (!context) {
     return {
       handleUnauthorized: () => {},
-      settings: null as AdminSettingsDto | null,
+      settings: null as Record<string, string> | null,
       categories: [] as string[],
       isImmersiveMode: false,
       setIsImmersiveMode: (() => {}) as React.Dispatch<React.SetStateAction<boolean>>,
@@ -34,9 +33,9 @@ export function useAdmin() {
 }
 
 export function AdminLogsProvider({ children }: { children: React.ReactNode }) {
-  const { token, logout } = useAuth()
+  const { logout } = useAuth()
   const navigate = useNavigate()
-  const [settings, setSettings] = useState<AdminSettingsDto | null>(null)
+  const [settings, setSettings] = useState<Record<string, string> | null>(null)
   const [categories, setCategories] = useState<string[]>([])
   const [isImmersiveMode, setIsImmersiveMode] = useState(false)
 
@@ -46,18 +45,17 @@ export function AdminLogsProvider({ children }: { children: React.ReactNode }) {
   }, [logout, navigate])
 
   useEffect(() => {
-    if (!token) return
     ;(async () => {
       try {
-        const s = await getAdminSettings(token)
-        setSettings(s)
+        const s = await (window as any).go.main.App.GetSettings()
+        setSettings(s || {})
       } catch {}
       try {
-        const c = await getCategories()
+        const c = await (window as any).go.main.App.GetCategories()
         setCategories(c || [])
       } catch {}
     })()
-  }, [token])
+  }, [])
 
   return (
     <AdminContext.Provider value={{ handleUnauthorized, settings, categories, isImmersiveMode, setIsImmersiveMode }}>

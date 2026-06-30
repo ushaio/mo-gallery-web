@@ -90,10 +90,10 @@ export interface Story {
   coverPhotoId?: string
   coverCrop?: string
   isPublished: boolean
-  storyDate: string
+  storyDate?: string
   createdAt: string
   updatedAt: string
-  photoCount: number
+  photoCount?: number
   photos?: Photo[]
 }
 

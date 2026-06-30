@@ -19,14 +19,10 @@ import {
   Check,
   Clock,
 } from 'lucide-react'
-import type { PhotoDto, AdminSettingsDto, BlogDto } from '@/lib/api/types'
-import { resolveAssetUrl, ApiUnauthorizedError } from '@/lib/api/core'
-import { getAdminBlogs, createBlog, updateBlog, deleteBlog } from '@/lib/api/blogs'
+import type { PhotoDto, BlogDto } from '@/lib/api/types'
+import { resolveAssetUrl } from '@/lib/api/core'
 import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import { formatRelativeTimeLabel } from '@/lib/utils'
-import { useAuth } from '@/contexts/AuthContext'
-import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
-import { useAdmin } from './layout'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import {
   saveBlogDraftToDB,
@@ -38,6 +34,7 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
+import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 
 import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
 
@@ -45,7 +42,7 @@ const AUTO_SAVE_DELAY = 2000 // 自动保存防抖延迟（毫秒）
 
 interface BlogTabProps {
   photos: PhotoDto[]
-  settings: AdminSettingsDto | null
+  settings: Record<string, string> | null
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   refreshKey?: number
@@ -62,8 +59,6 @@ interface BlogFormData {
 }
 
 export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProps) {
-  const { token } = useAuth()
-  const { handleUnauthorized } = useAdmin()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentBlog, setCurrentBlog] = useState<BlogFormData | null>(null)
@@ -103,27 +98,17 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
 
   const fetchBlogs = useCallback(async () => {
-    if (!token) {
-      setBlogs([])
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
     try {
-      const data = await getAdminBlogs(token)
-      setBlogs(data)
+      const data = await (window as any).go.main.App.GetBlogs()
+      setBlogs(data || [])
     } catch (error) {
-      if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
-        return
-      }
       notify(t('common.error'), 'error')
       console.error('Failed to fetch blogs:', error)
     } finally {
       setLoading(false)
     }
-  }, [handleUnauthorized, notify, t, token])
+  }, [notify, t])
   
   useEffect(() => {
     void fetchBlogs()
@@ -375,16 +360,12 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const confirmDeleteBlog = async () => {
-    if (!token || !deleteBlogId) return
+    if (!deleteBlogId) return
     try {
-      await deleteBlog(token, deleteBlogId)
+      await (window as any).go.main.App.DeleteBlog(deleteBlogId)
       await fetchBlogs()
       notify(t('admin.notify_log_deleted'))
     } catch (error) {
-      if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
-        return
-      }
       notify(t('common.error'), 'error')
       console.error('Failed to delete blog:', error)
     } finally {
@@ -393,7 +374,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const handleSaveBlog = async () => {
-    if (!currentBlog || !token) return
+    if (!currentBlog) return
     if (!currentBlog.title.trim()) {
       notify(t('blog.enter_title'), 'error')
       return
@@ -406,8 +387,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setSaving(true)
     try {
       if (currentBlog.id) {
-        // 更新已有博客
-        await updateBlog(token, currentBlog.id, {
+        await (window as any).go.main.App.UpdateBlog(currentBlog.id, {
           title: currentBlog.title,
           content: currentBlog.content,
           contentJson: currentBlog.contentJson ?? null,
@@ -416,8 +396,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           isPublished: currentBlog.isPublished,
         })
       } else {
-        // 创建新博客
-        await createBlog(token, {
+        await (window as any).go.main.App.CreateBlog({
           title: currentBlog.title,
           content: currentBlog.content,
           contentJson: currentBlog.contentJson ?? null,
@@ -426,7 +405,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           isPublished: currentBlog.isPublished,
         })
       }
-      // 保存成功后清除草稿
       await clearDraft(currentBlog.id)
       
       await fetchBlogs()
@@ -435,10 +413,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setLastSavedAt(null)
       notify(t('admin.notify_log_saved'))
     } catch (error) {
-      if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
-        return
-      }
       notify(t('common.error'), 'error')
       console.error('Failed to save blog:', error)
     } finally {

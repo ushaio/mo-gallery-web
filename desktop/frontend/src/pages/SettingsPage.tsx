@@ -1,18 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { clearDesktopRuntimeCache, getDesktopCacheSnapshot } from '@/lib/app-cache'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { Skeleton } from '@/components/admin/Skeleton'
 import {
   Settings,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
   Unlink, Link, Sparkles, Eye, EyeOff,
+  FileText, Trash, Filter, FolderOpen, Database,
 } from 'lucide-react'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
 
-type Tab = 'site' | 'categories' | 'storage' | 'comments' | 'account' | 'ai'
+type Tab = 'site' | 'categories' | 'storage' | 'comments' | 'account' | 'ai' | 'log' | 'cache'
 type CommentsSubTab = 'manage' | 'config'
 
 export function SettingsPage() {
@@ -63,6 +66,8 @@ export function SettingsPage() {
     { key: 'comments', label: '评论', icon: MessageSquare },
     { key: 'account', label: '账户', icon: User },
     { key: 'ai', label: '模型配置', icon: Sparkles },
+    { key: 'log', label: '日志', icon: FileText },
+    { key: 'cache', label: '缓存', icon: Database },
   ]
 
   // 与 Web 端一致：只有 categories 标签显示保存按钮（其他标签要么只读要么有独立保存）
@@ -105,8 +110,13 @@ export function SettingsPage() {
         {/* 右侧内容 */}
         <div className="flex-1 overflow-auto p-6">
           {loading ? (
-            <div className="flex items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
-              <Loader2 size={20} className="animate-spin" />
+            <div className="max-w-2xl space-y-6">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-9 w-full" />
             </div>
           ) : (
             <div className="max-w-2xl">
@@ -116,6 +126,8 @@ export function SettingsPage() {
               {tab === 'comments' && <CommentsTab config={config} updateConfig={updateConfig} />}
               {tab === 'account' && <AccountTab />}
               {tab === 'ai' && <AiTab />}
+              {tab === 'log' && <LogTab />}
+              {tab === 'cache' && <CacheTab />}
             </div>
           )}
         </div>
@@ -893,6 +905,139 @@ function AccountTab() {
   )
 }
 
+// ─── Tab 8: 缓存管理 ─────────────────────────────────
+
+function CacheTab() {
+  const [snapshot, setSnapshot] = useState(getDesktopCacheSnapshot)
+  const [clearingRuntime, setClearingRuntime] = useState(false)
+  const [clearingCacheStorage, setClearingCacheStorage] = useState(false)
+  const [cacheStorageInfo, setCacheStorageInfo] = useState({ supported: false, loading: true, count: 0, bytes: 0 })
+
+  const refreshSnapshot = () => setSnapshot(getDesktopCacheSnapshot())
+
+  const refreshCacheStorageInfo = useCallback(async () => {
+    if (!('caches' in window)) {
+      setCacheStorageInfo({ supported: false, loading: false, count: 0, bytes: 0 })
+      return
+    }
+
+    setCacheStorageInfo(prev => ({ ...prev, supported: true, loading: true }))
+    try {
+      const keys = await caches.keys()
+      let count = 0
+      let bytes = 0
+      for (const key of keys) {
+        const cache = await caches.open(key)
+        const requests = await cache.keys()
+        count += requests.length
+        for (const request of requests) {
+          const response = await cache.match(request)
+          if (!response) continue
+          const blob = await response.clone().blob()
+          bytes += blob.size
+        }
+      }
+      setCacheStorageInfo({ supported: true, loading: false, count, bytes })
+    } catch {
+      setCacheStorageInfo({ supported: true, loading: false, count: 0, bytes: 0 })
+    }
+  }, [])
+
+  useEffect(() => { refreshCacheStorageInfo() }, [refreshCacheStorageInfo])
+
+  const handleClearRuntimeCache = () => {
+    setClearingRuntime(true)
+    clearDesktopRuntimeCache()
+    refreshSnapshot()
+    setClearingRuntime(false)
+    toast.success('运行时缓存已清理')
+  }
+
+  const handleClearCacheStorage = async () => {
+    if (!('caches' in window)) {
+      toast.error('当前 WebView 不支持 CacheStorage')
+      return
+    }
+
+    setClearingCacheStorage(true)
+    try {
+      const keys = await caches.keys()
+      await Promise.all(keys.map(key => caches.delete(key)))
+      await refreshCacheStorageInfo()
+      toast.success(keys.length > 0 ? `已清理 ${keys.length} 个 CacheStorage` : '没有可清理的 CacheStorage')
+    } catch (err: any) {
+      toast.error('清理失败: ' + (err?.message || '未知错误'))
+    } finally {
+      setClearingCacheStorage(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Section title="运行时数据缓存">
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+          管理 desktop 前端在当前应用进程内缓存的数据。清理后，再进入相关页面会重新通过 Go 调用 Web API。
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <CacheStat label="概览数据" value={snapshot.overviewLoaded ? '已缓存' : '未缓存'} detail={formatBytes(snapshot.overviewBytes)} />
+          <CacheStat label="相机列表" value={snapshot.cameraLoaded ? `${snapshot.cameraCount} 项` : '未缓存'} detail={formatBytes(snapshot.cameraBytes)} />
+          <CacheStat label="镜头列表" value={snapshot.lensLoaded ? `${snapshot.lensCount} 项` : '未缓存'} detail={formatBytes(snapshot.lensBytes)} />
+          <CacheStat label="合计" value={formatBytes(snapshot.totalBytes)} detail="估算大小" />
+        </div>
+        <button
+          onClick={handleClearRuntimeCache}
+          disabled={clearingRuntime}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}
+        >
+          {clearingRuntime ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
+          清理运行时缓存
+        </button>
+      </Section>
+
+      <Section title="WebView 缓存">
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+          R2/CDN 图片的 HTTP 缓存由系统 WebView 和 Cloudflare 管理。这里可清理前端 CacheStorage；底层 HTTP 图片缓存不在 JS 中直接删除，避免运行中破坏 WebView 数据目录。
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <CacheStat
+            label="CacheStorage"
+            value={cacheStorageInfo.loading ? '计算中...' : cacheStorageInfo.supported ? `${cacheStorageInfo.count} 项` : '不支持'}
+            detail={cacheStorageInfo.supported ? formatBytes(cacheStorageInfo.bytes) : '不可用'}
+          />
+          <CacheStat label="HTTP 图片缓存" value="由 WebView 管理" detail="无法从 JS 精确读取" />
+        </div>
+        <button
+          onClick={handleClearCacheStorage}
+          disabled={clearingCacheStorage}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+        >
+          {clearingCacheStorage ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
+          清理 CacheStorage
+        </button>
+      </Section>
+    </div>
+  )
+}
+
+function CacheStat({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--muted)' }}>
+      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
+      <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--foreground)' }}>{value}</p>
+      {detail && <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{detail}</p>}
+    </div>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
 // ─── 通用组件 ────────────────────────────────────────
 
 const inputStyle = {
@@ -1051,6 +1196,245 @@ function AiTab() {
             {saving ? '保存中...' : '保存'}
           </button>
         </div>
+      </Section>
+    </div>
+  )
+}
+
+// ─── Tab 7: 日志 ──────────────────────────────────────
+
+const LOG_CATEGORIES = [
+  { value: '', label: '全部' },
+  { value: 'auth', label: '认证' },
+  { value: 'upload', label: '上传' },
+  { value: 'photo', label: '照片' },
+  { value: 'album', label: '相册' },
+  { value: 'story', label: '叙事' },
+  { value: 'blog', label: '博客' },
+  { value: 'storage', label: '存储' },
+  { value: 'ai', label: 'AI' },
+  { value: 'system', label: '系统' },
+]
+
+const LOG_LEVELS = [
+  { value: '', label: '全部' },
+  { value: 'info', label: '信息' },
+  { value: 'warn', label: '警告' },
+  { value: 'error', label: '错误' },
+]
+
+const LOG_LEVEL_COLORS: Record<string, { bg: string; text: string }> = {
+  info: { bg: '#dbeafe', text: '#1e40af' },
+  warn: { bg: '#fef3c7', text: '#92400e' },
+  error: { bg: '#fee2e2', text: '#991b1b' },
+}
+
+function LogTab() {
+  const [logConfig, setLogConfig] = useState({ enabled: false, max_entries: 1000 })
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [logs, setLogs] = useState<any[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [levelFilter, setLevelFilter] = useState('')
+  const [stats, setStats] = useState<any>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    try {
+      const result = (window as any).go?.main?.App?.GetLogConfig?.()
+      if (result && typeof result.then === 'function') {
+        result.then((r: any) => { if (r) setLogConfig(r) }).finally(() => setLoading(false))
+      } else if (result) {
+        setLogConfig(result)
+        setLoading(false)
+      } else {
+        setLoading(false)
+      }
+    } catch { setLoading(false) }
+  }, [])
+
+  const fetchLogs = useCallback(async () => {
+    setLogsLoading(true)
+    try {
+      const result = await (window as any).go.main.App.GetLogs(categoryFilter, levelFilter, 200)
+      setLogs(result || [])
+    } catch {} finally { setLogsLoading(false) }
+  }, [categoryFilter, levelFilter])
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const result = await (window as any).go.main.App.GetLogStats()
+      setStats(result)
+    } catch {}
+  }, [])
+
+  useEffect(() => { fetchLogs(); fetchStats() }, [fetchLogs, fetchStats])
+
+  const handleSaveConfig = async () => {
+    setSaving(true)
+    try {
+      await (window as any).go.main.App.UpdateLogConfig(logConfig)
+      toast.success('日志配置已保存')
+    } catch (err: any) {
+      toast.error('保存失败: ' + (err?.message || '未知错误'))
+    } finally { setSaving(false) }
+  }
+
+  const handleClearLogs = async () => {
+    if (!confirm('确定要清空所有日志吗？')) return
+    try {
+      await (window as any).go.main.App.ClearLogs()
+      toast.success('日志已清空')
+      fetchLogs()
+      fetchStats()
+    } catch {}
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8" style={{ color: 'var(--muted-foreground)' }}>
+        <Loader2 size={16} className="animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* 日志配置 */}
+      <Section title="日志配置">
+        <Field label="启用日志" description="开启后将记录用户操作日志">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox"
+              checked={logConfig.enabled}
+              onChange={e => setLogConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+              className="rounded" />
+            <span className="text-xs">启用操作日志</span>
+          </label>
+        </Field>
+
+        <Field label="最大日志条数" description="超出限制时自动清理旧日志">
+          <input type="number" value={logConfig.max_entries}
+            onChange={e => setLogConfig(prev => ({ ...prev, max_entries: parseInt(e.target.value) || 1000 }))}
+            min={100}
+            max={10000}
+            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
+            style={inputStyle} />
+        </Field>
+
+        <div className="pt-2">
+          <button onClick={handleSaveConfig} disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md disabled:opacity-50"
+            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
+      </Section>
+
+      {/* 日志统计 */}
+      {stats && (
+        <Section title="日志统计">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>总日志数</p>
+              <p className="text-lg font-medium">{stats.total || 0}</p>
+            </div>
+            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>状态</p>
+              <p className="text-lg font-medium">{stats.enabled ? '已启用' : '已禁用'}</p>
+            </div>
+          </div>
+          {stats.by_category && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {Object.entries(stats.by_category).map(([cat, count]) => (
+                <span key={cat} className="text-[10px] px-2 py-0.5 rounded"
+                  style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+                  {LOG_CATEGORIES.find(c => c.value === cat)?.label || cat}: {count as number}
+                </span>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* 日志查看 */}
+      <Section title="操作日志">
+        {/* 过滤器 */}
+        <div className="flex items-center gap-2 mb-4">
+          <Filter size={14} style={{ color: 'var(--muted-foreground)' }} />
+          <select value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className="px-2 py-1 text-xs rounded border outline-none"
+            style={inputStyle}>
+            {LOG_CATEGORIES.map(c => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+          <select value={levelFilter}
+            onChange={e => setLevelFilter(e.target.value)}
+            className="px-2 py-1 text-xs rounded border outline-none"
+            style={inputStyle}>
+            {LOG_LEVELS.map(l => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
+          <div className="flex-1" />
+          <button onClick={() => (window as any).go.main.App.OpenLogDir()}
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded border"
+            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+            <FolderOpen size={12} />
+            打开目录
+          </button>
+          <button onClick={handleClearLogs}
+            className="flex items-center gap-1 px-2 py-1 text-xs rounded border"
+            style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}>
+            <Trash size={12} />
+            清空
+          </button>
+        </div>
+
+        {/* 日志列表 */}
+        {logsLoading ? (
+          <div className="flex items-center justify-center py-8" style={{ color: 'var(--muted-foreground)' }}>
+            <Loader2 size={16} className="animate-spin" />
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8" style={{ color: 'var(--muted-foreground)' }}>
+            <FileText size={24} className="mb-2 opacity-40" />
+            <p className="text-xs">暂无日志</p>
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-[400px] overflow-y-auto">
+            {logs.map((log, index) => (
+              <div key={index}
+                className="flex items-start gap-2 px-3 py-2 rounded text-xs"
+                style={{ backgroundColor: index % 2 === 0 ? 'transparent' : 'var(--muted)' }}>
+                <span className="text-[10px] font-mono shrink-0 mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+                  {new Date(log.timestamp).toLocaleString()}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
+                  style={{
+                    backgroundColor: LOG_LEVEL_COLORS[log.level]?.bg || 'var(--muted)',
+                    color: LOG_LEVEL_COLORS[log.level]?.text || 'var(--muted-foreground)',
+                  }}>
+                  {log.level}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
+                  style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }}>
+                  {LOG_CATEGORIES.find(c => c.value === log.category)?.label || log.category}
+                </span>
+                <span className="font-medium">{log.action}</span>
+                <span style={{ color: 'var(--muted-foreground)' }}>{log.message}</span>
+                {log.details && (
+                  <span className="text-[10px] truncate" style={{ color: 'var(--muted-foreground)' }}>
+                    {log.details}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </Section>
     </div>
   )

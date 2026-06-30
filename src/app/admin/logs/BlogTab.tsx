@@ -38,7 +38,7 @@ import {
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { ListSkeleton } from '@/components/admin/Skeleton'
 
 // 动态导入 MilkdownEditor，避免 SSR 问题
 const NarrativeTipTapEditor = dynamic(
@@ -524,7 +524,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {loading ? (
-              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+              <div className="p-6"><ListSkeleton count={5} /></div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
               {blogs

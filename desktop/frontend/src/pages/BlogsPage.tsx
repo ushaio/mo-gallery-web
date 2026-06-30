@@ -5,6 +5,7 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { Blog } from '@/types'
 import { TipTapEditor } from '@/components/TipTapEditor'
+import { ListSkeleton } from '@/components/admin/Skeleton'
 import {
   Plus, Trash2, PenTool, Eye, EyeOff, ChevronLeft, Save, Loader2,
 } from 'lucide-react'
@@ -84,9 +85,7 @@ export function BlogsPage() {
       />
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
-          <div className="flex items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
-            {t('common.loading', language)}
-          </div>
+          <ListSkeleton count={5} />
         ) : blogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
             <PenTool size={32} className="mb-2 opacity-40" />

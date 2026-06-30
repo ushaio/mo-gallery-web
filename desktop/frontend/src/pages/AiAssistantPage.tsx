@@ -5,7 +5,7 @@ import type { EditorAiConversationDto, EditorAiMessageDto, StoryAiModelsResponse
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { Skeleton } from '@/components/admin/Skeleton'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Send, MessageSquare, X, ChevronLeft, ChevronDown,
@@ -297,7 +297,16 @@ export function AiAssistantPage() {
     const el = e.target; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 200)}px`; setInput(el.value)
   }
 
-  if (loading) return <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+  if (loading) return (
+    <div className="flex-1 flex overflow-hidden">
+      <div className="w-64 border-r p-3 space-y-2 shrink-0" style={{ borderColor: 'var(--border)' }}>
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+      </div>
+      <div className="flex-1 p-6 space-y-4">
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-3/4" />)}
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex-1 flex overflow-hidden">

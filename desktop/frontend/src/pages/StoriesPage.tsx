@@ -5,6 +5,7 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { resolveAssetUrl } from '@/lib/api'
 import type { Story, Photo } from '@/types'
+import { ListSkeleton } from '@/components/admin/Skeleton'
 import {
   Plus, Trash2, Eye, EyeOff, FileText, X, ChevronLeft,
   Save, Loader2, ImagePlus, GripVertical, Calendar,
@@ -24,7 +25,10 @@ export function StoriesPage() {
     try {
       const result = await (window as any).go.main.App.GetStories()
       setStories(result || [])
-    } catch {} finally { setLoading(false) }
+    } catch (err: any) {
+      console.error('加载叙事失败:', err)
+      toast.error(err?.message || '加载叙事失败')
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchStories() }, [fetchStories])
@@ -91,9 +95,7 @@ export function StoriesPage() {
 
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
-          <div className="flex items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
-            <Loader2 size={20} className="animate-spin" />
-          </div>
+          <ListSkeleton count={5} />
         ) : stories.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64" style={{ color: 'var(--muted-foreground)' }}>
             <FileText size={32} className="mb-2 opacity-40" />
@@ -122,7 +124,7 @@ export function StoriesPage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-medium truncate">{story.title}</h3>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                    {story.photoCount} photos · {new Date(story.storyDate || story.createdAt).toLocaleDateString()}
+                    {story.photos?.length || 0} photos · {new Date(story.storyDate || story.createdAt).toLocaleDateString()}
                   </p>
                 </div>
 

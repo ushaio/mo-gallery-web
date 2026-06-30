@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  Image, BookOpen, Film, Upload, BookMarked,
+  LayoutDashboard, Image, BookOpen, Film, Upload, BookMarked,
   Bot, HardDrive, Settings, Users, LogOut,
   Sun, Moon, Monitor, Globe, Check, ChevronDown,
 } from 'lucide-react'
@@ -10,6 +10,7 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 
 const navItems = [
+  { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
   { path: '/photos', icon: Image, key: 'admin.library' },
   { path: '/albums', icon: BookOpen, key: 'admin.albums' },
   { path: '/film-rolls', icon: Film, key: 'admin.film_rolls' },

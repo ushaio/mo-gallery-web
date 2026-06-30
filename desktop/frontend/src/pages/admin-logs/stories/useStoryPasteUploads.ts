@@ -7,7 +7,6 @@ import { stripGpsData } from '@/lib/privacy-strip'
 import {
   addPhotosToAlbum,
   checkDuplicatePhoto,
-  getPhotos,
   uploadPhotoWithProgress,
   type PhotoDto,
   type StoryDto,
@@ -102,9 +101,9 @@ export function useStoryPasteUploads({
             allPhotos.find((photo) => photo.id === existingPhotoId)
 
           if (!existingPhoto) {
-            const photos = await getPhotos({ all: true })
-            existingPhoto = photos.find((photo) => photo.id === existingPhotoId)
-            setAllPhotos(photos)
+            const photos = await (window as any).go.main.App.GetAllPhotos()
+            existingPhoto = (photos || []).find((photo: PhotoDto) => photo.id === existingPhotoId)
+            setAllPhotos(photos || [])
           }
 
           if (existingPhoto) {

@@ -36,7 +36,7 @@ import {
 } from '@/lib/api'
 import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { CardGridSkeleton, ListSkeleton, ThumbGridSkeleton } from '@/components/admin/Skeleton'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
@@ -489,8 +489,8 @@ export function AlbumsTab({
 
         {/* Content */}
         {loading ? (
-          <div className="py-20">
-            <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+          <div className="py-6">
+            <CardGridSkeleton count={8} cols={4} />
           </div>
         ) : filteredAlbums.length === 0 ? (
           <div className="py-20 text-center border border-dashed border-border/50 bg-muted/5">
@@ -718,8 +718,8 @@ export function AlbumsTab({
           ) : (
             <div className="space-y-4">
               {loadingCurrentAlbum ? (
-                <div className="py-16">
-                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                <div className="py-6">
+                  <ListSkeleton count={3} />
                 </div>
               ) : showPhotoSelector ? (
                 <div className="space-y-4">
@@ -755,7 +755,7 @@ export function AlbumsTab({
                     </AdminButton>
                   </div>
                   {loading ? (
-                    <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
+                    <div className="py-6"><ThumbGridSkeleton count={8} cols={6} /></div>
                   ) : (
                     <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
                       {filteredAvailablePhotos.map(photo => {

@@ -27,7 +27,7 @@ import {
 } from '@/lib/api/friends'
 import { useAuth } from '@/contexts/AuthContext'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { ListSkeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { useAdmin } from '../layout'
 
@@ -303,7 +303,7 @@ export default function FriendsPage() {
       {/* 友链列表 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {loading ? (
-          <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+          <div className="p-6"><ListSkeleton count={5} /></div>
         ) : friends.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-border">
             <Users className="w-12 h-12 mx-auto mb-4 opacity-10" />

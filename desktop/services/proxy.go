@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -15,12 +18,18 @@ type ProxyClient struct {
 	baseURL    string
 	httpClient *http.Client
 	token      string
+	logger     *Logger
 }
 
 func NewProxyClient() *ProxyClient {
 	return &ProxyClient{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// SetLogger 设置日志记录器
+func (p *ProxyClient) SetLogger(logger *Logger) {
+	p.logger = logger
 }
 
 // SetServer 设置服务器地址
@@ -56,11 +65,19 @@ func (p *ProxyClient) GET(path string, result interface{}) error {
 func (p *ProxyClient) GETWithMeta(path string, data interface{}, meta interface{}) error {
 	req, err := p.newRequest("GET", path, nil)
 	if err != nil {
+		log.Printf("[proxy] GETWithMeta newRequest error: %v", err)
 		return err
 	}
 
+	log.Printf("[proxy] GETWithMeta %s, logger=%v", path, p.logger != nil)
+
+	start := time.Now()
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
+		log.Printf("[proxy] GETWithMeta %s request error: %v", path, err)
+		if p.logger != nil {
+			p.logger.Error(LogCategorySystem, "api_request_failed", fmt.Sprintf("GET %s 请求失败", path), err.Error())
+		}
 		return fmt.Errorf("请求失败: %w", err)
 	}
 	defer resp.Body.Close()
@@ -70,12 +87,26 @@ func (p *ProxyClient) GETWithMeta(path string, data interface{}, meta interface{
 		return fmt.Errorf("读取响应失败: %w", err)
 	}
 
+	duration := time.Since(start).Milliseconds()
+	log.Printf("[proxy] GETWithMeta %s → %d, %dms, %d bytes", path, resp.StatusCode, duration, len(body))
+
 	if resp.StatusCode == 401 {
+		if p.logger != nil {
+			p.logger.Warn(LogCategoryAuth, "api_unauthorized", fmt.Sprintf("GET %s 认证失败", path), fmt.Sprintf("HTTP %d", resp.StatusCode))
+		}
 		return &ApiUnauthorizedError{Message: "登录已过期，请重新登录"}
 	}
 
 	if resp.StatusCode >= 400 {
+		if p.logger != nil {
+			p.logger.Error(LogCategorySystem, "api_error", fmt.Sprintf("GET %s 请求错误", path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
+		}
 		return fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	// 记录成功请求
+	if p.logger != nil {
+		p.logger.Info(LogCategorySystem, "api_request", fmt.Sprintf("GET %s", path), fmt.Sprintf("HTTP %d, %dms, %d bytes", resp.StatusCode, duration, len(body)))
 	}
 
 	var apiResp apiResponse
@@ -107,6 +138,99 @@ func (p *ProxyClient) POST(path string, body interface{}, result interface{}) er
 	return p.do("POST", path, body, result)
 }
 
+// POSTMultipart 发送 multipart/form-data 请求（用于文件上传）
+// fields: 表单字段 map，files: 字段名 → 文件路径 map
+func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files map[string]string, result interface{}) error {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	// 添加表单字段
+	for key, val := range fields {
+		if err := writer.WriteField(key, val); err != nil {
+			return fmt.Errorf("写入字段 %s 失败: %w", key, err)
+		}
+	}
+
+	// 添加文件
+	for fieldName, filePath := range files {
+		f, err := os.Open(filePath)
+		if err != nil {
+			return fmt.Errorf("打开文件失败: %w", err)
+		}
+		part, err := writer.CreateFormFile(fieldName, filepath.Base(filePath))
+		if err != nil {
+			f.Close()
+			return fmt.Errorf("创建表单文件失败: %w", err)
+		}
+		if _, err := io.Copy(part, f); err != nil {
+			f.Close()
+			return fmt.Errorf("写入文件失败: %w", err)
+		}
+		f.Close()
+	}
+	writer.Close()
+
+	fullURL := p.baseURL + "/api" + path
+	req, err := http.NewRequest("POST", fullURL, &buf)
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if p.token != "" {
+		req.Header.Set("Authorization", "Bearer "+p.token)
+	}
+
+	start := time.Now()
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		if p.logger != nil {
+			p.logger.Error(LogCategorySystem, "api_request_failed", fmt.Sprintf("POST %s 请求失败", path), err.Error())
+		}
+		return fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	duration := time.Since(start).Milliseconds()
+
+	if resp.StatusCode == 401 {
+		if p.logger != nil {
+			p.logger.Warn(LogCategoryAuth, "api_unauthorized", fmt.Sprintf("POST %s 认证失败", path), fmt.Sprintf("HTTP %d", resp.StatusCode))
+		}
+		return &ApiUnauthorizedError{Message: "登录已过期，请重新登录"}
+	}
+
+	if resp.StatusCode >= 400 {
+		if p.logger != nil {
+			p.logger.Error(LogCategorySystem, "api_error", fmt.Sprintf("POST %s 请求错误", path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
+		}
+		return fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	if p.logger != nil {
+		p.logger.Info(LogCategorySystem, "api_request", fmt.Sprintf("POST %s", path), fmt.Sprintf("HTTP %d, %dms, %d bytes", resp.StatusCode, duration, len(bodyBytes)))
+	}
+
+	if result != nil && len(bodyBytes) > 0 {
+		var apiResp apiResponse
+		if err := json.Unmarshal(bodyBytes, &apiResp); err == nil && apiResp.Data != nil {
+			if err := json.Unmarshal(apiResp.Data, result); err != nil {
+				return fmt.Errorf("解析 data 失败: %w", err)
+			}
+		} else {
+			if err := json.Unmarshal(bodyBytes, result); err != nil {
+				return fmt.Errorf("解析响应失败: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 // PATCH 发起 PATCH 请求
 func (p *ProxyClient) PATCH(path string, body interface{}, result interface{}) error {
 	return p.do("PATCH", path, body, result)
@@ -115,6 +239,11 @@ func (p *ProxyClient) PATCH(path string, body interface{}, result interface{}) e
 // DELETE 发起 DELETE 请求
 func (p *ProxyClient) DELETE(path string) error {
 	return p.do("DELETE", path, nil, nil)
+}
+
+// DELETEWithResult 发起 DELETE 请求并解析响应
+func (p *ProxyClient) DELETEWithResult(path string, result interface{}) error {
+	return p.do("DELETE", path, nil, result)
 }
 
 // do 通用请求方法（500 错误自动重试一次）
@@ -126,8 +255,12 @@ func (p *ProxyClient) do(method, path string, body interface{}, result interface
 			return err
 		}
 
+		start := time.Now()
 		resp, err := p.httpClient.Do(req)
 		if err != nil {
+			if p.logger != nil {
+				p.logger.Error(LogCategorySystem, "api_request_failed", fmt.Sprintf("%s %s 请求失败", method, path), err.Error())
+			}
 			return fmt.Errorf("请求失败: %w", err)
 		}
 
@@ -137,18 +270,34 @@ func (p *ProxyClient) do(method, path string, body interface{}, result interface
 			return fmt.Errorf("读取响应失败: %w", err)
 		}
 
+		duration := time.Since(start).Milliseconds()
+
 		if resp.StatusCode == 401 {
+			if p.logger != nil {
+				p.logger.Warn(LogCategoryAuth, "api_unauthorized", fmt.Sprintf("%s %s 认证失败", method, path), fmt.Sprintf("HTTP %d", resp.StatusCode))
+			}
 			return &ApiUnauthorizedError{Message: "登录已过期，请重新登录"}
 		}
 
 		// 500 错误重试一次（可能是数据库连接断开）
 		if resp.StatusCode >= 500 && attempt == 0 {
 			lastErr = fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(respBody))
+			if p.logger != nil {
+				p.logger.Warn(LogCategorySystem, "api_retry", fmt.Sprintf("%s %s 服务器错误，重试中", method, path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
+			}
 			continue
 		}
 
 		if resp.StatusCode >= 400 {
+			if p.logger != nil {
+				p.logger.Error(LogCategorySystem, "api_error", fmt.Sprintf("%s %s 请求错误", method, path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
+			}
 			return fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(respBody))
+		}
+
+		// 记录成功请求
+		if p.logger != nil {
+			p.logger.Info(LogCategorySystem, "api_request", fmt.Sprintf("%s %s", method, path), fmt.Sprintf("HTTP %d, %dms, %d bytes", resp.StatusCode, duration, len(respBody)))
 		}
 
 		if result != nil && len(respBody) > 0 {

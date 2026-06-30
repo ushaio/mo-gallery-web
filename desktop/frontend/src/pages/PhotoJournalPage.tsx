@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAdmin, AdminLogsProvider } from '@/pages/admin-logs/layout'
-import { getPhotos, type PhotoDto } from '@/lib/api'
+import { type PhotoDto } from '@/lib/api'
 import { StoriesTab } from '@/pages/admin-logs/StoriesTab'
 import { BlogTab } from '@/pages/admin-logs/BlogTab'
 import {
@@ -86,8 +86,8 @@ function PhotoJournalContent() {
     let cancelled = false
     ;(async () => {
       try {
-        const data = await getPhotos({ all: true })
-        if (!cancelled) setPhotos(data)
+        const data = await (window as any).go.main.App.GetAllPhotos()
+        if (!cancelled) setPhotos(data || [])
       } catch (err) {
         console.error('Failed to load photos:', err)
       }

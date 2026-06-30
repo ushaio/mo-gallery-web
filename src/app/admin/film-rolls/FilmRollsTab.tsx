@@ -34,7 +34,7 @@ import {
 import { CustomInput } from '@/components/ui/CustomInput'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { CardGridSkeleton, ListSkeleton } from '@/components/admin/Skeleton'
 import { AdminCollectionToolbar } from '@/components/admin/AdminCollectionToolbar'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import {
@@ -479,7 +479,7 @@ export function FilmRollsTab({
         />
 
         {loading ? (
-          <div className="py-20"><AdminLoading text={t('common.loading')} className="min-h-[320px]" /></div>
+          <div className="py-6"><CardGridSkeleton count={6} cols={3} /></div>
         ) : filteredRolls.length === 0 ? (
           <div className="py-20 text-center border border-dashed border-border/50 bg-muted/5">
             <Film className="w-12 h-12 mx-auto mb-4 opacity-10" />
@@ -733,9 +733,7 @@ export function FilmRollsTab({
           ) : (
             <div className="space-y-4">
               {loadingCurrentRoll ? (
-                <div className="py-16">
-                  <AdminLoading text={t('common.loading')} className="min-h-[240px]" />
-                </div>
+                <div className="py-6"><ListSkeleton count={3} /></div>
               ) : showPhotoSelector ? (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3 p-3 bg-muted/30 border border-border sm:flex-row sm:items-center sm:justify-between">

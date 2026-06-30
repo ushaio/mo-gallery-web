@@ -43,7 +43,7 @@ import {
 import { setAdminBindSession, setOAuthState } from '@/lib/auth-session'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
-import { AdminLoading } from '@/components/admin/AdminLoading'
+import { FormSkeleton, ListSkeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 
 interface SettingsTabProps {
@@ -369,7 +369,7 @@ export function SettingsTab({
 
           <div className="flex-1 space-y-12">
             {!isSettingsReady ? (
-              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
+              <div className="max-w-2xl"><FormSkeleton rows={4} /></div>
             ) : (
               <>
             {settingsTab === 'site' && (
@@ -439,7 +439,7 @@ export function SettingsTab({
                 </div>
 
                 {storageSourcesLoading ? (
-                  <AdminLoading text={t('common.loading')} className="min-h-[200px]" />
+                  <ListSkeleton count={3} />
                 ) : (
                   <div className="space-y-4">
                     {storageSources.map((source) => {

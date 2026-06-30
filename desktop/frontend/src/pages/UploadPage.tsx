@@ -2,11 +2,12 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import {
   Upload, X, CheckCircle, AlertCircle, Loader2, FileImage,
   Image as ImageIcon, Trash2, CloudUpload, GripVertical, Eye,
-  Camera, Film, BookOpen, FolderOpen,
+  Camera, Film, BookOpen, FolderOpen, Maximize2, ChevronDown, HardDrive,
 } from 'lucide-react'
 
 interface PreparedFile {
@@ -53,6 +54,7 @@ type UploadType = 'digital' | 'film'
 
 export function UploadPage() {
   const { language } = usePreferences()
+  const { addTasks } = useUploadQueue()
   const [items, setItems] = useState<UploadItem[]>([])
   const [uploadType, setUploadType] = useState<UploadType>('digital')
   const [settings, setSettings] = useState<UploadSettings>({
@@ -69,10 +71,12 @@ export function UploadPage() {
     stripGPS: false,
   })
   const [preparing, setPreparing] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [categoryInput, setCategoryInput] = useState('')
+  const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null)
+  const [useCustomPrefix, setUseCustomPrefix] = useState(false)
+  const [showPrefixDropdown, setShowPrefixDropdown] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Wails 原生文件拖放（可获取完整路径）
@@ -84,16 +88,20 @@ export function UploadPage() {
       setIsDragging(false)
     }, true)
 
-    const handleDragEnter = (e: DragEvent) => { e.preventDefault(); setIsDragging(true) }
+    const handleDragOver = (e: DragEvent) => { e.preventDefault(); e.stopPropagation() }
+    const handleDragEnter = (e: DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true) }
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault()
+      e.stopPropagation()
       if (e.relatedTarget === null) setIsDragging(false)
     }
+    window.addEventListener('dragover', handleDragOver)
     window.addEventListener('dragenter', handleDragEnter)
     window.addEventListener('dragleave', handleDragLeave)
 
     return () => {
       OnFileDropOff()
+      window.removeEventListener('dragover', handleDragOver)
       window.removeEventListener('dragenter', handleDragEnter)
       window.removeEventListener('dragleave', handleDragLeave)
     }
@@ -107,6 +115,22 @@ export function UploadPage() {
   const [showAlbumDropdown, setShowAlbumDropdown] = useState(false)
   const [showStoryDropdown, setShowStoryDropdown] = useState(false)
   const [showFilmRollDropdown, setShowFilmRollDropdown] = useState(false)
+  const [showStorageSourceDropdown, setShowStorageSourceDropdown] = useState(false)
+
+  // 点击外部关闭下拉框
+  useEffect(() => {
+    const anyOpen = showPrefixDropdown || showAlbumDropdown || showStoryDropdown || showFilmRollDropdown || showStorageSourceDropdown
+    if (!anyOpen) return
+    const handleClick = () => {
+      setShowPrefixDropdown(false)
+      setShowAlbumDropdown(false)
+      setShowStoryDropdown(false)
+      setShowFilmRollDropdown(false)
+      setShowStorageSourceDropdown(false)
+    }
+    window.addEventListener('click', handleClick)
+    return () => window.removeEventListener('click', handleClick)
+  }, [showPrefixDropdown, showAlbumDropdown, showStoryDropdown, showFilmRollDropdown, showStorageSourceDropdown])
 
   // 加载关联数据
   useEffect(() => {
@@ -114,7 +138,15 @@ export function UploadPage() {
       try { const r = await (window as any).go.main.App.GetAlbums(); setAlbums(r || []) } catch {}
       try { const r = await (window as any).go.main.App.GetStories(); setStories(r || []) } catch {}
       try { const r = await (window as any).go.main.App.GetFilmRolls(); setFilmRolls(r || []) } catch {}
-      try { const r = await (window as any).go.main.App.GetStorageSources(); setStorageSources(r || []) } catch {}
+      try {
+        const r = await (window as any).go.main.App.GetStorageSources()
+        const sources = r || []
+        setStorageSources(sources)
+        // 自动选中第一个存储源
+        if (sources.length > 0 && !settings.storageSourceId) {
+          setSettings(s => ({ ...s, storageSourceId: sources[0].id }))
+        }
+      } catch {}
     })()
   }, [])
 
@@ -171,60 +203,33 @@ export function UploadPage() {
   const handleUpload = async () => {
     const pending = items.filter(i => i.status === 'pending')
     if (pending.length === 0) return
-    setUploading(true)
 
-    for (const item of pending) {
-      setItems(prev => prev.map(i =>
-        i.file.filePath === item.file.filePath ? { ...i, status: 'uploading' as const } : i
-      ))
-      try {
-        const result = await (window as any).go.main.App.UploadFile(
-          item.file.filePath,
-          {
-            title: settings.title || item.file.fileName,
-            categories: settings.categories,
-            albumIds: settings.albumIds.length > 0 ? settings.albumIds : undefined,
-            storyId: settings.storyId || undefined,
-            filmRollId: uploadType === 'film' ? (settings.filmRollId || undefined) : undefined,
-            storageSourceId: settings.storageSourceId || undefined,
-            storagePath: settings.storagePath || undefined,
-            compressEnabled: settings.compressEnabled,
-            maxSizeMB: settings.maxSizeMB,
-            showFlag: settings.showFlag,
-            stripGPS: settings.stripGPS,
-            originFlag: 'desktop',
-          },
-          item.file.hash,
-          item.file.exif || null,
-        )
-        if (result?.isDuplicate) {
-          setItems(prev => prev.map(i =>
-            i.file.filePath === item.file.filePath
-              ? { ...i, status: 'duplicate' as const, error: `已存在: ${result.existing?.title || ''}` }
-              : i
-          ))
-        } else if (result?.success) {
-          setItems(prev => prev.map(i =>
-            i.file.filePath === item.file.filePath
-              ? { ...i, status: 'done' as const, photoId: result.photo?.id }
-              : i
-          ))
-        } else {
-          setItems(prev => prev.map(i =>
-            i.file.filePath === item.file.filePath
-              ? { ...i, status: 'error' as const, error: result?.error || '上传失败' }
-              : i
-          ))
-        }
-      } catch (err: any) {
-        setItems(prev => prev.map(i =>
-          i.file.filePath === item.file.filePath
-            ? { ...i, status: 'error' as const, error: err?.message || '上传失败' }
-            : i
-        ))
+    addTasks(
+      pending.map(item => ({
+        filePath: item.file.filePath,
+        fileName: item.file.fileName,
+        fileSize: item.file.fileSize,
+        hash: item.file.hash,
+        exif: item.file.exif,
+      })),
+      {
+        title: settings.title,
+        categories: settings.categories,
+        albumIds: settings.albumIds.length > 0 ? settings.albumIds : undefined,
+        storyId: settings.storyId || undefined,
+        filmRollId: uploadType === 'film' ? (settings.filmRollId || undefined) : undefined,
+        storageSourceId: settings.storageSourceId,
+        storagePath: settings.storagePath,
+        compressEnabled: settings.compressEnabled,
+        maxSizeMB: settings.maxSizeMB,
+        showFlag: settings.showFlag,
+        stripGPS: settings.stripGPS,
       }
-    }
-    setUploading(false)
+    )
+
+    // 清空已提交的文件列表
+    setItems([])
+    setSelectedIds(new Set())
   }
 
   const removeItem = (filePath: string) => {
@@ -287,7 +292,7 @@ export function UploadPage() {
 
                 {/* 标题 */}
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>标题</label>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>标题 <span className="text-destructive">*</span></label>
                   <input type="text" value={settings.title}
                     onChange={e => setSettings(s => ({ ...s, title: e.target.value }))}
                     placeholder={items.length > 1 ? '多文件时作为前缀' : '照片标题'}
@@ -300,29 +305,37 @@ export function UploadPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>分类</label>
-                    <div className="relative">
-                      <div className="flex flex-wrap gap-1 mb-1.5">
-                        {settings.categories.map(c => (
-                          <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full"
-                            style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }}>
-                            {c}
-                            <button onClick={() => setSettings(s => ({ ...s, categories: s.categories.filter(x => x !== c) }))}>
-                              <X size={10} />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                      <input type="text" placeholder="回车添加"
+                    <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 min-h-[34px] rounded-lg border cursor-text"
+                      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+                      onClick={(e) => { if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('button')) (e.currentTarget.querySelector('input') as HTMLInputElement)?.focus() }}>
+                      {settings.categories.map(c => (
+                        <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-md"
+                          style={{ backgroundColor: 'var(--muted)', color: 'var(--foreground)' }}>
+                          {c}
+                          <button type="button" onClick={() => setSettings(s => ({ ...s, categories: s.categories.filter(x => x !== c) }))}
+                            className="hover:text-destructive transition-colors">
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                      <input type="text"
                         value={categoryInput}
                         onChange={e => setCategoryInput(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && categoryInput.trim()) {
-                            setSettings(s => ({ ...s, categories: [...s.categories, categoryInput.trim()] }))
+                            e.preventDefault()
+                            if (!settings.categories.includes(categoryInput.trim())) {
+                              setSettings(s => ({ ...s, categories: [...s.categories, categoryInput.trim()] }))
+                            }
                             setCategoryInput('')
                           }
+                          if (e.key === 'Backspace' && !categoryInput && settings.categories.length > 0) {
+                            setSettings(s => ({ ...s, categories: s.categories.slice(0, -1) }))
+                          }
                         }}
-                        className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }} />
+                        className="flex-1 min-w-[60px] outline-none bg-transparent text-xs"
+                        style={{ color: 'var(--foreground)' }}
+                        placeholder={settings.categories.length === 0 ? '输入后回车' : ''} />
                     </div>
                   </div>
                   <div>
@@ -330,14 +343,15 @@ export function UploadPage() {
                       <FolderOpen size={11} /> 相册
                     </label>
                     <div className="relative">
-                      <button onClick={() => setShowAlbumDropdown(!showAlbumDropdown)}
-                        className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-lg border text-left"
+                      <button onClick={(e) => { e.stopPropagation(); setShowAlbumDropdown(!showAlbumDropdown) }}
+                        className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg border text-left"
                         style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: settings.albumIds.length ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
                         <span className="truncate">{selectedAlbumNames.join(', ') || '选择相册'}</span>
                       </button>
                       {showAlbumDropdown && (
                         <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+                          onClick={e => e.stopPropagation()}>
                           {albums.map(a => (
                             <button key={a.id} onClick={() => toggleAlbum(a.id)}
                               className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-muted/50"
@@ -358,7 +372,7 @@ export function UploadPage() {
                     <BookOpen size={11} /> 故事
                   </label>
                   <div className="relative">
-                    <button onClick={() => setShowStoryDropdown(!showStoryDropdown)}
+                    <button onClick={(e) => { e.stopPropagation(); setShowStoryDropdown(!showStoryDropdown) }}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg border text-left"
                       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: selectedStoryTitle ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
                       <span className="truncate">{selectedStoryTitle || '不关联'}</span>
@@ -366,13 +380,14 @@ export function UploadPage() {
                     </button>
                     {showStoryDropdown && (
                       <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+                        onClick={e => e.stopPropagation()}>
                         <button onClick={() => { setSettings(s => ({ ...s, storyId: '' })); setShowStoryDropdown(false) }}
-                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50"
                           style={{ color: 'var(--muted-foreground)' }}>不关联</button>
                         {stories.map(s => (
                           <button key={s.id} onClick={() => { setSettings(st => ({ ...st, storyId: s.id })); setShowStoryDropdown(false) }}
-                            className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-muted/50"
+                            className="w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-muted/50"
                             style={{ color: settings.storyId === s.id ? 'var(--primary)' : 'var(--foreground)' }}>
                             <span className="truncate">{s.title}</span>
                             {settings.storyId === s.id && <CheckCircle size={12} />}
@@ -390,7 +405,7 @@ export function UploadPage() {
                       <Film size={11} /> 胶卷
                     </label>
                     <div className="relative">
-                      <button onClick={() => setShowFilmRollDropdown(!showFilmRollDropdown)}
+                      <button onClick={(e) => { e.stopPropagation(); setShowFilmRollDropdown(!showFilmRollDropdown) }}
                         className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg border text-left"
                         style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: selectedFilmRollName ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
                         <span className="truncate">{selectedFilmRollName || '选择胶卷'}</span>
@@ -398,13 +413,14 @@ export function UploadPage() {
                       </button>
                       {showFilmRollDropdown && (
                         <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+                          onClick={e => e.stopPropagation()}>
                           <button onClick={() => { setSettings(s => ({ ...s, filmRollId: '' })); setShowFilmRollDropdown(false) }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50"
                             style={{ color: 'var(--muted-foreground)' }}>不选择</button>
                           {filmRolls.map(r => (
                             <button key={r.id} onClick={() => { setSettings(s => ({ ...s, filmRollId: r.id })); setShowFilmRollDropdown(false) }}
-                              className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-muted/50"
+                              className="w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-muted/50"
                               style={{ color: settings.filmRollId === r.id ? 'var(--primary)' : 'var(--foreground)' }}>
                               <span>{r.name} · {r.brand} · {r.format}</span>
                               {settings.filmRollId === r.id && <CheckCircle size={12} />}
@@ -420,22 +436,78 @@ export function UploadPage() {
                 <div className="pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>存储源</label>
-                      <select value={settings.storageSourceId}
-                        onChange={e => setSettings(s => ({ ...s, storageSourceId: e.target.value }))}
-                        className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }}>
-                        <option value="">默认</option>
-                        {storageSources.map(s => <option key={s.id} value={s.id}>{s.name} ({s.type})</option>)}
-                      </select>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>存储源 <span className="text-destructive">*</span></label>
+                      <div className="relative">
+                        <button onClick={(e) => { e.stopPropagation(); setShowStorageSourceDropdown(!showStorageSourceDropdown) }}
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg border text-left"
+                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: settings.storageSourceId ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
+                          <span className="truncate">{storageSources.find(s => s.id === settings.storageSourceId)?.name || '选择存储源'}</span>
+                          <HardDrive size={12} style={{ color: 'var(--muted-foreground)' }} />
+                        </button>
+                        {showStorageSourceDropdown && (
+                          <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
+                            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+                            onClick={e => e.stopPropagation()}>
+                            {storageSources.map(s => (
+                              <button key={s.id} onClick={() => { setSettings(prev => ({ ...prev, storageSourceId: s.id, storagePath: '' })); setShowStorageSourceDropdown(false); setUseCustomPrefix(false) }}
+                                className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-muted/50"
+                                style={{ color: settings.storageSourceId === s.id ? 'var(--primary)' : 'var(--foreground)' }}>
+                                <span>{s.name} ({s.type})</span>
+                                {settings.storageSourceId === s.id && <CheckCircle size={12} />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>路径前缀</label>
-                      <input type="text" value={settings.storagePath}
-                        onChange={e => setSettings(s => ({ ...s, storagePath: e.target.value }))}
-                        placeholder="/"
-                        className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none font-mono"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }} />
+                      <div className="flex items-stretch relative">
+                        {(() => {
+                          const selectedSource = storageSources.find(s => s.id === settings.storageSourceId)
+                          const basePath = selectedSource?.basePath
+                          const displayPrefix = (!useCustomPrefix && basePath) ? basePath : '/'
+                          return (
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); basePath && setShowPrefixDropdown(!showPrefixDropdown) }}
+                              className="px-2 flex items-center gap-0.5 text-[10px] font-mono border-r-0 rounded-l-lg border shrink-0 hover:opacity-80 transition-opacity"
+                              style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                              <span className="truncate max-w-[80px]">{displayPrefix}/</span>
+                              {basePath && <ChevronDown size={10} className={`shrink-0 transition-transform ${showPrefixDropdown ? 'rotate-180' : ''}`} />}
+                            </button>
+                          )
+                        })()}
+                        {showPrefixDropdown && (() => {
+                          const selectedSource = storageSources.find(s => s.id === settings.storageSourceId)
+                          const basePath = selectedSource?.basePath
+                          if (!basePath) return null
+                          return (
+                            <div className="absolute z-20 left-0 top-full mt-0.5 min-w-full border rounded-md shadow-lg"
+                              style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+                              onClick={e => e.stopPropagation()}>
+                              <button type="button"
+                                onClick={() => { setUseCustomPrefix(true); setSettings(s => ({ ...s, storagePath: '' })); setShowPrefixDropdown(false) }}
+                                className="w-full text-left px-3 py-1.5 text-[10px] font-mono hover:bg-muted/50 flex items-center justify-between"
+                                style={{ color: useCustomPrefix ? 'var(--primary)' : 'var(--foreground)' }}>
+                                <span>/</span>
+                                {useCustomPrefix && <CheckCircle size={10} />}
+                              </button>
+                              <button type="button"
+                                onClick={() => { setUseCustomPrefix(false); setSettings(s => ({ ...s, storagePath: '' })); setShowPrefixDropdown(false) }}
+                                className="w-full text-left px-3 py-1.5 text-[10px] font-mono hover:bg-muted/50 flex items-center justify-between"
+                                style={{ color: !useCustomPrefix ? 'var(--primary)' : 'var(--foreground)' }}>
+                                <span>{basePath}/</span>
+                                {!useCustomPrefix && <CheckCircle size={10} />}
+                              </button>
+                            </div>
+                          )
+                        })()}
+                        <input type="text" value={settings.storagePath}
+                          onChange={e => setSettings(s => ({ ...s, storagePath: e.target.value }))}
+                          placeholder="path"
+                          className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-r-lg border outline-none font-mono"
+                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -477,11 +549,11 @@ export function UploadPage() {
               </div>
 
               {/* 上传按钮 */}
-              <button onClick={handleUpload} disabled={uploading || pendingCount === 0}
+              <button onClick={handleUpload} disabled={pendingCount === 0 || !settings.storageSourceId}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium rounded-xl disabled:opacity-40 transition-all"
                 style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-                {uploading ? <Loader2 size={16} className="animate-spin" /> : <CloudUpload size={16} />}
-                {uploading ? '上传中...' : `上传 ${pendingCount} 个文件`}
+                <CloudUpload size={16} />
+                {!settings.storageSourceId ? '请先选择存储源' : `上传 ${pendingCount} 个文件`}
               </button>
             </div>
           </div>
@@ -490,7 +562,7 @@ export function UploadPage() {
           <div className="lg:col-span-8">
             <div
               className={`min-h-[600px] rounded-xl border-2 border-dashed transition-all ${isDragging ? 'border-primary bg-primary/5' : ''}`}
-              style={{ borderColor: isDragging ? undefined : 'var(--border)' }}
+              style={{ borderColor: isDragging ? undefined : 'var(--border)', '--wails-drop-target': 'drop' } as React.CSSProperties}
             >
               {items.length > 0 ? (
                 <div className="p-5">
@@ -515,7 +587,8 @@ export function UploadPage() {
                       <FileItem key={item.file.filePath} item={item}
                         selected={selectedIds.has(item.file.filePath)}
                         onSelect={() => toggleSelect(item.file.filePath)}
-                        onRemove={() => removeItem(item.file.filePath)} />
+                        onRemove={() => removeItem(item.file.filePath)}
+                        onPreview={() => setPreviewFile({ path: item.file.filePath, name: item.file.fileName })} />
                     ))}
                   </div>
 
@@ -551,6 +624,9 @@ export function UploadPage() {
 
       <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
         onChange={e => handleSelectFiles(e.target.files)} />
+
+      {/* 图片预览弹窗 */}
+      {previewFile && <PreviewModal filePath={previewFile.path} fileName={previewFile.name} onClose={() => setPreviewFile(null)} />}
     </>
   )
 }
@@ -560,37 +636,74 @@ export function UploadPage() {
 function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button type="button" onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items rounded-full transition-colors ${checked ? '' : ''}`}
+      className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
       style={{ backgroundColor: checked ? 'var(--primary)' : 'var(--muted)' }}>
-      <span className={`pointer-events-none block size-4 rounded-full bg-background shadow-lg transition-transform ${
+      <span className={`pointer-events-none block size-4 rounded-full shadow-lg transition-transform ${
         checked ? 'translate-x-4' : 'translate-x-0.5'
-      }`} />
+      }`}
+        style={{ backgroundColor: 'var(--background)' }} />
     </button>
+  )
+}
+
+// ─── PreviewModal ─────────────────────────────────────
+
+function PreviewModal({ filePath, fileName, onClose }: { filePath: string; fileName: string; onClose: () => void }) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    ;(window as any).go.main.App.GetFileThumbnail(filePath)
+      .then((dataUrl: string) => { if (!cancelled) { setSrc(dataUrl); setLoading(false) } })
+      .catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [filePath])
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div className="relative max-w-[90vw] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-2 text-white">
+          <span className="text-sm truncate">{fileName}</span>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center overflow-hidden">
+          {loading ? (
+            <Loader2 size={32} className="text-white animate-spin" />
+          ) : src ? (
+            <img src={src} alt={fileName} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
+          ) : (
+            <p className="text-white/60">无法加载图片</p>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
 // ─── FileItem ─────────────────────────────────────────
 
-function FileItem({ item, selected, onSelect, onRemove }: {
-  item: UploadItem; selected: boolean; onSelect: () => void; onRemove: () => void
+function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
+  item: UploadItem; selected: boolean; onSelect: () => void; onRemove: () => void; onPreview: () => void
 }) {
-  const [preview, setPreview] = useState<string | null>(null)
+  const [thumbnail, setThumbnail] = useState<string | null>(null)
 
   useEffect(() => {
-    const img = new Image()
-    img.src = `file:///${item.file.filePath}`
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const maxSize = 56
-      let w = img.width, h = img.height
-      if (w > h) { if (w > maxSize) { h *= maxSize / w; w = maxSize } }
-      else { if (h > maxSize) { w *= maxSize / h; h = maxSize } }
-      canvas.width = w; canvas.height = h
-      ctx?.drawImage(img, 0, 0, w, h)
-      setPreview(canvas.toDataURL('image/webp', 0.7))
-    }
-    img.onerror = () => {}
+    let cancelled = false
+    ;(window as any).go.main.App.GetFileThumbnail(item.file.filePath)
+      .then((dataUrl: string) => { if (!cancelled) setThumbnail(dataUrl) })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [item.file.filePath])
 
   const statusIcon = {
@@ -607,10 +720,11 @@ function FileItem({ item, selected, onSelect, onRemove }: {
       <input type="checkbox" checked={selected} onChange={onSelect} className="rounded shrink-0" />
 
       <div className="w-10 h-10 rounded-md overflow-hidden shrink-0 relative group/thumb" style={{ backgroundColor: 'var(--muted)' }}>
-        {preview ? <img src={preview} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={14} style={{ color: 'var(--muted-foreground)' }} className="opacity-30" /></div>}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity rounded-md">
-          <Eye size={12} className="text-white" />
-        </div>
+        {thumbnail ? <img src={thumbnail} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={14} style={{ color: 'var(--muted-foreground)' }} className="opacity-30" /></div>}
+        <button onClick={onPreview}
+          className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity rounded-md">
+          <Maximize2 size={12} className="text-white" />
+        </button>
       </div>
 
       <div className="flex-1 min-w-0">

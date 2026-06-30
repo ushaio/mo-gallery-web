@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
-import type { AdminSettingsDto } from '@/lib/api/types'
 import type { CompressionMode } from '@/lib/image-compress'
 import { normalizeCompressionMode } from '@/lib/image-compress'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -32,7 +31,7 @@ interface ImageUploadSettingsModalProps {
   token: string | null
   initialSettings?: UploadSettings
   confirmLabel?: string
-  settings?: AdminSettingsDto | null
+  settings?: Record<string, string> | null
   categories?: string[]
   currentStoryId?: string
 }

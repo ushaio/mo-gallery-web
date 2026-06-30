@@ -76,6 +76,7 @@ type ListPhotosParams struct {
 	SortOrder string  `json:"sortOrder"`
 	Page      int     `json:"page"`
 	PageSize  int     `json:"pageSize"`
+	All       bool    `json:"all"`
 }
 
 type UpdatePhotoParams struct {
@@ -116,16 +117,31 @@ func (s *PhotoService) List(params ListPhotosParams) (*PaginatedResponse[PhotoDT
 	if err := s.checkReady(); err != nil {
 		return nil, err
 	}
+
+	q := url.Values{}
+	if params.Category != "" && params.Category != "全部" {
+		q.Set("category", params.Category)
+	}
+	if params.AlbumID != "" {
+		q.Set("albumId", params.AlbumID)
+	}
+	if params.Search != "" {
+		q.Set("search", params.Search)
+	}
+	if params.All {
+		q.Set("all", "true")
+		var photos []PhotoDTO
+		if err := s.proxy.GET("/admin/photos?"+q.Encode(), &photos); err != nil {
+			return nil, err
+		}
+		return &PaginatedResponse[PhotoDTO]{Data: photos}, nil
+	}
+
 	if params.Page <= 0 {
 		params.Page = 1
 	}
 	if params.PageSize <= 0 {
 		params.PageSize = 50
-	}
-
-	q := url.Values{}
-	if params.Category != "" && params.Category != "全部" {
-		q.Set("category", params.Category)
 	}
 	q.Set("page", fmt.Sprintf("%d", params.Page))
 	q.Set("pageSize", fmt.Sprintf("%d", params.PageSize))
@@ -136,6 +152,14 @@ func (s *PhotoService) List(params ListPhotosParams) (*PaginatedResponse[PhotoDT
 		return nil, err
 	}
 	return &PaginatedResponse[PhotoDTO]{Data: photos, Meta: meta}, nil
+}
+
+func (s *PhotoService) ListAll() ([]PhotoDTO, error) {
+	result, err := s.List(ListPhotosParams{All: true})
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
 }
 
 func (s *PhotoService) GetByID(id string) (*PhotoDTO, error) {
@@ -219,4 +243,26 @@ func (s *PhotoService) GetCategories() ([]string, error) {
 		return nil, err
 	}
 	return categories, nil
+}
+
+func (s *PhotoService) GetCameras() ([]CameraDTO, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+	var cameras []CameraDTO
+	if err := s.proxy.GET("/cameras", &cameras); err != nil {
+		return nil, err
+	}
+	return cameras, nil
+}
+
+func (s *PhotoService) GetLenses() ([]LensDTO, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+	var lenses []LensDTO
+	if err := s.proxy.GET("/lenses", &lenses); err != nil {
+		return nil, err
+	}
+	return lenses, nil
 }

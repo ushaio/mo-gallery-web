@@ -22,12 +22,11 @@ type StoryDTO struct {
 	ContentJSON  json.RawMessage `json:"contentJson,omitempty"`
 	CoverPhotoID *string         `json:"coverPhotoId,omitempty"`
 	CoverCrop    json.RawMessage `json:"coverCrop,omitempty"`
-	IsPublished  bool       `json:"isPublished"`
-	StoryDate    time.Time  `json:"storyDate"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
-	PhotoCount   int        `json:"photoCount"`
-	Photos       []PhotoDTO `json:"photos,omitempty"`
+	IsPublished  bool        `json:"isPublished"`
+	StoryDate    *time.Time  `json:"storyDate,omitempty"`
+	CreatedAt    time.Time   `json:"createdAt"`
+	UpdatedAt    time.Time   `json:"updatedAt"`
+	Photos       []PhotoDTO  `json:"photos,omitempty"`
 }
 
 type CreateStoryParams struct {

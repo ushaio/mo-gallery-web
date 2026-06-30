@@ -2,10 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -32,17 +37,21 @@ type App struct {
 	Storage   *services.StorageService
 	Settings  *services.SettingsService
 	EditorAi  *services.EditorAiService
+	Logger    *services.Logger
+	Overview  *services.OverviewService
 }
 
 func NewApp(cfg *config.Config) *App {
 	return &App{
-		cfg:   cfg,
-		Proxy: services.NewProxyClient(),
+		cfg:    cfg,
+		Proxy:  services.NewProxyClient(),
+		Logger: services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.Proxy.SetLogger(a.Logger)
 	a.Auth = services.NewAuthService(a.cfg)
 	a.Auth.SetProxy(a.Proxy)
 	a.Photo = services.NewPhotoService(a.Proxy)
@@ -56,9 +65,15 @@ func (a *App) startup(ctx context.Context) {
 	a.Storage = services.NewStorageService(a.Proxy)
 	a.Settings = services.NewSettingsService(a.Proxy)
 	a.EditorAi = services.NewEditorAiService(a.cfg)
+	a.Overview = services.NewOverviewService()
+
+	// 加载日志
+	a.Logger.Load()
 
 	// 启动本地 AI 流式 HTTP 服务
 	a.startAiHTTPServer()
+
+	a.Logger.Info(services.LogCategorySystem, "app_start", "应用启动", "")
 }
 
 // startAiHTTPServer 启动本地 HTTP 服务用于 AI 流式生成
@@ -113,10 +128,12 @@ func (a *App) shutdown(ctx context.Context) {
 func (a *App) Login(serverURL, username, password string) (*services.LoginResult, error) {
 	result, err := a.Auth.Login(serverURL, username, password)
 	if err != nil {
+		a.Logger.Error(services.LogCategoryAuth, "login_failed", "登录失败", err.Error())
 		return nil, err
 	}
 	a.Proxy.SetServer(result.Server)
 	a.Proxy.SetToken(result.Token)
+	a.Logger.Info(services.LogCategoryAuth, "login_success", "登录成功", "用户: "+username+", 服务器: "+serverURL)
 	return result, nil
 }
 
@@ -141,7 +158,13 @@ func (a *App) UpdatePhoto(id string, params services.UpdatePhotoParams) (*servic
 	return a.Photo.Update(id, params)
 }
 func (a *App) DeletePhoto(id string, params services.DeletePhotoParams) error {
-	return a.Photo.Delete(id, params)
+	err := a.Photo.Delete(id, params)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryPhoto, "delete_photo_failed", "删除照片失败", "ID: "+id+", 错误: "+err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryPhoto, "delete_photo", "删除照片", "ID: "+id)
+	}
+	return err
 }
 func (a *App) ToggleFeatured(id string) (*services.PhotoDTO, error) {
 	return a.Photo.ToggleFeatured(id)
@@ -155,8 +178,17 @@ func (a *App) BatchDeletePhotos(params services.BatchDeleteParams) (*services.Ba
 func (a *App) BatchUpdateShowFlag(photoIDs []string, showFlag bool) (*services.BatchResult, error) {
 	return a.Photo.BatchUpdateShowFlag(photoIDs, showFlag)
 }
+func (a *App) GetAllPhotos() ([]services.PhotoDTO, error) {
+	return a.Photo.ListAll()
+}
 func (a *App) GetCategories() ([]string, error) {
 	return a.Photo.GetCategories()
+}
+func (a *App) GetCameras() ([]services.CameraDTO, error) {
+	return a.Photo.GetCameras()
+}
+func (a *App) GetLenses() ([]services.LensDTO, error) {
+	return a.Photo.GetLenses()
 }
 
 // ─── Albums ──────────────────────────────────────────
@@ -171,9 +203,33 @@ func (a *App) DeleteAlbum(id string) error { return a.Album.Delete(id) }
 
 func (a *App) GetStories() ([]services.StoryDTO, error) { return a.Story.List() }
 func (a *App) GetStory(id string) (*services.StoryDTO, error) { return a.Story.GetByID(id) }
-func (a *App) CreateStory(params services.CreateStoryParams) (*services.StoryDTO, error) { return a.Story.Create(params) }
-func (a *App) UpdateStory(id string, params services.UpdateStoryParams) (*services.StoryDTO, error) { return a.Story.Update(id, params) }
-func (a *App) DeleteStory(id string) error { return a.Story.Delete(id) }
+func (a *App) CreateStory(params services.CreateStoryParams) (*services.StoryDTO, error) {
+	result, err := a.Story.Create(params)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryStory, "create_story_failed", "创建叙事失败", err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryStory, "create_story", "创建叙事: "+params.Title, "")
+	}
+	return result, err
+}
+func (a *App) UpdateStory(id string, params services.UpdateStoryParams) (*services.StoryDTO, error) {
+	result, err := a.Story.Update(id, params)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryStory, "update_story_failed", "更新叙事失败", "ID: "+id+", 错误: "+err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryStory, "update_story", "更新叙事", "ID: "+id)
+	}
+	return result, err
+}
+func (a *App) DeleteStory(id string) error {
+	err := a.Story.Delete(id)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryStory, "delete_story_failed", "删除叙事失败", "ID: "+id+", 错误: "+err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryStory, "delete_story", "删除叙事", "ID: "+id)
+	}
+	return err
+}
 func (a *App) AddStoryPhoto(storyID, photoID string) error { return a.Story.AddStoryPhoto(storyID, photoID) }
 func (a *App) RemoveStoryPhoto(storyID, photoID string) error { return a.Story.RemoveStoryPhoto(storyID, photoID) }
 func (a *App) ReorderStoryPhotos(storyID string, photoIDs []string) (*services.StoryDTO, error) { return a.Story.ReorderPhotos(storyID, photoIDs) }
@@ -182,9 +238,33 @@ func (a *App) ReorderStoryPhotos(storyID string, photoIDs []string) (*services.S
 
 func (a *App) GetBlogs() ([]services.BlogDTO, error) { return a.Blog.List() }
 func (a *App) GetBlog(id string) (*services.BlogDTO, error) { return a.Blog.GetByID(id) }
-func (a *App) CreateBlog(params services.CreateBlogParams) (*services.BlogDTO, error) { return a.Blog.Create(params) }
-func (a *App) UpdateBlog(id string, params services.UpdateBlogParams) (*services.BlogDTO, error) { return a.Blog.Update(id, params) }
-func (a *App) DeleteBlog(id string) error { return a.Blog.Delete(id) }
+func (a *App) CreateBlog(params services.CreateBlogParams) (*services.BlogDTO, error) {
+	result, err := a.Blog.Create(params)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryBlog, "create_blog_failed", "创建博客失败", err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryBlog, "create_blog", "创建博客: "+params.Title, "")
+	}
+	return result, err
+}
+func (a *App) UpdateBlog(id string, params services.UpdateBlogParams) (*services.BlogDTO, error) {
+	result, err := a.Blog.Update(id, params)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryBlog, "update_blog_failed", "更新博客失败", "ID: "+id+", 错误: "+err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryBlog, "update_blog", "更新博客", "ID: "+id)
+	}
+	return result, err
+}
+func (a *App) DeleteBlog(id string) error {
+	err := a.Blog.Delete(id)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryBlog, "delete_blog_failed", "删除博客失败", "ID: "+id+", 错误: "+err.Error())
+	} else {
+		a.Logger.Info(services.LogCategoryBlog, "delete_blog", "删除博客", "ID: "+id)
+	}
+	return err
+}
 
 // ─── Film Rolls ──────────────────────────────────────
 
@@ -193,6 +273,9 @@ func (a *App) GetFilmRoll(id string) (*services.FilmRollDTO, error) { return a.F
 func (a *App) CreateFilmRoll(params services.CreateFilmRollParams) (*services.FilmRollDTO, error) { return a.FilmRoll.Create(params) }
 func (a *App) UpdateFilmRoll(id string, params services.UpdateFilmRollParams) (*services.FilmRollDTO, error) { return a.FilmRoll.Update(id, params) }
 func (a *App) DeleteFilmRoll(id string) error { return a.FilmRoll.Delete(id) }
+func (a *App) AddPhotosToFilmRoll(id string, photoIDs []string) (*services.FilmRollDTO, error) { return a.FilmRoll.AddPhotos(id, photoIDs) }
+func (a *App) RemovePhotoFromFilmRoll(rollID, photoID string) (*services.FilmRollDTO, error) { return a.FilmRoll.RemovePhoto(rollID, photoID) }
+func (a *App) ReorderFilmRollFrames(id string) (*services.FilmRollDTO, error) { return a.FilmRoll.ReorderFrames(id) }
 
 // ─── Friends ─────────────────────────────────────────
 
@@ -218,7 +301,13 @@ func (a *App) CheckDuplicates(hashes []string) (*services.DuplicateCheckResult, 
 	return a.Upload.CheckDuplicates(hashes)
 }
 func (a *App) UploadFile(filePath string, settings services.UploadSettings, hash string, exifData *image.ExifData) (*services.UploadResult, error) {
-	return a.Upload.UploadFile(filePath, settings, hash, exifData)
+	result, err := a.Upload.UploadFile(filePath, settings, hash, exifData)
+	if err != nil {
+		a.Logger.Error(services.LogCategoryUpload, "upload_failed", "上传失败: "+filepath.Base(filePath), err.Error())
+	} else if result != nil && result.Success {
+		a.Logger.Info(services.LogCategoryUpload, "upload_success", "上传成功: "+filepath.Base(filePath), "")
+	}
+	return result, err
 }
 
 // ─── File Dialog ─────────────────────────────────────
@@ -241,6 +330,25 @@ func (a *App) SelectFiles() ([]string, error) {
 
 func (a *App) SelectFolder() (string, error) {
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择文件夹"})
+}
+
+// GetFileThumbnail 读取本地文件并返回 base64 data URL（用于缩略图预览）
+func (a *App) GetFileThumbnail(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	ext := strings.ToLower(filepath.Ext(filePath))
+	mime := map[string]string{
+		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+		".png": "image/png", ".webp": "image/webp",
+		".avif": "image/avif", ".tiff": "image/tiff", ".tif": "image/tiff",
+		".bmp": "image/bmp", ".gif": "image/gif",
+	}[ext]
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 // ─── Settings ────────────────────────────────────────
@@ -329,4 +437,59 @@ func (a *App) ClearEditorAiConversation(conversationId string) (*services.Editor
 }
 func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetModels()
+}
+
+// ─── Overview ─────────────────────────────────────────
+
+func (a *App) GetOverview() (*services.OverviewDTO, error) {
+	return a.Overview.GetOverview()
+}
+
+// ─── Logger ──────────────────────────────────────────
+
+func (a *App) GetLogConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"enabled":     a.cfg.Log.Enabled,
+		"max_entries": a.cfg.Log.MaxEntries,
+	}
+}
+
+func (a *App) UpdateLogConfig(data map[string]interface{}) error {
+	if v, ok := data["enabled"].(bool); ok {
+		a.cfg.Log.Enabled = v
+		a.Logger.SetEnabled(v)
+	}
+	if v, ok := data["max_entries"].(float64); ok {
+		a.cfg.Log.MaxEntries = int(v)
+		a.Logger.SetMaxEntries(int(v))
+	}
+	return a.cfg.Save("")
+}
+
+func (a *App) GetLogs(category string, level string, limit int) []services.LogEntry {
+	return a.Logger.GetLogs(category, level, limit)
+}
+
+func (a *App) ClearLogs() {
+	a.Logger.ClearLogs()
+}
+
+func (a *App) GetLogStats() map[string]interface{} {
+	return a.Logger.GetLogStats()
+}
+
+func (a *App) GetLogDir() string {
+	return a.Logger.GetLogDir()
+}
+
+func (a *App) OpenLogDir() {
+	dir := a.Logger.GetLogDir()
+	switch runtime.Environment(a.ctx).Platform {
+	case "windows":
+		exec.Command("explorer", dir).Start()
+	case "darwin":
+		exec.Command("open", dir).Start()
+	default:
+		exec.Command("xdg-open", dir).Start()
+	}
 }
