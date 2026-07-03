@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowRight, Sparkles } from 'lucide-react'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
@@ -11,14 +11,6 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 const PARTICLE_COUNT = 20
-
-type Particle = {
-  id: number
-  x: number
-  y: number
-  duration: number
-  delay: number
-}
 
 interface HomeContentProps {
   initialPhotos: PhotoDto[]
@@ -31,7 +23,7 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
   const siteAuthor = envConfig.siteAuthor
 
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0)
-  const [particles, setParticles] = useState<Particle[]>([])
+  const [isMounted, setIsMounted] = useState(false)
 
   const heroRef = useRef<HTMLElement>(null)
   const { scrollYProgress } = useScroll({
@@ -43,18 +35,19 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
   const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 1.1])
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 100])
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setParticles(Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
-        id: i,
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        duration: Math.random() * 10 + 10,
-        delay: Math.random() * 5,
-      })))
-    })
+  const particles = useMemo(() => {
+    if (!isMounted) return []
+    return Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+      id: i,
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      duration: Math.random() * 10 + 10,
+      delay: Math.random() * 5,
+    }))
+  }, [isMounted])
 
-    return () => window.cancelAnimationFrame(frame)
+  useEffect(() => {
+    setIsMounted(true)
   }, [])
 
   useEffect(() => {
@@ -109,7 +102,7 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
           )}
         </AnimatePresence>
 
-        {particles.length > 0 && (
+        {isMounted && (
           <div className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
             {particles.map((particle) => (
               <motion.div

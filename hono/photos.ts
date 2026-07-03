@@ -16,7 +16,6 @@ import { resolvePhotoThumbnailUrl, resolvePhotoUploadAssets } from '~/server/lib
 import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
-import type { Prisma } from '@prisma/client'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
 const THUMBNAIL_EXTENSION = '.avif'
@@ -242,7 +241,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     const skip = (page - 1) * pageSize
 
     // 构造查询条件（不过滤 showFlag）
-    const where: Prisma.PhotoWhereInput = {}
+    const where: any = {}
     if (category && category !== '全部') {
       where.categories = { some: { name: category } }
     }

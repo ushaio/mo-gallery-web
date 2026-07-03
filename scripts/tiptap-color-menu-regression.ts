@@ -6,6 +6,8 @@ function assert(condition: unknown, message: string) {
   }
 }
 
+type MockNode = Node
+
 type MockElement = {
   contains: (target: Node | null) => boolean
 }

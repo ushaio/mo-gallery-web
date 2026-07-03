@@ -19,7 +19,7 @@ export async function authMiddleware(c: Context, next: Next) {
     const payload = verifyToken(token)
     c.set('user', payload)
     await next()
-  } catch {
+  } catch (error) {
     return c.json({ error: 'Invalid token' }, 401)
   }
 }

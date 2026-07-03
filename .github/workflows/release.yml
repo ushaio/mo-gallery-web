@@ -65,39 +65,6 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-  web-build:
-    needs: prepare
-    if: needs.prepare.outputs.tag_exists == 'false'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Lint
-        run: >-
-          pnpm exec eslint . --ignore-pattern "desktop/**"
-          --rule "react-hooks/set-state-in-effect: off"
-          --rule "react-hooks/preserve-manual-memoization: off"
-          --rule "react-hooks/refs: off"
-          --rule "react-hooks/purity: off"
-          --rule "react-hooks/immutability: off"
-
-      - name: Build web app
-        run: pnpm run build
-
   desktop-build:
     needs: prepare
     if: needs.prepare.outputs.tag_exists == 'false'
@@ -139,7 +106,6 @@ jobs:
   publish:
     needs:
       - prepare
-      - web-build
       - desktop-build
     if: needs.prepare.outputs.tag_exists == 'false'
     runs-on: ubuntu-latest
