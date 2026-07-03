@@ -1,1 +1,7 @@
-onlyBuiltDependencies: prisma,@prisma/client,@prisma/engines
+packages:
+  - desktop/frontend
+
+onlyBuiltDependencies:
+  - prisma
+  - '@prisma/client'
+  - '@prisma/engines'

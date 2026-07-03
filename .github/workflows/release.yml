@@ -93,8 +93,11 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
       - name: Install desktop frontend dependencies
+        run: pnpm --filter mo-gallery-desktop-frontend install --no-frozen-lockfile --config.production=false
+
+      - name: Verify desktop frontend dependencies
         working-directory: desktop/frontend
-        run: pnpm install --no-frozen-lockfile --config.production=false
+        run: pnpm list react-router-dom sonner
 
       - name: Build desktop app
         working-directory: desktop
