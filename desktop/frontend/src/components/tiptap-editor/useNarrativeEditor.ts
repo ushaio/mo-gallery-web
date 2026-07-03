@@ -96,7 +96,6 @@ export function useNarrativeEditor({
     return value
   }, [jsonValue, value])
 
-  // @ts-expect-error — tiptap v3 overload resolution
   const editor = useEditor({
     extensions: [
       PastedBlockStyle,
