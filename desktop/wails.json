@@ -3,7 +3,7 @@
   "name": "mo-gallery-desktop",
   "outputfilename": "mo-gallery-desktop",
   "frontend:dir": "frontend",
-  "frontend:install": "pnpm install",
+  "frontend:install": "pnpm install --no-frozen-lockfile",
   "frontend:build": "pnpm build",
   "frontend:dev:watcher": "pnpm dev",
   "frontend:dev:serverUrl": "auto",
