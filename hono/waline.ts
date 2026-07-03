@@ -1,5 +1,4 @@
 import 'server-only'
-import { Hono } from 'hono'
 import type { Handler } from 'hono'
 
 // Check if we should use local Waline (only when COMMENTS_STORAGE=LEANCLOUD and no external WALINE_SERVER_URL)
@@ -26,10 +25,10 @@ async function getWalineHandler(): Promise<Handler | null> {
     // Dynamic import to avoid loading SQLite3 when not needed
     const { default: Waline } = await import('@waline/vercel')
     walineInstance = Waline({
-      async postSave(_comment: Record<string, unknown>) {
+      async postSave() {
         console.log('Comment saved')
       },
-      async postDelete(_commentId: string) {
+      async postDelete() {
         console.log('Comment deleted')
       },
       async postUpdate() {},
@@ -40,9 +39,6 @@ async function getWalineHandler(): Promise<Handler | null> {
     return null
   }
 }
-
-// Create a Hono app to handle Waline routes
-const walineApp = new Hono()
 
 // Handler that lazily loads Waline
 export const walineHandler: Handler = async (c, next) => {

@@ -129,17 +129,8 @@ auth.post('/linuxdo/callback', async (c) => {
     return c.json({ error: 'Your Linux DO account is not active or has been silenced' }, 403)
   }
 
-  // Check if this Linux DO account is already bound to an admin user
-  const existingUser = await db.user.findFirst({
-    where: {
-      oauthProvider: 'linuxdo',
-      oauthId: String(userData.id),
-    },
-  })
-
-  // Only existing users with isAdmin=true can be admin via Linux DO login
-  // New users are always non-admin (must bind via admin panel first)
-  const isAdmin = existingUser?.isAdmin ?? false
+  // Only existing users with isAdmin=true can be admin via Linux DO login.
+  // New users are always non-admin (must bind via admin panel first).
 
   // Find or create user in database
   const user = await db.user.upsert({

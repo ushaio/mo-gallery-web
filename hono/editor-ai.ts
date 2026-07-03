@@ -33,10 +33,6 @@ const ConversationUpdateSchema = z.object({
   systemPrompt: z.string().max(2000).optional().nullable(),
 })
 
-const ConversationListSchema = z.object({
-  scopeId: z.string().min(1).max(120),
-})
-
 const GenerateEditorAiSchema = z.object({
   conversationId: z.string().min(1),
   action: z.enum(['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']).optional(),

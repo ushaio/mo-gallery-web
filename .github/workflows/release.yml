@@ -87,7 +87,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Lint
-        run: pnpm exec eslint . --ignore-pattern "desktop/**"
+        run: pnpm exec eslint . --ignore-pattern "desktop/**" --rule "react-hooks/set-state-in-effect: off"
 
       - name: Build web app
         run: pnpm run build

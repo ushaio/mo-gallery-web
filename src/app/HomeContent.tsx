@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowRight, Sparkles } from 'lucide-react'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
@@ -11,6 +11,14 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 const PARTICLE_COUNT = 20
+
+type Particle = {
+  id: number
+  x: number
+  y: number
+  duration: number
+  delay: number
+}
 
 interface HomeContentProps {
   initialPhotos: PhotoDto[]
@@ -23,7 +31,7 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
   const siteAuthor = envConfig.siteAuthor
 
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0)
-  const [isMounted, setIsMounted] = useState(false)
+  const [particles, setParticles] = useState<Particle[]>([])
 
   const heroRef = useRef<HTMLElement>(null)
   const { scrollYProgress } = useScroll({
@@ -35,19 +43,18 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
   const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 1.1])
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 100])
 
-  const particles = useMemo(() => {
-    if (!isMounted) return []
-    return Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
-      id: i,
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      duration: Math.random() * 10 + 10,
-      delay: Math.random() * 5,
-    }))
-  }, [isMounted])
-
   useEffect(() => {
-    setIsMounted(true)
+    const frame = window.requestAnimationFrame(() => {
+      setParticles(Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+        id: i,
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        duration: Math.random() * 10 + 10,
+        delay: Math.random() * 5,
+      })))
+    })
+
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   useEffect(() => {
@@ -102,7 +109,7 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
           )}
         </AnimatePresence>
 
-        {isMounted && (
+        {particles.length > 0 && (
           <div className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
             {particles.map((particle) => (
               <motion.div
