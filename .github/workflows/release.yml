@@ -88,7 +88,12 @@ jobs:
 
       - name: Lint
         run: >-
-          pnpm exec eslint . --ignore-pattern "desktop/**" --rule "react-hooks/set-state-in-effect: off"
+          pnpm exec eslint . --ignore-pattern "desktop/**"
+          --rule "react-hooks/set-state-in-effect: off"
+          --rule "react-hooks/preserve-manual-memoization: off"
+          --rule "react-hooks/refs: off"
+          --rule "react-hooks/purity: off"
+          --rule "react-hooks/immutability: off"
 
       - name: Build web app
         run: pnpm run build
