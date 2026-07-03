@@ -27,18 +27,20 @@ type Config struct {
 
 // AIConfig AI 服务配置
 type AIConfig struct {
-	BaseURL      string                      `json:"base_url,omitempty"` // 旧版单源配置
-	APIKey       string                      `json:"api_key,omitempty"`  // 旧版单源配置
-	Model        string                      `json:"model,omitempty"`    // 旧版单源配置
-	DefaultModel string                      `json:"default_model"`      // provider:model
-	Providers    map[string]AIProviderConfig `json:"providers"`
+	BaseURL           string                      `json:"base_url,omitempty"`            // 旧版单源配置
+	APIKey            string                      `json:"api_key,omitempty"`             // 旧版单源配置
+	Model             string                      `json:"model,omitempty"`               // 旧版单源配置
+	DefaultModel      string                      `json:"default_model"`                 // provider:model
+	DefaultImageModel string                      `json:"default_image_model,omitempty"` // provider:model
+	Providers         map[string]AIProviderConfig `json:"providers"`
 }
 
 // AIProviderConfig AI 模型源配置
 type AIProviderConfig struct {
-	BaseURL string   `json:"base_url"`
-	APIKey  string   `json:"api_key"`
-	Models  []string `json:"models"`
+	BaseURL     string   `json:"base_url"`
+	APIKey      string   `json:"api_key"`
+	Models      []string `json:"models"`
+	ImageModels []string `json:"image_models,omitempty"`
 }
 
 // Normalize 迁移旧版单源配置并补齐默认值
@@ -75,6 +77,24 @@ func (c AIConfig) ResolveModel(selected string) (string, AIProviderConfig, strin
 	if selected == "" {
 		selected = c.DefaultModel
 	}
+	return c.resolveModel(selected, false)
+}
+
+// ResolveImageModel 根据 provider:model 选择图像模型源和实际模型名
+func (c AIConfig) ResolveImageModel(selected string) (string, AIProviderConfig, string, error) {
+	if selected == "" {
+		selected = c.DefaultImageModel
+	}
+	return c.resolveModel(selected, true)
+}
+
+func (c AIConfig) resolveModel(selected string, image bool) (string, AIProviderConfig, string, error) {
+	if selected == "" {
+		if image {
+			return "", AIProviderConfig{}, "", errors.New("未配置默认图像模型")
+		}
+		return "", AIProviderConfig{}, "", errors.New("未配置默认 AI 模型")
+	}
 	providerID, model, ok := strings.Cut(selected, ":")
 	if !ok || providerID == "" || model == "" {
 		return "", AIProviderConfig{}, "", errors.New("AI 模型必须使用 provider:model 格式")
@@ -86,7 +106,19 @@ func (c AIConfig) ResolveModel(selected string) (string, AIProviderConfig, strin
 	if provider.BaseURL == "" || provider.APIKey == "" || model == "" {
 		return "", AIProviderConfig{}, "", errors.New("AI 服务未配置")
 	}
+	if image && len(provider.ImageModels) > 0 && !containsString(provider.ImageModels, model) {
+		return "", AIProviderConfig{}, "", fmt.Errorf("图像模型未在 image_models 中配置: %s", selected)
+	}
 	return providerID, provider, model, nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 // DatabaseConfig 数据库配置
@@ -112,11 +144,11 @@ func (d DatabaseConfig) DSN() string {
 
 // APIConfig 外部 API 配置
 type APIConfig struct {
-	BaseURL       string `json:"base_url"`        // mo-gallery-web API 地址
-	JWTSecret     string `json:"jwt_secret"`      // JWT 密钥（需与 Web 端一致）
-	RememberLogin bool   `json:"remember_login"`  // 是否记住登录凭据
-	SavedUsername string `json:"saved_username"`  // 保存的用户名
-	SavedPassword string `json:"saved_password"`  // 保存的密码（AES-256-GCM 加密）
+	BaseURL       string `json:"base_url"`       // mo-gallery-web API 地址
+	JWTSecret     string `json:"jwt_secret"`     // JWT 密钥（需与 Web 端一致）
+	RememberLogin bool   `json:"remember_login"` // 是否记住登录凭据
+	SavedUsername string `json:"saved_username"` // 保存的用户名
+	SavedPassword string `json:"saved_password"` // 保存的密码（AES-256-GCM 加密）
 }
 
 // UIConfig 界面配置
@@ -172,6 +204,11 @@ func configDir() string {
 		dir = filepath.Join(os.Getenv("HOME"), ".config", "mo-gallery-desktop")
 	}
 	return dir
+}
+
+// ConfigDir 返回应用配置目录。
+func ConfigDir() string {
+	return configDir()
 }
 
 // configPath 返回配置文件完整路径

@@ -17,7 +17,7 @@ export interface UploadTask {
 interface UploadQueueContextType {
   tasks: UploadTask[]
   isUploading: boolean
-  addTasks: (files: Array<{ filePath: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => void
+  addTasks: (files: Array<{ filePath: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => UploadTask[]
   retryTask: (taskId: string) => void
   retryAllFailed: () => void
   removeTask: (taskId: string) => void
@@ -61,7 +61,14 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const uploadSingleFile = useCallback(async (task: UploadTask, settings: UploadSettings) => {
-    updateTask(task.id, { status: 'uploading', progress: 0 })
+    let progressTimer: number | undefined
+    updateTask(task.id, { status: 'uploading', progress: 5 })
+    progressTimer = window.setInterval(() => {
+      setTasks(prev => prev.map(t => {
+        if (t.id !== task.id || t.status !== 'uploading') return t
+        return { ...t, progress: Math.min(95, t.progress + Math.max(1, Math.round((95 - t.progress) * 0.08))) }
+      }))
+    }, 500)
     try {
       const hash = hashesRef.current.get(task.filePath) || ''
       const exif = exifsRef.current.get(task.filePath) || null
@@ -95,6 +102,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     } catch (err: any) {
       updateTask(task.id, { status: 'failed', progress: 0, error: err?.message || '上传异常' })
     } finally {
+      if (progressTimer) window.clearInterval(progressTimer)
       activeCountRef.current--
       processQueue()
     }
@@ -142,6 +150,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     setTasks(prev => [...prev, ...newTasks])
     setIsUploading(true)
     setTimeout(processQueue, 0)
+    return newTasks
   }, [processQueue])
 
   const retryTask = useCallback((taskId: string) => {

@@ -188,10 +188,14 @@ export interface AiImageUploadResult {
 export interface StoryAiModelOption {
   id: string
   label: string
+  provider?: string
+  model?: string
+  capabilities?: Array<'chat' | 'image'>
 }
 
 export interface StoryAiModelsResponse {
   defaultModel: string
+  defaultImageModel?: string
   models: StoryAiModelOption[]
 }
 
@@ -246,6 +250,24 @@ export interface EditorAiConversationsQuery {
 
 export type EditorAiGenerateInput = StoryAiGenerateInput & {
   conversationId: string
+  generateImage?: boolean
+  imageModel?: string
+  imageSize?: string
+}
+
+export interface AiImageMetadata {
+  type: 'image'
+  localPath?: string
+  uploadedUrl?: string | null
+  photoId?: string | null
+  prompt: string
+  provider?: string
+  model?: string
+  size?: string
+  mimeType?: string
+  revisedPrompt?: string
+  generatedAt?: string
+  source?: string
 }
 
 export interface BlogDto {

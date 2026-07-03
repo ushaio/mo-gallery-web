@@ -492,6 +492,12 @@ func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 func (a *App) GetStoryAiProviderModels(providerID string) (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetProviderModels(providerID)
 }
+func (a *App) GetAiImageDataURL(messageId string) (string, error) {
+	return a.EditorAi.GetImageDataURL(messageId)
+}
+func (a *App) SaveAiImageToAlbum(messageId string) (*services.PhotoDTO, error) {
+	return a.EditorAi.SaveImageToAlbum(messageId, a.Upload)
+}
 
 // ─── Overview ─────────────────────────────────────────
 

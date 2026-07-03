@@ -9,17 +9,17 @@ import (
 // ─── User ────────────────────────────────────────────
 
 type User struct {
-	ID             string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Username       string     `gorm:"type:text;uniqueIndex" json:"username"`
-	Password       *string    `gorm:"type:text" json:"password,omitempty"`
-	OAuthProvider  *string    `gorm:"type:text" json:"oauthProvider,omitempty"`
-	OAuthID        *string    `gorm:"type:text" json:"oauthId,omitempty"`
-	OAuthUsername  *string    `gorm:"type:text" json:"oauthUsername,omitempty"`
-	AvatarURL      *string    `gorm:"type:text" json:"avatarUrl,omitempty"`
-	TrustLevel     *int       `json:"trustLevel,omitempty"`
-	IsAdmin        bool       `gorm:"default:false" json:"isAdmin"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID            string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Username      string    `gorm:"type:text;uniqueIndex" json:"username"`
+	Password      *string   `gorm:"type:text" json:"password,omitempty"`
+	OAuthProvider *string   `gorm:"type:text" json:"oauthProvider,omitempty"`
+	OAuthID       *string   `gorm:"type:text" json:"oauthId,omitempty"`
+	OAuthUsername *string   `gorm:"type:text" json:"oauthUsername,omitempty"`
+	AvatarURL     *string   `gorm:"type:text" json:"avatarUrl,omitempty"`
+	TrustLevel    *int      `json:"trustLevel,omitempty"`
+	IsAdmin       bool      `gorm:"default:false" json:"isAdmin"`
+	CreatedAt     time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt     time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 func (User) TableName() string { return "User" }
@@ -47,44 +47,44 @@ func (Lens) TableName() string { return "Lens" }
 // ─── Photo ───────────────────────────────────────────
 
 type Photo struct {
-	ID              string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Title           string     `gorm:"type:text" json:"title"`
-	URL             string     `gorm:"type:text" json:"url"`
-	ThumbnailURL    *string    `gorm:"type:text" json:"thumbnailUrl,omitempty"`
-	OriginFlag      string     `gorm:"type:text;default:web" json:"originFlag"`
-	StorageProvider string     `gorm:"type:text;default:local" json:"storageProvider"`
-	StorageSourceID *string    `gorm:"type:text" json:"storageSourceId,omitempty"`
-	StorageKey      *string    `gorm:"type:text" json:"storageKey,omitempty"`
-	Width           int        `json:"width"`
-	Height          int        `json:"height"`
-	Size            *int64     `json:"size,omitempty"`
-	IsFeatured      bool       `gorm:"default:false" json:"isFeatured"`
-	ShowFlag        bool       `gorm:"default:true" json:"showFlag"`
-	DominantColors  *string    `gorm:"type:text" json:"dominantColors,omitempty"`
-	FileHash        *string    `gorm:"type:text" json:"fileHash,omitempty"`
-	CreatedAt       time.Time  `gorm:"autoCreateTime" json:"createdAt"`
+	ID              string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Title           string    `gorm:"type:text" json:"title"`
+	URL             string    `gorm:"type:text" json:"url"`
+	ThumbnailURL    *string   `gorm:"column:thumbnailUrl;type:text" json:"thumbnailUrl,omitempty"`
+	OriginFlag      string    `gorm:"column:originFlag;type:text;default:web" json:"originFlag"`
+	StorageProvider string    `gorm:"column:storageProvider;type:text;default:local" json:"storageProvider"`
+	StorageSourceID *string   `gorm:"column:storageSourceId;type:text" json:"storageSourceId,omitempty"`
+	StorageKey      *string   `gorm:"column:storageKey;type:text" json:"storageKey,omitempty"`
+	Width           int       `json:"width"`
+	Height          int       `json:"height"`
+	Size            *int64    `json:"size,omitempty"`
+	IsFeatured      bool      `gorm:"column:isFeatured;default:false" json:"isFeatured"`
+	ShowFlag        bool      `gorm:"column:showFlag;default:true" json:"showFlag"`
+	DominantColors  *string   `gorm:"column:dominantColors;type:text" json:"dominantColors,omitempty"`
+	FileHash        *string   `gorm:"column:fileHash;type:text" json:"fileHash,omitempty"`
+	CreatedAt       time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 
 	// 设备外键
-	CameraID *string `gorm:"type:text" json:"cameraId,omitempty"`
-	LensID   *string `gorm:"type:text" json:"lensId,omitempty"`
+	CameraID *string `gorm:"column:cameraId;type:text" json:"cameraId,omitempty"`
+	LensID   *string `gorm:"column:lensId;type:text" json:"lensId,omitempty"`
 
 	// EXIF 信息
-	CameraMake   *string    `gorm:"type:text" json:"cameraMake,omitempty"`
-	CameraModel  *string    `gorm:"type:text" json:"cameraModel,omitempty"`
-	LensModel    *string    `gorm:"type:text" json:"lensModel,omitempty"`
-	FocalLength  *string    `gorm:"type:text" json:"focalLength,omitempty"`
+	CameraMake   *string    `gorm:"column:cameraMake;type:text" json:"cameraMake,omitempty"`
+	CameraModel  *string    `gorm:"column:cameraModel;type:text" json:"cameraModel,omitempty"`
+	LensModel    *string    `gorm:"column:lensModel;type:text" json:"lensModel,omitempty"`
+	FocalLength  *string    `gorm:"column:focalLength;type:text" json:"focalLength,omitempty"`
 	Aperture     *string    `gorm:"type:text" json:"aperture,omitempty"`
-	ShutterSpeed *string    `gorm:"type:text" json:"shutterSpeed,omitempty"`
+	ShutterSpeed *string    `gorm:"column:shutterSpeed;type:text" json:"shutterSpeed,omitempty"`
 	ISO          *int       `json:"iso,omitempty"`
-	TakenAt      *time.Time `json:"takenAt,omitempty"`
+	TakenAt      *time.Time `gorm:"column:takenAt" json:"takenAt,omitempty"`
 	Orientation  *int       `json:"orientation,omitempty"`
 	Software     *string    `gorm:"type:text" json:"software,omitempty"`
-	ExifRaw      *string    `gorm:"type:text" json:"exifRaw,omitempty"`
+	ExifRaw      *string    `gorm:"column:exifRaw;type:text" json:"exifRaw,omitempty"`
 	GPS          *string    `gorm:"type:text" json:"gps,omitempty"` // JSON string
 
 	// 关联
-	Camera    *Camera    `gorm:"foreignKey:CameraID" json:"camera,omitempty"`
-	Lens      *Lens      `gorm:"foreignKey:LensID" json:"lens,omitempty"`
+	Camera     *Camera    `gorm:"foreignKey:CameraID" json:"camera,omitempty"`
+	Lens       *Lens      `gorm:"foreignKey:LensID" json:"lens,omitempty"`
 	Categories []Category `gorm:"many2many:PhotoCategories" json:"categories,omitempty"`
 	Albums     []Album    `gorm:"many2many:AlbumPhotos" json:"albums,omitempty"`
 	Stories    []Story    `gorm:"many2many:PhotoStories" json:"stories,omitempty"`
@@ -135,11 +135,11 @@ type Album struct {
 	ID          string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Name        string    `gorm:"type:text" json:"name"`
 	Description *string   `gorm:"type:text" json:"description,omitempty"`
-	CoverURL    *string   `gorm:"type:text" json:"coverUrl,omitempty"`
-	IsPublished bool      `gorm:"default:false" json:"isPublished"`
-	SortOrder   int       `gorm:"default:0" json:"sortOrder"`
-	CreatedAt   time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	CoverURL    *string   `gorm:"column:coverUrl;type:text" json:"coverUrl,omitempty"`
+	IsPublished bool      `gorm:"column:isPublished;default:false" json:"isPublished"`
+	SortOrder   int       `gorm:"column:sortOrder;default:0" json:"sortOrder"`
+	CreatedAt   time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
 	Photos []Photo `gorm:"many2many:AlbumPhotos" json:"photos,omitempty"`
 }
@@ -190,16 +190,16 @@ func (StorageSource) TableName() string { return "StorageSource" }
 // ─── Story ───────────────────────────────────────────
 
 type Story struct {
-	ID           string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Title        string     `gorm:"type:text" json:"title"`
-	Content      string     `gorm:"type:text" json:"content"`
-	ContentJSON  *string    `gorm:"type:text" json:"contentJson,omitempty"`
-	CoverPhotoID *string    `gorm:"type:text" json:"coverPhotoId,omitempty"`
-	CoverCrop    *string    `gorm:"type:text" json:"coverCrop,omitempty"` // JSON string
-	IsPublished  bool       `gorm:"default:false" json:"isPublished"`
-	StoryDate    time.Time  `gorm:"autoCreateTime" json:"storyDate"`
-	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID           string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Title        string    `gorm:"type:text" json:"title"`
+	Content      string    `gorm:"type:text" json:"content"`
+	ContentJSON  *string   `gorm:"column:contentJson;type:text" json:"contentJson,omitempty"`
+	CoverPhotoID *string   `gorm:"column:coverPhotoId;type:text" json:"coverPhotoId,omitempty"`
+	CoverCrop    *string   `gorm:"column:coverCrop;type:text" json:"coverCrop,omitempty"` // JSON string
+	IsPublished  bool      `gorm:"column:isPublished;default:false" json:"isPublished"`
+	StoryDate    time.Time `gorm:"column:storyDate;autoCreateTime" json:"storyDate"`
+	CreatedAt    time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt    time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
 	Photos []Photo `gorm:"many2many:PhotoStories" json:"photos,omitempty"`
 }
@@ -228,15 +228,15 @@ func (Comment) TableName() string { return "Comment" }
 // ─── Blog ────────────────────────────────────────────
 
 type Blog struct {
-	ID          string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Title       string     `gorm:"type:text" json:"title"`
-	Content     string     `gorm:"type:text" json:"content"`
-	ContentJSON *string    `gorm:"type:text" json:"contentJson,omitempty"`
-	Category    string     `gorm:"type:text;default:未分类" json:"category"`
-	Tags        string     `gorm:"type:text;default:" json:"tags"`
-	IsPublished bool       `gorm:"default:false" json:"isPublished"`
-	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID          string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Title       string    `gorm:"type:text" json:"title"`
+	Content     string    `gorm:"type:text" json:"content"`
+	ContentJSON *string   `gorm:"column:contentJson;type:text" json:"contentJson,omitempty"`
+	Category    string    `gorm:"type:text;default:未分类" json:"category"`
+	Tags        string    `gorm:"type:text;default:" json:"tags"`
+	IsPublished bool      `gorm:"column:isPublished;default:false" json:"isPublished"`
+	CreatedAt   time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 }
 
 func (Blog) TableName() string { return "Blog" }

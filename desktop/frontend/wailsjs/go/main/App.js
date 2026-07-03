@@ -114,6 +114,10 @@ export function GetAiHttpPort() {
   return window['go']['main']['App']['GetAiHttpPort']();
 }
 
+export function GetAiImageDataURL(arg1) {
+  return window['go']['main']['App']['GetAiImageDataURL'](arg1);
+}
+
 export function GetAlbum(arg1) {
   return window['go']['main']['App']['GetAlbum'](arg1);
 }
@@ -124,6 +128,10 @@ export function GetAlbums() {
 
 export function GetAllPhotos() {
   return window['go']['main']['App']['GetAllPhotos']();
+}
+
+export function GetApiConfig() {
+  return window['go']['main']['App']['GetApiConfig']();
 }
 
 export function GetBlog(arg1) {
@@ -230,12 +238,16 @@ export function GetStoryAiModels() {
   return window['go']['main']['App']['GetStoryAiModels']();
 }
 
+export function GetStoryAiProviderModels(arg1) {
+  return window['go']['main']['App']['GetStoryAiProviderModels'](arg1);
+}
+
 export function IsLinuxDoEnabled() {
   return window['go']['main']['App']['IsLinuxDoEnabled']();
 }
 
-export function Login(arg1, arg2, arg3) {
-  return window['go']['main']['App']['Login'](arg1, arg2, arg3);
+export function Login(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function OpenLogDir() {
@@ -260,6 +272,10 @@ export function ReorderFilmRollFrames(arg1) {
 
 export function ReorderStoryPhotos(arg1, arg2) {
   return window['go']['main']['App']['ReorderStoryPhotos'](arg1, arg2);
+}
+
+export function SaveAiImageToAlbum(arg1) {
+  return window['go']['main']['App']['SaveAiImageToAlbum'](arg1);
 }
 
 export function ScanStorage(arg1) {

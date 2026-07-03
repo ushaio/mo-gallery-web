@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
+import type { UploadTask } from '@/contexts/UploadQueueContext'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import {
   Upload, X, CheckCircle, AlertCircle, Loader2, FileImage,
@@ -32,8 +33,10 @@ interface PreparedFile {
 interface UploadItem {
   file: PreparedFile
   status: 'pending' | 'uploading' | 'done' | 'error' | 'duplicate'
+  progress: number
   error?: string
   photoId?: string
+  uploadTaskId?: string
 }
 
 interface UploadSettings {
@@ -52,32 +55,63 @@ interface UploadSettings {
 
 type UploadType = 'digital' | 'film'
 
+const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
+  title: '',
+  categories: [],
+  albumIds: [],
+  storyId: '',
+  filmRollId: '',
+  storageSourceId: '',
+  storagePath: '',
+  compressEnabled: true,
+  maxSizeMB: 0,
+  showFlag: true,
+  stripGPS: false,
+}
+
+interface UploadPageDraftState {
+  items: UploadItem[]
+  uploadType: UploadType
+  settings: UploadSettings
+  selectedIds: string[]
+  categoryInput: string
+  useCustomPrefix: boolean
+}
+
+let uploadPageDraftState: UploadPageDraftState = {
+  items: [],
+  uploadType: 'digital',
+  settings: DEFAULT_UPLOAD_SETTINGS,
+  selectedIds: [],
+  categoryInput: '',
+  useCustomPrefix: false,
+}
+
 export function UploadPage() {
   const { language } = usePreferences()
-  const { addTasks } = useUploadQueue()
-  const [items, setItems] = useState<UploadItem[]>([])
-  const [uploadType, setUploadType] = useState<UploadType>('digital')
-  const [settings, setSettings] = useState<UploadSettings>({
-    title: '',
-    categories: [],
-    albumIds: [],
-    storyId: '',
-    filmRollId: '',
-    storageSourceId: '',
-    storagePath: '',
-    compressEnabled: false,
-    maxSizeMB: 0,
-    showFlag: true,
-    stripGPS: false,
-  })
+  const { tasks, addTasks } = useUploadQueue()
+  const [items, setItems] = useState<UploadItem[]>(() => uploadPageDraftState.items)
+  const [uploadType, setUploadType] = useState<UploadType>(() => uploadPageDraftState.uploadType)
+  const [settings, setSettings] = useState<UploadSettings>(() => uploadPageDraftState.settings)
   const [preparing, setPreparing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [categoryInput, setCategoryInput] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(uploadPageDraftState.selectedIds))
+  const [categoryInput, setCategoryInput] = useState(() => uploadPageDraftState.categoryInput)
   const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null)
-  const [useCustomPrefix, setUseCustomPrefix] = useState(false)
+  const [useCustomPrefix, setUseCustomPrefix] = useState(() => uploadPageDraftState.useCustomPrefix)
   const [showPrefixDropdown, setShowPrefixDropdown] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    uploadPageDraftState = {
+      items,
+      uploadType,
+      settings,
+      selectedIds: Array.from(selectedIds),
+      categoryInput,
+      useCustomPrefix,
+    }
+  }, [items, uploadType, settings, selectedIds, categoryInput, useCustomPrefix])
 
   // Wails 原生文件拖放（可获取完整路径）
   useEffect(() => {
@@ -190,6 +224,7 @@ export function UploadPage() {
       const newItems: UploadItem[] = prepared.map(f => ({
         file: f,
         status: f.error ? 'error' : (duplicates[f.hash] ? 'duplicate' : 'pending'),
+        progress: f.error || duplicates[f.hash] ? 100 : 0,
         error: f.error || (duplicates[f.hash] ? `已存在: ${duplicates[f.hash].title || ''}` : undefined),
       }))
       setItems(prev => [...prev, ...newItems])
@@ -204,7 +239,7 @@ export function UploadPage() {
     const pending = items.filter(i => i.status === 'pending')
     if (pending.length === 0) return
 
-    addTasks(
+    const newTasks = addTasks(
       pending.map(item => ({
         filePath: item.file.filePath,
         fileName: item.file.fileName,
@@ -227,10 +262,30 @@ export function UploadPage() {
       }
     )
 
-    // 清空已提交的文件列表
-    setItems([])
+    const taskByPath = new Map(newTasks.map(task => [task.filePath, task]))
+    setItems(prev => prev.map(item => {
+      const task = taskByPath.get(item.file.filePath)
+      return task ? { ...item, status: 'uploading', progress: task.progress, error: undefined, uploadTaskId: task.id } : item
+    }))
     setSelectedIds(new Set())
   }
+
+  useEffect(() => {
+    if (tasks.length === 0) return
+    const taskById = new Map(tasks.map(task => [task.id, task]))
+    setItems(prev => prev.map(item => {
+      if (!item.uploadTaskId) return item
+      const task = taskById.get(item.uploadTaskId)
+      if (!task) return item
+      return {
+        ...item,
+        status: mapUploadTaskStatus(task),
+        progress: task.status === 'completed' ? 100 : task.progress,
+        error: task.error,
+        photoId: task.photoId,
+      }
+    }))
+  }, [tasks])
 
   const removeItem = (filePath: string) => {
     setItems(prev => prev.filter(i => i.file.filePath !== filePath))
@@ -691,6 +746,12 @@ function PreviewModal({ filePath, fileName, onClose }: { filePath: string; fileN
   )
 }
 
+function mapUploadTaskStatus(task: UploadTask): UploadItem['status'] {
+  if (task.status === 'completed') return 'done'
+  if (task.status === 'failed') return 'error'
+  return task.status
+}
+
 // ─── FileItem ─────────────────────────────────────────
 
 function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
@@ -714,12 +775,27 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
     duplicate: <AlertCircle size={14} className="text-yellow-500" />,
   }[item.status]
 
-  return (
-    <div className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${selected ? 'bg-primary/5' : 'hover:bg-muted/30'}`}>
-      <GripVertical size={12} style={{ color: 'var(--muted-foreground)' }} className="opacity-0 group-hover:opacity-40 transition-opacity shrink-0 cursor-grab" />
-      <input type="checkbox" checked={selected} onChange={onSelect} className="rounded shrink-0" />
+  const progress = Math.max(0, Math.min(100, item.progress ?? 0))
+  const progressColor = {
+    pending: 'transparent',
+    uploading: 'color-mix(in srgb, var(--primary) 22%, transparent)',
+    done: 'rgba(34, 197, 94, 0.18)',
+    error: 'color-mix(in srgb, var(--destructive) 18%, transparent)',
+    duplicate: 'rgba(234, 179, 8, 0.18)',
+  }[item.status]
 
-      <div className="w-10 h-10 rounded-md overflow-hidden shrink-0 relative group/thumb" style={{ backgroundColor: 'var(--muted)' }}>
+  return (
+    <div className={`group relative overflow-hidden flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${selected ? 'bg-primary/5' : 'hover:bg-muted/30'}`}>
+      {progress > 0 && (
+        <div
+          className="absolute inset-y-0 left-0 pointer-events-none transition-all duration-300"
+          style={{ width: `${progress}%`, backgroundColor: progressColor }}
+        />
+      )}
+      <GripVertical size={12} style={{ color: 'var(--muted-foreground)' }} className="relative z-10 opacity-0 group-hover:opacity-40 transition-opacity shrink-0 cursor-grab" />
+      <input type="checkbox" checked={selected} onChange={onSelect} className="relative z-10 rounded shrink-0" />
+
+      <div className="relative z-10 w-10 h-10 rounded-md overflow-hidden shrink-0 group/thumb" style={{ backgroundColor: 'var(--muted)' }}>
         {thumbnail ? <img src={thumbnail} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={14} style={{ color: 'var(--muted-foreground)' }} className="opacity-30" /></div>}
         <button onClick={onPreview}
           className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity rounded-md">
@@ -727,10 +803,11 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
         </button>
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="relative z-10 flex-1 min-w-0">
         <p className="text-sm truncate">{item.file.fileName}</p>
         <p className="text-[11px] font-mono" style={{ color: 'var(--muted-foreground)' }}>
           {formatSize(item.file.fileSize)}
+          {item.status === 'uploading' && ` · ${progress}%`}
           {item.file.exif?.cameraModel && ` · ${item.file.exif.cameraModel}`}
           {item.file.exif?.focalLength && ` · ${item.file.exif.focalLength}`}
           {item.file.exif?.aperture && ` · ${item.file.exif.aperture}`}
@@ -739,7 +816,7 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
         {item.error && <p className="text-[11px] mt-0.5" style={{ color: item.status === 'duplicate' ? '#eab308' : 'var(--destructive)' }}>{item.error}</p>}
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="relative z-10 flex items-center gap-1.5 shrink-0">
         {statusIcon}
         <button onClick={onRemove} className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all" style={{ color: 'var(--muted-foreground)' }}>
           <X size={12} />

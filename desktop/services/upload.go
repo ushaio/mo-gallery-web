@@ -63,11 +63,11 @@ type UploadSettings struct {
 
 // UploadResult 单张上传结果
 type UploadResult struct {
-	FilePath    string    `json:"filePath"`
-	Success     bool      `json:"success"`
-	Photo       *PhotoDTO `json:"photo,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	IsDuplicate bool      `json:"isDuplicate,omitempty"`
+	FilePath    string         `json:"filePath"`
+	Success     bool           `json:"success"`
+	Photo       *PhotoDTO      `json:"photo,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	IsDuplicate bool           `json:"isDuplicate,omitempty"`
 	Existing    *DuplicateInfo `json:"existing,omitempty"`
 }
 
@@ -145,9 +145,13 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		title = filepath.Base(filePath)
 	}
 
+	originFlag := settings.OriginFlag
+	if originFlag == "" {
+		originFlag = "desktop"
+	}
 	fields := map[string]string{
-		"title":      title,
-		"origin_flag": "desktop",
+		"title":       title,
+		"origin_flag": originFlag,
 	}
 
 	if len(settings.Categories) > 0 {
@@ -186,11 +190,16 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 
 	// EXIF 数据序列化为 JSON 字符串
 	if exifData != nil {
-		exifJSON := fmt.Sprintf(`{"cameraMake":%q,"cameraModel":%q,"lensModel":%q,"focalLength":%q,"aperture":%q,"shutterSpeed":%q,"iso":%d,"takenAt":%q,"orientation":%d,"software":%q,"gps":%q}`,
+		gpsJSON := "null"
+		if exifData.GPS != nil {
+			gpsJSON = fmt.Sprintf(`{"latitude":%f,"longitude":%f,"altitude":%f,"dateStamp":%q}`,
+				exifData.GPS.Latitude, exifData.GPS.Longitude, exifData.GPS.Altitude, exifData.GPS.DateStamp)
+		}
+		exifJSON := fmt.Sprintf(`{"cameraMake":%q,"cameraModel":%q,"lensModel":%q,"focalLength":%q,"aperture":%q,"shutterSpeed":%q,"iso":%d,"takenAt":%q,"orientation":%d,"software":%q,"gps":%s}`,
 			exifData.CameraMake, exifData.CameraModel, exifData.LensModel,
 			exifData.FocalLength, exifData.Aperture, exifData.ShutterSpeed,
 			exifData.ISO, exifData.TakenAt, exifData.Orientation,
-			exifData.Software, exifData.GPS)
+			exifData.Software, gpsJSON)
 		fields["exif_json"] = exifJSON
 	}
 
@@ -200,10 +209,10 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	}
 
 	var apiResp struct {
-		Success bool      `json:"success"`
-		Data    PhotoDTO  `json:"data"`
-		Error   string    `json:"error"`
-		Message string    `json:"message"`
+		Success bool     `json:"success"`
+		Data    PhotoDTO `json:"data"`
+		Error   string   `json:"error"`
+		Message string   `json:"message"`
 	}
 
 	if err := s.proxy.POSTMultipart("/admin/photos", fields, files, &apiResp); err != nil {
@@ -240,4 +249,3 @@ func fileHash(path string) (string, error) {
 	}
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
-

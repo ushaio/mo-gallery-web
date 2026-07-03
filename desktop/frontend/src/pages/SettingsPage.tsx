@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { clearDesktopRuntimeCache, getDesktopCacheSnapshot } from '@/lib/app-cache'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { formatBytes } from '@/lib/utils'
 import { Skeleton } from '@/components/admin/Skeleton'
 import {
   Settings,
@@ -1031,13 +1032,6 @@ function CacheStat({ label, value, detail }: { label: string; value: string; det
   )
 }
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
-
 // ─── 通用组件 ────────────────────────────────────────
 
 const inputStyle = {
@@ -1073,22 +1067,63 @@ function Field({ label, description, children }: {
 
 // ─── Tab 6: AI 模型配置 ──────────────────────────────
 
+interface AiProviderConfig {
+  base_url: string
+  api_key: string
+  models: string[]
+}
+
+interface AiConfig {
+  default_model: string
+  providers: Record<string, AiProviderConfig>
+}
+
+const emptyAiProvider: AiProviderConfig = { base_url: '', api_key: '', models: [''] }
+
+function normalizeAiConfig(value: any): AiConfig {
+  const providers = value?.providers && typeof value.providers === 'object' ? value.providers : {}
+  return {
+    default_model: value?.default_model || value?.model || '',
+    providers: Object.fromEntries(Object.entries(providers).map(([id, provider]: [string, any]) => [
+      id,
+      {
+        base_url: provider?.base_url || '',
+        api_key: provider?.api_key || '',
+        models: Array.isArray(provider?.models) && provider.models.length > 0 ? provider.models : [''],
+      },
+    ])),
+  }
+}
+
+function buildAiConfigPayload(aiConfig: AiConfig): AiConfig {
+  const providers: Record<string, AiProviderConfig> = {}
+  for (const [providerId, provider] of Object.entries(aiConfig.providers)) {
+    const id = providerId.trim()
+    if (!id) continue
+    providers[id] = {
+      ...provider,
+      models: provider.models.map(model => model.trim()).filter(Boolean),
+    }
+  }
+  return { ...aiConfig, providers }
+}
+
 function AiTab() {
-  const [aiConfig, setAiConfig] = useState({ base_url: '', api_key: '', model: '' })
+  const [aiConfig, setAiConfig] = useState<AiConfig>({ default_model: '', providers: {} })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [showKey, setShowKey] = useState(false)
-  const [models, setModels] = useState<string[]>([])
-  const [fetchingModels, setFetchingModels] = useState(false)
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
+  const [fetchingProvider, setFetchingProvider] = useState<string | null>(null)
+  const [modelCandidates, setModelCandidates] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     setLoading(true)
     try {
       const result = (window as any).go?.main?.App?.GetAiConfig?.()
       if (result && typeof result.then === 'function') {
-        result.then((r: any) => { if (r) setAiConfig(r) }).finally(() => setLoading(false))
+        result.then((r: any) => { if (r) setAiConfig(normalizeAiConfig(r)) }).finally(() => setLoading(false))
       } else if (result) {
-        setAiConfig(result)
+        setAiConfig(normalizeAiConfig(result))
         setLoading(false)
       } else {
         setLoading(false)
@@ -1096,37 +1131,119 @@ function AiTab() {
     } catch { setLoading(false) }
   }, [])
 
-  const update = (key: string, value: string) => {
-    setAiConfig(prev => ({ ...prev, [key]: value }))
+  const providerIds = Object.keys(aiConfig.providers).sort()
+  const defaultOptions = providerIds.flatMap(providerId => (
+    aiConfig.providers[providerId].models
+      .filter(model => model.trim())
+      .map(model => ({ value: `${providerId}:${model.trim()}`, label: `${providerId} / ${model.trim()}` }))
+  ))
+
+  const updateProvider = (providerId: string, patch: Partial<AiProviderConfig>) => {
+    setAiConfig(prev => ({
+      ...prev,
+      providers: {
+        ...prev.providers,
+        [providerId]: { ...prev.providers[providerId], ...patch },
+      },
+    }))
+  }
+
+  const updateProviderId = (oldId: string, nextId: string) => {
+    const id = nextId.trim()
+    if (!id || id === oldId || aiConfig.providers[id]) return
+    setAiConfig(prev => {
+      const { [oldId]: provider, ...rest } = prev.providers
+      const defaultModel = prev.default_model.startsWith(`${oldId}:`)
+        ? `${id}:${prev.default_model.slice(oldId.length + 1)}`
+        : prev.default_model
+      return { ...prev, default_model: defaultModel, providers: { ...rest, [id]: provider } }
+    })
+    setModelCandidates(prev => {
+      const { [oldId]: candidates, ...rest } = prev
+      return candidates ? { ...rest, [id]: candidates } : rest
+    })
+  }
+
+  const addProvider = () => {
+    let index = providerIds.length + 1
+    let providerId = `provider${index}`
+    while (aiConfig.providers[providerId]) {
+      index += 1
+      providerId = `provider${index}`
+    }
+    setAiConfig(prev => ({
+      ...prev,
+      providers: { ...prev.providers, [providerId]: { ...emptyAiProvider } },
+    }))
+  }
+
+  const removeProvider = (providerId: string) => {
+    if (!confirm(`确定要删除模型源 ${providerId} 吗？`)) return
+    setAiConfig(prev => {
+      const { [providerId]: _removed, ...providers } = prev.providers
+      const default_model = prev.default_model.startsWith(`${providerId}:`) ? '' : prev.default_model
+      return { ...prev, default_model, providers }
+    })
+    setModelCandidates(prev => {
+      const { [providerId]: _removed, ...rest } = prev
+      return rest
+    })
+  }
+
+  const updateModel = (providerId: string, index: number, value: string) => {
+    const provider = aiConfig.providers[providerId]
+    const models = provider.models.map((model, i) => i === index ? value : model)
+    updateProvider(providerId, { models })
+  }
+
+  const addModel = (providerId: string) => {
+    const provider = aiConfig.providers[providerId]
+    updateProvider(providerId, { models: [...provider.models, ''] })
+  }
+
+  const removeModel = (providerId: string, index: number) => {
+    const provider = aiConfig.providers[providerId]
+    const removed = provider.models[index]
+    const models = provider.models.filter((_, i) => i !== index)
+    setAiConfig(prev => {
+      const defaultModel = prev.default_model === `${providerId}:${removed}` ? '' : prev.default_model
+      return {
+        ...prev,
+        default_model: defaultModel,
+        providers: {
+          ...prev.providers,
+          [providerId]: { ...provider, models: models.length > 0 ? models : [''] },
+        },
+      }
+    })
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      await (window as any).go.main.App.UpdateAiConfig(aiConfig)
+      await (window as any).go.main.App.UpdateAiConfig(buildAiConfigPayload(aiConfig))
       toast.success('配置已保存')
     } catch (err: any) {
       toast.error('保存失败: ' + (err?.message || '未知错误'))
     } finally { setSaving(false) }
   }
 
-  const handleFetchModels = async () => {
-    if (!aiConfig.base_url || !aiConfig.api_key) {
+  const handleFetchModels = async (providerId: string) => {
+    const provider = aiConfig.providers[providerId]
+    if (!provider?.base_url || !provider?.api_key) {
       toast.error('请先填写 API 地址和 Key')
       return
     }
-    setFetchingModels(true)
+    setFetchingProvider(providerId)
     try {
-      const result = await (window as any).go.main.App.GetStoryAiModels()
-      const list = result?.models?.map((m: any) => m.id) || []
-      setModels(list)
-      if (list.length > 0 && !list.includes(aiConfig.model)) {
-        setAiConfig(prev => ({ ...prev, model: result?.defaultModel || list[0] }))
-      }
+      await (window as any).go.main.App.UpdateAiConfig(buildAiConfigPayload(aiConfig))
+      const result = await (window as any).go.main.App.GetStoryAiProviderModels(providerId)
+      const list = result?.models?.map((m: any) => m.model || String(m.id || '').split(':').slice(1).join(':')).filter(Boolean) || []
+      setModelCandidates(prev => ({ ...prev, [providerId]: list }))
       toast.success(`获取到 ${list.length} 个模型`)
     } catch (err: any) {
       toast.error('获取模型失败: ' + (err?.message || '未知错误'))
-    } finally { setFetchingModels(false) }
+    } finally { setFetchingProvider(null) }
   }
 
   if (loading) {
@@ -1140,55 +1257,92 @@ function AiTab() {
   return (
     <div className="space-y-6">
       <Section title="模型配置">
-        <Field label="API 地址" description="OpenAI 兼容的 API 地址">
-          <input type="text" value={aiConfig.base_url}
-            onChange={e => update('base_url', e.target.value)}
-            placeholder="https://api.openai.com/v1"
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
-            style={inputStyle} />
-        </Field>
+        <div className="space-y-4">
+          {providerIds.length === 0 && (
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>暂无模型源，请先添加。</p>
+          )}
+          {providerIds.map(providerId => {
+            const provider = aiConfig.providers[providerId]
+            const showKey = showKeys[providerId] === true
+            const modelCandidateListId = `ai-model-candidates-${providerId.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+            const candidates = modelCandidates[providerId] || []
+            return (
+              <div key={providerId} className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-2">
+                  <input defaultValue={providerId} onBlur={e => updateProviderId(providerId, e.target.value)}
+                    className="flex-1 px-3 py-1.5 text-sm font-medium rounded border outline-none" style={inputStyle} />
+                  <button onClick={() => removeProvider(providerId)} className="p-1 rounded hover:opacity-80" style={{ color: 'var(--destructive)' }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
 
-        <Field label="API Key">
-          <div className="relative">
-            <input type={showKey ? 'text' : 'password'} value={aiConfig.api_key}
-              onChange={e => update('api_key', e.target.value)}
-              placeholder="sk-xxx"
-              className="w-full px-3 py-1.5 pr-9 text-sm rounded border outline-none"
-              style={inputStyle} />
-            <button type="button" onClick={() => setShowKey(!showKey)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
-              style={{ color: 'var(--muted-foreground)' }}>
-              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-        </Field>
+                <Field label="API 地址" description="OpenAI 兼容的 API 地址，如 https://api.openai.com/v1">
+                  <input type="text" value={provider.base_url}
+                    onChange={e => updateProvider(providerId, { base_url: e.target.value })}
+                    className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
+                </Field>
+
+                <Field label="API Key">
+                  <div className="relative">
+                    <input type={showKey ? 'text' : 'password'} value={provider.api_key}
+                      onChange={e => updateProvider(providerId, { api_key: e.target.value })}
+                      className="w-full px-3 py-1.5 pr-9 text-sm rounded border outline-none" style={inputStyle} />
+                    <button type="button" onClick={() => setShowKeys(prev => ({ ...prev, [providerId]: !showKey }))}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
+                      style={{ color: 'var(--muted-foreground)' }}>
+                      {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label="模型列表">
+                  <div className="space-y-2">
+                    {provider.models.map((model, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input value={model} onChange={e => updateModel(providerId, index, e.target.value)} placeholder="gpt-4o"
+                          list={candidates.length > 0 ? modelCandidateListId : undefined}
+                          className="flex-1 px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
+                        <button onClick={() => removeModel(providerId, index)} className="px-2 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    {candidates.length > 0 && (
+                      <datalist id={modelCandidateListId}>
+                        {candidates.map(model => <option key={model} value={model} />)}
+                      </datalist>
+                    )}
+                    <div className="flex gap-2">
+                      <button onClick={() => addModel(providerId)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                        <Plus size={14} /> 添加模型
+                      </button>
+                      <button onClick={() => handleFetchModels(providerId)} disabled={fetchingProvider === providerId}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                        {fetchingProvider === providerId ? <Loader2 size={12} className="animate-spin" /> : null}
+                        获取模型
+                      </button>
+                    </div>
+                  </div>
+                </Field>
+              </div>
+            )
+          })}
+        </div>
 
         <Field label="默认模型">
-          <div className="flex gap-2">
-            {models.length > 0 ? (
-              <select value={aiConfig.model}
-                onChange={e => update('model', e.target.value)}
-                className="flex-1 px-3 py-1.5 text-sm rounded border outline-none"
-                style={inputStyle}>
-                {models.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            ) : (
-              <input type="text" value={aiConfig.model}
-                onChange={e => update('model', e.target.value)}
-                placeholder="gpt-4o"
-                className="flex-1 px-3 py-1.5 text-sm rounded border outline-none"
-                style={inputStyle} />
-            )}
-            <button onClick={handleFetchModels} disabled={fetchingModels}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border shrink-0 disabled:opacity-50"
-              style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-              {fetchingModels ? <Loader2 size={12} className="animate-spin" /> : null}
-              获取模型
-            </button>
-          </div>
+          <select value={aiConfig.default_model} onChange={e => setAiConfig(prev => ({ ...prev, default_model: e.target.value }))}
+            className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle}>
+            <option value="">请选择默认模型</option>
+            {defaultOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
         </Field>
 
-        <div className="pt-2">
+        <div className="flex gap-2 pt-2">
+          <button onClick={addProvider}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md border"
+            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+            <Plus size={14} /> 添加模型源
+          </button>
           <button onClick={handleSave} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md disabled:opacity-50"
             style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>

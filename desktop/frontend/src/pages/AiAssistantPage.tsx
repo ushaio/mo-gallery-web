@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useLanguage } from '@/contexts/LanguageContext'
-import type { EditorAiConversationDto, EditorAiMessageDto, StoryAiModelsResponse } from '@/lib/api/types'
+import type { AiImageMetadata, EditorAiConversationDto, EditorAiMessageDto, StoryAiModelsResponse } from '@/lib/api/types'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Send, MessageSquare, X, ChevronLeft, ChevronDown,
   Copy, Check, Eraser, Sparkles, Search, Quote, StopCircle,
-  Settings2, RotateCcw, Paperclip, Loader2,
+  Settings2, RotateCcw, Paperclip, Loader2, Image as ImageIcon,
 } from 'lucide-react'
 
 // Go backend proxy calls
@@ -60,6 +60,9 @@ export function AiAssistantPage() {
   const [streamingContent, setStreamingContent] = useState('')
   const [models, setModels] = useState<StoryAiModelsResponse | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [imageMode, setImageMode] = useState(false)
+  const [selectedImageModel, setSelectedImageModel] = useState<string>('')
+  const [selectedImageSize, setSelectedImageSize] = useState('1024x1024')
   const [showSidebar, setShowSidebar] = useState(true)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -99,7 +102,11 @@ export function AiAssistantPage() {
           go().GetStoryAiModels().catch(() => null),
         ])
         setConversations(convos || [])
-        if (modelsData) { setModels(modelsData); setSelectedModel(modelsData.defaultModel) }
+        if (modelsData) {
+          setModels(modelsData)
+          setSelectedModel(modelsData.defaultModel)
+          setSelectedImageModel(modelsData.defaultImageModel || '')
+        }
       } catch (error) {
         console.error('[AI] Failed to load data:', error)
       } finally { setLoading(false) }
@@ -179,6 +186,9 @@ export function AiAssistantPage() {
 
   const activeConvoData = conversations.find(c => c.id === activeConversation)
   const hasCustomPrompt = Boolean(activeConvoData?.systemPrompt)
+  const chatModels = models?.models.filter(model => !model.capabilities || model.capabilities.includes('chat')) ?? []
+  const imageModels = models?.models.filter(model => model.capabilities?.includes('image')) ?? []
+  const activeModelLabel = imageMode ? (selectedImageModel || 'image model') : (selectedModel || 'default')
 
   const handleSend = async () => {
     if (!input.trim() || sending) return
@@ -195,8 +205,12 @@ export function AiAssistantPage() {
     }
 
     const userInput = input.trim()
+    if (imageMode && !selectedImageModel) {
+      toast.error('请先在 AI 配置中设置图片模型')
+      return
+    }
     const quoted = quotedMessage
-    const images = attachedImages.map(i => i.url).filter(Boolean)
+    const images = imageMode ? [] : attachedImages.map(i => i.url).filter(Boolean)
     setInput(''); setQuotedMessage(null); setAttachedImages([]); setSending(true); setStreamingContent('')
 
     const prompt = quoted ? `> ${quoted.content.split('\n').join('\n> ')}\n\n${userInput}` : userInput
@@ -222,8 +236,11 @@ export function AiAssistantPage() {
           conversationId,
           action: 'custom',
           prompt,
-          model: selectedModel || undefined,
-          images: images.length > 0 ? images : undefined,
+          model: imageMode ? undefined : selectedModel || undefined,
+          generateImage: imageMode,
+          imageModel: imageMode ? selectedImageModel || undefined : undefined,
+          imageSize: imageMode ? selectedImageSize : undefined,
+          images: !imageMode && images.length > 0 ? images : undefined,
         }),
         signal: abortController.signal,
       })
@@ -257,6 +274,12 @@ export function AiAssistantPage() {
           if (eventName === 'chunk' && data) {
             try { accumulated += JSON.parse(data) } catch { accumulated += data }
             setStreamingContent(accumulated)
+          } else if (eventName === 'status' && data) {
+            try { setStreamingContent(JSON.parse(data)) } catch { setStreamingContent(data) }
+          } else if (eventName === 'error' && data) {
+            let message = data
+            try { message = JSON.parse(data) } catch { /* ignore */ }
+            throw new Error(message)
           }
           // 不在 done 事件中清空 streamingContent，等消息加载完再清
         }
@@ -372,7 +395,7 @@ export function AiAssistantPage() {
             <div className="px-4 py-2 border-t" style={{ borderColor: 'var(--border)' }}>
               <div className="flex items-center gap-2 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500/50" />
-                <span className="uppercase tracking-wider">{selectedModel || 'default'}</span>
+                <span className="uppercase tracking-wider">{activeModelLabel}</span>
               </div>
             </div>
           </motion.aside>
@@ -449,7 +472,11 @@ export function AiAssistantPage() {
               <AnimatePresence initial={false}>
                 {messages.map(msg => (
                   <motion.div key={msg.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-                    <MessageBubble message={msg} copiedId={copiedId} onCopy={handleCopy} onQuote={handleQuote} t={t} />
+                    <MessageBubble message={msg} copiedId={copiedId} onCopy={handleCopy} onQuote={handleQuote} onRefresh={async () => {
+                      if (!activeConversation) return
+                      const convo = await go().GetEditorAiConversation(activeConversation)
+                      setMessages(convo.messages || [])
+                    }} t={t} />
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -540,11 +567,27 @@ export function AiAssistantPage() {
 
               <div className="flex items-center justify-between px-3 pb-2.5">
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={handleSelectImages} disabled={sending}
+                  <button type="button" onClick={handleSelectImages} disabled={sending || imageMode}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] disabled:opacity-30 transition-colors"
                     style={{ color: 'var(--muted-foreground)' }}><Paperclip size={14} /></button>
-                  {models && models.models.length > 1 && (
-                    <ModelSelector models={models.models} value={selectedModel} onChange={setSelectedModel} />
+                  <button type="button" onClick={() => { setImageMode(prev => !prev); setAttachedImages([]) }} disabled={sending}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] disabled:opacity-30 transition-colors"
+                    style={{ borderColor: imageMode ? '#f59e0b' : 'var(--border)', color: imageMode ? '#f59e0b' : 'var(--muted-foreground)', backgroundColor: imageMode ? '#f59e0b/5' : 'transparent' }}>
+                    <ImageIcon size={12} /> <span className="hidden sm:inline">生图</span>
+                  </button>
+                  {imageMode ? (
+                    <>
+                      {imageModels.length > 0 && <ModelSelector models={imageModels} value={selectedImageModel} onChange={setSelectedImageModel} icon="image" />}
+                      <select value={selectedImageSize} onChange={e => setSelectedImageSize(e.target.value)} disabled={sending}
+                        className="h-6 rounded-md border bg-transparent px-2 text-[10px] outline-none disabled:opacity-30"
+                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                        <option value="1024x1024">1:1</option>
+                        <option value="1024x1792">9:16</option>
+                        <option value="1792x1024">16:9</option>
+                      </select>
+                    </>
+                  ) : (
+                    chatModels.length > 1 && <ModelSelector models={chatModels} value={selectedModel} onChange={setSelectedModel} />
                   )}
                   <span className="hidden sm:inline text-[10px]" style={{ color: 'var(--muted-foreground)' }}>Enter {t('admin.ai_newline')}</span>
                 </div>
@@ -630,14 +673,20 @@ function EmptyState({ t, textareaRef, setInput }: {
 
 /* ─── Message Bubble ── */
 
-function MessageBubble({ message, copiedId, onCopy, onQuote, t }: {
+function isAiImageMetadata(value: unknown): value is AiImageMetadata {
+  return Boolean(value && typeof value === 'object' && (value as AiImageMetadata).type === 'image')
+}
+
+function MessageBubble({ message, copiedId, onCopy, onQuote, onRefresh, t }: {
   message: EditorAiMessageDto
   copiedId: string | null
   onCopy: (content: string, id: string) => void
   onQuote: (msg: EditorAiMessageDto) => void
+  onRefresh: () => Promise<void>
   t: (key: string) => string
 }) {
   const isUser = message.role === 'user'
+  const imageMetadata = isAiImageMetadata(message.metadata) ? message.metadata : null
   const messageImages: Array<{ url: string }> | undefined =
     message.metadata && typeof message.metadata === 'object' && 'images' in message.metadata
       ? (message.metadata as { images?: Array<{ url: string }> }).images
@@ -677,9 +726,13 @@ function MessageBubble({ message, copiedId, onCopy, onQuote, t }: {
       </div>
       <div className="max-w-[78%] min-w-0">
         <div className="rounded-lg rounded-tl-md border px-4 py-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)/10' }}>
-          <div className="ai-markdown text-sm leading-relaxed break-words" style={{ color: 'var(--foreground)' }}>
-            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
-          </div>
+          {imageMetadata ? (
+            <ImagePreview message={message} metadata={imageMetadata} onRefresh={onRefresh} />
+          ) : (
+            <div className="ai-markdown text-sm leading-relaxed break-words" style={{ color: 'var(--foreground)' }}>
+              <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+            </div>
+          )}
           {messageImages && messageImages.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-2">
               {messageImages.map((img, idx) => (
@@ -712,12 +765,96 @@ function MessageBubble({ message, copiedId, onCopy, onQuote, t }: {
   )
 }
 
+/* ─── Image Preview ── */
+
+function ImagePreview({ message, metadata, onRefresh }: {
+  message: EditorAiMessageDto
+  metadata: AiImageMetadata
+  onRefresh: () => Promise<void>
+}) {
+  const [imageSrc, setImageSrc] = useState(metadata.uploadedUrl || '')
+  const [loadingImage, setLoadingImage] = useState(!metadata.uploadedUrl)
+  const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadImage() {
+      setLoadError('')
+      if (metadata.uploadedUrl) {
+        setImageSrc(metadata.uploadedUrl)
+        setLoadingImage(false)
+        return
+      }
+      setLoadingImage(true)
+      try {
+        const dataUrl = await go().GetAiImageDataURL(message.id)
+        if (!cancelled) setImageSrc(dataUrl)
+      } catch (error) {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : '图片加载失败')
+      } finally {
+        if (!cancelled) setLoadingImage(false)
+      }
+    }
+    loadImage()
+    return () => { cancelled = true }
+  }, [message.id, metadata.uploadedUrl])
+
+  const handleSave = async () => {
+    if (saving || metadata.photoId) return
+    setSaving(true)
+    try {
+      await go().SaveAiImageToAlbum(message.id)
+      toast.success('已保存到相册')
+      await onRefresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm" style={{ color: 'var(--foreground)' }}>{message.content || '已生成图片'}</p>
+      <div className="rounded-lg border overflow-hidden max-w-md" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)/10' }}>
+        {loadingImage ? (
+          <div className="h-56 flex items-center justify-center gap-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            <Loader2 size={16} className="animate-spin" /> 正在加载图片...
+          </div>
+        ) : loadError ? (
+          <div className="h-32 flex items-center justify-center px-4 text-xs text-center" style={{ color: 'var(--destructive)' }}>{loadError}</div>
+        ) : (
+          <img src={imageSrc} alt={metadata.prompt || 'AI generated image'} className="w-full max-h-[420px] object-contain" loading="lazy" />
+        )}
+      </div>
+      <div className="space-y-1 text-[11px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+        <p>提示词：{metadata.prompt}</p>
+        {metadata.revisedPrompt && <p>优化后：{metadata.revisedPrompt}</p>}
+        {(metadata.provider || metadata.model || metadata.size) && <p>{[metadata.provider, metadata.model, metadata.size].filter(Boolean).join(' · ')}</p>}
+      </div>
+      <div className="flex items-center gap-2">
+        {metadata.photoId ? (
+          <span className="text-[11px] text-green-600">已保存到相册</span>
+        ) : (
+          <button onClick={handleSave} disabled={saving || loadingImage || Boolean(loadError)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs disabled:opacity-40"
+            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+            {saving && <Loader2 size={12} className="animate-spin" />} 保存到相册
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ─── Model Selector ── */
 
-function ModelSelector({ models, value, onChange }: {
+function ModelSelector({ models, value, onChange, icon = 'sparkles' }: {
   models: { id: string; label: string }[]
   value: string
   onChange: (value: string) => void
+  icon?: 'sparkles' | 'image'
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -742,7 +879,7 @@ function ModelSelector({ models, value, onChange }: {
       <button type="button" onClick={() => { setIsOpen(!isOpen); if (!isOpen) setSearch('') }}
         className="flex items-center gap-1.5 px-2 py-1 rounded-md border text-[10px] transition-colors"
         style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-        <Sparkles size={10} style={{ color: '#f59e0b' }} />
+        {icon === 'image' ? <ImageIcon size={10} style={{ color: '#f59e0b' }} /> : <Sparkles size={10} style={{ color: '#f59e0b' }} />}
         <span className="max-w-20 truncate">{selected?.label ?? 'Model'}</span>
         <ChevronDown size={10} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
