@@ -3,15 +3,18 @@ name: Release
 on:
   push:
     branches:
-      - main
       - master
   workflow_dispatch:
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.TAG }}
+      version: ${{ steps.version.outputs.VERSION }}
+      tag_exists: ${{ steps.check_tag.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,8 +24,37 @@ jobs:
         id: version
         run: |
           VERSION=$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' RELEASE.md | sed -E 's/^## //')
+          if [ -z "$VERSION" ]; then
+            echo "Could not find a release heading like '## v1.2.3' in RELEASE.md" >&2
+            exit 1
+          fi
           echo "TAG=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Validate release versions
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+
+          const expected = process.env.RELEASE_VERSION
+          const readJson = (path) => JSON.parse(fs.readFileSync(path, 'utf8'))
+          const checks = [
+            ['package.json', readJson('package.json').version],
+            ['desktop/frontend/package.json', readJson('desktop/frontend/package.json').version],
+            ['desktop/wails.json info.productVersion', readJson('desktop/wails.json').info?.productVersion],
+          ]
+
+          const mismatches = checks.filter(([, actual]) => actual !== expected)
+          if (mismatches.length > 0) {
+            for (const [label, actual] of mismatches) {
+              console.error(`${label} (${actual ?? 'missing'}) must match RELEASE.md (${expected})`)
+            }
+            console.error('Update Web/Desktop versions and RELEASE.md on dev, then merge dev into master to release.')
+            process.exit(1)
+          }
+          NODE
 
       - name: Check if tag exists
         id: check_tag
@@ -33,33 +65,103 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+  web-build:
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - name: Setup Node.js
-        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Build web app
+        run: pnpm run build
+
+  desktop-build:
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Update package.json version
-        if: steps.check_tag.outputs.exists == 'false'
-        run: |
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version --allow-same-version
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: desktop/go.sum
 
-      - name: Commit and tag
-        if: steps.check_tag.outputs.exists == 'false'
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build desktop app
+        working-directory: desktop
+        run: wails build
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mo-gallery-desktop-windows-${{ needs.prepare.outputs.tag }}
+          path: desktop/build/bin/*.exe
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - prepare
+      - web-build
+      - desktop-build
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download desktop artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mo-gallery-desktop-windows-${{ needs.prepare.outputs.tag }}
+          path: release-assets
+
+      - name: Tag release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.TAG }}"
-          git tag ${{ steps.version.outputs.TAG }}
-          git push origin "${{ github.ref_name }}" --tags
+          git tag ${{ needs.prepare.outputs.tag }}
+          git push origin ${{ needs.prepare.outputs.tag }}
 
       - name: Create GitHub Release
-        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.TAG }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
           body_path: RELEASE.md
+          files: release-assets/*.exe
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

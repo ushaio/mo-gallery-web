@@ -1,32 +1,18 @@
 # 更新日志
 
-## v0.6.0 - 2026-04-19
+## v0.7.0-beta - 2026-07-03
 
-### ✨ AI 助手与编辑器拓展
-- AI 助手独立页面与会话管理，支持持久化上下文与会话恢复
-- AI 助手消息新增「引用回复」能力
-- 编辑器从 Spotify 专用嵌入升级为通用音乐嵌入组件
+### 🖥 Desktop 重大更新
+- 桌面端纳入统一版本体系，`desktop/frontend/package.json` 与 `desktop/wails.json` 跟随 Web 版本同步发布
+- GitHub Release 自动构建 Windows 桌面端安装产物，并作为 Release 附件上传
+- 桌面端构建链路接入 Wails CLI、Go 1.24 与 pnpm 前端构建流程
 
-### 🎞 胶卷与胶片视图体系
-- 新增胶卷管理端：创建/更新/删除、胶卷与照片关联、帧数与进度展示
-- 照片上传流程支持关联胶卷，Photo 引入 `photoType` 与 `filmRollId`
-- 画廊新增胶片视图与入口，重构画廊导航
-- 管理端 `FilmCanisterSvg` 重绘为纯侧视图，扩充胶片品牌色表并按名哈希兜底
+### 🚀 发布流程
+- 明确 `dev` 开发、`master` 发版：在 `dev` 更新版本号与 `RELEASE.md`，合并到 `master` 后触发发布
+- 发版前统一校验 Web 与 Desktop 版本：`package.json`、`desktop/frontend/package.json`、`desktop/wails.json` 必须与 `RELEASE.md` 版本一致
+- Web 与 Desktop 分离构建，全部通过后再创建 tag 与 GitHub Release
+- Release note 继续使用单版本 `RELEASE.md` 全文作为发布说明
 
-### 📚 相册与故事
-- 相册详情接口与列表增强
-- Story 内联图片改用 `photoId` 绑定，提供回填 migration
-- Story 富文本渲染改用 O(1) 照片索引，移除 N×M 遍历
-- Story 详情页 Gallery 精简：去掉照片标题、底部渐变阴影、悬停放大动画
-
-### 🧭 导航与界面
-- 顶栏按页面场景支持滚动自动隐藏
-- 管理端筛选状态持久化，批量删除体验增强
-
-### 🗄 存储与数据层
-- 多存储源架构：支持按存储源隔离的 S3/R2 实现与删除
-- 增强 S3 操作错误处理与提示文案
-- 相机/镜头接口移除冗余 `photoCount`；修复 `/api/cameras`、`/api/lenses` 404
-
-### 🔧 发布流程
-- `RELEASE.md` 改为单版本策略：每次发版整文件替换，工作流直接用全文件作为 Release body
+### 🌐 Web 端
+- Web 端版本升级到 `0.7.0-beta`
+- 发布前保留 lint 与生产构建校验，避免未验证代码进入 release
