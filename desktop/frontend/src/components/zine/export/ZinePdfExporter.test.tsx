@@ -1,6 +1,6 @@
 import type { ZineProject } from '@/lib/zine/types'
 
-import { createZinePdfFileName, ZinePdfDocument } from './ZinePdfExporter'
+import { createPdfPageSize, createPdfSlotStyle, createZinePdfFileName, ZinePdfDocument } from './ZinePdfExporter'
 
 const project = {
   id: 'zine-test',
@@ -40,6 +40,8 @@ const project = {
 
 const documentElement = <ZinePdfDocument project={project} />
 const fileName = createZinePdfFileName(project)
+const a5SpreadSize = createPdfPageSize(296, 210)
+const textSlotStyle = createPdfSlotStyle({ position: 'absolute', left: 160, top: 18, width: 60, height: 30, zIndex: 1, overflow: 'hidden' })
 
 if (documentElement.type !== ZinePdfDocument) {
   throw new Error('ZinePdfDocument should render as a React component')
@@ -47,4 +49,12 @@ if (documentElement.type !== ZinePdfDocument) {
 
 if (fileName !== 'Test Zine.pdf') {
   throw new Error(`Expected Test Zine.pdf, got ${fileName}`)
+}
+
+if (Math.round(a5SpreadSize[0]) !== 839 || Math.round(a5SpreadSize[1]) !== 595) {
+  throw new Error(`Expected A5 spread PDF size to be 839pt x 595pt, got ${a5SpreadSize.join(' x ')}`)
+}
+
+if (Math.round(Number(textSlotStyle.left)) !== 454 || Math.round(Number(textSlotStyle.width)) !== 170) {
+  throw new Error('Expected slot dimensions to be converted from millimeters to points')
 }
