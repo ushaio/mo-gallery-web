@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Image, BookOpen, Film, Upload, BookMarked,
-  Bot, HardDrive, Settings, Users, LogOut,
+  BookImage, Bot, HardDrive, Settings, Users, LogOut,
   Sun, Moon, Monitor, Globe, Check, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -16,6 +16,7 @@ const navItems = [
   { path: '/film-rolls', icon: Film, key: 'admin.film_rolls' },
   { path: '/upload', icon: Upload, key: 'admin.upload' },
   { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
+  { path: '/zine', icon: BookImage, key: 'admin.zine' },
   { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
   { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
   { path: '/settings', icon: Settings, key: 'admin.config' },

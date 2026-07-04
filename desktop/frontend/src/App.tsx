@@ -13,6 +13,8 @@ import { AlbumsPage } from '@/pages/AlbumsPage'
 import { FilmRollsPage } from '@/pages/FilmRollsPage'
 import { UploadPage } from '@/pages/UploadPage'
 import { PhotoJournalPage } from '@/pages/PhotoJournalPage'
+import { ZinePage } from '@/pages/ZinePage'
+import { ZineEditorPage } from '@/pages/zine/ZineEditorPage'
 import { AiAssistantPage } from '@/pages/AiAssistantPage'
 import { StoragePage } from '@/pages/StoragePage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -62,6 +64,8 @@ function AppRoutes() {
         <Route path="film-rolls" element={<FilmRollsPage />} />
         <Route path="upload" element={<UploadPage />} />
         <Route path="photo-journal" element={<PhotoJournalPage />} />
+        <Route path="zine" element={<ZinePage />} />
+        <Route path="zine/editor/:projectId" element={<ZineEditorPage />} />
         <Route path="ai-assistant" element={<AiAssistantPage />} />
         <Route path="storage" element={<StoragePage />} />
         <Route path="settings" element={<SettingsPage />} />
