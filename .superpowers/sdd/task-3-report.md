@@ -47,7 +47,7 @@ Output summary:
 
 ## Commit
 
-- Pending at report creation time; final commit hash reported in task response.
+- Implementation commit: `8d4c16f` (`feat(desktop): add zine dashboard route`)
 
 ## Concerns
 
