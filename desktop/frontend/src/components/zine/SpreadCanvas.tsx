@@ -14,19 +14,45 @@ interface SpreadCanvasProps {
 
 const MAX_CANVAS_WIDTH = 920
 const CANVAS_PADDING = 48
+const MIN_CANVAS_WIDTH = 280
+const MIN_CANVAS_HEIGHT = 220
+
+interface SpreadCanvasScaleParams {
+  availableWidth: number
+  availableHeight: number
+  spreadWidthMm: number
+  spreadHeightMm: number
+}
+
+export function calculateSpreadCanvasScale({
+  availableWidth,
+  availableHeight,
+  spreadWidthMm,
+  spreadHeightMm,
+}: SpreadCanvasScaleParams) {
+  const widthLimit = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, availableWidth - CANVAS_PADDING))
+  const heightLimit = Math.max(MIN_CANVAS_HEIGHT, availableHeight - CANVAS_PADDING)
+
+  return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm)
+}
 
 export function SpreadCanvas({ project, activeSpread, selectedSlotId, onSelectSlot }: SpreadCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [availableWidth, setAvailableWidth] = useState(MAX_CANVAS_WIDTH)
+  const [availableSize, setAvailableSize] = useState({ width: MAX_CANVAS_WIDTH, height: 640 })
   const { pageW, pageH, spreadW, spreadH } = getSpreadSize(project.pageSize, project.pageOrientation)
-  const scale = Math.min(MAX_CANVAS_WIDTH, Math.max(320, availableWidth - CANVAS_PADDING)) / spreadW
+  const scale = calculateSpreadCanvasScale({
+    availableWidth: availableSize.width,
+    availableHeight: availableSize.height,
+    spreadWidthMm: spreadW,
+    spreadHeightMm: spreadH,
+  })
 
   useEffect(() => {
     const element = containerRef.current
     if (!element) return
 
     const observer = new ResizeObserver(([entry]) => {
-      setAvailableWidth(entry.contentRect.width)
+      setAvailableSize({ width: entry.contentRect.width, height: entry.contentRect.height })
     })
 
     observer.observe(element)
@@ -34,7 +60,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, onSelectSl
   }, [])
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6" onClick={() => onSelectSlot(null)}>
+    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3" onClick={() => onSelectSlot(null)}>
       <div
         className="relative shrink-0 shadow-2xl shadow-black/20"
         style={{
