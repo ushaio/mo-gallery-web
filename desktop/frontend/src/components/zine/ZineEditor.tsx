@@ -1,4 +1,5 @@
 import { PageStrip } from './PageStrip'
+import { PhotoTray } from './PhotoTray'
 import { SpreadCanvas } from './SpreadCanvas'
 import { ZineToolbar } from './ZineToolbar'
 
@@ -40,9 +41,7 @@ export function ZineEditor() {
         <SpreadCanvas project={project} activeSpread={activeSpread} selectedSlotId={selectedSlotId} onSelectSlot={selectSlot} />
         <PageStrip project={project} activeSpreadId={activeSpread?.id ?? null} onSetActiveSpread={setActiveSpread} onRemoveSpread={removeSpread} />
       </div>
-      <div className="border-t bg-card px-4 py-3 text-center text-sm" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-        图片抽屉将在下一步启用
-      </div>
+      <PhotoTray />
     </div>
   )
 }

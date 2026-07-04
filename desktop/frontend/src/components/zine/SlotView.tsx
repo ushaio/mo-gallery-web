@@ -1,5 +1,6 @@
 import { renderSlot } from '@/lib/zine/slot-render'
 import type { Slot, Spread, ZineAsset } from '@/lib/zine/types'
+import { useZineStore } from '@/store/zine'
 
 import { SlotImageContent } from './SlotImageContent'
 import { SlotTextContent } from './SlotTextContent'
@@ -14,7 +15,8 @@ interface SlotViewProps {
   onSelect?: (slotId: string) => void
 }
 
-export function SlotView({ slot, pageW, assets, selected, scale, onSelect }: SlotViewProps) {
+export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelect }: SlotViewProps) {
+  const updateSlot = useZineStore((state) => state.updateSlot)
   const rendered = renderSlot(slot, pageW, assets)
   const asset = slot.kind === 'image' ? assets.find((item) => item.id === slot.assetId) : undefined
   const slotStyle = {
@@ -39,6 +41,24 @@ export function SlotView({ slot, pageW, assets, selected, scale, onSelect }: Slo
         event.stopPropagation()
         onSelect?.(slot.id)
       }}
+      onDragOver={
+        slot.kind === 'image'
+          ? (event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'copy'
+            }
+          : undefined
+      }
+      onDrop={
+        slot.kind === 'image'
+          ? (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              const assetId = event.dataTransfer.getData('application/x-zine-asset-id')
+              if (assetId) updateSlot(spread.id, slot.id, { assetId })
+            }
+          : undefined
+      }
       aria-pressed={selected}
       aria-label={`Select ${slot.kind} slot`}
     >
