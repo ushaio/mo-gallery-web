@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { ZineProject } from '@/lib/zine/types'
+import { useZineStore } from '@/store/zine'
 
 import { TemplateGallery } from './TemplateGallery'
 
@@ -19,6 +20,8 @@ interface ZineToolbarProps {
 export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, onAddSpread, onAddTemplate }: ZineToolbarProps) {
   const [title, setTitle] = useState(project.title)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const canUndo = useZineStore((state) => state.undoStack.length > 0)
+  const canRedo = useZineStore((state) => state.redoStack.length > 0)
   const saveLabel = saving ? '保存中...' : dirty ? '未保存' : '已保存'
 
   useEffect(() => {
@@ -45,8 +48,8 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
         aria-label="Zine project title"
       />
       <span className="text-xs" style={{ color: saving || dirty ? 'var(--primary)' : 'var(--muted-foreground)' }}>{saveLabel}</span>
-      <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={onUndo}>Undo</button>
-      <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={onRedo}>Redo</button>
+      <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45" style={{ borderColor: 'var(--border)' }} onClick={onUndo} disabled={!canUndo}>Undo</button>
+      <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45" style={{ borderColor: 'var(--border)' }} onClick={onRedo} disabled={!canRedo}>Redo</button>
       <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={onAddSpread}>Add Spread</button>
       <div className="relative">
         <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={() => setTemplatesOpen((open) => !open)}>
