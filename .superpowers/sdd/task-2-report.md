@@ -58,3 +58,30 @@ Output summary:
 ## Commit
 
 - `8ad8e00` - `feat(desktop): add zine local draft store`
+
+## Review Fix - Autosave Dirty Guard
+
+### Files Changed
+
+- `desktop/frontend/src/store/zine.ts`
+- `.superpowers/sdd/task-2-report.md`
+
+### Fix Summary
+
+- Updated `save()` so an older in-flight save only clears `dirty` when the current project id and `updatedAt` still match the saved snapshot.
+- Preserved `saving` cleanup on both successful stale saves and failures.
+- Updated `updateSlot()` to no-op before pushing history or scheduling autosave when the target spread/slot is missing.
+
+### Verification
+
+Command run from `desktop/frontend`:
+
+```powershell
+npm run build
+```
+
+Output summary:
+
+- `tsc` completed successfully.
+- Vite production build completed successfully.
+- Existing Vite warnings remained about ExifReader being both dynamically and statically imported, and chunks larger than 500 kB.

@@ -99,6 +99,11 @@ export const useZineStore = create<ZineState>()((set, get) => ({
   setActiveSpread: (id) => set({ activeSpreadId: id, selectedSlotId: null }),
   selectSlot: (id) => set({ selectedSlotId: id }),
   updateSlot: (spreadId, slotId, patch) => {
+    const project = get().project
+    const spread = project?.spreads.find((spread) => spread.id === spreadId)
+
+    if (!spread?.slots.some((slot) => slot.id === slotId)) return
+
     get().pushHistory()
     set((state) => {
       if (!state.project) return state
@@ -195,7 +200,10 @@ export const useZineStore = create<ZineState>()((set, get) => ({
 
     try {
       await saveZineProject(project)
-      set({ dirty: false, saving: false })
+      set((state) => ({
+        dirty: state.project?.id === project.id && state.project.updatedAt === project.updatedAt ? false : state.dirty,
+        saving: false,
+      }))
     } catch {
       set({ saving: false })
       toast.error('Zine 草稿保存失败')
