@@ -8,6 +8,11 @@ import { useZineStore } from '@/store/zine'
 import { SlotImageContent } from './SlotImageContent'
 import { SlotTextContent } from './SlotTextContent'
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+}
+
 interface SlotViewProps {
   spread: Spread
   slot: Slot
@@ -30,12 +35,6 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
     top: `${rendered.htmlStyle.top}mm`,
     width: `${rendered.htmlStyle.width}mm`,
     height: `${rendered.htmlStyle.height}mm`,
-  }
-
-  function getPxPerMm() {
-    const rect = slotRef.current?.getBoundingClientRect()
-    if (!rect || slot.w === 0) return scale
-    return rect.width / slot.w
   }
 
   function resetLiveStyle() {
@@ -65,6 +64,7 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
           onSelect?.(slot.id)
         }}
         onKeyDown={(event) => {
+          if (isEditableTarget(event.target)) return
           if (event.key !== 'Enter' && event.key !== ' ') return
           event.preventDefault()
           onSelect?.(slot.id)
@@ -109,7 +109,7 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
           rotatable
           snappable
           onDragStart={({ set }) => {
-            transformRef.current = { x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: getPxPerMm() }
+            transformRef.current = { x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: scale }
             set([0, 0])
           }}
           onDrag={({ target, beforeTranslate }) => {
@@ -124,7 +124,7 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
             updateSlot(spread.id, slot.id, { x: slot.x + x / pxPerMm, y: slot.y + y / pxPerMm })
           }}
           onResizeStart={({ dragStart }) => {
-            transformRef.current = { x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: getPxPerMm() }
+            transformRef.current = { x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: scale }
             if (dragStart) dragStart.set([0, 0])
           }}
           onResize={({ target, width, height, drag }) => {
@@ -144,7 +144,7 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
             })
           }}
           onRotateStart={({ set }) => {
-            transformRef.current = { x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: getPxPerMm() }
+            transformRef.current = { x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: scale }
             set(slot.rotation)
           }}
           onRotate={({ target, beforeRotate }) => {

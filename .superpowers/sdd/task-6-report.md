@@ -53,3 +53,38 @@ Output summary:
 - Transform interactions were verified by build/type-check only; no browser/manual Wails interaction was run in this session.
 - Moveable resize/drag math is MVP-level and updates only at interaction end per the brief allowance.
 - Build warnings appear pre-existing or unrelated to Task 6 and were not addressed.
+
+## Review Fix Report
+
+Status: DONE
+
+Commit: pending
+
+Files changed:
+
+- `desktop/frontend/src/components/zine/SlotView.tsx`
+
+Fixes:
+
+- Updated slot wrapper keyboard handling to ignore events originating from editable descendants, including `contentEditable`, `textarea`, `input`, and `select`, so text slots can accept spaces and Enter/newlines.
+- Replaced rotated element bounding-rect scale measurement with the known canvas `scale` prop for drag/resize pixel-to-millimeter conversion.
+
+Verification:
+
+Command run from `desktop/frontend`:
+
+```powershell
+npm run build
+```
+
+Result: passed. TypeScript completed and Vite built successfully.
+
+Output summary:
+
+- `tsc && vite build` completed successfully.
+- Existing warnings remained: Rollup pure annotation warning in `@daybrush/utils`, mixed static/dynamic import warning for `exifreader`, and large chunk size warning.
+
+Concerns:
+
+- No automated desktop frontend test runner exists in `desktop/frontend`; regression coverage was limited to TypeScript/build verification.
+- Transform and text editing behavior were not manually verified in Wails/browser in this session.
