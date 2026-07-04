@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { ZineProject } from '@/lib/zine/types'
 import { useZineStore } from '@/store/zine'
 
+import { exportZinePdf } from './export/ZinePdfExporter'
 import { TemplateGallery } from './TemplateGallery'
 
 interface ZineToolbarProps {
@@ -20,6 +21,7 @@ interface ZineToolbarProps {
 export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, onAddSpread, onAddTemplate }: ZineToolbarProps) {
   const [title, setTitle] = useState(project.title)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const canUndo = useZineStore((state) => state.undoStack.length > 0)
   const canRedo = useZineStore((state) => state.redoStack.length > 0)
   const saveLabel = saving ? '保存中...' : dirty ? '未保存' : '已保存'
@@ -32,6 +34,19 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
     const nextTitle = title.trim() || project.title
     setTitle(nextTitle)
     if (nextTitle !== project.title) onRename(nextTitle)
+  }
+
+  async function handleExportPdf() {
+    setExporting(true)
+    try {
+      await exportZinePdf(project)
+      toast.success('PDF 已导出')
+    } catch (error) {
+      console.error('PDF export failed', error)
+      toast.error('PDF 导出失败')
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -64,8 +79,8 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
           />
         )}
       </div>
-      <button type="button" className="rounded-md border px-3 py-2 text-sm opacity-60" style={{ borderColor: 'var(--border)' }} onClick={() => toast.info('PDF 导出将在后续启用')}>
-        Export PDF
+      <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45" style={{ borderColor: 'var(--border)' }} onClick={handleExportPdf} disabled={exporting}>
+        {exporting ? '导出中...' : 'Export PDF'}
       </button>
     </div>
   )
