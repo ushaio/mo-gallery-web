@@ -12,10 +12,11 @@ interface SpreadCanvasProps {
   onSelectSlot: (slotId: string | null) => void
 }
 
-const MAX_CANVAS_WIDTH = 920
+const MAX_CANVAS_WIDTH = 760
 const CANVAS_PADDING = 48
 const MIN_CANVAS_WIDTH = 280
 const MIN_CANVAS_HEIGHT = 220
+const PREVIEW_FIT_RATIO = 0.82
 
 interface SpreadCanvasScaleParams {
   availableWidth: number
@@ -33,7 +34,7 @@ export function calculateSpreadCanvasScale({
   const widthLimit = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, availableWidth - CANVAS_PADDING))
   const heightLimit = Math.max(MIN_CANVAS_HEIGHT, availableHeight - CANVAS_PADDING)
 
-  return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm)
+  return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm) * PREVIEW_FIT_RATIO
 }
 
 export function SpreadCanvas({ project, activeSpread, selectedSlotId, onSelectSlot }: SpreadCanvasProps) {
