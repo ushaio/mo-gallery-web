@@ -3,7 +3,7 @@ import { create } from 'zustand'
 
 import { cloneSpreads } from '@/lib/zine/history'
 import { getSpreadSize } from '@/lib/zine/page-sizes'
-import { getZineProject, saveZineProject } from '@/lib/zine/project'
+import { getZineAssetBlob, getZineProject, saveZineProject } from '@/lib/zine/project'
 import { buildSpreadFromTemplate } from '@/lib/zine/templates'
 import type { Slot, Spread, ZineAsset, ZinePageSize, ZineProject } from '@/lib/zine/types'
 
@@ -37,6 +37,30 @@ function markDirty() {
 
 function withUpdatedProject(project: ZineProject, patch: Partial<ZineProject>): ZineProject {
   return { ...project, ...patch, updatedAt: Date.now() }
+}
+
+async function hydrateLocalAssets(project: ZineProject): Promise<ZineProject> {
+  const assets = await Promise.all(
+    project.assets.map(async (asset) => {
+      if (asset.source !== 'local' || !asset.blobId) return asset
+
+      try {
+        const blob = await getZineAssetBlob(asset.blobId)
+        if (!blob) {
+          console.warn(`Local zine asset blob not found: ${asset.blobId}`)
+          return { ...asset, previewUrl: '', fullUrl: '' }
+        }
+
+        const objectUrl = URL.createObjectURL(blob)
+        return { ...asset, previewUrl: objectUrl, fullUrl: objectUrl }
+      } catch (error) {
+        console.warn(`Failed to hydrate local zine asset: ${asset.blobId}`, error)
+        return { ...asset, previewUrl: '', fullUrl: '' }
+      }
+    }),
+  )
+
+  return { ...project, assets }
 }
 
 interface ZineState {
@@ -93,7 +117,8 @@ export const useZineStore = create<ZineState>()((set, get) => ({
   },
   loadProject: async (id) => {
     const project = await getZineProject(id)
-    set({ project, activeSpreadId: project?.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, undoStack: [], redoStack: [] })
+    const hydratedProject = project ? await hydrateLocalAssets(project) : null
+    set({ project: hydratedProject, activeSpreadId: hydratedProject?.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, undoStack: [], redoStack: [] })
   },
   setProject: (project) => set({ project, activeSpreadId: project.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, undoStack: [], redoStack: [] }),
   setActiveSpread: (id) => set({ activeSpreadId: id, selectedSlotId: null }),

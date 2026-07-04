@@ -36,12 +36,13 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
     try {
       for (const file of Array.from(files)) {
         const id = createLocalAssetId()
+        const blobId = id
         const previewUrl = URL.createObjectURL(file)
         const { width, height } = await getImageSize(previewUrl)
         const asset: ZineAsset = {
           id,
           source: 'local',
-          blobId: id,
+          blobId,
           fileName: file.name,
           width,
           height,
@@ -50,7 +51,7 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
           createdAt: Date.now(),
         }
 
-        await saveZineAssetBlob(asset.id, file)
+        await saveZineAssetBlob(blobId, file)
         addAsset(asset)
       }
     } catch {
