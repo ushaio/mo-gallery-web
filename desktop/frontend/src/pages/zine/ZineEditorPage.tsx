@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ZineEditor } from '@/components/zine/ZineEditor'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
@@ -52,7 +53,7 @@ export function ZineEditorPage() {
     <div className="flex h-full flex-col">
       <PageHeader title={t('admin.zine_editor', language)} />
 
-      <main className="flex-1 overflow-auto p-6">
+      <main className="min-h-0 flex-1 overflow-hidden p-6">
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
             <Loader2 size={22} className="animate-spin" />
@@ -62,15 +63,7 @@ export function ZineEditorPage() {
             {error}
           </div>
         ) : project ? (
-          <div className="rounded-lg border p-6" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>
-              {t('admin.zine_editor', language)}
-            </p>
-            <h1 className="mt-3 text-2xl font-semibold">{project.title}</h1>
-            <p className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              {project.spreads.length} {project.spreads.length === 1 ? 'spread' : 'spreads'}
-            </p>
-          </div>
+          <ZineEditor />
         ) : null}
       </main>
     </div>
