@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { AUTH_ERROR_MESSAGE_KEY } from '@/lib/auth-errors'
+import { AUTH_ERROR_MESSAGE_KEY, getErrorMessage } from '@/lib/auth-errors'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 
@@ -61,8 +61,8 @@ export function LoginPage() {
       } else {
         setError(t('admin.loginFailed', language))
       }
-    } catch (err: any) {
-      setError(err?.message || t('admin.loginFailed', language))
+    } catch (err: unknown) {
+      setError(getErrorMessage(err) || t('admin.loginFailed', language))
     } finally {
       setLoading(false)
     }
