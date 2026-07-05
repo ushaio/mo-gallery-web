@@ -8,7 +8,7 @@ import { ZineToolbar } from './ZineToolbar'
 import { useZineStore } from '@/store/zine'
 
 export function ZineEditor() {
-  const [canvasZoom, setCanvasZoom] = useState(0.72)
+  const [canvasZoom, setCanvasZoom] = useState(1)
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
@@ -43,7 +43,7 @@ export function ZineEditor() {
         onCanvasZoomChange={setCanvasZoom}
       />
       <div className="flex min-h-0 flex-1">
-        <SpreadCanvas project={project} activeSpread={activeSpread} selectedSlotId={selectedSlotId} zoom={canvasZoom} onSelectSlot={selectSlot} />
+        <SpreadCanvas project={project} activeSpread={activeSpread} selectedSlotId={selectedSlotId} zoom={canvasZoom} onZoomChange={setCanvasZoom} onSelectSlot={selectSlot} />
         <PageStrip project={project} activeSpreadId={activeSpread?.id ?? null} onSetActiveSpread={setActiveSpread} onRemoveSpread={removeSpread} />
       </div>
       <PhotoTray />

@@ -23,6 +23,10 @@ interface SlotViewProps {
   onSelect?: (slotId: string) => void
 }
 
+function toScreenPx(valueMm: number, scale: number) {
+  return valueMm * scale
+}
+
 export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelect }: SlotViewProps) {
   const slotRef = useRef<HTMLDivElement | null>(null)
   const transformRef = useRef({ x: 0, y: 0, w: slot.w, h: slot.h, rotation: slot.rotation, pxPerMm: scale })
@@ -31,10 +35,10 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
   const asset = slot.kind === 'image' ? assets.find((item) => item.id === slot.assetId) : undefined
   const slotStyle = {
     ...rendered.htmlStyle,
-    left: `${rendered.htmlStyle.left}mm`,
-    top: `${rendered.htmlStyle.top}mm`,
-    width: `${rendered.htmlStyle.width}mm`,
-    height: `${rendered.htmlStyle.height}mm`,
+    left: `${toScreenPx(Number(rendered.htmlStyle.left), scale)}px`,
+    top: `${toScreenPx(Number(rendered.htmlStyle.top), scale)}px`,
+    width: `${toScreenPx(Number(rendered.htmlStyle.width), scale)}px`,
+    height: `${toScreenPx(Number(rendered.htmlStyle.height), scale)}px`,
   }
 
   function resetLiveStyle() {
@@ -42,8 +46,8 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
     if (!element) return
 
     element.style.transform = `rotate(${slot.rotation}deg)`
-    element.style.width = `${slot.w}mm`
-    element.style.height = `${slot.h}mm`
+    element.style.width = `${toScreenPx(slot.w, scale)}px`
+    element.style.height = `${toScreenPx(slot.h, scale)}px`
   }
 
   return (
@@ -56,7 +60,7 @@ export function SlotView({ spread, slot, pageW, assets, selected, scale, onSelec
         style={{
           ...slotStyle,
           borderColor: selected ? 'var(--primary)' : 'rgba(113, 113, 122, 0.65)',
-          boxShadow: selected ? `0 0 0 ${2 / scale}mm color-mix(in srgb, var(--primary) 30%, transparent)` : undefined,
+          boxShadow: selected ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : undefined,
           opacity: selected ? 0.82 : 1,
         }}
         onClick={(event) => {

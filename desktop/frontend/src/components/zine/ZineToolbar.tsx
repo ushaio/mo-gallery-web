@@ -52,7 +52,7 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
   }
 
   function setZoom(nextZoom: number) {
-    onCanvasZoomChange(Math.min(1.6, Math.max(0.4, nextZoom)))
+    onCanvasZoomChange(Math.min(2, Math.max(0.4, nextZoom)))
   }
 
   return (
@@ -75,7 +75,7 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
         <button type="button" className="h-8 w-8 rounded text-sm hover:bg-accent" onClick={() => setZoom(canvasZoom - 0.1)} aria-label="缩小画布">−</button>
         <span className="w-12 text-center text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{Math.round(canvasZoom * 100)}%</span>
         <button type="button" className="h-8 w-8 rounded text-sm hover:bg-accent" onClick={() => setZoom(canvasZoom + 0.1)} aria-label="放大画布">+</button>
-        <button type="button" className="rounded px-2 py-1 text-xs hover:bg-accent" onClick={() => setZoom(0.72)}>适配</button>
+        <button type="button" className="rounded px-2 py-1 text-xs hover:bg-accent" onClick={() => setZoom(1)}>适配</button>
       </div>
       <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={onAddSpread}>Add Spread</button>
       <div className="relative">

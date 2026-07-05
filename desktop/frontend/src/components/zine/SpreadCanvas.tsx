@@ -10,6 +10,7 @@ interface SpreadCanvasProps {
   activeSpread?: Spread
   selectedSlotId: string | null
   zoom: number
+  onZoomChange: (zoom: number) => void
   onSelectSlot: (slotId: string | null) => void
 }
 
@@ -18,6 +19,8 @@ const CANVAS_PADDING = 48
 const MIN_CANVAS_WIDTH = 280
 const MIN_CANVAS_HEIGHT = 220
 const PREVIEW_FIT_RATIO = 0.82
+const MIN_ZOOM = 0.4
+const MAX_ZOOM = 2
 
 interface SpreadCanvasScaleParams {
   availableWidth: number
@@ -40,7 +43,15 @@ export function calculateSpreadCanvasScale({
   return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm) * PREVIEW_FIT_RATIO * zoom
 }
 
-export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onSelectSlot }: SpreadCanvasProps) {
+export function toScreenPx(valueMm: number, scale: number) {
+  return valueMm * scale
+}
+
+function clampZoom(zoom: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+}
+
+export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZoomChange, onSelectSlot }: SpreadCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [availableSize, setAvailableSize] = useState({ width: MAX_CANVAS_WIDTH, height: 640 })
   const { pageW, pageH, spreadW, spreadH } = getSpreadSize(project.pageSize, project.pageOrientation)
@@ -64,26 +75,32 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onSe
     return () => observer.disconnect()
   }, [])
 
+  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    const nextZoom = zoom + (event.deltaY > 0 ? -0.08 : 0.08)
+    onZoomChange(clampZoom(nextZoom))
+  }
+
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4" onClick={() => onSelectSlot(null)}>
+    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4" onWheel={handleWheel} onClick={() => onSelectSlot(null)}>
       <div
         className="relative shrink-0 shadow-2xl shadow-black/20"
         style={{
-          width: `${spreadW * scale}px`,
-          height: `${spreadH * scale}px`,
+          width: `${toScreenPx(spreadW, scale)}px`,
+          height: `${toScreenPx(spreadH, scale)}px`,
         }}
       >
         <div
           className="absolute origin-top-left overflow-hidden bg-zinc-100"
           style={{
-            width: `${spreadW}mm`,
-            height: `${spreadH}mm`,
-            transform: `scale(${scale})`,
+            width: `${toScreenPx(spreadW, scale)}px`,
+            height: `${toScreenPx(spreadH, scale)}px`,
           }}
         >
-          <div className="absolute left-0 top-0 h-full bg-white" style={{ width: `${pageW}mm` }} />
-          <div className="absolute top-0 h-full bg-white" style={{ left: `${pageW}mm`, width: `${pageW}mm` }} />
-          <div className="absolute top-0 h-full w-px bg-zinc-300" style={{ left: `${pageW}mm` }} />
+          <div className="absolute left-0 top-0 h-full bg-white" style={{ width: `${toScreenPx(pageW, scale)}px` }} />
+          <div className="absolute top-0 h-full bg-white" style={{ left: `${toScreenPx(pageW, scale)}px`, width: `${toScreenPx(pageW, scale)}px` }} />
+          <div className="absolute top-0 h-full w-px bg-zinc-300" style={{ left: `${toScreenPx(pageW, scale)}px` }} />
           {activeSpread?.slots.map((slot) => (
             <SlotView
               key={slot.id}
