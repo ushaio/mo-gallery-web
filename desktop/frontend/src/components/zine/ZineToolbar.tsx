@@ -16,9 +16,11 @@ interface ZineToolbarProps {
   onRedo: () => void
   onAddSpread: () => void
   onAddTemplate: (templateId: string) => void
+  canvasZoom: number
+  onCanvasZoomChange: (zoom: number) => void
 }
 
-export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, onAddSpread, onAddTemplate }: ZineToolbarProps) {
+export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, onAddSpread, onAddTemplate, canvasZoom, onCanvasZoomChange }: ZineToolbarProps) {
   const [title, setTitle] = useState(project.title)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -49,6 +51,10 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
     }
   }
 
+  function setZoom(nextZoom: number) {
+    onCanvasZoomChange(Math.min(1.6, Math.max(0.4, nextZoom)))
+  }
+
   return (
     <div className="flex min-h-16 items-center gap-3 border-b bg-card px-4" style={{ borderColor: 'var(--border)' }}>
       <input
@@ -65,6 +71,12 @@ export function ZineToolbar({ project, saving, dirty, onRename, onUndo, onRedo, 
       <span className="text-xs" style={{ color: saving || dirty ? 'var(--primary)' : 'var(--muted-foreground)' }}>{saveLabel}</span>
       <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45" style={{ borderColor: 'var(--border)' }} onClick={onUndo} disabled={!canUndo}>Undo</button>
       <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-45" style={{ borderColor: 'var(--border)' }} onClick={onRedo} disabled={!canRedo}>Redo</button>
+      <div className="flex items-center gap-1 rounded-md border px-1 py-1" style={{ borderColor: 'var(--border)' }}>
+        <button type="button" className="h-8 w-8 rounded text-sm hover:bg-accent" onClick={() => setZoom(canvasZoom - 0.1)} aria-label="缩小画布">−</button>
+        <span className="w-12 text-center text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{Math.round(canvasZoom * 100)}%</span>
+        <button type="button" className="h-8 w-8 rounded text-sm hover:bg-accent" onClick={() => setZoom(canvasZoom + 0.1)} aria-label="放大画布">+</button>
+        <button type="button" className="rounded px-2 py-1 text-xs hover:bg-accent" onClick={() => setZoom(0.72)}>适配</button>
+      </div>
       <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={onAddSpread}>Add Spread</button>
       <div className="relative">
         <button type="button" className="rounded-md border px-3 py-2 text-sm hover:bg-accent" style={{ borderColor: 'var(--border)' }} onClick={() => setTemplatesOpen((open) => !open)}>

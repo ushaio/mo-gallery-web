@@ -9,6 +9,7 @@ interface SpreadCanvasProps {
   project: ZineProject
   activeSpread?: Spread
   selectedSlotId: string | null
+  zoom: number
   onSelectSlot: (slotId: string | null) => void
 }
 
@@ -23,6 +24,7 @@ interface SpreadCanvasScaleParams {
   availableHeight: number
   spreadWidthMm: number
   spreadHeightMm: number
+  zoom: number
 }
 
 export function calculateSpreadCanvasScale({
@@ -30,14 +32,15 @@ export function calculateSpreadCanvasScale({
   availableHeight,
   spreadWidthMm,
   spreadHeightMm,
+  zoom,
 }: SpreadCanvasScaleParams) {
   const widthLimit = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, availableWidth - CANVAS_PADDING))
   const heightLimit = Math.max(MIN_CANVAS_HEIGHT, availableHeight - CANVAS_PADDING)
 
-  return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm) * PREVIEW_FIT_RATIO
+  return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm) * PREVIEW_FIT_RATIO * zoom
 }
 
-export function SpreadCanvas({ project, activeSpread, selectedSlotId, onSelectSlot }: SpreadCanvasProps) {
+export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onSelectSlot }: SpreadCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [availableSize, setAvailableSize] = useState({ width: MAX_CANVAS_WIDTH, height: 640 })
   const { pageW, pageH, spreadW, spreadH } = getSpreadSize(project.pageSize, project.pageOrientation)
@@ -46,6 +49,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, onSelectSl
     availableHeight: availableSize.height,
     spreadWidthMm: spreadW,
     spreadHeightMm: spreadH,
+    zoom,
   })
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, onSelectSl
   }, [])
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3" onClick={() => onSelectSlot(null)}>
+    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4" onClick={() => onSelectSlot(null)}>
       <div
         className="relative shrink-0 shadow-2xl shadow-black/20"
         style={{
