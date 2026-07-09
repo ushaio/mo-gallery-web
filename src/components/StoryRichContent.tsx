@@ -4,7 +4,7 @@ import { memo, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveAssetUrl } from '@/lib/api/core'
-import { resolveStoredMediaEmbedInfo } from '@/lib/media-embed'
+import { resolveStoredMediaEmbedInfo } from '@mo-gallery/tiptap-editor'
 import type { PhotoDto } from '@/lib/api/types'
 import {
   buildStoryPhotoIndex,

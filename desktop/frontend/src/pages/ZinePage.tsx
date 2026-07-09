@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { BookImage, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
+import { PageThumb } from '@/components/zine/PageThumb'
+import { ZineCreateDialog, type ZineCreateOptions } from '@/components/zine/ZineCreateDialog'
 import { t } from '@/lib/i18n'
+import { getPageSizeLabel, getProjectSpreadSize } from '@/lib/zine/page-sizes'
 import { deleteZineProject, listZineProjects } from '@/lib/zine/project'
 import type { ZineProject } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
@@ -16,6 +19,24 @@ function formatProjectDate(timestamp: number, language: string) {
   }).format(new Date(timestamp))
 }
 
+function ProjectCover({ project }: { project: ZineProject }) {
+  const spread = project.spreads[0]
+  const { spreadW, spreadH } = getProjectSpreadSize(project)
+  const thumbWidth = Math.min(204, Math.round(122 * (spreadW / spreadH)))
+
+  return (
+    <div className="zine-desk flex h-40 items-center justify-center overflow-hidden">
+      {spread ? (
+        <div className="transition-transform duration-300 group-hover:scale-[1.04]">
+          <PageThumb project={project} spread={spread} width={thumbWidth} />
+        </div>
+      ) : (
+        <BookImage size={22} style={{ color: 'var(--muted-foreground)' }} />
+      )}
+    </div>
+  )
+}
+
 export function ZinePage() {
   const navigate = useNavigate()
   const { language } = usePreferences()
@@ -23,6 +44,7 @@ export function ZinePage() {
   const [loading, setLoading] = useState(true)
   const [busyProjectId, setBusyProjectId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   async function refreshProjects() {
     setLoading(true)
@@ -37,14 +59,15 @@ export function ZinePage() {
     void refreshProjects()
   }, [])
 
-  async function handleCreateProject() {
+  async function handleCreateProject(options: ZineCreateOptions) {
     if (creating) return
 
     setCreating(true)
     try {
       const store = useZineStore.getState()
-      const project = store.createProject('Untitled Zine')
+      const project = store.createProject(t('admin.zine_untitled', language), options)
       await useZineStore.getState().save()
+      setCreateOpen(false)
       navigate(`/zine/editor/${project.id}`)
     } finally {
       setCreating(false)
@@ -65,88 +88,103 @@ export function ZinePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader
-        title={t('admin.zine', language)}
-        actions={(
-          <button
-            type="button"
-            onClick={handleCreateProject}
-            disabled={creating}
-            className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-          >
-            {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-            {t('admin.zine_new', language)}
-          </button>
-        )}
-      />
+      <PageHeader title={t('admin.zine', language)} />
 
       <main className="flex-1 overflow-auto p-6">
         {loading ? (
-          <div className="flex h-48 items-center justify-center" style={{ color: 'var(--muted-foreground)' }}>
-            <Loader2 size={22} className="animate-spin" />
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed text-center" style={{ borderColor: 'var(--border)' }}>
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl" style={{ backgroundColor: 'var(--muted)' }}>
-              <BookImage size={22} style={{ color: 'var(--muted-foreground)' }} />
-            </div>
-            <p className="text-sm font-medium">{t('admin.zine_no_projects', language)}</p>
-            <button
-              type="button"
-              onClick={handleCreateProject}
-              disabled={creating}
-              className="mt-4 inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-            >
-              {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              {t('admin.zine_new', language)}
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => (
-              <article key={project.id} className="rounded-lg border p-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold">{project.title}</h2>
-                    <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {project.spreads.length} {project.spreads.length === 1 ? 'spread' : 'spreads'}
-                    </p>
-                  </div>
-                  <BookImage size={20} style={{ color: 'var(--muted-foreground)' }} />
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+                <div className="h-40 animate-pulse" style={{ backgroundColor: 'var(--muted)' }} />
+                <div className="space-y-2 p-4">
+                  <div className="h-4 w-2/3 animate-pulse rounded" style={{ backgroundColor: 'var(--muted)' }} />
+                  <div className="h-3 w-1/2 animate-pulse rounded" style={{ backgroundColor: 'var(--muted)' }} />
                 </div>
-
-                <div className="mt-5 space-y-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  <p>{formatProjectDate(project.updatedAt, language)}</p>
-                  <p>{project.pageSize.toUpperCase()} · {project.pageOrientation}</p>
-                </div>
-
-                <div className="mt-5 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/zine/editor/${project.id}`)}
-                    className="flex-1 rounded-md px-3 py-2 text-sm transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
-                  >
-                    {t('admin.zine_open', language)}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteProject(project.id)}
-                    disabled={busyProjectId === project.id}
-                    className="inline-flex items-center justify-center rounded-md border px-3 py-2 transition-opacity hover:opacity-80 disabled:cursor-wait disabled:opacity-60"
-                    style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}
-                    aria-label={t('admin.delete', language)}
-                  >
-                    {busyProjectId === project.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                  </button>
-                </div>
-              </article>
+              </div>
             ))}
           </div>
+        ) : (
+          <>
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                disabled={creating}
+                className="flex min-h-[248px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition hover:border-primary hover:text-primary disabled:cursor-wait disabled:opacity-60"
+                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-current">
+                  {creating ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                </span>
+                <span className="text-sm font-medium">{t('admin.zine_new', language)}</span>
+              </button>
+
+              {projects.map((project) => {
+                const sizeLabel = getPageSizeLabel(project)
+                const orientationLabel = t(
+                  project.pageOrientation === 'portrait' ? 'admin.zine_orientation_portrait' : 'admin.zine_orientation_landscape',
+                  language,
+                )
+
+                return (
+                  <article
+                    key={project.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/zine/editor/${project.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        navigate(`/zine/editor/${project.id}`)
+                      }
+                    }}
+                    className="group cursor-pointer overflow-hidden rounded-xl border bg-card outline-none transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+                    style={{ borderColor: 'var(--border)' }}
+                    aria-label={`${t('admin.zine_open', language)} ${project.title}`}
+                  >
+                    <ProjectCover project={project} />
+
+                    <div className="border-t p-4" style={{ borderColor: 'var(--border)' }}>
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="min-w-0 truncate font-serif text-[15px] font-medium tracking-tight">{project.title}</h2>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleDeleteProject(project.id)
+                          }}
+                          disabled={busyProjectId === project.id}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-destructive/10 focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-wait disabled:opacity-60"
+                          style={{ color: 'var(--destructive)' }}
+                          aria-label={t('admin.zine_delete_confirm', language)}
+                          title={t('common.delete', language)}
+                        >
+                          {busyProjectId === project.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                        </button>
+                      </div>
+
+                      <p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                        {t('admin.zine_spreads_count', language, { count: project.spreads.length })} · {sizeLabel} {orientationLabel}
+                      </p>
+                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                        {t('admin.zine_updated_at', language, { time: formatProjectDate(project.updatedAt, language) })}
+                      </p>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            {projects.length === 0 && (
+              <p className="mt-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                {t('admin.zine_no_projects', language)}
+              </p>
+            )}
+          </>
         )}
       </main>
+
+      <ZineCreateDialog open={createOpen} creating={creating} onCancel={() => setCreateOpen(false)} onCreate={(options) => void handleCreateProject(options)} />
     </div>
   )
 }

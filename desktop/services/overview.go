@@ -74,6 +74,10 @@ type RecentBlogDTO struct {
 }
 
 func (s *OverviewService) GetOverview() (*OverviewDTO, error) {
+	if !db.IsConnected() {
+		return nil, fmt.Errorf("数据库未连接，请检查数据库配置后重试")
+	}
+
 	d := db.DB
 	dto := &OverviewDTO{}
 

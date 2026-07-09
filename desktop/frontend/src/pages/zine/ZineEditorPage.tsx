@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 
-import { PageHeader } from '@/components/layout/PageHeader'
 import { ZineEditor } from '@/components/zine/ZineEditor'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
@@ -10,6 +9,7 @@ import { useZineStore } from '@/store/zine'
 
 export function ZineEditorPage() {
   const { projectId } = useParams()
+  const navigate = useNavigate()
   const { language } = usePreferences()
   const project = useZineStore((state) => state.project)
   const loadProject = useZineStore((state) => state.loadProject)
@@ -49,23 +49,30 @@ export function ZineEditorPage() {
     }
   }, [language, loadProject, projectId])
 
-  return (
-    <div className="flex h-full flex-col">
-      <PageHeader title={t('admin.zine_editor', language)} />
+  if (loading) {
+    return (
+      <div className="zine-desk flex h-full items-center justify-center" style={{ color: 'var(--muted-foreground)' }}>
+        <Loader2 size={22} className="animate-spin" />
+      </div>
+    )
+  }
 
-      <main className="min-h-0 flex-1 overflow-hidden p-6">
-        {loading ? (
-          <div className="flex h-48 items-center justify-center rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            <Loader2 size={22} className="animate-spin" />
-          </div>
-        ) : error ? (
-          <div className="rounded-lg border p-6 text-sm" style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)' }}>
-            {error}
-          </div>
-        ) : project ? (
-          <ZineEditor />
-        ) : null}
-      </main>
-    </div>
-  )
+  if (error) {
+    return (
+      <div className="zine-desk flex h-full flex-col items-center justify-center gap-4">
+        <p className="text-sm" style={{ color: 'var(--destructive)' }}>{error}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/zine')}
+          className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition hover:bg-accent"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <ArrowLeft size={15} />
+          {t('admin.zine_back', language)}
+        </button>
+      </div>
+    )
+  }
+
+  return project ? <ZineEditor /> : null
 }

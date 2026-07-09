@@ -13,7 +13,67 @@
 
 [English](README_EN.md) | 中文
 
-</div>
+----
+
+# 截图展示
+
+## web端
+
+
+
+## Desktop端
+
+登录页
+
+![image-20260706144644323](./README.assets/image-20260706144644323.png)
+
+概览
+
+![image-20260706144716752](./README.assets/image-20260706144716752.png)
+
+照片库
+
+![image-20260706144824799](./README.assets/image-20260706144824799.png)
+
+相册管理
+
+![image-20260706144840239](./README.assets/image-20260706144840239.png)
+
+胶卷管理
+
+![image-20260706144908173](./README.assets/image-20260706144908173.png)
+
+图片上传
+
+![image-20260706144919453](./README.assets/image-20260706144919453.png)
+
+照片日志
+
+![image-20260706144944795](./README.assets/image-20260706144944795.png)
+
+Zine
+
+![image-20260706144953907](./README.assets/image-20260706144953907.png)
+
+![image-20260706145001773](./README.assets/image-20260706145001773.png)
+
+AI对话
+
+![image-20260706145011594](./README.assets/image-20260706145011594.png)
+
+存储整理
+
+![image-20260706145024281](./README.assets/image-20260706145024281.png)
+
+系统配置
+
+![image-20260706145052073](./README.assets/image-20260706145052073.png)
+
+友链管理
+
+![image-20260706145108246](./README.assets/image-20260706145108246.png)
+
+
 
 ---
 

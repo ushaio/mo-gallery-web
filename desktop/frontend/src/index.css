@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* 共享编辑器包在 Vite 根目录之外，Tailwind 自动探测扫不到，
+   必须显式声明源码路径，否则包内独有的工具类（如 AI 助手面板的
+   bg-background）不会生成，表现为面板背景透明 */
+@source "../../../packages/tiptap-editor/src";
+
 /* ── 主题 token：对齐 web 端 src/app/globals.css ─────────────────
    通过 @theme inline 把 CSS 变量映射为 Tailwind 语义 utility，
    使复用的 web 组件（bg-card / border-border / text-primary 等）正常渲染。 */
@@ -140,6 +145,43 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--muted-foreground); border-radius: 3px; opacity: 0.5; }
 ::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
+
+/* ── Zine 编辑器「印刷工作台」 ─────────────────────────────── */
+
+/* 裁切垫：点阵台面，纸张是台面上唯一纯白的物体 */
+.zine-desk {
+  background-color: color-mix(in srgb, var(--muted) 55%, var(--background));
+  background-image: radial-gradient(color-mix(in srgb, var(--border) 80%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* 空文本槽占位符（contentEditable 版本的 tiptap 技巧） */
+.zine-text-slot:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(17, 17, 17, 0.28);
+  pointer-events: none;
+}
+
+/* react-moveable 控制点跟随主题色（默认蓝色与本应用视觉冲突） */
+.zine-canvas .moveable-control {
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: -5px !important;
+  margin-left: -5px !important;
+  background: var(--background) !important;
+  border: 1.5px solid var(--primary) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.zine-canvas .moveable-rotation-control {
+  border-radius: 50% !important;
+}
+.zine-canvas .moveable-line {
+  background: var(--primary) !important;
+}
+.zine-canvas .moveable-origin {
+  visibility: hidden;
+}
 
 /* TipTap 编辑器内容样式（来自 web src/components/tiptap-editor.css 摘要） */
 .tiptap p.is-editor-empty:first-child::before {

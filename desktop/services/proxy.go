@@ -17,13 +17,18 @@ import (
 type ProxyClient struct {
 	baseURL    string
 	httpClient *http.Client
-	token      string
-	logger     *Logger
+	// uploadClient 用于文件上传：服务端要做 AVIF 压缩 + 存储上传，
+	// 大文件耗时远超普通请求。30s 超时会导致客户端报错而服务端
+	// 仍完成入库，用户重试后产生重复记录。
+	uploadClient *http.Client
+	token        string
+	logger       *Logger
 }
 
 func NewProxyClient() *ProxyClient {
 	return &ProxyClient{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		uploadClient: &http.Client{Timeout: 10 * time.Minute},
 	}
 }
 
@@ -101,7 +106,7 @@ func (p *ProxyClient) GETWithMeta(path string, data interface{}, meta interface{
 		if p.logger != nil {
 			p.logger.Error(LogCategorySystem, "api_error", fmt.Sprintf("GET %s 请求错误", path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
 		}
-		return fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(body))
+		return parseAPIError(resp.StatusCode, body)
 	}
 
 	// 记录成功请求
@@ -175,13 +180,16 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %w", err)
 	}
+	// bytes.Buffer 会让 net/http 自动填充 GetBody，连接复用出错时
+	// transport 会静默重放整个 POST——上传接口非幂等，禁止重放。
+	req.GetBody = nil
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	if p.token != "" {
 		req.Header.Set("Authorization", "Bearer "+p.token)
 	}
 
 	start := time.Now()
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.uploadClient.Do(req)
 	if err != nil {
 		if p.logger != nil {
 			p.logger.Error(LogCategorySystem, "api_request_failed", fmt.Sprintf("POST %s 请求失败", path), err.Error())
@@ -208,7 +216,7 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 		if p.logger != nil {
 			p.logger.Error(LogCategorySystem, "api_error", fmt.Sprintf("POST %s 请求错误", path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
 		}
-		return fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+		return parseAPIError(resp.StatusCode, bodyBytes)
 	}
 
 	if p.logger != nil {
@@ -281,7 +289,7 @@ func (p *ProxyClient) do(method, path string, body interface{}, result interface
 
 		// 500 错误重试一次（可能是数据库连接断开）
 		if resp.StatusCode >= 500 && attempt == 0 {
-			lastErr = fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(respBody))
+			lastErr = parseAPIError(resp.StatusCode, respBody)
 			if p.logger != nil {
 				p.logger.Warn(LogCategorySystem, "api_retry", fmt.Sprintf("%s %s 服务器错误，重试中", method, path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
 			}
@@ -292,7 +300,7 @@ func (p *ProxyClient) do(method, path string, body interface{}, result interface
 			if p.logger != nil {
 				p.logger.Error(LogCategorySystem, "api_error", fmt.Sprintf("%s %s 请求错误", method, path), fmt.Sprintf("HTTP %d, %dms", resp.StatusCode, duration))
 			}
-			return fmt.Errorf("API 错误 (HTTP %d): %s", resp.StatusCode, string(respBody))
+			return parseAPIError(resp.StatusCode, respBody)
 		}
 
 		// 记录成功请求
@@ -355,4 +363,42 @@ type ApiUnauthorizedError struct {
 
 func (e *ApiUnauthorizedError) Error() string {
 	return e.Message
+}
+
+// APIError 服务端返回的结构化业务错误（4xx/5xx 且响应体带 error/message 字段）。
+// 调用方可用 errors.As 取出错误码做分支（如上传去重的 DUPLICATE_PHOTO）。
+type APIError struct {
+	StatusCode      int
+	Code            string // 服务端 error 字段
+	Message         string // 服务端 message 字段
+	ExistingPhotoID string // DUPLICATE_PHOTO 时的已有照片 ID
+}
+
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.Code != "" {
+		return e.Code
+	}
+	return fmt.Sprintf("API 错误 (HTTP %d)", e.StatusCode)
+}
+
+// parseAPIError 把 4xx/5xx 响应体解析为 APIError；响应体不是预期 JSON 时
+// 回退为包含原始响应体的通用错误，避免信息丢失。
+func parseAPIError(statusCode int, body []byte) error {
+	var errBody struct {
+		Error           string `json:"error"`
+		Message         string `json:"message"`
+		ExistingPhotoID string `json:"existingPhotoId"`
+	}
+	if json.Unmarshal(body, &errBody) == nil && (errBody.Error != "" || errBody.Message != "") {
+		return &APIError{
+			StatusCode:      statusCode,
+			Code:            errBody.Error,
+			Message:         errBody.Message,
+			ExistingPhotoID: errBody.ExistingPhotoID,
+		}
+	}
+	return fmt.Errorf("API 错误 (HTTP %d): %s", statusCode, string(body))
 }

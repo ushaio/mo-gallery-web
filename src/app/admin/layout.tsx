@@ -65,7 +65,6 @@ interface AdminContextType {
   selectedPhotoIds: Set<string>
   setSelectedPhotoIds: React.Dispatch<React.SetStateAction<Set<string>>>
   handleSelectPhotoToggle: (id: string) => void
-  handleSelectAllPhotos: () => void
   photosViewMode: 'grid' | 'list'
   setPhotosViewMode: (mode: 'grid' | 'list') => void
   photosError: string
@@ -428,14 +427,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  const handleSelectAllPhotos = useCallback(() => {
-    if (selectedPhotoIds.size === photos.length) {
-      setSelectedPhotoIds(new Set())
-    } else {
-      setSelectedPhotoIds(new Set(photos.map((p) => p.id)))
-    }
-  }, [selectedPhotoIds.size, photos])
-
   // Handler for saving photo updates from PhotoDetailPanel
   const handlePhotoSave = useCallback((updatedPhoto: PhotoDto) => {
     // Update local photos state
@@ -555,7 +546,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     selectedPhotoIds,
     setSelectedPhotoIds,
     handleSelectPhotoToggle,
-    handleSelectAllPhotos,
     photosViewMode,
     setPhotosViewMode,
     photosError,

@@ -293,6 +293,7 @@ export function useStoryEditorActions({
           file: fileToUpload,
           title: pending.file.name.replace(/\.[^/.]+$/, ''),
           category: settings.categories?.length ? settings.categories : settings.category,
+          origin_flag: 'desktop',
           storage_provider: settings.storageProvider,
           storage_source_id: settings.storageSourceId,
           storage_path: settings.storagePath,

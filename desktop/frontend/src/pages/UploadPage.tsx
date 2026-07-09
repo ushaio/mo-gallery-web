@@ -5,6 +5,7 @@ import { t } from '@/lib/i18n'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import type { UploadTask } from '@/contexts/UploadQueueContext'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
+import { toast } from 'sonner'
 import {
   Upload, X, CheckCircle, AlertCircle, Loader2, FileImage,
   Image as ImageIcon, Trash2, CloudUpload, GripVertical, Eye,
@@ -169,9 +170,10 @@ export function UploadPage() {
   // 加载关联数据
   useEffect(() => {
     (async () => {
-      try { const r = await (window as any).go.main.App.GetAlbums(); setAlbums(r || []) } catch {}
-      try { const r = await (window as any).go.main.App.GetStories(); setStories(r || []) } catch {}
-      try { const r = await (window as any).go.main.App.GetFilmRolls(); setFilmRolls(r || []) } catch {}
+      const failed: string[] = []
+      try { const r = await (window as any).go.main.App.GetAlbums(); setAlbums(r || []) } catch { failed.push('相册') }
+      try { const r = await (window as any).go.main.App.GetStories(); setStories(r || []) } catch { failed.push('故事') }
+      try { const r = await (window as any).go.main.App.GetFilmRolls(); setFilmRolls(r || []) } catch { failed.push('胶卷') }
       try {
         const r = await (window as any).go.main.App.GetStorageSources()
         const sources = r || []
@@ -180,7 +182,13 @@ export function UploadPage() {
         if (sources.length > 0 && !settings.storageSourceId) {
           setSettings(s => ({ ...s, storageSourceId: sources[0].id }))
         }
-      } catch {}
+      } catch {
+        // 存储源加载失败会导致上传按钮一直不可用，必须显式提示
+        toast.error('存储源加载失败，无法上传。请检查服务器连接后重新进入本页')
+      }
+      if (failed.length > 0) {
+        toast.error(`${failed.join('、')}列表加载失败，相关选项暂不可用`)
+      }
     })()
   }, [])
 
@@ -192,7 +200,7 @@ export function UploadPage() {
       if (f.path) paths.push(f.path)
     }
     if (paths.length === 0) {
-      alert('无法获取文件路径，请使用"选择文件"按钮')
+      toast.error('无法获取文件路径，请使用"选择文件"按钮')
       return
     }
     await processFiles(paths)
@@ -230,6 +238,7 @@ export function UploadPage() {
       setItems(prev => [...prev, ...newItems])
     } catch (err: any) {
       console.error('预处理失败:', err)
+      toast.error(err?.message || '文件预处理失败，请重试')
     } finally {
       setPreparing(false)
     }

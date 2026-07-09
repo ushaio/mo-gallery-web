@@ -1,38 +1,56 @@
+import { useEffect, useRef } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 
 interface SlotTextContentProps {
   content: string
   style?: CSSProperties
+  placeholder?: string
+  editing: boolean
   onChange?: (content: string) => void
+  onEditEnd?: () => void
 }
 
-export function SlotTextContent({ content, style, onChange }: SlotTextContentProps) {
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key.toLowerCase() !== 'b' || (!event.ctrlKey && !event.metaKey)) return
+export function SlotTextContent({ content, style, placeholder, editing, onChange, onEditEnd }: SlotTextContentProps) {
+  const ref = useRef<HTMLDivElement | null>(null)
 
-    event.preventDefault()
+  // 进入编辑态时聚焦并把光标移到末尾
+  useEffect(() => {
+    if (!editing) return
+    const element = ref.current
+    if (!element) return
 
+    element.focus()
     const selection = window.getSelection()
-    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-      const range = selection.getRangeAt(0)
-      const selectedText = selection.toString()
-      range.deleteContents()
-      range.insertNode(document.createTextNode(`**${selectedText}**`))
+    if (selection) {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      range.collapse(false)
       selection.removeAllRanges()
-      return
+      selection.addRange(range)
     }
+  }, [editing])
 
-    event.currentTarget.append(document.createTextNode('**bold**'))
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.currentTarget.blur()
+    }
   }
 
   return (
     <div
-      className="h-full w-full cursor-text outline-none"
+      ref={ref}
+      // 非编辑态关闭指针事件，让单击选中/拖动作用于整个槽位；双击进入编辑
+      className={`zine-text-slot h-full w-full outline-none ${editing ? 'cursor-text' : 'pointer-events-none'}`}
       style={{ ...style, whiteSpace: 'pre-wrap' }}
-      contentEditable
+      contentEditable={editing}
       suppressContentEditableWarning
-      onBlur={(event) => onChange?.(event.currentTarget.textContent ?? '')}
+      data-placeholder={placeholder}
       onKeyDown={handleKeyDown}
+      onBlur={(event) => {
+        onChange?.(event.currentTarget.textContent ?? '')
+        onEditEnd?.()
+      }}
     >
       {content}
     </div>

@@ -125,7 +125,7 @@ export async function uploadPhoto(input: {
   file: File
   title: string
   category: string | string[]
-  origin_flag?: 'web' | 'mobile'
+  origin_flag?: 'web' | 'mobile' | 'desktop'
   storage_provider?: string
   storage_source_id?: string
   storage_path?: string
@@ -166,7 +166,7 @@ export function uploadPhotoWithProgress(input: {
   file: File
   title: string
   category?: string | string[]
-  origin_flag?: 'web' | 'mobile'
+  origin_flag?: 'web' | 'mobile' | 'desktop'
   storage_provider?: string
   storage_source_id?: string
   storage_path?: string

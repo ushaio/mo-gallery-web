@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   output: "standalone",
   serverExternalPackages: ["sharp", "@waline/vercel"],
+  // 共享包以 TS 源码直出（packages/*），由 Next 编译
+  transpilePackages: ["@mo-gallery/tiptap-editor", "@mo-gallery/ai-agent"],
   images: {
     unoptimized: true,
     remotePatterns: [

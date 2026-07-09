@@ -1,4 +1,4 @@
-import { shouldCloseColorPickerMenu } from '../src/components/tiptap-editor/color-picker-utils'
+import { shouldCloseColorPickerMenu } from '../packages/tiptap-editor/src/tiptap-editor/color-picker-utils'
 
 function assert(condition: unknown, message: string) {
   if (!condition) {

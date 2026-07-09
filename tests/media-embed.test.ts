@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import {
   parseMediaEmbedInfo,
   parseMediaEmbedInfoByProvider,
-} from '../src/lib/media-embed'
+} from '@mo-gallery/tiptap-editor'
 
 function runTest(name: string, callback: () => void) {
   try {

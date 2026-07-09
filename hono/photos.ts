@@ -1,8 +1,9 @@
 import 'server-only'
 import { Hono } from 'hono'
+import { Prisma } from '@/generated/prisma/client'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { extractExifData, parseExifJson } from '~/server/lib/exif'
+import { extractExifData, parseExifJson, sanitizeJsonString } from '~/server/lib/exif'
 import { extractDominantColors } from '~/server/lib/colors'
 import {
   compressToTargetSize,
@@ -41,6 +42,16 @@ function buildThumbnailKey(originalKey: string): string {
 
 function isValidDate(value: Date | undefined): value is Date {
   return value instanceof Date && Number.isFinite(value.getTime())
+}
+
+// P2002 = unique constraint violation. Photo.fileHash 的唯一索引是并发
+// 上传去重的最终兜底（应用层检查之间仍有竞态窗口）。
+function isFileHashConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    (error.meta?.target as string[] | string | undefined)?.includes('fileHash') === true
+  )
 }
 
 function normalizeStorageKeyCandidate(value: string | null | undefined): string | undefined {
@@ -241,7 +252,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     const skip = (page - 1) * pageSize
 
     // 构造查询条件（不过滤 showFlag）
-    const where: any = {}
+    const where: Prisma.PhotoWhereInput = {}
     if (category && category !== '全部') {
       where.categories = { some: { name: category } }
     }
@@ -250,9 +261,10 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     }
 
     // 排序
-    const orderBy = sortBy === 'takenAt'
-      ? [{ takenAt: { sort: sortOrder, nulls: 'last' } }, { createdAt: 'desc' }]
-      : [{ createdAt: sortOrder }]
+    const sortDirection: Prisma.SortOrder = sortOrder === 'asc' ? 'asc' : 'desc'
+    const orderBy: Prisma.PhotoOrderByWithRelationInput[] = sortBy === 'takenAt'
+      ? [{ takenAt: { sort: sortDirection, nulls: 'last' } }, { createdAt: 'desc' }]
+      : [{ createdAt: sortDirection }]
 
     const [total, photosList] = await Promise.all([
       db.photo.count({ where }),
@@ -533,13 +545,13 @@ photos.post('/admin/photos/register', async (c) => {
       ? category.split(',').map((c: string) => c.trim()).filter((c: string) => c.length > 0)
       : []
 
-    // 创建照片记录
-    const photo = await db.photo.create({
+    // 创建照片记录（fileHash 唯一索引兜底并发注册竞态）
+    const createPhotoRecord = () => db.photo.create({
       data: {
         title,
         url,
         thumbnailUrl: thumbnailUrl || null,
-        originFlag: ['web', 'mobile'].includes(originFlag) ? originFlag : 'web',
+        originFlag: ['web', 'mobile', 'desktop'].includes(originFlag) ? originFlag : 'web',
         storageProvider: storageProvider || 'local',
         storageSourceId: storageSourceId || null,
         storageKey: storageKey || null,
@@ -560,10 +572,10 @@ photos.post('/admin/photos/register', async (c) => {
         shutterSpeed: exif?.shutterSpeed || null,
         iso: exif?.iso || null,
         takenAt: exif?.takenAt ? new Date(exif.takenAt) : null,
-        gps: exif?.gps || null,
+        gps: sanitizeJsonString(exif?.gps) || null,
         orientation: exif?.orientation || null,
         software: exif?.software || null,
-        exifRaw: exif?.raw || null,
+        exifRaw: sanitizeJsonString(exif?.raw) || null,
         categories: {
           connectOrCreate: categoriesArray.map((name: string) => ({
             where: { name },
@@ -578,6 +590,23 @@ photos.post('/admin/photos/register', async (c) => {
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
       },
     })
+
+    let photo: Awaited<ReturnType<typeof createPhotoRecord>>
+    try {
+      photo = await createPhotoRecord()
+    } catch (error) {
+      if (isFileHashConflict(error)) {
+        const existing = fileHash
+          ? await db.photo.findFirst({ where: { fileHash }, select: { id: true, title: true } })
+          : null
+        return c.json({
+          error: 'DUPLICATE_PHOTO',
+          message: `A photo with the same content already exists${existing ? `: "${existing.title}"` : ''}`,
+          existingPhotoId: existing?.id,
+        }, 409)
+      }
+      throw error
+    }
 
     // 胶卷关联
     if (filmRollId) {
@@ -607,7 +636,7 @@ photos.post('/admin/photos/register', async (c) => {
 photos.post('/admin/photos', async (c) => {
   try {
     const startedAt = Date.now()
-    const allowedOriginFlags = new Set(['web', 'mobile'])
+    const allowedOriginFlags = new Set(['web', 'mobile', 'desktop'])
     const formData = await c.req.formData()
     const file = formData.get('file') as File
     const titleRaw = formData.get('title') as string
@@ -807,6 +836,23 @@ photos.post('/admin/photos', async (c) => {
       thumbnailContentType: AVIF_CONTENT_TYPE,
     })
 
+    // 二次去重：同一文件的并发上传可能同时通过请求开始时的检查
+    // （图片处理耗时几十秒）。在写入存储/数据库前复查，把竞态窗口
+    // 从整个处理时长缩小到毫秒级，也避免产生孤儿存储文件。
+    if (fileHash) {
+      const existingPhoto = await db.photo.findFirst({
+        where: { fileHash },
+        select: { id: true, title: true },
+      })
+      if (existingPhoto) {
+        return c.json({
+          error: 'DUPLICATE_PHOTO',
+          message: `A photo with the same content already exists: "${existingPhoto.title}"`,
+          existingPhotoId: existingPhoto.id,
+        }, 409)
+      }
+    }
+
     // Use the generated thumbnail for color extraction when available to avoid
     // decoding the large original image again inside a constrained serverless function.
     const [uploadResult, dominantColors] = await Promise.all([
@@ -867,8 +913,9 @@ photos.post('/admin/photos', async (c) => {
       }
     }
 
-    // Create photo record
-    const photo = await db.photo.create({
+    // Create photo record. fileHash 唯一索引兜底并发上传竞态：撞上冲突时
+    // 清理刚上传的存储文件并按重复照片返回。
+    const createPhotoRecord = () => db.photo.create({
       data: {
         title,
         url: uploadResult.url,
@@ -914,6 +961,32 @@ photos.post('/admin/photos', async (c) => {
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
       },
     })
+
+    let photo: Awaited<ReturnType<typeof createPhotoRecord>>
+    try {
+      photo = await createPhotoRecord()
+    } catch (error) {
+      if (isFileHashConflict(error)) {
+        try {
+          if (uploadResult.thumbnailKey) {
+            await storage.delete(uploadResult.key, uploadResult.thumbnailKey)
+          } else {
+            await storage.delete(uploadResult.key)
+          }
+        } catch (cleanupError) {
+          console.warn('[upload] duplicate race: failed to clean uploaded files:', cleanupError)
+        }
+        const existing = fileHash
+          ? await db.photo.findFirst({ where: { fileHash }, select: { id: true, title: true } })
+          : null
+        return c.json({
+          error: 'DUPLICATE_PHOTO',
+          message: `A photo with the same content already exists${existing ? `: "${existing.title}"` : ''}`,
+          existingPhotoId: existing?.id,
+        }, 409)
+      }
+      throw error
+    }
 
     if (filmRollId) {
       await setPhotoFilmRoll(photo.id, filmRollId)

@@ -1,26 +1,21 @@
 import 'server-only'
 
-export type StoryAiAction =
-  | 'rewrite'
-  | 'expand'
-  | 'shorten'
-  | 'continue'
-  | 'summarize'
-  | 'custom'
+// prompt 构建收敛到共享包 @mo-gallery/ai-agent（与 desktop 同一份实现），
+// 本文件只保留 web 服务端的上游调用与 SSE 转发管道
+import {
+  buildEditorAiMessages,
+  toOpenAiChatMessages,
+  type EditorAiAction,
+  type OpenAiContentPart,
+  type OpenAiImagePart,
+  type OpenAiTextPart,
+} from '@mo-gallery/ai-agent'
 
-export interface TextContentPart {
-  type: 'text'
-  text: string
-}
+export type StoryAiAction = EditorAiAction
 
-export interface ImageContentPart {
-  type: 'image_url'
-  image_url: { url: string; detail?: 'auto' | 'low' | 'high' }
-}
-
-export type ContentPart = TextContentPart | ImageContentPart
-
-type UpstreamMessageContent = string | ContentPart[]
+export type TextContentPart = OpenAiTextPart
+export type ImageContentPart = OpenAiImagePart
+export type ContentPart = OpenAiContentPart
 
 export interface StoryAiGeneratePayload {
   action: StoryAiAction
@@ -52,19 +47,6 @@ export interface StoryAiModelOption {
   label: string
 }
 
-const ACTION_INSTRUCTIONS: Record<StoryAiAction, string> = {
-  rewrite: '润色并优化表达，保留原意和叙事节奏。',
-  expand: '在不偏离原意的前提下扩写内容，增强画面感和细节。',
-  shorten: '压缩内容，让表达更凝练，但保留关键信息和情绪。',
-  continue: '基于已有内容自然续写下一段，不重复前文。',
-  summarize: '总结成一段适合作为故事摘要的文字。',
-  custom: '严格按用户指令完成改写或生成。',
-}
-
-const SYSTEM_PROMPT = '你是一名中文叙事编辑助手，帮助用户编辑摄影故事。只输出最终可直接放进正文的内容，不要解释，不要加引号，不要用”修改如下”之类的前缀。'
-
-const CHAT_SYSTEM_PROMPT = '你是一名友善的AI写作助手，与用户协作进行摄影叙事创作。请用自然对话的方式回复，可以给建议、讨论想法、回答问题。不要假装成编辑工具——你是聊天伙伴，不是文本处理器。用中文回复。'
-
 function getStoryAiConfig(): StoryAiConfig {
   const baseUrl = process.env.AI_BASE_URL?.trim()
   const apiKey = process.env.AI_API_KEY?.trim()
@@ -81,66 +63,6 @@ function getStoryAiConfig(): StoryAiConfig {
   }
 }
 
-function isConversationalMode(payload: StoryAiGeneratePayload): boolean {
-  return !payload.selectedText && !payload.currentParagraph
-}
-
-function buildUserPrompt(payload: StoryAiGeneratePayload): string {
-  if (isConversationalMode(payload)) {
-    return payload.prompt || ''
-  }
-
-  const sections = [
-    payload.title ? `标题：${payload.title}` : '',
-    payload.selectedText ? `选中文本：\n${payload.selectedText}` : '',
-    payload.currentParagraph ? `当前段落：\n${payload.currentParagraph}` : '',
-    payload.contextBefore ? `前文参考：\n${payload.contextBefore}` : '',
-    payload.contextAfter ? `后文参考：\n${payload.contextAfter}` : '',
-    `任务：${ACTION_INSTRUCTIONS[payload.action]}`,
-    payload.prompt ? `用户补充要求（必须尽量满足，作为生成约束和参考）：\n${payload.prompt}` : '',
-    '输出要求：只输出最终正文内容，不解释你的修改过程，不添加标题或前缀。',
-  ].filter(Boolean)
-
-  return sections.join('\n\n')
-}
-
-function buildUpstreamMessages(payload: StoryAiGeneratePayload) {
-  const systemPrompt = payload.systemPrompt
-    || (isConversationalMode(payload) ? CHAT_SYSTEM_PROMPT : SYSTEM_PROMPT)
-
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: UpstreamMessageContent }> = [
-    {
-      role: 'system',
-      content: systemPrompt,
-    },
-  ]
-
-  for (const history of payload.historyMessages || []) {
-    if (!history.content.trim()) continue
-    messages.push({
-      role: history.role,
-      content: history.content.trim(),
-    })
-  }
-
-  const userText = buildUserPrompt(payload)
-  const images = payload.images?.filter(Boolean)
-  if (images && images.length > 0) {
-    const parts: ContentPart[] = [
-      { type: 'text', text: userText },
-      ...images.map((url): ImageContentPart => ({
-        type: 'image_url',
-        image_url: { url, detail: 'auto' },
-      })),
-    ]
-    messages.push({ role: 'user', content: parts })
-  } else {
-    messages.push({ role: 'user', content: userText })
-  }
-
-  return messages
-}
-
 export async function createEditorAiStream(payload: StoryAiGeneratePayload): Promise<ReadableStream<Uint8Array>> {
   const config = getStoryAiConfig()
   const activeModel = payload.model?.trim() || config.model
@@ -155,7 +77,7 @@ export async function createEditorAiStream(payload: StoryAiGeneratePayload): Pro
       model: activeModel,
       stream: true,
       temperature: 0.7,
-      messages: buildUpstreamMessages(payload),
+      messages: toOpenAiChatMessages(buildEditorAiMessages(payload)),
     }),
   })
 

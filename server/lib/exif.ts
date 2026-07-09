@@ -70,6 +70,21 @@ function isFiniteCoordinate(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+/**
+ * Validate a client-supplied serialized-JSON string (exifRaw / gps).
+ * Clients are supposed to send JSON.stringify output; anything that does not
+ * parse is dropped so corrupted fragments never reach the database.
+ */
+export function sanitizeJsonString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    JSON.parse(value)
+    return value
+  } catch {
+    return undefined
+  }
+}
+
 function getGpsDateStampDescription(tags: unknown): string | undefined {
   if (!tags || typeof tags !== 'object') {
     return undefined
@@ -241,8 +256,10 @@ export function parseExifJson(json: string): ExifData {
   }
   if (typeof raw.orientation === 'number') data.orientation = raw.orientation
   if (raw.software) data.software = raw.software
-  if (raw.exifRaw) data.exifRaw = raw.exifRaw
-  if (raw.gps) data.gps = raw.gps
+  const exifRaw = sanitizeJsonString(raw.exifRaw)
+  if (exifRaw) data.exifRaw = exifRaw
+  const gps = sanitizeJsonString(raw.gps)
+  if (gps) data.gps = gps
   return data
 }
 

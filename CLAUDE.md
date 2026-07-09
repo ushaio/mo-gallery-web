@@ -66,7 +66,11 @@ Multiple storage backends configured via `STORAGE_PROVIDER` env var: local files
 
 ### Rich Text Editor
 
-TipTap v3 with extensions (table, image, link, text-align, underline). Editor component: `src/components/NarrativeTipTapEditor.tsx`. Custom styles in `src/app/tiptap-editor.css`.
+TipTap v3 with extensions (table, image, link, text-align, underline). The editor is a shared workspace package `packages/tiptap-editor` (`@mo-gallery/tiptap-editor`, TS source consumed directly — web via `transpilePackages`, desktop via Vite) used by both web and desktop. Each app has a thin wrapper at `src/components/NarrativeTipTapEditor.tsx` that injects app-specific i18n/theme/API via the `NarrativeEditorRuntime` interface (`packages/tiptap-editor/src/runtime.ts`). Edit editor code only in the package — never re-copy it into an app.
+
+### AI (Editor Assistant)
+
+AI orchestration lives in the shared package `packages/ai-agent` (`@mo-gallery/ai-agent`, Vercel AI SDK): prompt building is the single implementation for both ends. Web server (`server/lib/story-ai.ts`) uses its prompt builders and streams from the upstream OpenAI-compatible API directly. Desktop runs the same orchestration in the frontend (`desktop/frontend/src/lib/api/editor-ai-local.ts`) against a local Go proxy (`/v1/chat/completions`, key injection in Go — see `desktop/services/editor-ai.go ProxyChatCompletions`) with conversations persisted locally via Wails bindings; it works fully offline from the web server. Never add prompt logic to Go — extend `packages/ai-agent` instead.
 
 ### Comments
 

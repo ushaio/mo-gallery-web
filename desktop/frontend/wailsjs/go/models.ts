@@ -808,7 +808,47 @@ export namespace services {
 		    return a;
 		}
 	}
+	export class EditorAiMessageAppendInput {
+	    conversationId: string;
+	    role: string;
+	    content: string;
+	    status?: string;
+	    model?: string;
+	    action?: string;
 	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiMessageAppendInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.conversationId = source["conversationId"];
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.status = source["status"];
+	        this.model = source["model"];
+	        this.action = source["action"];
+	    }
+	}
+	
+	export class EditorAiMessageFinishInput {
+	    messageId: string;
+	    content?: string;
+	    model?: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiMessageFinishInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.messageId = source["messageId"];
+	        this.content = source["content"];
+	        this.model = source["model"];
+	        this.error = source["error"];
+	    }
+	}
 	export class FilmPhotoDTO {
 	    id: string;
 	    filmRollId: string;
@@ -1911,6 +1951,23 @@ export namespace services {
 	        this.stripGPS = source["stripGPS"];
 	        this.filmRollId = source["filmRollId"];
 	        this.originFlag = source["originFlag"];
+	    }
+	}
+	
+	export class ZineCJKFontInfo {
+	    found: boolean;
+	    path: string;
+	    postscriptName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ZineCJKFontInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.found = source["found"];
+	        this.path = source["path"];
+	        this.postscriptName = source["postscriptName"];
 	    }
 	}
 

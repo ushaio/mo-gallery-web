@@ -1,6 +1,7 @@
 /**
- * 照片日志页 — 故事 + 博客 + 草稿三标签，1:1 对齐 web 后台 logs/page.tsx。
- * 数据/交互逻辑与 web 完全一致（直接调用 @/lib/api 与 @/lib/client-db）。
+ * 照片日志页 — 故事 + 博客 + 草稿三标签。
+ * 数据/交互逻辑与 web 后台 logs/page.tsx 一致（直接调用 @/lib/api 与 @/lib/client-db）；
+ * UI 样式遵循桌面端自己的设计语言（参照登录页/系统配置页），不照搬 web。
  */
 'use client'
 
@@ -250,51 +251,44 @@ function PhotoJournalContent() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 子标签页导航 */}
+      {/* 子标签页导航（桌面语言：accent 胶囊按钮，参照系统配置页） */}
       <div
         className={`${
           (isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'
-        } space-x-1 border-b border-border px-8 flex-shrink-0`}
+        } items-center gap-1 border-b px-6 py-2.5 flex-shrink-0`}
+        style={{ borderColor: 'var(--border)' }}
       >
-        <AdminButton
-          onClick={() => handleTabClick('stories')}
-          adminVariant="tab"
-          data-state={activeSubTab === 'stories' ? 'active' : 'inactive'}
-          className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
-          title={t('admin.double_click_refresh')}
-        >
-          <BookOpen className="w-4 h-4" />
-          {t('nav.story')}
-        </AdminButton>
-        <AdminButton
-          onClick={() => handleTabClick('blog')}
-          adminVariant="tab"
-          data-state={activeSubTab === 'blog' ? 'active' : 'inactive'}
-          className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
-          title={t('admin.double_click_refresh')}
-        >
-          <BookText className="w-4 h-4" />
-          {t('admin.blog')}
-        </AdminButton>
-        <AdminButton
-          onClick={() => handleTabClick('drafts')}
-          adminVariant="tab"
-          data-state={activeSubTab === 'drafts' ? 'active' : 'inactive'}
-          className="flex items-center gap-2 px-6 py-4 text-xs font-bold uppercase tracking-[0.2em]"
-          title={t('admin.double_click_refresh')}
-        >
-          <FileArchive className="w-4 h-4" />
-          {t('admin.drafts')}
-          {totalDrafts > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded-full">{totalDrafts}</span>
-          )}
-        </AdminButton>
+        {([
+          { key: 'stories' as const, icon: BookOpen, label: t('nav.story') },
+          { key: 'blog' as const, icon: BookText, label: t('admin.blog') },
+          { key: 'drafts' as const, icon: FileArchive, label: t('admin.drafts') },
+        ]).map(({ key, icon: Icon, label }) => (
+          <button
+            key={key}
+            onClick={() => handleTabClick(key)}
+            title={t('admin.double_click_refresh')}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors"
+            style={{
+              backgroundColor: activeSubTab === key ? 'var(--accent)' : 'transparent',
+              color: activeSubTab === key ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+            }}
+          >
+            <Icon size={15} />
+            {label}
+            {key === 'drafts' && totalDrafts > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] rounded-full"
+                style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                {totalDrafts}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* 子标签页内容 */}
       <div
         className={`flex-1 overflow-hidden ${
-          isImmersiveMode ? 'pt-0' : isStoriesEditing && activeSubTab === 'stories' ? 'pt-0' : 'px-8 pb-8 pt-6'
+          isImmersiveMode ? 'pt-0' : isStoriesEditing && activeSubTab === 'stories' ? 'pt-0' : 'px-6 pb-6 pt-4'
         }`}
       >
         <div className={activeSubTab === 'blog' ? 'h-full' : 'hidden'}>
@@ -332,19 +326,22 @@ function PhotoJournalContent() {
               </div>
               <div className="flex items-center gap-2">
                 {totalDrafts > 0 && (
-                  <AdminButton
+                  <button
                     onClick={() => setDeleteDialog({ isOpen: true, type: 'all' })}
-                    adminVariant="destructiveOutline"
-                    size="sm"
-                    className="gap-2 rounded-md"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-opacity hover:opacity-80"
+                    style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)' }}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 size={13} />
                     {t('admin.delete_all')}
-                  </AdminButton>
+                  </button>
                 )}
-                <AdminButton onClick={loadDrafts} adminVariant="outline" size="sm" className="rounded-md">
+                <button
+                  onClick={loadDrafts}
+                  className="px-3 py-1.5 text-xs rounded-md border transition-opacity hover:opacity-80"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                >
                   {t('common.refresh')}
-                </AdminButton>
+                </button>
               </div>
             </div>
 
@@ -358,7 +355,7 @@ function PhotoJournalContent() {
                   {/* 故事上传草稿区 */}
                   {filteredStoryDraft && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         <BookOpen className="w-3.5 h-3.5" />
                         <span>{t('admin.story_draft')}</span>
                         <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 rounded">
@@ -368,12 +365,12 @@ function PhotoJournalContent() {
                       <div className="p-5 border border-border hover:border-primary/50 transition-colors rounded-lg group">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-serif text-xl mb-1">{filteredStoryDraft.title || t('story.untitled')}</h4>
+                            <h4 className="text-base mb-1">{filteredStoryDraft.title || t('story.untitled')}</h4>
                             <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
                               {filteredStoryDraft.content?.substring(0, 150) || t('admin.no_content')}
                               {filteredStoryDraft.content?.length > 150 ? '...' : ''}
                             </p>
-                            <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
                                 {formatRelativeTime(filteredStoryDraft.savedAt)}
@@ -418,7 +415,7 @@ function PhotoJournalContent() {
                   {/* 故事编辑器草稿区 */}
                   {filteredStoryEditorDrafts.length > 0 && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         <Edit3 className="w-3.5 h-3.5" />
                         <span>{t('admin.story_editor_drafts')}</span>
                         <span className="text-muted-foreground/50">({filteredStoryEditorDrafts.length})</span>
@@ -432,13 +429,13 @@ function PhotoJournalContent() {
                             <div className="flex items-start justify-between">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-serif text-xl">{draft.title || t('story.untitled')}</h4>
+                                  <h4 className="text-base">{draft.title || t('story.untitled')}</h4>
                                   {draft.storyId ? (
-                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 border border-muted-foreground text-muted-foreground rounded">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                                       {t('common.edit')}
                                     </span>
                                   ) : (
-                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 border border-primary text-primary rounded">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                                       {t('admin.new')}
                                     </span>
                                   )}
@@ -447,7 +444,7 @@ function PhotoJournalContent() {
                                   {draft.content?.substring(0, 150) || t('admin.no_content')}
                                   {draft.content?.length > 150 ? '...' : ''}
                                 </p>
-                                <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                   <span className="flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
                                     {formatRelativeTime(draft.savedAt)}
@@ -503,7 +500,7 @@ function PhotoJournalContent() {
                   {/* 博客草稿区 */}
                   {filteredBlogDrafts.length > 0 && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         <BookText className="w-3.5 h-3.5" />
                         <span>{t('admin.blog_drafts')}</span>
                         <span className="text-muted-foreground/50">({filteredBlogDrafts.length})</span>
@@ -517,13 +514,13 @@ function PhotoJournalContent() {
                             <div className="flex items-start justify-between">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-serif text-xl">{draft.title || t('admin.untitled')}</h4>
+                                  <h4 className="text-base">{draft.title || t('admin.untitled')}</h4>
                                   {draft.blogId ? (
-                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 border border-muted-foreground text-muted-foreground rounded">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                                       {t('common.edit')}
                                     </span>
                                   ) : (
-                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 border border-primary text-primary rounded">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                                       {t('admin.new')}
                                     </span>
                                   )}
@@ -532,7 +529,7 @@ function PhotoJournalContent() {
                                   {draft.content?.substring(0, 150) || t('admin.no_content')}
                                   {draft.content?.length > 150 ? '...' : ''}
                                 </p>
-                                <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                   <span className="flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
                                     {formatRelativeTime(draft.savedAt)}
@@ -575,8 +572,10 @@ function PhotoJournalContent() {
                   {/* 空状态提示 */}
                   {!filteredStoryDraft && filteredBlogDrafts.length === 0 && filteredStoryEditorDrafts.length === 0 && (
                     <div className="py-24 text-center border border-dashed border-border rounded-lg">
-                      <FileArchive className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                      <div className="w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-muted">
+                        <FileArchive className="w-5 h-5 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-2">
                         {t('admin.no_drafts')}
                       </p>
                       <p className="text-xs text-muted-foreground/60 max-w-sm mx-auto">{t('admin.drafts_hint')}</p>
@@ -609,8 +608,8 @@ function PhotoJournalContent() {
               {/* 弹窗头部 */}
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <div>
-                  <h3 className="font-serif text-2xl">{selectedDraft.title || t('admin.untitled')}</h3>
-                  <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground font-mono uppercase">
+                  <h3 className="text-lg font-semibold">{selectedDraft.title || t('admin.untitled')}</h3>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatRelativeTime(selectedDraft.savedAt)}
@@ -651,13 +650,13 @@ function PhotoJournalContent() {
                   <div className="mt-6 pt-6 border-t border-border">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <span className="text-xs font-medium text-muted-foreground">
                           {t('ui.category_filter')}
                         </span>
                         <p className="mt-1">{(selectedDraft as BlogDraftData).category || '-'}</p>
                       </div>
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tags</span>
+                        <span className="text-xs font-medium text-muted-foreground">Tags</span>
                         <p className="mt-1">{(selectedDraft as BlogDraftData).tags || '-'}</p>
                       </div>
                     </div>
@@ -668,7 +667,7 @@ function PhotoJournalContent() {
                 {'files' in selectedDraft &&
                   (selectedDraft as StoryDraftWithPreviews).files?.length > 0 && (
                     <div className="mt-6 pt-6 border-t border-border">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      <span className="text-xs font-medium text-muted-foreground">
                         {t('admin.pending_files')} ({(selectedDraft as StoryDraftWithPreviews).files.length})
                       </span>
                       <div className="mt-3 grid grid-cols-4 gap-2">

@@ -1,33 +1,63 @@
-import { getSpreadSize } from '@/lib/zine/page-sizes'
+import { getProjectSpreadSize } from '@/lib/zine/page-sizes'
+import { getZineAssetImageSource } from '@/lib/zine/slot-render'
 import type { Spread, ZineProject } from '@/lib/zine/types'
 
 interface PageThumbProps {
   project: ZineProject
   spread: Spread
+  width?: number
 }
 
-const THUMB_WIDTH = 128
-
-export function PageThumb({ project, spread }: PageThumbProps) {
-  const { pageW, spreadW, spreadH } = getSpreadSize(project.pageSize, project.pageOrientation)
-  const scale = THUMB_WIDTH / spreadW
+export function PageThumb({ project, spread, width = 128 }: PageThumbProps) {
+  const { pageW, spreadW, spreadH } = getProjectSpreadSize(project)
+  const scale = width / spreadW
 
   return (
-    <div className="relative overflow-hidden rounded-sm bg-white shadow-sm" style={{ width: THUMB_WIDTH, height: spreadH * scale }}>
-      <div className="absolute inset-y-0 w-px bg-zinc-300" style={{ left: pageW * scale }} />
-      {spread.slots.map((slot) => (
-        <div
-          key={slot.id}
-          className={slot.kind === 'image' ? 'absolute bg-zinc-200' : 'absolute bg-zinc-300'}
-          style={{
-            left: (slot.page === 'right' ? pageW + slot.x : slot.x) * scale,
-            top: slot.y * scale,
-            width: slot.w * scale,
-            height: slot.h * scale,
-            transform: `rotate(${slot.rotation}deg)`,
-          }}
-        />
-      ))}
+    <div className="relative overflow-hidden bg-white shadow-sm ring-1 ring-black/10" style={{ width, height: spreadH * scale }}>
+      <div className="absolute inset-y-0 z-10 w-px bg-zinc-300/80" style={{ left: pageW * scale }} />
+      {spread.slots.map((slot) => {
+        const style = {
+          left: (slot.page === 'right' ? pageW + slot.x : slot.x) * scale,
+          top: slot.y * scale,
+          width: slot.w * scale,
+          height: slot.h * scale,
+          transform: `rotate(${slot.rotation}deg)`,
+        }
+
+        if (slot.kind === 'text') {
+          return (
+            <div
+              key={slot.id}
+              className="absolute"
+              style={{
+                ...style,
+                backgroundImage: 'repeating-linear-gradient(to bottom, rgba(17,17,17,0.28) 0 1px, transparent 1px 4px)',
+                backgroundSize: '85% 100%',
+                backgroundRepeat: 'no-repeat',
+              }}
+            />
+          )
+        }
+
+        const src = getZineAssetImageSource(project.assets.find((asset) => asset.id === slot.assetId), 'preview')
+
+        return (
+          <div key={slot.id} className="absolute overflow-hidden bg-zinc-200" style={style}>
+            {src ? (
+              <img
+                src={src}
+                alt=""
+                className="h-full w-full object-cover"
+                draggable={false}
+                loading="lazy"
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none'
+                }}
+              />
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -1,9 +1,14 @@
 import { useRef, useState } from 'react'
+import { FolderOpen, ImagePlus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { t } from '@/lib/i18n'
 import { saveZineAssetBlob } from '@/lib/zine/project'
 import type { ZineAsset } from '@/lib/zine/types'
+import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
+
+import { TrayThumb } from './TrayThumb'
 
 interface PhotoTrayLocalImportProps {
   onPickAsset: (asset: ZineAsset) => void
@@ -23,10 +28,18 @@ function getImageSize(src: string): Promise<{ width: number; height: number }> {
   })
 }
 
+const EMPTY_ZINE_ASSETS: ZineAsset[] = []
+
+export function selectZineProjectAssets(project: { assets: ZineAsset[] } | null | undefined) {
+  return project?.assets ?? EMPTY_ZINE_ASSETS
+}
+
 export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLocalImportProps) {
+  const { language } = usePreferences()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [importing, setImporting] = useState(false)
-  const assets = useZineStore((state) => state.project?.assets.filter((asset) => asset.source === 'local') ?? [])
+  const projectAssets = useZineStore((state) => selectZineProjectAssets(state.project))
+  const assets = projectAssets.filter((asset) => asset.source === 'local')
   const addAsset = useZineStore((state) => state.addAsset)
 
   async function importFiles(files: FileList | null) {
@@ -55,7 +68,7 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
         addAsset(asset)
       }
     } catch {
-      toast.error('本地图片导入失败')
+      toast.error(t('admin.zine_import_failed', language))
     } finally {
       setImporting(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -64,36 +77,35 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
 
   return (
     <div className="flex h-full min-w-0 gap-3">
-      <div className="flex h-full shrink-0 flex-col justify-center gap-2">
+      <div className="flex h-full shrink-0 flex-col items-start justify-center gap-1.5">
         <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void importFiles(event.target.files)} />
-        <button type="button" className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60" onClick={() => inputRef.current?.click()} disabled={importing}>
-          {importing ? '导入中...' : '导入本地图片'}
+        <button
+          type="button"
+          className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+          style={{ borderColor: 'var(--border)' }}
+          onClick={() => inputRef.current?.click()}
+          disabled={importing}
+        >
+          {importing ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
+          {importing ? t('admin.zine_importing', language) : t('admin.zine_import_local', language)}
         </button>
-        <span className="text-xs text-muted-foreground">支持多选 image/*</span>
+        <span className="px-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+          {t('admin.zine_local_hint', language)}
+        </span>
       </div>
+
       {assets.length === 0 ? (
-        <div className="flex h-full items-center text-sm text-muted-foreground">尚未导入本地图片</div>
+        <div
+          className="flex h-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-dashed text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+        >
+          <ImagePlus size={14} />
+          {t('admin.zine_local_empty', language)}
+        </div>
       ) : (
-        <div className="flex h-full min-w-0 flex-1 gap-3 overflow-x-auto pb-1">
+        <div className="custom-scrollbar flex h-full min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
           {assets.map((asset) => (
-            <button
-              key={asset.id}
-              type="button"
-              className="group relative aspect-square h-full shrink-0 overflow-hidden rounded-md border bg-muted text-left transition hover:border-primary"
-              style={{ borderColor: 'var(--border)' }}
-              draggable
-              onClick={() => onPickAsset(asset)}
-              onDragStart={(event) => {
-                onDragAsset(asset)
-                event.dataTransfer.setData('application/x-zine-asset-id', asset.id)
-                event.dataTransfer.setData('application/json', JSON.stringify(asset))
-                event.dataTransfer.effectAllowed = 'copy'
-              }}
-              title={asset.fileName}
-            >
-              <img src={asset.previewUrl || asset.fullUrl} alt={asset.fileName} className="h-full w-full object-cover" draggable={false} />
-              <span className="absolute inset-x-0 bottom-0 truncate bg-black/45 px-1.5 py-1 text-[10px] text-white opacity-0 transition group-hover:opacity-100">{asset.fileName}</span>
-            </button>
+            <TrayThumb key={asset.id} asset={asset} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
           ))}
         </div>
       )}

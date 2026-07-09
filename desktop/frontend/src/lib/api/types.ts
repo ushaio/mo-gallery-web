@@ -44,7 +44,7 @@ export interface PhotoDto {
   filmRollName?: string | null
   url: string
   thumbnailUrl?: string
-  originFlag?: 'web' | 'mobile'
+  originFlag?: 'web' | 'mobile' | 'desktop'
   width: number
   height: number
   size?: number

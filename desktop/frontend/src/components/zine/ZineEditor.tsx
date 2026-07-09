@@ -1,26 +1,78 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { PageStrip } from './PageStrip'
 import { PhotoTray } from './PhotoTray'
+import { SlotContextBar } from './SlotContextBar'
 import { SpreadCanvas } from './SpreadCanvas'
 import { ZineToolbar } from './ZineToolbar'
 
 import { useZineStore } from '@/store/zine'
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+}
 
 export function ZineEditor() {
   const [canvasZoom, setCanvasZoom] = useState(1)
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
-  const saving = useZineStore((state) => state.saving)
-  const dirty = useZineStore((state) => state.dirty)
-  const setActiveSpread = useZineStore((state) => state.setActiveSpread)
   const selectSlot = useZineStore((state) => state.selectSlot)
-  const addSpread = useZineStore((state) => state.addSpread)
-  const removeSpread = useZineStore((state) => state.removeSpread)
-  const rename = useZineStore((state) => state.rename)
-  const undo = useZineStore((state) => state.undo)
-  const redo = useZineStore((state) => state.redo)
+
+  // 键盘快捷键：Ctrl+Z/Y 撤销重做 · Delete 删除选中槽位 · 方向键微调（Shift ×10）· Esc 取消选择
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (isEditableTarget(event.target)) return
+
+      const state = useZineStore.getState()
+      const key = event.key
+
+      if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) state.redo()
+        else state.undo()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'y') {
+        event.preventDefault()
+        state.redo()
+        return
+      }
+
+      if (!state.project || !state.activeSpreadId || !state.selectedSlotId) return
+
+      if (key === 'Escape') {
+        state.selectSlot(null)
+        return
+      }
+      if (key === 'Delete' || key === 'Backspace') {
+        event.preventDefault()
+        state.removeSlot(state.activeSpreadId, state.selectedSlotId)
+        return
+      }
+
+      const nudges: Record<string, [number, number]> = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+      }
+      const nudge = nudges[key]
+      if (!nudge) return
+
+      event.preventDefault()
+      const step = event.shiftKey ? 10 : 1
+      const spread = state.project.spreads.find((item) => item.id === state.activeSpreadId)
+      const slot = spread?.slots.find((item) => item.id === state.selectedSlotId)
+      if (slot) {
+        state.updateSlot(state.activeSpreadId, state.selectedSlotId, { x: slot.x + nudge[0] * step, y: slot.y + nudge[1] * step })
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   if (!project) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Zine project not loaded</div>
@@ -29,22 +81,21 @@ export function ZineEditor() {
   const activeSpread = project.spreads.find((spread) => spread.id === activeSpreadId) ?? project.spreads[0]
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background" style={{ borderColor: 'var(--border)' }}>
-      <ZineToolbar
-        project={project}
-        saving={saving}
-        dirty={dirty}
-        onRename={rename}
-        onUndo={undo}
-        onRedo={redo}
-        onAddSpread={() => addSpread()}
-        onAddTemplate={addSpread}
-        canvasZoom={canvasZoom}
-        onCanvasZoomChange={setCanvasZoom}
-      />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <ZineToolbar />
       <div className="flex min-h-0 flex-1">
-        <SpreadCanvas project={project} activeSpread={activeSpread} selectedSlotId={selectedSlotId} zoom={canvasZoom} onZoomChange={setCanvasZoom} onSelectSlot={selectSlot} />
-        <PageStrip project={project} activeSpreadId={activeSpread?.id ?? null} onSetActiveSpread={setActiveSpread} onRemoveSpread={removeSpread} />
+        <PageStrip />
+        <div className="relative flex min-h-0 min-w-0 flex-1">
+          <SpreadCanvas
+            project={project}
+            activeSpread={activeSpread}
+            selectedSlotId={selectedSlotId}
+            zoom={canvasZoom}
+            onZoomChange={setCanvasZoom}
+            onSelectSlot={selectSlot}
+          />
+          <SlotContextBar />
+        </div>
       </div>
       <PhotoTray />
     </div>

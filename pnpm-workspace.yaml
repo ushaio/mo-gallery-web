@@ -1,5 +1,6 @@
 packages:
   - desktop/frontend
+  - packages/*
 
 onlyBuiltDependencies:
   - prisma

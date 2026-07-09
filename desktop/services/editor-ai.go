@@ -195,6 +195,178 @@ func (s *EditorAiService) GetConversation(conversationId string) (*EditorAiConve
 	return &dto, nil
 }
 
+// RecoverInterruptedMessages 应用启动时把遗留的 streaming 状态消息标记为
+// failed（应用崩溃/关闭导致的脏状态），避免残缺内容混入后续对话历史
+func (s *EditorAiService) RecoverInterruptedMessages() {
+	db.DB.Model(&db.AiMessage{}).Where("status = 'streaming'").Updates(map[string]interface{}{
+		"status": "failed",
+		"error":  "生成中断（应用重启）",
+	})
+}
+
+// ─── 消息持久化（供前端共享 ai-agent 编排层调用）──────
+
+type EditorAiMessageAppendInput struct {
+	ConversationID string `json:"conversationId"`
+	Role           string `json:"role"`
+	Content        string `json:"content"`
+	Status         string `json:"status,omitempty"` // 默认 completed
+	Model          string `json:"model,omitempty"`
+	Action         string `json:"action,omitempty"`
+}
+
+// AppendMessage 追加一条消息（编辑器 AI 的编排在前端共享包里进行，
+// 用户消息与 assistant 流式占位由前端经此写入本地库）
+func (s *EditorAiService) AppendMessage(input EditorAiMessageAppendInput) (*EditorAiMessageDTO, error) {
+	if input.ConversationID == "" || input.Role == "" {
+		return nil, errors.New("conversationId 和 role 必填")
+	}
+	status := input.Status
+	if status == "" {
+		status = "completed"
+	}
+	msg := db.AiMessage{
+		ID:             cuid(),
+		ConversationID: input.ConversationID,
+		Role:           input.Role,
+		Content:        input.Content,
+		Status:         status,
+	}
+	if input.Model != "" {
+		msg.Model = &input.Model
+	}
+	if input.Action != "" {
+		msg.Action = &input.Action
+	}
+	if err := db.DB.Create(&msg).Error; err != nil {
+		return nil, fmt.Errorf("写入消息失败: %w", err)
+	}
+	dto := toMessageDTO(msg)
+	return &dto, nil
+}
+
+type EditorAiMessageFinishInput struct {
+	MessageID string `json:"messageId"`
+	Content   string `json:"content,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// FinishMessage 结束流式占位消息：写入最终内容置 completed，或标记
+// failed；同时刷新会话的 lastModel / updatedAt
+func (s *EditorAiService) FinishMessage(input EditorAiMessageFinishInput) error {
+	if input.MessageID == "" {
+		return errors.New("messageId 必填")
+	}
+	var msg db.AiMessage
+	if err := db.DB.Where("id = ?", input.MessageID).First(&msg).Error; err != nil {
+		return fmt.Errorf("查询消息失败: %w", err)
+	}
+
+	updates := map[string]interface{}{}
+	if input.Error != "" {
+		updates["status"] = "failed"
+		updates["error"] = input.Error
+		if input.Content != "" {
+			updates["content"] = input.Content
+		}
+	} else {
+		updates["status"] = "completed"
+		updates["content"] = input.Content
+	}
+	if input.Model != "" {
+		updates["model"] = input.Model
+	}
+	if err := db.DB.Model(&db.AiMessage{}).Where("id = ?", input.MessageID).Updates(updates).Error; err != nil {
+		return fmt.Errorf("更新消息失败: %w", err)
+	}
+
+	convUpdates := map[string]interface{}{"updatedAt": time.Now()}
+	if input.Error == "" && input.Model != "" {
+		convUpdates["lastModel"] = input.Model
+	}
+	db.DB.Model(&db.AiConversation{}).Where("id = ?", msg.ConversationID).Updates(convUpdates)
+	return nil
+}
+
+// ─── OpenAI 兼容透明代理（供前端共享 ai-agent 包调用）──
+
+// ProxyChatCompletions 把 /v1/chat/completions 请求透明转发到所选
+// provider：按 body.model（provider:model）解析上游、改写为真实模型名并
+// 注入密钥——前端不接触任何 API key。响应按字节块转发，不做行解析，
+// 天然没有 bufio.Scanner 的 64KB 行长限制。
+func (s *EditorAiService) ProxyChatCompletions(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
+	if err != nil {
+		http.Error(w, "读取请求体失败", http.StatusBadRequest)
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "请求体不是合法 JSON", http.StatusBadRequest)
+		return
+	}
+	selected, _ := payload["model"].(string)
+
+	aiCfg := s.cfg.AI
+	aiCfg.Normalize()
+	_, provider, activeModel, err := aiCfg.ResolveModel(selected)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	payload["model"] = activeModel
+
+	upstreamBody, err := json.Marshal(payload)
+	if err != nil {
+		http.Error(w, "序列化请求失败", http.StatusInternalServerError)
+		return
+	}
+
+	upstreamURL := strings.TrimRight(provider.BaseURL, "/") + "/chat/completions"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, upstreamURL, bytes.NewReader(upstreamBody))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
+	req.Header.Set("Accept", "text/event-stream")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("AI 请求失败: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(resp.StatusCode)
+
+	flusher, canFlush := w.(http.Flusher)
+	buf := make([]byte, 8192)
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return
+			}
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
+}
+
+
 func (s *EditorAiService) UpdateConversation(conversationId string, input EditorAiConversationUpdateInput) (*EditorAiConversationDTO, error) {
 	updates := map[string]interface{}{}
 	if input.Title != nil {
@@ -486,39 +658,38 @@ func (s *EditorAiService) GenerateStream(input EditorAiGenerateInput, w http.Res
 	flusher, canFlush := w.(http.Flusher)
 	fullContent := ""
 
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(line[5:])
-		if data == "" || data == "[DONE]" {
-			continue
-		}
+	// 流式读取并转发（ReadString 无行长上限；bufio.Scanner 默认 64KB
+	// 会静默截断超长 SSE 行，见共享包迁移审计 P1-1）
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, readErr := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
+		if strings.HasPrefix(line, "data:") {
+			data := strings.TrimSpace(line[5:])
+			if data != "" && data != "[DONE]" {
+				var chunk struct {
+					Choices []struct {
+						Delta struct {
+							Content string `json:"content"`
+						} `json:"delta"`
+					} `json:"choices"`
+				}
+				if err := json.Unmarshal([]byte(data), &chunk); err == nil &&
+					len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+					content := chunk.Choices[0].Delta.Content
+					fullContent += content
 
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
+					// SSE 格式输出
+					sseData, _ := json.Marshal(content)
+					fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", sseData)
+					if canFlush {
+						flusher.Flush()
+					}
+				}
+			}
 		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
-		}
-		if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
-			continue
-		}
-
-		content := chunk.Choices[0].Delta.Content
-		fullContent += content
-
-		// SSE 格式输出
-		sseData, _ := json.Marshal(content)
-		fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", sseData)
-		if canFlush {
-			flusher.Flush()
+		if readErr != nil {
+			break
 		}
 	}
 

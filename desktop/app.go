@@ -79,7 +79,28 @@ func (a *App) startup(ctx context.Context) {
 
 // startAiHTTPServer 启动本地 HTTP 服务用于 AI 流式生成
 func (a *App) startAiHTTPServer() {
+	// 回收上次运行遗留的 streaming 脏消息
+	a.EditorAi.RecoverInterruptedMessages()
+
 	mux := http.NewServeMux()
+
+	// OpenAI 兼容透明代理：前端共享 ai-agent 包经此访问模型，
+	// 密钥解析与注入在 Go 侧完成
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		a.EditorAi.ProxyChatCompletions(w, r)
+	})
+
 	mux.HandleFunc("/ai/generate", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -366,7 +387,7 @@ func (a *App) UploadFile(filePath string, settings services.UploadSettings, hash
 // ─── File Dialog ─────────────────────────────────────
 
 func (a *App) SelectFiles() ([]string, error) {
-	files, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+	files, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "选择照片",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "图片文件 (*.jpg;*.jpeg;*.png;*.webp;*.avif;*.tiff;*.bmp)", Pattern: "*.jpg;*.jpeg;*.png;*.webp;*.avif;*.tiff;*.tif;*.bmp"},
@@ -375,10 +396,10 @@ func (a *App) SelectFiles() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if files == "" {
+	if files == nil {
 		return []string{}, nil
 	}
-	return []string{files}, nil
+	return files, nil
 }
 
 func (a *App) SelectFolder() (string, error) {
@@ -486,6 +507,12 @@ func (a *App) DeleteEditorAiConversation(conversationId string) error {
 func (a *App) ClearEditorAiConversation(conversationId string) (*services.EditorAiConversationDTO, error) {
 	return a.EditorAi.ClearConversation(conversationId)
 }
+func (a *App) AppendEditorAiMessage(input services.EditorAiMessageAppendInput) (*services.EditorAiMessageDTO, error) {
+	return a.EditorAi.AppendMessage(input)
+}
+func (a *App) FinishEditorAiMessage(input services.EditorAiMessageFinishInput) error {
+	return a.EditorAi.FinishMessage(input)
+}
 func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetModels()
 }
@@ -497,6 +524,14 @@ func (a *App) GetAiImageDataURL(messageId string) (string, error) {
 }
 func (a *App) SaveAiImageToAlbum(messageId string) (*services.PhotoDTO, error) {
 	return a.EditorAi.SaveImageToAlbum(messageId, a.Upload)
+}
+
+// ─── Zine ─────────────────────────────────────────────
+
+// GetZineCJKFontInfo 返回 PDF 导出可用的系统中文字体（字体文件本身由
+// AssetServer 的 /__zine/cjk-font 路由提供）
+func (a *App) GetZineCJKFontInfo() services.ZineCJKFontInfo {
+	return services.ResolveZineCJKFont()
 }
 
 // ─── Overview ─────────────────────────────────────────

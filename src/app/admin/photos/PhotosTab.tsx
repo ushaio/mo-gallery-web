@@ -327,7 +327,6 @@ interface PhotosTabProps {
   selectedIds: Set<string>
   onSelect: (id: string) => void
   onSelectionChange: React.Dispatch<React.SetStateAction<Set<string>>>
-  onSelectAll: () => void
   onDelete: (id?: string) => void
   onBatchAction: () => void
   onRefresh: () => void
@@ -348,7 +347,6 @@ export function PhotosTab({
   selectedIds,
   onSelect,
   onSelectionChange,
-  onSelectAll,
   onDelete,
   onBatchAction,
   onRefresh,
@@ -599,6 +597,25 @@ export function PhotosTab({
 
   const hasSelectedPhotos = selectedIds.size >= 1
 
+  // 全选只作用于当前筛选结果；勾选态也按"筛选结果是否全部选中"计算，
+  // 避免选中集合里残留不可见照片时批量操作误伤。
+  const allVisibleSelected =
+    filteredPhotos.length > 0 && filteredPhotos.every((photo) => selectedIds.has(photo.id))
+
+  const handleToggleSelectAll = useCallback(() => {
+    onSelectionChange((prev) => {
+      const visibleIds = filteredPhotos.map((photo) => photo.id)
+      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id))
+      return allSelected ? new Set<string>() : new Set(visibleIds)
+    })
+  }, [filteredPhotos, onSelectionChange])
+
+  // 筛选条件变化时清空选中，防止批量删除命中已被筛掉的照片
+  useEffect(() => {
+    onSelectionChange(new Set())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, categoryFilter, photoTypeFilter, channelFilter, albumFilter, cameraFilter, lensFilter, onlyFeatured])
+
   const handleGridColumnsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(event.target.value)
     pendingColumnsRef.current = value
@@ -629,8 +646,8 @@ export function PhotosTab({
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={filteredPhotos.length > 0 && selectedIds.size === filteredPhotos.length}
-                onChange={onSelectAll}
+                checked={allVisibleSelected}
+                onChange={handleToggleSelectAll}
                 className="w-4 h-4 accent-primary cursor-pointer rounded"
               />
               <span className="text-sm font-medium text-muted-foreground">

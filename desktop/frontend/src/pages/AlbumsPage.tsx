@@ -4,6 +4,7 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { Album } from '@/types'
 import { CardGridSkeleton } from '@/components/admin/Skeleton'
+import { toast } from 'sonner'
 import { Plus, Trash2, Eye, EyeOff, GripVertical } from 'lucide-react'
 
 export function AlbumsPage() {
@@ -19,19 +20,27 @@ export function AlbumsPage() {
     try {
       const result = await (window as any).go.main.App.GetAlbums()
       setAlbums(result || [])
-    } catch {} finally { setLoading(false) }
+    } catch (err: any) {
+      toast.error(err?.message || '获取相册列表失败')
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchAlbums() }, [fetchAlbums])
 
   const handleCreate = async () => {
-    if (!form.name.trim()) return
+    if (!form.name.trim()) {
+      toast.error('请输入相册名称')
+      return
+    }
     try {
       await (window as any).go.main.App.CreateAlbum(form)
       setForm({ name: '', description: '', isPublished: false })
       setShowCreate(false)
       fetchAlbums()
-    } catch {}
+      toast.success('相册已创建')
+    } catch (err: any) {
+      toast.error(err?.message || '创建相册失败')
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -39,14 +48,19 @@ export function AlbumsPage() {
     try {
       await (window as any).go.main.App.DeleteAlbum(id)
       fetchAlbums()
-    } catch {}
+      toast.success('相册已删除')
+    } catch (err: any) {
+      toast.error(err?.message || '删除相册失败')
+    }
   }
 
   const togglePublished = async (album: Album) => {
     try {
       await (window as any).go.main.App.UpdateAlbum(album.id, { isPublished: !album.isPublished })
       fetchAlbums()
-    } catch {}
+    } catch (err: any) {
+      toast.error(err?.message || '更新发布状态失败')
+    }
   }
 
   return (

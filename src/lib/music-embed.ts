@@ -1,9 +1,9 @@
 export {
   parseMediaEmbedInfo as parseMusicEmbedInfo,
   parseMediaEmbedInfoByProvider as parseMusicEmbedInfoByProvider,
-} from './media-embed'
+} from '@mo-gallery/tiptap-editor'
 
 export type {
   MediaEmbedInfo as MusicEmbedInfo,
   MediaEmbedProvider as MusicEmbedProvider,
-} from './media-embed'
+} from '@mo-gallery/tiptap-editor'

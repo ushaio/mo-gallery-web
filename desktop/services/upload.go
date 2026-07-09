@@ -2,6 +2,8 @@ package services
 
 import (
 	"crypto/sha256"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -188,19 +190,14 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		fields["strip_gps"] = "true"
 	}
 
-	// EXIF 数据序列化为 JSON 字符串
+	// EXIF 数据序列化为 JSON 字符串。字段名与服务端 parseExifJson 对齐
+	// （镜头字段是 lens 而非 lensModel；gps 是 JSON 字符串；takenAt 使用
+	// EXIF 日期格式，与服务端 parseExifDate 一致）。没有任何有效字段时
+	// 不发送 exif_json，让服务端直接从上传的文件中提取 EXIF。
 	if exifData != nil {
-		gpsJSON := "null"
-		if exifData.GPS != nil {
-			gpsJSON = fmt.Sprintf(`{"latitude":%f,"longitude":%f,"altitude":%f,"dateStamp":%q}`,
-				exifData.GPS.Latitude, exifData.GPS.Longitude, exifData.GPS.Altitude, exifData.GPS.DateStamp)
+		if exifJSON := buildExifJSON(exifData); exifJSON != "" {
+			fields["exif_json"] = exifJSON
 		}
-		exifJSON := fmt.Sprintf(`{"cameraMake":%q,"cameraModel":%q,"lensModel":%q,"focalLength":%q,"aperture":%q,"shutterSpeed":%q,"iso":%d,"takenAt":%q,"orientation":%d,"software":%q,"gps":%s}`,
-			exifData.CameraMake, exifData.CameraModel, exifData.LensModel,
-			exifData.FocalLength, exifData.Aperture, exifData.ShutterSpeed,
-			exifData.ISO, exifData.TakenAt, exifData.Orientation,
-			exifData.Software, gpsJSON)
-		fields["exif_json"] = exifJSON
 	}
 
 	// ── 发送文件到 Web API ─────────────────────────────
@@ -216,6 +213,17 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	}
 
 	if err := s.proxy.POSTMultipart("/admin/photos", fields, files, &apiResp); err != nil {
+		// 服务端结构化错误：409 去重走友好分支，其余取可读 message
+		var apiErr *APIError
+		if errors.As(err, &apiErr) {
+			if apiErr.Code == "DUPLICATE_PHOTO" {
+				result.IsDuplicate = true
+				result.Existing = &DuplicateInfo{ID: apiErr.ExistingPhotoID, Title: apiErr.Message}
+				return result, nil
+			}
+			result.Error = apiErr.Error()
+			return result, nil
+		}
 		result.Error = "上传失败: " + err.Error()
 		return result, nil
 	}
@@ -236,6 +244,91 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 }
 
 // ─── 辅助方法 ────────────────────────────────────────
+
+// exifTimeLayout 服务端 parseExifDate 接受的 EXIF 日期格式
+const exifTimeLayout = "2006:01:02 15:04:05"
+
+// buildExifJSON 将 ExifData 序列化为服务端 parseExifJson 接受的 JSON。
+// 只包含有值的字段；全部为空时返回 ""（调用方应跳过 exif_json，
+// 让服务端从文件缓冲区提取）。
+func buildExifJSON(exifData *image.ExifData) string {
+	payload := map[string]interface{}{}
+	if exifData.CameraMake != "" {
+		payload["cameraMake"] = exifData.CameraMake
+	}
+	if exifData.CameraModel != "" {
+		payload["cameraModel"] = exifData.CameraModel
+	}
+	if exifData.LensModel != "" {
+		payload["lens"] = exifData.LensModel
+	}
+	if exifData.FocalLength != "" {
+		payload["focalLength"] = exifData.FocalLength
+	}
+	if exifData.Aperture != "" {
+		payload["aperture"] = exifData.Aperture
+	}
+	if exifData.ShutterSpeed != "" {
+		payload["shutterSpeed"] = exifData.ShutterSpeed
+	}
+	if exifData.ISO > 0 {
+		payload["iso"] = exifData.ISO
+	}
+	if exifData.TakenAt != nil {
+		payload["takenAt"] = exifData.TakenAt.Format(exifTimeLayout)
+	}
+	if exifData.Orientation > 0 {
+		payload["orientation"] = exifData.Orientation
+	}
+	if exifData.Software != "" {
+		payload["software"] = exifData.Software
+	}
+	if exifData.GPS != nil {
+		if gpsBytes, err := json.Marshal(exifData.GPS); err == nil {
+			payload["gps"] = string(gpsBytes)
+		}
+	}
+	if len(payload) == 0 {
+		return ""
+	}
+
+	// exifRaw 与 web 端 extractExifToJson 的结构保持一致，供详情展示使用
+	payload["exifRaw"] = buildExifRawJSON(exifData)
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// buildExifRawJSON 生成与服务端 extractExifData 相同结构的 exifRaw JSON
+func buildExifRawJSON(exifData *image.ExifData) string {
+	raw := map[string]interface{}{
+		"camera": map[string]interface{}{
+			"make":  exifData.CameraMake,
+			"model": exifData.CameraModel,
+			"lens":  exifData.LensModel,
+		},
+		"settings": map[string]interface{}{
+			"focalLength":  exifData.FocalLength,
+			"aperture":     exifData.Aperture,
+			"shutterSpeed": exifData.ShutterSpeed,
+			"iso":          exifData.ISO,
+		},
+		"image": map[string]interface{}{
+			"orientation": exifData.Orientation,
+		},
+		"other": map[string]interface{}{
+			"software": exifData.Software,
+		},
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
 
 func fileHash(path string) (string, error) {
 	f, err := os.Open(path)

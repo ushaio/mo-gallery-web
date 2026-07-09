@@ -9,6 +9,8 @@ export function AddPhotosToFilmRoll(arg1:string,arg2:Array<string>):Promise<serv
 
 export function AddStoryPhoto(arg1:string,arg2:string):Promise<void>;
 
+export function AppendEditorAiMessage(arg1:services.EditorAiMessageAppendInput):Promise<services.EditorAiMessageDTO>;
+
 export function BatchDeletePhotos(arg1:services.BatchDeleteParams):Promise<services.BatchResult>;
 
 export function BatchUpdateShowFlag(arg1:Array<string>,arg2:boolean):Promise<services.BatchResult>;
@@ -52,6 +54,8 @@ export function DeletePhoto(arg1:string,arg2:services.DeletePhotoParams):Promise
 export function DeleteStorageSource(arg1:string):Promise<void>;
 
 export function DeleteStory(arg1:string):Promise<void>;
+
+export function FinishEditorAiMessage(arg1:services.EditorAiMessageFinishInput):Promise<void>;
 
 export function FixMissingPhotos(arg1:Array<string>):Promise<services.FixMissingPhotosResult>;
 
@@ -124,6 +128,8 @@ export function GetStory(arg1:string):Promise<services.StoryDTO>;
 export function GetStoryAiModels():Promise<services.StoryAiModelsResponseDTO>;
 
 export function GetStoryAiProviderModels(arg1:string):Promise<services.StoryAiModelsResponseDTO>;
+
+export function GetZineCJKFontInfo():Promise<services.ZineCJKFontInfo>;
 
 export function IsLinuxDoEnabled():Promise<boolean>;
 

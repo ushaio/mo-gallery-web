@@ -4,6 +4,7 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { FriendLink } from '@/types'
 import { ListSkeleton } from '@/components/admin/Skeleton'
+import { toast } from 'sonner'
 import { Plus, Trash2, ExternalLink, Users } from 'lucide-react'
 
 export function FriendsPage() {
@@ -18,19 +19,27 @@ export function FriendsPage() {
     try {
       const result = await (window as any).go.main.App.GetFriends()
       setFriends(result || [])
-    } catch {} finally { setLoading(false) }
+    } catch (err: any) {
+      toast.error(err?.message || '获取友链列表失败')
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchFriends() }, [fetchFriends])
 
   const handleCreate = async () => {
-    if (!form.name.trim() || !form.url.trim()) return
+    if (!form.name.trim() || !form.url.trim()) {
+      toast.error('请填写名称和链接地址')
+      return
+    }
     try {
       await (window as any).go.main.App.CreateFriend({ ...form, featured: false, sortOrder: 0, isActive: true })
       setForm({ name: '', url: '', description: '', avatar: '' })
       setShowCreate(false)
       fetchFriends()
-    } catch {}
+      toast.success('友链已创建')
+    } catch (err: any) {
+      toast.error(err?.message || '创建友链失败')
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -38,7 +47,10 @@ export function FriendsPage() {
     try {
       await (window as any).go.main.App.DeleteFriend(id)
       fetchFriends()
-    } catch {}
+      toast.success('友链已删除')
+    } catch (err: any) {
+      toast.error(err?.message || '删除友链失败')
+    }
   }
 
   return (

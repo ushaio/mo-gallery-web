@@ -148,6 +148,7 @@ export function useStoryPasteUploads({
           file: fileToUpload,
           title: file.name.replace(/\.[^/.]+$/, ''),
           category: nextSettings.categories,
+          origin_flag: 'desktop',
           storage_provider: nextSettings.storageProvider,
           storage_source_id: nextSettings.storageSourceId,
           storage_path: nextSettings.storagePath,

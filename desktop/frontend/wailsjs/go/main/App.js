@@ -10,6 +10,10 @@ export function AddStoryPhoto(arg1, arg2) {
   return window['go']['main']['App']['AddStoryPhoto'](arg1, arg2);
 }
 
+export function AppendEditorAiMessage(arg1) {
+  return window['go']['main']['App']['AppendEditorAiMessage'](arg1);
+}
+
 export function BatchDeletePhotos(arg1) {
   return window['go']['main']['App']['BatchDeletePhotos'](arg1);
 }
@@ -96,6 +100,10 @@ export function DeleteStorageSource(arg1) {
 
 export function DeleteStory(arg1) {
   return window['go']['main']['App']['DeleteStory'](arg1);
+}
+
+export function FinishEditorAiMessage(arg1) {
+  return window['go']['main']['App']['FinishEditorAiMessage'](arg1);
 }
 
 export function FixMissingPhotos(arg1) {
@@ -240,6 +248,10 @@ export function GetStoryAiModels() {
 
 export function GetStoryAiProviderModels(arg1) {
   return window['go']['main']['App']['GetStoryAiProviderModels'](arg1);
+}
+
+export function GetZineCJKFontInfo() {
+  return window['go']['main']['App']['GetZineCJKFontInfo']();
 }
 
 export function IsLinuxDoEnabled() {

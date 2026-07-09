@@ -14,6 +14,7 @@ import (
 
 	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/db"
+	"mo-gallery-desktop/services"
 )
 
 //go:embed all:frontend/dist
@@ -54,6 +55,8 @@ func main() {
 		MinHeight: 700,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
+			// /__zine/* 同源动态资源：PDF 导出用的系统中文字体与远程图片代理
+			Handler: services.NewZineAssetHandler(app.Proxy),
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,

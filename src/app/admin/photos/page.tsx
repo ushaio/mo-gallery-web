@@ -14,7 +14,6 @@ export default function PhotosPage() {
     selectedPhotoIds: selectedIds,
     setSelectedPhotoIds: onSelectionChange,
     handleSelectPhotoToggle: onSelect,
-    handleSelectAllPhotos: onSelectAll,
     handleDelete: onDelete,
     handleBatchAction: onBatchAction,
     refreshPhotos: onRefresh,
@@ -36,7 +35,6 @@ export default function PhotosPage() {
       selectedIds={selectedIds}
       onSelect={onSelect}
       onSelectionChange={onSelectionChange}
-      onSelectAll={onSelectAll}
       onDelete={onDelete}
       onBatchAction={onBatchAction}
       onRefresh={onRefresh}

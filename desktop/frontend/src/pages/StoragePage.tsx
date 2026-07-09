@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
@@ -84,6 +85,8 @@ export function StoragePage() {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
+  const [cleanupDeleting, setCleanupDeleting] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const [reuploadFile, setReuploadFile] = useState<StorageFile | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -177,7 +180,7 @@ export function StoragePage() {
   // ─── 清理操作 ─────────────────────────────────────
 
   const handleCleanup = async () => {
-    if (selected.size === 0) return
+    if (selected.size === 0 || cleanupDeleting) return
 
     const orphanKeys = files
       .filter(f => selected.has(f.key) && f.status === 'orphan')
@@ -187,6 +190,7 @@ export function StoragePage() {
       .filter(f => selected.has(f.key) && f.status === 'missing' && f.photoId)
       .map(f => f.photoId!)
 
+    setCleanupDeleting(true)
     try {
       if (orphanKeys.length > 0) {
         await (window as any).go.main.App.CleanupStorage(orphanKeys, provider)
@@ -197,10 +201,13 @@ export function StoragePage() {
       }
 
       setSelected(new Set())
+      setCleanupDialogOpen(false)
       loadFiles()
       toast.success('清理完成')
     } catch (err: any) {
       toast.error('清理失败: ' + (err?.message || '未知错误'))
+    } finally {
+      setCleanupDeleting(false)
     }
   }
 
@@ -372,14 +379,17 @@ export function StoragePage() {
         <div className="flex gap-4 mb-6 p-4 border" style={{ borderColor: 'var(--primary)/30', backgroundColor: 'var(--primary)/5' }}>
           <span className="text-xs font-bold uppercase tracking-widest">{t('admin.selected')} {selected.size}</span>
           <button
-            onClick={handleCleanup}
-            className="px-4 py-2 text-xs rounded-md"
+            onClick={() => setCleanupDialogOpen(true)}
+            disabled={cleanupDeleting}
+            className="px-4 py-2 text-xs rounded-md disabled:opacity-60 disabled:cursor-wait inline-flex items-center gap-2"
             style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
           >
+            {cleanupDeleting ? <Loader2 size={14} className="animate-spin" /> : null}
             {t('admin.storage_cleanup_selected')}
           </button>
           <button
             onClick={() => setSelected(new Set())}
+            disabled={cleanupDeleting}
             className="px-4 py-2 text-xs rounded-md border"
             style={{ borderColor: 'var(--border)', backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
           >
@@ -546,6 +556,14 @@ export function StoragePage() {
           </div>
         ))}
       </div>
+      <SimpleDeleteDialog
+        isOpen={cleanupDialogOpen}
+        title={t('common.confirm')}
+        message={`确定要清理选中的 ${selected.size} 个存储项吗？孤立文件会被不可逆删除。`}
+        onConfirm={handleCleanup}
+        onCancel={() => setCleanupDialogOpen(false)}
+        t={(key) => t(key, language)}
+      />
       </div>
     </div>
   )

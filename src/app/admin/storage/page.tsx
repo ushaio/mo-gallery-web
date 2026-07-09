@@ -7,6 +7,7 @@ import type { StorageFile, StorageScanStats } from '@/lib/api/types'
 import { scanStorage, cleanupStorage, fixMissingPhotos } from '@/lib/api/storage'
 import { generateThumbnail } from '@/lib/api/photos'
 import { MissingFileUploadModal } from '@/components/admin/MissingFileUploadModal'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { Toast, Notification } from '@/components/Toast'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
@@ -50,6 +51,8 @@ export default function StorageCleanupPage() {
   const [stats, setStats] = useState<StorageScanStats>({ total: 0, linked: 0, orphan: 0, missing: 0, missingOriginal: 0, missingThumbnail: 0 })
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
+  const [cleanupDeleting, setCleanupDeleting] = useState(false)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -135,26 +138,35 @@ export default function StorageCleanupPage() {
   }
 
   const handleCleanup = async () => {
-    if (!token || selected.size === 0) return
-    
+    if (!token || selected.size === 0 || cleanupDeleting) return
+
     const orphanKeys = files
       .filter(f => selected.has(f.key) && f.status === 'orphan')
       .map(f => f.key)
-    
+
     const missingIds = files
       .filter(f => selected.has(f.key) && f.status === 'missing' && f.photoId)
       .map(f => f.photoId!)
-    
-    if (orphanKeys.length > 0) {
-      await cleanupStorage(token, orphanKeys, provider)
+
+    setCleanupDeleting(true)
+    try {
+      if (orphanKeys.length > 0) {
+        await cleanupStorage(token, orphanKeys, provider)
+      }
+
+      if (missingIds.length > 0) {
+        await fixMissingPhotos(token, missingIds)
+      }
+
+      setSelected(new Set())
+      setCleanupDialogOpen(false)
+      loadFiles()
+      notify(t('admin.storage_cleanup_success'), 'success')
+    } catch (err) {
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
+    } finally {
+      setCleanupDeleting(false)
     }
-    
-    if (missingIds.length > 0) {
-      await fixMissingPhotos(token, missingIds)
-    }
-    
-    setSelected(new Set())
-    loadFiles()
   }
 
   const toggleSelect = (key: string) => {
@@ -301,15 +313,17 @@ export default function StorageCleanupPage() {
         <div className="flex gap-4 mb-6 p-4 border border-primary/30 bg-primary/5 items-center">
           <span className="text-xs font-bold uppercase tracking-widest">{t('admin.selected')} {selected.size}</span>
           <AdminButton
-            onClick={handleCleanup}
+            onClick={() => setCleanupDialogOpen(true)}
+            disabled={cleanupDeleting}
             adminVariant="destructive"
             size="none"
             className="px-4 py-2"
           >
-            {t('admin.storage_cleanup_selected')}
+            {cleanupDeleting ? `${t('common.loading')}...` : t('admin.storage_cleanup_selected')}
           </AdminButton>
           <AdminButton
             onClick={() => setSelected(new Set())}
+            disabled={cleanupDeleting}
             adminVariant="outline"
             size="none"
             className="px-4 py-2"
@@ -482,6 +496,15 @@ export default function StorageCleanupPage() {
         onSuccess={() => loadFiles()}
         t={t}
         notify={notify}
+      />
+
+      <SimpleDeleteDialog
+        isOpen={cleanupDialogOpen}
+        title={t('admin.storage_cleanup_selected')}
+        message={`${t('admin.storage_cleanup_confirm')} (${selected.size})`}
+        onConfirm={handleCleanup}
+        onCancel={() => setCleanupDialogOpen(false)}
+        t={t}
       />
 
       <Toast notifications={notifications} remove={removeNotification} />
