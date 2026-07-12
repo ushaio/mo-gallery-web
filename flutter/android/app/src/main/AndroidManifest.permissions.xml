@@ -1,0 +1,14 @@
+<!--
+  After running `flutter create .`, merge these permissions into:
+  android/app/src/main/AndroidManifest.xml
+
+  Also register the foreground service per flutter_foreground_task docs.
+-->
+<manifest>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+</manifest>
