@@ -41,7 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
-pnpm-lock.yaml
+# pnpm-lock.yaml
 public/uploads
 .claude
 .spec-workflow
@@ -74,6 +74,7 @@ public/uploads
 *.bak
 
 # flutter mobile client
+/flutter/
 /flutter/.dart_tool/
 /flutter/build/
 /flutter/.flutter-plugins
