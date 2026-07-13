@@ -76,7 +76,7 @@ export default function FriendsPage() {
       setFriends(data)
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -156,7 +156,7 @@ export default function FriendsPage() {
       setEditingFriend(null)
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -176,7 +176,7 @@ export default function FriendsPage() {
       setDeleteConfirm(null)
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -197,7 +197,7 @@ export default function FriendsPage() {
       notify(friend.featured ? t('admin.friends_unfeatured') : t('admin.friends_featured'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -217,7 +217,7 @@ export default function FriendsPage() {
       notify(friend.isActive ? t('admin.friends_disabled') : t('admin.friends_enabled'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -267,7 +267,7 @@ export default function FriendsPage() {
       notify(t('admin.friends_reordered'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       // 出错时恢复原状态

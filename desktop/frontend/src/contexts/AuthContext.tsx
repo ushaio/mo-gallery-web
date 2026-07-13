@@ -1,8 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, useLayoutEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clearDesktopRuntimeCache } from '@/lib/app-cache'
-import { AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage, isAuthError } from '@/lib/auth-errors'
+import {
+  AUTH_ERROR_MESSAGE_KEY,
+  AUTH_FAILURE_EVENT,
+  getAuthErrorMessage,
+  isAuthError,
+} from '@/lib/auth-errors'
 import type { UserInfo } from '@/types'
+import { SetAuth } from '../../wailsjs/go/main/App'
 
 interface AuthContextType {
   token: string | null
@@ -21,6 +27,14 @@ const SERVER_KEY = 'mo-gallery-server'
 
 type WailsFunction = ((...args: unknown[]) => unknown) & {
   __authWrapped?: true
+}
+
+interface WailsRuntimeWindow {
+  go?: {
+    main?: {
+      App?: Record<string, WailsFunction>
+    }
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -43,8 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/login', { replace: true })
   }, [clearAuthState, navigate])
 
+  useEffect(() => {
+    const handleFailure = (event: Event) => {
+      handleAuthFailure((event as CustomEvent<unknown>).detail)
+    }
+
+    window.addEventListener(AUTH_FAILURE_EVENT, handleFailure)
+    return () => window.removeEventListener(AUTH_FAILURE_EVENT, handleFailure)
+  }, [handleAuthFailure])
+
   useLayoutEffect(() => {
-    const app = (window as any).go?.main?.App
+    const app = (window as unknown as WailsRuntimeWindow).go?.main?.App
     if (!app) return
 
     for (const key of Object.keys(app)) {
@@ -77,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedServer = localStorage.getItem(SERVER_KEY)
 
         if (savedToken && savedUser && savedServer) {
-          await (window as any).go.main.App.SetAuth(savedServer, savedToken)
+          await SetAuth(savedServer, savedToken)
           if (!cancelled) {
             setToken(savedToken)
             setUser(JSON.parse(savedUser))

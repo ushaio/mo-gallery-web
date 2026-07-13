@@ -899,6 +899,29 @@ await test('direct-edit stream without submit fails with a typed invalid batch e
   assert.equal(result.events.some((event) => event.type === 'operation_batch_created' || event.type === 'completed'), false)
 })
 
+await test('direct-edit text without submit completes as a non-editing response', async () => {
+  const events = await collect(runtime(model([[
+    { type: 'text-start', id: 'suggestion' },
+    { type: 'text-delta', id: 'suggestion', delta: 'Use a shorter title and place it in the quiet area.' },
+    { type: 'text-end', id: 'suggestion' },
+    finish('stop'),
+  ]])), task(narrativeSnapshot()))
+
+  assert.equal(events.some((event) => event.type === 'operation_batch_created'), false)
+  assert.deepEqual(events.find((event) => event.type === 'text_delta'), {
+    type: 'text_delta',
+    text: 'Use a shorter title and place it in the quiet area.',
+  })
+  assert.deepEqual(events.find((event) => event.type === 'completed'), {
+    type: 'completed',
+    summary: ['Use a shorter title and place it in the quiet area.'],
+  })
+  assert.deepEqual(events.at(-1), {
+    type: 'status_changed',
+    status: 'completed',
+  })
+})
+
 await test('successful submit is buffered until later text and tool events finish', async () => {
   const events = await collect(runtime(model([
     [call('add', 'add_narrative_operation', { operationId: 'op-1', type: 'set_node_attrs', nodeId: 'p1', attrs: { tone: 'warm' } }), finish('tool-calls')],

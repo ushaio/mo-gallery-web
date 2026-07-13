@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -80,8 +81,54 @@ type webLoginResponse struct {
 	Error   string   `json:"error"`
 }
 
+// LoginEndpoint separates the API root from the optional administrator gate slug.
+type LoginEndpoint struct {
+	BaseURL   string
+	LoginURL  string
+	LoginSlug string
+}
+
+// ParseLoginEndpoint accepts either a server root or /login/<slug> URL.
+func ParseLoginEndpoint(raw string) (LoginEndpoint, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return LoginEndpoint{}, errors.New("服务器地址无效")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return LoginEndpoint{}, errors.New("服务器地址必须使用 http 或 https")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return LoginEndpoint{}, errors.New("服务器地址不能包含用户信息、查询参数或片段")
+	}
+
+	loginSlug := ""
+	escapedPath := strings.Trim(parsed.EscapedPath(), "/")
+	if escapedPath != "" {
+		segments := strings.Split(escapedPath, "/")
+		if len(segments) != 2 || segments[0] != "login" || segments[1] == "" {
+			return LoginEndpoint{}, errors.New("服务器地址只能是站点根地址或 /login/<安全后缀>")
+		}
+		loginSlug, err = url.PathUnescape(segments[1])
+		if err != nil || loginSlug == "" || strings.Contains(loginSlug, "/") {
+			return LoginEndpoint{}, errors.New("管理员登录安全后缀无效")
+		}
+	}
+
+	baseURL := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host}).String()
+	loginURL := baseURL
+	if loginSlug != "" {
+		loginURL += "/login/" + url.PathEscape(loginSlug)
+	}
+
+	return LoginEndpoint{
+		BaseURL:   baseURL,
+		LoginURL:  loginURL,
+		LoginSlug: loginSlug,
+	}, nil
+}
+
 // Login 通过 Web API 验证管理员凭据
-// serverURL: Web 端地址，如 http://localhost:3000
+// serverURL: Web 根地址或管理员登录地址，如 http://localhost:3000/login/private
 // rememberLogin: 是否记住登录凭据（仅开发使用，明文存储，不安全）
 func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rememberLogin bool) (*LoginResult, error) {
 	if serverURL == "" {
@@ -96,14 +143,21 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 	}
 	s.cfg.API.JWTSecret = jwtSecret
 
-	// 规范化地址
-	serverURL = strings.TrimRight(serverURL, "/")
+	endpoint, err := ParseLoginEndpoint(serverURL)
+	if err != nil {
+		return nil, err
+	}
+	serverURL = endpoint.BaseURL
 
 	// 构造请求
-	body, _ := json.Marshal(map[string]string{
+	loginBody := map[string]string{
 		"username": username,
 		"password": password,
-	})
+	}
+	if endpoint.LoginSlug != "" {
+		loginBody["loginSlug"] = endpoint.LoginSlug
+	}
+	body, _ := json.Marshal(loginBody)
 
 	apiURL := serverURL + "/api/auth/login"
 	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
@@ -152,6 +206,7 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 
 	// 保存配置到文件
 	s.cfg.API.BaseURL = serverURL
+	s.cfg.API.LoginURL = endpoint.LoginURL
 	s.cfg.API.JWTSecret = jwtSecret
 	if rememberLogin {
 		s.cfg.API.RememberLogin = true

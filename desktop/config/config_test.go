@@ -174,3 +174,41 @@ func TestNormalizeModelCapabilities(t *testing.T) {
 		t.Fatalf("Normalize inferred vision capability: %#v", provider.VisionModels)
 	}
 }
+
+func TestNormalizedCopyDoesNotMutateSource(t *testing.T) {
+	ai := AIConfig{Providers: map[string]AIProviderConfig{
+		"openai": {
+			Models:                 []string{"gpt-5.6"},
+			VisionModels:           []string{" gpt-5.6 ", "gpt-5.6"},
+			ToolModels:             []string{" gpt-5.6 "},
+			StructuredOutputModels: []string{" gpt-5.6 "},
+			ContextWindows:         map[string]int{" gpt-5.6 ": 128000},
+		},
+	}}
+
+	normalized := ai.NormalizedCopy()
+	normalizedProvider := normalized.Providers["openai"]
+	if len(normalizedProvider.VisionModels) != 1 || normalizedProvider.VisionModels[0] != "gpt-5.6" {
+		t.Fatalf("normalized VisionModels = %#v", normalizedProvider.VisionModels)
+	}
+	if normalizedProvider.ContextWindows["gpt-5.6"] != 128000 {
+		t.Fatalf("normalized ContextWindows = %#v", normalizedProvider.ContextWindows)
+	}
+
+	sourceProvider := ai.Providers["openai"]
+	if len(sourceProvider.VisionModels) != 2 || sourceProvider.VisionModels[0] != " gpt-5.6 " {
+		t.Fatalf("source VisionModels mutated: %#v", sourceProvider.VisionModels)
+	}
+	if sourceProvider.ContextWindows[" gpt-5.6 "] != 128000 {
+		t.Fatalf("source ContextWindows mutated: %#v", sourceProvider.ContextWindows)
+	}
+
+	normalizedProvider.Models[0] = "changed"
+	normalizedProvider.ContextWindows["gpt-5.6"] = 1
+	if ai.Providers["openai"].Models[0] != "gpt-5.6" {
+		t.Fatalf("source Models shares storage with normalized copy")
+	}
+	if ai.Providers["openai"].ContextWindows[" gpt-5.6 "] != 128000 {
+		t.Fatalf("source ContextWindows shares storage with normalized copy")
+	}
+}

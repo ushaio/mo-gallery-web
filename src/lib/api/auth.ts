@@ -13,14 +13,15 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
   return { token: envelope.token, user }
 }
 
-export async function getLinuxDoAuthUrl(): Promise<{ url: string; state: string }> {
-  return apiRequestData<{ url: string; state: string }>('/api/auth/linuxdo')
+export async function getLinuxDoAuthUrl(loginSlug?: string): Promise<{ url: string; state: string }> {
+  const query = loginSlug ? `?loginSlug=${encodeURIComponent(loginSlug)}` : ''
+  return apiRequestData<{ url: string; state: string }>(`/api/auth/linuxdo${query}`)
 }
 
-export async function loginWithLinuxDo(code: string): Promise<LoginResponse> {
+export async function loginWithLinuxDo(code: string, loginSlug?: string): Promise<LoginResponse> {
   const envelope = await apiRequest('/api/auth/linuxdo/callback', {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, loginSlug }),
   })
   if (!('token' in envelope) || typeof envelope.token !== 'string') {
     throw new Error('Unexpected OAuth response (missing token)')

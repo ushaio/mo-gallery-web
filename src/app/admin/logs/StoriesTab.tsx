@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  ApiUnauthorizedError,
   createStory,
   deleteStory,
   getAdminStories,
@@ -61,7 +62,13 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
 
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
-  const { settings, categories, isImmersiveMode, setIsImmersiveMode } = useAdmin()
+  const {
+    settings,
+    categories,
+    handleUnauthorized,
+    isImmersiveMode,
+    setIsImmersiveMode,
+  } = useAdmin()
 
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -93,12 +100,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       const data = await getAdminStories(token)
       setStories(applySavedOrder(data))
     } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized(error)
+        return
+      }
       console.error('Failed to load stories:', error)
       notify(t('story.load_failed'), 'error')
     } finally {
       setLoading(false)
     }
-  }, [notify, t, token])
+  }, [handleUnauthorized, notify, t, token])
 
   const loadAllPhotos = useCallback(async () => {
     try {
@@ -201,13 +212,17 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         router.replace('/admin/logs', { scroll: false })
       }
     } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized(error)
+        return
+      }
       console.error('Failed to save story:', error)
       notify(t('story.save_failed'), 'error')
     } finally {
       savingRef.current = false
       setSaving(false)
     }
-  }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, router, stories, t, token])
+  }, [clearDraft, currentStory, handleUnauthorized, initialStory, loadStories, notify, pendingImages, resetDraftState, router, stories, t, token])
 
   const {
     editorRef,
@@ -422,10 +437,14 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       notify(story.isPublished ? t('story.unpublished') : t('story.published'), 'success')
       await loadStories()
     } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized(error)
+        return
+      }
       console.error('Failed to toggle publish:', error)
       notify(t('story.operation_failed'), 'error')
     }
-  }, [loadStories, notify, t, token])
+  }, [handleUnauthorized, loadStories, notify, t, token])
 
   const confirmDeleteStory = useCallback(async () => {
     if (!token || !deleteStoryId) return
@@ -435,12 +454,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       notify(t('story.deleted'), 'success')
       await loadStories()
     } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized(error)
+        return
+      }
       console.error('Failed to delete story:', error)
       notify(t('story.delete_failed'), 'error')
     } finally {
       setDeleteStoryId(null)
     }
-  }, [deleteStoryId, loadStories, notify, t, token])
+  }, [deleteStoryId, handleUnauthorized, loadStories, notify, t, token])
 
   const handleCreateStory = useCallback(async () => {
     await createStoryWithDraftCheck()

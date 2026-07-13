@@ -14,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
@@ -44,6 +44,7 @@ import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSidebar } from '@/components/admin/AdminSidebar'
 import { getActiveAdminSidebarItem, getAdminSidebarItems } from '@/components/admin/admin-sidebar-config'
+import { isAuthFailurePending, reportAuthFailure } from '@/lib/auth-failure'
 
 // Admin Context for shared state
 interface AdminContextType {
@@ -73,7 +74,7 @@ interface AdminContextType {
   t: (key: string) => string
   selectedPhoto: PhotoDto | null
   setSelectedPhoto: (photo: PhotoDto | null) => void
-  handleUnauthorized: () => void
+  handleUnauthorized: (error?: unknown) => void
   isImmersiveMode: boolean
   setIsImmersiveMode: React.Dispatch<React.SetStateAction<boolean>>
 }
@@ -95,7 +96,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const { settings: globalSettings, isLoading: globalSettingsLoading, refresh: refreshGlobalSettings } = useSettings()
   const { t, locale, setLocale } = useLanguage()
   const { theme, setTheme, mounted } = useTheme()
-  const router = useRouter()
   const pathname = usePathname()
 
   // Mobile menu state
@@ -135,6 +135,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // Notification State
   const [notifications, setNotifications] = useState<Notification[]>([])
   const notify = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    if (type === 'error' && isAuthFailurePending()) return
     const id = Math.random().toString(36).substring(2, 9)
     setNotifications((prev) => [...prev, { id, message, type }])
     setTimeout(() => setNotifications((prev) => prev.filter((n) => n.id !== id)), 4000)
@@ -180,10 +181,17 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // Only show title after settings are loaded to prevent flash
   const siteTitle = globalSettings?.site_title || ''
 
-  const handleUnauthorized = useCallback(() => {
-    logout()
-    router.push('/login')
-  }, [logout, router])
+  const handleUnauthorized = useCallback((error?: unknown) => {
+    if (error instanceof ApiUnauthorizedError) {
+      reportAuthFailure({ code: error.code, message: error.message })
+      return
+    }
+
+    reportAuthFailure({
+      code: 'TOKEN_INVALID',
+      message: 'Your session is invalid or has expired',
+    })
+  }, [])
 
   // --- Data Fetching ---
   const refreshCategories = useCallback(async () => {
@@ -202,7 +210,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       setPhotos(data)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       setPhotosError(err instanceof Error ? err.message : t('common.error'))
@@ -221,7 +229,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       setOriginalSettings(data) // Save original settings for comparison
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       setSettingsError(err instanceof Error ? err.message : t('common.error'))
@@ -301,7 +309,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       setDeleteThumbnail(true)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
@@ -381,7 +389,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       if (didUpdate) setShowBatchActionDialog(false)
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
@@ -411,7 +419,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       )
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       notify(err instanceof Error ? err.message : t('common.error'), 'error')
@@ -450,7 +458,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       notify(t('admin.notify_config_saved'))
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       setSettingsError(err instanceof Error ? err.message : t('common.error'))
@@ -512,7 +520,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
       }
     } catch (err) {
       if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(err)
         return
       }
       setSettingsError(err instanceof Error ? err.message : t('common.error'))
@@ -825,4 +833,3 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </ProtectedRoute>
   )
 }
-

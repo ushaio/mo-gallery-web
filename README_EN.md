@@ -226,8 +226,10 @@ pnpm run dev
 Open:
 
 - Public site: `http://localhost:3000`
-- Administrator login: `http://localhost:3000/login/admin`
-- Custom login route: `/login/{NEXT_PUBLIC_ADMIN_LOGIN_URL}`
+- Administrator login without a security suffix: `http://localhost:3000/login`
+- Administrator login with a security suffix: `http://localhost:3000/login/{ADMIN_LOGIN_URL}`
+
+Desktop and Flutter enforce the same administrator gate. When a security suffix is configured, clients must use the complete `/login/{ADMIN_LOGIN_URL}` URL; the site root alone is rejected. Changing the suffix immediately invalidates existing administrator sessions.
 
 ### 4. Start Desktop Development
 
@@ -294,7 +296,8 @@ See [`.env.example`](.env.example) for the complete template.
 
 | Variable | Description | Default/example |
 |----------|-------------|-----------------|
-| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | Hidden administrator login path | `admin` |
+| `ADMIN_LOGIN_URL` | Server-side administrator login suffix; leave empty to use `/login` | Empty |
+| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | Legacy compatibility fallback used when `ADMIN_LOGIN_URL` is not set | Empty |
 | `SITE_TITLE` | Site title | `MO GALLERY` |
 | `SITE_URL` | Public site URL used by the server | `https://your-domain.com` |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL exposed to the browser | `https://your-domain.com` |

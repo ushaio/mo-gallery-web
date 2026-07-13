@@ -5,6 +5,7 @@ const AUTH_SESSION_TTL_MS = 10 * 60 * 1000
 const AUTH_OAUTH_STATE_KEY = 'auth:oauth:state'
 const AUTH_RETURN_URL_KEY = 'auth:return-url'
 const AUTH_ADMIN_BIND_KEY = 'auth:linuxdo:admin-bind'
+const AUTH_ADMIN_LOGIN_SLUG_KEY = 'auth:admin-login-slug'
 
 const LEGACY_OAUTH_STATE_KEY = 'linuxdo_oauth_state'
 const LEGACY_RETURN_URL_KEY = 'login_return_url'
@@ -118,6 +119,27 @@ export function setLoginReturnUrl(returnUrl: string) {
 export function consumeLoginReturnUrl(fallback = '/') {
   const value = consumeExpiringString(AUTH_RETURN_URL_KEY, [LEGACY_RETURN_URL_KEY])
   return normalizeInternalReturnUrl(value, fallback)
+}
+
+export function setAdminLoginSlug(loginSlug: string) {
+  const normalized = loginSlug.trim().replace(/^\/+|\/+$/g, '')
+  if (!normalized) {
+    clearAdminLoginSlug()
+    return true
+  }
+  return setExpiringString(AUTH_ADMIN_LOGIN_SLUG_KEY, normalized)
+}
+
+export function consumeAdminLoginSlug() {
+  return consumeExpiringString(AUTH_ADMIN_LOGIN_SLUG_KEY)
+}
+
+export function clearAdminLoginSlug() {
+  const storage = getSessionStorage()
+  if (!storage) return
+  try {
+    storage.removeItem(AUTH_ADMIN_LOGIN_SLUG_KEY)
+  } catch {}
 }
 
 export function setAdminBindSession(returnUrl: string) {

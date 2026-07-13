@@ -613,8 +613,7 @@ func (s *EditorAiService) ProxyChatCompletions(w http.ResponseWriter, r *http.Re
 	}
 	selected, _ := payload["model"].(string)
 
-	aiCfg := s.cfg.AI
-	aiCfg.Normalize()
+	aiCfg := s.cfg.AI.NormalizedCopy()
 	_, provider, activeModel, err := aiCfg.ResolveModel(selected)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -722,8 +721,7 @@ func (s *EditorAiService) ClearConversation(conversationId string) (*EditorAiCon
 // ─── 模型列表（调用 AI API）───────────────────────────
 
 func (s *EditorAiService) GetModels() (*StoryAiModelsResponseDTO, error) {
-	aiCfg := s.cfg.AI
-	aiCfg.Normalize()
+	aiCfg := s.cfg.AI.NormalizedCopy()
 	if len(aiCfg.Providers) == 0 || aiCfg.DefaultModel == "" {
 		return nil, errors.New("AI 服务未配置")
 	}
@@ -790,8 +788,7 @@ func (s *EditorAiService) GetModels() (*StoryAiModelsResponseDTO, error) {
 }
 
 func (s *EditorAiService) GetProviderModels(providerID string) (*StoryAiModelsResponseDTO, error) {
-	aiCfg := s.cfg.AI
-	aiCfg.Normalize()
+	aiCfg := s.cfg.AI.NormalizedCopy()
 	provider, ok := aiCfg.Providers[providerID]
 	if !ok || provider.BaseURL == "" || provider.APIKey == "" {
 		return nil, errors.New("AI 服务未配置")

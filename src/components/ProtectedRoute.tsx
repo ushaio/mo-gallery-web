@@ -17,7 +17,7 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
 
   useEffect(() => {
     if (isReady && !isAuthenticated) {
-      router.push('/login')
+      router.replace('/login')
       return
     }
 

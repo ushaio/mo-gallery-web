@@ -1,0 +1,134 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
+
+import { getLinuxDoAuthUrl, isLinuxDoEnabled } from '@/lib/api/auth'
+import { consumeAuthFailure, type AuthFailure } from '@/lib/auth-failure'
+import { clearAdminLoginSlug, setLoginReturnUrl, setOAuthState } from '@/lib/auth-session'
+import { useLanguage } from '@/contexts/LanguageContext'
+import AuthFailureNotice from './AuthFailureNotice'
+
+export default function PublicLoginClient() {
+  const [error, setError] = useState('')
+  const [authFailure, setAuthFailure] = useState<AuthFailure | null>(null)
+  const [linuxDoLoading, setLinuxDoLoading] = useState(false)
+  const [linuxDoEnabled, setLinuxDoEnabled] = useState<boolean | null>(null)
+  const { t } = useLanguage()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    queueMicrotask(() => setAuthFailure(consumeAuthFailure()))
+    isLinuxDoEnabled().then(setLinuxDoEnabled)
+  }, [])
+
+  const handleLinuxDoLogin = async () => {
+    setError('')
+    setLinuxDoLoading(true)
+
+    try {
+      const { url, state } = await getLinuxDoAuthUrl()
+      clearAdminLoginSlug()
+      setOAuthState(state)
+
+      const returnUrlParam = searchParams.get('returnUrl')
+      let returnUrl = '/'
+
+      if (returnUrlParam) {
+        returnUrl = returnUrlParam
+      } else {
+        const referrer = document.referrer
+        if (referrer && !referrer.includes('/login')) {
+          try {
+            const referrerUrl = new URL(referrer)
+            if (referrerUrl.origin === window.location.origin) {
+              returnUrl = referrerUrl.pathname + referrerUrl.search
+            }
+          } catch {
+            // Ignore invalid referrers and return to the homepage.
+          }
+        }
+      }
+
+      setLoginReturnUrl(returnUrl)
+      window.location.href = url
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initiate OAuth')
+      setLinuxDoLoading(false)
+    }
+  }
+
+  if (linuxDoEnabled === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!linuxDoEnabled) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-background pt-24 md:pt-0">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="font-serif text-5xl font-light tracking-tighter text-foreground mb-4">
+            {t('login.title')}
+          </h1>
+          <p className="font-sans text-xs tracking-[0.2em] text-muted-foreground uppercase mb-8">
+            {t('login.subtitle')}
+          </p>
+          {authFailure ? <AuthFailureNotice failure={authFailure} /> : null}
+          <div className="p-6 border border-dashed border-border">
+            <p className="text-sm text-muted-foreground">
+              {t('login.no_login_methods')}
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background pt-24 md:pt-0">
+      <div className="w-full max-w-sm">
+        <div className="mb-12 text-center">
+          <h1 className="font-serif text-5xl font-light tracking-tighter text-foreground mb-4">
+            {t('login.title')}
+          </h1>
+          <p className="font-sans text-xs tracking-[0.2em] text-muted-foreground uppercase">
+            {t('login.subtitle')}
+          </p>
+        </div>
+
+        {authFailure ? <AuthFailureNotice failure={authFailure} /> : null}
+
+        {error ? (
+          <div role="alert" className="mb-8 border border-destructive/40 bg-destructive/5 p-4 text-center text-sm text-destructive">
+            {error}
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={handleLinuxDoLogin}
+          disabled={linuxDoLoading}
+          className="w-full py-4 bg-[#f8d568] text-[#1a1a1a] font-bold tracking-[0.15em] text-xs uppercase hover:bg-[#f5c842] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
+        >
+          {linuxDoLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {t('login.auth')}
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+              </svg>
+              {t('login.linuxdo_login')}
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}

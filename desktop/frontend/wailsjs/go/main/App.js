@@ -258,6 +258,10 @@ export function GetZineCJKFontInfo() {
   return window['go']['main']['App']['GetZineCJKFontInfo']();
 }
 
+export function GetZineImageDataURL(arg1) {
+  return window['go']['main']['App']['GetZineImageDataURL'](arg1);
+}
+
 export function IsLinuxDoEnabled() {
   return window['go']['main']['App']['IsLinuxDoEnabled']();
 }

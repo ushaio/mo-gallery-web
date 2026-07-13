@@ -2,6 +2,10 @@ import 'server-only'
 import { Hono } from 'hono'
 import { signToken } from '~/server/lib/jwt'
 import { db } from '~/server/lib/db'
+import {
+  getAdminGateVersion,
+  verifyAdminLoginSlug,
+} from '~/server/lib/admin-login-gate'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 
 const auth = new Hono<{ Variables: AuthVariables }>()
@@ -17,23 +21,41 @@ const LINUXDO_TOKEN_URL = 'https://connect.linuxdo.org/oauth2/token'
 const LINUXDO_USER_URL = 'https://connect.linuxdo.org/api/user'
 
 auth.post('/login', async (c) => {
-  const { username, password } = await c.req.json()
+  const { username, password, loginSlug } = await c.req.json<{
+    username?: string
+    password?: string
+    loginSlug?: string
+  }>()
 
   if (!username || !password) {
-    return c.json({ error: 'Username and password are required' }, 400)
+    return c.json({
+      code: 'LOGIN_FIELDS_REQUIRED',
+      error: 'Username and password are required',
+    }, 400)
+  }
+
+  if (!verifyAdminLoginSlug(loginSlug)) {
+    return c.json({
+      code: 'ADMIN_LOGIN_PATH_INVALID',
+      error: 'Invalid administrator login URL',
+    }, 403)
   }
 
   const adminUsername = process.env.ADMIN_USERNAME || 'admin'
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123'
 
   if (username !== adminUsername || password !== adminPassword) {
-    return c.json({ error: 'Invalid credentials' }, 401)
+    return c.json({
+      code: 'INVALID_CREDENTIALS',
+      error: 'Invalid username or password',
+    }, 401)
   }
 
   const token = signToken({
     sub: 'admin',
     username: adminUsername,
     isAdmin: true,
+    adminGateVersion: getAdminGateVersion(),
   })
 
   return c.json({
@@ -49,6 +71,11 @@ auth.get('/linuxdo', (c) => {
     return c.json({ error: 'Linux DO OAuth is not configured' }, 400)
   }
 
+  const loginSlug = c.req.query('loginSlug')
+  if (loginSlug !== undefined && !verifyAdminLoginSlug(loginSlug)) {
+    return c.json({ error: 'Invalid administrator login path' }, 403)
+  }
+
   const state = Math.random().toString(36).substring(2, 15)
   const authUrl = new URL(LINUXDO_AUTHORIZE_URL)
   authUrl.searchParams.set('client_id', LINUXDO_CLIENT_ID)
@@ -61,7 +88,10 @@ auth.get('/linuxdo', (c) => {
 
 // Handle Linux DO OAuth callback
 auth.post('/linuxdo/callback', async (c) => {
-  const { code } = await c.req.json()
+  const { code, loginSlug } = await c.req.json<{
+    code?: string
+    loginSlug?: string
+  }>()
 
   if (!code) {
     return c.json({ error: 'Authorization code is required' }, 400)
@@ -129,18 +159,6 @@ auth.post('/linuxdo/callback', async (c) => {
     return c.json({ error: 'Your Linux DO account is not active or has been silenced' }, 403)
   }
 
-  // Check if this Linux DO account is already bound to an admin user
-  const existingUser = await db.user.findFirst({
-    where: {
-      oauthProvider: 'linuxdo',
-      oauthId: String(userData.id),
-    },
-  })
-
-  // Only existing users with isAdmin=true can be admin via Linux DO login
-  // New users are always non-admin (must bind via admin panel first)
-  const isAdmin = existingUser?.isAdmin ?? false
-
   // Find or create user in database
   const user = await db.user.upsert({
     where: {
@@ -166,12 +184,17 @@ auth.post('/linuxdo/callback', async (c) => {
     },
   })
 
+  if (user.isAdmin && !verifyAdminLoginSlug(loginSlug)) {
+    return c.json({ error: 'Invalid administrator login path' }, 403)
+  }
+
   const token = signToken({
     sub: user.id,
     username: userData.username,
     isAdmin: user.isAdmin,
     oauthProvider: 'linuxdo',
     avatarUrl: userData.avatar_url,
+    adminGateVersion: user.isAdmin ? getAdminGateVersion() : undefined,
   })
 
   return c.json({

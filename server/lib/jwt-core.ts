@@ -6,6 +6,7 @@ export interface JwtPayload {
   isAdmin?: boolean
   oauthProvider?: string
   avatarUrl?: string
+  adminGateVersion?: string
 }
 
 function getJwtSecret(): string {

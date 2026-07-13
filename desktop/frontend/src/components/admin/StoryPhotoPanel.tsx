@@ -12,6 +12,7 @@ import {
   MoreVertical,
   LayoutGrid,
 } from 'lucide-react'
+import { blockNarrativeAiInteraction } from '@mo-gallery/tiptap-editor'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
@@ -80,10 +81,7 @@ function StoryPhotoPanelBoundary({
   children: React.ReactNode
 }) {
   const guardDisabledInteraction = (event: React.SyntheticEvent) => {
-    if (disabled) {
-      event.preventDefault()
-      event.stopPropagation()
-    }
+    blockNarrativeAiInteraction(disabled, event)
   }
 
   return (

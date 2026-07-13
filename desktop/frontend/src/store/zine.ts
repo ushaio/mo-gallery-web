@@ -71,12 +71,13 @@ interface CreateProjectOptions {
   customSizeMm?: ZineCustomSizeMm
 }
 
-interface ZineState {
+export interface ZineState {
   project: ZineProject | null
   activeSpreadId: string | null
   selectedSlotId: string | null
   dirty: boolean
   saving: boolean
+  aiTaskId: string | null
   undoStack: Spread[][]
   redoStack: Spread[][]
   createProject: (title: string, options?: CreateProjectOptions) => ZineProject
@@ -97,7 +98,10 @@ interface ZineState {
   pushHistory: () => void
   undo: () => void
   redo: () => void
-  save: () => Promise<void>
+  lockAiTask: (taskId: string) => boolean
+  unlockAiTask: (taskId: string) => boolean
+  applyAiSpread: (taskId: string, projectId: string, spread: Spread) => boolean
+  save: () => Promise<boolean>
 }
 
 export const useZineStore = create<ZineState>()((set, get) => ({
@@ -106,6 +110,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
   selectedSlotId: null,
   dirty: false,
   saving: false,
+  aiTaskId: null,
   undoStack: [],
   redoStack: [],
   createProject: (title, options = {}) => {
@@ -130,19 +135,23 @@ export const useZineStore = create<ZineState>()((set, get) => ({
       assets: [],
     }
 
-    set({ project, activeSpreadId: coverSpread.id, selectedSlotId: null, dirty: true, undoStack: [], redoStack: [] })
+    set({ project, activeSpreadId: coverSpread.id, selectedSlotId: null, dirty: true, aiTaskId: null, undoStack: [], redoStack: [] })
     scheduleAutosave()
     return project
   },
   loadProject: async (id) => {
     const project = await getZineProject(id)
     const hydratedProject = project ? await hydrateLocalAssets(project) : null
-    set({ project: hydratedProject, activeSpreadId: hydratedProject?.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, undoStack: [], redoStack: [] })
+    set({ project: hydratedProject, activeSpreadId: hydratedProject?.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, aiTaskId: null, undoStack: [], redoStack: [] })
   },
-  setProject: (project) => set({ project, activeSpreadId: project.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, undoStack: [], redoStack: [] }),
-  setActiveSpread: (id) => set({ activeSpreadId: id, selectedSlotId: null }),
+  setProject: (project) => set({ project, activeSpreadId: project.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, aiTaskId: null, undoStack: [], redoStack: [] }),
+  setActiveSpread: (id) => {
+    if (get().aiTaskId) return
+    set({ activeSpreadId: id, selectedSlotId: null })
+  },
   selectSlot: (id) => set({ selectedSlotId: id }),
   updateSlot: (spreadId, slotId, patch) => {
+    if (get().aiTaskId) return
     const project = get().project
     const spread = project?.spreads.find((spread) => spread.id === spreadId)
 
@@ -164,6 +173,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   addSlot: (spreadId, kind) => {
+    if (get().aiTaskId) return
     const project = get().project
     const spread = project?.spreads.find((spread) => spread.id === spreadId)
     if (!project || !spread) return
@@ -181,6 +191,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   removeSlot: (spreadId, slotId) => {
+    if (get().aiTaskId) return
     const project = get().project
     const spread = project?.spreads.find((spread) => spread.id === spreadId)
     if (!spread?.slots.some((slot) => slot.id === slotId)) return
@@ -196,6 +207,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   addSpread: (templateId = DEFAULT_TEMPLATE_ID) => {
+    if (get().aiTaskId) return
     get().pushHistory()
     set((state) => {
       if (!state.project) return state
@@ -213,6 +225,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   addCoverSpread: () => {
+    if (get().aiTaskId) return
     const project = get().project
     if (!project || hasCoverSpread(project)) return
 
@@ -233,6 +246,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   moveSpread: (id, direction) => {
+    if (get().aiTaskId) return
     const project = get().project
     if (!project) return
 
@@ -254,6 +268,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   removeSpread: (id) => {
+    if (get().aiTaskId) return
     const project = get().project
     const target = project?.spreads.find((spread) => spread.id === id)
     if (!project || !target) return
@@ -272,30 +287,35 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   addAsset: (asset) => {
+    if (get().aiTaskId) return
     set((state) => {
       if (!state.project) return state
       return { project: withUpdatedProject(state.project, { assets: [...state.project.assets, asset] }), ...markDirty() }
     })
   },
   rename: (title) => {
+    if (get().aiTaskId) return
     set((state) => {
       if (!state.project) return state
       return { project: withUpdatedProject(state.project, { title }), ...markDirty() }
     })
   },
   setPageNumbers: (settings) => {
+    if (get().aiTaskId) return
     set((state) => {
       if (!state.project) return state
       return { project: withUpdatedProject(state.project, { pageNumbers: settings }), ...markDirty() }
     })
   },
   pushHistory: () => {
+    if (get().aiTaskId) return
     const project = get().project
     if (!project) return
 
     set((state) => ({ undoStack: [...state.undoStack, cloneSpreads(project.spreads)].slice(-HISTORY_LIMIT), redoStack: [] }))
   },
   undo: () => {
+    if (get().aiTaskId) return
     set((state) => {
       if (!state.project || state.undoStack.length === 0) return state
 
@@ -308,6 +328,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     })
   },
   redo: () => {
+    if (get().aiTaskId) return
     set((state) => {
       if (!state.project || state.redoStack.length === 0) return state
 
@@ -319,9 +340,43 @@ export const useZineStore = create<ZineState>()((set, get) => ({
       return { project: withUpdatedProject(state.project, { spreads: cloneSpreads(next) }), activeSpreadId, selectedSlotId: null, undoStack, redoStack, ...markDirty() }
     })
   },
+  lockAiTask: (taskId) => {
+    const currentTaskId = get().aiTaskId
+    if (currentTaskId !== null && currentTaskId !== taskId) return false
+    set({ aiTaskId: taskId })
+    return true
+  },
+  unlockAiTask: (taskId) => {
+    if (get().aiTaskId !== taskId) return false
+    set({ aiTaskId: null })
+    return true
+  },
+  applyAiSpread: (taskId, projectId, spread) => {
+    const state = get()
+    if (state.aiTaskId !== taskId || state.project?.id !== projectId) return false
+    if (!state.project.spreads.some((candidate) => candidate.id === spread.id)) return false
+
+    const nextSpread = cloneSpreads([spread])[0]
+    const previousSpreads = cloneSpreads(state.project.spreads)
+    const nextSpreads = state.project.spreads.map((candidate) => (
+      candidate.id === nextSpread.id ? nextSpread : candidate
+    ))
+    const selectedSlotId = nextSpread.slots.some((slot) => slot.id === state.selectedSlotId)
+      ? state.selectedSlotId
+      : null
+
+    set({
+      project: withUpdatedProject(state.project, { spreads: nextSpreads }),
+      selectedSlotId,
+      undoStack: [...state.undoStack, previousSpreads].slice(-HISTORY_LIMIT),
+      redoStack: [],
+      ...markDirty(),
+    })
+    return true
+  },
   save: async () => {
     const project = get().project
-    if (!project) return
+    if (!project) return false
 
     set({ saving: true })
 
@@ -331,9 +386,11 @@ export const useZineStore = create<ZineState>()((set, get) => ({
         dirty: state.project?.id === project.id && state.project.updatedAt === project.updatedAt ? false : state.dirty,
         saving: false,
       }))
+      return true
     } catch {
       set({ saving: false })
       toast.error('Zine 草稿保存失败')
+      return false
     }
   },
 }))

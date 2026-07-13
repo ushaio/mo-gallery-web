@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
+import { Sparkles } from 'lucide-react'
 
 import { PageStrip } from './PageStrip'
 import { PhotoTray } from './PhotoTray'
 import { SlotContextBar } from './SlotContextBar'
 import { SpreadCanvas } from './SpreadCanvas'
+import { ZineAiAssistant } from './ZineAiAssistant'
 import { ZineToolbar } from './ZineToolbar'
 
+import { t } from '@/lib/i18n'
+import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
 function isEditableTarget(target: EventTarget | null) {
@@ -15,6 +19,8 @@ function isEditableTarget(target: EventTarget | null) {
 
 export function ZineEditor() {
   const [canvasZoom, setCanvasZoom] = useState(1)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const { language } = usePreferences()
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
@@ -95,7 +101,20 @@ export function ZineEditor() {
             onSelectSlot={selectSlot}
           />
           <SlotContextBar />
+          {!assistantOpen ? (
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="absolute right-3 top-3 z-10 flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-xs font-semibold text-foreground shadow-sm transition hover:bg-accent"
+              style={{ borderColor: 'var(--border)' }}
+              aria-label={t('admin.zine_ai', language)}
+            >
+              <Sparkles size={14} className="text-primary" />
+              {t('admin.zine_ai', language)}
+            </button>
+          ) : null}
         </div>
+        {assistantOpen ? <ZineAiAssistant onClose={() => setAssistantOpen(false)} /> : null}
       </div>
       <PhotoTray />
     </div>

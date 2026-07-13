@@ -124,3 +124,93 @@ func TestLoginUsesProvidedJWTSecret(t *testing.T) {
 		t.Fatalf("JWTSecret = %q, want %q", cfg.API.JWTSecret, "new-secret")
 	}
 }
+
+func TestParseLoginEndpoint(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		baseURL   string
+		loginURL  string
+		loginSlug string
+		wantErr   bool
+	}{
+		{
+			name:     "root URL",
+			input:    "http://localhost:3000/",
+			baseURL:  "http://localhost:3000",
+			loginURL: "http://localhost:3000",
+		},
+		{
+			name:      "administrator gate URL",
+			input:     "https://gallery.example.com/login/shai/",
+			baseURL:   "https://gallery.example.com",
+			loginURL:  "https://gallery.example.com/login/shai",
+			loginSlug: "shai",
+		},
+		{name: "reject arbitrary path", input: "https://gallery.example.com/admin", wantErr: true},
+		{name: "reject missing slug", input: "https://gallery.example.com/login", wantErr: true},
+		{name: "reject query", input: "https://gallery.example.com/login/shai?x=1", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint, err := ParseLoginEndpoint(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ParseLoginEndpoint(%q) unexpectedly succeeded", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseLoginEndpoint(%q) error = %v", tt.input, err)
+			}
+			if endpoint.BaseURL != tt.baseURL || endpoint.LoginURL != tt.loginURL || endpoint.LoginSlug != tt.loginSlug {
+				t.Fatalf("endpoint = %+v", endpoint)
+			}
+		})
+	}
+}
+
+func TestLoginSendsGateSlugToRootAPI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", t.TempDir())
+	} else {
+		t.Setenv("HOME", t.TempDir())
+	}
+
+	const secret = "expected-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/auth/login" {
+			t.Fatalf("request path = %q, want /api/auth/login", r.URL.Path)
+		}
+
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode login body: %v", err)
+		}
+		if body["loginSlug"] != "shai" {
+			t.Fatalf("loginSlug = %q, want shai", body["loginSlug"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(webLoginResponse{
+			Success: true,
+			Token:   signedTestToken(t, secret, time.Now().Add(time.Hour)),
+			User:    UserInfo{ID: "user-1", Username: "admin", IsAdmin: true},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{API: config.APIConfig{JWTSecret: secret}}
+	service := NewAuthService(cfg)
+	result, err := service.Login(server.URL+"/login/shai", "admin", "password", secret, false)
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if result.Server != server.URL {
+		t.Fatalf("result.Server = %q, want %q", result.Server, server.URL)
+	}
+	if cfg.API.LoginURL != server.URL+"/login/shai" {
+		t.Fatalf("LoginURL = %q", cfg.API.LoginURL)
+	}
+}

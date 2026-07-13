@@ -24,6 +24,7 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import { formatRelativeTimeLabel } from '@/lib/utils'
 import { createBlogDraftDocumentId, resolveBlogDocumentId, rotateBlogDraftDocumentId } from '@/lib/blog-draft-document'
+import { persistDesktopBlog, type DesktopBlogSaveApi } from '@/lib/desktop-blog-save'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -60,11 +61,9 @@ interface BlogFormData {
   isPublished: boolean
 }
 
-interface DesktopBlogApp {
+interface DesktopBlogApp extends DesktopBlogSaveApi {
   GetBlogs: () => Promise<BlogDto[]>
   DeleteBlog: (id: string) => Promise<void>
-  UpdateBlog: (id: string, data: unknown) => Promise<void>
-  CreateBlog: (data: unknown) => Promise<void>
 }
 
 function getDesktopBlogApp() {
@@ -403,25 +402,21 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
 
     setSaving(true)
     try {
-      if (currentBlog.id) {
-        await getDesktopBlogApp().UpdateBlog(currentBlog.id, {
+      await persistDesktopBlog({
+        api: getDesktopBlogApp(),
+        blogId: currentBlog.id,
+        data: {
           title: currentBlog.title,
           content: currentBlog.content,
           contentJson: currentBlog.contentJson ?? null,
           category: currentBlog.category,
           tags: currentBlog.tags,
           isPublished: currentBlog.isPublished,
-        })
-      } else {
-        await getDesktopBlogApp().CreateBlog({
-          title: currentBlog.title,
-          content: currentBlog.content,
-          contentJson: currentBlog.contentJson ?? null,
-          category: currentBlog.category,
-          tags: currentBlog.tags,
-          isPublished: currentBlog.isPublished,
-        })
-      }
+        },
+        onCreated: (blogId) => {
+          setCurrentBlog((blog) => (blog ? { ...blog, id: blogId } : blog))
+        },
+      })
       await clearDraft(currentBlog.id)
       
       await fetchBlogs()

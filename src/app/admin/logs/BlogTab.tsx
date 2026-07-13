@@ -130,7 +130,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setBlogs(data)
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -398,7 +398,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       notify(t('admin.notify_log_deleted'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -452,7 +452,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       notify(t('admin.notify_log_saved'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')

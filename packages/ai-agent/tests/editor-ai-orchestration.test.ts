@@ -325,6 +325,22 @@ await test('suggestion-only remains read-only and returns runtime text', async (
   }
 })
 
+await test('direct-edit runtime text falls back to suggestion-only without applying edits', async () => {
+  const host = new Host()
+  const result = await runDirectEditAgentWithRuntime(
+    options(host),
+    runtime([
+      { type: 'text_delta', text: 'Try a stronger opening.' },
+      { type: 'completed', summary: ['No operation batch was created.'] },
+    ]),
+  )
+
+  assert.equal(result.mode, 'suggestion_only')
+  if (result.mode !== 'suggestion_only') return
+  assert.equal(result.suggestion, 'Try a stronger opening.')
+  assert.deepEqual(host.calls, ['lock', 'capture', 'unlock'])
+})
+
 await test('rejects contradictory direct-edit snapshot and authorization identities before custom runtime invocation', async () => {
   const cases: Array<{
     name: string
@@ -653,9 +669,17 @@ await test('runtime success terminals stop iteration and ignore later events', a
         }
       },
     }) as unknown as DirectEditAgentRuntime<NarrativeDocumentSnapshot>
-    await assert.rejects(runDirectEditAgentWithRuntime(options(missingHost), lateBatchRuntime), {
-      code: 'invalid_operation_batch',
-    })
+    if (terminal.type === 'completed') {
+      const fallback = await runDirectEditAgentWithRuntime(options(missingHost), lateBatchRuntime)
+      assert.equal(fallback.mode, 'suggestion_only')
+      if (fallback.mode === 'suggestion_only') {
+        assert.equal(fallback.suggestion, 'Done')
+      }
+    } else {
+      await assert.rejects(runDirectEditAgentWithRuntime(options(missingHost), lateBatchRuntime), {
+        code: 'invalid_operation_batch',
+      })
+    }
     assert.equal(iteratorClosed, true)
     assert.deepEqual(missingHost.calls, ['lock', 'capture', 'unlock'])
 

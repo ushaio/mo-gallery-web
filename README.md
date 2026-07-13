@@ -226,8 +226,10 @@ pnpm run dev
 打开以下地址：
 
 - 公开站点：`http://localhost:3000`
-- 管理员登录：`http://localhost:3000/login/admin`
-- 自定义登录路径：`/login/{NEXT_PUBLIC_ADMIN_LOGIN_URL}`
+- 未配置安全后缀时的管理员登录：`http://localhost:3000/login`
+- 配置安全后缀后的管理员登录：`http://localhost:3000/login/{ADMIN_LOGIN_URL}`
+
+Desktop 和 Flutter 连接管理员 API 时遵循相同门禁。配置安全后缀后，客户端必须填写完整的 `/login/{ADMIN_LOGIN_URL}` 地址；只填写站点根地址会被拒绝。修改安全后缀会立即使旧管理员会话失效。
 
 ### 4. 启动 Desktop 开发模式
 
@@ -294,7 +296,8 @@ wails build -nsis
 
 | 变量 | 说明 | 默认/示例 |
 |------|------|-----------|
-| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | 管理员隐藏登录路径 | `admin` |
+| `ADMIN_LOGIN_URL` | 服务端管理员登录安全后缀；留空时从 `/login` 登录 | 留空 |
+| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | 旧部署兼容项；未设置 `ADMIN_LOGIN_URL` 时作为回退值 | 留空 |
 | `SITE_TITLE` | 站点标题 | `MO GALLERY` |
 | `SITE_URL` | 服务端使用的公开站点地址 | `https://your-domain.com` |
 | `NEXT_PUBLIC_SITE_URL` | 浏览器可访问的公开站点地址 | `https://your-domain.com` |

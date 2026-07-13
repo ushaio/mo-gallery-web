@@ -1,3 +1,5 @@
+import { reportAuthFailure } from '@/lib/auth-errors'
+
 function getApiBase(): string {
   // Desktop (Wails webview)：从 localStorage 读取 mo-gallery-web 服务器地址
   if (typeof localStorage !== 'undefined') {
@@ -21,7 +23,7 @@ export function buildApiUrl(path: string): string {
 
 export class ApiUnauthorizedError extends Error {
   readonly status = 401
-  constructor(message = 'Unauthorized') {
+  constructor(message = 'Unauthorized', readonly code?: string) {
     super(message)
     this.name = 'ApiUnauthorizedError'
   }
@@ -41,6 +43,12 @@ export function extractErrorMessage(payload: unknown): string | null {
   const error = anyPayload.error
   if (typeof error === 'string' && error.trim()) return error
   return null
+}
+
+export function extractErrorCode(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const code = (payload as Record<string, unknown>).code
+  return typeof code === 'string' && code.trim() ? code : undefined
 }
 
 async function readJsonSafe(res: Response): Promise<unknown> {
@@ -67,7 +75,12 @@ export async function apiRequest(
   const payload = await readJsonSafe(res)
 
   if (res.status === 401) {
-    throw new ApiUnauthorizedError(extractErrorMessage(payload) ?? 'Token invalid or expired')
+    const error = new ApiUnauthorizedError(
+      extractErrorMessage(payload) ?? 'Token invalid or expired',
+      extractErrorCode(payload),
+    )
+    if (token) reportAuthFailure(error)
+    throw error
   }
   if (!res.ok) {
     throw new Error(extractErrorMessage(payload) ?? `Request failed (${res.status})`)

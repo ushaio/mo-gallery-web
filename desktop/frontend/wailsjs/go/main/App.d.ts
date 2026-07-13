@@ -133,6 +133,8 @@ export function GetStoryAiProviderModels(arg1:string):Promise<services.StoryAiMo
 
 export function GetZineCJKFontInfo():Promise<services.ZineCJKFontInfo>;
 
+export function GetZineImageDataURL(arg1:string):Promise<string>;
+
 export function IsLinuxDoEnabled():Promise<boolean>;
 
 export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<services.LoginResult>;

@@ -1,6 +1,9 @@
 package services
 
 import (
+	"context"
+	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -10,6 +13,63 @@ import (
 	"strings"
 	"time"
 )
+
+const maxZineAiImageBytes = 25 * 1024 * 1024
+
+func newZineImageRequest(ctx context.Context, proxy *ProxyClient, src string) (*http.Request, error) {
+	parsed, err := url.Parse(src)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, fmt.Errorf("invalid image URL")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create image request: %w", err)
+	}
+	if proxy != nil && proxy.token != "" && proxy.baseURL != "" && strings.HasPrefix(src, proxy.baseURL) {
+		req.Header.Set("Authorization", "Bearer "+proxy.token)
+	}
+	return req, nil
+}
+
+// GetZineImageDataURL loads a remote Zine asset outside WebView CORS rules.
+// The bounded data URL is used transiently by the editor AI snapshot and is
+// never persisted in the Zine project.
+func GetZineImageDataURL(ctx context.Context, proxy *ProxyClient, src string) (string, error) {
+	req, err := newZineImageRequest(ctx, proxy, src)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("fetch image: HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxZineAiImageBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read image: %w", err)
+	}
+	if len(data) > maxZineAiImageBytes {
+		return "", fmt.Errorf("image exceeds %d bytes", maxZineAiImageBytes)
+	}
+
+	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = http.DetectContentType(data)
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return "", fmt.Errorf("remote resource is not an image")
+	}
+
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
 
 // ZineCJKFontInfo Zine PDF 导出可用的系统中文字体信息。
 // react-pdf 内置的 14 种标准字体只支持 WinAnsi 编码，中文文本必须注册

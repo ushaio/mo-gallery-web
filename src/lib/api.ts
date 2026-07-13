@@ -1,10 +1,12 @@
 export {
+  ApiRequestError,
   ApiUnauthorizedError,
   apiRequest,
   apiRequestData,
   apiRequestWithMeta,
   buildApiUrl,
   buildQuery,
+  extractErrorCode,
   extractErrorMessage,
   resolveAssetUrl,
 } from './api/core'

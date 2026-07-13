@@ -1074,6 +1074,10 @@ interface AiProviderConfig {
   api_key: string
   models: string[]
   image_models: string[]
+  vision_models: string[]
+  tool_models: string[]
+  structured_output_models: string[]
+  context_windows: Record<string, number>
 }
 
 interface AiConfig {
@@ -1087,6 +1091,10 @@ const emptyAiProvider: AiProviderConfig = {
   api_key: '',
   models: [''],
   image_models: [],
+  vision_models: [],
+  tool_models: [],
+  structured_output_models: [],
+  context_windows: {},
 }
 
 function normalizeModelNames(models: string[]): string[] {
@@ -1103,6 +1111,13 @@ function getString(value: unknown): string {
 
 function getStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function getContextWindows(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, number] => (
+    typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0
+  )))
 }
 
 function getErrorMessage(error: unknown): string {
@@ -1124,6 +1139,10 @@ function normalizeAiConfig(value: unknown): AiConfig {
         api_key: getString(provider.api_key),
         models: models.length > 0 ? models : [''],
         image_models: getStringList(provider.image_models),
+        vision_models: getStringList(provider.vision_models),
+        tool_models: getStringList(provider.tool_models),
+        structured_output_models: getStringList(provider.structured_output_models),
+        context_windows: getContextWindows(provider.context_windows),
       }]
     })),
   }
@@ -1140,6 +1159,12 @@ function buildAiConfigPayload(aiConfig: AiConfig): AiConfig {
       ...provider,
       models,
       image_models: normalizeModelNames(provider.image_models).filter(model => configuredModels.has(model)),
+      vision_models: normalizeModelNames(provider.vision_models).filter(model => configuredModels.has(model)),
+      tool_models: normalizeModelNames(provider.tool_models).filter(model => configuredModels.has(model)),
+      structured_output_models: normalizeModelNames(provider.structured_output_models).filter(model => configuredModels.has(model)),
+      context_windows: Object.fromEntries(Object.entries(provider.context_windows).filter(([model, size]) => (
+        configuredModels.has(model) && Number.isFinite(size) && size > 0
+      ))),
     }
   }
   const chatModelIds = new Set(Object.entries(providers).flatMap(([providerId, provider]) => (
@@ -1231,7 +1256,15 @@ function AiTab() {
       ...prev,
       providers: {
         ...prev.providers,
-        [providerId]: { ...emptyAiProvider, models: [''], image_models: [] },
+        [providerId]: {
+          ...emptyAiProvider,
+          models: [''],
+          image_models: [],
+          vision_models: [],
+          tool_models: [],
+          structured_output_models: [],
+          context_windows: {},
+        },
       },
     }))
   }
@@ -1256,9 +1289,15 @@ function AiTab() {
       const previousModel = provider.models[index].trim()
       const nextModel = value.trim()
       const models = provider.models.map((model, i) => i === index ? value : model)
-      const image_models = provider.image_models
+      const renameCapabilityModel = (capabilityModels: string[]) => capabilityModels
         .map(model => model === previousModel ? nextModel : model)
         .filter(Boolean)
+      const context_windows = { ...provider.context_windows }
+      if (previousModel && previousModel !== nextModel && context_windows[previousModel] !== undefined) {
+        const contextWindow = context_windows[previousModel]
+        delete context_windows[previousModel]
+        if (nextModel) context_windows[nextModel] = contextWindow
+      }
       const previousId = `${providerId}:${previousModel}`
       const nextId = nextModel ? `${providerId}:${nextModel}` : ''
       return {
@@ -1267,7 +1306,15 @@ function AiTab() {
         default_image_model: prev.default_image_model === previousId ? nextId : prev.default_image_model,
         providers: {
           ...prev.providers,
-          [providerId]: { ...provider, models, image_models },
+          [providerId]: {
+            ...provider,
+            models,
+            image_models: renameCapabilityModel(provider.image_models),
+            vision_models: renameCapabilityModel(provider.vision_models),
+            tool_models: renameCapabilityModel(provider.tool_models),
+            structured_output_models: renameCapabilityModel(provider.structured_output_models),
+            context_windows,
+          },
         },
       }
     })
@@ -1284,6 +1331,8 @@ function AiTab() {
       const removed = provider.models[index].trim()
       const models = provider.models.filter((_, i) => i !== index)
       const removedId = `${providerId}:${removed}`
+      const context_windows = { ...provider.context_windows }
+      delete context_windows[removed]
       return {
         ...prev,
         default_model: prev.default_model === removedId ? '' : prev.default_model,
@@ -1294,6 +1343,10 @@ function AiTab() {
             ...provider,
             models: models.length > 0 ? models : [''],
             image_models: provider.image_models.filter(model => model !== removed),
+            vision_models: provider.vision_models.filter(model => model !== removed),
+            tool_models: provider.tool_models.filter(model => model !== removed),
+            structured_output_models: provider.structured_output_models.filter(model => model !== removed),
+            context_windows,
           },
         },
       }
@@ -1317,6 +1370,29 @@ function AiTab() {
         providers: {
           ...prev.providers,
           [providerId]: { ...provider, image_models },
+        },
+      }
+    })
+  }
+
+  const toggleCapabilityModel = (
+    providerId: string,
+    model: string,
+    capability: 'vision_models' | 'tool_models' | 'structured_output_models',
+    enabled: boolean,
+  ) => {
+    const modelName = model.trim()
+    if (!modelName) return
+    setAiConfig(prev => {
+      const provider = prev.providers[providerId]
+      const capabilityModels = enabled
+        ? normalizeModelNames([...provider[capability], modelName])
+        : provider[capability].filter(item => item !== modelName)
+      return {
+        ...prev,
+        providers: {
+          ...prev.providers,
+          [providerId]: { ...provider, [capability]: capabilityModels },
         },
       }
     })
@@ -1366,7 +1442,7 @@ function AiTab() {
         <div>
           <h3 className="text-sm font-medium">模型源</h3>
           <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-            每个模型源独立配置；可为单个模型标记图片生成能力。
+            每个模型源独立配置；请按模型实际能力标记视觉理解、工具调用和结构化输出。
           </p>
         </div>
         <button onClick={addProvider}
@@ -1427,15 +1503,48 @@ function AiTab() {
               </Field>
             </div>
 
-            <Field label="模型列表" description="开启“图片生成”后，该模型会出现在 AI 对话的生图模型选择器中。">
+            <Field label="模型列表" description="“视觉理解”用于读取 Zine 图片；直接修改还需要同时支持工具调用和结构化输出。">
               <div className="space-y-2">
                 {provider.models.map((model, index) => {
                   const supportsImage = Boolean(model.trim()) && provider.image_models.includes(model.trim())
+                  const supportsVision = Boolean(model.trim()) && provider.vision_models.includes(model.trim())
+                  const supportsTools = Boolean(model.trim()) && provider.tool_models.includes(model.trim())
+                  const supportsStructuredOutput = Boolean(model.trim()) && provider.structured_output_models.includes(model.trim())
                   return (
-                    <div key={index} className="flex flex-col gap-2 sm:flex-row">
+                    <div key={index} className="flex flex-wrap gap-2">
                       <input value={model} onChange={e => updateModel(providerId, index, e.target.value)} placeholder="gpt-4o"
                         list={candidates.length > 0 ? modelCandidateListId : undefined}
-                        className="min-w-0 flex-1 rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle} />
+                        className="min-w-[12rem] flex-1 rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle} />
+                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
+                        style={{
+                          borderColor: supportsVision ? '#2563eb' : 'var(--border)',
+                          color: supportsVision ? '#2563eb' : 'var(--muted-foreground)',
+                          backgroundColor: supportsVision ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
+                        }}>
+                        <input type="checkbox" checked={supportsVision} disabled={!model.trim()}
+                          onChange={e => toggleCapabilityModel(providerId, model, 'vision_models', e.target.checked)} className="sr-only" />
+                        <Eye size={13} /> 视觉理解
+                      </label>
+                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
+                        style={{
+                          borderColor: supportsTools ? '#7c3aed' : 'var(--border)',
+                          color: supportsTools ? '#7c3aed' : 'var(--muted-foreground)',
+                          backgroundColor: supportsTools ? 'rgba(124, 58, 237, 0.08)' : 'transparent',
+                        }}>
+                        <input type="checkbox" checked={supportsTools} disabled={!model.trim()}
+                          onChange={e => toggleCapabilityModel(providerId, model, 'tool_models', e.target.checked)} className="sr-only" />
+                        <Settings size={13} /> 工具调用
+                      </label>
+                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
+                        style={{
+                          borderColor: supportsStructuredOutput ? '#059669' : 'var(--border)',
+                          color: supportsStructuredOutput ? '#059669' : 'var(--muted-foreground)',
+                          backgroundColor: supportsStructuredOutput ? 'rgba(5, 150, 105, 0.08)' : 'transparent',
+                        }}>
+                        <input type="checkbox" checked={supportsStructuredOutput} disabled={!model.trim()}
+                          onChange={e => toggleCapabilityModel(providerId, model, 'structured_output_models', e.target.checked)} className="sr-only" />
+                        <Check size={13} /> 结构化输出
+                      </label>
                       <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
                         style={{
                           borderColor: supportsImage ? '#f59e0b' : 'var(--border)',

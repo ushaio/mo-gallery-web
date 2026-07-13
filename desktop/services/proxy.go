@@ -57,6 +57,7 @@ type apiResponse struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data"`
 	Meta    json.RawMessage `json:"meta"`
+	Code    string          `json:"code"`
 	Error   string          `json:"error"`
 	Message string          `json:"message"`
 }
@@ -99,7 +100,7 @@ func (p *ProxyClient) GETWithMeta(path string, data interface{}, meta interface{
 		if p.logger != nil {
 			p.logger.Warn(LogCategoryAuth, "api_unauthorized", fmt.Sprintf("GET %s 认证失败", path), fmt.Sprintf("HTTP %d", resp.StatusCode))
 		}
-		return &ApiUnauthorizedError{Message: "登录已过期，请重新登录"}
+		return parseUnauthorizedError(body)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -209,7 +210,7 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 		if p.logger != nil {
 			p.logger.Warn(LogCategoryAuth, "api_unauthorized", fmt.Sprintf("POST %s 认证失败", path), fmt.Sprintf("HTTP %d", resp.StatusCode))
 		}
-		return &ApiUnauthorizedError{Message: "登录已过期，请重新登录"}
+		return parseUnauthorizedError(bodyBytes)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -284,7 +285,7 @@ func (p *ProxyClient) do(method, path string, body interface{}, result interface
 			if p.logger != nil {
 				p.logger.Warn(LogCategoryAuth, "api_unauthorized", fmt.Sprintf("%s %s 认证失败", method, path), fmt.Sprintf("HTTP %d", resp.StatusCode))
 			}
-			return &ApiUnauthorizedError{Message: "登录已过期，请重新登录"}
+			return parseUnauthorizedError(respBody)
 		}
 
 		// 500 错误重试一次（可能是数据库连接断开）
@@ -358,11 +359,38 @@ func (p *ProxyClient) newRequest(method, path string, body interface{}) (*http.R
 
 // ApiUnauthorizedError 401 错误
 type ApiUnauthorizedError struct {
+	Code    string
 	Message string
 }
 
 func (e *ApiUnauthorizedError) Error() string {
+	if e.Code != "" {
+		return fmt.Sprintf("%s: %s", e.Code, e.Message)
+	}
 	return e.Message
+}
+
+func parseUnauthorizedError(body []byte) *ApiUnauthorizedError {
+	var errBody struct {
+		Code    string `json:"code"`
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+
+	if json.Unmarshal(body, &errBody) == nil {
+		message := errBody.Error
+		if message == "" {
+			message = errBody.Message
+		}
+		if message != "" {
+			return &ApiUnauthorizedError{Code: errBody.Code, Message: message}
+		}
+	}
+
+	return &ApiUnauthorizedError{
+		Code:    "TOKEN_INVALID",
+		Message: "登录状态已失效，请重新登录。",
+	}
 }
 
 // APIError 服务端返回的结构化业务错误（4xx/5xx 且响应体带 error/message 字段）。

@@ -412,6 +412,19 @@ export async function runDirectEditAgentWithRuntime<
         throw executionError('capability_unavailable', 'Suggestion-only runtime returned no suggestion text')
       }
       result = { mode: 'suggestion_only', suggestion: finalSuggestion, degradations: capabilities.degradations }
+    } else if (batches.length === 0) {
+      const finalSuggestion = suggestion.trim() || completedSummary.join('\n').trim()
+      if (!finalSuggestion) {
+        throw executionError(
+          'invalid_operation_batch',
+          'Direct-edit runtime returned neither an operation batch nor suggestion text',
+        )
+      }
+      result = {
+        mode: 'suggestion_only',
+        suggestion: finalSuggestion,
+        degradations: capabilities.degradations,
+      }
     } else {
       if (batches.length !== 1) {
         throw executionError('invalid_operation_batch', 'Direct-edit runtime must create exactly one operation batch')

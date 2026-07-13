@@ -4,16 +4,21 @@ import { Suspense, useEffect, useState, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { loginWithLinuxDo, bindLinuxDoAccount } from '@/lib/api/auth'
-import { consumeAdminBindSession, consumeLoginReturnUrl, consumeOAuthState } from '@/lib/auth-session'
+import {
+  consumeAdminBindSession,
+  consumeAdminLoginSlug,
+  consumeLoginReturnUrl,
+  consumeOAuthState,
+} from '@/lib/auth-session'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 
 function OAuthCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [error, setError] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
   const [isBindFlow, setIsBindFlow] = useState(false)
   const [redirectUrl, setRedirectUrl] = useState('/')
+  const [loginPageUrl, setLoginPageUrl] = useState('/login')
   const hasProcessed = useRef(false)
   const { login, token, isReady } = useAuth()
   const { t } = useLanguage()
@@ -85,12 +90,18 @@ function OAuthCallbackContent() {
       // Normal login flow
       // Get the return URL (where user came from before login)
       const returnUrl = consumeLoginReturnUrl('/')
+      const adminLoginSlug = consumeAdminLoginSlug()
+      if (adminLoginSlug) {
+        setLoginPageUrl(`/login/${encodeURIComponent(adminLoginSlug)}`)
+      }
 
       try {
-        const { token: newToken, user } = await loginWithLinuxDo(code)
+        const { token: newToken, user } = await loginWithLinuxDo(
+          code,
+          adminLoginSlug ?? undefined,
+        )
         login(newToken, user)
         setStatus('success')
-        setIsAdmin(user.isAdmin || false)
 
         // Determine redirect URL
         // If there's a specific return URL (not just '/'), use it for all users
@@ -165,7 +176,7 @@ function OAuthCallbackContent() {
             {error}
           </p>
           <button
-            onClick={() => router.push('/login')}
+            onClick={() => router.push(loginPageUrl)}
             className="px-6 py-3 bg-foreground text-background font-bold tracking-[0.15em] text-xs uppercase hover:bg-primary hover:text-primary-foreground transition-all duration-300"
           >
             {t('login.back_to_login')}

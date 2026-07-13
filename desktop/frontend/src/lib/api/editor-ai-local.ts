@@ -120,9 +120,12 @@ function isModelCapability(value: string): value is 'chat' | 'image' {
   return value === 'chat' || value === 'image'
 }
 
+let storyAiModelsRequest: Promise<StoryAiModelsResponse> | null = null
+
 export async function getLocalStoryAiModels(): Promise<StoryAiModelsResponse> {
-  const response = await GetStoryAiModels()
-  return {
+  if (storyAiModelsRequest) return await storyAiModelsRequest
+
+  const request = GetStoryAiModels().then((response) => ({
     defaultModel: response.defaultModel,
     defaultImageModel: response.defaultImageModel,
     models: response.models.map((model) => ({
@@ -136,6 +139,13 @@ export async function getLocalStoryAiModels(): Promise<StoryAiModelsResponse> {
       structuredOutput: model.structuredOutput,
       contextWindow: model.contextWindow,
     })),
+  }))
+  storyAiModelsRequest = request
+
+  try {
+    return await request
+  } finally {
+    if (storyAiModelsRequest === request) storyAiModelsRequest = null
   }
 }
 
@@ -177,6 +187,12 @@ async function getEditorAiConversation(
     ...conversation,
     messages: (conversation?.messages ?? []).map(mapEditorAiMessageDto),
   }
+}
+
+export async function getLocalEditorAiConversation(
+  conversationId: string,
+): Promise<EditorAiConversationWithMessagesDto> {
+  return await getEditorAiConversation('', conversationId)
 }
 
 async function deleteEditorAiConversation(_token: string, conversationId: string): Promise<void> {
@@ -357,6 +373,15 @@ export const editorAiLocal: EditorAiApi = {
   getEditorAiConversation,
   deleteEditorAiConversation,
   clearEditorAiConversation,
+  appendEditorAiMessage: async (_token, conversationId, input) => (
+    await appendLocalEditorAiMessage(conversationId, input)
+  ),
+  finishEditorAiMessage: async (_token, messageId, input) => (
+    await finishLocalEditorAiMessage(messageId, input)
+  ),
+  updateEditorAiTaskState: async (_token, messageId, state) => (
+    await updateLocalEditorAiTaskState(messageId, state)
+  ),
   polishStoryAiPrompt,
   streamStoryAiGenerate,
 }

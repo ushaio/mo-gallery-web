@@ -370,6 +370,7 @@ export interface PublicSettingsDto {
 export interface LoginRequest {
   username: string
   password: string
+  loginSlug?: string
 }
 
 export interface LoginResponse {

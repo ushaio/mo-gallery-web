@@ -428,7 +428,8 @@ export class VercelAiDirectEditAgentRuntime implements DirectEditAgentRuntime<St
 
       if (options.signal?.aborted) throw createAbortError(options.signal.reason)
       const submittedBatch = runtimeTools?.getSubmittedBatch()
-      if (directEdit && !submittedBatch) {
+      const responseText = text.trim()
+      if (directEdit && !submittedBatch && !responseText) {
         throw new EditorAiExecutionError(
           'invalid_operation_batch',
           'Direct edit completed without a successful operation batch submission',
@@ -437,7 +438,7 @@ export class VercelAiDirectEditAgentRuntime implements DirectEditAgentRuntime<St
       if (submittedBatch) {
         yield { type: 'operation_batch_created', batch: submittedBatch } as unknown as DirectEditAgentEvent<Snapshot>
       }
-      const summary = submittedBatch?.summary ?? (text.trim() ? [text.trim()] : [])
+      const summary = submittedBatch?.summary ?? (responseText ? [responseText] : [])
       yield { type: 'completed', summary }
       yield { type: 'status_changed', status: 'completed' }
     } catch (error) {

@@ -200,6 +200,7 @@ func (a *App) GetApiConfig() map[string]interface{} {
 
 	return map[string]interface{}{
 		"base_url":       a.cfg.API.BaseURL,
+		"login_url":      a.cfg.API.LoginURL,
 		"jwt_secret":     a.cfg.API.JWTSecret,
 		"remember_login": a.cfg.API.RememberLogin,
 		"saved_username": a.cfg.API.SavedUsername,
@@ -492,8 +493,7 @@ func (a *App) GetAiHttpPort() int {
 }
 
 func (a *App) GetAiConfig() config.AIConfig {
-	a.cfg.AI.Normalize()
-	return a.cfg.AI
+	return a.cfg.AI.NormalizedCopy()
 }
 
 func (a *App) UpdateAiConfig(data config.AIConfig) error {
@@ -599,6 +599,12 @@ func (a *App) DownloadMessageImageToLocal(imageURL string) (string, error) {
 // AssetServer 的 /__zine/cjk-font 路由提供）
 func (a *App) GetZineCJKFontInfo() services.ZineCJKFontInfo {
 	return services.ResolveZineCJKFont()
+}
+
+// GetZineImageDataURL loads a remote Zine image through Go so editor AI can
+// inspect it without WebView CORS or development-server routing limitations.
+func (a *App) GetZineImageDataURL(src string) (string, error) {
+	return services.GetZineImageDataURL(a.ctx, a.Proxy, src)
 }
 
 // ─── Overview ─────────────────────────────────────────

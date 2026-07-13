@@ -1,4 +1,5 @@
-import { ApiUnauthorizedError, apiRequest, apiRequestData, apiRequestWithMeta, buildApiUrl, buildQuery, extractErrorMessage } from './core'
+import { reportAuthFailure } from '@/lib/auth-errors'
+import { ApiUnauthorizedError, apiRequest, apiRequestData, apiRequestWithMeta, buildApiUrl, buildQuery, extractErrorCode, extractErrorMessage } from './core'
 import type { PhotoDto, PhotoPaginationMeta, PhotoDeleteError, PhotoWithStories } from './types'
 
 // Duplicate check types
@@ -219,7 +220,17 @@ export function uploadPhotoWithProgress(input: {
 
     xhr.addEventListener('load', () => {
       if (xhr.status === 401) {
-        reject(new ApiUnauthorizedError('Token invalid or expired'))
+        let payload: unknown = null
+        try {
+          payload = JSON.parse(xhr.responseText)
+        } catch {}
+
+        const error = new ApiUnauthorizedError(
+          extractErrorMessage(payload) ?? 'Token invalid or expired',
+          extractErrorCode(payload),
+        )
+        reportAuthFailure(error)
+        reject(error)
         return
       }
 

@@ -491,7 +491,7 @@ export default function AiAssistantPage() {
         }
       } catch (error) {
         if (error instanceof ApiUnauthorizedError) {
-          handleUnauthorized()
+          handleUnauthorized(error)
           return
         }
         console.error('Failed to load AI assistant data:', error)
@@ -530,7 +530,7 @@ export default function AiAssistantPage() {
       } catch (error) {
         if (conversationLoadIdRef.current !== loadId || activeConversationRef.current !== activeConversation) return
         if (error instanceof ApiUnauthorizedError) {
-          handleUnauthorized()
+          handleUnauthorized(error)
           return
         }
         console.error('Failed to load messages:', error)
@@ -563,7 +563,7 @@ export default function AiAssistantPage() {
       textareaRef.current?.focus()
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -609,7 +609,7 @@ export default function AiAssistantPage() {
       clearDeleteArm()
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -654,7 +654,7 @@ export default function AiAssistantPage() {
       setConversations((previous) => previous.map((item) =>
         item.id === id ? { ...item, title: conversation.title } : item,
       ))
-      if (error instanceof ApiUnauthorizedError) handleUnauthorized()
+      if (error instanceof ApiUnauthorizedError) handleUnauthorized(error)
       else notify(t('admin.ai_rename_failed'), 'error')
     }
   }
@@ -671,7 +671,7 @@ export default function AiAssistantPage() {
       notify(t('admin.ai_generate_title_success'), 'success')
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       const message = error instanceof Error && error.message === 'AI_CONVERSATION_EMPTY'
@@ -692,7 +692,7 @@ export default function AiAssistantPage() {
       setMessages([])
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -714,7 +714,7 @@ export default function AiAssistantPage() {
       setShowSystemPrompt(false)
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       notify(t('common.error'), 'error')
@@ -780,7 +780,7 @@ export default function AiAssistantPage() {
       } catch (error) {
         removeAttachedImage(id)
         if (error instanceof ApiUnauthorizedError) {
-          handleUnauthorized()
+          handleUnauthorized(error)
           return
         }
         notify(t('admin.ai_upload_failed'), 'error')
@@ -840,7 +840,7 @@ export default function AiAssistantPage() {
         conversationId = convo.id
       } catch (error) {
         if (error instanceof ApiUnauthorizedError) {
-          handleUnauthorized()
+          handleUnauthorized(error)
           return
         }
         notify(t('common.error'), 'error')
@@ -859,7 +859,7 @@ export default function AiAssistantPage() {
           : conversation,
       ))
       void updateEditorAiConversation(token, conversationId, { title: conversationTitle }).catch((error) => {
-        if (error instanceof ApiUnauthorizedError) handleUnauthorized()
+        if (error instanceof ApiUnauthorizedError) handleUnauthorized(error)
         else console.warn('Failed to update AI conversation title:', error)
       })
     }
@@ -994,7 +994,7 @@ export default function AiAssistantPage() {
         aborted && accumulated ? undefined : errorMessage,
       )
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
         return
       }
       if (!aborted) notify(errorMessage, 'error')
@@ -1028,7 +1028,7 @@ export default function AiAssistantPage() {
       notify(t('admin.ai_saved_to_album'), 'success')
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
+        handleUnauthorized(error)
       } else {
         notify(error instanceof Error ? error.message : t('admin.ai_save_to_album_failed'), 'error')
       }

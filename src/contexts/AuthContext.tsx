@@ -1,6 +1,8 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react'
+
+import { subscribeAuthFailure } from '@/lib/auth-failure'
 
 interface User {
   id?: string
@@ -27,22 +29,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [isReady, setIsReady] = useState(false)
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token')
-    const storedUser = localStorage.getItem('user')
-
-    if (storedToken && storedUser) {
-      setToken(storedToken)
-      try {
-        const parsed = JSON.parse(storedUser) as User
-        setUser(parsed)
-      } catch {
-        // Legacy format: just username string
-        setUser({ username: storedUser })
-      }
-    }
-    setIsReady(true)
+  const logout = useCallback(() => {
+    setToken(null)
+    setUser(null)
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('username')
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (cancelled) return
+
+      const storedToken = localStorage.getItem('token')
+      const storedUser = localStorage.getItem('user')
+
+      if (storedToken && storedUser) {
+        setToken(storedToken)
+        try {
+          const parsed = JSON.parse(storedUser) as User
+          setUser(parsed)
+        } catch {
+          // Legacy format: just username string
+          setUser({ username: storedUser })
+        }
+      }
+      setIsReady(true)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => subscribeAuthFailure(() => {
+    logout()
+    window.location.replace('/login')
+  }), [logout])
 
   const login = (newToken: string, newUser: User) => {
     setToken(newToken)
@@ -51,14 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('user', JSON.stringify(newUser))
     // Keep legacy field for backward compatibility
     localStorage.setItem('username', newUser.username)
-  }
-
-  const logout = () => {
-    setToken(null)
-    setUser(null)
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('username')
   }
 
   return (

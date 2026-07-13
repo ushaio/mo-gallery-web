@@ -99,6 +99,36 @@ func (c *AIConfig) Normalize() {
 	}
 }
 
+// NormalizedCopy returns an independently owned, normalized AI configuration.
+// Read paths must not call Normalize on a shallow copy because Providers and
+// its nested slices/maps would still alias the live application config.
+func (c AIConfig) NormalizedCopy() AIConfig {
+	clone := c
+	clone.Providers = make(map[string]AIProviderConfig, len(c.Providers))
+	for providerID, provider := range c.Providers {
+		provider.Models = append([]string(nil), provider.Models...)
+		provider.ImageModels = append([]string(nil), provider.ImageModels...)
+		provider.VisionModels = append([]string(nil), provider.VisionModels...)
+		provider.ToolModels = append([]string(nil), provider.ToolModels...)
+		provider.StructuredOutputModels = append([]string(nil), provider.StructuredOutputModels...)
+		provider.ContextWindows = cloneContextWindows(provider.ContextWindows)
+		clone.Providers[providerID] = provider
+	}
+	clone.Normalize()
+	return clone
+}
+
+func cloneContextWindows(values map[string]int) map[string]int {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string]int, len(values))
+	for modelID, contextWindow := range values {
+		clone[modelID] = contextWindow
+	}
+	return clone
+}
+
 func normalizeModelIDs(values []string) []string {
 	normalized := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -209,6 +239,7 @@ func (d DatabaseConfig) DSN() string {
 // APIConfig 外部 API 配置
 type APIConfig struct {
 	BaseURL       string `json:"base_url"`       // mo-gallery-web API 地址
+	LoginURL      string `json:"login_url"`      // 根地址或 /login/<安全后缀>
 	JWTSecret     string `json:"jwt_secret"`     // JWT 密钥（需与 Web 端一致）
 	RememberLogin bool   `json:"remember_login"` // 是否记住登录凭据
 	SavedUsername string `json:"saved_username"` // 保存的用户名

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { AUTH_ERROR_MESSAGE_KEY, getErrorMessage } from '@/lib/auth-errors'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { GetApiConfig, Login } from '../../wailsjs/go/main/App'
 
 const SERVER_KEY = 'mo-gallery-server'
 
@@ -14,6 +15,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [rememberLogin, setRememberLogin] = useState(false)
   const [error, setError] = useState('')
+  const [authNotice, setAuthNotice] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const { language } = usePreferences()
@@ -26,8 +28,12 @@ export function LoginPage() {
 
     ;(async () => {
       try {
-        const config = await (window as any).go.main.App.GetApiConfig()
-        if (config?.base_url) setServer(config.base_url)
+        const config = await GetApiConfig()
+        if (config?.login_url) {
+          setServer(config.login_url)
+        } else if (config?.base_url) {
+          setServer(config.base_url)
+        }
         if (config?.jwt_secret) setJwtSecret(config.jwt_secret)
         if (config?.remember_login) {
           setRememberLogin(true)
@@ -41,7 +47,7 @@ export function LoginPage() {
 
     const authError = sessionStorage.getItem(AUTH_ERROR_MESSAGE_KEY)
     if (authError) {
-      setError(authError)
+      setAuthNotice(authError)
       sessionStorage.removeItem(AUTH_ERROR_MESSAGE_KEY)
     }
   }, [])
@@ -52,7 +58,7 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      const result = await (window as any).go.main.App.Login(server, username, password, jwtSecret, rememberLogin)
+      const result = await Login(server, username, password, jwtSecret, rememberLogin)
       if (result?.token) {
         // 保存服务器地址
         localStorage.setItem(SERVER_KEY, result.server || server)
@@ -85,16 +91,35 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* 服务器地址 */}
+          {authNotice && (
+            <div
+              role="alert"
+              className="rounded-md border px-4 py-3 text-sm"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--warning, #d97706) 10%, transparent)',
+                borderColor: 'color-mix(in srgb, var(--warning, #d97706) 35%, transparent)',
+                color: 'var(--foreground)',
+              }}
+            >
+              <p className="font-medium mb-1">
+                {authNotice.includes('管理员登录入口') ? '管理员登录入口已变更' : '登录状态已失效'}
+              </p>
+              <p className="text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>
+                {authNotice}
+              </p>
+            </div>
+          )}
+
+          {/* 服务器或管理员登录地址 */}
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
-              服务器地址
+              服务器或管理员登录地址
             </label>
             <input
               type="url"
               value={server}
               onChange={(e) => setServer(e.target.value)}
-              placeholder="http://localhost:3000"
+              placeholder="http://localhost:3000 或 /login/安全后缀"
               className="w-full px-3 py-2 text-sm rounded-md border outline-none transition-colors focus:ring-1"
               style={{
                 backgroundColor: 'var(--card)',

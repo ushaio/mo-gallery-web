@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect } f
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
+import { getErrorMessage, isAuthError } from '@/lib/auth-errors'
 import { useAuth } from '@/contexts/AuthContext'
 
 export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
@@ -128,6 +129,10 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
               try {
                 await addPhotosToAlbum(compensationToken, albumId, [photoId])
               } catch (err) {
+                if (isAuthError(err)) {
+                  tokenRef.current = ''
+                  return
+                }
                 console.error(`关联相册 ${albumId} 失败:`, err)
                 toast.error(`「${task.fileName}」已上传，但添加到相册失败，请到相册页手动添加`)
               }
@@ -139,6 +144,10 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
             try {
               await addPhotosToStory(compensationToken, settings.storyId, [photoId])
             } catch (err) {
+              if (isAuthError(err)) {
+                tokenRef.current = ''
+                return
+              }
               console.error(`关联故事 ${settings.storyId} 失败:`, err)
               toast.error(`「${task.fileName}」已上传，但关联故事失败，请到故事编辑器手动添加`)
             }
@@ -147,8 +156,14 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       } else {
         updateTask(task.id, { status: 'failed', progress: 0, error: result?.error || '上传失败' })
       }
-    } catch (err: any) {
-      updateTask(task.id, { status: 'failed', progress: 0, error: err?.message || '上传异常' })
+    } catch (err: unknown) {
+      if (isAuthError(err)) {
+        tokenRef.current = ''
+        startedIdsRef.current.delete(task.id)
+        updateTask(task.id, { status: 'pending', progress: 0, error: undefined })
+        return
+      }
+      updateTask(task.id, { status: 'failed', progress: 0, error: getErrorMessage(err) })
     } finally {
       if (progressTimer) window.clearInterval(progressTimer)
       activeCountRef.current--
@@ -157,6 +172,11 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
   }, [updateTask, patchTasks])
 
   const processQueue = useCallback(() => {
+    if (!tokenRef.current) {
+      setIsUploading(false)
+      return
+    }
+
     const pending = tasksRef.current.filter(
       t => t.status === 'pending' && !startedIdsRef.current.has(t.id)
     )

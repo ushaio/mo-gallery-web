@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar,
   Check,
@@ -22,6 +22,7 @@ import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEd
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { countStoryCharacters, hydrateStoryContentImages, hydrateStoryContentJsonImages, normalizeStoryContentImages, normalizeStoryContentJsonImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
+import { WindowFullscreen, WindowUnfullscreen } from '../../../../wailsjs/runtime/runtime'
 import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
 
@@ -146,9 +147,38 @@ export function StoryEditorView({
     [currentStory.contentJson, currentStory.photos, settingsCdnDomain],
   )
 
+  useEffect(() => {
+    if (!isImmersiveMode) return
+
+    const previousBodyOverflow = document.body.style.overflow
+
+    document.body.style.overflow = 'hidden'
+    WindowFullscreen()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+
+      event.preventDefault()
+      setIsImmersiveMode(false)
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousBodyOverflow
+      WindowUnfullscreen()
+    }
+  }, [isImmersiveMode, setIsImmersiveMode])
+
 
   return (
-    <div className="flex flex-1 flex-col gap-4 overflow-hidden">
+    <div
+      className={cn(
+        'flex flex-1 flex-col gap-4 overflow-hidden',
+        isImmersiveMode && 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4',
+      )}
+    >
       <fieldset disabled={isAiTaskLocked} className={cn('flex shrink-0 flex-col gap-4 border-0 border-b border-border/70 pb-4 md:flex-row md:items-end md:justify-between')}>
         <div className="flex min-w-0 flex-1 items-end gap-3">
           <AdminButton onClick={onBack} adminVariant="link" className="shrink-0 self-start whitespace-nowrap px-0 text-[10px] tracking-[0.24em] hover:no-underline">
@@ -186,7 +216,16 @@ export function StoryEditorView({
               <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-muted-foreground"><ImageIcon className="h-4 w-4" />{relatedPhotoCount} {t('story.related_photos')}</span>
             </div>
             <div className="flex items-center gap-2">
-              <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground">{isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}{t('ui.immersive')}</AdminButton>
+              <AdminButton
+                onClick={() => setIsImmersiveMode((prev) => !prev)}
+                adminVariant="outline"
+                className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"
+                title={isImmersiveMode ? `${t('ui.immersive')} (Esc)` : t('ui.immersive')}
+                aria-pressed={isImmersiveMode}
+              >
+                {isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                {t('ui.immersive')}
+              </AdminButton>
               <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"><Eye className="h-3.5 w-3.5" />{t('admin.preview')}</AdminButton>
             </div>
           </fieldset>
