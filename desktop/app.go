@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -65,7 +66,7 @@ func (a *App) startup(ctx context.Context) {
 	a.Upload = services.NewUploadService(a.Proxy)
 	a.Storage = services.NewStorageService(a.Proxy)
 	a.Settings = services.NewSettingsService(a.Proxy)
-	a.EditorAi = services.NewEditorAiService(a.cfg)
+	a.EditorAi = services.NewEditorAiService(a.cfg, a.Upload)
 	a.Overview = services.NewOverviewService()
 
 	// 加载日志
@@ -75,6 +76,22 @@ func (a *App) startup(ctx context.Context) {
 	a.startAiHTTPServer()
 
 	a.Logger.Info(services.LogCategorySystem, "app_start", "应用启动", "")
+}
+
+// setAiCORSHeaders allows the Wails WebView to call the local AI HTTP server.
+// Pi AI uses the OpenAI JS SDK, which adds X-Stainless-* headers. The CORS
+// preflight must allow those requested headers or WebView reports Connection error.
+func setAiCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+
+	requestedHeaders := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers"))
+	if requestedHeaders != "" {
+		w.Header().Set("Access-Control-Allow-Headers", requestedHeaders)
+		w.Header().Add("Vary", "Access-Control-Request-Headers")
+	} else {
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	}
 }
 
 // startAiHTTPServer 启动本地 HTTP 服务用于 AI 流式生成
@@ -87,9 +104,7 @@ func (a *App) startAiHTTPServer() {
 	// OpenAI 兼容透明代理：前端共享 ai-agent 包经此访问模型，
 	// 密钥解析与注入在 Go 侧完成
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		setAiCORSHeaders(w, r)
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -102,9 +117,7 @@ func (a *App) startAiHTTPServer() {
 	})
 
 	mux.HandleFunc("/ai/generate", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		setAiCORSHeaders(w, r)
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -510,8 +523,11 @@ func (a *App) ClearEditorAiConversation(conversationId string) (*services.Editor
 func (a *App) AppendEditorAiMessage(input services.EditorAiMessageAppendInput) (*services.EditorAiMessageDTO, error) {
 	return a.EditorAi.AppendMessage(input)
 }
-func (a *App) FinishEditorAiMessage(input services.EditorAiMessageFinishInput) error {
+func (a *App) FinishEditorAiMessage(input services.EditorAiMessageFinishInput) (*services.EditorAiMessageDTO, error) {
 	return a.EditorAi.FinishMessage(input)
+}
+func (a *App) UpdateEditorAiTaskState(input services.EditorAiTaskStateUpdateInput) (*services.EditorAiMessageDTO, error) {
+	return a.EditorAi.UpdateTaskState(input)
 }
 func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetModels()
@@ -524,6 +540,57 @@ func (a *App) GetAiImageDataURL(messageId string) (string, error) {
 }
 func (a *App) SaveAiImageToAlbum(messageId string) (*services.PhotoDTO, error) {
 	return a.EditorAi.SaveImageToAlbum(messageId, a.Upload)
+}
+func (a *App) SaveMessageImageToAlbum(messageId string, imageURL string) (*services.PhotoDTO, error) {
+	return a.EditorAi.SaveMessageImageToAlbum(messageId, imageURL, a.Upload)
+}
+
+func suggestedAiImageExtension(imageURL string) string {
+	if strings.HasPrefix(imageURL, "data:image/jpeg") {
+		return ".jpg"
+	}
+	if strings.HasPrefix(imageURL, "data:image/webp") {
+		return ".webp"
+	}
+	if strings.HasPrefix(imageURL, "data:image/gif") {
+		return ".gif"
+	}
+	if strings.HasPrefix(imageURL, "data:image/avif") {
+		return ".avif"
+	}
+	if strings.HasPrefix(imageURL, "data:image/png") {
+		return ".png"
+	}
+
+	pathWithoutQuery := strings.SplitN(imageURL, "?", 2)[0]
+	ext := strings.ToLower(filepath.Ext(pathWithoutQuery))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif":
+		return ext
+	default:
+		return ".png"
+	}
+}
+
+func (a *App) DownloadMessageImageToLocal(imageURL string) (string, error) {
+	defaultName := "ai-image-" + time.Now().Format("20060102-150405") + suggestedAiImageExtension(imageURL)
+	filePath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "????",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "???? (*.png;*.jpg;*.jpeg;*.webp;*.gif;*.avif)", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif;*.avif"},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(filePath) == "" {
+		return "", nil
+	}
+	if err := a.EditorAi.DownloadMessageImageToFile(imageURL, filePath); err != nil {
+		return "", err
+	}
+	return filePath, nil
 }
 
 // ─── Zine ─────────────────────────────────────────────

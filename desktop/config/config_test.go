@@ -91,3 +91,86 @@ func TestResolveModelFallsBackToDefaultModel(t *testing.T) {
 		t.Fatalf("providerID, model = %q, %q", providerID, model)
 	}
 }
+
+func TestNormalizeSelectsDefaultImageModel(t *testing.T) {
+	ai := AIConfig{Providers: map[string]AIProviderConfig{
+		"openai": {
+			Models:      []string{"gpt-5.5"},
+			ImageModels: []string{"gpt-image-1"},
+		},
+	}}
+
+	ai.Normalize()
+
+	if ai.DefaultImageModel != "openai:gpt-image-1" {
+		t.Fatalf("DefaultImageModel = %q", ai.DefaultImageModel)
+	}
+}
+
+func TestResolveImageModelRequiresImageCapability(t *testing.T) {
+	ai := AIConfig{
+		DefaultImageModel: "openai:gpt-image-1",
+		Providers: map[string]AIProviderConfig{
+			"openai": {
+				BaseURL:     "https://api.openai.example/v1",
+				APIKey:      "openai-key",
+				Models:      []string{"gpt-5.5", "gpt-image-1"},
+				ImageModels: []string{"gpt-image-1"},
+			},
+		},
+	}
+
+	if _, _, _, err := ai.ResolveImageModel("openai:gpt-5.5"); err == nil {
+		t.Fatal("ResolveImageModel() accepted a model without image capability")
+	}
+	providerID, _, model, err := ai.ResolveImageModel("")
+	if err != nil {
+		t.Fatalf("ResolveImageModel() error = %v", err)
+	}
+	if providerID != "openai" || model != "gpt-image-1" {
+		t.Fatalf("providerID, model = %q, %q", providerID, model)
+	}
+}
+
+func TestNormalizeModelCapabilities(t *testing.T) {
+	ai := AIConfig{Providers: map[string]AIProviderConfig{
+		"openai": {
+			Models:                 []string{"gpt-5.6", "vision-looking-model"},
+			ImageModels:            []string{"image-looking-model"},
+			VisionModels:           []string{" gpt-5.6 ", "", "gpt-5.6", " vision-explicit "},
+			ToolModels:             []string{" tool-model ", "tool-model", ""},
+			StructuredOutputModels: []string{" structured-model ", "structured-model"},
+			ContextWindows: map[string]int{
+				"":          128000,
+				" invalid ": 0,
+				"negative":  -1,
+				" model":    16000,
+				"model":     32000,
+				"model ":    64000,
+			},
+		},
+		"nil-map": {},
+	}}
+
+	ai.Normalize()
+
+	provider := ai.Providers["openai"]
+	if got := provider.VisionModels; len(got) != 2 || got[0] != "gpt-5.6" || got[1] != "vision-explicit" {
+		t.Fatalf("VisionModels = %#v", got)
+	}
+	if got := provider.ToolModels; len(got) != 1 || got[0] != "tool-model" {
+		t.Fatalf("ToolModels = %#v", got)
+	}
+	if got := provider.StructuredOutputModels; len(got) != 1 || got[0] != "structured-model" {
+		t.Fatalf("StructuredOutputModels = %#v", got)
+	}
+	if len(provider.ContextWindows) != 1 || provider.ContextWindows["model"] != 64000 {
+		t.Fatalf("ContextWindows = %#v", provider.ContextWindows)
+	}
+	if ai.Providers["nil-map"].ContextWindows == nil {
+		t.Fatal("nil ContextWindows was not initialized")
+	}
+	if containsString(provider.VisionModels, "vision-looking-model") || containsString(provider.VisionModels, "image-looking-model") {
+		t.Fatalf("Normalize inferred vision capability: %#v", provider.VisionModels)
+	}
+}

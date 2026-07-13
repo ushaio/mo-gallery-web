@@ -55,7 +55,9 @@ export function DeleteStorageSource(arg1:string):Promise<void>;
 
 export function DeleteStory(arg1:string):Promise<void>;
 
-export function FinishEditorAiMessage(arg1:services.EditorAiMessageFinishInput):Promise<void>;
+export function DownloadMessageImageToLocal(arg1:string):Promise<string>;
+
+export function FinishEditorAiMessage(arg1:services.EditorAiMessageFinishInput):Promise<services.EditorAiMessageDTO>;
 
 export function FixMissingPhotos(arg1:Array<string>):Promise<services.FixMissingPhotosResult>;
 
@@ -149,6 +151,8 @@ export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<servi
 
 export function SaveAiImageToAlbum(arg1:string):Promise<services.PhotoDTO>;
 
+export function SaveMessageImageToAlbum(arg1:string,arg2:string):Promise<services.PhotoDTO>;
+
 export function ScanStorage(arg1:services.StorageScanParams):Promise<services.StorageScanResult>;
 
 export function SelectFiles():Promise<Array<string>>;
@@ -172,6 +176,8 @@ export function UpdateBlog(arg1:string,arg2:services.UpdateBlogParams):Promise<s
 export function UpdateCommentStatus(arg1:string,arg2:string):Promise<void>;
 
 export function UpdateEditorAiConversation(arg1:string,arg2:services.EditorAiConversationUpdateInput):Promise<services.EditorAiConversationDTO>;
+
+export function UpdateEditorAiTaskState(arg1:services.EditorAiTaskStateUpdateInput):Promise<services.EditorAiMessageDTO>;
 
 export function UpdateFilmRoll(arg1:string,arg2:services.UpdateFilmRollParams):Promise<services.FilmRollDTO>;
 

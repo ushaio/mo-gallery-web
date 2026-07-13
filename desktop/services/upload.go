@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,12 @@ type UploadResult struct {
 	Error       string         `json:"error,omitempty"`
 	IsDuplicate bool           `json:"isDuplicate,omitempty"`
 	Existing    *DuplicateInfo `json:"existing,omitempty"`
+}
+
+// AiImageUploadResult is a storage-only upload result. It does not create a Photo record.
+type AiImageUploadResult struct {
+	URL string `json:"url"`
+	Key string `json:"key"`
 }
 
 // PrepareUpload 预处理文件：计算哈希 + 提取 EXIF
@@ -241,6 +248,44 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	result.Success = true
 	result.Photo = &apiResp.Data
 	return result, nil
+}
+
+// UploadAiImage uploads an AI-generated image to shared storage without creating
+// a Photo record. Saving it to an album remains a separate user action.
+func (s *UploadService) UploadAiImage(filePath string) (*AiImageUploadResult, error) {
+	if s.proxy == nil || !s.proxy.IsReady() {
+		return nil, errors.New("未连接到服务器")
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		return nil, fmt.Errorf("图片文件不存在: %w", err)
+	}
+
+	var result AiImageUploadResult
+	if err := s.proxy.POSTMultipart(
+		"/admin/editor-ai/upload",
+		nil,
+		map[string]string{"file": filePath},
+		&result,
+	); err != nil {
+		return nil, fmt.Errorf("上传 AI 图片失败: %w", err)
+	}
+	if result.URL == "" || result.Key == "" {
+		return nil, errors.New("上传 AI 图片失败: 服务端未返回图片地址")
+	}
+	result.URL = resolveUploadURL(s.proxy.baseURL, result.URL)
+	return &result, nil
+}
+
+func resolveUploadURL(baseURL string, rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.IsAbs() || baseURL == "" {
+		return rawURL
+	}
+	base, err := url.Parse(strings.TrimRight(baseURL, "/") + "/")
+	if err != nil {
+		return rawURL
+	}
+	return base.ResolveReference(parsed).String()
 }
 
 // ─── 辅助方法 ────────────────────────────────────────

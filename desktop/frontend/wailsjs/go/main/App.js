@@ -102,6 +102,10 @@ export function DeleteStory(arg1) {
   return window['go']['main']['App']['DeleteStory'](arg1);
 }
 
+export function DownloadMessageImageToLocal(arg1) {
+  return window['go']['main']['App']['DownloadMessageImageToLocal'](arg1);
+}
+
 export function FinishEditorAiMessage(arg1) {
   return window['go']['main']['App']['FinishEditorAiMessage'](arg1);
 }
@@ -290,6 +294,10 @@ export function SaveAiImageToAlbum(arg1) {
   return window['go']['main']['App']['SaveAiImageToAlbum'](arg1);
 }
 
+export function SaveMessageImageToAlbum(arg1, arg2) {
+  return window['go']['main']['App']['SaveMessageImageToAlbum'](arg1, arg2);
+}
+
 export function ScanStorage(arg1) {
   return window['go']['main']['App']['ScanStorage'](arg1);
 }
@@ -336,6 +344,10 @@ export function UpdateCommentStatus(arg1, arg2) {
 
 export function UpdateEditorAiConversation(arg1, arg2) {
   return window['go']['main']['App']['UpdateEditorAiConversation'](arg1, arg2);
+}
+
+export function UpdateEditorAiTaskState(arg1) {
+  return window['go']['main']['App']['UpdateEditorAiTaskState'](arg1);
 }
 
 export function UpdateFilmRoll(arg1, arg2) {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -74,5 +76,24 @@ func TestRejectedSetAuthDoesNotUnlockOverview(t *testing.T) {
 	}
 	if _, err := app.GetOverview(); err == nil {
 		t.Fatal("GetOverview succeeded after rejected SetAuth")
+	}
+}
+
+func TestSetAiCORSHeadersAllowsOpenAIClientHeaders(t *testing.T) {
+	requestedHeaders := "authorization,content-type,x-stainless-lang,x-stainless-package-version,x-stainless-runtime"
+	req := httptest.NewRequest(http.MethodOptions, "/v1/chat/completions", nil)
+	req.Header.Set("Access-Control-Request-Headers", requestedHeaders)
+	recorder := httptest.NewRecorder()
+
+	setAiCORSHeaders(recorder, req)
+
+	if got := recorder.Header().Get("Access-Control-Allow-Headers"); got != requestedHeaders {
+		t.Fatalf("Access-Control-Allow-Headers = %q, want %q", got, requestedHeaders)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want *", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Methods"); got != "POST, OPTIONS" {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want POST, OPTIONS", got)
 	}
 }

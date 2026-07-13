@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
@@ -37,10 +38,14 @@ type AIConfig struct {
 
 // AIProviderConfig AI 模型源配置
 type AIProviderConfig struct {
-	BaseURL     string   `json:"base_url"`
-	APIKey      string   `json:"api_key"`
-	Models      []string `json:"models"`
-	ImageModels []string `json:"image_models,omitempty"`
+	BaseURL                string         `json:"base_url"`
+	APIKey                 string         `json:"api_key"`
+	Models                 []string       `json:"models"`
+	ImageModels            []string       `json:"image_models,omitempty"`
+	VisionModels           []string       `json:"vision_models,omitempty"`
+	ToolModels             []string       `json:"tool_models,omitempty"`
+	StructuredOutputModels []string       `json:"structured_output_models,omitempty"`
+	ContextWindows         map[string]int `json:"context_windows,omitempty"`
 }
 
 // Normalize 迁移旧版单源配置并补齐默认值
@@ -62,14 +67,73 @@ func (c *AIConfig) Normalize() {
 			c.DefaultModel = "default:" + c.Model
 		}
 	}
+	for providerID, provider := range c.Providers {
+		provider.VisionModels = normalizeModelIDs(provider.VisionModels)
+		provider.ToolModels = normalizeModelIDs(provider.ToolModels)
+		provider.StructuredOutputModels = normalizeModelIDs(provider.StructuredOutputModels)
+		provider.ContextWindows = normalizeContextWindows(provider.ContextWindows)
+		c.Providers[providerID] = provider
+	}
+	providerIDs := make([]string, 0, len(c.Providers))
+	for providerID := range c.Providers {
+		providerIDs = append(providerIDs, providerID)
+	}
+	sort.Strings(providerIDs)
 	if c.DefaultModel == "" {
-		for providerID, provider := range c.Providers {
+		for _, providerID := range providerIDs {
+			provider := c.Providers[providerID]
 			if len(provider.Models) > 0 && provider.Models[0] != "" {
 				c.DefaultModel = providerID + ":" + provider.Models[0]
 				break
 			}
 		}
 	}
+	if c.DefaultImageModel == "" {
+		for _, providerID := range providerIDs {
+			provider := c.Providers[providerID]
+			if len(provider.ImageModels) > 0 && provider.ImageModels[0] != "" {
+				c.DefaultImageModel = providerID + ":" + provider.ImageModels[0]
+				break
+			}
+		}
+	}
+}
+
+func normalizeModelIDs(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		modelID := strings.TrimSpace(value)
+		if modelID == "" {
+			continue
+		}
+		if _, exists := seen[modelID]; exists {
+			continue
+		}
+		seen[modelID] = struct{}{}
+		normalized = append(normalized, modelID)
+	}
+	return normalized
+}
+
+func normalizeContextWindows(values map[string]int) map[string]int {
+	normalized := make(map[string]int)
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		modelID := strings.TrimSpace(key)
+		value := values[key]
+		if modelID == "" || value <= 0 {
+			continue
+		}
+		// A decoded map no longer retains source order. Sorting original keys
+		// makes collisions deterministic: the lexically last valid key wins.
+		normalized[modelID] = value
+	}
+	return normalized
 }
 
 // ResolveModel 根据 provider:model 选择模型源和实际模型名
@@ -106,7 +170,7 @@ func (c AIConfig) resolveModel(selected string, image bool) (string, AIProviderC
 	if provider.BaseURL == "" || provider.APIKey == "" || model == "" {
 		return "", AIProviderConfig{}, "", errors.New("AI 服务未配置")
 	}
-	if image && len(provider.ImageModels) > 0 && !containsString(provider.ImageModels, model) {
+	if image && !containsString(provider.ImageModels, model) {
 		return "", AIProviderConfig{}, "", fmt.Errorf("图像模型未在 image_models 中配置: %s", selected)
 	}
 	return providerID, provider, model, nil

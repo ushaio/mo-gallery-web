@@ -5,6 +5,10 @@ export namespace config {
 	    api_key: string;
 	    models: string[];
 	    image_models?: string[];
+	    vision_models?: string[];
+	    tool_models?: string[];
+	    structured_output_models?: string[];
+	    context_windows?: Record<string, number>;
 	
 	    static createFrom(source: any = {}) {
 	        return new AIProviderConfig(source);
@@ -16,6 +20,10 @@ export namespace config {
 	        this.api_key = source["api_key"];
 	        this.models = source["models"];
 	        this.image_models = source["image_models"];
+	        this.vision_models = source["vision_models"];
+	        this.tool_models = source["tool_models"];
+	        this.structured_output_models = source["structured_output_models"];
+	        this.context_windows = source["context_windows"];
 	    }
 	}
 	export class AIConfig {
@@ -815,6 +823,8 @@ export namespace services {
 	    status?: string;
 	    model?: string;
 	    action?: string;
+	    metadata?: number[];
+	    error?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new EditorAiMessageAppendInput(source);
@@ -828,13 +838,17 @@ export namespace services {
 	        this.status = source["status"];
 	        this.model = source["model"];
 	        this.action = source["action"];
+	        this.metadata = source["metadata"];
+	        this.error = source["error"];
 	    }
 	}
 	
 	export class EditorAiMessageFinishInput {
 	    messageId: string;
+	    status: string;
 	    content?: string;
 	    model?: string;
+	    metadata?: number[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -844,9 +858,25 @@ export namespace services {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.messageId = source["messageId"];
+	        this.status = source["status"];
 	        this.content = source["content"];
 	        this.model = source["model"];
+	        this.metadata = source["metadata"];
 	        this.error = source["error"];
+	    }
+	}
+	export class EditorAiTaskStateUpdateInput {
+	    messageId: string;
+	    state: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiTaskStateUpdateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.messageId = source["messageId"];
+	        this.state = source["state"];
 	    }
 	}
 	export class FilmPhotoDTO {
@@ -1584,6 +1614,10 @@ export namespace services {
 	    provider: string;
 	    model: string;
 	    capabilities?: string[];
+	    vision: boolean;
+	    tools: boolean;
+	    structuredOutput: boolean;
+	    contextWindow: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new StoryAiModelOption(source);
@@ -1596,6 +1630,10 @@ export namespace services {
 	        this.provider = source["provider"];
 	        this.model = source["model"];
 	        this.capabilities = source["capabilities"];
+	        this.vision = source["vision"];
+	        this.tools = source["tools"];
+	        this.structuredOutput = source["structuredOutput"];
+	        this.contextWindow = source["contextWindow"];
 	    }
 	}
 	export class StoryAiModelsResponseDTO {
