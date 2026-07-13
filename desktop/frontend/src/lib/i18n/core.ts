@@ -30,6 +30,9 @@ export const coreMessages: LocaleDictionaryGroup = {
       create: '新建',
       noData: '暂无数据',
       batchDelete: '批量删除',
+      system: '\u8ddf\u968f\u7cfb\u7edf',
+      light: '\u6d45\u8272',
+      dark: '\u6df1\u8272',
     },
     nav: {
       home: '首页',
@@ -84,6 +87,9 @@ export const coreMessages: LocaleDictionaryGroup = {
       create: 'Create',
       noData: 'No data',
       batchDelete: 'Batch Delete',
+      system: 'System',
+      light: 'Light',
+      dark: 'Dark',
     },
     nav: {
       home: 'HOME',

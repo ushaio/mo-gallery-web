@@ -18,11 +18,16 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { getAdminStory } from '@/lib/api/stories'
 // 编辑器 AI 走本地链路：共享 ai-agent 编排 + 本地 Go 代理 + 本地会话库，
 // 不依赖远程 web 服务器（离线可用）
-import { editorAiLocal } from '@/lib/api/editor-ai-local'
+import { editorAiLocal, getLocalEndpoint } from '@/lib/api/editor-ai-local'
 
 const editorAi: NarrativeEditorRuntime['ai'] = editorAiLocal
 
-export type NarrativeTipTapEditorProps = Omit<CoreEditorProps, 'runtime'>
+// Agent 模式端点：本地 Go 代理（密钥在 Go 侧注入）
+const getAgentEndpoint: NarrativeEditorRuntime['getAgentEndpoint'] = async () => await getLocalEndpoint()
+
+type WithoutRuntime<T> = T extends unknown ? Omit<T, 'runtime'> : never
+
+export type NarrativeTipTapEditorProps = WithoutRuntime<CoreEditorProps>
 export type { NarrativeTipTapEditorHandle }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
@@ -31,9 +36,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const { resolvedTheme } = useTheme()
 
     const runtime = useMemo<NarrativeEditorRuntime>(
-      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi }),
+      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint }),
       [t, resolvedTheme],
     )
+
+    if (props.aiOptions?.enabled === true) {
+      return <NarrativeTipTapEditorCore {...props} runtime={runtime} ref={ref} />
+    }
 
     return <NarrativeTipTapEditorCore {...props} runtime={runtime} ref={ref} />
   },

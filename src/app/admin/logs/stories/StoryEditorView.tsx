@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Calendar,
   Check,
@@ -134,6 +134,7 @@ export function StoryEditorView({
   notify,
   setCurrentStory,
 }: StoryEditorViewProps) {
+  const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
   const editorCharacterCount = countStoryCharacters(currentStory.content)
   const relatedPhotoCount = currentStory.photos?.length || 0
   const hydratedEditorContent = useMemo(
@@ -148,7 +149,7 @@ export function StoryEditorView({
 
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-hidden">
-      <div className={cn('flex shrink-0 flex-col gap-4 border-b border-border/70 pb-4 md:flex-row md:items-end md:justify-between')}>
+      <fieldset disabled={isAiTaskLocked} className={cn('flex shrink-0 flex-col gap-4 border-0 border-b border-border/70 pb-4 md:flex-row md:items-end md:justify-between')}>
         <div className="flex min-w-0 flex-1 items-end gap-3">
           <AdminButton onClick={onBack} adminVariant="link" className="shrink-0 self-start whitespace-nowrap px-0 text-[10px] tracking-[0.24em] hover:no-underline">
             <ChevronLeft className="h-4 w-4" /> {t('admin.back_list')}
@@ -158,14 +159,14 @@ export function StoryEditorView({
           {!draftSaved && lastSavedAt ? <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><Clock className="h-3 w-3" />{new Date(lastSavedAt).toLocaleTimeString()}</span> : null}
         </div>
         <AdminButton onClick={onSave} disabled={saving} adminVariant="primary" size="lg" className="flex h-10 items-center gap-2 px-5 shadow-none"><Save className="h-4 w-4" /><span>{saving ? t('ui.saving') : t('admin.save')}</span></AdminButton>
-      </div>
+      </fieldset>
 
       <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
         <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
           <div className={cn('flex flex-col gap-2 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-2 sm:flex-row sm:items-center sm:justify-between')}>
             <div className="flex flex-wrap items-center gap-4">
               <label className="group flex cursor-pointer items-center gap-2">
-                <input type="checkbox" checked={currentStory.isPublished || false} onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, isPublished: event.target.checked } : prev))} className="h-4 w-4 cursor-pointer accent-primary transition-all" />
+                <input type="checkbox" disabled={isAiTaskLocked} checked={currentStory.isPublished || false} onChange={(event) => setCurrentStory((prev) => (prev ? { ...prev, isPublished: event.target.checked } : prev))} className="h-4 w-4 cursor-pointer accent-primary transition-all disabled:cursor-not-allowed" />
                 <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground transition-colors group-hover:text-foreground">{t('ui.publish_now')}</span>
               </label>
               <div className="hidden h-4 w-px bg-border/60 sm:block" />
@@ -173,11 +174,11 @@ export function StoryEditorView({
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 {useCustomDate ? (
                   <div className="flex items-center gap-1">
-                    <input type="datetime-local" value={new Date(currentStory.storyDate).toISOString().slice(0, 16)} onChange={(event) => { const value = event.target.value; setCurrentStory((prev) => prev ? { ...prev, storyDate: value ? new Date(value).toISOString() : new Date().toISOString() } : prev) }} className="border border-border bg-background px-2 py-1 text-xs outline-none transition-all focus:border-primary" />
-                    <button type="button" onClick={() => setUseCustomDate(false)} className="p-1 text-primary transition-colors hover:bg-primary/10" title={t('common.confirm')}><Check className="h-4 w-4" /></button>
+                    <input type="datetime-local" disabled={isAiTaskLocked} value={new Date(currentStory.storyDate).toISOString().slice(0, 16)} onChange={(event) => { const value = event.target.value; setCurrentStory((prev) => prev ? { ...prev, storyDate: value ? new Date(value).toISOString() : new Date().toISOString() } : prev) }} className="border border-border bg-background px-2 py-1 text-xs outline-none transition-all focus:border-primary disabled:cursor-not-allowed disabled:opacity-60" />
+                    <button type="button" disabled={isAiTaskLocked} onClick={() => setUseCustomDate(false)} className="p-1 text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60" title={t('common.confirm')}><Check className="h-4 w-4" /></button>
                   </div>
                 ) : (
-                  <span onClick={() => setUseCustomDate(true)} className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed" title={t('admin.custom_date')}>{new Date(currentStory.storyDate).toLocaleString()}</span>
+                  <button type="button" disabled={isAiTaskLocked} onClick={() => setUseCustomDate(true)} className="cursor-pointer text-xs text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed disabled:cursor-not-allowed disabled:opacity-60" title={t('admin.custom_date')}>{new Date(currentStory.storyDate).toLocaleString()}</button>
                 )}
               </div>
               <div className="hidden h-4 w-px bg-border/60 sm:block" />
@@ -186,7 +187,7 @@ export function StoryEditorView({
             </div>
             <div className="flex items-center gap-2">
               <AdminButton onClick={() => setIsImmersiveMode((prev) => !prev)} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground">{isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}{t('ui.immersive')}</AdminButton>
-              <AdminButton onClick={showPreview} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"><Eye className="h-3.5 w-3.5" />{t('admin.preview')}</AdminButton>
+              <AdminButton onClick={showPreview} disabled={isAiTaskLocked} adminVariant="outline" className="flex h-8 items-center gap-2 border border-border/80 bg-background/80 px-3 text-xs shadow-none transition-all hover:bg-accent hover:text-accent-foreground"><Eye className="h-3.5 w-3.5" />{t('admin.preview')}</AdminButton>
             </div>
           </div>
 
@@ -200,6 +201,9 @@ export function StoryEditorView({
               onPasteFiles={onPasteFiles}
               placeholder={t('ui.markdown_placeholder')}
               className="overflow-hidden bg-background"
+              documentId={currentStory.id}
+              documentKind="story"
+              onAiTaskLockChange={setIsAiTaskLocked}
               aiOptions={{
                 enabled: true,
                 token,
@@ -224,9 +228,9 @@ export function StoryEditorView({
           </button>
         </div>
 
-        <div className={cn('h-full min-h-0 shrink-0 overflow-hidden will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
-          <StoryPhotoPanel isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenPhotoSelector} onInsertExternalPhotoMarkdown={onInsertExternalPhotoMarkdown} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
-        </div>
+        <fieldset disabled={isAiTaskLocked} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
+          <StoryPhotoPanel disabled={isAiTaskLocked} isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenPhotoSelector} onInsertExternalPhotoMarkdown={onInsertExternalPhotoMarkdown} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
+        </fieldset>
       </div>
     </div>
   )

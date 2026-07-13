@@ -8,7 +8,7 @@
  * 原有的 props / 导出形态不变。desktop 端有对应的包装层。
  */
 
-import { forwardRef, useMemo } from 'react'
+import { forwardRef, useCallback, useMemo } from 'react'
 import NarrativeTipTapEditorCore from '@mo-gallery/tiptap-editor'
 import type {
   NarrativeTipTapEditorHandle,
@@ -17,6 +17,7 @@ import type {
 } from '@mo-gallery/tiptap-editor'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { buildApiUrl } from '@/lib/api/core'
 import { getAdminStory } from '@/lib/api/stories'
 import {
   clearEditorAiConversation,
@@ -40,7 +41,9 @@ const editorAi: NarrativeEditorRuntime['ai'] = {
   streamStoryAiGenerate,
 }
 
-export type NarrativeTipTapEditorProps = Omit<CoreEditorProps, 'runtime'>
+type WithoutRuntime<T> = T extends unknown ? Omit<T, 'runtime'> : never
+
+export type NarrativeTipTapEditorProps = WithoutRuntime<CoreEditorProps>
 export type { NarrativeTipTapEditorHandle }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
@@ -48,10 +51,24 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const { t } = useLanguage()
     const { resolvedTheme } = useTheme()
 
+    // Agent 模式端点：走服务端 Hono 代理，上游密钥不出服务器
+    const getAgentEndpoint = useCallback(async (token: string) => ({
+      // OpenAI JS SDK requires an absolute base URL, even for same-origin proxies.
+      baseURL: new URL(
+        buildApiUrl('/api/admin/editor-ai/proxy'),
+        window.location.origin,
+      ).toString(),
+      headers: { Authorization: `Bearer ${token}` },
+    }), [])
+
     const runtime = useMemo<NarrativeEditorRuntime>(
-      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi }),
-      [t, resolvedTheme],
+      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint }),
+      [t, resolvedTheme, getAgentEndpoint],
     )
+
+    if (props.aiOptions?.enabled === true) {
+      return <NarrativeTipTapEditorCore {...props} runtime={runtime} ref={ref} />
+    }
 
     return <NarrativeTipTapEditorCore {...props} runtime={runtime} ref={ref} />
   },

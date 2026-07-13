@@ -25,6 +25,7 @@ import { resolveAssetUrl, ApiUnauthorizedError } from '@/lib/api/core'
 import { getAdminBlogs, createBlog, updateBlog, deleteBlog } from '@/lib/api/blogs'
 import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import { formatRelativeTimeLabel } from '@/lib/utils'
+import { createBlogDraftDocumentId, resolveBlogDocumentId, rotateBlogDraftDocumentId } from '@/lib/blog-draft-document'
 import { useAuth } from '@/contexts/AuthContext'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { useAdmin } from '../layout'
@@ -82,6 +83,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const [editMode, setEditMode] = useState<'list' | 'editor'>('list')
   const [isInsertingPhoto, setIsInsertingPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
+  const [draftDocumentId, setDraftDocumentId] = useState(createBlogDraftDocumentId)
   const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   
   // 自动保存状态
@@ -221,7 +224,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
 
   // 内容变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
-    if (!currentBlog || !isDirty) return
+    if (isAiTaskLocked || !currentBlog || !isDirty) return
     if (!currentBlog.title && !currentBlog.content) return
 
     // 清除已有定时器
@@ -239,7 +242,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         clearTimeout(autoSaveTimerRef.current)
       }
     }
-  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isDirty])
+  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isAiTaskLocked, isDirty])
 
   // 将草稿应用到当前博客
   const applyDraft = useCallback((draft: BlogDraftData, blogId?: string) => {
@@ -308,6 +311,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }, [])
 
   const handleCreateBlog = async () => {
+    setDraftDocumentId(rotateBlogDraftDocumentId)
     // 设置脏检查的初始状态
     initialBlogRef.current = {
       title: '',
@@ -405,7 +409,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const handleSaveBlog = async () => {
-    if (!currentBlog || !token) return
+    if (isAiTaskLocked || !currentBlog || !token) return
     if (!currentBlog.title.trim()) {
       notify(t('blog.enter_title'), 'error')
       return
@@ -459,6 +463,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const insertPhotoIntoBlog = (photo: PhotoDto) => {
+    if (isAiTaskLocked) return
     const markdown = buildStoryMarkdownImage({
       url: resolveAssetUrl(photo.url, settings?.cdn_domain),
       alt: photo.title,
@@ -484,6 +489,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+  const blogDocumentId = resolveBlogDocumentId(currentBlog?.id, draftDocumentId)
 
 
   // 博客发布状态筛选选项
@@ -609,6 +615,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                   initialBlogRef.current = null
                   setIsDirty(false)
                 }}
+                disabled={isAiTaskLocked}
                 adminVariant="link"
                 className="flex items-center gap-2 hover:no-underline"
               >
@@ -632,6 +639,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <label className="flex items-center gap-2 text-xs">
                 <input
                   type="checkbox"
+                  disabled={isAiTaskLocked}
                   checked={currentBlog?.isPublished || false}
                   onChange={(e) =>
                     setCurrentBlog((prev) => ({
@@ -645,7 +653,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               </label>
               <AdminButton
                 onClick={handleSaveBlog}
-                disabled={saving}
+                disabled={saving || isAiTaskLocked}
                 adminVariant="primary"
                 size="lg"
                 className="flex items-center gap-2"
@@ -663,6 +671,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
             <div className="flex-1 flex flex-col gap-4 overflow-hidden">
               <input
                 type="text"
+                disabled={isAiTaskLocked}
                 value={currentBlog?.title || ''}
                 onChange={(e) =>
                   setCurrentBlog((prev) => ({
@@ -676,6 +685,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <div className="flex gap-4">
                 <input
                   type="text"
+                  disabled={isAiTaskLocked}
                   value={currentBlog?.category || ''}
                   onChange={(e) =>
                     setCurrentBlog((prev) => ({
@@ -688,6 +698,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                 />
                 <input
                   type="text"
+                  disabled={isAiTaskLocked}
                   value={currentBlog?.tags || ''}
                   onChange={(e) =>
                     setCurrentBlog((prev) => ({
@@ -702,7 +713,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <div className="flex-1 relative border border-border bg-card/30 overflow-visible">
                 {currentBlog && (
                   <NarrativeTipTapEditor
-                    key={currentBlog.id || 'new'}
+                    key={blogDocumentId}
                     ref={editorRef}
                     value={currentBlog.content}
                     jsonValue={currentBlog.contentJson ?? null}
@@ -710,10 +721,20 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                     onJsonChange={handleJsonContentChange}
                     placeholder={t('ui.markdown_placeholder')}
                     className="overflow-hidden bg-background"
+                    documentId={blogDocumentId}
+                    documentKind="blog"
+                    onAiTaskLockChange={setIsAiTaskLocked}
+                    aiOptions={token ? {
+                      enabled: true,
+                      token,
+                      scopeId: blogDocumentId,
+                      title: currentBlog.title,
+                    } : undefined}
                   />
                 )}
                 <AdminButton
                   onClick={() => setIsInsertingPhoto(true)}
+                  disabled={isAiTaskLocked}
                   adminVariant="unstyled"
                   className="absolute bottom-6 right-6 p-4 bg-background border border-border hover:border-primary text-primary transition-all shadow-2xl z-10"
                   title={t('blog.insert_photo')}

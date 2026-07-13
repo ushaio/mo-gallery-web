@@ -30,6 +30,7 @@ export interface PendingImage {
 }
 
 interface StoryPhotoPanelProps {
+  disabled: boolean
   isCollapsed: boolean
   isImmersiveMode: boolean
   currentStory: StoryDto | null
@@ -72,6 +73,7 @@ interface StoryPhotoPanelProps {
 }
 
 export function StoryPhotoPanel({
+  disabled,
   isCollapsed,
   isImmersiveMode,
   currentStory,
@@ -89,28 +91,56 @@ export function StoryPhotoPanel({
   openMenuPendingId,
   t,
   notify,
-  onAddPhotos,
-  onInsertExternalPhotoMarkdown,
-  onInsertPhotoMarkdown,
-  onInsertGalleryMarkdown,
-  onRemovePhoto,
-  onRemovePendingImage,
-  onSetCover,
-  onSetPendingCover,
-  onSetPhotoDate,
-  onRetryFailedUploads,
-  onPhotoPanelDragOver,
-  onPhotoPanelDragLeave,
-  onPhotoPanelDrop,
-  onItemDragStart,
-  onItemDragEnd,
-  onItemDragOver,
-  onItemDragLeave,
-  onItemDrop,
-  onOpenMenuPhoto,
-  onOpenMenuPending,
-  onOpenPasteUploadSettings,
+  onAddPhotos: onAddPhotosProp,
+  onInsertExternalPhotoMarkdown: onInsertExternalPhotoMarkdownProp,
+  onInsertPhotoMarkdown: onInsertPhotoMarkdownProp,
+  onInsertGalleryMarkdown: onInsertGalleryMarkdownProp,
+  onRemovePhoto: onRemovePhotoProp,
+  onRemovePendingImage: onRemovePendingImageProp,
+  onSetCover: onSetCoverProp,
+  onSetPendingCover: onSetPendingCoverProp,
+  onSetPhotoDate: onSetPhotoDateProp,
+  onRetryFailedUploads: onRetryFailedUploadsProp,
+  onPhotoPanelDragOver: onPhotoPanelDragOverProp,
+  onPhotoPanelDragLeave: onPhotoPanelDragLeaveProp,
+  onPhotoPanelDrop: onPhotoPanelDropProp,
+  onItemDragStart: onItemDragStartProp,
+  onItemDragEnd: onItemDragEndProp,
+  onItemDragOver: onItemDragOverProp,
+  onItemDragLeave: onItemDragLeaveProp,
+  onItemDrop: onItemDropProp,
+  onOpenMenuPhoto: onOpenMenuPhotoProp,
+  onOpenMenuPending: onOpenMenuPendingProp,
+  onOpenPasteUploadSettings: onOpenPasteUploadSettingsProp,
 }: StoryPhotoPanelProps) {
+  function guardMutation<Args extends unknown[]>(operation: (...args: Args) => void) {
+    return (...args: Args) => {
+      if (disabled) return
+      operation(...args)
+    }
+  }
+
+  const onAddPhotos = guardMutation(onAddPhotosProp)
+  const onInsertExternalPhotoMarkdown = guardMutation(onInsertExternalPhotoMarkdownProp)
+  const onInsertPhotoMarkdown = guardMutation(onInsertPhotoMarkdownProp)
+  const onInsertGalleryMarkdown = guardMutation(onInsertGalleryMarkdownProp)
+  const onRemovePhoto = guardMutation(onRemovePhotoProp)
+  const onRemovePendingImage = guardMutation(onRemovePendingImageProp)
+  const onSetCover = guardMutation(onSetCoverProp)
+  const onSetPendingCover = guardMutation(onSetPendingCoverProp)
+  const onSetPhotoDate = guardMutation(onSetPhotoDateProp)
+  const onRetryFailedUploads = guardMutation(onRetryFailedUploadsProp)
+  const onPhotoPanelDragOver = guardMutation(onPhotoPanelDragOverProp)
+  const onPhotoPanelDragLeave = guardMutation(onPhotoPanelDragLeaveProp)
+  const onPhotoPanelDrop = guardMutation(onPhotoPanelDropProp)
+  const onItemDragStart = guardMutation(onItemDragStartProp)
+  const onItemDragEnd = guardMutation(onItemDragEndProp)
+  const onItemDragOver = guardMutation(onItemDragOverProp)
+  const onItemDragLeave = guardMutation(onItemDragLeaveProp)
+  const onItemDrop = guardMutation(onItemDropProp)
+  const onOpenMenuPhoto = guardMutation(onOpenMenuPhotoProp)
+  const onOpenMenuPending = guardMutation(onOpenMenuPendingProp)
+  const onOpenPasteUploadSettings = guardMutation(onOpenPasteUploadSettingsProp)
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
   const referencedPhotoIds = getStoryReferencedPhotoIds(editorContent)
@@ -138,6 +168,7 @@ export function StoryPhotoPanel({
   if (isCollapsed) {
     return (
       <div
+        aria-disabled={disabled}
         className={cn(
           'flex h-full w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
           isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
@@ -173,7 +204,9 @@ export function StoryPhotoPanel({
   }
 
   return (
-    <div
+    <fieldset
+      disabled={disabled}
+      aria-disabled={disabled}
       className={cn(
         'flex h-full min-w-[320px] flex-col overflow-hidden border border-border bg-card',
         isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
@@ -293,7 +326,7 @@ export function StoryPhotoPanel({
                 return (
                   <div key={photo.id} className="relative">
                     <div
-                      draggable
+                      draggable={!disabled}
                       onDragStart={(event) => onItemDragStart(event, photo.id, 'photo')}
                       onDragEnd={onItemDragEnd}
                       onDragOver={(event) => onItemDragOver(event, photo.id)}
@@ -421,7 +454,7 @@ export function StoryPhotoPanel({
               return (
                 <div key={pending.id} className="relative">
                   <div
-                    draggable={pending.status !== 'uploading'}
+                    draggable={!disabled && pending.status !== 'uploading'}
                     onDragStart={(event) => onItemDragStart(event, pending.id, 'pending')}
                     onDragEnd={onItemDragEnd}
                     onDragOver={(event) => onItemDragOver(event, pending.id)}
@@ -563,6 +596,6 @@ export function StoryPhotoPanel({
           </div>
         )}
       </div>
-    </div>
+    </fieldset>
   )
 }

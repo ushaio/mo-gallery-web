@@ -25,6 +25,9 @@ export const coreMessages: LocaleDictionaryGroup = {
       reset: '重置',
       enabled: '已启用',
       disabled: '已禁用',
+      system: '\u8ddf\u968f\u7cfb\u7edf',
+      light: '\u6d45\u8272',
+      dark: '\u6df1\u8272',
     },
     nav: {
       home: '首页',
@@ -74,6 +77,9 @@ export const coreMessages: LocaleDictionaryGroup = {
       reset: 'Reset',
       enabled: 'Enabled',
       disabled: 'Disabled',
+      system: 'System',
+      light: 'Light',
+      dark: 'Dark',
     },
     nav: {
       home: 'HOME',

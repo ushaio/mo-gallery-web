@@ -23,7 +23,9 @@ import type { PhotoDto, BlogDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import { formatRelativeTimeLabel } from '@/lib/utils'
+import { createBlogDraftDocumentId, resolveBlogDocumentId, rotateBlogDraftDocumentId } from '@/lib/blog-draft-document'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   saveBlogDraftToDB,
   getBlogDraftFromDB,
@@ -58,13 +60,27 @@ interface BlogFormData {
   isPublished: boolean
 }
 
+interface DesktopBlogApp {
+  GetBlogs: () => Promise<BlogDto[]>
+  DeleteBlog: (id: string) => Promise<void>
+  UpdateBlog: (id: string, data: unknown) => Promise<void>
+  CreateBlog: (data: unknown) => Promise<void>
+}
+
+function getDesktopBlogApp() {
+  return (window as unknown as { go: { main: { App: DesktopBlogApp } } }).go.main.App
+}
+
 export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProps) {
+  const { token } = useAuth()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentBlog, setCurrentBlog] = useState<BlogFormData | null>(null)
   const [editMode, setEditMode] = useState<'list' | 'editor'>('list')
   const [isInsertingPhoto, setIsInsertingPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
+  const [draftDocumentId, setDraftDocumentId] = useState(createBlogDraftDocumentId)
   const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   
   // 自动保存状态
@@ -100,7 +116,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const fetchBlogs = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await (window as any).go.main.App.GetBlogs()
+      const data = await getDesktopBlogApp().GetBlogs()
       setBlogs(data || [])
     } catch (error) {
       notify(t('common.error'), 'error')
@@ -194,7 +210,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
 
   // 内容变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
-    if (!currentBlog || !isDirty) return
+    if (isAiTaskLocked || !currentBlog || !isDirty) return
     if (!currentBlog.title && !currentBlog.content) return
 
     // 清除已有定时器
@@ -212,7 +228,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         clearTimeout(autoSaveTimerRef.current)
       }
     }
-  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isDirty])
+  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isAiTaskLocked, isDirty])
 
   // 将草稿应用到当前博客
   const applyDraft = useCallback((draft: BlogDraftData, blogId?: string) => {
@@ -281,6 +297,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }, [])
 
   const handleCreateBlog = async () => {
+    setDraftDocumentId(rotateBlogDraftDocumentId)
     // 设置脏检查的初始状态
     initialBlogRef.current = {
       title: '',
@@ -362,7 +379,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   const confirmDeleteBlog = async () => {
     if (!deleteBlogId) return
     try {
-      await (window as any).go.main.App.DeleteBlog(deleteBlogId)
+      await getDesktopBlogApp().DeleteBlog(deleteBlogId)
       await fetchBlogs()
       notify(t('admin.notify_log_deleted'))
     } catch (error) {
@@ -374,7 +391,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const handleSaveBlog = async () => {
-    if (!currentBlog) return
+    if (isAiTaskLocked || !currentBlog) return
     if (!currentBlog.title.trim()) {
       notify(t('blog.enter_title'), 'error')
       return
@@ -387,7 +404,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     setSaving(true)
     try {
       if (currentBlog.id) {
-        await (window as any).go.main.App.UpdateBlog(currentBlog.id, {
+        await getDesktopBlogApp().UpdateBlog(currentBlog.id, {
           title: currentBlog.title,
           content: currentBlog.content,
           contentJson: currentBlog.contentJson ?? null,
@@ -396,7 +413,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           isPublished: currentBlog.isPublished,
         })
       } else {
-        await (window as any).go.main.App.CreateBlog({
+        await getDesktopBlogApp().CreateBlog({
           title: currentBlog.title,
           content: currentBlog.content,
           contentJson: currentBlog.contentJson ?? null,
@@ -421,6 +438,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const insertPhotoIntoBlog = (photo: PhotoDto) => {
+    if (isAiTaskLocked) return
     const markdown = buildStoryMarkdownImage({
       url: resolveAssetUrl(photo.url, settings?.cdn_domain),
       alt: photo.title,
@@ -446,6 +464,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+  const blogDocumentId = resolveBlogDocumentId(currentBlog?.id, draftDocumentId)
 
 
   // 博客发布状态筛选选项
@@ -564,6 +583,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
             <div className="flex items-center gap-4">
               <AdminButton
+                disabled={isAiTaskLocked}
                 onClick={() => {
                   setEditMode('list')
                   setCurrentBlog(null)
@@ -594,6 +614,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <label className="flex items-center gap-2 text-xs">
                 <input
                   type="checkbox"
+                  disabled={isAiTaskLocked}
                   checked={currentBlog?.isPublished || false}
                   onChange={(e) =>
                     setCurrentBlog((prev) => ({
@@ -607,7 +628,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               </label>
               <AdminButton
                 onClick={handleSaveBlog}
-                disabled={saving}
+                disabled={saving || isAiTaskLocked}
                 adminVariant="primary"
                 size="lg"
                 className="flex items-center gap-2"
@@ -625,6 +646,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
             <div className="flex-1 flex flex-col gap-4 overflow-hidden">
               <input
                 type="text"
+                disabled={isAiTaskLocked}
                 value={currentBlog?.title || ''}
                 onChange={(e) =>
                   setCurrentBlog((prev) => ({
@@ -638,6 +660,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <div className="flex gap-4">
                 <input
                   type="text"
+                  disabled={isAiTaskLocked}
                   value={currentBlog?.category || ''}
                   onChange={(e) =>
                     setCurrentBlog((prev) => ({
@@ -650,6 +673,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                 />
                 <input
                   type="text"
+                  disabled={isAiTaskLocked}
                   value={currentBlog?.tags || ''}
                   onChange={(e) =>
                     setCurrentBlog((prev) => ({
@@ -664,7 +688,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <div className="flex-1 relative border border-border bg-card/30 overflow-visible">
                 {currentBlog && (
                   <NarrativeTipTapEditor
-                    key={currentBlog.id || 'new'}
+                    key={blogDocumentId}
                     ref={editorRef}
                     value={currentBlog.content}
                     jsonValue={currentBlog.contentJson ?? null}
@@ -672,9 +696,19 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                     onJsonChange={handleJsonContentChange}
                     placeholder={t('ui.markdown_placeholder')}
                     className="overflow-hidden bg-background"
+                    documentId={blogDocumentId}
+                    documentKind="blog"
+                    onAiTaskLockChange={setIsAiTaskLocked}
+                    aiOptions={{
+                      enabled: Boolean(token),
+                      token,
+                      scopeId: blogDocumentId,
+                      title: currentBlog.title,
+                    }}
                   />
                 )}
                 <AdminButton
+                  disabled={isAiTaskLocked}
                   onClick={() => setIsInsertingPhoto(true)}
                   adminVariant="unstyled"
                   className="absolute bottom-6 right-6 p-4 bg-background border border-border hover:border-primary text-primary transition-all shadow-2xl z-10"
@@ -706,10 +740,12 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
                 {photos.map((photo) => (
-                  <div
+                  <button
+                    type="button"
                     key={photo.id}
+                    disabled={isAiTaskLocked}
                     onClick={() => insertPhotoIntoBlog(photo)}
-                    className="group relative aspect-square bg-muted cursor-pointer overflow-hidden border border-transparent hover:border-primary transition-all"
+                    className="group relative aspect-square bg-muted cursor-pointer overflow-hidden border border-transparent hover:border-primary transition-all disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <img
                       src={resolveAssetUrl(
@@ -722,7 +758,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                     <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                       <Plus className="w-8 h-8 text-white" />
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

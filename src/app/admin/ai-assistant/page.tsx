@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -21,6 +22,10 @@ import {
   RotateCcw,
   Paperclip,
   Loader2,
+  Image as ImageIcon,
+  Pencil,
+  Trash2,
+  Download,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
@@ -32,35 +37,329 @@ import {
   deleteEditorAiConversation,
   clearEditorAiConversation,
   updateEditorAiConversation,
+  generateEditorAiConversationTitle,
   uploadAiImage,
   streamStoryAiGenerate,
   getStoryAiModels,
+  generateEditorAiImage,
+  saveEditorAiMessageImage,
 } from '@/lib/api/story-ai'
 import type {
   EditorAiConversationDto,
   EditorAiMessageDto,
+  EditorAiMessageStatus,
+  StoryAiModelOption,
   StoryAiModelsResponse,
 } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { Skeleton } from '@/components/admin/Skeleton'
-import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { useAdmin } from '../layout'
 
 const SCOPE_ID = 'ai-assistant'
+const MAX_ATTACHED_IMAGES = 10
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024
+const IMAGE_EDIT_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const DELETE_ARM_TIMEOUT_MS = 3000
+
+type AttachedImage = {
+  id: string
+  url: string
+  key: string
+  previewUrl: string
+  status: 'uploading' | 'ready'
+}
+
+type ConversationRenameTarget = {
+  id: string
+  surface: 'sidebar' | 'header'
+}
+
+function createLocalMessageId(role: 'user' | 'assistant'): string {
+  return `local-${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function deriveConversationTitle(prompt: string): string {
+  return prompt.replace(/\s+/g, ' ').trim().slice(0, 40)
+}
+
+function supportsChat(model: StoryAiModelOption): boolean {
+  return !model.capabilities || model.capabilities.includes('chat')
+}
+
+function supportsImageGeneration(model: StoryAiModelOption): boolean {
+  return model.capabilities?.includes('image') === true
+}
+
+function selectAvailableModel(models: StoryAiModelOption[], preferred: string | undefined): string {
+  return models.some((model) => model.id === preferred) ? preferred ?? '' : models[0]?.id ?? ''
+}
+
+type MessageImageRef = {
+  url: string
+  photoId?: string
+}
+
+type WritableImageFile = {
+  write: (data: Blob) => Promise<void>
+  close: () => Promise<void>
+}
+
+type ImageFileHandle = {
+  createWritable: () => Promise<WritableImageFile>
+}
+
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (options: {
+    suggestedName: string
+    types: Array<{
+      description: string
+      accept: Record<string, string[]>
+    }>
+  }) => Promise<ImageFileHandle>
+}
+
+function getSuggestedImageName(imageUrl: string): string {
+  if (imageUrl.startsWith('data:')) {
+    const mimeType = imageUrl.slice(5, imageUrl.indexOf(';'))
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png'
+    return `ai-image-${Date.now()}.${extension}`
+  }
+
+  try {
+    const pathname = new URL(imageUrl, window.location.href).pathname
+    const fileName = decodeURIComponent(pathname.split('/').pop() || '')
+    if (/\.(?:png|jpe?g|webp|gif|avif)$/i.test(fileName)) return fileName
+  } catch {
+    // Use a stable fallback name for malformed or non-URL image sources.
+  }
+  return `ai-image-${Date.now()}.png`
+}
+
+async function fetchImageBlob(imageUrl: string): Promise<Blob> {
+  const response = await fetch(imageUrl)
+  if (!response.ok) throw new Error(`Image download failed (${response.status})`)
+  const blob = await response.blob()
+  if (!blob.type.startsWith('image/')) throw new Error('Downloaded file is not an image')
+  return blob
+}
+
+async function downloadImageToLocal(imageUrl: string): Promise<boolean> {
+  const suggestedName = getSuggestedImageName(imageUrl)
+  const savePicker = (window as SaveFilePickerWindow).showSaveFilePicker
+
+  if (savePicker) {
+    try {
+      const fileHandle = await savePicker.call(window, {
+        suggestedName,
+        types: [{
+          description: 'Image',
+          accept: {
+            'image/png': ['.png'],
+            'image/jpeg': ['.jpg', '.jpeg'],
+            'image/webp': ['.webp'],
+            'image/gif': ['.gif'],
+            'image/avif': ['.avif'],
+          },
+        }],
+      })
+      const blob = await fetchImageBlob(imageUrl)
+      const writable = await fileHandle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      return true
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return false
+      throw error
+    }
+  }
+
+  const blob = await fetchImageBlob(imageUrl)
+  const objectUrl = URL.createObjectURL(blob)
+  try {
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = suggestedName
+    link.click()
+    return true
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+function getMessageImages(metadata: unknown): MessageImageRef[] {
+  if (!metadata || typeof metadata !== 'object') return []
+
+  const imageMetadata = metadata as {
+    type?: unknown
+    uploadedUrl?: unknown
+    photoId?: unknown
+    images?: unknown
+  }
+  if (imageMetadata.type === 'image' && typeof imageMetadata.uploadedUrl === 'string') {
+    return imageMetadata.uploadedUrl
+      ? [{
+          url: imageMetadata.uploadedUrl,
+          ...(typeof imageMetadata.photoId === 'string' ? { photoId: imageMetadata.photoId } : {}),
+        }]
+      : []
+  }
+  if (!Array.isArray(imageMetadata.images)) return []
+  return imageMetadata.images.flatMap((image) => {
+    if (typeof image === 'string') return image ? [{ url: image }] : []
+    if (image && typeof image === 'object' && 'url' in image && typeof image.url === 'string' && image.url) {
+      return [{
+        url: image.url,
+        ...('photoId' in image && typeof image.photoId === 'string' ? { photoId: image.photoId } : {}),
+      }]
+    }
+    return []
+  })
+}
+
+function MessageImage({
+  image,
+  alt,
+  onSave,
+  onDownload,
+  t,
+}: {
+  image: MessageImageRef
+  alt: string
+  onSave: () => Promise<void>
+  onDownload: () => Promise<void>
+  t: (key: string) => string
+}) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [saved, setSaved] = useState(Boolean(image.photoId))
+
+  useEffect(() => {
+    if (image.photoId) setSaved(true)
+  }, [image.photoId])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const closeMenu = () => setContextMenu(null)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu()
+    }
+    window.addEventListener('pointerdown', closeMenu)
+    window.addEventListener('blur', closeMenu)
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu)
+      window.removeEventListener('blur', closeMenu)
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenu])
+
+  const handleContextMenu = (event: React.MouseEvent<HTMLImageElement>) => {
+    event.preventDefault()
+    const menuWidth = 176
+    const menuHeight = 84
+    setContextMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+    })
+  }
+
+  const handleSave = async () => {
+    if (saving || saved) return
+    setContextMenu(null)
+    setSaving(true)
+    try {
+      await onSave()
+      setSaved(true)
+    } catch {
+      // The page-level callback reports API errors.
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    if (downloading) return
+    setContextMenu(null)
+    setDownloading(true)
+    try {
+      await onDownload()
+    } catch {
+      // The page-level callback reports download errors.
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="relative max-w-[200px] rounded-lg overflow-hidden border border-border/20">
+      <img
+        src={image.url}
+        alt={alt}
+        className="max-h-[200px] object-contain bg-muted/20"
+        loading="lazy"
+        onContextMenu={handleContextMenu}
+      />
+      {contextMenu && typeof document !== 'undefined' && createPortal(
+        <div
+          role="menu"
+          className="fixed z-[100] min-w-44 rounded-lg border border-border bg-popover p-1 shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={saving || saved}
+            onClick={() => void handleSave()}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+            {saved ? t('admin.ai_saved_to_album') : t('admin.ai_save_to_album')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={downloading}
+            onClick={() => void handleDownload()}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:opacity-50"
+          >
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {t('admin.ai_download_to_local')}
+          </button>
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
+function reconcilePersistedMessages(
+  current: EditorAiMessageDto[],
+  persisted: EditorAiMessageDto[],
+): EditorAiMessageDto[] {
+  const currentById = new Map(current.map((message) => [message.id, message]))
+  return persisted.map((message, index) => {
+    const existing = currentById.get(message.id)
+    if (existing) return { ...existing, ...message }
+    const optimistic = current[index]
+    if (optimistic?.id.startsWith('local-') && optimistic.role === message.role) {
+      return { ...optimistic, ...message, id: optimistic.id }
+    }
+    return message
+  })
+}
 
 function formatConversationDate(dateStr: string): string {
   const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-// ─── Staggered reveal variants ────────────────────────────────────────────────
+// Staggered reveal variants
 const staggerItem = {
   hidden: { opacity: 0, y: 12 },
   visible: (i: number) => ({
@@ -79,38 +378,98 @@ export default function AiAssistantPage() {
   const [messages, setMessages] = useState<EditorAiMessageDto[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingConversation, setLoadingConversation] = useState(false)
   const [sending, setSending] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
   const [models, setModels] = useState<StoryAiModelsResponse | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [imageMode, setImageMode] = useState(false)
+  const [selectedImageModel, setSelectedImageModel] = useState<string>('')
+  const [selectedImageSize, setSelectedImageSize] = useState('1024x1024')
   const [showSidebar, setShowSidebar] = useState(true)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [renameTarget, setRenameTarget] = useState<ConversationRenameTarget | null>(null)
+  const [conversationTitleDraft, setConversationTitleDraft] = useState('')
+  const [generatingTitleId, setGeneratingTitleId] = useState<string | null>(null)
+  const [conversationMenu, setConversationMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [quotedMessage, setQuotedMessage] = useState<EditorAiMessageDto | null>(null)
   const [showSystemPrompt, setShowSystemPrompt] = useState(false)
   const [systemPromptDraft, setSystemPromptDraft] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
-  const [attachedImages, setAttachedImages] = useState<Array<{ url: string; key: string; previewUrl: string }>>([])
-  const [uploadingImages, setUploadingImages] = useState(false)
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
+  const [persistedMessageIds, setPersistedMessageIds] = useState<Record<string, string>>({})
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesScrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isSwitchingRef = useRef(false)
+  const isNearBottomRef = useRef(true)
+  const skipConversationLoadRef = useRef<string | null>(null)
+  const conversationLoadIdRef = useRef(0)
+  const activeConversationRef = useRef<string | null>(null)
+  const attachedImagesRef = useRef<AttachedImage[]>([])
+  const deleteArmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const uploadingImages = attachedImages.some((image) => image.status === 'uploading')
+  const readyImages = attachedImages.filter((image) => image.status === 'ready' && image.url)
+  const canSend = !sending && !uploadingImages && (
+    imageMode
+      ? input.trim().length > 0 && Boolean(selectedImageModel)
+      : input.trim().length > 0 || readyImages.length > 0
+  )
+
+  useEffect(() => {
+    activeConversationRef.current = activeConversation
+  }, [activeConversation])
+
+  useEffect(() => {
+    attachedImagesRef.current = attachedImages
+  }, [attachedImages])
+
+  useEffect(() => () => {
+    attachedImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+    if (deleteArmTimeoutRef.current) clearTimeout(deleteArmTimeoutRef.current)
+  }, [])
+
+  useEffect(() => {
+    if (!conversationMenu) return
+    const closeMenu = () => setConversationMenu(null)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu()
+    }
+    window.addEventListener('pointerdown', closeMenu)
+    window.addEventListener('blur', closeMenu)
+    window.addEventListener('scroll', closeMenu, true)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu)
+      window.removeEventListener('blur', closeMenu)
+      window.removeEventListener('scroll', closeMenu, true)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [conversationMenu])
 
   const scrollToBottom = useCallback((instant?: boolean) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' })
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth' })
+  }, [])
+
+  const handleMessagesScroll = useCallback(() => {
+    const element = messagesScrollRef.current
+    if (!element) return
+    isNearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96
   }, [])
 
   useEffect(() => {
     if (isSwitchingRef.current) {
       scrollToBottom(true)
       isSwitchingRef.current = false
-    } else {
-      scrollToBottom()
+      isNearBottomRef.current = true
+    } else if (isNearBottomRef.current) {
+      scrollToBottom(sending)
     }
-  }, [messages, streamingContent, scrollToBottom])
+  }, [messages, sending, scrollToBottom])
 
   // Load conversations and models
   useEffect(() => {
@@ -124,8 +483,11 @@ export default function AiAssistantPage() {
         ])
         setConversations(convos)
         if (modelsData) {
+          const chatModels = modelsData.models.filter(supportsChat)
+          const imageModels = modelsData.models.filter(supportsImageGeneration)
           setModels(modelsData)
-          setSelectedModel(modelsData.defaultModel)
+          setSelectedModel(selectAvailableModel(chatModels, modelsData.defaultModel))
+          setSelectedImageModel(selectAvailableModel(imageModels, modelsData.defaultImageModel))
         }
       } catch (error) {
         if (error instanceof ApiUnauthorizedError) {
@@ -140,31 +502,51 @@ export default function AiAssistantPage() {
     init()
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load messages when active conversation changes
+  // Switch the visible conversation immediately, then reconcile its messages asynchronously.
+  // Locally-created conversations skip the first empty fetch so it cannot overwrite an optimistic message.
   useEffect(() => {
+    const loadId = ++conversationLoadIdRef.current
     if (!token || !activeConversation) {
       setMessages([])
       setShowSystemPrompt(false)
+      setLoadingConversation(false)
       return
     }
-    isSwitchingRef.current = true
+    if (skipConversationLoadRef.current === activeConversation) {
+      skipConversationLoadRef.current = null
+      setSystemPromptDraft('')
+      setLoadingConversation(false)
+      return
+    }
+
+    setLoadingConversation(true)
     const loadMessages = async () => {
       try {
         const convo = await getEditorAiConversation(token, activeConversation)
+        if (conversationLoadIdRef.current !== loadId || activeConversationRef.current !== activeConversation) return
+        isSwitchingRef.current = true
         setMessages(convo.messages)
         setSystemPromptDraft(convo.systemPrompt || '')
       } catch (error) {
+        if (conversationLoadIdRef.current !== loadId || activeConversationRef.current !== activeConversation) return
         if (error instanceof ApiUnauthorizedError) {
           handleUnauthorized()
           return
         }
         console.error('Failed to load messages:', error)
+      } finally {
+        if (conversationLoadIdRef.current === loadId && activeConversationRef.current === activeConversation) {
+          setLoadingConversation(false)
+        }
       }
     }
-    loadMessages()
+    void loadMessages()
   }, [token, activeConversation]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNewConversation = async () => {
+    clearDeleteArm()
+    setConversationMenu(null)
+    setRenameTarget(null)
     if (!token) return
     try {
       const convo = await createEditorAiConversation(token, {
@@ -172,8 +554,11 @@ export default function AiAssistantPage() {
         title: t('admin.ai_new_chat'),
       })
       setConversations((prev) => [convo, ...prev])
+      skipConversationLoadRef.current = convo.id
+      activeConversationRef.current = convo.id
       setActiveConversation(convo.id)
       setMessages([])
+      setLoadingConversation(false)
       setInput('')
       textareaRef.current?.focus()
     } catch (error) {
@@ -185,22 +570,118 @@ export default function AiAssistantPage() {
     }
   }
 
+  const clearDeleteArm = () => {
+    if (deleteArmTimeoutRef.current) {
+      clearTimeout(deleteArmTimeoutRef.current)
+      deleteArmTimeoutRef.current = null
+    }
+    setPendingDeleteId(null)
+  }
+
+  const switchConversation = (id: string) => {
+    clearDeleteArm()
+    setConversationMenu(null)
+    setRenameTarget(null)
+    if (id === activeConversationRef.current) return
+
+    activeConversationRef.current = id
+    isSwitchingRef.current = true
+    setActiveConversation(id)
+    setMessages([])
+    setShowSystemPrompt(false)
+    setSystemPromptDraft('')
+    setQuotedMessage(null)
+    setLoadingConversation(true)
+  }
+
   const handleDeleteConversation = async (id: string) => {
     if (!token) return
     try {
       await deleteEditorAiConversation(token, id)
       setConversations((prev) => prev.filter((c) => c.id !== id))
       if (activeConversation === id) {
+        activeConversationRef.current = null
         setActiveConversation(null)
         setMessages([])
+        setLoadingConversation(false)
       }
-      setDeleteConfirm(null)
+      if (renameTarget?.id === id) setRenameTarget(null)
+      clearDeleteArm()
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
         handleUnauthorized()
         return
       }
       notify(t('common.error'), 'error')
+    }
+  }
+
+  const handleDeleteClick = (id: string) => {
+    if (pendingDeleteId === id) {
+      clearDeleteArm()
+      void handleDeleteConversation(id)
+      return
+    }
+    clearDeleteArm()
+    setPendingDeleteId(id)
+    deleteArmTimeoutRef.current = setTimeout(() => {
+      setPendingDeleteId((current) => current === id ? null : current)
+      deleteArmTimeoutRef.current = null
+    }, DELETE_ARM_TIMEOUT_MS)
+  }
+
+  const startRenamingConversation = (id: string, surface: ConversationRenameTarget['surface']) => {
+    const conversation = conversations.find((item) => item.id === id)
+    if (!conversation) return
+    clearDeleteArm()
+    setConversationMenu(null)
+    setConversationTitleDraft(conversation.title || t('admin.ai_new_chat'))
+    setRenameTarget({ id, surface })
+  }
+
+  const commitConversationTitle = async (id: string) => {
+    if (!token || renameTarget?.id !== id) return
+    const conversation = conversations.find((item) => item.id === id)
+    const title = conversationTitleDraft.replace(/\s+/g, ' ').trim()
+    setRenameTarget(null)
+    if (!conversation || !title || title === conversation.title) return
+    setConversations((previous) => previous.map((item) =>
+      item.id === id ? { ...item, title, updatedAt: new Date().toISOString() } : item,
+    ))
+    try {
+      await updateEditorAiConversation(token, id, { title })
+    } catch (error) {
+      setConversations((previous) => previous.map((item) =>
+        item.id === id ? { ...item, title: conversation.title } : item,
+      ))
+      if (error instanceof ApiUnauthorizedError) handleUnauthorized()
+      else notify(t('admin.ai_rename_failed'), 'error')
+    }
+  }
+
+  const handleGenerateConversationTitle = async (id: string) => {
+    if (!token || generatingTitleId) return
+    clearDeleteArm()
+    setConversationMenu(null)
+    setRenameTarget(null)
+    setGeneratingTitleId(id)
+    try {
+      const updated = await generateEditorAiConversationTitle(token, id, selectedModel || undefined)
+      setConversations((previous) => previous.map((item) => item.id === id ? updated : item))
+      notify(t('admin.ai_generate_title_success'), 'success')
+    } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized()
+        return
+      }
+      const message = error instanceof Error && error.message === 'AI_CONVERSATION_EMPTY'
+        ? t('admin.ai_generate_title_empty')
+        : error instanceof Error && error.message !== 'AI_TITLE_EMPTY'
+          ? error.message
+          : t('admin.ai_generate_title_failed')
+      notify(message, 'error')
+    } finally {
+      setGeneratingTitleId((current) => current === id ? null : current)
     }
   }
 
@@ -246,58 +727,116 @@ export default function AiAssistantPage() {
     fileInputRef.current?.click()
   }
 
-  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0 || !token) return
+  const removeAttachedImage = useCallback((id: string) => {
+    setAttachedImages((prev) => {
+      const image = prev.find((item) => item.id === id)
+      if (image) URL.revokeObjectURL(image.previewUrl)
+      return prev.filter((item) => item.id !== id)
+    })
+  }, [])
 
-    const previews = Array.from(files).map((file) => ({
+  const addImageFiles = useCallback(async (files: File[]) => {
+    if (!token || sending || files.length === 0) return
+
+    const remainingSlots = Math.max(0, MAX_ATTACHED_IMAGES - attachedImagesRef.current.length)
+    const accepted = files
+      .filter((file) => (
+        file.type.startsWith('image/')
+        && file.size <= MAX_IMAGE_SIZE
+        && (!imageMode || IMAGE_EDIT_MIME_TYPES.has(file.type))
+      ))
+      .slice(0, remainingSlots)
+
+    if (accepted.length === 0) {
+      notify(t(imageMode ? 'admin.ai_image_reference_format' : 'admin.ai_upload_failed'), 'error')
+      return
+    }
+
+    const pending = accepted.map((file) => ({
+      id: `attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       previewUrl: URL.createObjectURL(file),
     }))
 
-    setAttachedImages((prev) => [...prev, ...previews.map((p) => ({ url: '', key: '', previewUrl: p.previewUrl }))])
-    setUploadingImages(true)
+    setAttachedImages((prev) => [
+      ...prev,
+      ...pending.map(({ id, previewUrl }) => ({
+        id,
+        url: '',
+        key: '',
+        previewUrl,
+        status: 'uploading' as const,
+      })),
+    ])
 
-    try {
-      const uploadPromises = previews.map(async (p) => {
-        const result = await uploadAiImage(token, p.file)
-        return { url: result.url, key: result.key, previewUrl: p.previewUrl }
-      })
-      const results = await Promise.all(uploadPromises)
-      setAttachedImages((prev) => {
-        const alreadyUploaded = prev.filter((img) => img.url !== '')
-        return [...alreadyUploaded, ...results]
-      })
-    } catch (error) {
-      if (error instanceof ApiUnauthorizedError) {
-        handleUnauthorized()
-        return
+    await Promise.all(pending.map(async ({ id, file }) => {
+      try {
+        const result = await uploadAiImage(token, file)
+        setAttachedImages((prev) => prev.map((image) =>
+          image.id === id
+            ? { ...image, url: result.url, key: result.key, status: 'ready' as const }
+            : image,
+        ))
+      } catch (error) {
+        removeAttachedImage(id)
+        if (error instanceof ApiUnauthorizedError) {
+          handleUnauthorized()
+          return
+        }
+        notify(t('admin.ai_upload_failed'), 'error')
       }
-      notify(t('admin.ai_upload_failed'), 'error')
-      setAttachedImages((prev) => prev.filter((img) => img.url !== ''))
-    } finally {
-      setUploadingImages(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
+    }))
+  }, [handleUnauthorized, imageMode, notify, removeAttachedImage, sending, t, token])
+
+  const handleFilesSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || [])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    void addImageFiles(files)
+  }
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+    if (files.length === 0) return
+    event.preventDefault()
+    void addImageFiles(files)
   }
 
   const activeConvoData = conversations.find((c) => c.id === activeConversation)
   const hasCustomPrompt = Boolean(activeConvoData?.systemPrompt)
+  const chatModels = models?.models.filter(supportsChat) ?? []
+  const imageModels = models?.models.filter(supportsImageGeneration) ?? []
+  const activeModelLabel = imageMode ? (selectedImageModel || 'image model') : (selectedModel || 'default')
 
   const handleSend = async () => {
-    if (!token || !input.trim() || sending) return
+    const sendableImages = attachedImages.filter((image) => image.status === 'ready' && image.url)
+    if (!token || sending || uploadingImages || (
+      imageMode ? !input.trim() : (!input.trim() && sendableImages.length === 0)
+    )) return
+    if (imageMode && !selectedImageModel) {
+      notify(t('admin.ai_image_model_required'), 'error')
+      return
+    }
 
     let conversationId = activeConversation
+    const rawUserInput = input.trim()
+    const userInput = rawUserInput || t('admin.ai_image_only_prompt')
 
-    // Auto-create conversation if none active
+    // Auto-create conversation if none active. Skip the effect's first empty fetch,
+    // otherwise it can race with and hide this first optimistic message.
     if (!conversationId) {
       try {
         const convo = await createEditorAiConversation(token, {
           scopeId: SCOPE_ID,
-          title: input.trim().slice(0, 50),
+          title: userInput.slice(0, 50),
         })
         setConversations((prev) => [convo, ...prev])
+        skipConversationLoadRef.current = convo.id
+        activeConversationRef.current = convo.id
         setActiveConversation(convo.id)
+        setLoadingConversation(false)
         conversationId = convo.id
       } catch (error) {
         if (error instanceof ApiUnauthorizedError) {
@@ -309,96 +848,159 @@ export default function AiAssistantPage() {
       }
     }
 
-    const userInput = input.trim()
+    const currentConversation = conversations.find((conversation) => conversation.id === conversationId)
+    const conversationTitle = currentConversation && (
+      !currentConversation.title || currentConversation.title === t('admin.ai_new_chat')
+    ) ? deriveConversationTitle(rawUserInput || userInput) : undefined
+    if (conversationTitle) {
+      setConversations((previous) => previous.map((conversation) =>
+        conversation.id === conversationId
+          ? { ...conversation, title: conversationTitle, updatedAt: new Date().toISOString() }
+          : conversation,
+      ))
+      void updateEditorAiConversation(token, conversationId, { title: conversationTitle }).catch((error) => {
+        if (error instanceof ApiUnauthorizedError) handleUnauthorized()
+        else console.warn('Failed to update AI conversation title:', error)
+      })
+    }
+
     const quoted = quotedMessage
-    const images = attachedImages.map((i) => i.url).filter(Boolean)
-    const imageMeta = attachedImages.filter((i) => i.url).map((i) => ({ url: i.url, key: i.key }))
+    const images = sendableImages.map((image) => image.url)
+    const imageMeta = sendableImages.map((image) => ({ url: image.url, key: image.key }))
+    const prompt = quoted
+      ? `> ${quoted.content.split('\n').join('\n> ')}\n\n${userInput}`
+      : userInput
+    const now = new Date().toISOString()
+    const userMessageId = createLocalMessageId('user')
+    const assistantMessageId = createLocalMessageId('assistant')
+    const optimisticUserMessage: EditorAiMessageDto = {
+      id: userMessageId,
+      conversationId,
+      role: 'user',
+      content: prompt,
+      status: 'completed',
+      createdAt: now,
+      ...(imageMeta.length > 0 ? { metadata: { images: imageMeta } } : {}),
+    }
+    const optimisticAssistantMessage: EditorAiMessageDto = {
+      id: assistantMessageId,
+      conversationId,
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      model: imageMode ? selectedImageModel : selectedModel || undefined,
+      createdAt: now,
+    }
+
+    attachedImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
     setInput('')
     setQuotedMessage(null)
     setAttachedImages([])
     setSending(true)
-    setStreamingContent('')
+    isNearBottomRef.current = true
+    setMessages((prev) => [...prev, optimisticUserMessage, optimisticAssistantMessage])
 
-    // Build prompt with quote context
-    const prompt = quoted
-      ? `> ${quoted.content.split('\n').join('\n> ')}\n\n${userInput}`
-      : userInput
-
-    // Optimistic: show user message immediately
-    const optimisticMsg: EditorAiMessageDto = {
-      id: `optimistic-${Date.now()}`,
-      conversationId: conversationId!,
-      role: 'user',
-      content: prompt,
-      status: 'completed',
-      createdAt: new Date().toISOString(),
-      ...(imageMeta.length > 0 ? { metadata: { images: imageMeta } } : {}),
-    }
-    setMessages((prev) => [...prev, optimisticMsg])
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
     const abortController = new AbortController()
     abortRef.current = abortController
+    let accumulated = ''
+
+    const updateAssistant = (content: string, status: EditorAiMessageStatus, error?: string) => {
+      if (activeConversationRef.current !== conversationId) return
+      setMessages((prev) => prev.map((message) =>
+        message.id === assistantMessageId
+          ? { ...message, content, status, error }
+          : message,
+      ))
+    }
 
     try {
-      let accumulated = ''
-      await streamStoryAiGenerate(
-        token,
-        {
+      if (imageMode) {
+        const persistedConversation = await generateEditorAiImage(token, {
           conversationId,
-          action: 'custom',
           prompt,
-          model: selectedModel || undefined,
+          title: conversationTitle,
+          imageModel: selectedImageModel || undefined,
+          imageSize: selectedImageSize,
           images: images.length > 0 ? images : undefined,
-        },
-        {
-          onChunk: (chunk) => {
-            accumulated += chunk
-            setStreamingContent(accumulated)
+          imageKeys: images.length > 0 ? sendableImages.map((image) => image.key) : undefined,
+        })
+        const persistedMessages = persistedConversation.messages || []
+        const persistedUserMessage = persistedMessages.at(-2)
+        const persistedAssistantMessage = persistedMessages.at(-1)
+        setPersistedMessageIds((previous) => ({
+          ...previous,
+          ...(persistedUserMessage?.role === 'user' ? { [userMessageId]: persistedUserMessage.id } : {}),
+          ...(persistedAssistantMessage?.role === 'assistant' ? { [assistantMessageId]: persistedAssistantMessage.id } : {}),
+        }))
+        if (activeConversationRef.current === conversationId) {
+          setMessages((previous) => reconcilePersistedMessages(previous, persistedMessages))
+        }
+        setConversations((previous) => previous.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, title: persistedConversation.title, updatedAt: persistedConversation.updatedAt }
+            : conversation,
+        ))
+      } else {
+        await streamStoryAiGenerate(
+          token,
+          {
+            conversationId,
+            action: 'custom',
+            prompt,
+            model: selectedModel || undefined,
+            title: conversationTitle,
+            images: images.length > 0 ? images : undefined,
+            imageKeys: images.length > 0 ? sendableImages.map((image) => image.key) : undefined,
           },
-          onDone: () => {
-            // 不在 done 事件中清空 streamingContent，等消息加载完再清
+          {
+            onChunk: (chunk) => {
+              accumulated += chunk
+              updateAssistant(accumulated, 'streaming')
+            },
+            signal: abortController.signal,
           },
-          signal: abortController.signal,
-        },
-      )
-
-      if (conversationId) {
-        const convo = await getEditorAiConversation(token, conversationId)
-        setMessages(convo.messages)
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === conversationId
-              ? { ...c, title: convo.title, updatedAt: convo.updatedAt }
-              : c,
-          ),
         )
+
+        updateAssistant(accumulated, 'completed')
+        if (images.length > 0) {
+          try {
+            const persistedConversation = await getEditorAiConversation(token, conversationId)
+            const persistedMessages = persistedConversation.messages || []
+            const persistedUserMessage = persistedMessages.at(-2)
+            const persistedAssistantMessage = persistedMessages.at(-1)
+            setPersistedMessageIds((previous) => ({
+              ...previous,
+              ...(persistedUserMessage?.role === 'user' ? { [userMessageId]: persistedUserMessage.id } : {}),
+              ...(persistedAssistantMessage?.role === 'assistant' ? { [assistantMessageId]: persistedAssistantMessage.id } : {}),
+            }))
+          } catch (error) {
+            console.warn('Failed to resolve persisted AI message IDs:', error)
+          }
+        }
+        setConversations((prev) => prev.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, updatedAt: new Date().toISOString() }
+            : conversation,
+        ))
       }
-      setStreamingContent('')
-      setSending(false)
     } catch (error) {
-      setStreamingContent('')
-      setSending(false)
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        // User cancelled
-      } else if (error instanceof ApiUnauthorizedError) {
+      const aborted = error instanceof DOMException && error.name === 'AbortError'
+      const errorMessage = aborted ? t('admin.ai_generation_stopped') : error instanceof Error ? error.message : t('common.error')
+      updateAssistant(
+        accumulated,
+        aborted && accumulated ? 'completed' : 'failed',
+        aborted && accumulated ? undefined : errorMessage,
+      )
+      if (error instanceof ApiUnauthorizedError) {
         handleUnauthorized()
         return
-      } else {
-        const message = error instanceof Error ? error.message : t('common.error')
-        notify(message, 'error')
       }
-      if (conversationId) {
-        try {
-          const convo = await getEditorAiConversation(token, conversationId)
-          setMessages(convo.messages)
-        } catch { /* ignore */ }
-      }
+      if (!aborted) notify(errorMessage, 'error')
     } finally {
       abortRef.current = null
+      setSending(false)
     }
   }
 
@@ -418,6 +1020,32 @@ export default function AiAssistantPage() {
     setQuotedMessage(msg)
     textareaRef.current?.focus()
   }
+
+  const handleSaveMessageImage = useCallback(async (messageId: string, imageUrl: string) => {
+    if (!token) throw new Error(t('common.error'))
+    try {
+      await saveEditorAiMessageImage(token, messageId, imageUrl)
+      notify(t('admin.ai_saved_to_album'), 'success')
+    } catch (error) {
+      if (error instanceof ApiUnauthorizedError) {
+        handleUnauthorized()
+      } else {
+        notify(error instanceof Error ? error.message : t('admin.ai_save_to_album_failed'), 'error')
+      }
+      throw error
+    }
+  }, [handleUnauthorized, notify, t, token])
+
+
+  const handleDownloadMessageImage = useCallback(async (imageUrl: string) => {
+    try {
+      const downloaded = await downloadImageToLocal(imageUrl)
+      if (downloaded) notify(t('admin.ai_downloaded_to_local'), 'success')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : t('admin.ai_download_to_local_failed'), 'error')
+      throw error
+    }
+  }, [notify, t])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -451,12 +1079,12 @@ export default function AiAssistantPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+        accept={imageMode ? "image/jpeg,image/png,image/webp" : "image/jpeg,image/png,image/webp,image/gif,image/avif"}
         multiple
         onChange={handleFilesSelected}
         className="hidden"
       />
-      {/* ── Conversation Sidebar ─────────────────────────────────────────── */}
+      {/* Conversation Sidebar */}
       <AnimatePresence initial={false}>
         {showSidebar && (
           <motion.aside
@@ -520,8 +1148,20 @@ export default function AiAssistantPage() {
                         variants={staggerItem}
                         role="button"
                         tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter') setActiveConversation(convo.id) }}
-                        onClick={() => setActiveConversation(convo.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') switchConversation(convo.id)
+                        }}
+                        onClick={() => switchConversation(convo.id)}
+                        onContextMenu={(event) => {
+                          event.preventDefault()
+                          const menuWidth = 160
+                          const menuHeight = 82
+                          setConversationMenu({
+                            id: convo.id,
+                            x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+                            y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+                          })
+                        }}
                         className={`group relative flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all duration-200 rounded-xl ${
                           isActive
                             ? 'bg-amber-500/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(245,158,11,0.08)]'
@@ -544,28 +1184,63 @@ export default function AiAssistantPage() {
                         </span>
 
                         <div className="flex-1 min-w-0">
-                          <div className={`text-xs leading-5 truncate transition-colors duration-200 ${
-                            isActive ? 'font-medium' : 'font-normal'
-                          }`}>
-                            {convo.title || t('admin.ai_new_chat')}
-                          </div>
+                          {renameTarget?.id === convo.id && renameTarget.surface === 'sidebar' ? (
+                            <input
+                              autoFocus
+                              value={conversationTitleDraft}
+                              onChange={(event) => setConversationTitleDraft(event.target.value)}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onBlur={() => void commitConversationTitle(convo.id)}
+                              onKeyDown={(event) => {
+                                event.stopPropagation()
+                                if (event.key === 'Enter') {
+                                  event.preventDefault()
+                                  event.currentTarget.blur()
+                                } else if (event.key === 'Escape') {
+                                  event.preventDefault()
+                                  setRenameTarget(null)
+                                }
+                              }}
+                              maxLength={200}
+                              className="h-6 w-full rounded-md border border-amber-500/40 bg-background px-2 text-xs outline-none"
+                              aria-label={t('admin.ai_rename_conversation')}
+                            />
+                          ) : (
+                            <div className={`text-xs leading-5 truncate transition-colors duration-200 ${
+                              isActive ? 'font-medium' : 'font-normal'
+                            }`}>
+                              {convo.title || t('admin.ai_new_chat')}
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <ScopeBadge scopeId={convo.scopeId} />
-                            <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                            <span className="whitespace-nowrap text-[10px] text-muted-foreground/40 tabular-nums">
                               {formatConversationDate(convo.updatedAt)}
                             </span>
                           </div>
                         </div>
 
+                        {generatingTitleId === convo.id && (
+                          <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-amber-500/70" />
+                        )}
+
                         <button
+                          disabled={generatingTitleId === convo.id}
                           onClick={(e) => {
                             e.stopPropagation()
-                            setDeleteConfirm(convo.id)
+                            handleDeleteClick(convo.id)
                           }}
-                          className="flex-shrink-0 p-1 opacity-0 group-hover:opacity-100 transition-all duration-200 text-muted-foreground/40 hover:text-destructive rounded-md hover:bg-destructive/5"
-                          aria-label={t('common.delete')}
+                          className={`flex-shrink-0 p-1 transition-all duration-200 rounded-md hover:bg-destructive/5 disabled:cursor-default disabled:opacity-30 ${
+                            pendingDeleteId === convo.id
+                              ? 'opacity-100 text-destructive'
+                              : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-destructive'
+                          }`}
+                          aria-label={pendingDeleteId === convo.id ? t('admin.ai_delete_confirm_again') : t('common.delete')}
+                          title={pendingDeleteId === convo.id ? t('admin.ai_delete_confirm_again') : t('common.delete')}
                         >
-                          <X className="w-3 h-3" />
+                          {pendingDeleteId === convo.id ? <Trash2 className="w-3 h-3" /> : <X className="w-3 h-3" />}
                         </button>
                       </motion.div>
                     )
@@ -574,18 +1249,18 @@ export default function AiAssistantPage() {
               )}
             </div>
 
-            {/* Sidebar footer — subtle model indicator */}
+            {/* Sidebar footer 鈥?subtle model indicator */}
             <div className="px-4 py-3 border-t border-border/30">
               <div className="flex items-center gap-2 text-[10px] text-muted-foreground/40">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500/50" />
-                <span className="tracking-wider uppercase">{selectedModel || 'default'}</span>
+                <span className="tracking-wider uppercase">{activeModelLabel}</span>
               </div>
             </div>
           </motion.aside>
         )}
       </AnimatePresence>
 
-      {/* ── Main Chat Area ────────────────────────────────────────────────── */}
+      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-background">
         {/* Chat header */}
         <div className="flex items-center gap-3 px-5 h-14 border-b border-border/30 flex-shrink-0 bg-background/80 backdrop-blur-sm">
@@ -601,9 +1276,37 @@ export default function AiAssistantPage() {
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10">
               <Sparkles className="h-3.5 w-3.5 text-amber-500" />
             </span>
-            <span className="text-xs font-medium truncate tracking-wide">
-              {activeConvoData?.title || t('admin.ai_assistant')}
-            </span>
+            {activeConversation && renameTarget?.id === activeConversation && renameTarget.surface === 'header' ? (
+              <input
+                autoFocus
+                value={conversationTitleDraft}
+                onChange={(event) => setConversationTitleDraft(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onBlur={() => void commitConversationTitle(activeConversation)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setRenameTarget(null)
+                  }
+                }}
+                maxLength={200}
+                className="h-8 min-w-0 flex-1 rounded-lg border border-amber-500/25 bg-muted/20 px-2.5 text-xs font-medium tracking-wide outline-none focus:border-amber-500/50"
+                aria-label={t('admin.ai_rename_conversation')}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={!activeConversation}
+                onClick={() => { if (activeConversation) startRenamingConversation(activeConversation, 'header') }}
+                className="min-w-0 truncate text-left text-xs font-medium tracking-wide disabled:cursor-default"
+                title={activeConversation ? t('admin.ai_rename_conversation') : undefined}
+              >
+                {activeConvoData?.title || t('admin.ai_assistant')}
+              </button>
+            )}
             {hasCustomPrompt && (
               <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500/60" title={t('admin.ai_system_prompt_title')} />
             )}
@@ -705,8 +1408,12 @@ export default function AiAssistantPage() {
         </AnimatePresence>
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {!activeConversation && messages.length === 0 && !sending ? (
+        <div ref={messagesScrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto custom-scrollbar">
+          {loadingConversation && activeConversation ? (
+            <div className="flex h-full items-center justify-center text-muted-foreground/40">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          ) : !activeConversation && messages.length === 0 && !sending ? (
             <EmptyState t={t} textareaRef={textareaRef} setInput={setInput} />
           ) : (
             <div className="max-w-[44rem] mx-auto px-5 py-6 space-y-4">
@@ -723,62 +1430,14 @@ export default function AiAssistantPage() {
                       copiedId={copiedId}
                       onCopy={handleCopy}
                       onQuote={handleQuote}
+                      onSaveImage={handleSaveMessageImage}
+                      onDownloadImage={handleDownloadMessageImage}
+                      persistedMessageId={persistedMessageIds[msg.id]}
                       t={t}
                     />
                   </motion.div>
                 ))}
               </AnimatePresence>
-
-              {/* Streaming response */}
-              {sending && streamingContent && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex gap-3 items-start"
-                >
-                  <div className="flex-shrink-0 mt-0.5 w-8 h-8 rounded-xl bg-amber-500/[0.08] flex items-center justify-center ring-1 ring-amber-500/10">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500/70" />
-                  </div>
-                  <div className="max-w-[78%] min-w-0">
-                    <div className="relative rounded-2xl rounded-tl-md bg-gradient-to-br from-muted/20 to-muted/5 border border-border/30 px-4 py-3">
-                      <div className="absolute inset-0 rounded-2xl rounded-tl-md bg-gradient-to-br from-amber-500/[0.02] to-transparent pointer-events-none" />
-                      <div className="relative text-sm leading-relaxed text-foreground/90 break-words">
-                        <div className="ai-markdown">
-                          <Markdown remarkPlugins={[remarkGfm]}>{streamingContent}</Markdown>
-                        </div>
-                        <span className="inline-block w-[3px] h-4 bg-amber-500/60 animate-pulse ml-0.5 align-middle rounded-full" />
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Thinking indicator */}
-              {sending && !streamingContent && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex gap-3 items-start"
-                >
-                  <div className="flex-shrink-0 mt-0.5 w-8 h-8 rounded-xl bg-amber-500/[0.08] flex items-center justify-center ring-1 ring-amber-500/10">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500/70" />
-                  </div>
-                  <div className="rounded-2xl rounded-tl-md bg-gradient-to-br from-muted/20 to-muted/5 border border-border/30 px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs text-muted-foreground/60">{t('admin.ai_thinking')}</span>
-                      <span className="flex gap-1">
-                        {[0, 1, 2].map((i) => (
-                          <span
-                            key={i}
-                            className="w-1 h-1 rounded-full bg-amber-500/30 animate-bounce"
-                            style={{ animationDelay: `${i * 150}ms` }}
-                          />
-                        ))}
-                      </span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
 
               <div ref={messagesEndRef} />
             </div>
@@ -827,21 +1486,21 @@ export default function AiAssistantPage() {
                     className="overflow-hidden"
                   >
                     <div className="flex items-center gap-2 mx-4 mt-3 flex-wrap">
-                      {attachedImages.map((img, idx) => (
-                        <div key={idx} className="relative group w-14 h-14 rounded-lg overflow-hidden border border-border/30 flex-shrink-0">
+                      {attachedImages.map((img) => (
+                        <div key={img.id} className="relative group w-14 h-14 rounded-lg overflow-hidden border border-border/30 flex-shrink-0">
                           <img
                             src={img.previewUrl}
                             alt=""
                             className="w-full h-full object-cover"
                           />
                           <button
-                            onClick={() => setAttachedImages((prev) => prev.filter((_, i) => i !== idx))}
+                            onClick={() => removeAttachedImage(img.id)}
                             className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                             aria-label="Remove image"
                           >
                             <X className="w-2.5 h-2.5" />
                           </button>
-                          {!img.url && (
+                          {img.status === 'uploading' && (
                             <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
                               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/40" />
                             </div>
@@ -858,6 +1517,7 @@ export default function AiAssistantPage() {
                 value={input}
                 onChange={autoResize}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={t('admin.ai_input_placeholder')}
                 rows={1}
                 disabled={sending}
@@ -872,17 +1532,51 @@ export default function AiAssistantPage() {
                     onClick={handleSelectImages}
                     disabled={sending || uploadingImages}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/40 disabled:opacity-30 transition-all duration-200 cursor-pointer"
-                    aria-label={t('admin.ai_attach_image')}
-                    title={t('admin.ai_attach_image')}
+                    aria-label={imageMode ? t('admin.ai_image_reference') : t('admin.ai_attach_image')}
+                    title={imageMode ? t('admin.ai_image_reference') : t('admin.ai_attach_image')}
                   >
                     <Paperclip className="w-3.5 h-3.5" />
                   </button>
-                  {models && models.models.length > 1 && (
-                    <ModelSelector
-                      models={models.models}
-                      value={selectedModel}
-                      onChange={setSelectedModel}
-                    />
+                  {imageModels.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setImageMode((previous) => !previous)}
+                      disabled={sending}
+                      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium transition-all disabled:opacity-30 ${
+                        imageMode
+                          ? 'border-amber-500/30 bg-amber-500/[0.06] text-amber-500'
+                          : 'border-border/30 text-muted-foreground/50 hover:text-muted-foreground'
+                      }`}
+                    >
+                      <ImageIcon className="h-3 w-3" />
+                      <span className="hidden sm:inline">{t('admin.ai_generate_image')}</span>
+                    </button>
+                  )}
+                  {imageMode ? (
+                    <>
+                      {imageModels.length > 0 && (
+                        <ModelSelector
+                          models={imageModels}
+                          value={selectedImageModel}
+                          onChange={setSelectedImageModel}
+                          icon="image"
+                        />
+                      )}
+                      <select
+                        value={selectedImageSize}
+                        onChange={(event) => setSelectedImageSize(event.target.value)}
+                        disabled={sending}
+                        className="h-7 rounded-lg border border-border/30 bg-transparent px-2 text-[10px] text-muted-foreground outline-none disabled:opacity-30"
+                      >
+                        <option value="1024x1024">1:1</option>
+                        <option value="1024x1792">9:16</option>
+                        <option value="1792x1024">16:9</option>
+                      </select>
+                    </>
+                  ) : (
+                    chatModels.length > 0 && (
+                      <ModelSelector models={chatModels} value={selectedModel} onChange={setSelectedModel} />
+                    )
                   )}
                   <span className="hidden sm:inline text-[10px] text-muted-foreground/25 tracking-wide">
                     Enter {t('admin.ai_newline')}
@@ -901,7 +1595,7 @@ export default function AiAssistantPage() {
                   ) : (
                     <button
                       onClick={handleSend}
-                      disabled={!input.trim()}
+                      disabled={!canSend}
                       className="flex-shrink-0 h-9 w-9 flex items-center justify-center rounded-xl bg-foreground text-background hover:bg-foreground/90 hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)] disabled:opacity-15 disabled:cursor-not-allowed disabled:hover:shadow-none transition-all duration-200 cursor-pointer"
                       aria-label="Send message"
                     >
@@ -915,20 +1609,42 @@ export default function AiAssistantPage() {
         </div>
       </div>
 
-      {/* Delete confirmation */}
-      <SimpleDeleteDialog
-        isOpen={deleteConfirm !== null}
-        onCancel={() => setDeleteConfirm(null)}
-        onConfirm={() => { if (deleteConfirm) return handleDeleteConversation(deleteConfirm) }}
-        title={t('common.delete')}
-        message={t('admin.ai_delete_confirm')}
-        t={t}
-      />
+      {conversationMenu && typeof document !== 'undefined' && createPortal(
+        <div
+          role="menu"
+          className="fixed z-[100] min-w-40 rounded-lg border border-border bg-popover p-1 shadow-xl"
+          style={{ left: conversationMenu.x, top: conversationMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={Boolean(generatingTitleId)}
+            onClick={() => void handleGenerateConversationTitle(conversationMenu.id)}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-muted disabled:cursor-default disabled:opacity-50"
+          >
+            {generatingTitleId === conversationMenu.id
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Sparkles className="h-3.5 w-3.5" />}
+            {t('admin.ai_generate_title')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => startRenamingConversation(conversationMenu.id, 'sidebar')}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-popover-foreground transition-colors hover:bg-muted"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {t('admin.ai_rename_conversation')}
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
 
-/* ─── Empty State ───────────────────────────────────────────────────────────── */
+/* Empty State */
 
 function EmptyState({
   t,
@@ -1002,27 +1718,31 @@ function EmptyState({
   )
 }
 
-/* ─── Message Bubble ────────────────────────────────────────────────────────── */
+/* Message Bubble */
 
 function MessageBubble({
   message,
   copiedId,
   onCopy,
   onQuote,
+  onSaveImage,
+  onDownloadImage,
+  persistedMessageId,
   t,
 }: {
   message: EditorAiMessageDto
   copiedId: string | null
   onCopy: (content: string, id: string) => void
   onQuote: (msg: EditorAiMessageDto) => void
+  onSaveImage: (messageId: string, imageUrl: string) => Promise<void>
+  onDownloadImage: (imageUrl: string) => Promise<void>
+  persistedMessageId?: string
   t: (key: string) => string
 }) {
   const isUser = message.role === 'user'
 
-  const messageImages: Array<{ url: string }> | undefined =
-    message.metadata && typeof message.metadata === 'object' && 'images' in message.metadata
-      ? (message.metadata as { images?: Array<{ url: string }> }).images
-      : undefined
+  const messageImages = getMessageImages(message.metadata)
+  const saveMessageId = persistedMessageId || message.id
 
   if (isUser) {
     return (
@@ -1032,17 +1752,17 @@ function MessageBubble({
             <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/85 break-words">
               {message.content}
             </div>
-            {messageImages && messageImages.length > 0 && (
+            {messageImages.length > 0 && (
               <div className="mt-2.5 flex flex-wrap gap-2">
-                {messageImages.map((img, idx) => (
-                  <div key={idx} className="relative max-w-[200px] rounded-lg overflow-hidden border border-border/20">
-                    <img
-                      src={img.url}
-                      alt=""
-                      className="max-h-[200px] object-contain bg-muted/20"
-                      loading="lazy"
-                    />
-                  </div>
+                {messageImages.map((image, index) => (
+                  <MessageImage
+                    key={`${image.url}-${index}`}
+                    image={image}
+                    alt=""
+                    onSave={() => onSaveImage(saveMessageId, image.url)}
+                    onDownload={() => onDownloadImage(image.url)}
+                    t={t}
+                  />
                 ))}
               </div>
             )}
@@ -1075,22 +1795,40 @@ function MessageBubble({
           {/* Subtle warm glow */}
           <div className="absolute inset-0 rounded-2xl rounded-tl-md bg-gradient-to-br from-amber-500/[0.02] to-transparent pointer-events-none" />
           <div className="relative text-sm leading-relaxed text-foreground/90 break-words">
-            <div className="ai-markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
-            </div>
+            {message.status === 'streaming' && !message.content ? (
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-muted-foreground/60">{t('admin.ai_thinking')}</span>
+                <span className="flex gap-1">
+                  {[0, 1, 2].map((index) => (
+                    <span
+                      key={index}
+                      className="w-1 h-1 rounded-full bg-amber-500/30 animate-bounce"
+                      style={{ animationDelay: `${index * 150}ms` }}
+                    />
+                  ))}
+                </span>
+              </div>
+            ) : (
+              <div className="ai-markdown">
+                <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+                {message.status === 'streaming' && (
+                  <span className="inline-block w-[3px] h-4 bg-amber-500/60 animate-pulse ml-0.5 align-middle rounded-full" />
+                )}
+              </div>
+            )}
           </div>
-          {messageImages && messageImages.length > 0 && (
+          {messageImages.length > 0 && (
             <div className="relative mt-2.5 flex flex-wrap gap-2">
-              {messageImages.map((img, idx) => (
-                <div key={idx} className="relative max-w-[200px] rounded-lg overflow-hidden border border-border/20">
-                  <img
-                    src={img.url}
+              {messageImages.map((image, index) => (
+                  <MessageImage
+                    key={`${image.url}-${index}`}
+                    image={image}
                     alt=""
-                    className="max-h-[200px] object-contain bg-muted/20"
-                    loading="lazy"
+                    onSave={() => onSaveImage(saveMessageId, image.url)}
+                    onDownload={() => onDownloadImage(image.url)}
+                    t={t}
                   />
-                </div>
-              ))}
+                ))}
             </div>
           )}
 
@@ -1135,16 +1873,18 @@ function MessageBubble({
   )
 }
 
-/* ─── Model Selector ────────────────────────────────────────────────────────── */
+/* Model Selector */
 
 function ModelSelector({
   models,
   value,
   onChange,
+  icon = 'sparkles',
 }: {
   models: { id: string; label: string }[]
   value: string
   onChange: (value: string) => void
+  icon?: 'sparkles' | 'image'
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -1186,7 +1926,9 @@ function ModelSelector({
         onClick={handleToggle}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/30 text-[10px] font-medium text-muted-foreground/50 hover:text-muted-foreground hover:border-border/50 hover:bg-muted/30 transition-all duration-200 cursor-pointer"
       >
-        <Sparkles className="w-3 h-3 text-amber-500/40" />
+        {icon === 'image'
+          ? <ImageIcon className="w-3 h-3 text-amber-500/50" />
+          : <Sparkles className="w-3 h-3 text-amber-500/40" />}
         <span className="max-w-20 truncate">{selected?.label ?? 'Model'}</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -1249,7 +1991,7 @@ function ModelSelector({
   )
 }
 
-/* ─── Scope Badge ───────────────────────────────────────────────────────────── */
+/* Scope Badge */
 
 const SCOPE_LABELS: Record<string, { label: string; color: string }> = {
   'ai-assistant': { label: 'Chat', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },

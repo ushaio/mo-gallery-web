@@ -1,3 +1,7 @@
+import type {
+  EditorAiMessageMetadata,
+} from '@mo-gallery/ai-agent'
+
 export interface FilmRollDto {
   id: string
   name: string
@@ -178,6 +182,7 @@ export interface StoryAiGenerateInput {
   contextBefore?: string
   contextAfter?: string
   images?: string[]
+  imageKeys?: string[]
 }
 
 export interface AiImageUploadResult {
@@ -185,13 +190,26 @@ export interface AiImageUploadResult {
   key: string
 }
 
+export interface EditorAiImageSaveResult {
+  photoId: string
+  url?: string
+  thumbnailUrl?: string | null
+  alreadySaved: boolean
+}
+
 export interface StoryAiModelOption {
   id: string
   label: string
+  capabilities?: Array<'chat' | 'image'>
+  vision: boolean
+  tools: boolean
+  structuredOutput: boolean
+  contextWindow: number
 }
 
 export interface StoryAiModelsResponse {
   defaultModel: string
+  defaultImageModel?: string
   models: StoryAiModelOption[]
 }
 
@@ -210,18 +228,46 @@ export interface EditorAiConversationWithMessagesDto extends EditorAiConversatio
   messages: EditorAiMessageDto[]
 }
 
+export type EditorAiMessageRole = 'system' | 'user' | 'assistant'
+export type EditorAiMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed' | 'stopped'
+
 export interface EditorAiMessageDto {
   id: string
   conversationId: string
-  role: string
+  role: EditorAiMessageRole
   content: string
-  status: string
+  status: EditorAiMessageStatus
   model?: string
   action?: string
-  metadata?: unknown
+  metadata?: EditorAiMessageMetadata
   error?: string
   createdAt: string
 }
+
+export interface EditorAiMessageAppendInput {
+  role: EditorAiMessageRole
+  content: string
+  status?: EditorAiMessageStatus
+  model?: string
+  action?: string
+  metadata?: EditorAiMessageMetadata
+  error?: string
+}
+
+export type EditorAiMessageFinishInput =
+  | {
+    status: 'completed'
+    content: string
+    model?: string
+    metadata?: EditorAiMessageMetadata
+  }
+  | {
+    status: 'failed' | 'stopped'
+    content?: string
+    model?: string
+    metadata?: EditorAiMessageMetadata
+    error: string
+  }
 
 export interface EditorAiConversationInput {
   scopeId: string
@@ -246,6 +292,16 @@ export interface EditorAiConversationsQuery {
 
 export type EditorAiGenerateInput = StoryAiGenerateInput & {
   conversationId: string
+}
+
+export interface EditorAiImageGenerateInput {
+  conversationId: string
+  prompt: string
+  title?: string
+  imageModel?: string
+  imageSize?: string
+  images?: string[]
+  imageKeys?: string[]
 }
 
 export interface BlogDto {

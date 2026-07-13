@@ -1,3 +1,8 @@
+import type {
+  AiChangeSetState,
+  EditorAiMessageMetadata,
+} from '@mo-gallery/ai-agent'
+
 export interface FilmRollDto {
   id: string
   name: string
@@ -191,6 +196,10 @@ export interface StoryAiModelOption {
   provider?: string
   model?: string
   capabilities?: Array<'chat' | 'image'>
+  vision: boolean
+  tools: boolean
+  structuredOutput: boolean
+  contextWindow: number
 }
 
 export interface StoryAiModelsResponse {
@@ -214,17 +223,50 @@ export interface EditorAiConversationWithMessagesDto extends EditorAiConversatio
   messages: EditorAiMessageDto[]
 }
 
+export type EditorAiMessageRole = 'system' | 'user' | 'assistant'
+export type EditorAiMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed' | 'stopped'
+
 export interface EditorAiMessageDto {
   id: string
   conversationId: string
-  role: string
+  role: EditorAiMessageRole
   content: string
-  status: string
+  status: EditorAiMessageStatus
   model?: string
   action?: string
-  metadata?: unknown
+  metadata?: EditorAiMessageMetadata
   error?: string
   createdAt: string
+}
+
+export interface EditorAiMessageAppendInput {
+  role: EditorAiMessageRole
+  content: string
+  status?: EditorAiMessageStatus
+  model?: string
+  action?: string
+  metadata?: EditorAiMessageMetadata
+  error?: string
+}
+
+export type EditorAiMessageFinishInput =
+  | {
+    status: 'completed'
+    content: string
+    model?: string
+    metadata?: EditorAiMessageMetadata
+  }
+  | {
+    status: 'failed' | 'stopped'
+    content?: string
+    model?: string
+    metadata?: EditorAiMessageMetadata
+    error: string
+  }
+
+export interface EditorAiTaskStateUpdateInput {
+  messageId: string
+  state: AiChangeSetState
 }
 
 export interface EditorAiConversationInput {
@@ -259,6 +301,7 @@ export interface AiImageMetadata {
   type: 'image'
   localPath?: string
   uploadedUrl?: string | null
+  storageKey?: string | null
   photoId?: string | null
   prompt: string
   provider?: string

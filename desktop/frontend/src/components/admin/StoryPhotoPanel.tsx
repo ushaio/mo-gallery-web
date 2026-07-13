@@ -30,6 +30,7 @@ export interface PendingImage {
 }
 
 interface StoryPhotoPanelProps {
+  disabled: boolean
   isCollapsed: boolean
   isImmersiveMode: boolean
   currentStory: StoryDto | null
@@ -71,7 +72,39 @@ interface StoryPhotoPanelProps {
   onOpenPasteUploadSettings: () => void
 }
 
+function StoryPhotoPanelBoundary({
+  disabled,
+  children,
+}: {
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  const guardDisabledInteraction = (event: React.SyntheticEvent) => {
+    if (disabled) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+
+  return (
+    <fieldset
+      disabled={disabled}
+      aria-disabled={disabled}
+      className="contents border-0 p-0"
+      onClickCapture={guardDisabledInteraction}
+      onDragStartCapture={guardDisabledInteraction}
+      onDragEndCapture={guardDisabledInteraction}
+      onDragOverCapture={guardDisabledInteraction}
+      onDragLeaveCapture={guardDisabledInteraction}
+      onDropCapture={guardDisabledInteraction}
+    >
+      {children}
+    </fieldset>
+  )
+}
+
 export function StoryPhotoPanel({
+  disabled,
   isCollapsed,
   isImmersiveMode,
   currentStory,
@@ -137,7 +170,8 @@ export function StoryPhotoPanel({
 
   if (isCollapsed) {
     return (
-      <div
+      <StoryPhotoPanelBoundary disabled={disabled}>
+        <div
         className={cn(
           'flex h-full w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
           isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
@@ -168,12 +202,14 @@ export function StoryPhotoPanel({
             ) : null}
           </div>
         </div>
-      </div>
+        </div>
+      </StoryPhotoPanelBoundary>
     )
   }
 
   return (
-    <div
+    <StoryPhotoPanelBoundary disabled={disabled}>
+      <div
       className={cn(
         'flex h-full min-w-[320px] flex-col overflow-hidden border border-border bg-card',
         isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
@@ -562,7 +598,8 @@ export function StoryPhotoPanel({
             </AdminButton>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </StoryPhotoPanelBoundary>
   )
 }

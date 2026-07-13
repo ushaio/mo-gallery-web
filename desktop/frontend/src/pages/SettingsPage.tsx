@@ -6,12 +6,14 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { formatBytes } from '@/lib/utils'
 import { Skeleton } from '@/components/admin/Skeleton'
+import { GetAiConfig, GetStoryAiProviderModels, UpdateAiConfig } from '../../wailsjs/go/main/App'
+import { config as wailsConfig } from '../../wailsjs/go/models'
 import {
   Settings,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
   Unlink, Link, Sparkles, Eye, EyeOff,
-  FileText, Trash, Filter, FolderOpen, Database,
+  FileText, Trash, Filter, FolderOpen, Database, Image as ImageIcon,
 } from 'lucide-react'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
@@ -53,8 +55,8 @@ export function SettingsPage() {
       setConfig(result || {})
       setDirty(false)
       toast.success('设置已保存')
-    } catch (err: any) {
-      toast.error('保存失败: ' + (err?.message || '未知错误'))
+    } catch (error: unknown) {
+      toast.error('保存失败: ' + getErrorMessage(error))
     } finally {
       setSaving(false)
     }
@@ -1071,27 +1073,59 @@ interface AiProviderConfig {
   base_url: string
   api_key: string
   models: string[]
+  image_models: string[]
 }
 
 interface AiConfig {
   default_model: string
+  default_image_model: string
   providers: Record<string, AiProviderConfig>
 }
 
-const emptyAiProvider: AiProviderConfig = { base_url: '', api_key: '', models: [''] }
+const emptyAiProvider: AiProviderConfig = {
+  base_url: '',
+  api_key: '',
+  models: [''],
+  image_models: [],
+}
 
-function normalizeAiConfig(value: any): AiConfig {
-  const providers = value?.providers && typeof value.providers === 'object' ? value.providers : {}
+function normalizeModelNames(models: string[]): string[] {
+  return [...new Set(models.map(model => model.trim()).filter(Boolean))]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function getStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return typeof error === 'string' ? error : 'Unknown error'
+}
+
+function normalizeAiConfig(value: unknown): AiConfig {
+  const config = isRecord(value) ? value : {}
+  const rawProviders = isRecord(config.providers) ? config.providers : {}
   return {
-    default_model: value?.default_model || value?.model || '',
-    providers: Object.fromEntries(Object.entries(providers).map(([id, provider]: [string, any]) => [
-      id,
-      {
-        base_url: provider?.base_url || '',
-        api_key: provider?.api_key || '',
-        models: Array.isArray(provider?.models) && provider.models.length > 0 ? provider.models : [''],
-      },
-    ])),
+    default_model: getString(config.default_model) || getString(config.model),
+    default_image_model: getString(config.default_image_model),
+    providers: Object.fromEntries(Object.entries(rawProviders).map(([id, value]) => {
+      const provider = isRecord(value) ? value : {}
+      const models = getStringList(provider.models)
+      return [id, {
+        base_url: getString(provider.base_url),
+        api_key: getString(provider.api_key),
+        models: models.length > 0 ? models : [''],
+        image_models: getStringList(provider.image_models),
+      }]
+    })),
   }
 }
 
@@ -1100,16 +1134,30 @@ function buildAiConfigPayload(aiConfig: AiConfig): AiConfig {
   for (const [providerId, provider] of Object.entries(aiConfig.providers)) {
     const id = providerId.trim()
     if (!id) continue
+    const models = normalizeModelNames(provider.models)
+    const configuredModels = new Set(models)
     providers[id] = {
       ...provider,
-      models: provider.models.map(model => model.trim()).filter(Boolean),
+      models,
+      image_models: normalizeModelNames(provider.image_models).filter(model => configuredModels.has(model)),
     }
   }
-  return { ...aiConfig, providers }
+  const chatModelIds = new Set(Object.entries(providers).flatMap(([providerId, provider]) => (
+    provider.models.map(model => `${providerId}:${model}`)
+  )))
+  const imageModelIds = new Set(Object.entries(providers).flatMap(([providerId, provider]) => (
+    provider.image_models.map(model => `${providerId}:${model}`)
+  )))
+  return {
+    ...aiConfig,
+    default_model: chatModelIds.has(aiConfig.default_model) ? aiConfig.default_model : '',
+    default_image_model: imageModelIds.has(aiConfig.default_image_model) ? aiConfig.default_image_model : '',
+    providers,
+  }
 }
 
 function AiTab() {
-  const [aiConfig, setAiConfig] = useState<AiConfig>({ default_model: '', providers: {} })
+  const [aiConfig, setAiConfig] = useState<AiConfig>({ default_model: '', default_image_model: '', providers: {} })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
@@ -1117,23 +1165,23 @@ function AiTab() {
   const [modelCandidates, setModelCandidates] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
-    try {
-      const result = (window as any).go?.main?.App?.GetAiConfig?.()
-      if (result && typeof result.then === 'function') {
-        result.then((r: any) => { if (r) setAiConfig(normalizeAiConfig(r)) }).finally(() => setLoading(false))
-      } else if (result) {
-        setAiConfig(normalizeAiConfig(result))
-        setLoading(false)
-      } else {
-        setLoading(false)
-      }
-    } catch { setLoading(false) }
+    void GetAiConfig()
+      .then(result => { if (!cancelled) setAiConfig(normalizeAiConfig(result)) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [])
 
   const providerIds = Object.keys(aiConfig.providers).sort()
   const defaultOptions = providerIds.flatMap(providerId => (
     aiConfig.providers[providerId].models
+      .filter(model => model.trim())
+      .map(model => ({ value: `${providerId}:${model.trim()}`, label: `${providerId} / ${model.trim()}` }))
+  ))
+  const defaultImageOptions = providerIds.flatMap(providerId => (
+    aiConfig.providers[providerId].image_models
       .filter(model => model.trim())
       .map(model => ({ value: `${providerId}:${model.trim()}`, label: `${providerId} / ${model.trim()}` }))
   ))
@@ -1156,7 +1204,15 @@ function AiTab() {
       const defaultModel = prev.default_model.startsWith(`${oldId}:`)
         ? `${id}:${prev.default_model.slice(oldId.length + 1)}`
         : prev.default_model
-      return { ...prev, default_model: defaultModel, providers: { ...rest, [id]: provider } }
+      const defaultImageModel = prev.default_image_model.startsWith(`${oldId}:`)
+        ? `${id}:${prev.default_image_model.slice(oldId.length + 1)}`
+        : prev.default_image_model
+      return {
+        ...prev,
+        default_model: defaultModel,
+        default_image_model: defaultImageModel,
+        providers: { ...rest, [id]: provider },
+      }
     })
     setModelCandidates(prev => {
       const { [oldId]: candidates, ...rest } = prev
@@ -1173,27 +1229,48 @@ function AiTab() {
     }
     setAiConfig(prev => ({
       ...prev,
-      providers: { ...prev.providers, [providerId]: { ...emptyAiProvider } },
+      providers: {
+        ...prev.providers,
+        [providerId]: { ...emptyAiProvider, models: [''], image_models: [] },
+      },
     }))
   }
 
   const removeProvider = (providerId: string) => {
     if (!confirm(`确定要删除模型源 ${providerId} 吗？`)) return
     setAiConfig(prev => {
-      const { [providerId]: _removed, ...providers } = prev.providers
+      const providers = Object.fromEntries(Object.entries(prev.providers).filter(([id]) => id !== providerId))
       const default_model = prev.default_model.startsWith(`${providerId}:`) ? '' : prev.default_model
-      return { ...prev, default_model, providers }
+      const default_image_model = prev.default_image_model.startsWith(`${providerId}:`) ? '' : prev.default_image_model
+      return { ...prev, default_model, default_image_model, providers }
     })
     setModelCandidates(prev => {
-      const { [providerId]: _removed, ...rest } = prev
+      const rest = Object.fromEntries(Object.entries(prev).filter(([id]) => id !== providerId))
       return rest
     })
   }
 
   const updateModel = (providerId: string, index: number, value: string) => {
-    const provider = aiConfig.providers[providerId]
-    const models = provider.models.map((model, i) => i === index ? value : model)
-    updateProvider(providerId, { models })
+    setAiConfig(prev => {
+      const provider = prev.providers[providerId]
+      const previousModel = provider.models[index].trim()
+      const nextModel = value.trim()
+      const models = provider.models.map((model, i) => i === index ? value : model)
+      const image_models = provider.image_models
+        .map(model => model === previousModel ? nextModel : model)
+        .filter(Boolean)
+      const previousId = `${providerId}:${previousModel}`
+      const nextId = nextModel ? `${providerId}:${nextModel}` : ''
+      return {
+        ...prev,
+        default_model: prev.default_model === previousId ? nextId : prev.default_model,
+        default_image_model: prev.default_image_model === previousId ? nextId : prev.default_image_model,
+        providers: {
+          ...prev.providers,
+          [providerId]: { ...provider, models, image_models },
+        },
+      }
+    })
   }
 
   const addModel = (providerId: string) => {
@@ -1202,17 +1279,44 @@ function AiTab() {
   }
 
   const removeModel = (providerId: string, index: number) => {
-    const provider = aiConfig.providers[providerId]
-    const removed = provider.models[index]
-    const models = provider.models.filter((_, i) => i !== index)
     setAiConfig(prev => {
-      const defaultModel = prev.default_model === `${providerId}:${removed}` ? '' : prev.default_model
+      const provider = prev.providers[providerId]
+      const removed = provider.models[index].trim()
+      const models = provider.models.filter((_, i) => i !== index)
+      const removedId = `${providerId}:${removed}`
       return {
         ...prev,
-        default_model: defaultModel,
+        default_model: prev.default_model === removedId ? '' : prev.default_model,
+        default_image_model: prev.default_image_model === removedId ? '' : prev.default_image_model,
         providers: {
           ...prev.providers,
-          [providerId]: { ...provider, models: models.length > 0 ? models : [''] },
+          [providerId]: {
+            ...provider,
+            models: models.length > 0 ? models : [''],
+            image_models: provider.image_models.filter(model => model !== removed),
+          },
+        },
+      }
+    })
+  }
+
+  const toggleImageModel = (providerId: string, model: string, enabled: boolean) => {
+    const modelName = model.trim()
+    if (!modelName) return
+    setAiConfig(prev => {
+      const provider = prev.providers[providerId]
+      const image_models = enabled
+        ? normalizeModelNames([...provider.image_models, modelName])
+        : provider.image_models.filter(item => item !== modelName)
+      const modelId = `${providerId}:${modelName}`
+      return {
+        ...prev,
+        default_image_model: enabled && !prev.default_image_model
+          ? modelId
+          : (!enabled && prev.default_image_model === modelId ? '' : prev.default_image_model),
+        providers: {
+          ...prev.providers,
+          [providerId]: { ...provider, image_models },
         },
       }
     })
@@ -1221,10 +1325,10 @@ function AiTab() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await (window as any).go.main.App.UpdateAiConfig(buildAiConfigPayload(aiConfig))
+      await UpdateAiConfig(wailsConfig.AIConfig.createFrom(buildAiConfigPayload(aiConfig)))
       toast.success('配置已保存')
-    } catch (err: any) {
-      toast.error('保存失败: ' + (err?.message || '未知错误'))
+    } catch (error: unknown) {
+      toast.error('保存失败: ' + getErrorMessage(error))
     } finally { setSaving(false) }
   }
 
@@ -1236,13 +1340,15 @@ function AiTab() {
     }
     setFetchingProvider(providerId)
     try {
-      await (window as any).go.main.App.UpdateAiConfig(buildAiConfigPayload(aiConfig))
-      const result = await (window as any).go.main.App.GetStoryAiProviderModels(providerId)
-      const list = result?.models?.map((m: any) => m.model || String(m.id || '').split(':').slice(1).join(':')).filter(Boolean) || []
+      await UpdateAiConfig(wailsConfig.AIConfig.createFrom(buildAiConfigPayload(aiConfig)))
+      const result = await GetStoryAiProviderModels(providerId)
+      const list = result?.models
+        ?.map(model => model.model || String(model.id || '').split(':').slice(1).join(':'))
+        .filter(Boolean) || []
       setModelCandidates(prev => ({ ...prev, [providerId]: list }))
       toast.success(`获取到 ${list.length} 个模型`)
-    } catch (err: any) {
-      toast.error('获取模型失败: ' + (err?.message || '未知错误'))
+    } catch (error: unknown) {
+      toast.error('获取模型失败: ' + getErrorMessage(error))
     } finally { setFetchingProvider(null) }
   }
 
@@ -1255,102 +1361,152 @@ function AiTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <Section title="模型配置">
-        <div className="space-y-4">
-          {providerIds.length === 0 && (
-            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>暂无模型源，请先添加。</p>
-          )}
-          {providerIds.map(providerId => {
-            const provider = aiConfig.providers[providerId]
-            const showKey = showKeys[providerId] === true
-            const modelCandidateListId = `ai-model-candidates-${providerId.replace(/[^a-zA-Z0-9_-]/g, '-')}`
-            const candidates = modelCandidates[providerId] || []
-            return (
-              <div key={providerId} className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--border)' }}>
-                <div className="flex items-center gap-2">
-                  <input defaultValue={providerId} onBlur={e => updateProviderId(providerId, e.target.value)}
-                    className="flex-1 px-3 py-1.5 text-sm font-medium rounded border outline-none" style={inputStyle} />
-                  <button onClick={() => removeProvider(providerId)} className="p-1 rounded hover:opacity-80" style={{ color: 'var(--destructive)' }}>
-                    <Trash2 size={14} />
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-medium">模型源</h3>
+          <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            每个模型源独立配置；可为单个模型标记图片生成能力。
+          </p>
+        </div>
+        <button onClick={addProvider}
+          className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-2 text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+          <Plus size={14} /> 添加模型源
+        </button>
+      </div>
+
+      {providerIds.length === 0 && (
+        <div className="rounded-lg border border-dashed px-4 py-8 text-center text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+          暂无模型源，请先添加。
+        </div>
+      )}
+
+      {providerIds.map(providerId => {
+        const provider = aiConfig.providers[providerId]
+        const showKey = showKeys[providerId] === true
+        const modelCandidateListId = `ai-model-candidates-${providerId.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+        const candidates = modelCandidates[providerId] || []
+        return (
+          <section key={providerId} className="space-y-4 rounded-xl border p-5 shadow-sm"
+            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+            <div className="flex items-end gap-2 border-b pb-4" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex-1">
+                <label className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
+                  模型源标识
+                </label>
+                <input defaultValue={providerId} onBlur={e => updateProviderId(providerId, e.target.value)}
+                  className="w-full rounded border px-3 py-1.5 text-sm font-medium outline-none" style={inputStyle} />
+              </div>
+              <button onClick={() => removeProvider(providerId)}
+                className="flex h-8 w-8 items-center justify-center rounded-md border transition-opacity hover:opacity-80"
+                style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }} aria-label={`删除模型源 ${providerId}`}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Field label="API 地址" description="OpenAI 兼容的 API 地址，如 https://api.openai.com/v1">
+                <input type="text" value={provider.base_url}
+                  onChange={e => updateProvider(providerId, { base_url: e.target.value })}
+                  className="w-full rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle} />
+              </Field>
+
+              <Field label="API Key">
+                <div className="relative">
+                  <input type={showKey ? 'text' : 'password'} value={provider.api_key}
+                    onChange={e => updateProvider(providerId, { api_key: e.target.value })}
+                    className="w-full rounded border px-3 py-1.5 pr-9 text-sm outline-none" style={inputStyle} />
+                  <button type="button" onClick={() => setShowKeys(prev => ({ ...prev, [providerId]: !showKey }))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors"
+                    style={{ color: 'var(--muted-foreground)' }} aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}>
+                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 </div>
+              </Field>
+            </div>
 
-                <Field label="API 地址" description="OpenAI 兼容的 API 地址，如 https://api.openai.com/v1">
-                  <input type="text" value={provider.base_url}
-                    onChange={e => updateProvider(providerId, { base_url: e.target.value })}
-                    className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-                </Field>
-
-                <Field label="API Key">
-                  <div className="relative">
-                    <input type={showKey ? 'text' : 'password'} value={provider.api_key}
-                      onChange={e => updateProvider(providerId, { api_key: e.target.value })}
-                      className="w-full px-3 py-1.5 pr-9 text-sm rounded border outline-none" style={inputStyle} />
-                    <button type="button" onClick={() => setShowKeys(prev => ({ ...prev, [providerId]: !showKey }))}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors"
-                      style={{ color: 'var(--muted-foreground)' }}>
-                      {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                  </div>
-                </Field>
-
-                <Field label="模型列表">
-                  <div className="space-y-2">
-                    {provider.models.map((model, index) => (
-                      <div key={index} className="flex gap-2">
-                        <input value={model} onChange={e => updateModel(providerId, index, e.target.value)} placeholder="gpt-4o"
-                          list={candidates.length > 0 ? modelCandidateListId : undefined}
-                          className="flex-1 px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-                        <button onClick={() => removeModel(providerId, index)} className="px-2 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    {candidates.length > 0 && (
-                      <datalist id={modelCandidateListId}>
-                        {candidates.map(model => <option key={model} value={model} />)}
-                      </datalist>
-                    )}
-                    <div className="flex gap-2">
-                      <button onClick={() => addModel(providerId)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                        <Plus size={14} /> 添加模型
-                      </button>
-                      <button onClick={() => handleFetchModels(providerId)} disabled={fetchingProvider === providerId}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                        {fetchingProvider === providerId ? <Loader2 size={12} className="animate-spin" /> : null}
-                        获取模型
+            <Field label="模型列表" description="开启“图片生成”后，该模型会出现在 AI 对话的生图模型选择器中。">
+              <div className="space-y-2">
+                {provider.models.map((model, index) => {
+                  const supportsImage = Boolean(model.trim()) && provider.image_models.includes(model.trim())
+                  return (
+                    <div key={index} className="flex flex-col gap-2 sm:flex-row">
+                      <input value={model} onChange={e => updateModel(providerId, index, e.target.value)} placeholder="gpt-4o"
+                        list={candidates.length > 0 ? modelCandidateListId : undefined}
+                        className="min-w-0 flex-1 rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle} />
+                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
+                        style={{
+                          borderColor: supportsImage ? '#f59e0b' : 'var(--border)',
+                          color: supportsImage ? '#d97706' : 'var(--muted-foreground)',
+                          backgroundColor: supportsImage ? 'rgba(245, 158, 11, 0.08)' : 'transparent',
+                        }}>
+                        <input type="checkbox" checked={supportsImage} disabled={!model.trim()}
+                          onChange={e => toggleImageModel(providerId, model, e.target.checked)} className="sr-only" />
+                        <ImageIcon size={13} /> 图片生成
+                      </label>
+                      <button onClick={() => removeModel(providerId, index)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded border"
+                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }} aria-label="删除模型">
+                        <X size={14} />
                       </button>
                     </div>
-                  </div>
-                </Field>
+                  )
+                })}
+                {candidates.length > 0 && (
+                  <datalist id={modelCandidateListId}>
+                    {candidates.map(model => <option key={model} value={model} />)}
+                  </datalist>
+                )}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button onClick={() => addModel(providerId)}
+                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs"
+                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                    <Plus size={14} /> 添加模型
+                  </button>
+                  <button onClick={() => handleFetchModels(providerId)} disabled={fetchingProvider === providerId}
+                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs disabled:opacity-50"
+                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                    {fetchingProvider === providerId ? <Loader2 size={12} className="animate-spin" /> : null}
+                    获取模型
+                  </button>
+                </div>
               </div>
-            )
-          })}
-        </div>
+            </Field>
+          </section>
+        )
+      })}
 
-        <Field label="默认模型">
-          <select value={aiConfig.default_model} onChange={e => setAiConfig(prev => ({ ...prev, default_model: e.target.value }))}
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle}>
-            <option value="">请选择默认模型</option>
-            {defaultOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </Field>
-
-        <div className="flex gap-2 pt-2">
-          <button onClick={addProvider}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md border"
-            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            <Plus size={14} /> 添加模型源
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-md disabled:opacity-50"
-            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? '保存中...' : '保存'}
-          </button>
+      <div className="space-y-4 rounded-xl border p-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+        <h3 className="text-sm font-medium">默认模型</h3>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Field label="默认对话模型">
+            <select value={aiConfig.default_model} onChange={e => setAiConfig(prev => ({ ...prev, default_model: e.target.value }))}
+              className="w-full rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle}>
+              <option value="">请选择默认对话模型</option>
+              {defaultOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </Field>
+          <Field label="默认图片生成模型" description="仅显示已标记图片生成能力的模型。">
+            <select value={aiConfig.default_image_model}
+              onChange={e => setAiConfig(prev => ({ ...prev, default_image_model: e.target.value }))}
+              className="w-full rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle}>
+              <option value="">请选择默认图片生成模型</option>
+              {defaultImageOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </Field>
         </div>
-      </Section>
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1.5 rounded-md px-4 py-2 text-xs disabled:opacity-50"
+          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {saving ? '保存中...' : '保存'}
+        </button>
+      </div>
     </div>
   )
 }
