@@ -2,317 +2,466 @@
 
 # 📸 MO Gallery
 
-**A modern photo gallery and narrative blog platform with integrated backend, multiple deployment options, and storage backends**
+**An integrated platform for photography publishing, visual storytelling, and gallery management**
 
+MO Gallery combines a **Next.js web application** with a **Wails desktop administration client** for photos, albums, film rolls, stories, blogs, AI-assisted creation, comments, and multiple storage backends.
+
+[![Version](https://img.shields.io/badge/version-0.7.0--beta-2563eb?style=flat-square)](RELEASE.md)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
-[![Hono](https://img.shields.io/badge/Hono-API-orange?style=flat-square)](https://hono.dev/)
-[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS_4-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![React](https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react)](https://react.dev/)
+[![Wails](https://img.shields.io/badge/Wails-2-cb2d3e?style=flat-square)](https://wails.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-7-2d3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
+[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](#-license)
 
-English | [中文](README.md)
+[English](README_EN.md) · [中文](README.md) · [Changelog](RELEASE.md) · [Releases](https://github.com/ushaio/mo-gallery-web/releases)
 
 </div>
 
-Vercel deployment recommended. Docker deployment has not been fully tested.
+---
+
+## 📌 Overview
+
+MO Gallery brings the public photography site, browser-based administration, and a native desktop workspace into one repository:
+
+| Module | Purpose | Main capabilities |
+|--------|---------|-------------------|
+| **Public Web App** | Publish photography and written content | Gallery, curated photos, albums, film rolls, stories, blogs, friend links, comments, i18n, and themes |
+| **Web Admin** | Manage content in the browser | Uploads, album and film-roll management, story editing, storage maintenance, comment moderation, settings, and activity logs |
+| **Desktop Admin** | Native desktop workflows | Wails + Go + React, with gallery management, batch uploads, photo journals, Zine, AI assistance, and local file processing |
+| **API and Data** | Shared business and data access | Hono API, Prisma/GORM, PostgreSQL, JWT, and Linux DO OAuth |
+| **Storage** | Pluggable media storage | Local filesystem, S3-compatible storage, Cloudflare R2, and GitHub repositories |
+
+> The current version is `v0.7.0-beta`. The web application supports Vercel, Docker, and self-hosted Node.js deployments. The current Desktop release workflow builds Windows artifacts.
 
 ---
 
-## ✨ Features
+## 🖼️ Screenshots
 
-### 📷 Photo Gallery
-- **Multiple View Modes** — Grid, Masonry, and Timeline views with smooth transitions
-- **EXIF Data Extraction** — Automatically extracts camera, lens, aperture, shutter speed, ISO, and more
-- **Dominant Color Extraction** — Extracts primary colors from images for beautiful placeholders
-- **Album Management** — Organize photos into albums with cover images and album detail pages
-- **Batch Upload** — Upload multiple photos with compression and progress tracking, select target album
-- **Duplicate Detection** — Client-side deduplication via SHA-256 hashing
-- **Photo Pagination** — Efficient pagination for large photo collections
-- **Responsive Design** — Optimized for desktop, tablet, and mobile devices
+### Web
 
-### 📖 Stories / Narratives
-- Combine multiple photos into stories with rich text narrative content
-- **TipTap Rich Text Editor** — WYSIWYG editing with image resizing, tables, alignment, and more
-- Immersive editing mode for long-form writing
-- Photo management within stories (add / remove / reorder)
-- Cover photo selection
-- Local draft auto-save (IndexedDB)
+> Web screenshots will be added later.
 
-### ✍️ Blog System
-- Shares the **TipTap WYSIWYG editor** with the narrative system for a unified editing experience
-- Consistent content rendering between editor and published pages
-- One-click photo insertion from gallery
-- Publish / draft status management
-- Local draft auto-save
+### Desktop
 
-### 👥 Friend Links (They Page)
-- Showcase friends and their websites
-- Customizable avatars and descriptions
-- Admin management interface
-- Card-based display layout
+| Sign in | Overview |
+|:-------:|:--------:|
+| <img src="./README.assets/image-20260706144644323.png" alt="Sign in" width="100%" /> | <img src="./README.assets/image-20260706144716752.png" alt="Overview" width="100%" /> |
 
-### 💬 Comment System
-- **Dual Backend Support** — Local database comments or Waline (LeanCloud)
-- **Linux DO OAuth Integration** — Seamless authentication with Linux DO accounts
-- Comment moderation in admin panel (pending → approved / rejected)
-- Display Linux DO usernames and trust levels
-- Optional: restrict comments to Linux DO users only
+| Photo Library | Album Management |
+|:-------------:|:----------------:|
+| <img src="./README.assets/image-20260706144824799.png" alt="Photo Library" width="100%" /> | <img src="./README.assets/image-20260706144840239.png" alt="Album Management" width="100%" /> |
 
-### 🔐 Admin Dashboard
-- **Photo Management** — Comprehensive photo management with filtering and pagination
-- **Album Management** — Create, edit, and organize albums
-- **Story Management** — Create and manage photo stories with photo selection and ordering
-- **Blog Editor** — TipTap WYSIWYG editor
-- **Friend Links Management** — Add, edit, and remove friend links
-- **Storage Management** — Scan storage status, detect orphaned and missing files
-- **System Settings** — Configure site title, description, social links, and more
-- **Comment Moderation** — Review and manage user comments
+| Film Roll Management | Image Upload |
+|:--------------------:|:------------:|
+| <img src="./README.assets/image-20260706144908173.png" alt="Film Roll Management" width="100%" /> | <img src="./README.assets/image-20260706144919453.png" alt="Image Upload" width="100%" /> |
 
-### 🏠 Homepage
-- **Dynamic Hero Section** — Random hero images from your gallery
-- **Particle Effects** — Animated particle background
-- **Auto Carousel** — Automatic image slideshow
-- **Scroll Animations** — Smooth scroll-triggered animations
+| Photo Journal | Zine |
+|:-------------:|:----:|
+| <img src="./README.assets/image-20260706144944795.png" alt="Photo Journal" width="100%" /> | <img src="./README.assets/image-20260706144953907.png" alt="Zine" width="100%" /> |
 
-### 🌍 Internationalization
-- Chinese and English
-- Client-side i18n via React Context
+| Zine | AI Chat |
+|:----:|:-------:|
+| <img src="./README.assets/image-20260706145001773.png" alt="Zine" width="100%" /> | <img src="./README.assets/image-20260706145011594.png" alt="AI Chat" width="100%" /> |
 
-### 🎨 Theming
-- Dark / Light / System preference
-- Smooth theme transitions
-- Consistent styling across all components
+| Storage Maintenance | System Settings |
+|:-------------------:|:---------------:|
+| <img src="./README.assets/image-20260706145024281.png" alt="Storage Maintenance" width="100%" /> | <img src="./README.assets/image-20260706145052073.png" alt="System Settings" width="100%" /> |
 
-### ☁️ Multiple Storage Backends
-- **Local Storage** — Store files on local filesystem
-- **Cloudflare R2** — S3-compatible object storage
-- **GitHub** — Use a GitHub repository as storage
+<p align="center"><strong>Friend Link Management</strong></p>
+<p align="center"><img src="./README.assets/image-20260706145108246.png" alt="Friend Link Management" width="72%" /></p>
 
 ---
 
-## 🛠️ Tech Stack
+## ✨ Core Features
+
+### 📷 Photos, Albums, and Film Rolls
+
+- **Multiple gallery views** — Grid, Masonry, and Timeline layouts with smooth transitions.
+- **EXIF extraction** — Automatically reads camera, lens, aperture, shutter speed, ISO, capture time, GPS, and other metadata.
+- **Dominant color extraction** — Generates natural-looking loading placeholders from image colors.
+- **Album management** — Organize photos into albums with covers, detail pages, and ordering.
+- **Film roll management** — Present photos as film rolls with covers, metadata, frame ordering, and batch photo assignment.
+- **Batch uploads** — Drag and drop multiple files, compress images, track progress, and select a target album or film roll.
+- **Duplicate detection** — Client-side deduplication with SHA-256 hashes.
+- **Pagination and visibility** — Efficient large-gallery pagination, filtering, curation, and public visibility controls.
+- **Responsive presentation** — Optimized for desktop, tablet, and mobile screens.
+
+### 📖 Stories, Blogs, Photo Journals, and Zine
+
+- **Stories / narratives** — Combine multiple photos with long-form rich-text narratives.
+- **TipTap rich-text editor** — WYSIWYG editing with image resizing, tables, alignment, and structured JSON content.
+- **Story maps** — Display geotagged story photos with MapLibre GL.
+- **Immersive writing** — Long-form editing mode, cover selection, and in-story photo add/remove/reorder workflows.
+- **Local drafts** — Automatically preserve story and blog drafts in IndexedDB.
+- **Blog system** — Shares the story editor and renderer, with gallery photo insertion and draft/published states.
+- **Photo Journal** — Quickly organize everyday photography notes from the Desktop client.
+- **Zine** — Compose photography publications in Desktop with preview and export workflows.
+
+### 🤖 AI-Assisted Creation
+
+- Integrated AI chat and editing assistance with multi-turn conversations and context management.
+- OpenAI-compatible API support for OpenAI, DeepSeek, and other compatible providers.
+- Configurable endpoint, API key, model, and system prompt.
+- Multimodal image input, editor AI actions, and image-generation workflows.
+- Shared Web and Desktop capabilities through `packages/ai-agent` and `packages/tiptap-editor`.
+
+### 🔐 Web Admin and Desktop Workspace
+
+- **Overview dashboard** — Summarizes content, gallery, and system status.
+- **Photo management** — Filtering, pagination, batch actions, visibility, and featured-photo controls.
+- **Album and film-roll management** — Create, edit, organize, and reorder related photos.
+- **Upload center** — Digital/film upload modes, compression, retries, and progress tracking.
+- **Storage maintenance** — Scan storage, detect orphaned or missing files, and manage storage sources.
+- **System settings** — Configure site metadata, social links, storage backends, AI services, and Desktop connections.
+- **Friend links** — Add, edit, remove, and reorder friend links.
+- **Comment moderation** — Manage pending, approved, and rejected comments.
+- **Activity logs** — Review important administration actions.
+
+### 💬 Comments, Authentication, and Social Features
+
+- **Dual comment backends** — Local PostgreSQL comments or Waline with LeanCloud.
+- **Linux DO OAuth** — Linux DO authentication with username and trust-level display.
+- **Comment access control** — Optionally restrict commenting to Linux DO users.
+- **Administrator authentication** — Username/password login, JWT, and a configurable hidden login path.
+- **Friend links page** — Showcase people and their websites with avatars, descriptions, and cards.
+
+### 🎨 Presentation and Infrastructure
+
+- **Dynamic homepage** — Random hero images, particle effects, an automatic carousel, and scroll-triggered animation.
+- **Internationalization** — Built-in Chinese and English interfaces using client-side dictionaries.
+- **Theme switching** — Dark, light, and system modes with consistent component styling.
+- **Multiple storage backends** — Local, S3-compatible, Cloudflare R2, and GitHub storage with admin-managed storage sources.
+
+---
+
+## 🧱 Architecture
+
+```text
+┌──────────────────────────────┐       ┌──────────────────────────────┐
+│ Web: Next.js + React         │       │ Desktop: Wails + Go + React │
+│ Public site / Web admin      │       │ Native UI / Local workflows │
+└──────────────┬───────────────┘       └──────────────┬───────────────┘
+               │                                      │
+               ▼                                      ├── GORM → PostgreSQL
+        Hono API / JWT                                └── HTTP → Web API
+               │
+               ▼
+       Prisma 7 / PostgreSQL
+               │
+               ▼
+   Local / S3 / R2 / GitHub Storage
+
+Shared packages: packages/tiptap-editor · packages/ai-agent
+```
+
+### Technology Stack
 
 | Category | Technology |
 |----------|------------|
-| **Framework** | Next.js 16 (App Router) + React 19 |
-| **Language** | TypeScript 5 (strict mode) |
-| **API** | Hono.js (embedded in Next.js) |
-| **Database** | PostgreSQL + Prisma 6 |
-| **Styling** | Tailwind CSS 4 |
-| **Animation** | Framer Motion |
-| **Image Processing** | Sharp, ExifReader |
-| **Rich Text Editor** | TipTap 3 |
-| **Authentication** | JWT + Linux DO OAuth |
-| **State Management** | React Context |
-| **Build Optimization** | React Compiler |
+| Web | Next.js 16, React 19, App Router, React Compiler |
+| Desktop | Wails 2, Go 1.24, React 19, Vite 6, GORM |
+| API | Hono.js embedded in a Next.js Route Handler |
+| Database | PostgreSQL 16, Prisma 7 |
+| Styling and animation | Tailwind CSS 4, Framer Motion |
+| Editor | TipTap 3 and a shared editor package |
+| Image processing | Sharp, ExifReader, JS/WASM image compression |
+| Maps | MapLibre GL, react-map-gl |
+| Authentication | JWT, Linux DO OAuth |
+| State and drafts | React Context, Zustand, IndexedDB |
+| Storage | Local, S3, Cloudflare R2, GitHub |
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Requirements
 
-- Node.js 18+
-- pnpm
-- PostgreSQL
+| Tool | Recommended version | Purpose |
+|------|---------------------|---------|
+| Node.js | 24.x | Matches the CI build environment |
+| pnpm | 10.x | Monorepo dependency management |
+| PostgreSQL | 16.x | Web and Desktop database |
+| Go | 1.24.x | Required for Desktop development only |
+| Wails CLI | 2.12.0 | Required for Desktop development and builds only |
 
-### Local Development
+### 1. Clone and Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/mo-gallery.git
-cd mo-gallery
-
-# Install dependencies
+git clone https://github.com/ushaio/mo-gallery-web.git
+cd mo-gallery-web
 pnpm install
+```
 
-# Configure environment variables
+### 2. Configure Environment Variables
+
+```bash
 cp .env.example .env
-# Edit .env with your database connection and admin credentials
+```
 
-# Generate Prisma client and initialize database
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+At minimum, configure the database, administrator credentials, and JWT secret:
+
+```env
+DATABASE_URL="postgresql://postgres:password@localhost:5432/mo_gallery"
+DIRECT_URL="postgresql://postgres:password@localhost:5432/mo_gallery"
+ADMIN_USERNAME="admin"
+ADMIN_PASSWORD="replace-with-a-strong-password"
+JWT_SECRET="replace-with-a-long-random-secret"
+```
+
+### 3. Initialize the Database and Start Web
+
+```bash
 pnpm run prisma:generate
 pnpm run prisma:dev
-
-# Start development server
+pnpm run prisma:seed
 pnpm run dev
 ```
 
-Visit `http://localhost:3000` to see your gallery, and `/login/admin` to access the admin dashboard.
+Open:
 
-### Minimal Environment Variables
+- Public site: `http://localhost:3000`
+- Administrator login: `http://localhost:3000/login/admin`
+- Custom login route: `/login/{NEXT_PUBLIC_ADMIN_LOGIN_URL}`
 
-```env
-# Database (required)
-DATABASE_URL="postgresql://postgres:password@localhost:5432/mo_gallery"
-DIRECT_URL="postgresql://postgres:password@localhost:5432/mo_gallery"
+### 4. Start Desktop Development
 
-# Admin credentials
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="admin123"
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+cd desktop
+wails dev
 ```
+
+Database, Web API, JWT, storage, and AI settings can be managed from the Desktop settings screen. When Desktop and Web share authentication, Desktop's `api.jwt_secret` must match the Web application's `JWT_SECRET`.
 
 ---
 
-## ⚙️ Environment Variables
+## 🖥️ Desktop Builds and Distribution
+
+### Windows Builds
+
+```bash
+cd desktop
+
+# Portable: build an EXE that runs without installation
+wails build
+
+# Setup: build an NSIS installer with a setup wizard
+wails build -nsis
+```
+
+Artifacts are written to `desktop/build/bin/`.
+
+| Distribution | Recommended for | Characteristics |
+|--------------|-----------------|-----------------|
+| **Portable** | Beta testing, internal or temporary use, and environments without administrator access | Runs immediately after download; updates require replacing the EXE manually; no Start menu shortcut or uninstall entry is created automatically |
+| **Setup** | Stable releases, general users, frequent updates, and system integration | Supports an installation directory, shortcuts, an uninstall entry, and dependency handling such as WebView2 during setup |
+
+The current GitHub Release workflow runs `wails build`, so it publishes the portable EXE by default. The React/Vite frontend is bundled into the executable with Go `embed`, so no separate static asset directory is required.
+
+### Desktop Configuration Locations
+
+| Platform | Default path |
+|----------|--------------|
+| Windows | `%APPDATA%\mo-gallery-desktop\config.json` |
+| macOS | `~/Library/Application Support/mo-gallery-desktop/config.json` |
+| Linux | `~/.config/mo-gallery-desktop/config.json` |
+
+The current Portable build is installation-free, but it is not a completely zero-trace portable application: settings remain after moving or replacing the EXE, and deleting the EXE does not remove the configuration directory. Portable builds are recommended during Beta. For stable releases, use Setup as the default download while continuing to offer Portable for advanced users.
+
+---
+
+## ⚙️ Configuration
+
+See [`.env.example`](.env.example) for the complete template.
 
 ### Required
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection URL | `postgresql://postgres:password@localhost:5432/mo_gallery` |
-| `DIRECT_URL` | Direct database URL (for migrations) | Same as above |
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL runtime connection URL |
+| `DIRECT_URL` | Direct PostgreSQL URL used by Prisma migrations |
+| `ADMIN_USERNAME` | Default administrator username |
+| `ADMIN_PASSWORD` | Default administrator password; change it in production |
+| `JWT_SECRET` | JWT signing secret; use a strong random value in production |
 
-### Site Configuration (Optional)
+### Site and Security
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ADMIN_USERNAME` | Admin username | `admin` |
-| `ADMIN_PASSWORD` | Admin password | `admin123` |
-| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | Hidden admin login path | `admin` |
+| Variable | Description | Default/example |
+|----------|-------------|-----------------|
+| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | Hidden administrator login path | `admin` |
 | `SITE_TITLE` | Site title | `MO GALLERY` |
-| `SITE_URL` | Site URL (for SEO) | — |
-| `NEXT_PUBLIC_SITE_URL` | Public site URL (client-side) | — |
-| `SITE_AUTHOR` | Author name (shown on homepage) | `MO` |
-| `CDN_DOMAIN` | CDN domain for assets | — |
-| `API_ORIGIN_CHECK` | Enable API origin check | `false` |
+| `SITE_URL` | Public site URL used by the server | `https://your-domain.com` |
+| `NEXT_PUBLIC_SITE_URL` | Public site URL exposed to the browser | `https://your-domain.com` |
+| `SITE_AUTHOR` | Author name displayed on the homepage | `MO` |
+| `CDN_DOMAIN` | Media CDN domain | Empty |
+| `API_ORIGIN_CHECK` | Restrict API request origins | `false` |
 
-### Comments (Optional)
-
-| Variable | Description |
-|----------|-------------|
-| `COMMENTS_STORAGE` | Comment storage: empty for local DB, `LEANCLOUD` for Waline |
-| `WALINE_SERVER_URL` | Waline server URL (when using LeanCloud) |
-| `LEAN_ID` | LeanCloud App ID |
-| `LEAN_KEY` | LeanCloud App Key |
-| `LEAN_MASTER_KEY` | LeanCloud Master Key |
-
-### Linux DO OAuth (Optional)
+### AI Editor
 
 | Variable | Description |
 |----------|-------------|
-| `LINUXDO_CLIENT_ID` | OAuth Client ID |
-| `LINUXDO_CLIENT_SECRET` | OAuth Client Secret |
-| `LINUXDO_REDIRECT_URI` | Callback URL (e.g., `https://your-domain.com/login/callback`) |
-| `LINUXDO_ADMIN_USERNAMES` | Allowed admin usernames (comma-separated) |
-| `LINUXDO_COMMENTS_ONLY` | Restrict comments to Linux DO users (`true`/`false`) |
+| `AI_BASE_URL` | OpenAI-compatible API root, such as `https://api.openai.com/v1` |
+| `AI_API_KEY` | AI provider key |
+| `AI_MODEL` | Default chat or editing model |
 
-### Social Links (Optional)
+### Comments and Linux DO OAuth
 
-```env
-SOCIAL_LINKS='[
-    {"title":"GitHub","url":"https://github.com/username","icon":"lucide:github"},
-    {"title":"Twitter","url":"https://twitter.com/username","icon":"lucide:twitter"}
-]'
-```
-
-Icons use [Iconify](https://icon-sets.iconify.design/) format.
+| Variable | Description |
+|----------|-------------|
+| `COMMENTS_STORAGE` | `LOCAL`, empty, or `LEANCLOUD` |
+| `WALINE_SERVER_URL` | Waline service URL |
+| `LEAN_ID` / `LEAN_KEY` / `LEAN_MASTER_KEY` | LeanCloud credentials |
+| `LINUXDO_CLIENT_ID` / `LINUXDO_CLIENT_SECRET` | Linux DO OAuth credentials |
+| `LINUXDO_REDIRECT_URI` | OAuth callback URL |
+| `LINUXDO_ADMIN_USERNAMES` | Comma-separated Linux DO users allowed to become administrators |
+| `LINUXDO_COMMENTS_ONLY` | Restrict comments to Linux DO users |
 
 ---
 
-## 🐳 Docker Deployment
+## 📦 Deployment
 
-### Using Docker Compose (Recommended)
+### Docker Compose
+
+Docker Compose starts PostgreSQL and MO Gallery, with persistent volumes for the database and local uploads.
 
 ```bash
-# Configure environment variables
 cp .env.example .env
-# Edit .env file
+# Set POSTGRES_PASSWORD, ADMIN_PASSWORD, JWT_SECRET, and other production values
 
-# Start with PostgreSQL
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
+docker compose up -d --build
+docker compose logs -f
 ```
 
-### Manual Docker Build
+Default addresses:
+
+- Web: `http://localhost:3001`
+- PostgreSQL: `localhost:5433`
+
+Change the exposed ports through `APP_PORT` and `DB_PORT` in `.env`.
+
+### Vercel
+
+1. Fork this repository and import it into Vercel.
+2. Configure the required values from `.env.example`.
+3. Use Neon, Supabase, or another hosted PostgreSQL provider.
+4. Store media in S3/R2 or GitHub.
+5. `vercel.json` runs Prisma deployment, client generation, and the Next.js build.
+
+> Vercel's runtime filesystem is not suitable for persistent user uploads. Do not use the Local storage backend in production on Vercel.
+
+### Node.js / Self-Hosted
 
 ```bash
-docker build -t mo-gallery .
-docker run -p 3000:3000 --env-file .env mo-gallery
+pnpm run build:node
+pnpm run start
 ```
+
+Configure a reverse proxy, HTTPS, process supervision, and backups according to your environment.
 
 ---
 
-## ▲ Vercel Deployment
+## 🧰 Commands
 
-1. **Fork** this repository
-2. **Import** the project in Vercel
-3. **Configure** environment variables (see `.env.example`)
-4. **Set** build command to `pnpm run build:vercel`
-5. **Use** Neon or Supabase as your database
+| Command | Description |
+|---------|-------------|
+| `pnpm run dev` | Start the Next.js development server |
+| `pnpm run build` | Build the Web production bundle |
+| `pnpm run build:vercel` | Deploy/generate/seed Prisma and build for Vercel |
+| `pnpm run build:node` | Deploy/generate Prisma and build for self-hosting |
+| `pnpm run start` | Start the Web production server |
+| `pnpm run lint` | Run ESLint |
+| `pnpm run prisma:generate` | Generate Prisma Client |
+| `pnpm run prisma:dev` | Create and apply development migrations |
+| `pnpm run prisma:deploy` | Apply production migrations |
+| `pnpm run prisma:seed` | Seed the database |
+| `cd desktop && wails dev` | Start Desktop development mode |
+| `cd desktop && wails build` | Build the Desktop Portable EXE |
+| `cd desktop && wails build -nsis` | Build the Desktop NSIS installer |
+| `cd desktop/frontend && pnpm build` | Validate the Desktop frontend build |
 
-> ⚠️ **Note**: Local storage is not supported on Vercel. Use Cloudflare R2 or GitHub storage instead.
+Baseline verification:
 
-### Database Options for Vercel
-
-- **[Neon](https://neon.tech/)** — Serverless PostgreSQL (recommended)
-- **[Supabase](https://supabase.com/)** — PostgreSQL with additional features
+```bash
+pnpm run lint
+pnpm run build
+cd desktop/frontend && pnpm build
+```
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
 mo-gallery-web/
-├── prisma/                  # Database schema and migrations
-│   ├── schema.prisma        # Prisma model definitions
-│   ├── seed.ts              # Database seeding script
-│   └── migrations/          # Migration history
-├── server/lib/              # Server-side utilities
-│   ├── db.ts                # Prisma client singleton (with timezone handling)
-│   ├── jwt.ts               # JWT utilities
-│   ├── exif.ts              # EXIF extraction
-│   ├── colors.ts            # Dominant color extraction
-│   └── storage/             # Storage abstraction layer (local / R2 / GitHub)
-├── hono/                    # API routes (Hono.js)
-│   ├── index.ts             # Route registration
-│   ├── auth.ts              # Authentication & OAuth
-│   ├── photos.ts            # Photo management
-│   ├── albums.ts            # Album management
-│   ├── stories.ts           # Stories / Narratives
-│   ├── blogs.ts             # Blog posts
-│   ├── comments.ts          # Comments
-│   ├── friends.ts           # Friend links
-│   ├── storage.ts           # Storage management
-│   ├── equipment.ts         # Equipment management
-│   ├── settings.ts          # System settings
-│   ├── waline.ts            # Waline comment proxy
-│   └── middleware/          # Auth and origin-check middleware
-├── src/
-│   ├── app/                 # Next.js App Router
-│   │   ├── api/             # API entry point (Hono integration)
-│   │   ├── admin/           # Admin dashboard pages
-│   │   ├── gallery/         # Public gallery
-│   │   ├── story/           # Story pages
-│   │   ├── blog/            # Blog pages
-│   │   ├── they/            # Friend links page
-│   │   ├── about/           # About page
-│   │   └── login/           # Login (admin & OAuth callback)
-│   ├── components/          # React components
-│   │   ├── NarrativeTipTapEditor.tsx  # TipTap rich text editor
-│   │   ├── StoryRichContent.tsx       # Unified content renderer
-│   │   ├── tiptap-extensions/         # Custom TipTap extensions
-│   │   ├── admin/           # Admin-specific components
-│   │   ├── gallery/         # Gallery views (Grid / Masonry / Timeline)
-│   │   └── ui/              # Common UI components
-│   ├── contexts/            # React Context providers
-│   │   ├── AuthContext.tsx
-│   │   ├── ThemeContext.tsx
-│   │   ├── LanguageContext.tsx
-│   │   ├── SettingsContext.tsx
-│   │   └── UploadQueueContext.tsx
-│   └── lib/                 # Frontend utilities
-│       ├── api/             # API client modules (domain-based)
-│       ├── i18n.ts          # Internationalization dictionaries
-│       └── utils.ts         # Helper functions
-└── public/                  # Static assets
+├── src/app/                   # Next.js App Router, public pages, and Web admin
+├── src/components/            # Shared Web UI, gallery, editor, and admin components
+├── src/lib/                   # API clients, i18n dictionaries, and content helpers
+├── hono/                      # Hono API routes and middleware
+├── server/                    # Database, storage, EXIF, and server infrastructure
+├── prisma/                    # Prisma schema, migrations, and seed script
+├── packages/
+│   ├── ai-agent/              # Shared Web/Desktop AI agent
+│   └── tiptap-editor/         # Shared Web/Desktop TipTap editor
+├── desktop/                   # Go + Wails Desktop client
+│   ├── frontend/              # React/Vite frontend
+│   ├── config/                # Desktop configuration management
+│   ├── db/                    # GORM data access and models
+│   ├── services/              # Photo, upload, AI, storage, and export services
+│   ├── build/                 # Icons, Windows manifests, and build artifacts
+│   ├── main.go                # Wails entry point and embedded frontend assets
+│   └── wails.json             # Wails build configuration
+├── public/                    # Web static assets and local uploads
+├── README.assets/             # README screenshots
+├── tests/                     # Focused feature tests
+├── docker-compose.yml         # Web + PostgreSQL orchestration
+├── Dockerfile                 # Web container image
+└── RELEASE.md                 # Release notes
 ```
+
+---
+
+## 🔒 Security Notes
+
+- Never commit `.env`, database passwords, JWT secrets, AI keys, or object storage credentials.
+- Change the default administrator password and use a strong `JWT_SECRET` in production.
+- Keep Desktop and Web JWT configuration aligned when they share authentication.
+- Enable HTTPS for public deployments and consider enabling `API_ORIGIN_CHECK`.
+- Back up PostgreSQL, media objects, and storage source configuration regularly.
+- Code-sign production Windows Desktop releases to reduce SmartScreen warnings.
+
+---
+
+## ❓ FAQ
+
+<details>
+<summary><strong>Why does the Desktop app run immediately after download?</strong></summary>
+
+`wails build` produces an installation-free EXE by default. The React/Vite frontend is embedded with Go `embed`, and modern Windows installations generally already include the WebView2 Runtime.
+
+</details>
+
+<details>
+<summary><strong>Should I choose Portable or Setup?</strong></summary>
+
+Choose Portable for Beta testing, internal use, and systems without installation privileges. Choose Setup for stable releases aimed at general users. A production release can offer both.
+
+</details>
+
+<details>
+<summary><strong>Why should Vercel deployments avoid Local storage?</strong></summary>
+
+Vercel function filesystems are not designed to persist user uploads. Use S3, Cloudflare R2, GitHub, or another external storage backend.
+
+</details>
 
 ---
 
 ## 📜 License
 
-[MIT](LICENSE)
+Released under the **MIT License**.

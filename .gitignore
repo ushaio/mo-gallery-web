@@ -64,3 +64,14 @@ public/uploads
 /desktop/frontend/package.json.md5
 /desktop/build/bin
 *.bak
+
+# flutter mobile client
+/flutter/.dart_tool/
+/flutter/build/
+/flutter/.flutter-plugins
+/flutter/.flutter-plugins-dependencies
+/flutter/.packages
+/flutter/**/GeneratedPluginRegistrant.*
+
+# workspace package dependency links
+/packages/*/node_modules/
