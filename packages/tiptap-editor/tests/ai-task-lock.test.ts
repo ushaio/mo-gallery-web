@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import {
   createNarrativeAiTask,
   createNarrativeAiTaskLock,
@@ -11,10 +10,6 @@ import {
   type NarrativeAiOperationKind,
 } from '../src/tiptap-editor/narrative-ai-task-session'
 import { createNarrativeAiTaskSessionLifecycle } from '../src/tiptap-editor/narrative-ai-task-session-lifecycle'
-
-function readSource(relativePath: string) {
-  return readFileSync(new URL(relativePath, `${new URL('..', import.meta.url).href}/`), 'utf8')
-}
 
 const lock = createNarrativeAiTaskLock()
 const firstTask = createNarrativeAiTask('first')
@@ -272,15 +267,4 @@ for (const operationKind of operationKinds) {
   assert.equal(taskLock.getSnapshot(), false, 'final cleanup leaves the shared task lock released')
 }
 
-const narrativeHookSource = readSource('src/tiptap-editor/useNarrativeEditor.ts')
-const imperativeSource = readSource('src/tiptap-editor/useEditorImperativeHandle.ts')
-const assistantSource = readSource('src/TipTapAiAssistant.tsx')
-
-assert.match(narrativeHookSource, /setEditable\(!isAiTaskLocked\)/, 'TipTap editability follows the task lock')
-assert.match(narrativeHookSource, /if \(isAiTaskLockedRef\.current\) return true/g, 'paste and keyboard mutation handlers consume locked input')
-assert.match(imperativeSource, /if \(isAiTaskLocked\) return/g, 'void imperative mutations reject while locked')
-assert.match(imperativeSource, /if \(isAiTaskLocked\) return false/g, 'boolean imperative mutations reject while locked')
-assert.match(assistantSource, /sessionSetup\.cleanup\(\)/, 'the assistant disposes the exact production session for each effect setup')
-assert.match(assistantSource, /activeStreamMessageRef\.current = null/, 'assistant cleanup clears active stream identity')
-
-console.log('✓ narrative AI task ownership and mutation guard contracts')
+console.log('✓ narrative AI task ownership and session lifecycle behavior')

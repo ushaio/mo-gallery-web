@@ -12,6 +12,7 @@ import {
   MoreVertical,
   LayoutGrid,
 } from 'lucide-react'
+import { guardNarrativeAiMutation } from '@mo-gallery/tiptap-editor'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
@@ -113,12 +114,8 @@ export function StoryPhotoPanel({
   onOpenMenuPending: onOpenMenuPendingProp,
   onOpenPasteUploadSettings: onOpenPasteUploadSettingsProp,
 }: StoryPhotoPanelProps) {
-  function guardMutation<Args extends unknown[]>(operation: (...args: Args) => void) {
-    return (...args: Args) => {
-      if (disabled) return
-      operation(...args)
-    }
-  }
+  const guardMutation = <Args extends unknown[]>(operation: (...args: Args) => void) =>
+    guardNarrativeAiMutation(disabled, operation)
 
   const onAddPhotos = guardMutation(onAddPhotosProp)
   const onInsertExternalPhotoMarkdown = guardMutation(onInsertExternalPhotoMarkdownProp)

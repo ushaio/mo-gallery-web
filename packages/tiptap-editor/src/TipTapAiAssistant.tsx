@@ -2,7 +2,10 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Square, Trash2, Wand2 } from 'lucide-react'
-import type { EditorAgentEvent } from '@mo-gallery/ai-agent'
+import {
+  readEditorAiTaskMessageMetadata,
+  type AiChangeSetState,
+} from '@mo-gallery/ai-agent'
 import type {
   EditorAiApi,
   EditorAiConversationDto,
@@ -15,6 +18,15 @@ import {
   type NarrativeAiTaskLock,
 } from './tiptap-editor/ai-task-lock'
 import { createNarrativeAiTaskSessionLifecycle } from './tiptap-editor/narrative-ai-task-session-lifecycle'
+import { AiChangeSetCard } from './tiptap-editor/AiChangeSetCard'
+import {
+  runPersistedNarrativeDirectEdit,
+  runPersistedTaskHistoryAction,
+  type NarrativeDirectEditRunner,
+} from './tiptap-editor/narrative-direct-edit-conversation'
+import type {
+  NarrativeAiTaskHistoryState,
+} from './tiptap-editor/narrative-direct-edit-host'
 
 export interface TipTapAiAssistantOptions {
   enabled: boolean
@@ -35,12 +47,13 @@ export interface TipTapAiAssistantContext {
 export type TipTapAiApplyMode = 'replace' | 'insert' | 'append'
 
 /** Agent 模式执行器（由 NarrativeTipTapEditor 注入：文档桥接 + 提案审阅） */
-export type TipTapAiAgentRunner = (options: {
-  instruction: string
-  model?: string
-  signal?: AbortSignal
-  onEvent: (event: EditorAgentEvent) => void
-}) => Promise<{ summary: string; proposalCount: number }>
+export type TipTapAiAgentRunner = NarrativeDirectEditRunner
+
+interface NarrativeTaskHistoryController {
+  getTaskHistoryState(taskId: string): NarrativeAiTaskHistoryState | null
+  undoTask(taskId: string): boolean
+  redoTask(taskId: string): boolean
+}
 
 interface TipTapAiAssistantProps {
   /** 宿主应用注入的 i18n 翻译函数 */
@@ -59,6 +72,7 @@ interface TipTapAiAssistantProps {
   documentId?: string
   documentKind?: 'story' | 'blog'
   aiTaskLock: NarrativeAiTaskLock
+  taskHistory?: NarrativeTaskHistoryController
 }
 
 type AssistantMessageStatus = 'streaming' | 'done' | 'error'
@@ -76,6 +90,7 @@ interface AiSessionMessage {
   status?: AssistantMessageStatus
   error?: string
   appliedModes?: TipTapAiApplyMode[]
+  metadata?: unknown
 }
 
 interface AiSlashCommand {
@@ -162,6 +177,7 @@ function toSessionMessage(
         : 'done',
     error: message.error,
     appliedModes: [],
+    metadata: message.metadata,
   }
 }
 
@@ -175,6 +191,7 @@ export function TipTapAiAssistant({
   documentId,
   documentKind,
   aiTaskLock,
+  taskHistory,
 }: TipTapAiAssistantProps) {
   const isAiTaskLocked = useNarrativeAiTaskLock(aiTaskLock)
   const aiTaskSessionLifecycleRef = useRef<ReturnType<typeof createNarrativeAiTaskSessionLifecycle> | null>(null)
@@ -184,14 +201,17 @@ export function TipTapAiAssistant({
   const aiTaskSessionLifecycle = aiTaskSessionLifecycleRef.current
   // 注入的后端接口在组件顶部解构，函数体内调用点与原实现保持一致
   const {
+    appendEditorAiMessage,
     clearEditorAiConversation,
     createEditorAiConversation,
     deleteEditorAiConversation,
     getEditorAiConversation,
     getEditorAiConversations,
     getStoryAiModels,
+    finishEditorAiMessage,
     polishStoryAiPrompt,
     streamStoryAiGenerate,
+    updateEditorAiTaskState,
   } = api
   const aiModelButtonRef = useRef<HTMLDivElement | null>(null)
   const aiModelMenuRef = useRef<HTMLDivElement | null>(null)
@@ -504,106 +524,119 @@ export function TipTapAiAssistant({
     })
   }, [isAiTaskLocked, onApplyResult, updateSessionMessage])
 
-  // Agent 模式：/agent 指令 → 通读文档、生成修改提案（session 级消息，不入会话库）
+  // Direct-edit：持久化消息后由共享 agent 自动模拟并原子提交。
   const runAgentCommand = useCallback(async (instruction: string) => {
-    if (!agentRunner) return
+    if (!agentRunner || !options?.token || !options.scopeId) return
 
     try {
       const aiTaskSession = aiTaskSessionLifecycle.requireCurrent()
       const isCurrentSession = () => (
         mountedRef.current && aiTaskSessionLifecycle.current === aiTaskSession
       )
-      await aiTaskSession.start('legacy-agent', async ({ signal }) => {
-
-        const userMessageId = buildMessageId('user')
-    const assistantMessageId = buildMessageId('assistant')
-    const userMessage: AiSessionMessage = {
-      id: userMessageId,
-      role: 'user',
-      action: 'custom',
-      prompt: `${AI_SLASH_AGENT_COMMAND} ${instruction}`,
-      content: `${AI_SLASH_AGENT_COMMAND} ${instruction}`,
-      hasSelection: false,
-      selectionPreview: '',
-      paragraphPreview: '',
-      selectionRange: null,
-    }
-    const assistantMessage: AiSessionMessage = {
-      id: assistantMessageId,
-      role: 'assistant',
-      action: 'custom',
-      prompt: instruction,
-      content: '',
-      hasSelection: false,
-      selectionPreview: '',
-      paragraphPreview: '',
-      selectionRange: null,
-      status: 'streaming',
-      appliedModes: [],
-    }
-
-    activeStreamMessageRef.current = assistantMessageId
-    setAiLoading(true)
-    setAiError('')
-    setSessionMessages((current) => [...current, userMessage, assistantMessage])
-
-    try {
-      const result = await agentRunner({
-        instruction,
-        model: aiSelectedModel || undefined,
-        signal,
-        onEvent: (event) => {
+      await aiTaskSession.start('direct-edit-agent', async ({ signal }) => {
+        let conversationId = activeConversationId
+        if (!conversationId) {
+          const conversation = await createEditorAiConversation(options.token as string, {
+            scopeId: options.scopeId as string,
+            title: options.title,
+          })
           if (!isCurrentSession()) return
-          if (event.type !== 'text_delta') return
-          updateSessionMessage(assistantMessageId, (message) => ({
-            ...message,
-            content: message.content + event.text,
-          }))
-        },
-      })
+          conversationId = conversation.id
+          setConversations((current) => [conversation, ...current])
+          setActiveConversationId(conversation.id)
+        }
 
-      if (!isCurrentSession()) return
-      activeStreamMessageRef.current = null
-      updateSessionMessage(assistantMessageId, (message) => {
-        const summary = message.content.trim() || result.summary
-        const footer = result.proposalCount > 0
-          ? `${result.proposalCount} ${t('editor.ai_agent_proposals_ready')}`
-          : t('editor.ai_agent_no_proposals')
-        return {
-          ...message,
-          status: 'done',
-          content: [summary, footer].filter(Boolean).join('\n\n'),
-        }
-      })
-      setAiPrompt('')
-    } catch (error) {
-      if (!isCurrentSession()) return
-      activeStreamMessageRef.current = null
-      if (error instanceof Error && error.name === 'AbortError') {
-        updateSessionMessage(assistantMessageId, (message) => ({
-          ...message,
-          status: message.content.trim() ? 'done' : 'error',
-          error: message.content.trim() ? undefined : t('editor.ai_generation_stopped'),
-        }))
-        return
-      }
-      const message = error instanceof Error ? error.message : t('editor.ai_failed')
-      setAiError(message)
-      updateSessionMessage(assistantMessageId, (current) => ({
-        ...current,
-        status: 'error',
-        error: message,
-        }))
+        let assistantMessageId = ''
+        setAiLoading(true)
+        setAiError('')
+        try {
+          await runPersistedNarrativeDirectEdit({
+            api: { appendEditorAiMessage, finishEditorAiMessage },
+            token: options.token as string,
+            conversationId,
+            instruction,
+            model: aiSelectedModel || undefined,
+            signal,
+            runner: agentRunner,
+            onPending: (userMessage, assistantMessage) => {
+              if (!isCurrentSession()) return
+              assistantMessageId = assistantMessage.id
+              activeStreamMessageRef.current = assistantMessage.id
+              const nextMessages = [toSessionMessage(userMessage, t), toSessionMessage(assistantMessage, t)]
+                .filter((message): message is AiSessionMessage => message !== null)
+              setSessionMessages((current) => [...current, ...nextMessages])
+            },
+            onExecutionCompleted: (assistantMessage) => {
+              if (!isCurrentSession()) return
+              const completed = toSessionMessage(assistantMessage, t)
+              if (completed) updateSessionMessage(assistantMessage.id, () => completed)
+            },
+            onTerminal: (assistantMessage) => {
+              if (!isCurrentSession()) return
+              const terminal = toSessionMessage(assistantMessage, t)
+              if (terminal) updateSessionMessage(assistantMessage.id, () => terminal)
+            },
+            onEvent: (event) => {
+              if (!isCurrentSession() || !assistantMessageId || event.type !== 'text_delta') return
+              updateSessionMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: message.content + event.text,
+              }))
+            },
+          })
+          if (isCurrentSession()) setAiPrompt('')
         } finally {
-          if (isCurrentSession()) setAiLoading(false)
+          if (isCurrentSession()) {
+            activeStreamMessageRef.current = null
+            setAiLoading(false)
+          }
         }
-      })
+      }, { manageLock: false })
     } catch (error) {
       if (mountedRef.current) {
-        setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+        if (!(error instanceof Error && error.name === 'AbortError')) {
+          setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+        }
       }
     }
-  }, [agentRunner, aiSelectedModel, aiTaskSessionLifecycle, t, updateSessionMessage])
+  }, [
+    activeConversationId,
+    agentRunner,
+    aiSelectedModel,
+    aiTaskSessionLifecycle,
+    appendEditorAiMessage,
+    createEditorAiConversation,
+    finishEditorAiMessage,
+    options?.scopeId,
+    options?.title,
+    options?.token,
+    t,
+    updateSessionMessage,
+  ])
+
+  const handleTaskHistoryAction = useCallback(async (
+    messageId: string,
+    taskId: string,
+    state: Extract<AiChangeSetState, 'undone' | 'redone'>,
+  ) => {
+    if (!taskHistory || !options?.token) return
+    try {
+      const persisted = await runPersistedTaskHistoryAction({
+        api: { updateEditorAiTaskState },
+        history: taskHistory,
+        token: options.token,
+        messageId,
+        taskId,
+        state,
+      })
+      if (!persisted) return
+      const nextMessage = toSessionMessage(persisted, t)
+      if (nextMessage) updateSessionMessage(messageId, () => nextMessage)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+      setSessionMessages((current) => [...current])
+    }
+  }, [options?.token, t, taskHistory, updateEditorAiTaskState, updateSessionMessage])
 
   const runAiAction = useCallback(async (action?: StoryAiAction, promptOverride?: string) => {
     if (!isEnabled) return
@@ -1132,8 +1165,12 @@ export function TipTapAiAssistant({
               sessionMessages.map((message) => {
                 const actionLabel = resolveActionLabel(message.action, t)
                 const appliedModes = message.appliedModes ?? []
-                const canReplace = Boolean(message.content.trim()) && Boolean(message.selectionRange)
-                const canApply = Boolean(message.content.trim())
+                const taskMessage = readEditorAiTaskMessageMetadata(message.metadata)
+                const completedTask = taskMessage?.task.status === 'completed'
+                  ? taskMessage.task
+                  : null
+                const canReplace = !completedTask && Boolean(message.content.trim()) && Boolean(message.selectionRange)
+                const canApply = !completedTask && Boolean(message.content.trim())
 
                 if (message.role === 'user') {
                   return (
@@ -1181,12 +1218,24 @@ export function TipTapAiAssistant({
                       {message.content || (message.status === 'streaming' ? t('editor.ai_generating') : t('editor.ai_preview_placeholder'))}
                     </div>
 
+                    {completedTask ? (
+                      <AiChangeSetCard
+                        task={completedTask}
+                        historyState={taskHistory?.getTaskHistoryState(completedTask.taskId) ?? null}
+                        disabled={isAiTaskLocked}
+                        onUndo={() => void handleTaskHistoryAction(message.id, completedTask.taskId, 'undone')}
+                        onRedo={() => void handleTaskHistoryAction(message.id, completedTask.taskId, 'redone')}
+                        t={t}
+                      />
+                    ) : null}
+
                     {message.status === 'error' && message.error ? (
                       <div className="mt-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                         {message.error}
                       </div>
                     ) : null}
 
+                    {!completedTask ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -1236,6 +1285,7 @@ export function TipTapAiAssistant({
                         </button>
                       ) : null}
                     </div>
+                    ) : null}
                   </div>
                 )
               })

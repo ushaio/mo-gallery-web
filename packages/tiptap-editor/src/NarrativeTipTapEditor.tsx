@@ -40,12 +40,8 @@ import {
 import TipTapAiAssistant, { type TipTapAiAgentRunner } from './TipTapAiAssistant'
 import type { NarrativeEditorRuntime } from './runtime'
 import {
-  createEditorDocumentSnapshot,
-  getTextReplacementOperation,
-  runEditorAgent,
-  type EditorProposal,
+  runDirectEditAgent,
 } from '@mo-gallery/ai-agent'
-import { linearizeDoc, findDocTextRange } from './tiptap-editor/doc-text'
 import { AiDiffPreviewDialog } from './tiptap-editor/AiDiffPreviewDialog'
 import { AiSidebar } from './tiptap-editor/AiSidebar'
 
@@ -77,11 +73,13 @@ import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './ti
 import { useNarrativeEditor } from './tiptap-editor/useNarrativeEditor'
 import { useEditorImperativeHandle, type NarrativeTipTapEditorHandle } from './tiptap-editor/useEditorImperativeHandle'
 import {
+  createNarrativeAiTask,
   createNarrativeAiTaskLock,
   useNarrativeAiTaskLock,
   type NarrativeAiTaskLock,
 } from './tiptap-editor/ai-task-lock'
 import { createAiTaskLockNotifier } from './tiptap-editor/ai-task-lock-notifier'
+import { createNarrativeDirectEditHost } from './tiptap-editor/narrative-direct-edit-host'
 import './tiptap-editor.css'
 
 export interface NarrativeTipTapEditorProps {
@@ -156,13 +154,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       selectionRange: { from: number; to: number }
       originalText: string
     } | null>(null)
-    // Agent 修改提案的逐条审阅队列
-    const [agentReview, setAgentReview] = useState<{
-      proposals: EditorProposal[]
-      index: number
-      error: string
-    } | null>(null)
     const [aiTaskLock] = useState<NarrativeAiTaskLock>(() => createNarrativeAiTaskLock())
+    const [directEditTaskTokens] = useState(
+      () => new Map<string, ReturnType<typeof createNarrativeAiTask>>(),
+    )
     const isAiTaskLocked = useNarrativeAiTaskLock(aiTaskLock)
     const [aiTaskLockNotifier] = useState(() => createAiTaskLockNotifier())
 
@@ -452,76 +447,64 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       performAiApply(mode, preview, selectionRange)
     }, [editor, isAiTaskLocked, performAiApply])
 
-    // ── Agent：/agent 指令的执行与提案审阅 ─────────────
+    const directEditHost = useMemo(() => {
+      if (!editor || !documentId || !documentKind) return undefined
+      return createNarrativeDirectEditHost({
+        documentId,
+        documentKind,
+        editorWidth: editor.view.dom.clientWidth,
+        getDocument: () => editor.getJSON(),
+        getEditorState: () => editor.state,
+        dispatchTransaction: (transaction) => editor.view.dispatch(transaction),
+        lockTask: (taskId) => {
+          const task = createNarrativeAiTask(taskId)
+          if (!aiTaskLock.acquire(task)) {
+            throw new Error('The narrative editor is already running another AI task')
+          }
+          directEditTaskTokens.set(taskId, task)
+        },
+        unlockTask: (taskId) => {
+          const task = directEditTaskTokens.get(taskId)
+          if (task === undefined || !aiTaskLock.release(task)) {
+            throw new Error(`Narrative AI task ${taskId} does not own the editor lock`)
+          }
+          directEditTaskTokens.delete(taskId)
+        },
+      })
+    }, [aiTaskLock, directEditTaskTokens, documentId, documentKind, editor])
 
     const agentRunner = useMemo<TipTapAiAgentRunner | undefined>(() => {
-      if (!runtime.getAgentEndpoint || !editor) return undefined
+      if (!runtime.getAgentEndpoint || !directEditHost) return undefined
       const getAgentEndpoint = runtime.getAgentEndpoint
-      return async ({ instruction, model, signal, onEvent }) => {
+      return async ({ taskId, instruction, model, signal, onEvent }) => {
         const token = aiOptions?.token ?? ''
         const endpoint = await getAgentEndpoint(token)
-        let modelId = model
-        if (!modelId) {
-          const models = await runtime.ai.getStoryAiModels(token)
-          modelId = models.defaultModel
-        }
+        const models = await runtime.ai.getStoryAiModels(token)
+        const modelId = model || models.defaultModel
         if (!modelId) throw new Error(t('editor.ai_agent_unavailable'))
+        const modelOption = models.models.find((candidate) => candidate.id === modelId)
 
-        const result = await runEditorAgent({
+        return await runDirectEditAgent({
           endpoint,
           model: modelId,
           instruction,
-          document: createEditorDocumentSnapshot({
-            title: aiOptions?.title,
-            text: linearizeDoc(editor.state.doc).text,
-          }),
+          taskType: 'instruction',
+          host: directEditHost,
+          modelCapabilities: {
+            vision: modelOption?.vision ?? false,
+            toolCalling: modelOption?.tools ?? false,
+            structuredOutput: modelOption?.structuredOutput ?? false,
+            ...(modelOption?.contextWindow
+              ? { maxInputTokens: modelOption.contextWindow }
+              : {}),
+          },
+          authorization: { allowDelete: false, deleteTargetIds: [] },
+          taskId,
           signal,
           onEvent,
         })
-
-        if (result.proposals.length > 0) {
-          setAgentReview({ proposals: result.proposals, index: 0, error: '' })
-        }
-        return { summary: result.summary, proposalCount: result.proposals.length }
       }
-    }, [editor, runtime, aiOptions?.token, aiOptions?.title, t])
-
-    const advanceAgentReview = useCallback(() => {
-      setAgentReview((current) => {
-        if (!current) return null
-        const nextIndex = current.index + 1
-        return nextIndex >= current.proposals.length
-          ? null
-          : { ...current, index: nextIndex, error: '' }
-      })
-    }, [])
-
-    const handleAgentProposalApply = useCallback(() => {
-      if (!editor || isAiTaskLocked || !agentReview) return
-      const proposal = agentReview.proposals[agentReview.index]
-      const operation = getTextReplacementOperation(proposal)
-      if (!operation) {
-        setAgentReview({ ...agentReview, error: t('editor.ai_diff_not_found') })
-        return
-      }
-      const range = findDocTextRange(editor.state.doc, operation.match.text)
-      if (!range) {
-        setAgentReview({ ...agentReview, error: t('editor.ai_diff_not_found') })
-        return
-      }
-      if (operation.replacement) {
-        const html = convertPlainTextToEditorHtml(operation.replacement)
-        editor.chain().focus().setTextSelection(range).insertContent(html).run()
-      } else {
-        editor.chain().focus().setTextSelection(range).deleteSelection().run()
-      }
-      advanceAgentReview()
-    }, [editor, agentReview, advanceAgentReview, isAiTaskLocked, t])
-
-    const currentAgentProposal = agentReview ? agentReview.proposals[agentReview.index] : null
-    const currentAgentOperation = currentAgentProposal
-      ? getTextReplacementOperation(currentAgentProposal)
-      : null
+    }, [directEditHost, runtime, aiOptions?.token, t])
 
     const imperativeHandle = useEditorImperativeHandle({
       editor,
@@ -1035,6 +1018,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 documentId={documentId}
                 documentKind={documentKind}
                 aiTaskLock={aiTaskLock}
+                taskHistory={directEditHost}
                 context={{
                   selectionRange: aiSelectionRange,
                   hasSelection: aiHasSelection,
@@ -1071,20 +1055,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           t={t}
         />
 
-        {/* Agent 修改提案逐条审阅 */}
-        <AiDiffPreviewDialog
-          open={!!currentAgentOperation}
-          title={t('editor.ai_diff_agent_title')}
-          originalText={currentAgentOperation?.match.text ?? ''}
-          newText={currentAgentOperation?.replacement ?? ''}
-          reason={currentAgentProposal?.reason}
-          progress={agentReview ? { index: agentReview.index + 1, total: agentReview.proposals.length } : undefined}
-          error={agentReview?.error || undefined}
-          onConfirm={handleAgentProposalApply}
-          onSkip={advanceAgentReview}
-          onCancel={() => setAgentReview(null)}
-          t={t}
-        />
       </div>
     )
   }

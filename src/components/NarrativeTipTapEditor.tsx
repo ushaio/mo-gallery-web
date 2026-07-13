@@ -20,14 +20,17 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { buildApiUrl } from '@/lib/api/core'
 import { getAdminStory } from '@/lib/api/stories'
 import {
+  appendEditorAiMessage,
   clearEditorAiConversation,
   createEditorAiConversation,
   deleteEditorAiConversation,
   getEditorAiConversation,
   getEditorAiConversations,
   getStoryAiModels,
+  finishEditorAiMessage,
   polishStoryAiPrompt,
   streamStoryAiGenerate,
+  updateEditorAiTaskState,
 } from '@/lib/api/story-ai'
 
 const editorAi: NarrativeEditorRuntime['ai'] = {
@@ -37,6 +40,9 @@ const editorAi: NarrativeEditorRuntime['ai'] = {
   getEditorAiConversation,
   deleteEditorAiConversation,
   clearEditorAiConversation,
+  appendEditorAiMessage,
+  finishEditorAiMessage,
+  updateEditorAiTaskState,
   polishStoryAiPrompt,
   streamStoryAiGenerate,
 }

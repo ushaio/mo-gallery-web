@@ -3,7 +3,11 @@ import {
   type NarrativeAiTaskLock,
 } from './ai-task-lock'
 
-export type NarrativeAiOperationKind = 'stream-generation' | 'legacy-agent'
+export type NarrativeAiOperationKind = 'stream-generation' | 'legacy-agent' | 'direct-edit-agent'
+
+export interface NarrativeAiTaskStartOptions {
+  manageLock?: boolean
+}
 
 export interface NarrativeAiTaskWorkContext {
   signal: AbortSignal
@@ -16,7 +20,11 @@ export type NarrativeAiTaskWork<T> = (
 export interface NarrativeAiTaskSession {
   readonly canStart: boolean
   readonly isActive: boolean
-  start: <T>(operationKind: NarrativeAiOperationKind, work: NarrativeAiTaskWork<T>) => Promise<T>
+  start: <T>(
+    operationKind: NarrativeAiOperationKind,
+    work: NarrativeAiTaskWork<T>,
+    options?: NarrativeAiTaskStartOptions,
+  ) => Promise<T>
   stop: () => boolean
   dispose: () => void
 }
@@ -32,7 +40,11 @@ export function createNarrativeAiTaskSession(lock: NarrativeAiTaskLock): Narrati
     get isActive() {
       return activeAbortController !== null
     },
-    async start<T>(operationKind: NarrativeAiOperationKind, work: NarrativeAiTaskWork<T>) {
+    async start<T>(
+      operationKind: NarrativeAiOperationKind,
+      work: NarrativeAiTaskWork<T>,
+      options: NarrativeAiTaskStartOptions = {},
+    ) {
       if (disposed) {
         throw new Error('The narrative AI task session has been disposed')
       }
@@ -44,6 +56,12 @@ export function createNarrativeAiTaskSession(lock: NarrativeAiTaskLock): Narrati
       activeAbortController = abortController
 
       try {
+        if (options.manageLock === false) {
+          if (lock.getSnapshot()) {
+            throw new Error('The narrative editor is already running another AI task')
+          }
+          return await work({ signal: abortController.signal })
+        }
         return await executeNarrativeAiTask(lock, `assistant-${operationKind}`, () => work({
           signal: abortController.signal,
         }))

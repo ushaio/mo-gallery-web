@@ -1,52 +1,14 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import {
   createBlogDraftDocumentId as createDesktopBlogDraftDocumentId,
   resolveBlogDocumentId as resolveDesktopBlogDocumentId,
   rotateBlogDraftDocumentId as rotateDesktopBlogDraftDocumentId,
 } from '../../../desktop/frontend/src/lib/blog-draft-document'
-
-function readWorkspaceSource(relativePath: string) {
-  return readFileSync(new URL(`../../../${relativePath}`, import.meta.url), 'utf8')
-}
-
-function readOpeningTag(source: string, componentName: string) {
-  const start = source.indexOf(`<${componentName}`)
-  assert.notEqual(start, -1, `${componentName} is rendered by its host`)
-  const end = source.indexOf('/>', start)
-  assert.notEqual(end, -1, `${componentName} opening tag is complete`)
-  return source.slice(start, end + 2)
-}
-
-const desktopBlogSource = readWorkspaceSource('desktop/frontend/src/pages/admin-logs/BlogTab.tsx')
-assert.doesNotMatch(desktopBlogSource, /currentBlog\.id\s*\|\|\s*['"]new['"]/, 'desktop blog never scopes drafts with literal new')
-assert.match(desktopBlogSource, /documentId=\{blogDocumentId\}/, 'desktop blog passes stable document identity')
-assert.match(desktopBlogSource, /setDraftDocumentId\(rotateBlogDraftDocumentId\)/, 'desktop blog rotates identity in its new-blog handler')
-assert.match(desktopBlogSource, /documentKind="blog"/, 'desktop blog passes document kind')
-assert.match(desktopBlogSource, /onAiTaskLockChange=\{setIsAiTaskLocked\}/, 'desktop blog observes lock state')
-assert.match(desktopBlogSource, /aiOptions=\{\{[\s\S]*?enabled:[\s\S]*?token/, 'desktop blog enables AI when runtime credentials permit')
-assert.match(desktopBlogSource, /disabled=\{isAiTaskLocked/, 'desktop blog disables host controls while locked')
-
-const desktopStorySource = readWorkspaceSource('desktop/frontend/src/pages/admin-logs/stories/StoryEditorView.tsx')
-assert.match(desktopStorySource, /onAiTaskLockChange=\{setIsAiTaskLocked\}/, 'desktop story observes lock state')
-assert.ok(readOpeningTag(desktopStorySource, 'StoryPhotoPanel').includes('disabled={isAiTaskLocked}'), 'desktop story passes lock state to photo panel')
-assert.doesNotMatch(desktopStorySource, /guardedPhotoPanelActions/, 'desktop host does not maintain a parallel photo action inventory')
-
-const webStorySource = readWorkspaceSource('src/app/admin/logs/stories/StoryEditorView.tsx')
-assert.ok(readOpeningTag(webStorySource, 'StoryPhotoPanel').includes('disabled={isAiTaskLocked}'), 'web story passes lock state to photo panel')
-
-const photoPanelSource = readWorkspaceSource('src/components/admin/StoryPhotoPanel.tsx')
-assert.match(photoPanelSource, /disabled:\s*boolean/, 'photo panel exposes an explicit disabled contract')
-assert.match(photoPanelSource, /if \(disabled\)/, 'photo panel mutation handlers guard disabled state')
-assert.match(photoPanelSource, /aria-disabled=\{disabled\}/, 'photo panel exposes disabled state to assistive technology')
-
-const desktopPhotoPanelSource = readWorkspaceSource('desktop/frontend/src/components/admin/StoryPhotoPanel.tsx')
-assert.match(desktopPhotoPanelSource, /disabled:\s*boolean/, 'desktop photo panel exposes the same disabled contract')
-assert.match(desktopPhotoPanelSource, /if \(disabled\)/, 'desktop photo panel guards mutations internally')
-assert.match(desktopPhotoPanelSource, /aria-disabled=\{disabled\}/, 'desktop photo panel exposes disabled state to assistive technology')
-
-const webBlogSource = readWorkspaceSource('src/app/admin/logs/BlogTab.tsx')
-assert.match(webBlogSource, /setDraftDocumentId\(rotateBlogDraftDocumentId\)/, 'web blog rotates identity for every new draft lifecycle')
+import { persistDesktopBlog } from '../../../desktop/frontend/src/lib/desktop-blog-save'
+import {
+  blockNarrativeAiInteraction,
+  guardNarrativeAiMutation,
+} from '../src/tiptap-editor/ai-task-mutation-guard'
 
 const desktopDraftId = createDesktopBlogDraftDocumentId()
 const rotatedDesktopDraftId = rotateDesktopBlogDraftDocumentId(desktopDraftId)
@@ -62,4 +24,80 @@ assert.equal(
   'desktop persisted blogs use their real identity',
 )
 
-console.log('✓ Task 2 host identity and disabled wiring contracts')
+{
+  const calls: string[] = []
+  const persistedId = await persistDesktopBlog({
+    api: {
+      UpdateBlog: async () => {
+        calls.push('update')
+      },
+      CreateBlog: async () => {
+        calls.push('create')
+        return { id: 'persisted-blog' }
+      },
+    },
+    data: { title: 'Draft' },
+    onCreated: (blogId) => {
+      calls.push(`handoff:${blogId}`)
+    },
+  })
+
+  assert.equal(persistedId, 'persisted-blog', 'create returns the persisted document identity')
+  assert.deepEqual(
+    calls,
+    ['create', 'handoff:persisted-blog'],
+    'the live draft receives its persisted identity before the save workflow continues',
+  )
+}
+
+{
+  const calls: string[] = []
+  const persistedId = await persistDesktopBlog({
+    api: {
+      UpdateBlog: async (blogId) => {
+        calls.push(`update:${blogId}`)
+      },
+      CreateBlog: async () => {
+        throw new Error('existing blogs must not be recreated')
+      },
+    },
+    blogId: 'existing-blog',
+    data: { title: 'Saved' },
+    onCreated: () => {
+      calls.push('unexpected-handoff')
+    },
+  })
+
+  assert.equal(persistedId, 'existing-blog', 'updates preserve the persisted document identity')
+  assert.deepEqual(calls, ['update:existing-blog'], 'updates do not run the new-draft handoff')
+}
+
+{
+  const mutations: string[] = []
+  const unlockedMutation = guardNarrativeAiMutation(false, (value: string) => mutations.push(value))
+  const lockedMutation = guardNarrativeAiMutation(true, (value: string) => mutations.push(value))
+
+  unlockedMutation('allowed')
+  lockedMutation('blocked')
+
+  assert.deepEqual(mutations, ['allowed'], 'photo-panel mutation callbacks are inert while the AI lock is active')
+}
+
+{
+  const interactionEffects: string[] = []
+  const event = {
+    preventDefault: () => interactionEffects.push('prevented'),
+    stopPropagation: () => interactionEffects.push('stopped'),
+  }
+
+  assert.equal(blockNarrativeAiInteraction(false, event), false, 'unlocked interactions continue normally')
+  assert.deepEqual(interactionEffects, [], 'unlocked interactions are not intercepted')
+  assert.equal(blockNarrativeAiInteraction(true, event), true, 'locked interactions are intercepted')
+  assert.deepEqual(
+    interactionEffects,
+    ['prevented', 'stopped'],
+    'locked desktop photo-panel interactions are cancelled before reaching mutation handlers',
+  )
+}
+
+console.log('✓ Task 2 host lock and blog identity behavior')

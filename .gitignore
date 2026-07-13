@@ -54,6 +54,12 @@ public/uploads
 .opencode
 .npm-cache
 
+# local agent and workspace state
+/.cursor/
+/.workbuddy/
+/outputs/
+/_tmp_*
+
 # kilo / kilocode tooling
 .kilo
 .kilocode
@@ -63,6 +69,8 @@ public/uploads
 /desktop/frontend/dist
 /desktop/frontend/package.json.md5
 /desktop/build/bin
+/desktop/.tmp/
+/desktop/**/*.go.[0-9]*
 *.bak
 
 # flutter mobile client

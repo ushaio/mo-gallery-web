@@ -7,6 +7,11 @@
  * StoryDto / EditorAi*Dto 只要字段兼容即可直接赋值，无需引用本文件类型。
  */
 
+import type {
+  AiChangeSetState,
+  EditorAiMessageMetadata,
+} from '@mo-gallery/ai-agent'
+
 // ── 故事链接卡片所需的最小故事结构 ─────────────────────
 
 export interface EditorStoryPhoto {
@@ -55,6 +60,10 @@ export type EditorAiGenerateInput = StoryAiGenerateInput & {
 export interface StoryAiModelOption {
   id: string
   label: string
+  vision?: boolean
+  tools?: boolean
+  structuredOutput?: boolean
+  contextWindow?: number
 }
 
 export interface StoryAiModelsResponse {
@@ -96,6 +105,31 @@ export interface EditorAiConversationCreateInput {
   systemPrompt?: string
 }
 
+export interface EditorAiMessageAppendInput {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  status?: 'pending' | 'streaming' | 'completed' | 'failed' | 'stopped'
+  model?: string
+  action?: string
+  metadata?: EditorAiMessageMetadata
+  error?: string
+}
+
+export type EditorAiMessageFinishInput =
+  | {
+      status: 'completed'
+      content: string
+      model?: string
+      metadata?: EditorAiMessageMetadata
+    }
+  | {
+      status: 'failed' | 'stopped'
+      content?: string
+      model?: string
+      metadata?: EditorAiMessageMetadata
+      error: string
+    }
+
 export interface StoryAiStreamHandlers {
   onChunk: (chunk: string) => void
   onDone?: () => void
@@ -119,6 +153,21 @@ export interface EditorAiApi {
   getEditorAiConversation(token: string, conversationId: string): Promise<EditorAiConversationWithMessagesDto>
   deleteEditorAiConversation(token: string, conversationId: string): Promise<void>
   clearEditorAiConversation(token: string, conversationId: string): Promise<EditorAiConversationDto>
+  appendEditorAiMessage(
+    token: string,
+    conversationId: string,
+    input: EditorAiMessageAppendInput,
+  ): Promise<EditorAiMessageDto>
+  finishEditorAiMessage(
+    token: string,
+    messageId: string,
+    input: EditorAiMessageFinishInput,
+  ): Promise<EditorAiMessageDto>
+  updateEditorAiTaskState(
+    token: string,
+    messageId: string,
+    state: AiChangeSetState,
+  ): Promise<EditorAiMessageDto>
   polishStoryAiPrompt(
     token: string,
     input: { text: string; action?: StoryAiAction; hasSelection?: boolean; model?: string },
