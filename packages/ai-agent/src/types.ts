@@ -33,11 +33,50 @@ export interface EditorAiPromptPayload {
   historyMessages?: EditorAiHistoryMessage[]
 }
 
+export interface EditorAiChatTextPart {
+  type: 'text'
+  text: string
+}
+
+export interface EditorAiChatFilePart {
+  type: 'file'
+  dataUrl: string
+  mediaType: string
+}
+
+export type EditorAiChatContentPart = EditorAiChatTextPart | EditorAiChatFilePart
+
 /** 中立的消息表示：由适配层转换为 OpenAI wire 格式或 AI SDK ModelMessage */
 export interface EditorAiChatMessage {
   role: 'system' | 'user' | 'assistant'
+  /** Canonical primary text, emitted once before any structured content parts. */
   text: string
   images?: string[]
+  /** Additional ordered parts emitted after `text` and before legacy `images`. */
+  content?: EditorAiChatContentPart[]
+}
+
+export interface NormalizedEditorAiMultipart {
+  content: EditorAiChatContentPart[]
+  images: string[]
+}
+
+/** Applies the project-neutral ordering and canonical-primary deduplication rules. */
+export function normalizeEditorAiMultipart(
+  message: EditorAiChatMessage,
+): NormalizedEditorAiMultipart {
+  if (message.role === 'system') return { content: [], images: [] }
+
+  const content = message.content ?? []
+  const firstPart = content[0]
+  const normalizedContent = firstPart?.type === 'text' && firstPart.text === message.text
+    ? content.slice(1)
+    : content
+
+  return {
+    content: normalizedContent,
+    images: message.images?.filter(Boolean) ?? [],
+  }
 }
 
 /** OpenAI /chat/completions wire 格式（web 端手写 fetch 使用） */

@@ -8,6 +8,8 @@
     "build:vercel": "pnpm run prisma:deploy && pnpm run prisma:generate && pnpm run prisma:seed && next build --webpack",
     "build:node": "pnpm run prisma:deploy && pnpm run prisma:generate && next build --webpack",
     "start": "next start",
+    "test:editor-ai-routes": "node --conditions=react-server --import tsx hono/editor-ai.test.ts",
+    "test:editor-ai-images": "node --conditions=react-server --import tsx server/lib/editor-ai-images.test.ts",
     "lint": "eslint",
     "prisma:generate": "npx prisma generate",
     "prisma:dev": "npx prisma migrate dev",
@@ -55,6 +57,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tiptap/pm": "3.27.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",

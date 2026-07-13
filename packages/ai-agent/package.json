@@ -2,16 +2,20 @@
   "name": "@mo-gallery/ai-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "MO Gallery 共享 AI 编排核心（prompt 构建 + 流式生成，web 服务端与 desktop 前端共用）",
+  "description": "MO Gallery editor AI domain protocol and Vercel AI SDK runtime shared by web and desktop.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "test": "tsx tests/editor-ai-domain.test.ts && tsx tests/editor-ai-runtime.test.ts && tsx tests/editor-ai-execution.test.ts && tsx tests/editor-ai-direct-edit-prompt.test.ts && tsx tests/editor-ai-direct-edit-runtime.test.ts && tsx tests/editor-ai-orchestration.test.ts",
+    "typecheck": "tsc --noEmit -p ../../tsconfig.json"
+  },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^1.0.0",
-    "ai": "^5.0.0",
-    "zod": "^4.2.1"
+    "@ai-sdk/openai-compatible": "^3.0.7",
+    "ai": "^7.0.19",
+    "zod": "^4.3.5"
   }
 }
