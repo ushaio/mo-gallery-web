@@ -1,8 +1,28 @@
 import 'server-only'
 
+import { Prisma } from '@/generated/prisma/client'
+
 import { db } from '~/server/lib/db'
-export type EditorAiMessageRole = 'system' | 'user' | 'assistant'
-export type EditorAiMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed'
+
+import {
+  createEditorAiRepository,
+  type EditorAiStore,
+} from './editor-ai-repository'
+
+export {
+  EditorAiInvalidMetadataError,
+  EditorAiNotFoundError,
+  type EditorAiConversationDto,
+  type EditorAiConversationUpdateInput,
+  type EditorAiConversationWithMessagesDto,
+  type EditorAiHistoryMessage,
+  type EditorAiMessageAppendInput,
+  type EditorAiMessageDto,
+  type EditorAiMessageFinishInput,
+  type EditorAiMessageRole,
+  type EditorAiMessageStatus,
+  type EditorAiRepository,
+} from './editor-ai-repository'
 
 export interface EditorAiContextSnapshot {
   title?: string
@@ -12,256 +32,67 @@ export interface EditorAiContextSnapshot {
   contextAfter?: string
 }
 
-export interface EditorAiConversationDto {
-  id: string
-  scopeId: string
-  title?: string
-  summary?: string
-  lastModel?: string
-  systemPrompt?: string
-  createdAt: string
-  updatedAt: string
-}
+type PrismaEditorAiClient = Pick<typeof db, 'aiConversation' | 'aiMessage'>
+type EditorAiClient = Pick<EditorAiStore, 'aiConversation' | 'aiMessage'>
 
-export interface EditorAiConversationWithMessagesDto extends EditorAiConversationDto {
-  messages: EditorAiMessageDto[]
-}
-
-export interface EditorAiMessageDto {
-  id: string
-  conversationId: string
-  role: string
-  content: string
-  status: string
-  model?: string
-  action?: string
-  metadata?: unknown
-  error?: string
-  createdAt: string
-}
-
-function toConversationDto(conversation: {
-  id: string
-  scopeId: string
-  title: string | null
-  summary: string | null
-  lastModel: string | null
-  systemPrompt: string | null
-  createdAt: Date
-  updatedAt: Date
-}): EditorAiConversationDto {
+function createPrismaEditorAiClient(client: PrismaEditorAiClient): EditorAiClient {
   return {
-    id: conversation.id,
-    scopeId: conversation.scopeId,
-    title: conversation.title ?? undefined,
-    summary: conversation.summary ?? undefined,
-    lastModel: conversation.lastModel ?? undefined,
-    systemPrompt: conversation.systemPrompt ?? undefined,
-    createdAt: conversation.createdAt.toISOString(),
-    updatedAt: conversation.updatedAt.toISOString(),
-  }
-}
-
-function toMessageDto(message: {
-  id: string
-  conversationId: string
-  role: string
-  content: string
-  status: string
-  model: string | null
-  action: string | null
-  metadata: unknown
-  error: string | null
-  createdAt: Date
-}): EditorAiMessageDto {
-  return {
-    id: message.id,
-    conversationId: message.conversationId,
-    role: message.role,
-    content: message.content,
-    status: message.status,
-    model: message.model ?? undefined,
-    action: message.action ?? undefined,
-    metadata: message.metadata ?? undefined,
-    error: message.error ?? undefined,
-    createdAt: message.createdAt.toISOString(),
-  }
-}
-
-export async function ensureEditorAiConversation(input: {
-  scopeId: string
-  title?: string
-  systemPrompt?: string
-}) {
-  const created = await db.aiConversation.create({
-    data: {
-      scopeId: input.scopeId,
-      title: input.title,
-      systemPrompt: input.systemPrompt,
+    aiConversation: {
+      create: ({ data }) => client.aiConversation.create({ data }),
+      findFirst: ({ where }) => client.aiConversation.findFirst({ where }),
+      findMany: ({ where, orderBy }) => client.aiConversation.findMany({ where, orderBy }),
+      update: ({ where, data }) => client.aiConversation.update({ where, data }),
+      updateMany: ({ where, data }) => client.aiConversation.updateMany({ where, data }),
+      deleteMany: ({ where }) => client.aiConversation.deleteMany({ where }),
     },
-  })
-
-  return toConversationDto(created)
-}
-
-export async function listEditorAiConversations(scopeId?: string) {
-  const conversations = await db.aiConversation.findMany({
-    where: scopeId ? { scopeId } : undefined,
-    orderBy: [
-      { updatedAt: 'desc' },
-      { createdAt: 'desc' },
-    ],
-  })
-
-  return conversations.map(toConversationDto)
-}
-
-export async function getEditorAiConversation(conversationId: string): Promise<EditorAiConversationDto | null> {
-  const conversation = await db.aiConversation.findUnique({
-    where: { id: conversationId },
-  })
-
-  return conversation ? toConversationDto(conversation) : null
-}
-
-export async function getEditorAiConversationWithMessages(conversationId: string): Promise<EditorAiConversationWithMessagesDto | null> {
-  const conversation = await db.aiConversation.findUnique({
-    where: { id: conversationId },
-    include: {
-      messages: {
-        orderBy: {
-          createdAt: 'asc',
+    aiMessage: {
+      create: ({ data }) => client.aiMessage.create({
+        data: {
+          ...data,
+          metadata: data.metadata === null ? Prisma.JsonNull : data.metadata,
         },
-      },
+      }),
+      findFirst: ({ where }) => client.aiMessage.findFirst({ where }),
+      findMany: ({ where, orderBy, take }) => client.aiMessage.findMany({
+        where,
+        orderBy,
+        take,
+      }),
+      update: ({ where, data }) => client.aiMessage.update({
+        where,
+        data: {
+          ...data,
+          metadata: data.metadata === null ? Prisma.JsonNull : data.metadata,
+        },
+      }),
+      deleteMany: ({ where }) => client.aiMessage.deleteMany({ where }),
     },
-  })
-
-  if (!conversation) return null
-
-  return {
-    ...toConversationDto(conversation),
-    messages: conversation.messages.map(toMessageDto),
   }
 }
 
-export async function deleteEditorAiConversation(conversationId: string) {
-  await db.aiConversation.delete({
-    where: { id: conversationId },
-  })
-}
-
-export async function clearEditorAiConversationMessages(conversationId: string) {
-  await db.aiMessage.deleteMany({
-    where: { conversationId },
-  })
-
-  const conversation = await db.aiConversation.update({
-    where: { id: conversationId },
-    data: {
-      summary: null,
-      lastModel: null,
-    },
-  })
-
-  return toConversationDto(conversation)
-}
-
-export async function listEditorAiMessages(conversationId: string, limit = 50) {
-  const messages = await db.aiMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'asc' },
-    take: limit,
-  })
-
-  return messages.map(toMessageDto)
-}
-
-export async function createEditorAiMessage(input: {
-  conversationId: string
-  role: EditorAiMessageRole
-  content: string
-  status?: EditorAiMessageStatus
-  model?: string
-  action?: string
-  metadata?: unknown
-  error?: string
-}) {
-  const message = await db.aiMessage.create({
-    data: {
-      conversationId: input.conversationId,
-      role: input.role,
-      content: input.content,
-      status: input.status ?? 'completed',
-      model: input.model,
-      action: input.action,
-      metadata: input.metadata as never,
-      error: input.error,
-    },
-  })
-
-  return toMessageDto(message)
-}
-
-export async function updateEditorAiMessage(
-  messageId: string,
-  data: {
-    content?: string
-    status?: EditorAiMessageStatus
-    model?: string
-    error?: string | null
-    metadata?: unknown
+const editorAiStore: EditorAiStore = {
+  ...createPrismaEditorAiClient(db),
+  $transaction(callback, options) {
+    return db.$transaction(
+      (transaction) => callback(createPrismaEditorAiClient(transaction)),
+      options,
+    )
   },
-) {
-  const message = await db.aiMessage.update({
-    where: { id: messageId },
-    data: {
-      content: data.content,
-      status: data.status,
-      model: data.model,
-      error: data.error,
-      metadata: data.metadata as never,
-    },
-  })
-
-  return toMessageDto(message)
 }
 
-export async function touchEditorAiConversation(
-  conversationId: string,
-  data: {
-    title?: string
-    lastModel?: string
-    summary?: string
-    systemPrompt?: string | null
-  },
-) {
-  const conversation = await db.aiConversation.update({
-    where: { id: conversationId },
-    data,
-  })
+const repository = createEditorAiRepository(editorAiStore)
 
-  return toConversationDto(conversation)
-}
-
-export async function buildEditorAiHistoryMessages(conversationId: string, limit = 8) {
-  const messages = await db.aiMessage.findMany({
-    where: {
-      conversationId,
-      role: {
-        in: ['user', 'assistant'],
-      },
-      status: {
-        in: ['completed', 'streaming'],
-      },
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-    take: limit,
-  })
-
-  return messages.reverse().map((message) => ({
-    role: message.role as 'user' | 'assistant',
-    content: message.content,
-  }))
-}
+export const ensureEditorAiConversation = repository.createConversation
+export const listEditorAiConversations = repository.listConversations
+export const getEditorAiConversation = repository.getConversation
+export const getEditorAiConversationWithMessages = repository.getConversationWithMessages
+export const deleteEditorAiConversation = repository.deleteConversation
+export const clearEditorAiConversationMessages = repository.clearConversation
+export const listEditorAiMessages = repository.listMessages
+export const buildEditorAiHistoryMessages = repository.buildHistory
+export const hasEditorAiMessage = repository.hasMessage
+export const createEditorAiMessage = repository.appendMessage
+export const finishEditorAiMessage = repository.finishMessage
+export const updateEditorAiTaskState = repository.updateTaskState
+export const touchEditorAiConversation = repository.updateConversation
+export const updateEditorAiConversation = repository.updateConversation

@@ -1,4 +1,6 @@
 import { apiRequest, apiRequestData, buildApiUrl, buildQuery, extractErrorMessage } from './core'
+import type { AiChangeSetState } from '@mo-gallery/ai-agent'
+
 import type {
   AiImageUploadResult,
   EditorAiConversationCreateInput,
@@ -6,6 +8,11 @@ import type {
   EditorAiConversationUpdateInput,
   EditorAiConversationWithMessagesDto,
   EditorAiGenerateInput,
+  EditorAiImageGenerateInput,
+  EditorAiImageSaveResult,
+  EditorAiMessageAppendInput,
+  EditorAiMessageDto,
+  EditorAiMessageFinishInput,
   StoryAiGenerateInput,
   StoryAiModelsResponse,
 } from './types'
@@ -132,6 +139,20 @@ export async function getStoryAiModels(token: string): Promise<StoryAiModelsResp
   return apiRequestData<StoryAiModelsResponse>('/api/admin/editor-ai/models', {}, token)
 }
 
+export async function generateEditorAiImage(
+  token: string,
+  input: EditorAiImageGenerateInput,
+): Promise<EditorAiConversationWithMessagesDto> {
+  return apiRequestData<EditorAiConversationWithMessagesDto>(
+    '/api/admin/editor-ai/generate-image',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    token,
+  )
+}
+
 export async function getEditorAiConversations(token: string, scopeId?: string): Promise<EditorAiConversationDto[]> {
   const query = scopeId ? buildQuery({ scopeId }) : ''
   return apiRequestData<EditorAiConversationDto[]>(
@@ -159,6 +180,21 @@ export async function updateEditorAiConversation(token: string, conversationId: 
   }, token)
 }
 
+export async function generateEditorAiConversationTitle(
+  token: string,
+  conversationId: string,
+  model?: string,
+): Promise<EditorAiConversationDto> {
+  return apiRequestData<EditorAiConversationDto>(
+    `/api/admin/editor-ai/conversations/${conversationId}/generate-title`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ ...(model ? { model } : {}) }),
+    },
+    token,
+  )
+}
+
 export async function deleteEditorAiConversation(token: string, conversationId: string): Promise<void> {
   await apiRequest(`/api/admin/editor-ai/conversations/${conversationId}`, {
     method: 'DELETE',
@@ -169,6 +205,51 @@ export async function clearEditorAiConversation(token: string, conversationId: s
   return apiRequestData<EditorAiConversationDto>(`/api/admin/editor-ai/conversations/${conversationId}/clear`, {
     method: 'POST',
   }, token)
+}
+
+export function appendEditorAiMessage(
+  token: string,
+  conversationId: string,
+  input: EditorAiMessageAppendInput,
+): Promise<EditorAiMessageDto> {
+  return apiRequestData<EditorAiMessageDto>(
+    `/api/admin/editor-ai/conversations/${encodeURIComponent(conversationId)}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    token,
+  )
+}
+
+export function finishEditorAiMessage(
+  token: string,
+  messageId: string,
+  input: EditorAiMessageFinishInput,
+): Promise<EditorAiMessageDto> {
+  return apiRequestData<EditorAiMessageDto>(
+    `/api/admin/editor-ai/messages/${encodeURIComponent(messageId)}/finish`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    token,
+  )
+}
+
+export function updateEditorAiTaskState(
+  token: string,
+  messageId: string,
+  state: AiChangeSetState,
+): Promise<EditorAiMessageDto> {
+  return apiRequestData<EditorAiMessageDto>(
+    `/api/admin/editor-ai/messages/${encodeURIComponent(messageId)}/task-state`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ state }),
+    },
+    token,
+  )
 }
 
 export async function uploadAiImage(token: string, file: File): Promise<AiImageUploadResult> {
@@ -190,6 +271,22 @@ export async function uploadAiImage(token: string, file: File): Promise<AiImageU
 
   const result = await response.json() as { success: boolean; data: AiImageUploadResult }
   return result.data
+}
+
+
+export async function saveEditorAiMessageImage(
+  token: string,
+  messageId: string,
+  imageUrl: string,
+): Promise<EditorAiImageSaveResult> {
+  return apiRequestData<EditorAiImageSaveResult>(
+    `/api/admin/editor-ai/messages/${encodeURIComponent(messageId)}/images/save`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ imageUrl }),
+    },
+    token,
+  )
 }
 
 export async function polishStoryAiPrompt(

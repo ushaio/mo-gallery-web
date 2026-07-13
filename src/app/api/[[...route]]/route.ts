@@ -14,7 +14,8 @@ app.use(
   cors({
     origin: '*',
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    // Leave allowHeaders unset so Hono reflects Access-Control-Request-Headers.
+    // Pi AI's OpenAI client adds X-Stainless-* headers in browser requests.
   }),
 )
 
@@ -29,5 +30,6 @@ export const POST = handle(app)
 export const PUT = handle(app)
 export const PATCH = handle(app)
 export const DELETE = handle(app)
+export const OPTIONS = handle(app)
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
