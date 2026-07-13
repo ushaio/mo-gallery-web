@@ -60,6 +60,7 @@ interface UseNarrativeEditorOptions {
   token?: string | null
   t: (key: string) => string
   getAdminStory: NarrativeEditorRuntime['getAdminStory']
+  isAiTaskLocked: boolean
 }
 
 export function useNarrativeEditor({
@@ -72,12 +73,14 @@ export function useNarrativeEditor({
   token,
   t,
   getAdminStory,
+  isAiTaskLocked,
 }: UseNarrativeEditorOptions) {
   const currentValueRef = useRef(value)
   const onPasteFilesRef = useRef(onPasteFiles)
   const tokenRef = useRef(token)
   // 编辑器实例只创建一次，粘贴回调经 ref 取最新实现
   const getAdminStoryRef = useRef(getAdminStory)
+  const isAiTaskLockedRef = useRef(isAiTaskLocked)
 
   useEffect(() => {
     currentValueRef.current = value
@@ -94,6 +97,10 @@ export function useNarrativeEditor({
   useEffect(() => {
     getAdminStoryRef.current = getAdminStory
   }, [getAdminStory])
+
+  useEffect(() => {
+    isAiTaskLockedRef.current = isAiTaskLocked
+  }, [isAiTaskLocked])
 
   const processedContent = useCallback(() => {
     if (jsonValue) return jsonValue
@@ -174,6 +181,8 @@ export function useNarrativeEditor({
         autocapitalize: 'off',
       },
       handlePaste: (view, event) => {
+        if (isAiTaskLockedRef.current) return true
+
         const files = Array.from(event.clipboardData?.files || []).filter((file) =>
           file.type.startsWith('image/')
         )
@@ -254,6 +263,8 @@ export function useNarrativeEditor({
         return false
       },
       handleKeyDown: (view, event) => {
+        if (isAiTaskLockedRef.current) return true
+
         if (event.key !== 'Tab') {
           return false
         }
@@ -272,6 +283,10 @@ export function useNarrativeEditor({
       },
     },
   })
+
+  useEffect(() => {
+    editor?.setEditable(!isAiTaskLocked)
+  }, [editor, isAiTaskLocked])
 
 
   return {

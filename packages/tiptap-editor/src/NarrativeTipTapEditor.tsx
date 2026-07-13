@@ -39,9 +39,15 @@ import {
 } from 'lucide-react'
 import TipTapAiAssistant, { type TipTapAiAgentRunner } from './TipTapAiAssistant'
 import type { NarrativeEditorRuntime } from './runtime'
-import { runEditorAgent, type EditorAgentEditProposal } from '@mo-gallery/ai-agent'
+import {
+  createEditorDocumentSnapshot,
+  getTextReplacementOperation,
+  runEditorAgent,
+  type EditorProposal,
+} from '@mo-gallery/ai-agent'
 import { linearizeDoc, findDocTextRange } from './tiptap-editor/doc-text'
 import { AiDiffPreviewDialog } from './tiptap-editor/AiDiffPreviewDialog'
+import { AiSidebar } from './tiptap-editor/AiSidebar'
 
 import {
   DEFAULT_FONT_SIZE_LABEL,
@@ -70,6 +76,12 @@ import { ToolbarButton, ToolbarSelect, ToolbarDivider } from './tiptap-editor/Ed
 import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './tiptap-editor/ColorPickerMenu'
 import { useNarrativeEditor } from './tiptap-editor/useNarrativeEditor'
 import { useEditorImperativeHandle, type NarrativeTipTapEditorHandle } from './tiptap-editor/useEditorImperativeHandle'
+import {
+  createNarrativeAiTaskLock,
+  useNarrativeAiTaskLock,
+  type NarrativeAiTaskLock,
+} from './tiptap-editor/ai-task-lock'
+import { createAiTaskLockNotifier } from './tiptap-editor/ai-task-lock-notifier'
 import './tiptap-editor.css'
 
 export interface NarrativeTipTapEditorProps {
@@ -82,6 +94,9 @@ export interface NarrativeTipTapEditorProps {
   className?: string
   /** 宿主应用注入的 i18n / 主题 / 后端接口 */
   runtime: NarrativeEditorRuntime
+  documentId?: string
+  documentKind?: 'story' | 'blog'
+  onAiTaskLockChange?: (locked: boolean) => void
   aiOptions?: {
     enabled: boolean
     token?: string | null
@@ -93,7 +108,20 @@ export interface NarrativeTipTapEditorProps {
 export type { NarrativeTipTapEditorHandle }
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
-  ({ value, jsonValue, onChange, onJsonChange, placeholder, onPasteFiles, className, runtime, aiOptions }, ref) => {
+  ({
+    value,
+    jsonValue,
+    onChange,
+    onJsonChange,
+    placeholder,
+    onPasteFiles,
+    className,
+    runtime,
+    documentId,
+    documentKind,
+    onAiTaskLockChange,
+    aiOptions,
+  }, ref) => {
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
     const backgroundColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const backgroundColorMenuRef = useRef<HTMLDivElement | null>(null)
@@ -130,12 +158,23 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     } | null>(null)
     // Agent 修改提案的逐条审阅队列
     const [agentReview, setAgentReview] = useState<{
-      proposals: EditorAgentEditProposal[]
+      proposals: EditorProposal[]
       index: number
       error: string
     } | null>(null)
+    const [aiTaskLock] = useState<NarrativeAiTaskLock>(() => createNarrativeAiTaskLock())
+    const isAiTaskLocked = useNarrativeAiTaskLock(aiTaskLock)
+    const [aiTaskLockNotifier] = useState(() => createAiTaskLockNotifier())
 
     const { t, resolvedTheme } = runtime
+
+    useEffect(() => {
+      aiTaskLockNotifier.update(onAiTaskLockChange, isAiTaskLocked)
+    }, [aiTaskLockNotifier, isAiTaskLocked, onAiTaskLockChange])
+
+    useEffect(() => () => {
+      aiTaskLockNotifier.dispose()
+    }, [aiTaskLockNotifier])
 
     const { editor, currentValueRef } = useNarrativeEditor({
       value,
@@ -147,6 +186,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       token: aiOptions?.token,
       t,
       getAdminStory: runtime.getAdminStory,
+      isAiTaskLocked,
     })
 
     const headingOptions = useMemo(() => [
@@ -325,7 +365,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [editor, syncAiSelectionState])
 
     const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number; photoId?: string }) => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
 
       // Compute default width from editor content width before inserting to avoid flicker
       let width = attrs.width
@@ -358,7 +398,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             }],
         })
         .run()
-    }, [editor, focusEditor])
+    }, [editor, focusEditor, isAiTaskLocked])
 
     // AI 结果的实际落库操作（diff 确认后调用）
     const performAiApply = useCallback((
@@ -366,7 +406,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       preview: string,
       selectionRange: { from: number; to: number } | null,
     ) => {
-      if (!editor || !preview.trim()) return
+      if (!editor || isAiTaskLocked || !preview.trim()) return
 
       const html = convertPlainTextToEditorHtml(preview)
       if (!html) return
@@ -393,7 +433,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       }
 
       focusEditor()
-    }, [editor, focusEditor])
+    }, [editor, focusEditor, isAiTaskLocked])
 
     // 替换选区前先弹 diff 预览确认；插入/追加无覆盖风险，直接应用
     const applyAiResult = useCallback((
@@ -401,7 +441,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       preview: string,
       selectionRange: { from: number; to: number } | null,
     ) => {
-      if (!editor || !preview.trim()) return
+      if (!editor || isAiTaskLocked || !preview.trim()) return
 
       if (mode === 'replace' && selectionRange) {
         const originalText = editor.state.doc.textBetween(selectionRange.from, selectionRange.to, '\n')
@@ -410,14 +450,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       }
 
       performAiApply(mode, preview, selectionRange)
-    }, [editor, performAiApply])
+    }, [editor, isAiTaskLocked, performAiApply])
 
     // ── Agent：/agent 指令的执行与提案审阅 ─────────────
 
     const agentRunner = useMemo<TipTapAiAgentRunner | undefined>(() => {
       if (!runtime.getAgentEndpoint || !editor) return undefined
       const getAgentEndpoint = runtime.getAgentEndpoint
-      return async ({ instruction, model, signal, onProgress }) => {
+      return async ({ instruction, model, signal, onEvent }) => {
         const token = aiOptions?.token ?? ''
         const endpoint = await getAgentEndpoint(token)
         let modelId = model
@@ -431,10 +471,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           endpoint,
           model: modelId,
           instruction,
-          title: aiOptions?.title,
-          document: { getText: () => linearizeDoc(editor.state.doc).text },
+          document: createEditorDocumentSnapshot({
+            title: aiOptions?.title,
+            text: linearizeDoc(editor.state.doc).text,
+          }),
           signal,
-          onProgress,
+          onEvent,
         })
 
         if (result.proposals.length > 0) {
@@ -455,21 +497,31 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [])
 
     const handleAgentProposalApply = useCallback(() => {
-      if (!editor || !agentReview) return
+      if (!editor || isAiTaskLocked || !agentReview) return
       const proposal = agentReview.proposals[agentReview.index]
-      const range = findDocTextRange(editor.state.doc, proposal.originalText)
+      const operation = getTextReplacementOperation(proposal)
+      if (!operation) {
+        setAgentReview({ ...agentReview, error: t('editor.ai_diff_not_found') })
+        return
+      }
+      const range = findDocTextRange(editor.state.doc, operation.match.text)
       if (!range) {
         setAgentReview({ ...agentReview, error: t('editor.ai_diff_not_found') })
         return
       }
-      if (proposal.newText.trim()) {
-        const html = convertPlainTextToEditorHtml(proposal.newText)
+      if (operation.replacement) {
+        const html = convertPlainTextToEditorHtml(operation.replacement)
         editor.chain().focus().setTextSelection(range).insertContent(html).run()
       } else {
         editor.chain().focus().setTextSelection(range).deleteSelection().run()
       }
       advanceAgentReview()
-    }, [editor, agentReview, advanceAgentReview, t])
+    }, [editor, agentReview, advanceAgentReview, isAiTaskLocked, t])
+
+    const currentAgentProposal = agentReview ? agentReview.proposals[agentReview.index] : null
+    const currentAgentOperation = currentAgentProposal
+      ? getTextReplacementOperation(currentAgentProposal)
+      : null
 
     const imperativeHandle = useEditorImperativeHandle({
       editor,
@@ -478,21 +530,22 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       onJsonChange,
       focusEditor,
       insertInlineImage,
+      isAiTaskLocked,
     })
 
     useImperativeHandle(ref, () => imperativeHandle, [imperativeHandle])
 
-    const toggleBold = () => editor?.chain().focus().toggleBold().run()
-    const toggleItalic = () => editor?.chain().focus().toggleItalic().run()
-    const toggleUnderline = () => editor?.chain().focus().toggleUnderline().run()
-    const toggleStrike = () => editor?.chain().focus().toggleStrike().run()
-    const toggleBulletList = () => editor?.chain().focus().toggleBulletList().run()
-    const toggleOrderedList = () => editor?.chain().focus().toggleOrderedList().run()
-    const toggleBlockquote = () => editor?.chain().focus().toggleBlockquote().run()
-    const toggleCode = () => editor?.chain().focus().toggleCode().run()
+    const toggleBold = () => !isAiTaskLocked && editor?.chain().focus().toggleBold().run()
+    const toggleItalic = () => !isAiTaskLocked && editor?.chain().focus().toggleItalic().run()
+    const toggleUnderline = () => !isAiTaskLocked && editor?.chain().focus().toggleUnderline().run()
+    const toggleStrike = () => !isAiTaskLocked && editor?.chain().focus().toggleStrike().run()
+    const toggleBulletList = () => !isAiTaskLocked && editor?.chain().focus().toggleBulletList().run()
+    const toggleOrderedList = () => !isAiTaskLocked && editor?.chain().focus().toggleOrderedList().run()
+    const toggleBlockquote = () => !isAiTaskLocked && editor?.chain().focus().toggleBlockquote().run()
+    const toggleCode = () => !isAiTaskLocked && editor?.chain().focus().toggleCode().run()
 
     const setLink = useCallback(() => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       if (showLinkInput) {
         if (linkUrl) {
           editor.chain().focus().setLink({ href: linkUrl }).run()
@@ -507,10 +560,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         setShowImageInput(false)
         setShowLinkInput(true)
       }
-    }, [editor, linkUrl, showLinkInput])
+    }, [editor, isAiTaskLocked, linkUrl, showLinkInput])
 
     const addImage = useCallback(() => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       if (showImageInput) {
         if (imageUrl) {
           insertInlineImage({ src: imageUrl })
@@ -521,24 +574,24 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         setShowLinkInput(false)
         setShowImageInput(true)
       }
-    }, [editor, imageUrl, insertInlineImage, showImageInput])
+    }, [editor, imageUrl, insertInlineImage, isAiTaskLocked, showImageInput])
 
     const addTable = useCallback(() => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
     const setTextAlign = useCallback((align: 'left' | 'center' | 'right') => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const chain = editor.chain().focus()
       if ((align === 'center' || align === 'right') && resolvedEditorUiState.hasDropCap) {
         chain.setParagraphDropCap(false)
       }
       chain.setTextAlign(align).run()
-    }, [editor, resolvedEditorUiState.hasDropCap])
+    }, [editor, isAiTaskLocked, resolvedEditorUiState.hasDropCap])
 
     const toggleDropCap = useCallback(() => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const chain = editor.chain().focus()
       if (resolvedEditorUiState.hasDropCap) {
         chain.setParagraphDropCap(false).run()
@@ -548,10 +601,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         chain.setTextAlign('left')
       }
       chain.setParagraphDropCap(true).run()
-    }, [editor, resolvedEditorUiState.hasDropCap, resolvedEditorUiState.isAlignCenter, resolvedEditorUiState.isAlignRight])
+    }, [editor, isAiTaskLocked, resolvedEditorUiState.hasDropCap, resolvedEditorUiState.isAlignCenter, resolvedEditorUiState.isAlignRight])
 
     const setHeadingLevel = useCallback((level: string) => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const chain = editor.chain().focus()
       const pendingSelection = pendingSelectionRef.current
       if (pendingSelection) {
@@ -563,10 +616,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         chain.setParagraph().run()
       }
       pendingSelectionRef.current = null
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
     const setFontSize = useCallback((fontSize: string) => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const chain = editor.chain().focus()
       const pendingSelection = pendingSelectionRef.current
       if (pendingSelection) {
@@ -578,10 +631,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         chain.unsetFontSize().run()
       }
       pendingSelectionRef.current = null
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
     const setFontFamily = useCallback((fontFamily: string) => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const chain = editor.chain().focus()
       const pendingSelection = pendingSelectionRef.current
       if (pendingSelection) {
@@ -593,10 +646,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         chain.unsetFontFamily().run()
       }
       pendingSelectionRef.current = null
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
     const setTextColor = useCallback((color: string) => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const normalizedColor = color ? normalizeHexColor(color) : ''
       if (color && !normalizedColor) return
 
@@ -619,10 +672,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
       pendingSelectionRef.current = null
       setShowTextColorMenu(false)
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
     const setBackgroundColor = useCallback((backgroundColor: string) => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       const normalizedBackgroundColor = backgroundColor ? normalizeHexColor(backgroundColor) : ''
       if (backgroundColor && !normalizedBackgroundColor) return
 
@@ -645,7 +698,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
       pendingSelectionRef.current = null
       setShowBackgroundColorMenu(false)
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
     useColorPickerMenu({
       isOpen: showTextColorMenu,
@@ -674,17 +727,17 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [editor])
 
     const clearFormatting = useCallback(() => {
-      if (!editor) return
+      if (!editor || isAiTaskLocked) return
       editor
         .chain()
         .focus()
         .clearNodes()
         .unsetAllMarks()
         .run()
-    }, [editor])
+    }, [editor, isAiTaskLocked])
 
-    const undo = () => editor?.chain().focus().undo().run()
-    const redo = () => editor?.chain().focus().redo().run()
+    const undo = () => !isAiTaskLocked && editor?.chain().focus().undo().run()
+    const redo = () => !isAiTaskLocked && editor?.chain().focus().redo().run()
 
     if (!editor) {
       return (
@@ -695,9 +748,19 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }
 
     return (
-      <div className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}>
+      <div
+        className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}
+        aria-busy={isAiTaskLocked}
+        aria-readonly={isAiTaskLocked}
+        data-document-id={documentId}
+        data-document-kind={documentKind}
+      >
         {/* Toolbar */}
-        <div className="scrollbar-hide flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-2 py-1.5 whitespace-nowrap">
+        <fieldset
+          disabled={isAiTaskLocked}
+          aria-disabled={isAiTaskLocked}
+          className="scrollbar-hide flex min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto border-0 border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-2 py-1.5 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+        >
           <ToolbarSelect
             value={resolvedEditorUiState.headingLevel}
             onChange={setHeadingLevel}
@@ -912,17 +975,17 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
           <ToolbarDivider />
 
-          <ToolbarButton onClick={undo} disabled={!editor.can().undo()} title={t('editor.undo')}>
+          <ToolbarButton onClick={undo} disabled={isAiTaskLocked || !editor.can().undo()} title={t('editor.undo')}>
             <Undo className="w-4 h-4" />
           </ToolbarButton>
-          <ToolbarButton onClick={redo} disabled={!editor.can().redo()} title={t('editor.redo')}>
+          <ToolbarButton onClick={redo} disabled={isAiTaskLocked || !editor.can().redo()} title={t('editor.redo')}>
             <Redo className="w-4 h-4" />
           </ToolbarButton>
-        </div>
+        </fieldset>
 
         {/* Color Picker Menus */}
         <BackgroundColorPicker
-          isOpen={showBackgroundColorMenu}
+          isOpen={showBackgroundColorMenu && !isAiTaskLocked}
           position={backgroundColorMenuPosition}
           currentColor={resolvedEditorUiState.backgroundColor}
           recentColors={recentBackgroundColors}
@@ -938,7 +1001,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         />
 
         <TextColorPicker
-          isOpen={showTextColorMenu}
+          isOpen={showTextColorMenu && !isAiTaskLocked}
           position={textColorMenuPosition}
           currentColor={resolvedEditorUiState.color}
           recentColors={recentTextColors}
@@ -953,30 +1016,44 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           t={t}
         />
 
-        {/* Editor Content */}
-        <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
-          <div className="relative h-full">
-            <EditorContent editor={editor} className="h-full custom-scrollbar" />
+        {aiOptions?.enabled ? (
+          <AiSidebar label={t('editor.ai_button')} onExpand={syncAiSelectionState}>
+            <AiSidebar.Content>
+              <div className="h-full overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
+                <div className="relative h-full">
+                  <EditorContent editor={editor} className="h-full custom-scrollbar" />
+                </div>
+              </div>
+            </AiSidebar.Content>
+            <AiSidebar.Toggle />
+            <AiSidebar.Panel>
+              <TipTapAiAssistant
+                t={t}
+                api={runtime.ai}
+                agentRunner={agentRunner}
+                options={aiOptions}
+                documentId={documentId}
+                documentKind={documentKind}
+                aiTaskLock={aiTaskLock}
+                context={{
+                  selectionRange: aiSelectionRange,
+                  hasSelection: aiHasSelection,
+                  selectedText: aiSelectedText,
+                  currentParagraph: aiCurrentParagraph,
+                  contextBefore: aiContextBefore,
+                  contextAfter: aiContextAfter,
+                }}
+                onApplyResult={applyAiResult}
+              />
+            </AiSidebar.Panel>
+          </AiSidebar>
+        ) : (
+          <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
+            <div className="relative h-full">
+              <EditorContent editor={editor} className="h-full custom-scrollbar" />
+            </div>
           </div>
-        </div>
-
-        {/* AI Assistant */}
-        <TipTapAiAssistant
-          t={t}
-          api={runtime.ai}
-          agentRunner={agentRunner}
-          options={aiOptions}
-          context={{
-            selectionRange: aiSelectionRange,
-            hasSelection: aiHasSelection,
-            selectedText: aiSelectedText,
-            currentParagraph: aiCurrentParagraph,
-            contextBefore: aiContextBefore,
-            contextAfter: aiContextAfter,
-          }}
-          onSyncContext={syncAiSelectionState}
-          onApplyResult={applyAiResult}
-        />
+        )}
 
         {/* 替换选区前的 diff 确认 */}
         <AiDiffPreviewDialog
@@ -996,11 +1073,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
         {/* Agent 修改提案逐条审阅 */}
         <AiDiffPreviewDialog
-          open={!!agentReview}
+          open={!!currentAgentOperation}
           title={t('editor.ai_diff_agent_title')}
-          originalText={agentReview?.proposals[agentReview.index]?.originalText ?? ''}
-          newText={agentReview?.proposals[agentReview.index]?.newText ?? ''}
-          reason={agentReview?.proposals[agentReview.index]?.reason}
+          originalText={currentAgentOperation?.match.text ?? ''}
+          newText={currentAgentOperation?.replacement ?? ''}
+          reason={currentAgentProposal?.reason}
           progress={agentReview ? { index: agentReview.index + 1, total: agentReview.proposals.length } : undefined}
           error={agentReview?.error || undefined}
           onConfirm={handleAgentProposalApply}

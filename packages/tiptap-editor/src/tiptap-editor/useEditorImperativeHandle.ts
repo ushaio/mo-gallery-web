@@ -40,6 +40,7 @@ interface UseEditorImperativeHandleOptions {
   onJsonChange?: (value: JSONContent) => void
   focusEditor: () => void
   insertInlineImage: (attrs: { src: string; alt?: string; width?: number; photoId?: string }) => void
+  isAiTaskLocked: boolean
 }
 
 export function useEditorImperativeHandle({
@@ -49,6 +50,7 @@ export function useEditorImperativeHandle({
   onJsonChange,
   focusEditor,
   insertInlineImage,
+  isAiTaskLocked,
 }: UseEditorImperativeHandleOptions): NarrativeTipTapEditorHandle {
   const handle = useMemo<NarrativeTipTapEditorHandle>(() => ({
     getValue: () => {
@@ -60,6 +62,7 @@ export function useEditorImperativeHandle({
     },
 
     setValue: (html: string) => {
+      if (isAiTaskLocked) return
       if (editor) {
         const processed = isMarkdownContent(html) ? convertMarkdownToHtml(html) : html
         editor.commands.setContent(processed)
@@ -71,6 +74,7 @@ export function useEditorImperativeHandle({
     },
 
     insertValue: (content: string) => {
+      if (isAiTaskLocked) return
       if (editor) {
         // Handle image content (markdown or HTML img tag)
         const imageAttrs = convertMarkdownImageToHtmlAttrs(content) || convertHtmlImageToAttrs(content)
@@ -85,6 +89,7 @@ export function useEditorImperativeHandle({
     },
 
     insertMarkdown: (markdown: string) => {
+      if (isAiTaskLocked) return
       if (editor) {
         const imageAttrs = convertMarkdownImageToHtmlAttrs(markdown)
         if (imageAttrs) {
@@ -99,6 +104,7 @@ export function useEditorImperativeHandle({
     },
 
     replaceText: (searchValue: string, nextValue: string) => {
+      if (isAiTaskLocked) return false
       if (!searchValue || !editor) return false
       const currentHtml = editor.getHTML()
 
@@ -153,6 +159,7 @@ export function useEditorImperativeHandle({
     },
 
     scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => {
+      if (isAiTaskLocked) return false
       if (!editor) return false
       const editorDom = editor.view.dom
       const computedStyle = window.getComputedStyle(editorDom)
@@ -196,7 +203,7 @@ export function useEditorImperativeHandle({
     },
 
     focus: focusEditor,
-  }), [editor, focusEditor, insertInlineImage, onChange, onJsonChange, currentValueRef])
+  }), [editor, focusEditor, insertInlineImage, isAiTaskLocked, onChange, onJsonChange, currentValueRef])
 
   return handle
 }
