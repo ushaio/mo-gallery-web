@@ -27,6 +27,7 @@ import type { EditorAiApi } from '@mo-gallery/tiptap-editor'
 import type {
   EditorAiConversationCreateInput,
   EditorAiConversationDto,
+  EditorAiConversationUpdateInput,
   EditorAiConversationWithMessagesDto,
   EditorAiGenerateInput,
   EditorAiMessageAppendInput,
@@ -193,6 +194,16 @@ export async function getLocalEditorAiConversation(
   conversationId: string,
 ): Promise<EditorAiConversationWithMessagesDto> {
   return await getEditorAiConversation('', conversationId)
+}
+
+export async function updateLocalEditorAiConversation(
+  conversationId: string,
+  input: EditorAiConversationUpdateInput,
+): Promise<EditorAiConversationDto> {
+  return await UpdateEditorAiConversation(conversationId, {
+    ...(input.title === undefined ? {} : { title: input.title }),
+    ...(typeof input.systemPrompt === 'string' ? { systemPrompt: input.systemPrompt } : {}),
+  })
 }
 
 async function deleteEditorAiConversation(_token: string, conversationId: string): Promise<void> {

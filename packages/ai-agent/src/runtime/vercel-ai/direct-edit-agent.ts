@@ -111,9 +111,62 @@ const narrativeMutationInputSchema = z.discriminatedUnion('type', [
   z.object({ operationId: boundedIdSchema, type: z.literal('insert_node'), parentId: boundedIdSchema, index: z.number().int().nonnegative(), node: jsonInputSchema }).strict(),
 ])
 const zineBase = { operationId: boundedIdSchema, spreadId: boundedIdSchema }
+const zineSlotBaseInputShape = {
+  id: boundedIdSchema,
+  page: z.enum(['left', 'right']),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  w: z.number().finite().positive(),
+  h: z.number().finite().positive(),
+  rotation: z.number().finite(),
+  zIndex: z.number().finite(),
+}
+const zineTextSlotInputSchema = z.object({
+  ...zineSlotBaseInputShape,
+  kind: z.literal('text'),
+  content: z.string().max(MAX_EDITOR_OPERATION_REPLACEMENT_LENGTH),
+  align: z.enum(['left', 'center', 'right']),
+  fontSize: z.number().finite().positive(),
+  lineHeight: z.number().finite().positive(),
+  color: z.string().min(1).max(256),
+  fontFamily: z.string().min(1).max(256),
+}).strict()
+const zineImageSlotInputSchema = z.object({
+  ...zineSlotBaseInputShape,
+  kind: z.literal('image'),
+  assetId: boundedIdSchema.nullable(),
+  imageTransform: z.object({
+    scale: z.number().finite().positive(),
+    offsetX: z.number().finite(),
+    offsetY: z.number().finite(),
+    rotation: z.number().finite(),
+  }).strict(),
+}).strict()
+const zineSlotInputSchema = z.discriminatedUnion('kind', [
+  zineTextSlotInputSchema,
+  zineImageSlotInputSchema,
+])
+const insertZineTextSlotInputSchema = z.object({
+  ...zineBase,
+  index: z.number().int().nonnegative().optional(),
+  slotId: boundedIdSchema.optional(),
+  page: z.enum(['left', 'right']),
+  content: z.string().min(1).max(MAX_EDITOR_OPERATION_REPLACEMENT_LENGTH),
+  x: z.number().finite().optional(),
+  y: z.number().finite().optional(),
+  w: z.number().finite().positive().optional(),
+  h: z.number().finite().positive().optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  fontSize: z.number().finite().positive().optional(),
+  lineHeight: z.number().finite().positive().optional(),
+  color: z.string().min(1).max(256).optional(),
+  fontFamily: z.string().min(1).max(256).optional(),
+  rotation: z.number().finite().optional(),
+  zIndex: z.number().finite().optional(),
+}).strict()
 const zineMutationInputSchema = z.discriminatedUnion('type', [
   z.object({ ...zineBase, type: z.literal('set_slot_attrs'), slotId: boundedIdSchema, attrs: jsonRecordInputSchema }).strict(),
-  z.object({ ...zineBase, type: z.literal('insert_slot'), index: z.number().int().nonnegative(), slot: jsonInputSchema }).strict(),
+  z.object({ ...zineBase, type: z.literal('insert_slot'), index: z.number().int().nonnegative(), slot: zineSlotInputSchema }).strict(),
   z.object({ ...zineBase, type: z.literal('assign_asset'), slotId: boundedIdSchema, assetId: boundedIdSchema }).strict(),
   z.object({ ...zineBase, type: z.literal('set_image_crop'), slotId: boundedIdSchema, crop: z.object({ scale: z.number().positive(), offsetX: z.number(), offsetY: z.number(), rotation: z.number() }).strict() }).strict(),
   z.object({ ...zineBase, type: z.literal('set_layer_order'), slotId: boundedIdSchema, zIndex: z.number() }).strict(),
@@ -140,6 +193,22 @@ function buildBatchTarget(task: DirectEditAgentTask): EditorOperationBatch['targ
     return { documentId: snapshot.documentId }
   }
   return { documentId: snapshot.projectId, spreadId: snapshot.targetSpreadId }
+}
+
+function zineSnapshotSlotIds(task: DirectEditAgentTask): string[] {
+  if (task.snapshot.capability !== 'zine') return []
+  const structure = task.snapshot.currentSpread.structure
+  if (typeof structure !== 'object' || structure === null) return []
+  const slots = Reflect.get(structure, 'slots') as unknown
+  if (!Array.isArray(slots)) return []
+  return slots.flatMap((slot) => (
+    typeof slot === 'object'
+      && slot !== null
+      && !Array.isArray(slot)
+      && typeof slot.id === 'string'
+      ? [slot.id]
+      : []
+  ))
 }
 
 function createRuntimeTools(
@@ -306,8 +375,45 @@ function createRuntimeTools(
       })
     }
   } else {
+    const existingSlotIds = new Set(zineSnapshotSlotIds(task))
+    common.insert_zine_text_slot = tool({
+      description: 'Insert a complete valid text slot on the current Zine spread. Prefer this tool when explicit user intent requires adding copy and no suitable text slot exists.',
+      inputSchema: insertZineTextSlotInputSchema,
+      execute: async (input) => {
+        let slotId = input.slotId ?? `ai-text-${operations.length + 1}`
+        let suffix = 2
+        while (existingSlotIds.has(slotId)) {
+          slotId = `${input.slotId ?? 'ai-text'}-${suffix}`
+          suffix += 1
+        }
+        existingSlotIds.add(slotId)
+        return accept({
+          operationId: input.operationId,
+          type: 'insert_slot',
+          spreadId: input.spreadId,
+          index: Math.min(input.index ?? existingSlotIds.size - 1, existingSlotIds.size - 1),
+          slot: {
+          id: slotId,
+          kind: 'text',
+          page: input.page,
+          x: input.x ?? 12,
+          y: input.y ?? 12,
+          w: input.w ?? 70,
+          h: input.h ?? 30,
+          rotation: input.rotation ?? 0,
+          zIndex: input.zIndex ?? 100,
+          content: input.content,
+          align: input.align ?? 'left',
+          fontSize: input.fontSize ?? 14,
+          lineHeight: input.lineHeight ?? 1.4,
+          color: input.color ?? '#111111',
+          fontFamily: input.fontFamily ?? 'serif',
+        },
+        })
+      },
+    })
     common.add_zine_operation = tool({
-      description: 'Add one validated non-delete Zine operation for the current spread.',
+      description: 'Add one validated non-delete Zine operation for the current spread. Use insert_zine_text_slot instead of raw insert_slot when adding copy.',
       inputSchema: zineMutationInputSchema,
       execute: async (input) => {
         const payloadFailure = validateStructuredPayload(input)

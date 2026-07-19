@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -651,6 +652,29 @@ func TestResolveDesktopModelCapabilitiesUsesExactConfiguredIDs(t *testing.T) {
 	}
 }
 
+func TestResolveDesktopModelCapabilitiesInfersKnownContextWindows(t *testing.T) {
+	provider := config.AIProviderConfig{}
+
+	for _, modelID := range []string{"gpt-5.5", " GPT-5.5 "} {
+		capabilities := resolveDesktopModelCapabilities(provider, modelID)
+		if capabilities.ContextWindow != 272000 {
+			t.Fatalf("ContextWindow for %q = %d", modelID, capabilities.ContextWindow)
+		}
+	}
+
+	overridden := resolveDesktopModelCapabilities(config.AIProviderConfig{
+		ContextWindows: map[string]int{"gpt-5.5": 128000},
+	}, "gpt-5.5")
+	if overridden.ContextWindow != 128000 {
+		t.Fatalf("overridden ContextWindow = %d", overridden.ContextWindow)
+	}
+
+	unknown := resolveDesktopModelCapabilities(provider, "unknown-model")
+	if unknown.ContextWindow != defaultDesktopModelContextWindow {
+		t.Fatalf("unknown ContextWindow = %d", unknown.ContextWindow)
+	}
+}
+
 func TestGetModelsFetchesSpecificProviderModels(t *testing.T) {
 	var authHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -661,7 +685,10 @@ func TestGetModelsFetchesSpecificProviderModels(t *testing.T) {
 		authHeader = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": []map[string]string{{"id": "deepseek-v4-pro"}, {"id": "deepseek-v4-lite"}},
+			"data": []map[string]any{
+				{"id": "deepseek-v4-pro", "context_length": 64000},
+				{"id": "deepseek-v4-lite", "context_length": 32000},
+			},
 		})
 	}))
 	defer server.Close()
@@ -679,6 +706,9 @@ func TestGetModelsFetchesSpecificProviderModels(t *testing.T) {
 			},
 		},
 	}}, nil)
+	logger := NewLogger(true, 10)
+	logger.filePath = filepath.Join(t.TempDir(), "logs.json")
+	service.SetLogger(logger)
 
 	result, err := service.GetProviderModels("deepseek")
 	if err != nil {
@@ -702,5 +732,15 @@ func TestGetModelsFetchesSpecificProviderModels(t *testing.T) {
 	}
 	if bytes.Contains(payload, []byte("deepseek-key")) {
 		t.Fatalf("model response exposed API key: %s", payload)
+	}
+	logs := logger.GetLogs(string(LogCategoryAI), "", 0)
+	if len(logs) != 2 || logs[0].Action != "fetch_models_success" || logs[1].Action != "fetch_models_start" {
+		t.Fatalf("model fetch logs = %#v", logs)
+	}
+	if !strings.Contains(logs[0].Details, `"context_length":64000`) {
+		t.Fatalf("success log omitted provider metadata: %s", logs[0].Details)
+	}
+	if strings.Contains(logs[0].Details, "deepseek-key") || strings.Contains(logs[1].Details, "deepseek-key") {
+		t.Fatalf("model fetch logs exposed API key: %#v", logs)
 	}
 }

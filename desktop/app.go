@@ -67,6 +67,7 @@ func (a *App) startup(ctx context.Context) {
 	a.Storage = services.NewStorageService(a.Proxy)
 	a.Settings = services.NewSettingsService(a.Proxy)
 	a.EditorAi = services.NewEditorAiService(a.cfg, a.Upload)
+	a.EditorAi.SetLogger(a.Logger)
 	a.Overview = services.NewOverviewService()
 
 	// 加载日志

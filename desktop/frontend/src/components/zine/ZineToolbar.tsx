@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, Download, Hash, ImagePlus, LayoutTemplate, Loader2, Redo2, Type, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Download, FileImage, FileText, Hash, ImagePlus, LayoutTemplate, Loader2, Redo2, Type, Undo2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { t } from '@/lib/i18n'
+import { exportZineSpreadImage, type ZineRasterFormat } from '@/lib/zine/spread-raster'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
@@ -74,7 +76,9 @@ export function ZineToolbar() {
   const [title, setTitle] = useState(project?.title ?? '')
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [pageNumbersOpen, setPageNumbersOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
+  const [exportingImage, setExportingImage] = useState<ZineRasterFormat | null>(null)
 
   useEffect(() => {
     setTitle(project?.title ?? '')
@@ -93,6 +97,22 @@ export function ZineToolbar() {
     const nextTitle = title.trim() || project.title
     setTitle(nextTitle)
     if (nextTitle !== project.title) rename(nextTitle)
+  }
+
+  async function exportSpreadImage(format: ZineRasterFormat) {
+    if (!project || !spreadId || exportingImage) return
+    setExportMenuOpen(false)
+    setExportingImage(format)
+    try {
+      await exportZineSpreadImage(project, spreadId, format)
+      toast.success(t('admin.zine_export_image_success', language, { format: format === 'jpeg' ? 'JPG' : 'PNG' }))
+    } catch (error) {
+      console.error(`${format.toUpperCase()} export failed`, error)
+      const detail = error instanceof Error && error.message ? `: ${error.message}` : ''
+      toast.error(`${t('admin.zine_export_image_failed', language, { format: format === 'jpeg' ? 'JPG' : 'PNG' })}${detail}`)
+    } finally {
+      setExportingImage(null)
+    }
   }
 
   const spreadId = activeSpreadId ?? project.spreads[0]?.id ?? null
@@ -227,17 +247,74 @@ export function ZineToolbar() {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setExportOpen(true)}
-        className="ml-1 flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-opacity hover:opacity-90"
-        style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-      >
-        <Download size={14} />
-        {t('admin.zine_export_pdf', language)}
-      </button>
+      <div className="relative ml-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => setExportMenuOpen((open) => !open)}
+          disabled={Boolean(exportingImage)}
+          className="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+          aria-expanded={exportMenuOpen}
+          aria-haspopup="menu"
+        >
+          {exportingImage ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {exportingImage ? t('admin.zine_exporting', language) : t('admin.zine_export', language)}
+          <ChevronDown size={13} className={`transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} />
+        </button>
 
-      <ZineExportDialog open={exportOpen} project={project} onClose={() => setExportOpen(false)} />
+        {exportMenuOpen ? (
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-20 cursor-default"
+              onClick={() => setExportMenuOpen(false)}
+              aria-label={t('common.collapse', language)}
+              tabIndex={-1}
+            />
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-30 mt-2 w-56 rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setExportMenuOpen(false)
+                  setPdfDialogOpen(true)
+                }}
+                className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-accent"
+              >
+                <FileText size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  <span className="block text-xs font-semibold">{t('admin.zine_export_pdf', language)}</span>
+                  <span className="mt-0.5 block text-[10px] text-muted-foreground">{t('admin.zine_export_pdf_desc', language)}</span>
+                </span>
+              </button>
+              {(['jpeg', 'png'] as const).map((format) => (
+                <button
+                  key={format}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void exportSpreadImage(format)}
+                  disabled={!spreadId}
+                  className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-accent disabled:opacity-40"
+                >
+                  <FileImage size={15} className="mt-0.5 shrink-0" />
+                  <span>
+                    <span className="block text-xs font-semibold">
+                      {t(format === 'jpeg' ? 'admin.zine_export_jpg' : 'admin.zine_export_png', language)}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-muted-foreground">{t('admin.zine_export_image_desc', language)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      <ZineExportDialog open={pdfDialogOpen} project={project} onClose={() => setPdfDialogOpen(false)} />
     </header>
   )
 }

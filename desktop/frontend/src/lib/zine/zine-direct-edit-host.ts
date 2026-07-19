@@ -16,13 +16,10 @@ import {
   type ZineEditorOperation,
 } from '@mo-gallery/ai-agent'
 
-import { GetZineImageDataURL } from '../../../wailsjs/go/main/App'
-
 import { cloneSpreads } from './history'
 import { getSpreadSize } from './page-sizes'
 import { getProjectBleedMm } from './print'
-import { getZineAssetBlob } from './project'
-import { getZineAssetImageSource } from './slot-render'
+import { captureZineSpreadVisualContext } from './spread-raster'
 import {
   buildSpreadFromTemplate,
   ZINE_COVER_TEMPLATE,
@@ -32,7 +29,6 @@ import type {
   Slot,
   Spread,
   TextSlot,
-  ZineAsset,
   ZineProject,
 } from './types'
 import { useZineStore } from '@/store/zine'
@@ -61,126 +57,13 @@ interface SuccessfulSimulation {
   spread: Spread
 }
 
+interface ZineSnapshotVisuals {
+  preview?: EditorAiImageInput
+  thumbnails?: ReadonlyMap<string, EditorAiImageInput>
+}
+
 const BASE_SLOT_ATTRS = new Set(['page', 'x', 'y', 'w', 'h', 'rotation', 'zIndex'])
 const TEXT_SLOT_ATTRS = new Set(['content', 'align', 'fontSize', 'lineHeight', 'color', 'fontFamily'])
-const AI_IMAGE_MAX_EDGE = 768
-const AI_IMAGE_QUALITY = 0.76
-
-function toZineImageProxyUrl(source: string): string {
-  return /^https?:\/\//i.test(source)
-    ? `/__zine/image?src=${encodeURIComponent(source)}`
-    : source
-}
-
-async function loadZineAssetBlob(
-  asset: ZineAsset,
-  signal?: AbortSignal,
-): Promise<Blob | null> {
-  if (asset.source === 'local' && asset.blobId) {
-    const localBlob = await getZineAssetBlob(asset.blobId)
-    if (localBlob) return localBlob
-  }
-
-  const source = getZineAssetImageSource(asset, 'preview')
-  if (!source) return null
-
-  if (/^https?:\/\//i.test(source)) {
-    try {
-      const dataUrl = await GetZineImageDataURL(source)
-      throwIfAborted(signal)
-      if (dataUrl.startsWith('data:image/')) {
-        const response = await fetch(dataUrl, { signal })
-        if (response.ok) return await response.blob()
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error
-      // Older Wails runtimes and browser tests can still use the HTTP proxy.
-    }
-  }
-
-  const response = await fetch(toZineImageProxyUrl(source), { signal })
-  if (!response.ok) return null
-
-  const blob = await response.blob()
-  const contentType = blob.type || response.headers.get('Content-Type') || ''
-  return contentType.toLowerCase().startsWith('image/') ? blob : null
-}
-
-function readBlobAsDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read Zine image'))
-    reader.readAsDataURL(blob)
-  })
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', AI_IMAGE_QUALITY))
-}
-
-async function createEditorAiThumbnail(
-  asset: ZineAsset,
-  signal?: AbortSignal,
-): Promise<EditorAiImageInput | undefined> {
-  throwIfAborted(signal)
-
-  try {
-    const blob = await loadZineAssetBlob(asset, signal)
-    if (!blob) return undefined
-
-    throwIfAborted(signal)
-    const bitmap = await createImageBitmap(blob)
-    const scale = Math.min(1, AI_IMAGE_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
-    const width = Math.max(1, Math.round(bitmap.width * scale))
-    const height = Math.max(1, Math.round(bitmap.height * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) {
-      bitmap.close()
-      return undefined
-    }
-    context.drawImage(bitmap, 0, 0, width, height)
-    bitmap.close()
-
-    const thumbnailBlob = await canvasToBlob(canvas)
-    if (!thumbnailBlob) return undefined
-    const dataUrl = await readBlobAsDataUrl(thumbnailBlob)
-    throwIfAborted(signal)
-    return {
-      id: `zine-asset:${asset.id}`,
-      dataUrl,
-      mediaType: thumbnailBlob.type || 'image/jpeg',
-      width,
-      height,
-      byteLength: thumbnailBlob.size,
-    }
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
-    return undefined
-  }
-}
-
-async function loadCurrentSpreadThumbnails(
-  project: ZineProject,
-  targetSpreadId: string,
-  signal?: AbortSignal,
-): Promise<Map<string, EditorAiImageInput>> {
-  const spread = project.spreads.find((candidate) => candidate.id === targetSpreadId)
-  const assetIds = new Set(spread?.slots.flatMap((slot) => (
-    slot.kind === 'image' && slot.assetId ? [slot.assetId] : []
-  )))
-  const assets = project.assets.filter((asset) => assetIds.has(asset.id))
-  const thumbnails = await Promise.all(assets.map(async (asset) => ({
-    assetId: asset.id,
-    thumbnail: await createEditorAiThumbnail(asset, signal),
-  })))
-  return new Map(thumbnails.flatMap(({ assetId, thumbnail }) => (
-    thumbnail ? [[assetId, thumbnail] as const] : []
-  )))
-}
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -252,7 +135,7 @@ function spreadSummary(spread: Spread): Record<string, JsonValue> {
 function createSnapshot(
   project: ZineProject,
   targetSpreadId: string,
-  thumbnails: ReadonlyMap<string, EditorAiImageInput> = new Map(),
+  visuals: ZineSnapshotVisuals = {},
 ): ZineDocumentSnapshot {
   const targetIndex = project.spreads.findIndex((spread) => spread.id === targetSpreadId)
   if (targetIndex < 0) {
@@ -301,10 +184,11 @@ function createSnapshot(
       index: targetIndex,
       structure: spreadToJson(currentSpread),
       summary: spreadSummary(currentSpread),
+      ...(visuals.preview ? { preview: visuals.preview } : {}),
     },
     adjacentSpreads,
     assetCandidates: project.assets.map((asset) => {
-      const thumbnail = thumbnails.get(asset.id)
+      const thumbnail = visuals.thumbnails?.get(asset.id)
       return {
         assetId: asset.id,
         metadata: {
@@ -498,8 +382,8 @@ export function createZineDirectEditHost(
     async captureSnapshot(signal) {
       throwIfAborted(signal)
       const project = currentProject()
-      const thumbnails = await loadCurrentSpreadThumbnails(project, targetSpreadId, signal)
-      const snapshot = createSnapshot(project, targetSpreadId, thumbnails)
+      const visuals = await captureZineSpreadVisualContext(project, targetSpreadId, signal)
+      const snapshot = createSnapshot(project, targetSpreadId, visuals)
       throwIfAborted(signal)
       return snapshot
     },

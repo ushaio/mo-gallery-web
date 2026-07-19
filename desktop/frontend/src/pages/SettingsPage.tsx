@@ -1101,6 +1101,20 @@ function normalizeModelNames(models: string[]): string[] {
   return [...new Set(models.map(model => model.trim()).filter(Boolean))]
 }
 
+const DEFAULT_AI_MODEL_CONTEXT_WINDOW = 8192
+const INFERRED_AI_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  'gpt-5.5': 272000,
+}
+
+function inferAiModelContextWindow(model: string): number {
+  return INFERRED_AI_MODEL_CONTEXT_WINDOWS[model.trim().toLowerCase()]
+    ?? DEFAULT_AI_MODEL_CONTEXT_WINDOW
+}
+
+function formatContextWindow(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value)
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -1320,6 +1334,33 @@ function AiTab() {
     })
   }
 
+  const updateContextWindow = (providerId: string, model: string, rawValue: string) => {
+    const modelName = model.trim()
+    if (!modelName) return
+
+    setAiConfig(prev => {
+      const provider = prev.providers[providerId]
+      const context_windows = { ...provider.context_windows }
+      const value = rawValue.trim()
+
+      if (!value) {
+        delete context_windows[modelName]
+      } else {
+        const parsed = Number(value)
+        if (!Number.isFinite(parsed) || parsed <= 0) return prev
+        context_windows[modelName] = Math.floor(parsed)
+      }
+
+      return {
+        ...prev,
+        providers: {
+          ...prev.providers,
+          [providerId]: { ...provider, context_windows },
+        },
+      }
+    })
+  }
+
   const addModel = (providerId: string) => {
     const provider = aiConfig.providers[providerId]
     updateProvider(providerId, { models: [...provider.models, ''] })
@@ -1503,13 +1544,17 @@ function AiTab() {
               </Field>
             </div>
 
-            <Field label="模型列表" description="“视觉理解”用于读取 Zine 图片；直接修改还需要同时支持工具调用和结构化输出。">
+            <Field label="模型列表" description="“视觉理解”用于读取 Zine 图片；上下文窗口留空时使用自动值，下方显示实际生效值。">
               <div className="space-y-2">
                 {provider.models.map((model, index) => {
-                  const supportsImage = Boolean(model.trim()) && provider.image_models.includes(model.trim())
-                  const supportsVision = Boolean(model.trim()) && provider.vision_models.includes(model.trim())
-                  const supportsTools = Boolean(model.trim()) && provider.tool_models.includes(model.trim())
-                  const supportsStructuredOutput = Boolean(model.trim()) && provider.structured_output_models.includes(model.trim())
+                  const modelName = model.trim()
+                  const supportsImage = Boolean(modelName) && provider.image_models.includes(modelName)
+                  const supportsVision = Boolean(modelName) && provider.vision_models.includes(modelName)
+                  const supportsTools = Boolean(modelName) && provider.tool_models.includes(modelName)
+                  const supportsStructuredOutput = Boolean(modelName) && provider.structured_output_models.includes(modelName)
+                  const configuredContextWindow = provider.context_windows[modelName]
+                  const inferredContextWindow = inferAiModelContextWindow(modelName)
+                  const effectiveContextWindow = configuredContextWindow ?? inferredContextWindow
                   return (
                     <div key={index} className="flex flex-wrap gap-2">
                       <input value={model} onChange={e => updateModel(providerId, index, e.target.value)} placeholder="gpt-4o"
@@ -1555,6 +1600,24 @@ function AiTab() {
                           onChange={e => toggleImageModel(providerId, model, e.target.checked)} className="sr-only" />
                         <ImageIcon size={13} /> 图片生成
                       </label>
+                      <div className="min-w-[10.5rem] flex-1 sm:max-w-[12rem]">
+                        <input
+                          type="number"
+                          min={1}
+                          step={1000}
+                          value={configuredContextWindow ?? ''}
+                          placeholder={String(inferredContextWindow)}
+                          disabled={!modelName}
+                          onChange={event => updateContextWindow(providerId, model, event.target.value)}
+                          aria-label={`${modelName || '未命名模型'} 上下文窗口`}
+                          className="h-8 w-full rounded border px-2 text-xs outline-none disabled:opacity-40"
+                          style={inputStyle}
+                        />
+                        <p className="mt-0.5 px-0.5 text-[10px] leading-tight" style={{ color: 'var(--muted-foreground)' }}>
+                          生效 {formatContextWindow(effectiveContextWindow)} tokens
+                          {configuredContextWindow === undefined ? ' · 自动' : ' · 自定义'}
+                        </p>
+                      </div>
                       <button onClick={() => removeModel(providerId, index)}
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded border"
                         style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }} aria-label="删除模型">
