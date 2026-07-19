@@ -44,6 +44,7 @@ export default function Navbar() {
 
   // Pages where navbar hides on scroll down
   const shouldAutoHide = pathname.startsWith('/gallery') || pathname.startsWith('/story') || pathname.startsWith('/curated')
+  const isNavVisuallyHidden = navHidden && !mobileMenuOpen
 
   // Handle scroll effect
   useEffect(() => {
@@ -61,6 +62,16 @@ export default function Navbar() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [shouldAutoHide])
+
+  // Keep page-level sticky elements aligned with the navbar's visible edge.
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.navbarHidden = isNavVisuallyHidden ? 'true' : 'false'
+
+    return () => {
+      delete root.dataset.navbarHidden
+    }
+  }, [isNavVisuallyHidden])
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -158,7 +169,7 @@ export default function Navbar() {
       <nav
         className={cn(
           "fixed top-0 w-full z-50 transition-all duration-500",
-          navHidden && !mobileMenuOpen ? "-translate-y-full" : "translate-y-0",
+          isNavVisuallyHidden ? "-translate-y-full" : "translate-y-0",
           isTransparent
             ? "bg-transparent border-transparent py-4"
             : "bg-background/80 backdrop-blur-xl border-b border-border/50 py-0"

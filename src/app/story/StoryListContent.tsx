@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { BookOpen, Calendar } from 'lucide-react'
 import Image from 'next/image'
@@ -9,10 +9,8 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
-import { QuickStoryEditor } from '@/components/story/QuickStoryEditor'
 import { buildStoryPreviewText } from '@/lib/story-rich-content'
 import { getStoryCoverImageStyle } from '@/lib/story-cover'
-import { getStories } from '@/lib/api/stories'
 
 const STORY_GRID_CLASSNAME = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 pl-4 md:pl-8'
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -69,16 +67,7 @@ interface StoryListContentProps {
 export function StoryListContent({ initialStories }: StoryListContentProps) {
   const { t } = useLanguage()
   const { settings } = useSettings()
-  const [stories, setStories] = useState<StoryDto[]>(initialStories)
-
-  async function handleRefresh() {
-    try {
-      const data = await getStories()
-      setStories(data)
-    } catch (error) {
-      console.error('Failed to refresh stories:', error)
-    }
-  }
+  const stories = initialStories
 
   const storyTimeline = useMemo<StoryYearGroup[]>(() => {
     const grouped = new Map<string, Map<string, StoryDto[]>>()
@@ -165,8 +154,6 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
 
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
-          <QuickStoryEditor onSuccess={handleRefresh} />
-
           {stories.length === 0 ? (
             <div className="py-24 text-center border-t border-border/50">
               <BookOpen className="size-10 mx-auto mb-4 opacity-20" />
@@ -177,7 +164,8 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
               {storyTimeline.map(({ year, months }) => (
                 <section key={year} className="relative">
                   <motion.div
-                    className="sticky top-20 z-20 py-3 bg-background/95 backdrop-blur-sm transition-all duration-200"
+                    className="sticky z-20 py-3 bg-background/95 backdrop-blur-sm transition-[top] duration-500 ease-out"
+                    style={{ top: 'var(--navbar-sticky-offset)' }}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.2 }}
@@ -194,7 +182,8 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
                     {months.map(({ key, label, stories: monthStories }) => (
                       <div key={key} className="relative">
                         <motion.div
-                          className="sticky top-36 z-10 py-2 bg-background/90 backdrop-blur-sm transition-all duration-200"
+                          className="sticky z-10 py-2 bg-background/90 backdrop-blur-sm transition-[top] duration-500 ease-out"
+                          style={{ top: 'calc(var(--navbar-sticky-offset) + 4rem)' }}
                           initial={{ opacity: 0, x: -10 }}
                           whileInView={{ opacity: 1, x: 0 }}
                           viewport={{ once: true }}

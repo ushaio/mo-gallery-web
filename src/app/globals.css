@@ -33,6 +33,8 @@
 }
 
 :root {
+  --navbar-sticky-offset: 4rem;
+
   /* ========================================
      全局字体大小系统 - Global Font Size System
      按功能场景分类，确保可读性
@@ -89,6 +91,16 @@
   --ring: #111111;
 
   --radius: 0rem; /* Sharp corners */
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --navbar-sticky-offset: 5rem;
+  }
+}
+
+html[data-navbar-hidden='true'] {
+  --navbar-sticky-offset: 0rem;
 }
 
 .dark {
