@@ -47,12 +47,18 @@ export async function deleteComment(token: string, id: string): Promise<void> {
   )
 }
 
-export async function getPhotoComments(photoId: string): Promise<PublicCommentDto[]> {
-  return apiRequestData<PublicCommentDto[]>(`/api/photos/${encodeURIComponent(photoId)}/comments`)
+export async function getPhotoComments(photoId: string, signal?: AbortSignal): Promise<PublicCommentDto[]> {
+  return apiRequestData<PublicCommentDto[]>(
+    `/api/photos/${encodeURIComponent(photoId)}/comments`,
+    { signal },
+  )
 }
 
-export async function getStoryComments(storyId: string): Promise<PublicCommentDto[]> {
-  return apiRequestData<PublicCommentDto[]>(`/api/stories/${encodeURIComponent(storyId)}/comments`)
+export async function getStoryComments(storyId: string, signal?: AbortSignal): Promise<PublicCommentDto[]> {
+  return apiRequestData<PublicCommentDto[]>(
+    `/api/stories/${encodeURIComponent(storyId)}/comments`,
+    { signal },
+  )
 }
 
 export async function submitPhotoComment(

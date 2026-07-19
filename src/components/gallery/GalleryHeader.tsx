@@ -193,14 +193,14 @@ export function GalleryToolbar({
 
             <button
               onClick={() => onGrayscaleChange(!grayscale)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
+              className={`flex min-w-[3.75rem] items-center justify-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider ${
                 grayscale ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
               aria-label={t('gallery.black_white_mode')}
               aria-pressed={grayscale}
             >
               {grayscale ? <Circle className="size-2.5" /> : <CircleOff className="size-2.5" />}
-              <span className="hidden sm:inline">{t('gallery.black_white_short')}</span>
+              <span>{t('gallery.black_white_short')}</span>
             </button>
 
             <div className="mx-1 h-4 w-px bg-border/50" />

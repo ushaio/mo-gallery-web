@@ -1,18 +1,9 @@
 'use client'
 
 import { memo, useMemo } from 'react'
+import Image from 'next/image'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
-import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
-import { useResponsiveColumnCount } from './useResponsiveColumnCount'
-
-const GRID_COLUMN_RULES = [
-  { minWidth: 1280, columns: 6 },
-  { minWidth: 1024, columns: 5 },
-  { minWidth: 768, columns: 4 },
-  { minWidth: 640, columns: 3 },
-  { minWidth: 0, columns: 2 },
-]
 
 interface GridViewProps {
   photos: PhotoDto[]
@@ -28,8 +19,7 @@ interface GridItemProps {
   settings: PublicSettingsDto | null
   grayscale: boolean
   immersive: boolean
-  columnCount: number
-  onClick: () => void
+  onPhotoClick: (photo: PhotoDto) => void
 }
 
 const GridItem = memo(function GridItem({
@@ -38,10 +28,8 @@ const GridItem = memo(function GridItem({
   settings,
   grayscale,
   immersive,
-  columnCount,
-  onClick,
+  onPhotoClick,
 }: GridItemProps) {
-  const { ref, style } = useEntranceAnimation({ index, columnCount })
   const coverUrl = useMemo(
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
@@ -50,18 +38,18 @@ const GridItem = memo(function GridItem({
 
   return (
     <div
-      ref={ref}
       className="group cursor-pointer"
-      onClick={onClick}
-      style={style}
+      onClick={() => onPhotoClick(photo)}
     >
       <div className={`relative aspect-square overflow-hidden bg-muted ${immersive ? '' : 'mb-3'}`}>
-        <img
+        <Image
           src={coverUrl}
           alt={photo.title}
-          className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
-            grayscale ? 'grayscale group-hover:grayscale-0' : ''
-          }`}
+          fill
+          sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 17vw"
+          loading="eager"
+          decoding="async"
+          className={`h-full w-full object-cover ${grayscale ? 'grayscale' : ''}`}
         />
 
         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
@@ -87,8 +75,6 @@ const GridItem = memo(function GridItem({
 })
 
 export function GridView({ photos, settings, grayscale, immersive = false, onPhotoClick }: GridViewProps) {
-  const columnCount = useResponsiveColumnCount(GRID_COLUMN_RULES)
-
   return (
     <div
       className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 ${immersive ? 'gap-1' : 'gap-2 sm:gap-6 lg:gap-8'}`}
@@ -101,8 +87,7 @@ export function GridView({ photos, settings, grayscale, immersive = false, onPho
           settings={settings}
           grayscale={grayscale}
           immersive={immersive}
-          columnCount={columnCount}
-          onClick={() => onPhotoClick(photo)}
+          onPhotoClick={onPhotoClick}
         />
       ))}
     </div>

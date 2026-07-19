@@ -50,6 +50,7 @@ interface PhotoUploadParamsProps {
   compressionSuggestion?: { type: 'suggest_enable' | 'suggest_disable' | 'info'; text: string } | null
   onSettingsChange: (settings: PhotoUploadSettings) => void
   onUploadClick: () => void
+  onSelectFilesClick?: () => void
   uploading?: boolean
   uploadError?: string
   hideStorySelector?: boolean
@@ -126,6 +127,7 @@ export function PhotoUploadParams({
   compressionSuggestion,
   onSettingsChange,
   onUploadClick,
+  onSelectFilesClick,
   uploading = false,
   uploadError,
   hideStorySelector = false,
@@ -363,26 +365,26 @@ export function PhotoUploadParams({
             </div>
           )}
 
-          {/* Film Roll - only in film mode */}
-          {mode === 'film' && (
-            <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Film className="w-3 h-3" />
-                {t('admin.film_roll_select')}
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowFilmRollSelector(true)}
-                disabled={loadingFilmRolls}
-                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
-              >
-                <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
-                  {uploadFilmRollName || t('admin.no_film_roll')}
-                </span>
-                <Film className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            </div>
-          )}
+          {/* Film Roll - enabled only for film photos */}
+          <div>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+              <Film className="w-3 h-3" />
+              {t('admin.film_roll_select')}
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowFilmRollSelector(true)}
+              disabled={mode !== 'film' || loadingFilmRolls}
+              className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className={uploadFilmRollName && mode === 'film' ? 'text-foreground' : 'text-muted-foreground'}>
+                {mode === 'film'
+                  ? uploadFilmRollName || t('admin.no_film_roll')
+                  : t('admin.film_roll_requires_film')}
+              </span>
+              <Film className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </div>
 
           {/* Storage - compact layout */}
           <div className="pt-3 border-t border-border/50">
@@ -528,8 +530,8 @@ export function PhotoUploadParams({
 
           {/* Upload Button */}
           <AdminButton
-            onClick={onUploadClick}
-            disabled={uploading || fileCount === 0}
+            onClick={fileCount === 0 ? onSelectFilesClick : onUploadClick}
+            disabled={uploading || (fileCount === 0 && !onSelectFilesClick)}
             adminVariant="primary"
             size="lg"
             className="w-full py-3 mt-2 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -542,7 +544,7 @@ export function PhotoUploadParams({
             ) : (
               <>
                 <Upload className="w-4 h-4" />
-                {t('admin.start_upload')}
+                {fileCount === 0 ? t('admin.select_photos') : t('admin.start_upload')}
               </>
             )}
           </AdminButton>

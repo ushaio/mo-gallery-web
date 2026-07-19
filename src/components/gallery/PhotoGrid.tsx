@@ -1,13 +1,15 @@
 'use client'
 
 import { memo } from 'react'
+import dynamic from 'next/dynamic'
+
 import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
 import { GridView } from './GridView'
-import { MasonryView } from './MasonryView'
 import { TimelineView } from './TimelineView'
 import type { ViewMode } from './ViewModeToggle'
 
 const PHOTO_GRID_SKELETON_ITEMS = Array.from({ length: 8 }, (_, index) => index)
+const NOOP_LOAD_MORE = () => Promise.resolve()
 
 interface PhotoGridProps {
   loading: boolean
@@ -16,6 +18,10 @@ interface PhotoGridProps {
   viewMode: ViewMode
   grayscale: boolean
   immersive?: boolean
+  loadingMore?: boolean
+  hasMore?: boolean
+  totalItems?: number
+  onLoadMore?: (targetIndex?: number) => Promise<void>
   onPhotoClick: (photo: PhotoDto) => void
   t: (key: string) => string
 }
@@ -30,6 +36,14 @@ function PhotoGridSkeleton() {
   )
 }
 
+const MasonryView = dynamic(
+  () => import('./MasonryView').then((module) => module.MasonryView),
+  {
+    ssr: false,
+    loading: () => <PhotoGridSkeleton />,
+  },
+)
+
 const EmptyPhotoGrid = memo(function EmptyPhotoGrid({ t }: Pick<PhotoGridProps, 't'>) {
   return (
     <div className="py-40 text-center">
@@ -40,13 +54,17 @@ const EmptyPhotoGrid = memo(function EmptyPhotoGrid({ t }: Pick<PhotoGridProps, 
   )
 })
 
-export function PhotoGrid({
+export const PhotoGrid = memo(function PhotoGrid({
   loading,
   photos,
   settings,
   viewMode,
   grayscale,
   immersive = false,
+  loadingMore = false,
+  hasMore = false,
+  totalItems = photos.length,
+  onLoadMore = NOOP_LOAD_MORE,
   onPhotoClick,
   t,
 }: PhotoGridProps) {
@@ -75,6 +93,10 @@ export function PhotoGrid({
           settings={settings}
           grayscale={grayscale}
           immersive={immersive}
+          loadingMore={loadingMore}
+          hasMore={hasMore}
+          totalItems={totalItems}
+          onLoadMore={onLoadMore}
           onPhotoClick={onPhotoClick}
         />
       ) : null}
@@ -88,4 +110,4 @@ export function PhotoGrid({
       ) : null}
     </div>
   )
-}
+})

@@ -1,4 +1,4 @@
-import { apiRequest, apiRequestData } from './core'
+import { ApiRequestError, apiRequest, apiRequestData } from './core'
 import type { StoryCoverCropValue, StoryDto, TiptapJsonContent } from './types'
 
 export async function getStories(): Promise<StoryDto[]> {
@@ -9,11 +9,14 @@ export async function getStory(id: string): Promise<StoryDto> {
   return apiRequestData<StoryDto>(`/api/stories/${encodeURIComponent(id)}`)
 }
 
-export async function getPhotoStory(photoId: string): Promise<StoryDto | null> {
+export async function getPhotoStory(photoId: string, signal?: AbortSignal): Promise<StoryDto | null> {
   try {
-    return await apiRequestData<StoryDto>(`/api/photos/${encodeURIComponent(photoId)}/story`)
+    return await apiRequestData<StoryDto>(
+      `/api/photos/${encodeURIComponent(photoId)}/story`,
+      { signal },
+    )
   } catch (error) {
-    if (error instanceof Error && error.message.includes('404')) {
+    if (error instanceof ApiRequestError && error.status === 404) {
       return null
     }
     throw error
@@ -24,7 +27,7 @@ export async function getAdminPhotoStory(token: string, photoId: string): Promis
   try {
     return await apiRequestData<StoryDto>(`/api/admin/photos/${encodeURIComponent(photoId)}/story`, {}, token)
   } catch (error) {
-    if (error instanceof Error && error.message.includes('404')) {
+    if (error instanceof ApiRequestError && error.status === 404) {
       return null
     }
     throw error

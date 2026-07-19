@@ -1,7 +1,7 @@
 
 'use client'
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   Upload,
   Loader2,
@@ -465,6 +465,7 @@ export function UploadTab({
   const { addTasks } = useUploadQueue()
 
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
@@ -833,6 +834,20 @@ export function UploadTab({
 
   return (
     <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          if (event.target.files) {
+            addUploadFiles(Array.from(event.target.files))
+          }
+          event.target.value = ''
+        }}
+      />
+
       {/* Upload Type Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border">
         <button
@@ -874,6 +889,7 @@ export function UploadTab({
             compressionSuggestion={compressionSuggestion}
             onSettingsChange={setUploadSettings}
             onUploadClick={handleUploadClick}
+            onSelectFilesClick={() => fileInputRef.current?.click()}
             uploading={checkingDuplicates}
             uploadError={uploadError}
           />
@@ -1056,4 +1072,3 @@ export function UploadTab({
     </>
   )
 }
-

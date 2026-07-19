@@ -31,58 +31,6 @@ type ViewMode = 'grid' | 'list'
 const PHOTO_GRID_CLASS_NAME =
   'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(var(--admin-photo-grid-columns),minmax(0,1fr))] gap-0.5'
 
-const GRID_OBSERVER_ROOT_MARGIN = '1000px'
-
-function LazyGridCard({
-  photo,
-  isSelected,
-  resolvedCdnDomain,
-  onSelect,
-  onDelete,
-  onToggleFeatured,
-  onClick,
-}: PhotoGridCardProps) {
-  const sentinelRef = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: GRID_OBSERVER_ROOT_MARGIN },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  if (!visible) {
-    return (
-      <div
-        ref={sentinelRef}
-        className="bg-muted rounded-lg w-full aspect-[4/5]"
-      />
-    )
-  }
-
-  return (
-    <PhotoGridCard
-      photo={photo}
-      isSelected={isSelected}
-      resolvedCdnDomain={resolvedCdnDomain}
-      onSelect={onSelect}
-      onDelete={onDelete}
-      onToggleFeatured={onToggleFeatured}
-      onClick={onClick}
-    />
-  )
-}
-
 interface PhotoGridCardProps {
   photo: PhotoDto
   isSelected: boolean
@@ -104,7 +52,6 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
 }: PhotoGridCardProps) {
   return (
     <div
-      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 300px' }}
       className={`group relative cursor-pointer bg-muted rounded-lg overflow-hidden border-2 transition-colors w-full ${
         isSelected
           ? 'border-primary'
@@ -121,6 +68,7 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
           alt={photo.title}
           className="w-full h-full object-cover"
           decoding="async"
+          loading="lazy"
         />
       </div>
 
@@ -137,33 +85,42 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
         />
       </div>
 
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+      <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
+        <div className="absolute top-2 right-2 flex flex-col gap-1.5 pointer-events-none group-hover:pointer-events-auto">
+          <AdminButton
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFeatured(photo)
+            }}
+            adminVariant={photo.isFeatured ? 'iconAccent' : 'iconOnDark'}
+            size="xs"
+            className="p-1.5 rounded"
+            title={photo.isFeatured ? "Remove from featured" : "Add to featured"}
+          >
+            <Star className={`w-3.5 h-3.5 ${photo.isFeatured ? 'fill-current' : ''}`} />
+          </AdminButton>
+          <AdminButton
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(photo.id)
+            }}
+            adminVariant="iconOnDarkDanger"
+            size="xs"
+            className="p-1.5 rounded"
+            title="Delete photo"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </AdminButton>
+        </div>
 
-      <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-        <AdminButton
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFeatured(photo)
-          }}
-          adminVariant={photo.isFeatured ? 'iconAccent' : 'iconOnDark'}
-          size="xs"
-          className="p-1.5 backdrop-blur-sm rounded"
-          title={photo.isFeatured ? "Remove from featured" : "Add to featured"}
-        >
-          <Star className={`w-3.5 h-3.5 ${photo.isFeatured ? 'fill-current' : ''}`} />
-        </AdminButton>
-        <AdminButton
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete(photo.id)
-          }}
-          adminVariant="iconOnDarkDanger"
-          size="xs"
-          className="p-1.5 backdrop-blur-sm rounded"
-          title="Delete photo"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </AdminButton>
+        <div className="absolute bottom-0 left-0 right-0 p-3">
+          <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-0.5 truncate">
+            {photo.category.split(',')[0]}
+          </p>
+          <h3 className="text-sm font-medium text-white leading-tight truncate">
+            {photo.title}
+          </h3>
+        </div>
       </div>
 
       {photo.isFeatured && (
@@ -174,21 +131,12 @@ const PhotoGridCard = React.memo(function PhotoGridCard({
           }}
           adminVariant="iconAccent"
           size="xs"
-          className="absolute top-2 right-2 p-1.5 z-30 shadow-lg group-hover:opacity-0 pointer-events-auto"
+          className="absolute top-2 right-2 p-1.5 z-20 shadow-lg pointer-events-auto group-hover:invisible group-hover:pointer-events-none"
           title="Remove from featured"
         >
           <Star className="w-3 h-3 fill-current" />
         </AdminButton>
       )}
-
-      <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-[opacity,transform] duration-300 translate-y-2 group-hover:translate-y-0 pointer-events-none z-10">
-        <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-0.5 truncate">
-          {photo.category.split(',')[0]}
-        </p>
-        <h3 className="text-sm font-medium text-white leading-tight truncate">
-          {photo.title}
-        </h3>
-      </div>
     </div>
   )
 }, (prev, next) => {
@@ -1016,7 +964,7 @@ export function PhotosTab({
           >
             {filteredPhotos.map((photo) =>
               viewMode === 'grid' ? (
-                <LazyGridCard
+                <PhotoGridCard
                   key={photo.id}
                   photo={photo}
                   isSelected={selectedIds.has(photo.id)}

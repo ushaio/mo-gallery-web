@@ -2,7 +2,7 @@ import { queryPhotosWithMeta, queryCategories } from '~/server/lib/queries'
 import { GalleryContent } from './GalleryContent'
 import type { GalleryView } from '@/components/gallery/GalleryHeader'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 40
 
 interface GalleryPageProps {
   searchParams: Promise<{ view?: string; photoId?: string }>

@@ -25,7 +25,6 @@ interface UseEntranceAnimationReturn {
  * Hook for elegant entrance animations with IntersectionObserver
  * Features:
  * - Row/column-based stagger delay for natural wave effect
- * - Subtle blur transition for depth
  * - Optimized easing curve
  */
 export function useEntranceAnimation({
@@ -36,13 +35,11 @@ export function useEntranceAnimation({
   disabled = false,
 }: UseEntranceAnimationOptions): UseEntranceAnimationReturn {
   const ref = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(disabled)
+  const [hasEntered, setHasEntered] = useState(false)
+  const isVisible = disabled || hasEntered
 
   useEffect(() => {
-    if (disabled) {
-      setIsVisible(true)
-      return
-    }
+    if (disabled) return
 
     const el = ref.current
     if (!el) return
@@ -50,7 +47,7 @@ export function useEntranceAnimation({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setIsVisible(true)
+          setHasEntered(true)
           observer.disconnect()
         }
       },
@@ -77,11 +74,9 @@ export function useEntranceAnimation({
     transform: isVisible
       ? 'translateY(0) scale(1)'
       : 'translateY(20px) scale(0.98)',
-    filter: isVisible ? 'blur(0px)' : 'blur(4px)',
     transition: [
       `opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1) ${staggerDelay}s`,
       `transform 0.6s cubic-bezier(0.22, 1, 0.36, 1) ${staggerDelay}s`,
-      `filter 0.5s cubic-bezier(0.22, 1, 0.36, 1) ${staggerDelay}s`,
     ].join(', '),
   }), [isVisible, staggerDelay])
 

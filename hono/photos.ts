@@ -23,6 +23,9 @@ const THUMBNAIL_EXTENSION = '.avif'
 const ORIGINAL_AVIF_EXTENSION = '.avif'
 const DEFAULT_AVIF_QUALITY = 82
 const AVIF_CONTENT_TYPE = 'image/avif'
+const DISPLAY_IMAGE_WIDTHS = [1280, 1920, 2560] as const
+const DISPLAY_IMAGE_CACHE_LIMIT = 12
+const displayImageCache = new Map<string, Promise<Buffer>>()
 
 function buildThumbnailFilename(filename: string): string {
   const parsed = path.parse(filename)
@@ -154,6 +157,42 @@ async function resolveStorageConfig(photo: { storageSourceId?: string | null; st
   return getStorageConfig(photo.storageProvider)
 }
 
+function normalizeDisplayImageWidth(value: string | undefined): number {
+  const requestedWidth = Number.parseInt(value ?? '', 10)
+  if (!Number.isFinite(requestedWidth)) return 1920
+
+  return DISPLAY_IMAGE_WIDTHS.reduce((closest, width) => (
+    Math.abs(width - requestedWidth) < Math.abs(closest - requestedWidth) ? width : closest
+  ))
+}
+
+async function createDisplayImage(
+  photo: {
+    id: string
+    url: string
+    storageKey: string | null
+    storageProvider: string
+    storageSourceId: string | null
+  },
+  width: number,
+): Promise<Buffer> {
+  const storageKey = deriveOriginalStorageKey(photo)
+  if (!storageKey) throw new Error(`Missing storage key for photo ${photo.id}`)
+
+  const storageConfig = await resolveStorageConfig(photo)
+  const storage = StorageProviderFactory.create(storageConfig)
+  const sourceBuffer = await storage.download(storageKey)
+
+  return withSharpTimeout(
+    sharp(sourceBuffer)
+      .rotate()
+      .resize(width, width, { fit: 'inside', withoutEnlargement: true })
+      .avif({ quality: 80, effort: 4 })
+      .toBuffer(),
+    20_000,
+  )
+}
+
 // Public endpoints
 photos.get('/photos', async (c) => {
   try {
@@ -203,6 +242,7 @@ photos.get('/photos', async (c) => {
       db.photo.count({ where: publicWhere }),
       db.photo.findMany({
         where: publicWhere,
+        omit: { exifRaw: true },
         include: {
           categories: true,
           camera: true,
@@ -270,6 +310,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
       db.photo.count({ where }),
       db.photo.findMany({
         where,
+        omit: { exifRaw: true },
         include: {
           categories: true,
           camera: true,
@@ -328,6 +369,7 @@ photos.get('/photos/featured', async (c) => {
   try {
     const photosList = await db.photo.findMany({
       where: { isFeatured: true, showFlag: true },
+      omit: { exifRaw: true },
       include: {
         categories: true,
         camera: true,
@@ -350,6 +392,58 @@ photos.get('/photos/featured', async (c) => {
   } catch (error) {
     console.error('Get featured photos error:', error)
     return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+photos.get('/photos/:id/display', async (c) => {
+  const id = c.req.param('id')
+  const width = normalizeDisplayImageWidth(c.req.query('width'))
+
+  try {
+    const photo = await db.photo.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        url: true,
+        storageKey: true,
+        storageProvider: true,
+        storageSourceId: true,
+      },
+    })
+
+    if (!photo) {
+      return c.json({ error: 'Photo not found' }, 404)
+    }
+
+    const sourceKey = photo.storageKey || photo.url
+    const cacheKey = `${photo.id}:${sourceKey}:${width}`
+    let displayImagePromise = displayImageCache.get(cacheKey)
+
+    if (!displayImagePromise) {
+      displayImagePromise = createDisplayImage(photo, width)
+      displayImageCache.set(cacheKey, displayImagePromise)
+
+      while (displayImageCache.size > DISPLAY_IMAGE_CACHE_LIMIT) {
+        const oldestKey = displayImageCache.keys().next().value
+        if (typeof oldestKey !== 'string') break
+        displayImageCache.delete(oldestKey)
+      }
+    }
+
+    try {
+      const displayImage = await displayImagePromise
+      return c.body(new Uint8Array(displayImage), 200, {
+        'Content-Type': AVIF_CONTENT_TYPE,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+      })
+    } catch (error) {
+      displayImageCache.delete(cacheKey)
+      throw error
+    }
+  } catch (error) {
+    console.error('Get display photo error:', error)
+    return c.json({ error: 'Unable to prepare display photo' }, 500)
   }
 })
 
@@ -715,7 +809,11 @@ photos.post('/admin/photos', async (c) => {
     const targetMaxSizeMB = Number.isFinite(maxSizeMB) && maxSizeMB !== undefined && maxSizeMB > 0
       ? maxSizeMB
       : null
-    const reuseUploadedFileAsThumbnail = shouldCompressOriginal
+    // Always generate a real ≤800px thumbnail, including compress mode.
+    // Reusing the compressed original as the thumbnail (the old behavior)
+    // put 12MP images into the gallery grid: each one costs 300-400ms of
+    // decode when it scrolls into view, which freezes scrolling.
+    const reuseUploadedFileAsThumbnail = false
 
     // P0: Extract EXIF BEFORE compression — sharp AVIF encoding discards EXIF.
     // Prefer exif_json transmitted from the frontend (read before browser-side

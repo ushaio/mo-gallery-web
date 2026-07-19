@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { motion, AnimatePresence, animate, useMotionValue, type PanInfo } from 'framer-motion'
 import {
@@ -31,12 +31,15 @@ import { formatFileSize } from '@/lib/utils'
 import { formatPhotoCoordinates } from '@/lib/photo-location'
 import { Toast, type Notification } from '@/components/Toast'
 import { StoryTab } from '@/components/StoryTab'
+import { PhotoViewerImage } from '@/components/photo-detail/PhotoViewerImage'
 
 const DRAG_DISMISS_THRESHOLD = 150
 const SWIPE_THRESHOLD = 50
 const VELOCITY_THRESHOLD = 500
 const MOBILE_CONTROLS_AUTO_HIDE_DELAY = 3000
 const PAN_AXIS_LOCK_THRESHOLD = 12
+const THUMBNAIL_WINDOW_RADIUS = 10
+const STORY_CACHE_LIMIT = 24
 
 type TabType = 'story' | 'info' // 面板标签类型：故事 | 信息
 
@@ -45,7 +48,6 @@ interface StoryCache {
   photoId: string
   story: StoryDto | null
   comments: PublicCommentDto[]
-  fetchedAt: number
 }
 
 interface PhotoDetailModalProps {
@@ -75,17 +77,16 @@ export function PhotoDetailModal({
   const { settings } = useSettings()
   const { t, locale } = useLanguage()
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<TabType>(hideStoryTab ? 'info' : 'story')
-  const [dominantColors, setDominantColors] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState<TabType>('info')
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const pendingNextRef = useRef(false)
   const prevPhotosLengthRef = useRef(allPhotos.length)
   
-  // 故事数据缓存 - 在标签切换之间持久化
+  // 缓存最近浏览照片的故事，避免来回切图时重复请求。
   const [storyCache, setStoryCache] = useState<StoryCache | null>(null)
+  const storyCacheByPhotoRef = useRef(new Map<string, StoryCache>())
   const [storyLoading, setStoryLoading] = useState(false)
-  const storyFetchingRef = useRef(false)
 
   // 缩略图条可见性状态
   const [showThumbnails, setShowThumbnails] = useState(true)
@@ -100,14 +101,16 @@ export function PhotoDetailModal({
   const imageViewportRef = useRef<HTMLDivElement>(null)
 
   // 渐进式图片加载：先显示缩略图，再淡入全尺寸图片
-  const [fullImageLoaded, setFullImageLoaded] = useState(false)
+  const [loadedPhotoIds, setLoadedPhotoIds] = useState<ReadonlySet<string>>(() => new Set())
   const [imageViewportWidth, setImageViewportWidth] = useState(0)
   const [panAxis, setPanAxis] = useState<'x' | 'y' | null>(null)
   const [isSlideAnimating, setIsSlideAnimating] = useState(false)
 
-  const currentPhotoIndex = photo && allPhotos.length > 0
-    ? allPhotos.findIndex(p => p.id === photo.id)
-    : -1
+  const currentPhotoIndex = useMemo(() => (
+    photo && allPhotos.length > 0
+      ? allPhotos.findIndex((candidate) => candidate.id === photo.id)
+      : -1
+  ), [allPhotos, photo])
   const hasPrevious = currentPhotoIndex > 0
   const hasNextLoaded = currentPhotoIndex >= 0 && currentPhotoIndex < allPhotos.length - 1
   const canLoadMore = hasMore && onLoadMore
@@ -117,6 +120,18 @@ export function PhotoDetailModal({
   const displayTotal = totalPhotos ?? allPhotos.length
   const displayIndex = currentPhotoIndex >= 0 ? currentPhotoIndex + 1 : 0
   const hasPhotoSequence = allPhotos.length > 1 || hasMore
+  const thumbnailWindowStart = Math.max(0, currentPhotoIndex - THUMBNAIL_WINDOW_RADIUS)
+  const thumbnailWindowEnd = Math.min(allPhotos.length, currentPhotoIndex + THUMBNAIL_WINDOW_RADIUS + 1)
+  const visibleThumbnailPhotos = allPhotos.slice(thumbnailWindowStart, thumbnailWindowEnd)
+  const fullImageLoaded = photo ? loadedPhotoIds.has(photo.id) : false
+  const dominantColors = photo && isOpen && Array.isArray(photo.dominantColors)
+    ? photo.dominantColors
+    : []
+
+  const handleClose = useCallback(() => {
+    setActiveTab('info')
+    onClose()
+  }, [onClose])
 
   const handlePrevious = useCallback(() => {
     if (hasPrevious && onPhotoChange) {
@@ -154,15 +169,18 @@ export function PhotoDetailModal({
   }, [allPhotos, onPhotoChange])
 
   useEffect(() => {
-    if (!isOpen || allPhotos.length <= 1) return
+    if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+
       if (e.key === 'ArrowLeft' && hasPrevious) handlePrevious()
       if (e.key === 'ArrowRight' && hasNext) handleNext()
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') handleClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [allPhotos.length, handleNext, handlePrevious, hasNext, hasPrevious, isOpen, onClose])
+  }, [allPhotos.length, handleClose, handleNext, handlePrevious, hasNext, hasPrevious, isOpen])
 
   // 触摸滑动处理
   const [scale, setScale] = useState(1)
@@ -185,76 +203,14 @@ export function PhotoDetailModal({
 
   const prevPhoto = hasPrevious ? allPhotos[currentPhotoIndex - 1] : null
   const nextPhoto = hasNextLoaded ? allPhotos[currentPhotoIndex + 1] : null
-
-  const renderSlideImage = useCallback((slidePhoto: PhotoDto | null, isCurrentSlide: boolean) => {
-    if (!slidePhoto) {
-      return <div className="h-full w-full" />
-    }
-
-    const resolvedThumbnail = resolveAssetUrl(slidePhoto.thumbnailUrl || slidePhoto.url, settings?.cdn_domain)
-    const resolvedPhoto = resolveAssetUrl(slidePhoto.url, settings?.cdn_domain)
-
-    return (
-      <div className="relative h-full w-full pointer-events-none">
-        <div className="absolute inset-0 overflow-hidden">
-          <div
-            className="absolute inset-0 bg-cover bg-center blur-3xl scale-125"
-            style={{
-              backgroundImage: `url(${resolvedThumbnail})`,
-              opacity: 0.4,
-            }}
-          />
-          <div
-            className="absolute inset-0 bg-cover bg-center blur-2xl scale-110"
-            style={{
-              backgroundImage: `url(${resolvedThumbnail})`,
-              opacity: 0.15,
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/40" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30" />
-        </div>
-        {isCurrentSlide ? (
-          <>
-            <Image
-              src={resolvedThumbnail}
-              alt={slidePhoto.title}
-              fill
-              sizes="(max-width: 1024px) 100vw, 70vw"
-              className={`object-contain select-none transition-opacity duration-500 ${
-                fullImageLoaded ? 'opacity-0' : 'opacity-100'
-              }`}
-              style={{ transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
-              draggable={false}
-              priority
-            />
-            <Image
-              src={resolvedPhoto}
-              alt={slidePhoto.title}
-              fill
-              sizes="(max-width: 1024px) 100vw, 70vw"
-              className={`object-contain shadow-2xl select-none transition-opacity duration-700 ${
-                fullImageLoaded ? 'opacity-100' : 'opacity-0'
-              }`}
-              style={{ transform: `scale(${scale})`, transition: isDragging ? 'none' : 'transform 0.2s' }}
-              draggable={false}
-              priority
-              onLoad={() => setFullImageLoaded(true)}
-            />
-          </>
-        ) : (
-          <Image
-            src={resolvedPhoto}
-            alt={slidePhoto.title}
-            fill
-            sizes="(max-width: 1024px) 100vw, 70vw"
-            className="object-contain select-none opacity-90"
-            draggable={false}
-          />
-        )}
-      </div>
-    )
-  }, [fullImageLoaded, isDragging, scale, settings?.cdn_domain])
+  const handleDisplayImageLoad = useCallback((photoId: string) => {
+    setLoadedPhotoIds((previous) => {
+      if (previous.has(photoId)) return previous
+      const next = new Set(previous)
+      next.add(photoId)
+      return next
+    })
+  }, [])
 
   const animateSwipeTo = useCallback(async (target: number, onComplete?: () => void) => {
     setIsSlideAnimating(true)
@@ -316,7 +272,7 @@ export function PhotoDetailModal({
 
     if (panAxis === 'y') {
       if (Math.abs(info.offset.y) > DRAG_DISMISS_THRESHOLD) {
-        onClose()
+        handleClose()
       }
       setPanAxis(null)
       return
@@ -338,7 +294,7 @@ export function PhotoDetailModal({
     }
 
     if (Math.abs(info.offset.y) > DRAG_DISMISS_THRESHOLD) {
-      onClose()
+      handleClose()
       return
     }
 
@@ -353,7 +309,7 @@ export function PhotoDetailModal({
     }
 
     await animateSwipeTo(0)
-  }, [animateSwipeTo, handleNext, handlePrevious, hasNext, hasPrevious, imageViewportWidth, onClose, panAxis, scale])
+  }, [animateSwipeTo, handleClose, handleNext, handlePrevious, hasNext, hasPrevious, imageViewportWidth, panAxis, scale])
 
   // 面板拖拽处理
   const handlePanelDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
@@ -367,13 +323,6 @@ export function PhotoDetailModal({
     }
   }
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-       // 更新面板高度状态以响应 mobilePanelExpanded 变化
-       // 实际高度由 CSS 类控制，这里主要用于状态同步
-    }
-  }, [mobilePanelExpanded])
-
   const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9)
     setNotifications((prev) => [...prev, { id, message, type }])
@@ -385,110 +334,114 @@ export function PhotoDetailModal({
     return storyCache?.story?.photos?.some(p => p.id === pid) ?? false
   }, [storyCache?.story?.photos])
 
+  const cacheStoryData = useCallback((cache: StoryCache) => {
+    const cacheByPhoto = storyCacheByPhotoRef.current
+    const relatedPhotoIds = cache.story?.photos?.map((storyPhoto) => storyPhoto.id) ?? [cache.photoId]
+
+    for (const relatedPhotoId of relatedPhotoIds) {
+      cacheByPhoto.delete(relatedPhotoId)
+      cacheByPhoto.set(relatedPhotoId, cache)
+    }
+
+    while (cacheByPhoto.size > STORY_CACHE_LIMIT) {
+      const oldestKey = cacheByPhoto.keys().next().value
+      if (typeof oldestKey !== 'string') break
+      cacheByPhoto.delete(oldestKey)
+    }
+
+    setStoryCache(cache)
+  }, [])
+
   // 获取故事数据 - 仅在故事标签激活时加载
   useEffect(() => {
     if (!photo || !isOpen || hideStoryTab || activeTab !== 'story') return
 
-    // 如果照片在已缓存的故事中，无需重新获取
-    if (storyCache && isPhotoInCachedStory(photo.id)) {
+    const cached = storyCacheByPhotoRef.current.get(photo.id)
+    if (cached) {
+      setStoryLoading(false)
+      setStoryCache((current) => current === cached ? current : cached)
       return
     }
 
-    // 防止重复请求
-    if (storyFetchingRef.current) return
+    const controller = new AbortController()
     
     const fetchStoryData = async () => {
-      storyFetchingRef.current = true
       setStoryLoading(true)
       
       try {
-        const storyData = await getPhotoStory(photo.id)
+        const storyData = await getPhotoStory(photo.id, controller.signal)
         let commentsData: PublicCommentDto[] = []
         
         if (storyData?.id) {
-          commentsData = await getStoryComments(storyData.id)
+          commentsData = await getStoryComments(storyData.id, controller.signal)
         } else {
-          commentsData = await getPhotoComments(photo.id)
+          commentsData = await getPhotoComments(photo.id, controller.signal)
         }
         
         commentsData = commentsData.toSorted((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
         
-        setStoryCache({
+        cacheStoryData({
           photoId: photo.id,
           story: storyData,
           comments: commentsData,
-          fetchedAt: Date.now(),
         })
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load story'
-        if (errorMessage.includes('No story found')) {
-          // 无故事，尝试获取照片评论
-          try {
-            const photoComments = await getPhotoComments(photo.id)
-            const sortedComments = photoComments.toSorted((a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            )
-            setStoryCache({
-              photoId: photo.id,
-              story: null,
-              comments: sortedComments,
-              fetchedAt: Date.now(),
-            })
-          } catch {
-            setStoryCache({
-              photoId: photo.id,
-              story: null,
-              comments: [],
-              fetchedAt: Date.now(),
-            })
-          }
-        } else {
-          console.error('Failed to load story:', err)
-        }
+        if (controller.signal.aborted) return
+        console.error('Failed to load story:', err)
+        cacheStoryData({ photoId: photo.id, story: null, comments: [] })
       } finally {
-        setStoryLoading(false)
-        storyFetchingRef.current = false
+        if (!controller.signal.aborted) setStoryLoading(false)
       }
     }
     
-    fetchStoryData()
-  }, [activeTab, hideStoryTab, isOpen, isPhotoInCachedStory, photo, storyCache])
+    void fetchStoryData()
+    return () => {
+      controller.abort()
+    }
+  }, [activeTab, cacheStoryData, hideStoryTab, isOpen, photo])
 
   // 弹窗关闭时清除缓存并恢复页面滚动
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+    if (!isOpen) {
       setStoryCache(null)
+      return
     }
+
+    const { body, documentElement } = document
+    const previousOverflow = body.style.overflow
+    const previousPaddingRight = body.style.paddingRight
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth
+
+    body.style.overflow = 'hidden'
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`
+    }
+
     return () => {
-      document.body.style.overflow = ''
+      body.style.overflow = previousOverflow
+      body.style.paddingRight = previousPaddingRight
     }
   }, [isOpen])
 
   // 更新缓存中的评论列表
   const updateCommentsCache = useCallback((newComments: PublicCommentDto[]) => {
-    setStoryCache(prev => prev ? { ...prev, comments: newComments } : null)
-  }, [])
+    setStoryCache((previous) => {
+      if (!previous) return null
+      const updated = { ...previous, comments: newComments }
+      const cacheByPhoto = storyCacheByPhotoRef.current
 
-  useEffect(() => {
-    if (photo && isOpen) {
-      if (Array.isArray(photo.dominantColors) && photo.dominantColors.length > 0) {
-        setDominantColors(photo.dominantColors)
-      } else {
-        setDominantColors([])
+      for (const [photoId, cached] of cacheByPhoto) {
+        if (cached === previous) cacheByPhoto.set(photoId, updated)
       }
-    } else {
-      setDominantColors([])
-    }
-  }, [photo, isOpen])
+
+      return updated
+    })
+  }, [])
 
   // 照片切换时重置全尺寸图片加载状态
   useEffect(() => {
-    setFullImageLoaded(false)
     setScale(1)
     imgX.set(0)
     imgY.set(0)
@@ -517,12 +470,13 @@ export function PhotoDetailModal({
   // 缩略图条滚动到当前照片位置
   useEffect(() => {
     if (showThumbnails && thumbnailsScrollRef.current && currentPhotoIndex >= 0) {
-      const activeElement = thumbnailsScrollRef.current.children[currentPhotoIndex] as HTMLElement
+      const visibleIndex = currentPhotoIndex - thumbnailWindowStart
+      const activeElement = thumbnailsScrollRef.current.children[visibleIndex] as HTMLElement
       if (activeElement) {
         activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
       }
     }
-  }, [currentPhotoIndex, showThumbnails])
+  }, [currentPhotoIndex, showThumbnails, thumbnailWindowStart])
 
   // 点击复制颜色值到剪贴板
   const handleCopyColor = (color: string) => {
@@ -633,12 +587,19 @@ export function PhotoDetailModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex bg-background"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 lg:p-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) handleClose()
+          }}
         >
           <Toast notifications={notifications} remove={(id) => setNotifications(prev => prev.filter(n => n.id !== id))} />
           
-          <div className="flex flex-col lg:flex-row w-full h-full overflow-hidden">
-            {/* Left: Immersive Photo Viewer */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="flex h-full w-full flex-col overflow-hidden bg-background shadow-2xl lg:h-[80vh] lg:w-[80vw] lg:flex-row lg:border lg:border-white/10"
+          >
+            {/* Left: Photo Viewer */}
             <div className={`relative bg-black/5 flex flex-col overflow-hidden ${mobilePanelExpanded ? 'h-[40vh] lg:h-full lg:flex-1' : 'flex-1'}`}>
               <div
                 ref={imageViewportRef}
@@ -656,9 +617,9 @@ export function PhotoDetailModal({
               >
                 {/* Close Button - Hidden on mobile when controls not visible */}
                 <button
-                  onClick={onClose}
-                  className={`absolute top-4 left-4 md:top-6 md:left-6 z-50 w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/80 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-105 ${
-                    !mobileControlsVisible && !mobilePanelExpanded ? 'lg:flex opacity-0 pointer-events-none lg:opacity-100 lg:pointer-events-auto' : ''
+                  onClick={handleClose}
+                  className={`absolute left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white/80 transition-all duration-200 hover:border-white/20 hover:bg-black/85 hover:text-white md:left-6 md:top-6 md:h-11 md:w-11 lg:pointer-events-none lg:opacity-0 lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-visible:pointer-events-auto lg:focus-visible:opacity-100 ${
+                    !mobileControlsVisible && !mobilePanelExpanded ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
                   }`}
                 >
                   <X className="w-5 h-5" />
@@ -666,7 +627,7 @@ export function PhotoDetailModal({
 
                 {/* Photo Counter - Top Right */}
                 {hasPhotoSequence && (
-                  <div className={`absolute top-4 right-4 md:top-6 md:right-6 z-50 px-4 py-2 bg-black/30 backdrop-blur-md text-white/80 font-mono text-xs rounded-full border border-white/10 transition-all duration-300 ${
+                  <div className={`absolute top-4 right-4 md:top-6 md:right-6 z-50 px-4 py-2 bg-black/70 text-white/80 font-mono text-xs rounded-full border border-white/10 transition-all duration-300 ${
                     !mobileControlsVisible && !mobilePanelExpanded ? 'lg:opacity-0 lg:group-hover:opacity-100 opacity-0 pointer-events-none lg:pointer-events-auto' : 'lg:opacity-0 lg:group-hover:opacity-100'
                   }`}>
                     <span className="text-white">{displayIndex}</span>
@@ -692,7 +653,15 @@ export function PhotoDetailModal({
                           className="relative h-full shrink-0 p-2 md:p-12"
                           style={{ width: imageViewportWidth }}
                         >
-                          {renderSlideImage(slidePhoto, index === 1)}
+                          <PhotoViewerImage
+                            photo={slidePhoto}
+                            isCurrent={index === 1}
+                            isDisplayLoaded={index === 1 && fullImageLoaded}
+                            isDragging={isDragging}
+                            scale={index === 1 ? scale : 1}
+                            cdnDomain={settings?.cdn_domain}
+                            onDisplayLoad={handleDisplayImageLoad}
+                          />
                         </div>
                       ))}
                     </motion.div>
@@ -701,16 +670,16 @@ export function PhotoDetailModal({
                       className="absolute inset-0 flex items-center justify-center p-2 md:p-12"
                       style={{ x: scale > 1 ? imgX : undefined, y: scale > 1 ? imgY : undefined }}
                     >
-                      {renderSlideImage(photo, true)}
+                      <PhotoViewerImage
+                        photo={photo}
+                        isCurrent
+                        isDisplayLoaded={fullImageLoaded}
+                        isDragging={isDragging}
+                        scale={scale}
+                        cdnDomain={settings?.cdn_domain}
+                        onDisplayLoad={handleDisplayImageLoad}
+                      />
                     </motion.div>
-                  )}
-                  {/* Loading indicator */}
-                  {!fullImageLoaded && (
-                    <div className="pointer-events-none absolute bottom-4 right-4 z-20 md:bottom-8 md:right-8">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-                        <div className="h-4 w-4 rounded-full border-2 border-white/25 border-t-white/90 animate-spin" />
-                      </div>
-                    </div>
                   )}
                 </motion.div>
 
@@ -720,54 +689,32 @@ export function PhotoDetailModal({
                     <button
                       onClick={handlePrevious}
                       disabled={!hasPrevious}
-                      className="hidden lg:flex absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
+                      className="absolute left-6 top-1/2 z-20 hidden h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white/70 opacity-0 pointer-events-none transition-all duration-200 hover:border-white/20 hover:bg-black/85 hover:text-white group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto disabled:opacity-0 disabled:pointer-events-none lg:flex"
                     >
-                      <ChevronLeft className="w-7 h-7 transition-transform group-hover:-translate-x-0.5" />
+                      <ChevronLeft className="h-7 w-7" />
                     </button>
                     <button
                       onClick={handleNext}
                       disabled={!hasNext || isLoadingMore}
-                      className="hidden lg:flex absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white disabled:opacity-0 disabled:pointer-events-none rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-110 z-20 group"
+                      className="absolute right-6 top-1/2 z-20 hidden h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white/70 opacity-0 pointer-events-none transition-all duration-200 hover:border-white/20 hover:bg-black/85 hover:text-white group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto disabled:opacity-0 disabled:pointer-events-none lg:flex"
                     >
                       {isLoadingMore ? (
                         <Loader2 className="w-6 h-6 animate-spin" />
                       ) : (
-                        <ChevronRight className="w-7 h-7 transition-transform group-hover:translate-x-0.5" />
+                        <ChevronRight className="h-7 w-7" />
                       )}
                     </button>
                   </>
                 )}
-                
-                {/* Bottom Info Card - Desktop only to keep mobile focused on the photo */}
-                <div className="hidden lg:block absolute bottom-0 left-0 right-0 p-8 transition-all duration-300 pointer-events-none z-10 opacity-0 group-hover:opacity-100">
-                  <div className="max-w-screen-2xl mx-auto">
-                    <div className="inline-flex flex-col gap-2 p-4 md:p-5 bg-black/40 backdrop-blur-xl rounded-lg border border-white/10">
-                      <p className="font-serif text-lg md:text-2xl text-white leading-tight">{photo.title}</p>
-                      <div className="flex items-center gap-4 text-white/60">
-                        {photoTakenLabel && (
-                          <span className="font-mono text-xs uppercase tracking-wider">
-                            {photoTakenLabel}
-                          </span>
-                        )}
-                        {photo.cameraModel && (
-                          <>
-                            <span className="w-px h-3 bg-white/20" />
-                            <span className="font-mono text-xs uppercase tracking-wider flex items-center gap-1.5">
-                              <Camera className="w-3 h-3" />
-                              {photo.cameraModel}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
                 {/* Thumbnail Toggle Button - Desktop only */}
-                <div className="hidden lg:block absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="pointer-events-none absolute bottom-4 right-4 z-20 hidden opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 lg:block">
                    <button
-                    onClick={toggleThumbnails}
-                    className={`w-10 h-10 flex items-center justify-center bg-black/30 hover:bg-black/50 backdrop-blur-md text-white/70 hover:text-white rounded-full border border-white/10 hover:border-white/20 transition-all duration-300 ${showThumbnails ? 'bg-white/20 border-white/30' : ''}`}
+                    onClick={(event) => {
+                      toggleThumbnails()
+                      if (event.detail > 0) event.currentTarget.blur()
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/80 text-white transition-opacity duration-200"
                     title={showThumbnails ? t('gallery.hide_thumbnails') : t('gallery.show_thumbnails')}
                   >
                     {showThumbnails ? <ChevronDown className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
@@ -779,17 +726,17 @@ export function PhotoDetailModal({
               <AnimatePresence>
                 {showThumbnails && (
                   <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
                     transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                    className="hidden lg:block relative bg-black/20 backdrop-blur-sm border-t border-white/5 shrink-0 z-30 overflow-hidden"
+                    className="hidden h-24 lg:block relative bg-black/80 border-t border-white/5 shrink-0 z-30 overflow-hidden"
                   >
                      <div
                        ref={thumbnailsScrollRef}
                        className="flex items-center gap-2 p-3 overflow-x-auto custom-scrollbar scroll-smooth h-24"
                      >
-                       {allPhotos.map((p) => (
+                       {visibleThumbnailPhotos.map((p) => (
                          <button
                            key={p.id}
                            onClick={() => onPhotoChange?.(p)}
@@ -826,11 +773,7 @@ export function PhotoDetailModal({
 
             {/* Right: Info & Story Panel */}
             <motion.div 
-              className={`w-full lg:w-[480px] xl:w-[560px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col transition-all duration-300 lg:h-full lg:static fixed bottom-0 left-0 right-0 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] rounded-t-2xl lg:rounded-none overflow-hidden`}
-              animate={{
-                height: mobilePanelExpanded ? '80vh' : 'auto',
-                y: 0
-              }}
+              className={`w-full lg:w-[38%] lg:min-w-[320px] xl:w-[420px] bg-background border-t lg:border-t-0 lg:border-l border-border flex flex-col lg:h-full lg:static fixed bottom-0 left-0 right-0 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] overflow-hidden ${mobilePanelExpanded ? 'h-[80vh]' : 'h-auto'}`}
               drag={mobilePanelExpanded ? "y" : false}
               dragConstraints={{ top: 0, bottom: 0 }}
               dragElastic={0.05}
@@ -860,8 +803,8 @@ export function PhotoDetailModal({
               {!hideStoryTab && (
                 <div className="relative flex border-b border-border">
                   {[
+                    { id: 'info', icon: Info, label: t('gallery.info') },
                     { id: 'story', icon: BookOpen, label: t('gallery.story') },
-                    { id: 'info', icon: Info, label: t('gallery.info') }
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -970,7 +913,7 @@ export function PhotoDetailModal({
                                   style={{ backgroundColor: color }}
                                   title={color}
                                 >
-                                  <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background/95 backdrop-blur-sm px-1.5 py-0.5 border border-border/50 shadow-sm">
+                                  <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background px-1.5 py-0.5 border border-border/50 shadow-sm">
                                     {color}
                                   </span>
                                 </button>
@@ -994,9 +937,9 @@ export function PhotoDetailModal({
                         photoId={photo.id}
                         currentPhoto={photo}
                         onPhotoChange={onPhotoChange}
-                        cachedStory={storyCache?.story}
-                        cachedComments={storyCache?.comments}
-                        isLoading={storyLoading}
+                        cachedStory={storyCache?.photoId === photo.id || isPhotoInCachedStory(photo.id) ? storyCache?.story ?? null : null}
+                        cachedComments={storyCache?.photoId === photo.id || isPhotoInCachedStory(photo.id) ? storyCache?.comments ?? [] : []}
+                        isLoading={storyLoading || !(storyCache?.photoId === photo.id || isPhotoInCachedStory(photo.id))}
                         onCommentsUpdate={updateCommentsCache}
                       />
                     </motion.div>

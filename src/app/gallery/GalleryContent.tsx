@@ -16,12 +16,16 @@ import { GalleryHeader, GalleryToolbar, type GalleryView } from '@/components/ga
 import { PhotoGrid } from '@/components/gallery/PhotoGrid'
 import type { ViewMode } from '@/components/gallery/ViewModeToggle'
 
-const PhotoDetailModal = dynamic(
-  () => import('@/components/PhotoDetailModal').then((m) => m.PhotoDetailModal),
-  { ssr: false },
+const loadPhotoDetailModal = () => (
+  import('@/components/PhotoDetailModal').then((module) => module.PhotoDetailModal)
 )
 
-const PAGE_SIZE = 20
+const PhotoDetailModal = dynamic(loadPhotoDetailModal, { ssr: false })
+
+const PAGE_SIZE = 40
+// Masonry can outrun sequential page loads on fast scrolls, so a single
+// loadMore call may fetch a few pages in parallel to catch up faster.
+const MAX_LOAD_MORE_PAGES = 3
 const ALL_CATEGORY_KEY = 'all'
 const LEGACY_ALL_CATEGORIES = new Set(['all', '全部'])
 
@@ -65,14 +69,30 @@ export function GalleryContent({
   const [grayscale, setGrayscale] = useState(true)
   const [immersive, setImmersive] = useState(true)
   const [showBackToTop, setShowBackToTop] = useState(false)
-  const [page, setPage] = useState(1)
   const [meta, setMeta] = useState<PhotoPaginationMeta | null>(initialMeta)
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [albumsLoading, setAlbumsLoading] = useState(false)
 
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const isLoadingRef = useRef(false)
+  const requestVersionRef = useRef(0)
   const showBackToTopRef = useRef(false)
+
+  // Warm the modal chunk after the gallery becomes interactive so the first
+  // photo click does not wait for JavaScript loading and evaluation.
+  useEffect(() => {
+    const preload = () => {
+      void loadPhotoDetailModal()
+    }
+
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(preload, { timeout: 1500 })
+      return () => window.cancelIdleCallback(idleId)
+    }
+
+    const timeoutId = globalThis.setTimeout(preload, 300)
+    return () => globalThis.clearTimeout(timeoutId)
+  }, [])
 
   const deferredSearch = useDeferredValue(search)
   const currentCategory = activeCategory !== ALL_CATEGORY_KEY ? activeCategory : undefined
@@ -105,7 +125,7 @@ export function GalleryContent({
   }, [view])
 
   // Refetch photos only when category changes (skip initial load since we have server data)
-  const isInitialLoad = useRef(true)
+  const isInitialLoad = useRef(initialView === 'photos')
   useEffect(() => {
     if (view !== 'photos') return
     if (isInitialLoad.current) {
@@ -114,19 +134,23 @@ export function GalleryContent({
     }
 
     let stale = false
+    const requestVersion = requestVersionRef.current + 1
+    requestVersionRef.current = requestVersion
+    isLoadingRef.current = false
+    setLoadingMore(false)
 
     async function fetchPhotos() {
       try {
         setLoading(true)
         setPhotos([])
-        setPage(1)
+        setMeta(null)
 
         const [photosResult, categoriesData] = await Promise.all([
           getPhotosWithMeta({ category: currentCategory, page: 1, pageSize: PAGE_SIZE }),
           getCategories(),
         ])
 
-        if (stale) return
+        if (stale || requestVersion !== requestVersionRef.current) return
 
         setPhotos(photosResult.data)
         setMeta(photosResult.meta)
@@ -135,9 +159,13 @@ export function GalleryContent({
           ...categoriesData.filter((category) => !LEGACY_ALL_CATEGORIES.has(category)),
         ])
       } catch (error) {
-        if (!stale) console.error('Failed to fetch gallery data:', error)
+        if (!stale && requestVersion === requestVersionRef.current) {
+          console.error('Failed to fetch gallery data:', error)
+        }
       } finally {
-        if (!stale) setLoading(false)
+        if (!stale && requestVersion === requestVersionRef.current) {
+          setLoading(false)
+        }
       }
     }
 
@@ -145,33 +173,83 @@ export function GalleryContent({
     return () => { stale = true }
   }, [currentCategory, view])
 
-  const loadMore = useCallback(async (): Promise<void> => {
+  const loadMore = useCallback(async (targetIndex?: number): Promise<void> => {
     if (isLoadingRef.current || !meta?.hasMore) return
 
+    const requestVersion = requestVersionRef.current
     isLoadingRef.current = true
     setLoadingMore(true)
 
     try {
-      const nextPage = page + 1
-      const result = await getPhotosWithMeta({
-        category: currentCategory,
-        page: nextPage,
-        pageSize: PAGE_SIZE,
-      })
+      const firstPage = meta.page + 1
+      const loadedCount = meta.page * meta.pageSize
+      const remainingPages = Math.max(1, meta.totalPages - meta.page)
+      const wantedPages = targetIndex === undefined
+        ? 1
+        : Math.ceil((targetIndex + 1 + PAGE_SIZE - loadedCount) / PAGE_SIZE)
+      const pageCount = Math.min(
+        MAX_LOAD_MORE_PAGES,
+        remainingPages,
+        Math.max(1, wantedPages),
+      )
 
-      setPhotos((previous) => [...previous, ...result.data])
-      setMeta(result.meta)
-      setPage(nextPage)
+      const results = await Promise.allSettled(
+        Array.from({ length: pageCount }, (_, offset) => getPhotosWithMeta({
+          category: currentCategory,
+          page: firstPage + offset,
+          pageSize: PAGE_SIZE,
+        })),
+      )
+
+      if (requestVersion !== requestVersionRef.current) return
+
+      // Only the contiguous prefix of successful pages can be appended,
+      // otherwise a failed middle page would leave a hole in the list.
+      const pages: Awaited<ReturnType<typeof getPhotosWithMeta>>[] = []
+      for (const result of results) {
+        if (result.status !== 'fulfilled') break
+        pages.push(result.value)
+      }
+
+      if (pages.length === 0) {
+        const failure = results[0]
+        throw failure.status === 'rejected' ? failure.reason : new Error('Failed to load more photos')
+      }
+
+      setPhotos((previous) => {
+        const existingIds = new Set(previous.map((photo) => photo.id))
+        const nextPhotos = [...previous]
+
+        for (const page of pages) {
+          for (const photo of page.data) {
+            if (!existingIds.has(photo.id)) {
+              existingIds.add(photo.id)
+              nextPhotos.push(photo)
+            }
+          }
+        }
+
+        return nextPhotos
+      })
+      setMeta(pages[pages.length - 1].meta)
     } catch (error) {
-      console.error('Failed to load more photos:', error)
+      if (requestVersion === requestVersionRef.current) {
+        console.error('Failed to load more photos:', error)
+      }
     } finally {
-      setLoadingMore(false)
-      isLoadingRef.current = false
+      if (requestVersion === requestVersionRef.current) {
+        setLoadingMore(false)
+        isLoadingRef.current = false
+      }
     }
-  }, [currentCategory, meta?.hasMore, page])
+  }, [currentCategory, meta])
 
   // Infinite scroll observer
   useEffect(() => {
+    if (viewMode === 'masonry') return
+
+    // Start loading roughly one viewport before the sentinel reaches the screen.
+    const preloadDistance = Math.max(window.innerHeight * 2, 1200)
     const observer = new IntersectionObserver(
       (entries) => {
         const firstEntry = entries[0]
@@ -179,7 +257,10 @@ export function GalleryContent({
           void loadMore()
         }
       },
-      { threshold: 0.1, rootMargin: '100px' },
+      {
+        threshold: 0,
+        rootMargin: `0px 0px ${preloadDistance}px 0px`,
+      },
     )
 
     const currentElement = loadMoreRef.current
@@ -189,7 +270,7 @@ export function GalleryContent({
       if (currentElement) observer.unobserve(currentElement)
       observer.disconnect()
     }
-  }, [loadMore, loading, loadingMore, meta?.hasMore])
+  }, [loadMore, loading, loadingMore, meta?.hasMore, viewMode])
 
   // Back-to-top scroll listener
   useEffect(() => {
@@ -294,18 +375,28 @@ export function GalleryContent({
                 transition={{ duration: 0.2 }}
                 style={{ opacity: isFilterPending ? 0.6 : 1 }}
               >
-                <PhotoGrid
-                  loading={loading}
-                  photos={filteredPhotos}
-                  settings={settings}
-                  viewMode={viewMode}
-                  grayscale={grayscale}
-                  immersive={immersive}
-                  onPhotoClick={setSelectedPhoto}
-                  t={t}
-                />
+                <div
+                  inert={selectedPhoto ? true : undefined}
+                  className={selectedPhoto ? 'pointer-events-none select-none' : undefined}
+                >
+                  <PhotoGrid
+                    key={`${currentCategory ?? ALL_CATEGORY_KEY}:${deferredSearch}:${viewMode}:${immersive}`}
+                    loading={loading}
+                    photos={filteredPhotos}
+                    settings={settings}
+                    viewMode={viewMode}
+                    grayscale={grayscale}
+                    immersive={immersive}
+                    loadingMore={loadingMore}
+                    hasMore={hasMorePhotos}
+                    totalItems={hasSearch ? filteredPhotos.length : (meta?.total ?? filteredPhotos.length)}
+                    onLoadMore={loadMore}
+                    onPhotoClick={setSelectedPhoto}
+                    t={t}
+                  />
+                </div>
 
-                {!loading && hasMorePhotos ? (
+                {!loading && hasMorePhotos && viewMode !== 'masonry' ? (
                   <div ref={loadMoreRef} className="flex items-center justify-center py-8">
                     {loadingMore ? (
                       <div className="flex items-center gap-2 text-muted-foreground">

@@ -1,12 +1,12 @@
 'use client'
 
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Calendar, ChevronRight, X } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { useEntranceAnimation } from '@/hooks/useEntranceAnimation'
 
 const MONTH_KEYS = [
   'gallery.months_jan',
@@ -36,20 +36,17 @@ const WEEKDAY_KEYS = [
 
 interface TimelinePhotoItemProps {
   photo: PhotoDto
-  index: number
   settings: PublicSettingsDto | null
   grayscale: boolean
-  onClick: () => void
+  onPhotoClick: (photo: PhotoDto) => void
 }
 
 const TimelinePhotoItem = memo(function TimelinePhotoItem({
   photo,
-  index,
   settings,
   grayscale,
-  onClick,
+  onPhotoClick,
 }: TimelinePhotoItemProps) {
-  const { ref, style } = useEntranceAnimation({ index, columnCount: 6 })
   const coverUrl = useMemo(
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
@@ -66,17 +63,17 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({
 
   return (
     <div
-      ref={ref}
       className="group relative aspect-square cursor-pointer overflow-hidden bg-muted"
-      onClick={onClick}
-      style={{ ...style, contentVisibility: 'auto', containIntrinsicSize: 'auto 300px' }}
+      onClick={() => onPhotoClick(photo)}
     >
-      <img
+      <Image
         src={coverUrl}
         alt={photo.title}
-        className={`w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105 ${
-          grayscale ? 'grayscale group-hover:grayscale-0' : ''
-        }`}
+        fill
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 17vw"
+        loading="eager"
+        decoding="async"
+        className={`h-full w-full object-cover ${grayscale ? 'grayscale' : ''}`}
       />
 
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
@@ -424,14 +421,13 @@ export function TimelineView({ photos, settings, grayscale, onPhotoClick }: Time
 
           <div className="ml-10 md:ml-16 pb-8 pt-2 pr-2 md:pr-0">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
-              {dayGroup.photos.map((photo, index) => (
+              {dayGroup.photos.map((photo) => (
                 <TimelinePhotoItem
                   key={photo.id}
                   photo={photo}
-                  index={index}
                   settings={settings}
                   grayscale={grayscale}
-                  onClick={() => onPhotoClick(photo)}
+                  onPhotoClick={onPhotoClick}
                 />
               ))}
             </div>
