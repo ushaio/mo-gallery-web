@@ -23,7 +23,7 @@ export async function getAdminAlbum(token: string, id: string): Promise<AlbumDto
 
 export async function createAlbum(
   token: string,
-  data: { name: string; description?: string; coverUrl?: string; isPublished: boolean; sortOrder?: number; photoIds?: string[] },
+  data: { name: string; description?: string; coverUrl?: string; location?: string | null; isPublished: boolean; sortOrder?: number; photoIds?: string[] },
 ): Promise<AlbumDto> {
   return apiRequestData<AlbumDto>(
     '/api/admin/albums',
@@ -38,7 +38,7 @@ export async function createAlbum(
 export async function updateAlbum(
   token: string,
   id: string,
-  data: { name?: string; description?: string; coverUrl?: string; isPublished?: boolean; sortOrder?: number },
+  data: { name?: string; description?: string; coverUrl?: string; location?: string | null; isPublished?: boolean; sortOrder?: number },
 ): Promise<AlbumDto> {
   return apiRequestData<AlbumDto>(
     `/api/admin/albums/${encodeURIComponent(id)}`,

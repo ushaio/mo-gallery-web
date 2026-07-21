@@ -265,6 +265,15 @@ func (a *App) UpdateAlbum(id string, params services.UpdateAlbumParams) (*servic
 	return a.Album.Update(id, params)
 }
 func (a *App) DeleteAlbum(id string) error { return a.Album.Delete(id) }
+func (a *App) AddPhotosToAlbum(id string, photoIDs []string) (*services.AlbumDTO, error) {
+	return a.Album.AddPhotos(id, photoIDs)
+}
+func (a *App) RemovePhotoFromAlbum(albumID, photoID string) (*services.AlbumDTO, error) {
+	return a.Album.RemovePhoto(albumID, photoID)
+}
+func (a *App) SetAlbumCover(albumID, photoID string) (*services.AlbumDTO, error) {
+	return a.Album.SetCover(albumID, photoID)
+}
 
 // ─── Stories ─────────────────────────────────────────
 

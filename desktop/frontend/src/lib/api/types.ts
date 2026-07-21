@@ -431,6 +431,7 @@ export interface AlbumDto {
   name: string
   description?: string
   coverUrl?: string
+  location?: string
   isPublished: boolean
   sortOrder: number
   createdAt: string

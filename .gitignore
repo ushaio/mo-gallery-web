@@ -75,6 +75,14 @@ public/uploads
 
 # flutter mobile client
 /flutter/
+!/flutter/
+/flutter/*
+!/flutter/lib/
+!/flutter/lib/**
+!/flutter/test/
+!/flutter/test/**
+!/flutter/pubspec.yaml
+!/flutter/pubspec.lock
 /flutter/.dart_tool/
 /flutter/build/
 /flutter/.flutter-plugins

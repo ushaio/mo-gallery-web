@@ -5,6 +5,8 @@ import {types} from '../models';
 import {config} from '../models';
 import {image} from '../models';
 
+export function AddPhotosToAlbum(arg1:string,arg2:Array<string>):Promise<services.AlbumDTO>;
+
 export function AddPhotosToFilmRoll(arg1:string,arg2:Array<string>):Promise<services.FilmRollDTO>;
 
 export function AddStoryPhoto(arg1:string,arg2:string):Promise<void>;
@@ -143,6 +145,8 @@ export function OpenLogDir():Promise<void>;
 
 export function PrepareUpload(arg1:Array<string>):Promise<Array<services.PreparedFile>>;
 
+export function RemovePhotoFromAlbum(arg1:string,arg2:string):Promise<services.AlbumDTO>;
+
 export function RemovePhotoFromFilmRoll(arg1:string,arg2:string):Promise<services.FilmRollDTO>;
 
 export function RemoveStoryPhoto(arg1:string,arg2:string):Promise<void>;
@@ -160,6 +164,8 @@ export function ScanStorage(arg1:services.StorageScanParams):Promise<services.St
 export function SelectFiles():Promise<Array<string>>;
 
 export function SelectFolder():Promise<string>;
+
+export function SetAlbumCover(arg1:string,arg2:string):Promise<services.AlbumDTO>;
 
 export function SetAuth(arg1:string,arg2:string):Promise<services.UserInfo>;
 

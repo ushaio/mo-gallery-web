@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"net/url"
 	"time"
 )
 
@@ -16,6 +17,7 @@ type AlbumDTO struct {
 	Name        string     `json:"name"`
 	Description *string    `json:"description,omitempty"`
 	CoverURL    *string    `json:"coverUrl,omitempty"`
+	Location    *string    `json:"location,omitempty"`
 	IsPublished bool       `json:"isPublished"`
 	SortOrder   int        `json:"sortOrder"`
 	PhotoCount  int        `json:"photoCount"`
@@ -27,7 +29,8 @@ type AlbumDTO struct {
 type CreateAlbumParams struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	CoverURL    string `json:"coverUrl"`
+	CoverURL    string `json:"coverUrl,omitempty"`
+	Location    string `json:"location,omitempty"`
 	IsPublished bool   `json:"isPublished"`
 	SortOrder   int    `json:"sortOrder"`
 }
@@ -36,6 +39,7 @@ type UpdateAlbumParams struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	CoverURL    *string `json:"coverUrl,omitempty"`
+	Location    *string `json:"location,omitempty"`
 	IsPublished *bool   `json:"isPublished,omitempty"`
 	SortOrder   *int    `json:"sortOrder,omitempty"`
 }
@@ -63,7 +67,7 @@ func (s *AlbumService) GetByID(id string) (*AlbumDTO, error) {
 		return nil, err
 	}
 	var album AlbumDTO
-	if err := s.proxy.GET("/admin/albums/"+id, &album); err != nil {
+	if err := s.proxy.GET("/admin/albums/"+url.PathEscape(id), &album); err != nil {
 		return nil, err
 	}
 	return &album, nil
@@ -88,7 +92,7 @@ func (s *AlbumService) Update(id string, params UpdateAlbumParams) (*AlbumDTO, e
 		return nil, err
 	}
 	var album AlbumDTO
-	if err := s.proxy.PATCH("/admin/albums/"+id, params, &album); err != nil {
+	if err := s.proxy.PATCH("/admin/albums/"+url.PathEscape(id), params, &album); err != nil {
 		return nil, err
 	}
 	return &album, nil
@@ -98,5 +102,47 @@ func (s *AlbumService) Delete(id string) error {
 	if err := s.checkReady(); err != nil {
 		return err
 	}
-	return s.proxy.DELETE("/admin/albums/" + id)
+	return s.proxy.DELETE("/admin/albums/" + url.PathEscape(id))
+}
+
+func (s *AlbumService) AddPhotos(id string, photoIDs []string) (*AlbumDTO, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+	if len(photoIDs) == 0 {
+		return nil, errors.New("请选择要添加的照片")
+	}
+
+	var album AlbumDTO
+	path := "/admin/albums/" + url.PathEscape(id) + "/photos"
+	if err := s.proxy.POST(path, map[string]interface{}{"photoIds": photoIDs}, &album); err != nil {
+		return nil, err
+	}
+	return &album, nil
+}
+
+func (s *AlbumService) RemovePhoto(albumID, photoID string) (*AlbumDTO, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+
+	var album AlbumDTO
+	path := "/admin/albums/" + url.PathEscape(albumID) + "/photos/" + url.PathEscape(photoID)
+	if err := s.proxy.DELETEWithResult(path, &album); err != nil {
+		return nil, err
+	}
+	return &album, nil
+}
+
+func (s *AlbumService) SetCover(albumID, photoID string) (*AlbumDTO, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+
+	var album AlbumDTO
+	path := "/admin/albums/" + url.PathEscape(albumID) + "/cover"
+	if err := s.proxy.PATCH(path, map[string]interface{}{"photoId": photoID}, &album); err != nil {
+		return nil, err
+	}
+	return &album, nil
 }

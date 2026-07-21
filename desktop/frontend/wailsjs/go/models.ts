@@ -280,6 +280,7 @@ export namespace services {
 	    name: string;
 	    description?: string;
 	    coverUrl?: string;
+	    location?: string;
 	    isPublished: boolean;
 	    sortOrder: number;
 	    photoCount: number;
@@ -299,6 +300,7 @@ export namespace services {
 	        this.name = source["name"];
 	        this.description = source["description"];
 	        this.coverUrl = source["coverUrl"];
+	        this.location = source["location"];
 	        this.isPublished = source["isPublished"];
 	        this.sortOrder = source["sortOrder"];
 	        this.photoCount = source["photoCount"];
@@ -461,7 +463,8 @@ export namespace services {
 	export class CreateAlbumParams {
 	    name: string;
 	    description: string;
-	    coverUrl: string;
+	    coverUrl?: string;
+	    location?: string;
 	    isPublished: boolean;
 	    sortOrder: number;
 	
@@ -474,6 +477,7 @@ export namespace services {
 	        this.name = source["name"];
 	        this.description = source["description"];
 	        this.coverUrl = source["coverUrl"];
+	        this.location = source["location"];
 	        this.isPublished = source["isPublished"];
 	        this.sortOrder = source["sortOrder"];
 	    }
@@ -1727,6 +1731,7 @@ export namespace services {
 	    name?: string;
 	    description?: string;
 	    coverUrl?: string;
+	    location?: string;
 	    isPublished?: boolean;
 	    sortOrder?: number;
 	
@@ -1739,6 +1744,7 @@ export namespace services {
 	        this.name = source["name"];
 	        this.description = source["description"];
 	        this.coverUrl = source["coverUrl"];
+	        this.location = source["location"];
 	        this.isPublished = source["isPublished"];
 	        this.sortOrder = source["sortOrder"];
 	    }

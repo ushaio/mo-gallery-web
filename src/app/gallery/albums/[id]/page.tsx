@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ArrowUp } from 'lucide-react'
+import { ArrowLeft, ArrowUp, MapPin } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { getAlbum } from '@/lib/api/albums'
 import { getAlbumPreview } from '@/lib/gallery-session'
@@ -138,6 +138,12 @@ export default function AlbumDetailPage() {
                   <h1 className="text-4xl font-serif font-light tracking-tight md:text-5xl lg:text-6xl">
                     {album.name}
                   </h1>
+                  {album.location ? (
+                    <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground">
+                      <MapPin className="size-3.5 text-primary/70" />
+                      {album.location}
+                    </p>
+                  ) : null}
                   {album.description ? (
                     <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
                       {album.description}

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { MapPin } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { AlbumDto } from '@/lib/api/types'
 
@@ -66,6 +67,12 @@ export function AlbumCard({ album, onClick, t }: AlbumCardProps) {
         <h3 className="line-clamp-1 text-sm font-medium tracking-wide text-foreground">
           {album.name}
         </h3>
+        {album.location ? (
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+            <MapPin className="size-3 shrink-0" />
+            <span className="truncate">{album.location}</span>
+          </p>
+        ) : null}
         {album.description ? (
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
             {album.description}

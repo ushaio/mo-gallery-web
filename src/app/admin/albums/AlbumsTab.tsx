@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   List,
   Filter,
+  MapPin,
 } from 'lucide-react'
 import {
   getAdminAlbums,
@@ -118,7 +119,10 @@ export function AlbumsTab({
     return albums.filter(album => {
       if (filterStatus === 'published' && !album.isPublished) return false
       if (filterStatus === 'draft' && album.isPublished) return false
-      if (searchQuery && !album.name.toLowerCase().includes(searchQuery.toLowerCase())) return false
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        if (!album.name.toLowerCase().includes(query) && !album.location?.toLowerCase().includes(query)) return false
+      }
       return true
     })
   }, [albums, filterStatus, searchQuery])
@@ -207,7 +211,7 @@ export function AlbumsTab({
     currentAlbumRequestIdRef.current += 1
     setLoadingCurrentAlbum(false)
     setCurrentAlbum({
-      id: '', name: '', description: '', coverUrl: '', isPublished: false,
+      id: '', name: '', description: '', coverUrl: '', location: '', isPublished: false,
       sortOrder: albums.length, createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(), photos: [], photoCount: 0,
     })
@@ -259,7 +263,14 @@ export function AlbumsTab({
     try {
       setSaving(true)
       const isNew = !currentAlbum.id
-      const data = { name: currentAlbum.name, description: currentAlbum.description || undefined, coverUrl: currentAlbum.coverUrl || undefined, isPublished: currentAlbum.isPublished, sortOrder: currentAlbum.sortOrder }
+      const data = {
+        name: currentAlbum.name.trim(),
+        description: currentAlbum.description || undefined,
+        coverUrl: currentAlbum.coverUrl || undefined,
+        location: currentAlbum.location?.trim() || null,
+        isPublished: currentAlbum.isPublished,
+        sortOrder: currentAlbum.sortOrder,
+      }
       const result = isNew ? await createAlbum(token, data) : await updateAlbum(token, currentAlbum.id, data)
       notify(isNew ? (t('admin.album_created') || 'Album created') : (t('admin.album_updated') || 'Album updated'), 'success')
       setCurrentAlbum(result)
@@ -543,6 +554,12 @@ export function AlbumsTab({
                       <h3 className="font-medium truncate">{album.name}</h3>
                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${album.isPublished ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
                     </div>
+                    {album.location && (
+                      <p className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{album.location}</span>
+                      </p>
+                    )}
                     {album.description && <p className="text-xs text-muted-foreground line-clamp-1">{album.description}</p>}
                   </div>
                 </div>
@@ -579,7 +596,15 @@ export function AlbumsTab({
                     <h3 className="font-medium truncate">{album.name}</h3>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${album.isPublished ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
                   </div>
-                  <p className="text-xs text-muted-foreground">{album.photoCount} {t('admin.photos_count')}</p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>{album.photoCount} {t('admin.photos_count')}</span>
+                    {album.location && (
+                      <span className="flex min-w-0 items-center gap-1">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{album.location}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   <AdminButton onClick={e => handleTogglePublish(album, e)} adminVariant="unstyled" className="p-2 hover:bg-muted transition-colors">
@@ -693,6 +718,19 @@ export function AlbumsTab({
                   onChange={e => setCurrentAlbum({ ...currentAlbum, name: e.target.value })}
                   placeholder={t('admin.album_name_placeholder')}
                 />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-2">{t('admin.album_location')}</label>
+                <div className="relative">
+                  <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <CustomInput
+                    variant="config"
+                    value={currentAlbum.location || ''}
+                    onChange={e => setCurrentAlbum({ ...currentAlbum, location: e.target.value })}
+                    placeholder={t('admin.album_location_placeholder')}
+                    className="pl-9"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-2">{t('admin.description')}</label>

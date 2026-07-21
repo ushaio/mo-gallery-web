@@ -171,6 +171,7 @@ model Album {
   name        String
   description String?
   coverUrl    String?
+  location    String?
   isPublished Boolean  @default(false)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())

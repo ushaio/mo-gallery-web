@@ -8,10 +8,16 @@ import { Prisma } from '@/generated/prisma/client'
 const albums = new Hono<{ Variables: AuthVariables }>()
 
 // Validation schemas
+const AlbumLocationSchema = z.preprocess(
+  (value) => typeof value === 'string' ? value.trim() || null : value,
+  z.string().max(200).optional().nullable(),
+)
+
 const CreateAlbumSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   coverUrl: z.string().url().optional().nullable(),
+  location: AlbumLocationSchema,
   isPublished: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   photoIds: z.array(z.string().uuid()).optional(),
@@ -21,6 +27,7 @@ const UpdateAlbumSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).optional().nullable(),
   coverUrl: z.string().url().optional().nullable(),
+  location: AlbumLocationSchema,
   isPublished: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -234,6 +241,7 @@ albums.post('/admin/albums', async (c) => {
         name: validated.name,
         description: validated.description,
         coverUrl: validated.coverUrl,
+        location: validated.location,
         isPublished: validated.isPublished,
         sortOrder: validated.sortOrder,
         photos: validated.photoIds
