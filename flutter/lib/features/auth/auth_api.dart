@@ -9,12 +9,14 @@ class AuthApi {
   Future<LoginPayload> login({
     required String username,
     required String password,
+    String? loginSlug,
   }) async {
     final json = await client.postJson(
       '/auth/login',
       body: {
         'username': username,
         'password': password,
+        if (loginSlug != null && loginSlug.isNotEmpty) 'loginSlug': loginSlug,
       },
     );
     return parseLoginEnvelope(json);

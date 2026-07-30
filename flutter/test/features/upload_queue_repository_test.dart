@@ -15,7 +15,7 @@ void main() {
       factory: databaseFactoryFfi,
       path: inMemoryDatabasePath,
     );
-    final repo = UploadQueueRepository(db);
+    final repo = UploadQueueRepository(db, environmentId: 'production');
     addTearDown(() async {
       await repo.dispose();
       await db.close();
@@ -44,16 +44,115 @@ void main() {
     expect(claimed, isNotNull);
     expect(claimed!.status, UploadTaskStatus.uploading);
     expect(claimed.fileName, 'a.jpg');
+    expect(claimed.sortOrder, lessThan(2));
 
     await repo.updateTask(
-      claimed.copyWith(status: UploadTaskStatus.done, progress: 100, photoId: 'p1'),
+      claimed.copyWith(
+          status: UploadTaskStatus.done, progress: 100, photoId: 'p1'),
     );
 
     final all = await repo.listAll();
     expect(all.length, 2);
+    expect(all.map((task) => task.id), ['t1', 't2']);
     expect(all.firstWhere((t) => t.id == 't1').status, UploadTaskStatus.done);
 
     final next = await repo.claimNextPending();
     expect(next?.id, 't2');
+  });
+
+  test('queues are isolated by environment', () async {
+    final db = AppDatabase(
+      factory: databaseFactoryFfi,
+      path: inMemoryDatabasePath,
+    );
+    final production = UploadQueueRepository(
+      db,
+      environmentId: 'production',
+    );
+    final staging = UploadQueueRepository(
+      db,
+      environmentId: 'staging',
+    );
+    addTearDown(() async {
+      await production.dispose();
+      await staging.dispose();
+      await db.close();
+    });
+
+    await production.enqueue(
+      items: [
+        (
+          taskId: 'prod-task',
+          sandboxPath: '/tmp/prod.jpg',
+          fileName: 'prod.jpg',
+          fileHash: 'prod-hash',
+        ),
+      ],
+      settings: const UploadBatchSettings(),
+    );
+    await staging.enqueue(
+      items: [
+        (
+          taskId: 'staging-task',
+          sandboxPath: '/tmp/staging.jpg',
+          fileName: 'staging.jpg',
+          fileHash: 'staging-hash',
+        ),
+      ],
+      settings: const UploadBatchSettings(),
+    );
+
+    expect((await production.listAll()).map((task) => task.id), ['prod-task']);
+    expect((await staging.listAll()).map((task) => task.id), ['staging-task']);
+    expect((await production.claimNextPending())?.id, 'prod-task');
+    expect((await staging.claimNextPending())?.id, 'staging-task');
+  });
+
+  test('deleteAll only removes tasks from the target environment', () async {
+    final db = AppDatabase(
+      factory: databaseFactoryFfi,
+      path: inMemoryDatabasePath,
+    );
+    final production = UploadQueueRepository(
+      db,
+      environmentId: 'production',
+    );
+    final staging = UploadQueueRepository(
+      db,
+      environmentId: 'staging',
+    );
+    addTearDown(() async {
+      await production.dispose();
+      await staging.dispose();
+      await db.close();
+    });
+
+    await production.enqueue(
+      items: [
+        (
+          taskId: 'prod-task',
+          sandboxPath: '/tmp/prod.jpg',
+          fileName: 'prod.jpg',
+          fileHash: 'prod-hash',
+        ),
+      ],
+      settings: const UploadBatchSettings(),
+    );
+    await staging.enqueue(
+      items: [
+        (
+          taskId: 'staging-task',
+          sandboxPath: '/tmp/staging.jpg',
+          fileName: 'staging.jpg',
+          fileHash: 'staging-hash',
+        ),
+      ],
+      settings: const UploadBatchSettings(),
+    );
+
+    await staging.deleteAll();
+
+    expect(await staging.listAll(), isEmpty);
+    expect((await production.listAll()).map((task) => task.id), ['prod-task']);
   });
 }

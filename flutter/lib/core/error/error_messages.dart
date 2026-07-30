@@ -5,6 +5,15 @@ import '../../l10n/strings.dart';
 
 String mapErrorMessage(Object error, {String lang = 'zh'}) {
   if (error is ApiException) {
+    if (error.code == 'INVALID_CREDENTIALS') {
+      return AppStrings.t('login.invalidCredentials', lang: lang);
+    }
+    if (error.code == 'ADMIN_LOGIN_PATH_INVALID') {
+      return AppStrings.t('login.adminUrlInvalid', lang: lang);
+    }
+    if (error.code == 'LOGIN_FIELDS_REQUIRED') {
+      return AppStrings.t('login.required', lang: lang);
+    }
     if (error.isUnauthorized) {
       return AppStrings.t('session.expired', lang: lang);
     }

@@ -21,11 +21,15 @@ dependencies:
   path: ^1.9.0
   crypto: ^3.0.6
   image_picker: ^1.1.2
-  flutter_image_compress: ^2.3.0
   uuid: ^4.5.1
   collection: ^1.18.0
-  flutter_foreground_task: ^8.17.0
   shared_preferences: ^2.3.3
+  flutter_html: ^3.0.0
+  flutter_markdown_plus: ^1.0.12
+  cached_network_image: ^3.4.1
+  share_plus: ^10.1.4
+  gal: ^2.3.1
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:

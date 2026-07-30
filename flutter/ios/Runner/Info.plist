@@ -68,6 +68,8 @@
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Select photos to upload to MO Gallery</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save downloaded photos to your library</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos to upload to MO Gallery</string>
 </dict>

@@ -1,5 +1,10 @@
 import 'dart:convert';
 
+abstract final class UploadPhotoType {
+  static const digital = 'digital';
+  static const film = 'film';
+}
+
 enum UploadTaskStatus {
   pending,
   uploading,
@@ -19,7 +24,12 @@ class UploadBatchSettings {
   const UploadBatchSettings({
     this.albumIds = const [],
     this.storyIds = const [],
+    this.categories = const [],
+    this.photoType = UploadPhotoType.digital,
     this.filmRollId,
+    this.storageSourceId,
+    this.storagePath = '',
+    this.storagePathFull = false,
     this.compressEnabled = true,
     this.maxSizeMb,
     this.showFlag = true,
@@ -29,7 +39,12 @@ class UploadBatchSettings {
 
   final List<String> albumIds;
   final List<String> storyIds;
+  final List<String> categories;
+  final String photoType;
   final String? filmRollId;
+  final String? storageSourceId;
+  final String storagePath;
+  final bool storagePathFull;
   final bool compressEnabled;
   final double? maxSizeMb;
   final bool showFlag;
@@ -39,18 +54,34 @@ class UploadBatchSettings {
   UploadBatchSettings copyWith({
     List<String>? albumIds,
     List<String>? storyIds,
+    List<String>? categories,
+    String? photoType,
     String? filmRollId,
     bool clearFilmRollId = false,
+    String? storageSourceId,
+    bool clearStorageSourceId = false,
+    String? storagePath,
+    bool? storagePathFull,
     bool? compressEnabled,
     double? maxSizeMb,
     bool? showFlag,
     bool? stripGps,
     String? titlePrefix,
   }) {
+    final nextPhotoType = photoType ?? this.photoType;
     return UploadBatchSettings(
       albumIds: albumIds ?? this.albumIds,
       storyIds: storyIds ?? this.storyIds,
-      filmRollId: clearFilmRollId ? null : (filmRollId ?? this.filmRollId),
+      categories: categories ?? this.categories,
+      photoType: nextPhotoType,
+      filmRollId: nextPhotoType != UploadPhotoType.film || clearFilmRollId
+          ? null
+          : (filmRollId ?? this.filmRollId),
+      storageSourceId: clearStorageSourceId
+          ? null
+          : (storageSourceId ?? this.storageSourceId),
+      storagePath: storagePath ?? this.storagePath,
+      storagePathFull: storagePathFull ?? this.storagePathFull,
       compressEnabled: compressEnabled ?? this.compressEnabled,
       maxSizeMb: maxSizeMb ?? this.maxSizeMb,
       showFlag: showFlag ?? this.showFlag,
@@ -62,7 +93,12 @@ class UploadBatchSettings {
   Map<String, dynamic> toJson() => {
         'albumIds': albumIds,
         'storyIds': storyIds,
+        'categories': categories,
+        'photoType': photoType,
         'filmRollId': filmRollId,
+        'storageSourceId': storageSourceId,
+        'storagePath': storagePath,
+        'storagePathFull': storagePathFull,
         'compressEnabled': compressEnabled,
         'maxSizeMb': maxSizeMb,
         'showFlag': showFlag,
@@ -71,10 +107,23 @@ class UploadBatchSettings {
       };
 
   factory UploadBatchSettings.fromJson(Map<String, dynamic> json) {
+    final photoType = json['photoType'] == UploadPhotoType.film
+        ? UploadPhotoType.film
+        : UploadPhotoType.digital;
     return UploadBatchSettings(
-      albumIds: (json['albumIds'] as List?)?.map((e) => '$e').toList() ?? const [],
-      storyIds: (json['storyIds'] as List?)?.map((e) => '$e').toList() ?? const [],
-      filmRollId: json['filmRollId'] as String?,
+      albumIds:
+          (json['albumIds'] as List?)?.map((e) => '$e').toList() ?? const [],
+      storyIds:
+          (json['storyIds'] as List?)?.map((e) => '$e').toList() ?? const [],
+      categories:
+          (json['categories'] as List?)?.map((e) => '$e').toList() ?? const [],
+      photoType: photoType,
+      filmRollId: photoType == UploadPhotoType.film
+          ? json['filmRollId'] as String?
+          : null,
+      storageSourceId: json['storageSourceId'] as String?,
+      storagePath: (json['storagePath'] as String?) ?? '',
+      storagePathFull: json['storagePathFull'] == true,
       compressEnabled: json['compressEnabled'] != false,
       maxSizeMb: (json['maxSizeMb'] as num?)?.toDouble(),
       showFlag: json['showFlag'] != false,
@@ -96,6 +145,7 @@ class UploadBatchSettings {
 class UploadTask {
   const UploadTask({
     required this.id,
+    this.environmentId = 'legacy',
     required this.batchId,
     required this.localPath,
     required this.fileName,
@@ -105,12 +155,14 @@ class UploadTask {
     this.errorMessage,
     required this.settingsJson,
     this.photoId,
+    this.sortOrder = 0,
     required this.attemptCount,
     required this.createdAt,
     required this.updatedAt,
   });
 
   final String id;
+  final String environmentId;
   final String batchId;
   final String localPath;
   final String fileName;
@@ -120,6 +172,7 @@ class UploadTask {
   final String? errorMessage;
   final String settingsJson;
   final String? photoId;
+  final int sortOrder;
   final int attemptCount;
   final int createdAt;
   final int updatedAt;
@@ -128,6 +181,7 @@ class UploadTask {
 
   UploadTask copyWith({
     String? id,
+    String? environmentId,
     String? batchId,
     String? localPath,
     String? fileName,
@@ -139,12 +193,14 @@ class UploadTask {
     String? settingsJson,
     String? photoId,
     bool clearPhotoId = false,
+    int? sortOrder,
     int? attemptCount,
     int? createdAt,
     int? updatedAt,
   }) {
     return UploadTask(
       id: id ?? this.id,
+      environmentId: environmentId ?? this.environmentId,
       batchId: batchId ?? this.batchId,
       localPath: localPath ?? this.localPath,
       fileName: fileName ?? this.fileName,
@@ -154,6 +210,7 @@ class UploadTask {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       settingsJson: settingsJson ?? this.settingsJson,
       photoId: clearPhotoId ? null : (photoId ?? this.photoId),
+      sortOrder: sortOrder ?? this.sortOrder,
       attemptCount: attemptCount ?? this.attemptCount,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -162,6 +219,7 @@ class UploadTask {
 
   Map<String, Object?> toMap() => {
         'id': id,
+        'environment_id': environmentId,
         'batch_id': batchId,
         'local_path': localPath,
         'file_name': fileName,
@@ -171,6 +229,7 @@ class UploadTask {
         'error_message': errorMessage,
         'settings_json': settingsJson,
         'photo_id': photoId,
+        'sort_order': sortOrder,
         'attempt_count': attemptCount,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -179,6 +238,7 @@ class UploadTask {
   factory UploadTask.fromMap(Map<String, Object?> map) {
     return UploadTask(
       id: map['id'] as String,
+      environmentId: (map['environment_id'] as String?) ?? 'legacy',
       batchId: map['batch_id'] as String,
       localPath: map['local_path'] as String,
       fileName: map['file_name'] as String,
@@ -188,6 +248,8 @@ class UploadTask {
       errorMessage: map['error_message'] as String?,
       settingsJson: (map['settings_json'] as String?) ?? '{}',
       photoId: map['photo_id'] as String?,
+      sortOrder:
+          (map['sort_order'] as int?) ?? (map['created_at'] as int?) ?? 0,
       attemptCount: (map['attempt_count'] as int?) ?? 0,
       createdAt: (map['created_at'] as int?) ?? 0,
       updatedAt: (map['updated_at'] as int?) ?? 0,

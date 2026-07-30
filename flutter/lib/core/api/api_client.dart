@@ -7,7 +7,7 @@ class ApiClient {
   ApiClient({
     required String baseUrl,
     String? token,
-    void Function()? onUnauthorized,
+    void Function(ApiException error)? onUnauthorized,
     Dio? dio,
   })  : _token = token,
         _onUnauthorized = onUnauthorized,
@@ -34,8 +34,12 @@ class ApiClient {
         },
         onError: (error, handler) {
           final status = error.response?.statusCode;
-          if (status == 401) {
-            _onUnauthorized?.call();
+          final authorization = error.requestOptions.headers['Authorization'];
+          final hadBearerToken = authorization is String &&
+              authorization.startsWith('Bearer ') &&
+              authorization.length > 'Bearer '.length;
+          if (status == 401 && hadBearerToken) {
+            _onUnauthorized?.call(_mapDio(error));
           }
           handler.next(error);
         },
@@ -44,16 +48,28 @@ class ApiClient {
   }
 
   final Dio _dio;
+  final CancelToken _cancelToken = CancelToken();
   String? _token;
-  final void Function()? _onUnauthorized;
+  final void Function(ApiException error)? _onUnauthorized;
 
   Dio get dio => _dio;
+
+  void cancel() {
+    if (!_cancelToken.isCancelled) {
+      _cancelToken.cancel('environment switched');
+    }
+  }
 
   void updateBaseUrl(String baseUrl) {
     _dio.options.baseUrl = normalizeApiBase(baseUrl);
   }
 
   void updateToken(String? token) {
+    _token = token;
+  }
+
+  void configure({required String baseUrl, required String? token}) {
+    _dio.options.baseUrl = normalizeApiBase(baseUrl);
     _token = token;
   }
 
@@ -65,6 +81,7 @@ class ApiClient {
       final response = await _dio.get<dynamic>(
         path,
         queryParameters: query,
+        cancelToken: _cancelToken,
       );
       return _asMap(response.data);
     } on DioException catch (e) {
@@ -81,6 +98,23 @@ class ApiClient {
         path,
         data: body,
         options: Options(contentType: Headers.jsonContentType),
+        cancelToken: _cancelToken,
+      );
+      return _asMap(response.data);
+    } on DioException catch (e) {
+      throw _mapDio(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteJson(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final response = await _dio.delete<dynamic>(
+        path,
+        queryParameters: query,
+        cancelToken: _cancelToken,
       );
       return _asMap(response.data);
     } on DioException catch (e) {
@@ -98,6 +132,7 @@ class ApiClient {
         path,
         data: form,
         onSendProgress: onSendProgress,
+        cancelToken: _cancelToken,
       );
       return _asMap(response.data);
     } on DioException catch (e) {
@@ -112,6 +147,9 @@ class ApiClient {
   }
 
   ApiException _mapDio(DioException e) {
+    if (e.type == DioExceptionType.cancel) {
+      return ApiException(message: 'cancelled', code: 'CANCELLED');
+    }
     final status = e.response?.statusCode;
     final data = e.response?.data;
     if (status != null) {

@@ -11,9 +11,25 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
+        maven(url = "https://maven.aliyun.com/repository/google")
+        maven(url = "https://maven.aliyun.com/repository/central")
+        maven(url = "https://maven.aliyun.com/repository/public")
+        maven(url = "https://maven.aliyun.com/repository/gradle-plugin")
+        maven(url = "https://repo.maven.apache.org/maven2")
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        // PREFER_SETTINGS ignores the Flutter plugin's project-level repository,
+        // so the engine embedding repository must be declared explicitly here.
+        maven(url = "https://storage.flutter-io.cn/download.flutter.io")
+        maven(url = "https://storage.googleapis.com/download.flutter.io")
+        maven(url = "https://maven.aliyun.com/repository/google")
+        maven(url = "https://maven.aliyun.com/repository/central")
+        maven(url = "https://maven.aliyun.com/repository/public")
+        maven(url = "https://repo.maven.apache.org/maven2")
     }
 }
 

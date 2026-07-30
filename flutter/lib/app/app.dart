@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers.dart';
@@ -18,6 +19,9 @@ class MoGalleryApp extends ConsumerWidget {
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: ThemeMode.system,
+      locale: Locale(lang),
+      supportedLocales: const [Locale('zh'), Locale('en')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

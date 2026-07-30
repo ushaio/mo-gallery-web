@@ -3,6 +3,7 @@ import 'package:mo_gallery_mobile/core/api/envelope.dart';
 
 void main() {
   test('package loads and normalizeApiBase works', () {
-    expect(normalizeApiBase('http://localhost:3000'), 'http://localhost:3000/api');
+    expect(
+        normalizeApiBase('http://localhost:3000'), 'http://localhost:3000/api');
   });
 }

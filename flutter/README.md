@@ -8,8 +8,8 @@ Android-first mobile client for **batch photo upload** to a self-hosted [mo-gall
 - Multi-select from system gallery → durable local upload queue
 - SHA-256 hash, duplicate check, multipart upload (`origin_flag=mobile`)
 - Attach to albums / stories; optional film roll
-- Kill-process resume (task-level, not byte-range)
-- Android foreground notification while uploading
+- Kill-process resume (task-level, not byte-range; reopen app to continue)
+- Android Gradle mirrors configured for restricted networks (Aliyun)
 
 **Not in P0:** full gallery browser, album CRUD admin, Zine/AI, iOS release signing.
 

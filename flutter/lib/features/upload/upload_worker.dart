@@ -1,9 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:path/path.dart' as p;
-
 import '../../core/api/api_exception.dart';
 import '../../core/error/error_messages.dart';
 import '../../core/files/file_hash.dart';
@@ -51,18 +48,26 @@ class UploadWorker {
   bool _running = false;
   bool _loopActive = false;
   Completer<void>? _wake;
+  Future<void>? _loopFuture;
 
   Future<void> start() async {
     _running = true;
     await _queue.resetStuckUploadingToPending();
-    unawaited(_loop());
+    _startLoop();
   }
 
   Future<void> stop() async {
     _running = false;
-    _wake?.complete();
+    final wake = _wake;
+    if (wake != null && !wake.isCompleted) {
+      wake.complete();
+    }
     _wake = null;
     await onForeground?.call(active: false, detail: '');
+  }
+
+  Future<void> waitUntilStopped() async {
+    await _loopFuture;
   }
 
   Future<void> kick() async {
@@ -70,11 +75,25 @@ class UploadWorker {
       await start();
       return;
     }
-    _wake?.complete();
+    final wake = _wake;
+    if (wake != null && !wake.isCompleted) {
+      wake.complete();
+    }
     _wake = null;
     if (!_loopActive) {
-      unawaited(_loop());
+      _startLoop();
     }
+  }
+
+  void _startLoop() {
+    if (_loopFuture != null) return;
+    final future = _loop();
+    _loopFuture = future;
+    unawaited(future.whenComplete(() {
+      if (identical(_loopFuture, future)) {
+        _loopFuture = null;
+      }
+    }));
   }
 
   Future<void> _loop() async {
@@ -85,9 +104,14 @@ class UploadWorker {
         final task = await _queue.claimNextPending();
         if (task == null) {
           await onForeground?.call(active: false, detail: '');
+          if (!_running) break;
           _wake = Completer<void>();
           await _wake!.future;
           continue;
+        }
+        if (!_running) {
+          await _pauseForAuthenticationFailure(task);
+          break;
         }
         await onForeground?.call(
           active: true,
@@ -129,20 +153,17 @@ class UploadWorker {
             status: UploadTaskStatus.duplicate,
             photoId: existing.id,
             progress: 100,
-            errorMessage: existing.title.isEmpty
-                ? 'DUPLICATE_PHOTO'
-                : existing.title,
+            errorMessage:
+                existing.title.isEmpty ? 'DUPLICATE_PHOTO' : existing.title,
           ),
         );
         return;
       }
 
       final settings = task.settings;
-      var uploadPath = task.localPath;
-      if (settings.compressEnabled) {
-        final compressed = await _maybeCompress(task.localPath, task.id);
-        if (compressed != null) uploadPath = compressed;
-      }
+      // Client-side re-encode is optional; server handles compression when
+      // compression_mode=compress is set on the multipart request.
+      final uploadPath = task.localPath;
 
       final title = settings.titlePrefix.isEmpty
           ? task.fileName
@@ -152,7 +173,13 @@ class UploadWorker {
         filePath: uploadPath,
         title: title,
         fileHash: hash,
-        filmRollId: settings.filmRollId,
+        categories: settings.categories,
+        filmRollId: settings.photoType == UploadPhotoType.film
+            ? settings.filmRollId
+            : null,
+        storageSourceId: settings.storageSourceId,
+        storagePath: settings.storagePath.isEmpty ? null : settings.storagePath,
+        storagePathFull: settings.storagePathFull,
         showFlag: settings.showFlag,
         compressEnabled: settings.compressEnabled,
         maxSizeMb: settings.maxSizeMb,
@@ -176,6 +203,11 @@ class UploadWorker {
         }
         // film_roll_id already applied on multipart when present
       } catch (e) {
+        if (e is ApiException && e.isUnauthorized) {
+          await _pauseForAuthenticationFailure(task);
+          return;
+        }
+
         await _queue.updateTask(
           task.copyWith(
             status: UploadTaskStatus.error,
@@ -198,6 +230,10 @@ class UploadWorker {
       );
       await _recentTargets.write(settings);
     } on ApiException catch (e) {
+      if (!_running && e.code == 'CANCELLED') {
+        await _pauseForAuthenticationFailure(task);
+        return;
+      }
       if (e.isDuplicate) {
         await _queue.updateTask(
           task.copyWith(
@@ -209,10 +245,30 @@ class UploadWorker {
         );
         return;
       }
+
+      if (e.isUnauthorized) {
+        await _pauseForAuthenticationFailure(task);
+        return;
+      }
+
       await _failOrRetry(task, mapErrorMessage(e, lang: lang));
     } catch (e) {
+      if (!_running) {
+        await _pauseForAuthenticationFailure(task);
+        return;
+      }
       await _failOrRetry(task, mapErrorMessage(e, lang: lang));
     }
+  }
+
+  Future<void> _pauseForAuthenticationFailure(UploadTask task) async {
+    await _queue.updateTask(
+      task.copyWith(
+        status: UploadTaskStatus.pending,
+        progress: 0,
+        clearError: true,
+      ),
+    );
   }
 
   Future<void> _failOrRetry(UploadTask task, String message) async {
@@ -226,8 +282,10 @@ class UploadWorker {
           progress: 0,
         ),
       );
-      final delayMs = (500 * (1 << (attempts - 1).clamp(0, 5))).clamp(500, 16000);
+      final delayMs =
+          (500 * (1 << (attempts - 1).clamp(0, 5))).clamp(500, 16000);
       await Future<void>.delayed(Duration(milliseconds: delayMs));
+      if (!_running) return;
       await kick();
     } else {
       await _queue.updateTask(
@@ -237,23 +295,6 @@ class UploadWorker {
           attemptCount: attempts,
         ),
       );
-    }
-  }
-
-  Future<String?> _maybeCompress(String path, String taskId) async {
-    try {
-      final dir = Directory(p.dirname(path));
-      final out = p.join(dir.path, 'compressed_$taskId.jpg');
-      final result = await FlutterImageCompress.compressAndGetFile(
-        path,
-        out,
-        quality: 85,
-        minWidth: 4096,
-        minHeight: 4096,
-      );
-      return result?.path;
-    } catch (_) {
-      return null;
     }
   }
 }

@@ -38,6 +38,24 @@ String normalizeServerUrl(String serverUrl) {
   return serverUrl.trim().replaceAll(RegExp(r'/+$'), '');
 }
 
+String resolveAssetUrl(String? path, {required String serverUrl}) {
+  final value = path?.trim() ?? '';
+  if (value.isEmpty) return '';
+  final uri = Uri.tryParse(value);
+  if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+    return uri.toString();
+  }
+  final base = Uri.tryParse('${normalizeServerUrl(serverUrl)}/');
+  if (base == null) return value;
+  return base
+      .resolve(value.startsWith('/') ? value.substring(1) : value)
+      .toString();
+}
+
+DateTime? parseApiDate(Object? value) {
+  return value is String ? DateTime.tryParse(value) : null;
+}
+
 T parseDataEnvelope<T>(
   Map<String, dynamic> json,
   T Function(Object? raw) map,
@@ -47,7 +65,8 @@ T parseDataEnvelope<T>(
       message: (json['message'] as String?) ??
           (json['error'] as String?) ??
           'Request failed',
-      code: json['error'] is String ? json['error'] as String : null,
+      code: (json['code'] as String?) ??
+          (json['error'] is String ? json['error'] as String : null),
     );
   }
   return map(json['data']);
@@ -59,7 +78,8 @@ LoginPayload parseLoginEnvelope(Map<String, dynamic> json) {
       message: (json['message'] as String?) ??
           (json['error'] as String?) ??
           'Login failed',
-      code: json['error'] is String ? json['error'] as String : null,
+      code: (json['code'] as String?) ??
+          (json['error'] is String ? json['error'] as String : null),
     );
   }
   final token = json['token'];
@@ -76,9 +96,11 @@ LoginPayload parseLoginEnvelope(Map<String, dynamic> json) {
 ApiException apiExceptionFromBody(int? statusCode, Object? body) {
   if (body is Map) {
     final map = Map<String, dynamic>.from(body);
-    final code = map['error'] is String ? map['error'] as String : null;
+    final code = (map['code'] as String?) ??
+        (map['error'] is String ? map['error'] as String : null);
+    final error = map['error'] is String ? map['error'] as String : null;
     final message = (map['message'] as String?) ??
-        code ??
+        error ??
         'Request failed${statusCode != null ? ' ($statusCode)' : ''}';
     final existing = map['existingPhotoId'] as String? ??
         (map['existingPhoto'] is Map
