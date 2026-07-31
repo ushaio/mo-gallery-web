@@ -46,6 +46,21 @@ export interface LibrarySnapshot {
   scan: ScanStatus
 }
 
+export type BackupKind = 'daily' | 'upgrade' | 'manual' | 'pre-restore'
+
+export interface BackupInfo {
+  id: string
+  kind: BackupKind | string
+  createdAt: string
+  sizeBytes: number
+}
+
+export interface BackupOverview {
+  libraryName: string
+  libraryRoot: string
+  backups: BackupInfo[]
+}
+
 export interface EntryState {
   active: boolean
   recent: RecentLibrary[]

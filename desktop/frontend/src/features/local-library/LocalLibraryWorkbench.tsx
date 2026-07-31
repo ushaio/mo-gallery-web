@@ -3,7 +3,7 @@ import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
 import {
-  ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, Heart, Images, Info, Loader2,
+  ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, Heart, Images, Info, Loader2,
   Pause, Play, RefreshCw, Search, Square, Trash2, Upload, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -24,6 +24,7 @@ import { LocalAssetDetails } from './LocalAssetDetails'
 import { LocalAssetFilters } from './LocalAssetFilters'
 import { LocalAssetGrid } from './LocalAssetGrid'
 import { LocalLibraryPreview } from './LocalLibraryPreview'
+import { LocalLibraryBackupDialog } from './LocalLibraryBackupDialog'
 import { MoveFolderDialog } from './MoveFolderDialog'
 import { AssetFileOperationDialog } from './AssetFileOperationDialog'
 import { OrganizationEditorDialog } from './OrganizationEditorDialog'
@@ -35,7 +36,7 @@ import { PermanentDeleteFolderDialog } from './PermanentDeleteFolderDialog'
 import { RemoveMissingAssetDialog } from './RemoveMissingAssetDialog'
 import { RestoreFolderDialog } from './RestoreFolderDialog'
 import { useLocalLibraryStore } from './store'
-import type { AssetPage, BatchAssetOrganizationUpdate, FolderDeletionPreview, FolderItem, FolderProperties, FolderTrashEntry, LibrarySnapshot, LocalAsset, LocalLibraryEvent, LocalLibraryImportMode, UploadAlbum, LocalTag, LocalCollection, CollectionGroup } from './types'
+import type { AssetPage, BackupOverview, BatchAssetOrganizationUpdate, FolderDeletionPreview, FolderItem, FolderProperties, FolderTrashEntry, LibrarySnapshot, LocalAsset, LocalLibraryEvent, LocalLibraryImportMode, UploadAlbum, LocalTag, LocalCollection, CollectionGroup } from './types'
 import type { LocalLibraryCopy } from './copy'
 
 interface Props {
@@ -101,6 +102,10 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const activeAssetRequestsRef = useRef(0)
   const previewStatusOverridesRef = useRef(new Map<string, string>())
   const [scanBusy, setScanBusy] = useState(false)
+  const [backupDialogOpen, setBackupDialogOpen] = useState(false)
+  const [backupOverview, setBackupOverview] = useState<BackupOverview>()
+  const [backupLoading, setBackupLoading] = useState(false)
+  const [backupOperation, setBackupOperation] = useState<'create' | 'restore' | null>(null)
   const [createFolderParent, setCreateFolderParent] = useState<FolderTarget | null>(null)
   const [organizeFolderTarget, setOrganizeFolderTarget] = useState<{ target: FolderTarget, mode: 'rename' | 'move' } | null>(null)
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<FolderTarget | null>(null)
@@ -465,6 +470,44 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     } catch (error) {
       toast.error(parseLocalLibraryError(error).message)
     } finally { setScanBusy(false) }
+  }
+
+  const loadBackups = useCallback(async () => {
+    setBackupLoading(true)
+    try { setBackupOverview(await localLibraryApi.backups()) }
+    catch (error) { toast.error(parseLocalLibraryError(error).message) }
+    finally { setBackupLoading(false) }
+  }, [])
+
+  const openBackups = () => {
+    setBackupDialogOpen(true)
+    void loadBackups()
+  }
+
+  const createBackup = async () => {
+    setBackupOperation('create')
+    try {
+      await localLibraryApi.createBackup()
+      toast.success(copy.backupCreated)
+      await loadBackups()
+    } catch (error) { toast.error(parseLocalLibraryError(error).message) }
+    finally { setBackupOperation(null) }
+  }
+
+  const restoreBackup = async (id: string) => {
+    setBackupOperation('restore')
+    try {
+      const restored = await localLibraryApi.restoreBackup(id)
+      clearAssetSelection()
+      onSnapshot(restored)
+      await Promise.all([reloadFolders(), reloadOrganization(), loadBackups()])
+      refreshAssets()
+      toast.success(copy.backupRestored)
+      return true
+    } catch (error) {
+      toast.error(parseLocalLibraryError(error).message)
+      return false
+    } finally { setBackupOperation(null) }
   }
 
   const saveAsset = useCallback((assetId: string, patch: Pick<LocalAsset, 'displayTitle' | 'notes' | 'rating' | 'colorLabel' | 'isFavorite'>) => {
@@ -893,6 +936,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
             <p className="truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{snapshot.rootPath}</p>
           </div>
           <button type="button" disabled={importBusy || isSuspended || isRepairRequired} onClick={chooseFiles} className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium disabled:cursor-wait disabled:opacity-70" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{importBusy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{importBusy ? copy.importing : copy.import}</button>
+          <button type="button" disabled={isSuspended || isRepairRequired} onClick={openBackups} className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:opacity-50"><DatabaseBackup size={13} />{copy.databaseBackups}</button>
           <button type="button" onClick={closeLibrary} className="rounded-md border px-3 py-2 text-xs hover:bg-secondary">{copy.close}</button>
         </div>
         <div className="flex min-h-10 items-center gap-3 border-t px-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
@@ -972,6 +1016,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
 
       {dropTargetFolder !== null && <div className="pointer-events-none absolute inset-3 z-50 flex items-center justify-center rounded-xl border-2 border-dashed bg-background/90 backdrop-blur" style={{ borderColor: 'var(--primary)' }}><div className="text-center"><Upload size={30} className="mx-auto mb-3" style={{ color: 'var(--primary)' }} /><p className="text-sm font-medium">{copy.drop}</p><p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>{dropTargetFolder || copy.root}</p></div></div>}
       {previewAsset && <LocalLibraryPreview asset={previewAsset} copy={copy} onClose={() => setPreviewAsset(null)} onOpenSystem={openSystem} />}
+      {backupDialogOpen && <LocalLibraryBackupDialog copy={copy} overview={backupOverview} loading={backupLoading} operation={backupOperation} onClose={() => setBackupDialogOpen(false)} onCreate={createBackup} onRestore={restoreBackup} />}
       {organizationEditor && <OrganizationEditorDialog target={organizationEditor} groups={collectionGroups} copy={copy} busy={organizationBusy} onClose={() => setOrganizationEditor(null)} onSubmit={(value) => void saveOrganization(value)} />}
       {organizationDelete && <DeleteOrganizationDialog copy={copy} busy={organizationBusy} title={organizationDelete.kind === 'tag' ? copy.deleteTagTitle : organizationDelete.kind === 'collection' ? copy.deleteCollectionTitle : copy.deleteCollectionGroupTitle} body={organizationDelete.kind === 'tag' ? copy.deleteTagBody : organizationDelete.kind === 'collection' ? copy.deleteCollectionBody : organizationDelete.nonEmpty ? copy.deleteCollectionGroupBody : copy.deleteEmptyCollectionGroupBody} dangerousLabel={organizationDelete.kind === 'group' && organizationDelete.nonEmpty ? copy.deleteGroupContents : copy.confirmPermanent} onClose={() => setOrganizationDelete(null)} onConfirm={() => void deleteOrganization(Boolean(organizationDelete.nonEmpty))} />}
       {pendingImportPaths && <ImportModeDialog copy={copy} busy={importBusy} onClose={() => { setPendingImportPaths(null); setPendingImportDestination(null) }} onChoose={chooseImportMode} />}

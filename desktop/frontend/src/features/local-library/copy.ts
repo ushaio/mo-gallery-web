@@ -47,6 +47,8 @@
     copiedToClipboard: '照片已复制到系统剪贴板', cutToClipboard: '照片已剪切到系统剪贴板', uploadPrepared: '已添加到上传页面',
     missingHint: '原文件不在资源库记录的路径。将文件放回完全相同的位置后可重新检查。', recheckMissing: '重新检查原文件', stillMissing: '原路径仍未找到文件', missingRestored: '原文件已恢复并重新纳入资源库',
     removeMissingRecord: '移除失联记录', removeMissingTitle: '移除这条失联记录？', removeMissingBody: '仅移除 MO Gallery 中的失联索引、标题、备注、评分等整理数据和缓存，不会删除磁盘文件。', missingRecordRemoved: '失联记录已移除',
+    databaseBackups: '数据库备份', backupNow: '立即备份', backingUp: '正在备份…', noBackups: '还没有数据库备份', backupCreated: '数据库备份已创建', backupKindManual: '手动备份', backupKindDaily: '每日备份', backupKindUpgrade: '升级前备份', backupKindPreRestore: '恢复前备份',
+    backupScopeHint: '这里只备份资源库索引与标题、标签、集合等整理数据，不包含照片原文件和预览缓存。', restoreBackup: '从此备份恢复', restoreBackupTitle: '确认恢复数据库？', restoreBackupBody: '当前索引和整理数据会替换为所选备份。恢复前会自动保存当前数据库；照片原文件不会被修改。', restoringBackup: '正在恢复…', backupRestored: '数据库已恢复', backupRestoreWarning: '恢复后资源库会重新扫描照片，以校准文件状态。',
 
   },
   en: {
@@ -96,6 +98,8 @@
     copiedToClipboard: 'Photo copied to the system clipboard', cutToClipboard: 'Photo cut to the system clipboard', uploadPrepared: 'Added to the upload page',
     missingHint: 'The original file is no longer at its indexed library path. Put it back in exactly the same location, then recheck it.', recheckMissing: 'Recheck original file', stillMissing: 'The file is still missing from its original path', missingRestored: 'The original file was restored to the library',
     removeMissingRecord: 'Remove missing record', removeMissingTitle: 'Remove this missing record?', removeMissingBody: 'This removes the missing index record, organization data such as title, notes and rating, and cached previews from MO Gallery. It does not delete any disk file.', missingRecordRemoved: 'Missing record removed',
+    databaseBackups: 'Database backups', backupNow: 'Back up now', backingUp: 'Backing up…', noBackups: 'No database backups yet', backupCreated: 'Database backup created', backupKindManual: 'Manual backup', backupKindDaily: 'Daily backup', backupKindUpgrade: 'Pre-upgrade backup', backupKindPreRestore: 'Pre-restore backup',
+    backupScopeHint: 'This backs up the library index and organization data such as titles, tags, and collections. Photo originals and preview caches are not included.', restoreBackup: 'Restore this backup', restoreBackupTitle: 'Restore this database backup?', restoreBackupBody: 'The current index and organization data will be replaced by the selected backup. The current database is saved first; photo originals are not changed.', restoringBackup: 'Restoring…', backupRestored: 'Database restored', backupRestoreWarning: 'The library rescans photos after restoration to reconcile file state.',
   },
 } as const
 

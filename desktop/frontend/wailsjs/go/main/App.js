@@ -86,6 +86,10 @@ export function CreateLocalLibrary(arg1, arg2) {
   return window['go']['main']['App']['CreateLocalLibrary'](arg1, arg2);
 }
 
+export function CreateLocalLibraryBackup() {
+  return window['go']['main']['App']['CreateLocalLibraryBackup']();
+}
+
 export function CreateLocalLibraryCollection(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateLocalLibraryCollection'](arg1, arg2, arg3);
 }
@@ -264,6 +268,10 @@ export function GetLinuxDoBinding() {
 
 export function GetLocalAssetOriginalPaths(arg1) {
   return window['go']['main']['App']['GetLocalAssetOriginalPaths'](arg1);
+}
+
+export function GetLocalLibraryBackups() {
+  return window['go']['main']['App']['GetLocalLibraryBackups']();
 }
 
 export function GetLocalLibraryEntryState() {
@@ -468,6 +476,10 @@ export function ReorderStoryPhotos(arg1, arg2) {
 
 export function RestoreLocalAsset(arg1) {
   return window['go']['main']['App']['RestoreLocalAsset'](arg1);
+}
+
+export function RestoreLocalLibraryBackup(arg1) {
+  return window['go']['main']['App']['RestoreLocalLibraryBackup'](arg1);
 }
 
 export function RestoreLocalLibraryFolder(arg1, arg2, arg3) {

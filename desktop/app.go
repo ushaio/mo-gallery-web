@@ -869,6 +869,15 @@ func (a *App) CancelLocalLibraryScan() error { return a.LocalLibrary.CancelScan(
 func (a *App) ClearLocalLibraryPreviewCache() error {
 	return a.LocalLibrary.ClearPreviewCache()
 }
+func (a *App) GetLocalLibraryBackups() (local_library.BackupOverview, error) {
+	return a.LocalLibrary.BackupOverview()
+}
+func (a *App) CreateLocalLibraryBackup() (local_library.BackupInfo, error) {
+	return a.LocalLibrary.CreateManualBackup()
+}
+func (a *App) RestoreLocalLibraryBackup(id string) (local_library.LibrarySnapshot, error) {
+	return a.LocalLibrary.RestoreBackup(id)
+}
 func (a *App) GetLocalLibraryPreferences() (local_library.LocalLibraryPreferences, error) {
 	return a.LocalLibrary.ImportPreferences()
 }

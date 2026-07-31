@@ -253,6 +253,9 @@ func (m *Manager) activateLibrarySession(session *librarySession) (LibrarySnapsh
 }
 
 func (m *Manager) Close() error {
+	m.backupMu.Lock()
+	defer m.backupMu.Unlock()
+
 	m.mu.Lock()
 	session := m.current
 	m.current = nil
@@ -345,7 +348,7 @@ func (m *Manager) Snapshot() (LibrarySnapshot, error) {
 	state, scan := session.state, session.scan
 	active, missing, trashed := session.lastActiveCount, session.lastMissingCount, session.lastTrashCount
 	session.mu.RUnlock()
-	if state != "suspended" {
+	if state != "suspended" && state != "backing_up" && state != "restoring" && state != "closing" {
 		if nextActive, nextMissing, nextTrashed, countErr := session.store.counts(session.ctx); countErr == nil {
 			active, missing, trashed = nextActive, nextMissing, nextTrashed
 			session.mu.Lock()

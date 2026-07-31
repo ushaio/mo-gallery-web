@@ -2,6 +2,7 @@ import {
   BatchUpdateLocalAssetOrganization,
   CancelLocalLibraryScan,
   CloseLocalLibrary,
+  CreateLocalLibraryBackup,
   CreateLocalLibraryCollection,
   CreateLocalLibraryCollectionGroup,
   CreateLocalLibraryTag,
@@ -15,6 +16,7 @@ import {
   GetAlbums,
   GetLocalAssetOriginalPaths,
   GetLocalLibraryEntryState,
+  GetLocalLibraryBackups,
   GetLocalLibraryFolderProperties,
   GetLocalLibraryPreferences,
   GetLocalLibrarySnapshot,
@@ -41,6 +43,7 @@ import {
   RemoveRecentLocalLibrary,
   RenameLocalAsset,
   RestoreLocalAsset,
+  RestoreLocalLibraryBackup,
   RestoreLocalLibraryFolder,
   ResumeLocalLibraryScan,
   SelectLocalLibraryFolder,
@@ -62,6 +65,8 @@ import type {
   AssetPage,
   AssetQuery,
   BatchAssetOrganizationUpdate,
+  BackupInfo,
+  BackupOverview,
   EntryState,
   FolderDeletionPreview,
   FolderItem,
@@ -106,6 +111,15 @@ function normalizeSnapshot(source: any): LibrarySnapshot {
   }
 }
 
+function normalizeBackup(source: any): BackupInfo {
+  return {
+    id: String(source?.id ?? ''),
+    kind: String(source?.kind ?? ''),
+    createdAt: asIsoTime(source?.createdAt) || new Date(0).toISOString(),
+    sizeBytes: Number(source?.sizeBytes ?? 0),
+  }
+}
+
 export function parseLocalLibraryError(error: unknown): LocalLibraryError {
   const fallback = { code: 'UNKNOWN', message: '\u672c\u5730\u8d44\u6e90\u5e93\u64cd\u4f5c\u5931\u8d25' }
   const candidates: unknown[] = [error]
@@ -144,6 +158,16 @@ export const localLibraryApi = {
     }
   },
   async snapshot() { return normalizeSnapshot(await GetLocalLibrarySnapshot()) },
+  async backups(): Promise<BackupOverview> {
+    const source = await GetLocalLibraryBackups() as any
+    return {
+      libraryName: String(source?.libraryName ?? ''),
+      libraryRoot: String(source?.libraryRoot ?? ''),
+      backups: (source?.backups || []).map(normalizeBackup),
+    }
+  },
+  createBackup: async () => normalizeBackup(await CreateLocalLibraryBackup()),
+  restoreBackup: async (id: string) => normalizeSnapshot(await RestoreLocalLibraryBackup(id)),
   selectFolder: (title: string) => SelectLocalLibraryFolder(title),
   selectImportFiles: () => SelectLocalLibraryImportFiles(),
   async preferences(): Promise<LocalLibraryPreferences> {

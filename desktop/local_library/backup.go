@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -231,6 +232,9 @@ func pruneBackups(root, kind string, keep int) error {
 			matched = append(matched, item)
 		}
 	}
+	if len(matched) <= keep {
+		return nil
+	}
 	for _, item := range matched[keep:] {
 		if err := os.Remove(filepath.Join(backupDirectory(root), item.ID)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -255,4 +259,213 @@ func hasDailyBackupForDate(root string, date time.Time) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func copyFile(source, destination string) error {
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		return err
+	}
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	copied := false
+	defer func() {
+		_ = output.Close()
+		if !copied {
+			_ = os.Remove(destination)
+		}
+	}()
+	if _, err := io.Copy(output, input); err != nil {
+		return err
+	}
+	if err := output.Sync(); err != nil {
+		return err
+	}
+	if err := output.Close(); err != nil {
+		return err
+	}
+	copied = true
+	return nil
+}
+
+func (m *Manager) BackupOverview() (BackupOverview, error) {
+	session, err := m.currentSession()
+	if err != nil {
+		return BackupOverview{}, err
+	}
+	items, err := listBackupFiles(session.root)
+	if err != nil {
+		return BackupOverview{}, err
+	}
+	return BackupOverview{
+		LibraryName: session.manifest.Name,
+		LibraryRoot: session.root,
+		Backups:     items,
+	}, nil
+}
+
+func (m *Manager) CreateManualBackup() (BackupInfo, error) {
+	m.backupMu.Lock()
+	defer m.backupMu.Unlock()
+
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	session.mu.Lock()
+	previousState := session.state
+	session.state = "backing_up"
+	session.mu.Unlock()
+	m.emitSessionEvent(session, "backup_started")
+
+	backup, backupErr := createBackupFile(context.Background(), session.root, BackupKindManual, session.store.db)
+	session.mu.Lock()
+	if session.state == "backing_up" {
+		session.state = previousState
+	}
+	session.mu.Unlock()
+	if backupErr != nil {
+		m.emitSessionEvent(session, "backup_failed")
+		return BackupInfo{}, backupErr
+	}
+	m.emitSessionEvent(session, "backup_completed")
+	return backup, nil
+}
+
+func (m *Manager) RestoreBackup(id string) (LibrarySnapshot, error) {
+	m.backupMu.Lock()
+	defer m.backupMu.Unlock()
+
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return LibrarySnapshot{}, err
+	}
+	backupPath, err := resolveBackupPath(session.root, id)
+	if err != nil {
+		return LibrarySnapshot{}, err
+	}
+	if err := checkSQLiteIntegrity(backupPath, true); err != nil {
+		return LibrarySnapshot{}, newError(ErrBackupInvalid, "备份数据库完整性检查失败", map[string]any{
+			"backupId": id,
+			"cause":    err.Error(),
+		})
+	}
+
+	session.mu.Lock()
+	session.state = "restoring"
+	session.mu.Unlock()
+	m.emitSessionEvent(session, "restore_started")
+
+	_, err = createBackupFile(context.Background(), session.root, BackupKindPreRestore, session.store.db)
+	if err != nil {
+		session.mu.Lock()
+		session.state = "open"
+		session.mu.Unlock()
+		m.emitSessionEvent(session, "restore_failed")
+		return LibrarySnapshot{}, fmt.Errorf("create pre-restore backup: %w", err)
+	}
+	if err := pruneBackups(session.root, BackupKindPreRestore, preRestoreBackupRetention); err != nil {
+		session.mu.Lock()
+		session.state = "open"
+		session.mu.Unlock()
+		m.emitSessionEvent(session, "restore_failed")
+		return LibrarySnapshot{}, fmt.Errorf("prune pre-restore backups: %w", err)
+	}
+
+	databasePath := internalPath(session.root, "library.db")
+	stagedPath := databasePath + ".restore-" + newID() + ".tmp"
+	if err := copyFile(backupPath, stagedPath); err != nil {
+		session.mu.Lock()
+		session.state = "open"
+		session.mu.Unlock()
+		m.emitSessionEvent(session, "restore_failed")
+		return LibrarySnapshot{}, fmt.Errorf("stage backup database: %w", err)
+	}
+	defer os.Remove(stagedPath)
+	if err := checkSQLiteIntegrity(stagedPath, true); err != nil {
+		session.mu.Lock()
+		session.state = "open"
+		session.mu.Unlock()
+		m.emitSessionEvent(session, "restore_failed")
+		return LibrarySnapshot{}, newError(ErrBackupInvalid, "暂存备份数据库完整性检查失败", map[string]any{
+			"backupId": id,
+			"cause":    err.Error(),
+		})
+	}
+
+	stopLibrarySessionWorkers(session, "restoring")
+	session.cancel()
+	if err := session.store.Close(); err != nil {
+		return m.recoverAfterFailedRestore(session, databasePath, "", fmt.Errorf("close current database: %w", err))
+	}
+	_ = os.Remove(databasePath + "-wal")
+	_ = os.Remove(databasePath + "-shm")
+
+	previousPath := databasePath + ".pre-restore-" + newID()
+	if err := os.Rename(databasePath, previousPath); err != nil {
+		return m.recoverAfterFailedRestore(session, databasePath, "", fmt.Errorf("preserve current database: %w", err))
+	}
+	if err := os.Rename(stagedPath, databasePath); err != nil {
+		return m.recoverAfterFailedRestore(session, databasePath, previousPath, fmt.Errorf("activate restored database: %w", err))
+	}
+
+	database, err := openStore(session.root)
+	if err != nil {
+		_ = os.Remove(databasePath)
+		return m.recoverAfterFailedRestore(session, databasePath, previousPath, fmt.Errorf("open restored database: %w", err))
+	}
+	replacement := m.newLibrarySession(session.root, session.manifest, database, session.lock)
+	snapshot, activateErr := m.activateLibrarySession(replacement)
+	if activateErr != nil {
+		m.clearCurrentSession(replacement)
+		_ = closeLibrarySession(replacement, false)
+		_ = os.Remove(databasePath)
+		return m.recoverAfterFailedRestore(session, databasePath, previousPath, fmt.Errorf("activate restored library: %w", activateErr))
+	}
+	_ = os.Remove(previousPath)
+	m.emitSessionEvent(replacement, "restore_completed")
+	return snapshot, nil
+}
+
+func (m *Manager) recoverAfterFailedRestore(session *librarySession, databasePath, previousPath string, cause error) (LibrarySnapshot, error) {
+	if previousPath != "" {
+		_ = os.Remove(databasePath)
+		if err := os.Rename(previousPath, databasePath); err != nil {
+			m.abandonRestoreSession(session)
+			return LibrarySnapshot{}, fmt.Errorf("%v; restore original database: %w", cause, err)
+		}
+	}
+	database, err := openStore(session.root)
+	if err != nil {
+		m.abandonRestoreSession(session)
+		return LibrarySnapshot{}, fmt.Errorf("%v; reopen original database: %w", cause, err)
+	}
+	replacement := m.newLibrarySession(session.root, session.manifest, database, session.lock)
+	if _, err := m.activateLibrarySession(replacement); err != nil {
+		m.clearCurrentSession(replacement)
+		_ = closeLibrarySession(replacement, false)
+		_ = session.lock.Release()
+		return LibrarySnapshot{}, fmt.Errorf("%v; reactivate original library: %w", cause, err)
+	}
+	m.emitSessionEvent(replacement, "restore_failed")
+	return LibrarySnapshot{}, cause
+}
+
+func (m *Manager) clearCurrentSession(session *librarySession) {
+	m.mu.Lock()
+	if m.current == session {
+		m.current = nil
+	}
+	m.mu.Unlock()
+}
+
+func (m *Manager) abandonRestoreSession(session *librarySession) {
+	m.clearCurrentSession(session)
+	_ = session.lock.Release()
 }

@@ -48,6 +48,8 @@ export function CreateFriend(arg1:services.CreateFriendParams):Promise<services.
 
 export function CreateLocalLibrary(arg1:string,arg2:string):Promise<local_library.LibrarySnapshot>;
 
+export function CreateLocalLibraryBackup():Promise<local_library.BackupInfo>;
+
 export function CreateLocalLibraryCollection(arg1:any,arg2:string,arg3:string):Promise<local_library.CollectionDTO>;
 
 export function CreateLocalLibraryCollectionGroup(arg1:any,arg2:string):Promise<local_library.CollectionGroupDTO>;
@@ -137,6 +139,8 @@ export function GetLinuxDoAuthUrl():Promise<services.LinuxDoAuthUrlDTO>;
 export function GetLinuxDoBinding():Promise<services.LinuxDoBindingDTO>;
 
 export function GetLocalAssetOriginalPaths(arg1:Array<string>):Promise<Array<string>>;
+
+export function GetLocalLibraryBackups():Promise<local_library.BackupOverview>;
 
 export function GetLocalLibraryEntryState():Promise<Record<string, any>>;
 
@@ -239,6 +243,8 @@ export function ReorderFilmRollFrames(arg1:string):Promise<services.FilmRollDTO>
 export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<services.StoryDTO>;
 
 export function RestoreLocalAsset(arg1:string):Promise<void>;
+
+export function RestoreLocalLibraryBackup(arg1:string):Promise<local_library.LibrarySnapshot>;
 
 export function RestoreLocalLibraryFolder(arg1:string,arg2:string,arg3:string):Promise<void>;
 
