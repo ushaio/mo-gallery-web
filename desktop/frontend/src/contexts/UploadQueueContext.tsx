@@ -10,6 +10,7 @@ export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
 export interface UploadTask {
   id: string
   filePath: string
+  assetId?: string
   fileName: string
   fileSize: number
   status: UploadTaskStatus
@@ -21,7 +22,7 @@ export interface UploadTask {
 interface UploadQueueContextType {
   tasks: UploadTask[]
   isUploading: boolean
-  addTasks: (files: Array<{ filePath: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => UploadTask[]
+  addTasks: (files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => UploadTask[]
   retryTask: (taskId: string) => void
   retryAllFailed: () => void
   removeTask: (taskId: string) => void
@@ -94,8 +95,12 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     try {
       const hash = hashesRef.current.get(task.filePath) || ''
       const exif = exifsRef.current.get(task.filePath) || null
-      const result = await (window as any).go.main.App.UploadFile(
-        task.filePath,
+      const uploadMethod = task.assetId
+        ? (window as any).go.main.App.UploadLocalAsset
+        : (window as any).go.main.App.UploadFile
+      const source = task.assetId || task.filePath
+      const result = await uploadMethod(
+        source,
         {
           title: settings.title || task.fileName,
           categories: settings.categories,
@@ -200,13 +205,14 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     }
   }, [uploadSingleFile, updateTask])
 
-  const addTasks = useCallback((files: Array<{ filePath: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => {
+  const addTasks = useCallback((files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => {
     const newTasks: UploadTask[] = files.map(f => {
       hashesRef.current.set(f.filePath, f.hash)
       if (f.exif) exifsRef.current.set(f.filePath, f.exif)
       const task: UploadTask = {
         id: crypto.randomUUID(),
         filePath: f.filePath,
+        assetId: f.assetId,
         fileName: f.fileName,
         fileSize: f.fileSize,
         status: 'pending' as const,

@@ -11,7 +11,9 @@
   "dependencies": {
     "@mo-gallery/ai-agent": "workspace:*",
     "@mo-gallery/tiptap-editor": "workspace:*",
+    "@radix-ui/react-context-menu": "^2.3.7",
     "@react-pdf/renderer": "^4.5.1",
+    "@tanstack/react-virtual": "^3.14.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.0.0",

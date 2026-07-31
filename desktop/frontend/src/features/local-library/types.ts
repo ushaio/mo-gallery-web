@@ -1,0 +1,273 @@
+export type ScanState = 'idle' | 'running' | 'paused' | 'cancelled' | 'completed' | 'failed' | 'suspended'
+export type AssetAvailability = 'active' | 'missing' | 'trashed'
+export type AssetSort = 'captured' | 'discovered' | 'name' | 'modified' | 'size' | 'rating'
+export type AssetSortDirection = 'asc' | 'desc'
+
+export type LocalLibraryImportMode = 'copy' | 'move'
+
+export interface LocalLibraryPreferences {
+  importMode?: LocalLibraryImportMode
+}
+
+export interface LocalLibraryError {
+  code: string
+  message: string
+  details?: Record<string, unknown>
+}
+
+export interface RecentLibrary {
+  libraryId: string
+  name: string
+  path: string
+  lastOpenedAt?: string
+  available: boolean
+  reason?: string
+}
+
+export interface ScanStatus {
+  state: ScanState | string
+  current: number
+  total?: number
+  lastPath?: string
+  error?: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+export interface LibrarySnapshot {
+  sessionId: string
+  libraryId: string
+  name: string
+  rootPath: string
+  state: string
+  assetCount: number
+  missingCount: number
+  trashCount: number
+  scan: ScanStatus
+}
+
+export interface EntryState {
+  active: boolean
+  recent: RecentLibrary[]
+  snapshot?: LibrarySnapshot
+}
+
+export interface FolderItem {
+  id: string
+  parentId?: string
+  relativePath: string
+  name: string
+  assetCount: number
+}
+
+export interface FolderProperties {
+  relativePath: string
+  name: string
+  photoCount: number
+  childCount: number
+  byteSize: number
+  modifiedAt: string
+  isRoot: boolean
+}
+
+export interface FolderDeletionPreview {
+  relativePath: string
+  name: string
+  managedAssetCount: number
+  otherFileCount: number
+  directoryCount: number
+  totalBytes: number
+}
+
+export interface FolderTrashEntry {
+  id: string
+  originalPath: string
+  name: string
+  managedAssetCount: number
+  otherFileCount: number
+  directoryCount: number
+  totalBytes: number
+  trashedAt: string
+}
+
+export interface UploadAlbum {
+  id: string
+  name: string
+}
+
+export interface LocalTag {
+  id: string
+  name: string
+  color?: string
+  assetCount: number
+}
+
+export interface CollectionGroup {
+  id: string
+  parentId?: string
+  name: string
+  position: number
+}
+
+export interface LocalCollection {
+  id: string
+  groupId?: string
+  name: string
+  notes?: string
+  position: number
+  assetCount: number
+}
+
+export interface AssetCollection {
+  id: string
+  name: string
+}
+
+export interface LocalAssetExif {
+  cameraMake?: string
+  cameraModel?: string
+  lensModel?: string
+  iso?: number
+  aperture?: number
+  shutterSeconds?: number
+  focalLengthMm?: number
+  latitude?: number
+  longitude?: number
+}
+
+export interface LocalAsset {
+  id: string
+  relativePath: string
+  fileName: string
+  extension: string
+  format: string
+  mimeType: string
+  byteSize: number
+  modifiedAtNs: number
+  width: number
+  height: number
+  orientation: number
+  isAnimated: boolean
+  frameCount: number
+  availability: AssetAvailability | string
+  trashEntryId?: string
+  trashEntryKind?: 'asset' | 'folder' | string
+  previewStatus: string
+  previewError?: string
+  metadataStatus: string
+  displayTitle?: string
+  notes?: string
+  rating: number
+  colorLabel?: string
+  isFavorite: boolean
+  capturedAt?: string
+  exif?: LocalAssetExif
+  discoveredAt?: string
+  thumbnailUrl: string
+  previewUrl: string
+  originalUrl: string
+  tags: LocalTag[]
+  collections: AssetCollection[]
+}
+
+export interface AssetPage {
+  items: LocalAsset[]
+  nextCursor?: string
+  total: number
+  isComplete: boolean
+  scan: ScanStatus
+}
+
+export interface AssetStructuredFilters {
+  ratingMin?: number
+  ratingMax?: number
+  colorLabels?: string[]
+  formats?: string[]
+  previewStatuses?: string[]
+  capturedFromMs?: number
+  capturedToMs?: number
+  discoveredFromMs?: number
+  discoveredToMs?: number
+  cameraMakes?: string[]
+  cameraModels?: string[]
+  lensModels?: string[]
+  isoMin?: number
+  isoMax?: number
+  apertureMin?: number
+  apertureMax?: number
+  focalLengthMin?: number
+  focalLengthMax?: number
+  orientation?: 'landscape' | 'portrait' | 'square'
+  widthMin?: number
+  widthMax?: number
+  heightMin?: number
+  heightMax?: number
+}
+
+export interface AssetQuery extends AssetStructuredFilters {
+  cursor?: string
+  limit?: number
+  folder?: string
+  search?: string
+  availability?: AssetAvailability
+  favoritesOnly?: boolean
+  tagIds?: string[]
+  collectionIds?: string[]
+  sort?: AssetSort
+  sortDirection?: AssetSortDirection
+}
+
+export interface BatchAssetOrganizationUpdate {
+  assetIds: string[]
+  rating?: number
+  colorLabel?: string
+  isFavorite?: boolean
+  addTagIds?: string[]
+  removeTagIds?: string[]
+  addCollectionIds?: string[]
+  removeCollectionIds?: string[]
+}
+
+export interface ImportResult {
+  source: string
+  destination?: string
+  assetId?: string
+  status: string
+  error?: string
+}
+
+export interface AssetOperationResult {
+  assetId: string
+  status: string
+  error?: string
+}
+
+export interface AssetMoveResult {
+  assetId: string
+  source?: string
+  destination?: string
+  status: 'moved' | 'unchanged' | 'failed' | string
+  error?: string
+}
+
+export interface AssetMaintenanceResult {
+  assetId: string
+  status: 'restored' | 'still_missing' | 'removed' | 'failed' | string
+  error?: string
+}
+
+export interface LocalLibraryEventState {
+  state: LibrarySnapshot['state']
+  assetCount: number
+  missingCount: number
+  trashCount: number
+  scan: ScanStatus
+}
+
+export interface LocalLibraryEvent {
+  sessionId: string
+  kind: string
+  state?: LocalLibraryEventState
+  assetId?: string
+  previewStatus?: string
+}

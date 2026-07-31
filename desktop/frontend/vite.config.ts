@@ -12,7 +12,7 @@ function zineGoRoutes(): Plugin {
     name: 'zine-go-routes-404',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url?.startsWith('/__zine/')) {
+        if (req.url?.startsWith('/__zine/') || req.url?.startsWith('/__local-library/')) {
           res.statusCode = 404
           res.end('handled by wails asset handler')
           return

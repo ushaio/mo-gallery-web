@@ -6,19 +6,19 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { formatBytes } from '@/lib/utils'
 import { Skeleton } from '@/components/admin/Skeleton'
-import { GetAiConfig, GetStoryAiProviderModels, UpdateAiConfig } from '../../wailsjs/go/main/App'
+import { ClearLocalLibraryPreviewCache, GetAiConfig, GetLocalLibraryPreferences, GetStoryAiProviderModels, SetLocalLibraryImportMode, UpdateAiConfig } from '../../wailsjs/go/main/App'
 import { config as wailsConfig } from '../../wailsjs/go/models'
 import {
   Settings,
   Save, Loader2, HardDrive, MessageSquare, User, Server,
   Tag, Pencil, Trash2, Plus, X, Check,
   Unlink, Link, Sparkles, Eye, EyeOff,
-  FileText, Trash, Filter, FolderOpen, Database, Image as ImageIcon,
+  FileText, Trash, Filter, FolderOpen, FolderInput, Copy, Database, Image as ImageIcon,
 } from 'lucide-react'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
 
-type Tab = 'site' | 'categories' | 'storage' | 'comments' | 'account' | 'ai' | 'log' | 'cache'
+type Tab = 'site' | 'categories' | 'storage' | 'local-library' | 'comments' | 'account' | 'ai' | 'log' | 'cache'
 type CommentsSubTab = 'manage' | 'config'
 
 export function SettingsPage() {
@@ -66,6 +66,7 @@ export function SettingsPage() {
     { key: 'site', label: '站点', icon: Server },
     { key: 'categories', label: '分类', icon: Tag },
     { key: 'storage', label: '存储', icon: HardDrive },
+    { key: 'local-library', label: '本地资源库', icon: FolderOpen },
     { key: 'comments', label: '评论', icon: MessageSquare },
     { key: 'account', label: '账户', icon: User },
     { key: 'ai', label: '模型配置', icon: Sparkles },
@@ -126,6 +127,7 @@ export function SettingsPage() {
               {tab === 'site' && <SiteTab config={config} updateConfig={updateConfig} />}
               {tab === 'categories' && <CategoriesTab />}
               {tab === 'storage' && <StorageTab />}
+              {tab === 'local-library' && <LocalLibraryTab />}
               {tab === 'comments' && <CommentsTab config={config} updateConfig={updateConfig} />}
               {tab === 'account' && <AccountTab />}
               {tab === 'ai' && <AiTab />}
@@ -195,6 +197,68 @@ function CategoriesTab() {
             ))}
           </div>
         )}
+      </Section>
+    </div>
+  )
+}
+
+// ─── 本地资源库 ──────────────────────────────────────
+
+function LocalLibraryTab() {
+  const [importMode, setImportMode] = useState<'copy' | 'move' | undefined>()
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    GetLocalLibraryPreferences()
+      .then((result) => {
+        if (!active) return
+        setImportMode(result?.importMode === 'copy' || result?.importMode === 'move' ? result.importMode : undefined)
+      })
+      .catch((error) => toast.error('读取本地资源库设置失败: ' + getErrorMessage(error)))
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  const chooseMode = async (mode: 'copy' | 'move') => {
+    if (saving || mode === importMode) return
+    setSaving(true)
+    try {
+      const result = await SetLocalLibraryImportMode(mode)
+      setImportMode(result.importMode === 'copy' || result.importMode === 'move' ? result.importMode : mode)
+      toast.success('本地资源库导入方式已更新')
+    } catch (error) {
+      toast.error('保存失败: ' + getErrorMessage(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Section title="本地资源库">
+        <Field label="应用内导入方式" description="选择或拖入库外照片时使用。系统文件资源管理器中的复制、移动操作不受此设置影响。">
+          {loading ? (
+            <div className="flex h-20 items-center justify-center"><Loader2 size={16} className="animate-spin" /></div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button type="button" disabled={saving} onClick={() => chooseMode('copy')}
+                className="rounded-lg border p-4 text-left transition-colors hover:bg-secondary disabled:opacity-50"
+                style={{ borderColor: importMode === 'copy' ? 'var(--primary)' : 'var(--border)', backgroundColor: importMode === 'copy' ? 'var(--accent)' : undefined }}>
+                <span className="flex items-center gap-2 text-sm font-medium"><Copy size={16} />复制到资源库{importMode === 'copy' && <Check size={15} style={{ color: 'var(--primary)' }} />}</span>
+                <span className="mt-2 block text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>保留库外源文件，库内副本成为资源库管理的文件。</span>
+              </button>
+              <button type="button" disabled={saving} onClick={() => chooseMode('move')}
+                className="rounded-lg border p-4 text-left transition-colors hover:bg-secondary disabled:opacity-50"
+                style={{ borderColor: importMode === 'move' ? 'var(--primary)' : 'var(--border)', backgroundColor: importMode === 'move' ? 'var(--accent)' : undefined }}>
+                <span className="flex items-center gap-2 text-sm font-medium"><FolderInput size={16} />移动到资源库{importMode === 'move' && <Check size={15} style={{ color: 'var(--primary)' }} />}</span>
+                <span className="mt-2 block text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>确认安全写入资源库后，从原位置移除源文件。</span>
+              </button>
+            </div>
+          )}
+          {!loading && !importMode && <p className="mt-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>尚未选择。首次导入照片时会提示选择。</p>}
+        </Field>
       </Section>
     </div>
   )
@@ -913,6 +977,7 @@ function AccountTab() {
 function CacheTab() {
   const [snapshot, setSnapshot] = useState(getDesktopCacheSnapshot)
   const [clearingRuntime, setClearingRuntime] = useState(false)
+  const [clearingLocalPreviews, setClearingLocalPreviews] = useState(false)
   const [clearingCacheStorage, setClearingCacheStorage] = useState(false)
   const [cacheStorageInfo, setCacheStorageInfo] = useState({ supported: false, loading: true, count: 0, bytes: 0 })
 
@@ -956,6 +1021,18 @@ function CacheTab() {
     toast.success('运行时缓存已清理')
   }
 
+  const handleClearLocalPreviews = async () => {
+    setClearingLocalPreviews(true)
+    try {
+      await ClearLocalLibraryPreviewCache()
+      toast.success('本地图库大图预览缓存已清理；缩略图和资产数据仍会保留')
+    } catch (err: unknown) {
+      toast.error('清理本地图库预览缓存失败: ' + (err instanceof Error ? err.message : '未知错误'))
+    } finally {
+      setClearingLocalPreviews(false)
+    }
+  }
+
   const handleClearCacheStorage = async () => {
     if (!('caches' in window)) {
       toast.error('当前 WebView 不支持 CacheStorage')
@@ -995,6 +1072,21 @@ function CacheTab() {
         >
           {clearingRuntime ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
           清理运行时缓存
+        </button>
+      </Section>
+
+      <Section title="本地图库预览缓存">
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+          清理按需生成的 2048px 大图预览以释放磁盘空间。512px 网格缩略图、原始文件和图库数据不会被删除；之后查看时会自动重新生成。
+        </p>
+        <button
+          onClick={handleClearLocalPreviews}
+          disabled={clearingLocalPreviews}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+        >
+          {clearingLocalPreviews ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
+          清理大图预览缓存
         </button>
       </Section>
 

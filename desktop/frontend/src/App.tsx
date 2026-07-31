@@ -9,6 +9,7 @@ import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { PhotosPage } from '@/pages/PhotosPage'
+import { LocalLibraryPage } from '@/pages/LocalLibraryPage'
 import { AlbumsPage } from '@/pages/AlbumsPage'
 import { FilmRollsPage } from '@/pages/FilmRollsPage'
 import { UploadPage } from '@/pages/UploadPage'
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
         <Route path="photos" element={<PhotosPage />} />
+        <Route path="local-library" element={<LocalLibraryPage />} />
         <Route path="albums" element={<AlbumsPage />} />
         <Route path="film-rolls" element={<FilmRollsPage />} />
         <Route path="upload" element={<UploadPage />} />

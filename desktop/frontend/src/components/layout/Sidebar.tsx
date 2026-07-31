@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Image, BookOpen, Film, Upload, BookMarked,
+  LayoutDashboard, Image, LibraryBig, BookOpen, Film, Upload, BookMarked,
   BookImage, Bot, HardDrive, Settings, Users, LogOut,
   Sun, Moon, Monitor, Globe, Check, ChevronDown,
 } from 'lucide-react'
@@ -12,6 +12,7 @@ import { t } from '@/lib/i18n'
 const navItems = [
   { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
   { path: '/photos', icon: Image, key: 'admin.library' },
+  { path: '/local-library', icon: LibraryBig, key: 'admin.local_library' },
   { path: '/albums', icon: BookOpen, key: 'admin.albums' },
   { path: '/film-rolls', icon: Film, key: 'admin.film_rolls' },
   { path: '/upload', icon: Upload, key: 'admin.upload' },
@@ -63,7 +64,8 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col h-full border-r"
+      className="flex h-full flex-col select-none border-r"
+      onDragStartCapture={(event) => event.preventDefault()}
       style={{
         width: 'var(--sidebar-width)',
         backgroundColor: 'var(--card)',
@@ -85,6 +87,7 @@ export function Sidebar() {
           <NavLink
             key={path}
             to={path}
+            draggable={false}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors mb-0.5 ${
                 isActive

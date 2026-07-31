@@ -19,36 +19,44 @@ import (
 	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/db"
 	"mo-gallery-desktop/image"
+	local_library "mo-gallery-desktop/local_library"
 	"mo-gallery-desktop/services"
 	"mo-gallery-desktop/types"
 )
 
 type App struct {
-	ctx      context.Context
-	cfg      *config.Config
-	Proxy    *services.ProxyClient
-	Auth     *services.AuthService
-	Photo    *services.PhotoService
-	Album    *services.AlbumService
-	Story    *services.StoryService
-	Blog     *services.BlogService
-	FilmRoll *services.FilmRollService
-	Friend   *services.FriendService
-	Comment  *services.CommentService
-	Upload   *services.UploadService
-	Storage  *services.StorageService
-	Settings *services.SettingsService
-	EditorAi *services.EditorAiService
-	Logger   *services.Logger
-	Overview *services.OverviewService
+	ctx          context.Context
+	cfg          *config.Config
+	Proxy        *services.ProxyClient
+	Auth         *services.AuthService
+	Photo        *services.PhotoService
+	Album        *services.AlbumService
+	Story        *services.StoryService
+	Blog         *services.BlogService
+	FilmRoll     *services.FilmRollService
+	Friend       *services.FriendService
+	Comment      *services.CommentService
+	Upload       *services.UploadService
+	Storage      *services.StorageService
+	Settings     *services.SettingsService
+	EditorAi     *services.EditorAiService
+	Logger       *services.Logger
+	Overview     *services.OverviewService
+	LocalLibrary *local_library.Manager
 }
 
 func NewApp(cfg *config.Config) *App {
-	return &App{
+	app := &App{
 		cfg:    cfg,
 		Proxy:  services.NewProxyClient(),
 		Logger: services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 	}
+	app.LocalLibrary = local_library.NewManager(config.ConfigDir(), func(event local_library.LocalLibraryEvent) {
+		if app.ctx != nil {
+			runtime.EventsEmit(app.ctx, "local-library:event", event)
+		}
+	})
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -156,6 +164,9 @@ func (a *App) startAiHTTPServer() {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.LocalLibrary != nil {
+		_ = a.LocalLibrary.Close()
+	}
 	db.Close()
 }
 
@@ -395,6 +406,47 @@ func (a *App) DeleteComment(id string) error { return a.Comment.Delete(id) }
 func (a *App) PrepareUpload(filePaths []string) ([]services.PreparedFile, error) {
 	return a.Upload.PrepareUpload(filePaths)
 }
+
+func localAssetIDs(ids []string) []local_library.AssetID {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return assetIDs
+}
+
+func (a *App) PrepareLocalAssetUpload(ids []string) ([]services.PreparedFile, error) {
+	var prepared []services.PreparedFile
+	err := a.LocalLibrary.WithOriginalPaths(localAssetIDs(ids), func(paths []string) error {
+		var prepareErr error
+		prepared, prepareErr = a.Upload.PrepareUpload(paths)
+		return prepareErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	for index := range prepared {
+		prepared[index].AssetID = ids[index]
+	}
+	return prepared, nil
+}
+
+func (a *App) UploadLocalAsset(id string, settings services.UploadSettings, hash string, exifData *image.ExifData) (*services.UploadResult, error) {
+	var result *services.UploadResult
+	err := a.LocalLibrary.WithOriginalPaths([]local_library.AssetID{local_library.AssetID(id)}, func(paths []string) error {
+		var uploadErr error
+		result, uploadErr = a.Upload.UploadFile(paths[0], settings, hash, exifData)
+		return uploadErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result != nil && result.Success {
+		a.Logger.Info(services.LogCategoryUpload, "upload_success", "上传成功: "+filepath.Base(result.FilePath), "")
+	}
+	return result, nil
+}
+
 func (a *App) CheckDuplicates(hashes []string) (*services.DuplicateCheckResult, error) {
 	return a.Upload.CheckDuplicates(hashes)
 }
@@ -414,7 +466,7 @@ func (a *App) SelectFiles() ([]string, error) {
 	files, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "选择照片",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "图片文件 (*.jpg;*.jpeg;*.png;*.webp;*.avif;*.tiff;*.bmp)", Pattern: "*.jpg;*.jpeg;*.png;*.webp;*.avif;*.tiff;*.tif;*.bmp"},
+			{DisplayName: "图片文件 (*.jpg;*.jpeg;*.png;*.webp;*.avif;*.tiff;*.tif)", Pattern: "*.jpg;*.jpeg;*.png;*.webp;*.avif;*.tiff;*.tif"},
 		},
 	})
 	if err != nil {
@@ -673,4 +725,236 @@ func (a *App) OpenLogDir() {
 	default:
 		exec.Command("xdg-open", dir).Start()
 	}
+}
+
+// ─── Local Library ───────────────────────────────────
+
+func (a *App) GetLocalLibraryEntryState() (map[string]interface{}, error) {
+	if a.LocalLibrary == nil {
+		return map[string]interface{}{"active": false, "recent": []local_library.RecentLibrary{}}, nil
+	}
+	recent, err := a.LocalLibrary.RecentLibraries()
+	if err != nil {
+		return nil, err
+	}
+	state := map[string]interface{}{"active": false, "recent": recent}
+	if snapshot, snapshotErr := a.LocalLibrary.Snapshot(); snapshotErr == nil {
+		state["active"] = true
+		state["snapshot"] = snapshot
+	}
+	return state, nil
+}
+
+func (a *App) SelectLocalLibraryFolder(title string) (string, error) {
+	if strings.TrimSpace(title) == "" {
+		title = "选择资源库文件夹"
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
+}
+
+func (a *App) SelectLocalLibraryImportFiles() ([]string, error) {
+	files, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择要移入资源库的照片",
+		Filters: []runtime.FileFilter{{
+			DisplayName: "照片资源 (*.jpg;*.jpeg;*.png;*.webp;*.gif;*.avif;*.heic;*.heif;*.tif;*.tiff;*.cr2;*.cr3;*.nef;*.arw;*.dng;*.raf)",
+			Pattern:     "*.jpg;*.jpeg;*.png;*.webp;*.gif;*.avif;*.heic;*.heif;*.tif;*.tiff;*.cr2;*.cr3;*.nef;*.arw;*.dng;*.raf",
+		}},
+	})
+	if files == nil {
+		return []string{}, err
+	}
+	return files, err
+}
+
+func (a *App) CreateLocalLibrary(root, name string) (local_library.LibrarySnapshot, error) {
+	return a.LocalLibrary.Create(root, name, false)
+}
+
+func (a *App) InitializeLocalLibrary(root, name string) (local_library.LibrarySnapshot, error) {
+	return a.LocalLibrary.Create(root, name, true)
+}
+
+func (a *App) OpenLocalLibrary(root string) (local_library.LibrarySnapshot, error) {
+	return a.LocalLibrary.Open(root)
+}
+
+func (a *App) CloseLocalLibrary() error                   { return a.LocalLibrary.Close() }
+func (a *App) RemoveRecentLocalLibrary(root string) error { return a.LocalLibrary.RemoveRecent(root) }
+func (a *App) GetLocalLibrarySnapshot() (local_library.LibrarySnapshot, error) {
+	return a.LocalLibrary.Snapshot()
+}
+func (a *App) ListLocalAssets(query local_library.AssetQuery) (local_library.AssetPage, error) {
+	return a.LocalLibrary.ListAssets(query)
+}
+func (a *App) ListLocalFolders() ([]local_library.FolderDTO, error) {
+	return a.LocalLibrary.ListFolders()
+}
+func (a *App) ListLocalLibraryTags() ([]local_library.TagDTO, error) {
+	return a.LocalLibrary.ListTags()
+}
+func (a *App) CreateLocalLibraryTag(name, color string) (local_library.TagDTO, error) {
+	return a.LocalLibrary.CreateTag(name, color)
+}
+func (a *App) UpdateLocalLibraryTag(id, name, color string) (local_library.TagDTO, error) {
+	return a.LocalLibrary.UpdateTag(id, name, color)
+}
+func (a *App) DeleteLocalLibraryTag(id string) error {
+	return a.LocalLibrary.DeleteTag(id)
+}
+func (a *App) SetLocalAssetTags(id string, tagIDs []string) error {
+	return a.LocalLibrary.SetAssetTags(local_library.AssetID(id), tagIDs)
+}
+func (a *App) BatchUpdateLocalAssetOrganization(update local_library.BatchAssetOrganizationUpdate) error {
+	return a.LocalLibrary.BatchUpdateAssetOrganization(update)
+}
+
+func (a *App) ListLocalLibraryCollectionGroups() ([]local_library.CollectionGroupDTO, error) {
+	return a.LocalLibrary.ListCollectionGroups()
+}
+func (a *App) CreateLocalLibraryCollectionGroup(parentID *string, name string) (local_library.CollectionGroupDTO, error) {
+	return a.LocalLibrary.CreateCollectionGroup(parentID, name)
+}
+func (a *App) UpdateLocalLibraryCollectionGroup(id string, parentID *string, name string, position int) (local_library.CollectionGroupDTO, error) {
+	return a.LocalLibrary.UpdateCollectionGroup(id, parentID, name, position)
+}
+func (a *App) DeleteLocalLibraryCollectionGroup(id string, deleteContents bool) error {
+	return a.LocalLibrary.DeleteCollectionGroup(id, deleteContents)
+}
+func (a *App) ListLocalLibraryCollections() ([]local_library.CollectionDTO, error) {
+	return a.LocalLibrary.ListCollections()
+}
+func (a *App) CreateLocalLibraryCollection(groupID *string, name, notes string) (local_library.CollectionDTO, error) {
+	return a.LocalLibrary.CreateCollection(groupID, name, notes)
+}
+func (a *App) UpdateLocalLibraryCollection(id string, groupID *string, name, notes string, position int) (local_library.CollectionDTO, error) {
+	return a.LocalLibrary.UpdateCollection(id, groupID, name, notes, position)
+}
+func (a *App) DeleteLocalLibraryCollection(id string) error {
+	return a.LocalLibrary.DeleteCollection(id)
+}
+func (a *App) SetLocalAssetCollections(id string, collectionIDs []string) error {
+	return a.LocalLibrary.SetAssetCollections(local_library.AssetID(id), collectionIDs)
+}
+func (a *App) CreateLocalLibraryFolder(parentRelative, name string) (local_library.FolderDTO, error) {
+	return a.LocalLibrary.CreateFolder(parentRelative, name)
+}
+func (a *App) MoveLocalLibraryFolder(relative, destinationParent, topLevelName string) (local_library.FolderDTO, error) {
+	return a.LocalLibrary.MoveFolder(relative, destinationParent, topLevelName)
+}
+func (a *App) GetLocalLibraryFolderProperties(relative string) (local_library.FolderProperties, error) {
+	return a.LocalLibrary.GetFolderProperties(relative)
+}
+func (a *App) PreviewLocalLibraryFolderDeletion(relative string) (local_library.FolderDeletionPreview, error) {
+	return a.LocalLibrary.PreviewFolderDeletion(relative)
+}
+func (a *App) DeleteLocalLibraryFolder(relative string) error {
+	return a.LocalLibrary.DeleteFolder(relative)
+}
+func (a *App) PermanentDeleteActiveLocalLibraryFolder(relative string) error {
+	return a.LocalLibrary.PermanentDeleteActiveFolder(relative)
+}
+func (a *App) ListLocalLibraryTrashedFolders() ([]local_library.FolderTrashEntry, error) {
+	return a.LocalLibrary.ListTrashedFolders()
+}
+func (a *App) RestoreLocalLibraryFolder(trashID, destinationParent, topLevelName string) error {
+	return a.LocalLibrary.RestoreFolder(trashID, destinationParent, topLevelName)
+}
+func (a *App) PermanentDeleteLocalLibraryFolder(trashID string) error {
+	return a.LocalLibrary.PermanentDeleteFolder(trashID)
+}
+func (a *App) StartLocalLibraryScan() error  { return a.LocalLibrary.StartScan() }
+func (a *App) PauseLocalLibraryScan() error  { return a.LocalLibrary.PauseScan() }
+func (a *App) ResumeLocalLibraryScan() error { return a.LocalLibrary.ResumeScan() }
+func (a *App) CancelLocalLibraryScan() error { return a.LocalLibrary.CancelScan() }
+func (a *App) ClearLocalLibraryPreviewCache() error {
+	return a.LocalLibrary.ClearPreviewCache()
+}
+func (a *App) GetLocalLibraryPreferences() (local_library.LocalLibraryPreferences, error) {
+	return a.LocalLibrary.ImportPreferences()
+}
+
+func (a *App) SetLocalLibraryImportMode(mode string) (local_library.LocalLibraryPreferences, error) {
+	return a.LocalLibrary.SetImportMode(local_library.ImportMode(mode))
+}
+
+func (a *App) ImportLocalLibraryFiles(paths []string, destination string) ([]local_library.ImportResult, error) {
+	return a.LocalLibrary.ImportFiles(paths, destination)
+}
+func (a *App) UpdateLocalAsset(id, title, notes string, rating int, color string, favorite bool) error {
+	return a.LocalLibrary.UpdateAsset(local_library.AssetID(id), title, notes, rating, color, favorite)
+}
+func (a *App) RenameLocalAsset(id, fileName string) (local_library.AssetMoveResult, error) {
+	return a.LocalLibrary.RenameAsset(local_library.AssetID(id), fileName)
+}
+func (a *App) MoveLocalAssets(ids []string, destinationFolder string) ([]local_library.AssetMoveResult, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.MoveAssets(assetIDs, destinationFolder)
+}
+func (a *App) TrashLocalAssets(ids []string) ([]local_library.TrashResult, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.TrashAssets(assetIDs)
+}
+func (a *App) PermanentDeleteLocalAssets(ids []string) ([]local_library.TrashResult, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.PermanentDeleteAssets(assetIDs)
+}
+func (a *App) RestoreLocalAsset(id string) error {
+	return a.LocalLibrary.RestoreAsset(local_library.AssetID(id))
+}
+
+func (a *App) GetLocalAssetOriginalPaths(ids []string) ([]string, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.OriginalPaths(assetIDs)
+}
+
+func (a *App) CopyLocalAssetsToClipboard(ids []string, cut bool) error {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.CopyAssetsToClipboard(assetIDs, cut)
+}
+
+func (a *App) RecheckMissingLocalAssets(ids []string) ([]local_library.AssetMaintenanceResult, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.RecheckMissingAssets(assetIDs)
+}
+
+func (a *App) RetryLocalAssetPreviews(ids []string) ([]local_library.AssetMaintenanceResult, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.RetryAssetPreviews(assetIDs)
+}
+
+func (a *App) RemoveMissingLocalAssets(ids []string) ([]local_library.AssetMaintenanceResult, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.RemoveMissingAssets(assetIDs)
+}
+
+func (a *App) OpenLocalAssetInDefaultApp(id string) error {
+	path, err := a.LocalLibrary.OriginalPath(local_library.AssetID(id))
+	if err != nil {
+		return err
+	}
+	return exec.Command("rundll32", "url.dll,FileProtocolHandler", path).Start()
 }

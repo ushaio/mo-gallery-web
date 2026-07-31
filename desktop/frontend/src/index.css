@@ -113,6 +113,13 @@
   ::selection {
     @apply bg-primary/30 text-primary-foreground;
   }
+
+  /* Avoid selecting UI labels while clicking or dragging controls, but keep page content and form fields copyable. */
+  :where(button, [role='button'], [role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='tab']),
+  :where(button, [role='button'], [role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='tab']) * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
 }
 
 @layer utilities {

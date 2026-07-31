@@ -1,0 +1,258 @@
+package local_library
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	sqlite "modernc.org/sqlite"
+)
+
+const (
+	BackupKindDaily      = "daily"
+	BackupKindUpgrade    = "upgrade"
+	BackupKindManual     = "manual"
+	BackupKindPreRestore = "pre-restore"
+
+	dailyBackupRetention      = 7
+	upgradeBackupRetention    = 3
+	preRestoreBackupRetention = 3
+)
+
+type BackupInfo struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	CreatedAt time.Time `json:"createdAt"`
+	SizeBytes int64     `json:"sizeBytes"`
+}
+
+type BackupOverview struct {
+	LibraryName string       `json:"libraryName"`
+	LibraryRoot string       `json:"libraryRoot"`
+	Backups     []BackupInfo `json:"backups"`
+}
+
+type sqliteOnlineBackuper interface {
+	NewBackup(string) (*sqlite.Backup, error)
+}
+
+func createConsistentSQLiteBackup(ctx context.Context, db *sql.DB, destination string) error {
+	if db == nil {
+		return errors.New("database is not open")
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		return err
+	}
+	if _, err := os.Stat(destination); err == nil {
+		return fmt.Errorf("backup destination already exists: %s", destination)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return conn.Raw(func(driverConn any) error {
+		backuper, ok := driverConn.(sqliteOnlineBackuper)
+		if !ok {
+			return errors.New("SQLite driver does not support the online backup API")
+		}
+		backup, err := backuper.NewBackup(destination)
+		if err != nil {
+			return err
+		}
+		finished := false
+		defer func() {
+			if !finished {
+				_ = backup.Finish()
+			}
+		}()
+		for more := true; more; {
+			more, err = backup.Step(128)
+			if err != nil {
+				return err
+			}
+			if more {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+			}
+		}
+		err = backup.Finish()
+		finished = true
+		return err
+	})
+}
+
+func checkSQLiteIntegrity(path string, full bool) error {
+	dsn := "file:" + filepath.ToSlash(path) + "?mode=ro&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	pragma := "PRAGMA quick_check"
+	if full {
+		pragma = "PRAGMA integrity_check"
+	}
+	rows, err := db.Query(pragma)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	messages := make([]string, 0, 1)
+	for rows.Next() {
+		var message string
+		if err := rows.Scan(&message); err != nil {
+			return err
+		}
+		if !strings.EqualFold(strings.TrimSpace(message), "ok") {
+			messages = append(messages, message)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(messages) > 0 {
+		return fmt.Errorf("SQLite integrity check failed: %s", strings.Join(messages, "; "))
+	}
+	return nil
+}
+
+func backupDirectory(root string) string { return internalPath(root, "backups") }
+
+func backupFileName(kind string, createdAt time.Time) string {
+	return fmt.Sprintf("%s-%s-%s.db", kind, createdAt.UTC().Format("20060102T150405.000Z"), newID())
+}
+
+func backupKindFromName(name string) string {
+	for _, kind := range []string{BackupKindPreRestore, BackupKindUpgrade, BackupKindManual, BackupKindDaily} {
+		if strings.HasPrefix(name, kind+"-") && strings.HasSuffix(strings.ToLower(name), ".db") {
+			return kind
+		}
+	}
+	return ""
+}
+
+func listBackupFiles(root string) ([]BackupInfo, error) {
+	entries, err := os.ReadDir(backupDirectory(root))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []BackupInfo{}, nil
+		}
+		return nil, err
+	}
+	items := make([]BackupInfo, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		kind := backupKindFromName(entry.Name())
+		if kind == "" {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		items = append(items, BackupInfo{
+			ID:        entry.Name(),
+			Kind:      kind,
+			CreatedAt: info.ModTime().UTC(),
+			SizeBytes: info.Size(),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ID > items[j].ID
+		}
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func resolveBackupPath(root, id string) (string, error) {
+	if id == "" || filepath.Base(id) != id || backupKindFromName(id) == "" {
+		return "", newError(ErrBackupInvalid, "备份标识无效", nil)
+	}
+	path := filepath.Join(backupDirectory(root), id)
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", newError(ErrBackupNotFound, "备份文件不存在", map[string]any{"backupId": id})
+	}
+	return path, nil
+}
+
+func createBackupFile(ctx context.Context, root, kind string, db *sql.DB) (BackupInfo, error) {
+	now := time.Now().UTC()
+	name := backupFileName(kind, now)
+	finalPath := filepath.Join(backupDirectory(root), name)
+	temporaryPath := finalPath + ".tmp"
+	_ = os.Remove(temporaryPath)
+	if err := createConsistentSQLiteBackup(ctx, db, temporaryPath); err != nil {
+		_ = os.Remove(temporaryPath)
+		return BackupInfo{}, err
+	}
+	if err := checkSQLiteIntegrity(temporaryPath, false); err != nil {
+		_ = os.Remove(temporaryPath)
+		return BackupInfo{}, err
+	}
+	if err := os.Rename(temporaryPath, finalPath); err != nil {
+		_ = os.Remove(temporaryPath)
+		return BackupInfo{}, err
+	}
+	info, err := os.Stat(finalPath)
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	return BackupInfo{ID: name, Kind: kind, CreatedAt: info.ModTime().UTC(), SizeBytes: info.Size()}, nil
+}
+
+func pruneBackups(root, kind string, keep int) error {
+	if keep < 0 {
+		return nil
+	}
+	items, err := listBackupFiles(root)
+	if err != nil {
+		return err
+	}
+	matched := make([]BackupInfo, 0, len(items))
+	for _, item := range items {
+		if item.Kind == kind {
+			matched = append(matched, item)
+		}
+	}
+	for _, item := range matched[keep:] {
+		if err := os.Remove(filepath.Join(backupDirectory(root), item.ID)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func hasDailyBackupForDate(root string, date time.Time) (bool, error) {
+	items, err := listBackupFiles(root)
+	if err != nil {
+		return false, err
+	}
+	year, month, day := date.Local().Date()
+	for _, item := range items {
+		if item.Kind != BackupKindDaily {
+			continue
+		}
+		itemYear, itemMonth, itemDay := item.CreatedAt.Local().Date()
+		if year == itemYear && month == itemMonth && day == itemDay {
+			return true, nil
+		}
+	}
+	return false, nil
+}

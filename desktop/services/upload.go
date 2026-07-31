@@ -25,6 +25,7 @@ func NewUploadService(proxy *ProxyClient) *UploadService {
 
 // PreparedFile 预处理后的文件信息
 type PreparedFile struct {
+	AssetID  string          `json:"assetId,omitempty"`
 	FilePath string          `json:"filePath"`
 	FileName string          `json:"fileName"`
 	FileSize int64           `json:"fileSize"`
@@ -81,6 +82,79 @@ type AiImageUploadResult struct {
 }
 
 // PrepareUpload 预处理文件：计算哈希 + 提取 EXIF
+var supportedUploadExtensions = map[string]string{
+	".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WebP",
+	".avif": "AVIF", ".tif": "TIFF", ".tiff": "TIFF",
+}
+
+func validateUploadFile(filePath string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("文件不存在")
+		}
+		return fmt.Errorf("无法读取文件: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("所选路径不是普通文件")
+	}
+	extension := strings.ToLower(filepath.Ext(filePath))
+	format, supported := supportedUploadExtensions[extension]
+	if !supported {
+		return fmt.Errorf("当前上传服务不支持 %s 格式；支持 JPG、PNG、WebP、AVIF、TIFF", uploadFormatLabel(extension))
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("无法打开文件: %w", err)
+	}
+	defer file.Close()
+	header := make([]byte, 16)
+	read, err := io.ReadFull(file, header)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("无法读取文件内容: %w", err)
+	}
+	if !matchesUploadSignature(format, header[:read]) {
+		return fmt.Errorf("文件内容与 %s 扩展名不匹配，无法上传", strings.TrimPrefix(extension, "."))
+	}
+	return nil
+}
+
+func uploadFormatLabel(extension string) string {
+	if extension == "" {
+		return "无扩展名文件"
+	}
+	extension = strings.ToUpper(strings.TrimPrefix(extension, "."))
+	switch extension {
+	case "CR2", "CR3", "NEF", "ARW", "DNG", "RAF":
+		return "RAW"
+	case "HEIC", "HEIF":
+		return "HEIC/HEIF"
+	default:
+		return extension
+	}
+}
+
+func matchesUploadSignature(format string, header []byte) bool {
+	switch format {
+	case "JPEG":
+		return len(header) >= 3 && header[0] == 0xff && header[1] == 0xd8 && header[2] == 0xff
+	case "PNG":
+		return len(header) >= 8 && string(header[:8]) == "\x89PNG\r\n\x1a\n"
+	case "WebP":
+		return len(header) >= 12 && string(header[:4]) == "RIFF" && string(header[8:12]) == "WEBP"
+	case "AVIF":
+		if len(header) < 12 || string(header[4:8]) != "ftyp" {
+			return false
+		}
+		brand := string(header[8:12])
+		return brand == "avif" || brand == "avis"
+	case "TIFF":
+		return len(header) >= 4 && (string(header[:4]) == "II*\x00" || string(header[:4]) == "MM\x00*")
+	default:
+		return false
+	}
+}
+
 func (s *UploadService) PrepareUpload(filePaths []string) ([]PreparedFile, error) {
 	results := make([]PreparedFile, len(filePaths))
 
@@ -90,10 +164,14 @@ func (s *UploadService) PrepareUpload(filePaths []string) ([]PreparedFile, error
 			FileName: filepath.Base(fp),
 		}
 
-		// 文件大小
+		if err := validateUploadFile(fp); err != nil {
+			pf.Error = err.Error()
+			results[i] = pf
+			continue
+		}
 		info, err := os.Stat(fp)
 		if err != nil {
-			pf.Error = "文件不存在"
+			pf.Error = "无法读取文件: " + err.Error()
 			results[i] = pf
 			continue
 		}
@@ -142,6 +220,11 @@ func (s *UploadService) CheckDuplicates(hashes []string) (*DuplicateCheckResult,
 // UploadFile 上传照片：发送文件到 Web API，由服务端处理存储+入库
 func (s *UploadService) UploadFile(filePath string, settings UploadSettings, hash string, exifData *image.ExifData) (*UploadResult, error) {
 	result := &UploadResult{FilePath: filePath}
+
+	if err := validateUploadFile(filePath); err != nil {
+		result.Error = err.Error()
+		return result, nil
+	}
 
 	if s.proxy == nil || !s.proxy.IsReady() {
 		result.Error = "未连接到服务器"

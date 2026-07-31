@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
+import { useUploadIntentStore } from '@/store/upload-intent'
 import type { UploadTask } from '@/contexts/UploadQueueContext'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import { toast } from 'sonner'
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 
 interface PreparedFile {
+  assetId?: string
   filePath: string
   fileName: string
   fileSize: number
@@ -217,32 +219,62 @@ export function UploadPage() {
     }
   }, [])
 
+  const appendPreparedFiles = async (prepared: PreparedFile[]) => {
+    const hashes = prepared.filter(f => f.hash).map(f => f.hash)
+    let duplicates: Record<string, any> = {}
+    if (hashes.length > 0) {
+      try {
+        const dupResult = await (window as any).go.main.App.CheckDuplicates(hashes)
+        duplicates = dupResult?.duplicates || {}
+      } catch {}
+    }
+    const newItems: UploadItem[] = prepared.map(f => ({
+      file: f,
+      status: f.error ? 'error' : (duplicates[f.hash] ? 'duplicate' : 'pending'),
+      progress: f.error || duplicates[f.hash] ? 100 : 0,
+      error: f.error || (duplicates[f.hash] ? `已存在: ${duplicates[f.hash].title || ''}` : undefined),
+    }))
+    setItems(prev => [...prev, ...newItems])
+  }
+
   const processFiles = async (paths: string[]) => {
     setPreparing(true)
     try {
       const prepared: PreparedFile[] = await (window as any).go.main.App.PrepareUpload(paths)
-      const hashes = prepared.filter(f => f.hash).map(f => f.hash)
-      let duplicates: Record<string, any> = {}
-      if (hashes.length > 0) {
-        try {
-          const dupResult = await (window as any).go.main.App.CheckDuplicates(hashes)
-          duplicates = dupResult?.duplicates || {}
-        } catch {}
-      }
-      const newItems: UploadItem[] = prepared.map(f => ({
-        file: f,
-        status: f.error ? 'error' : (duplicates[f.hash] ? 'duplicate' : 'pending'),
-        progress: f.error || duplicates[f.hash] ? 100 : 0,
-        error: f.error || (duplicates[f.hash] ? `已存在: ${duplicates[f.hash].title || ''}` : undefined),
-      }))
-      setItems(prev => [...prev, ...newItems])
-    } catch (err: any) {
+      await appendPreparedFiles(prepared)
+    } catch (err: unknown) {
       console.error('预处理失败:', err)
-      toast.error(err?.message || '文件预处理失败，请重试')
+      toast.error(err instanceof Error ? err.message : '文件预处理失败，请重试')
     } finally {
       setPreparing(false)
     }
   }
+
+  const processLocalAssets = async (assetIds: string[]) => {
+    setPreparing(true)
+    try {
+      const prepared: PreparedFile[] = await (window as any).go.main.App.PrepareLocalAssetUpload(assetIds)
+      await appendPreparedFiles(prepared)
+    } catch (err: unknown) {
+      console.error('本地资源预处理失败:', err)
+      toast.error(err instanceof Error ? err.message : '本地资源预处理失败，请重新检查资源库')
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  useEffect(() => {
+    const intent = useUploadIntentStore.getState().consume()
+    if (!intent) return
+    if (intent.albumId) {
+      setSettings((current) => ({ ...current, albumIds: [intent.albumId!] }))
+    }
+    if (intent.source === 'local-assets') {
+      if (intent.assetIds.length > 0) void processLocalAssets(intent.assetIds)
+      return
+    }
+    if (intent.paths.length > 0) void processFiles(intent.paths)
+  }, [])
 
   const handleUpload = async () => {
     const pending = items.filter(i => i.status === 'pending')
@@ -251,6 +283,7 @@ export function UploadPage() {
     const newTasks = addTasks(
       pending.map(item => ({
         filePath: item.file.filePath,
+        assetId: item.file.assetId,
         fileName: item.file.fileName,
         fileSize: item.file.fileSize,
         hash: item.file.hash,

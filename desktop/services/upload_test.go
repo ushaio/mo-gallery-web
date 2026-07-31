@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,53 @@ func TestResolveUploadURLKeepsAbsoluteStorageURL(t *testing.T) {
 	const storageURL = "https://cdn.example.com/ai-images/generated.png"
 	if result := resolveUploadURL("https://gallery.example.com", storageURL); result != storageURL {
 		t.Fatalf("resolveUploadURL() = %q", result)
+	}
+}
+
+func TestPrepareUploadValidatesSupportedFormatsAndSignatures(t *testing.T) {
+	service := NewUploadService(nil)
+	temp := t.TempDir()
+
+	jpegPath := filepath.Join(temp, "valid.jpg")
+	jpegData := []byte{0xff, 0xd8, 0xff, 0xdb, 0x00, 0x04, 0x00, 0x00, 0xff, 0xd9}
+	if err := os.WriteFile(jpegPath, jpegData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rawPath := filepath.Join(temp, "unsupported.nef")
+	if err := os.WriteFile(rawPath, []byte("raw"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fakePNGPath := filepath.Join(temp, "fake.png")
+	if err := os.WriteFile(fakePNGPath, []byte("not-a-png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	prepared, err := service.PrepareUpload([]string{jpegPath, rawPath, fakePNGPath})
+	if err != nil {
+		t.Fatalf("PrepareUpload() error = %v", err)
+	}
+	if prepared[0].Error != "" || prepared[0].Hash == "" {
+		t.Fatalf("supported JPEG result = %+v", prepared[0])
+	}
+	if !strings.Contains(prepared[1].Error, "RAW") {
+		t.Fatalf("RAW error = %q", prepared[1].Error)
+	}
+	if !strings.Contains(prepared[2].Error, "不匹配") {
+		t.Fatalf("signature error = %q", prepared[2].Error)
+	}
+}
+
+func TestUploadFileRevalidatesSourceBeforeServerConnection(t *testing.T) {
+	service := NewUploadService(nil)
+	path := filepath.Join(t.TempDir(), "unsupported.heic")
+	if err := os.WriteFile(path, []byte("heic"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.UploadFile(path, UploadSettings{}, "", nil)
+	if err != nil {
+		t.Fatalf("UploadFile() error = %v", err)
+	}
+	if result == nil || !strings.Contains(result.Error, "HEIC/HEIF") {
+		t.Fatalf("UploadFile() result = %+v", result)
 	}
 }

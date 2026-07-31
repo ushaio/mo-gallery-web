@@ -22,8 +22,16 @@ export function BatchDeletePhotos(arg1) {
   return window['go']['main']['App']['BatchDeletePhotos'](arg1);
 }
 
+export function BatchUpdateLocalAssetOrganization(arg1) {
+  return window['go']['main']['App']['BatchUpdateLocalAssetOrganization'](arg1);
+}
+
 export function BatchUpdateShowFlag(arg1, arg2) {
   return window['go']['main']['App']['BatchUpdateShowFlag'](arg1, arg2);
+}
+
+export function CancelLocalLibraryScan() {
+  return window['go']['main']['App']['CancelLocalLibraryScan']();
 }
 
 export function CheckDuplicates(arg1) {
@@ -38,8 +46,20 @@ export function ClearEditorAiConversation(arg1) {
   return window['go']['main']['App']['ClearEditorAiConversation'](arg1);
 }
 
+export function ClearLocalLibraryPreviewCache() {
+  return window['go']['main']['App']['ClearLocalLibraryPreviewCache']();
+}
+
 export function ClearLogs() {
   return window['go']['main']['App']['ClearLogs']();
+}
+
+export function CloseLocalLibrary() {
+  return window['go']['main']['App']['CloseLocalLibrary']();
+}
+
+export function CopyLocalAssetsToClipboard(arg1, arg2) {
+  return window['go']['main']['App']['CopyLocalAssetsToClipboard'](arg1, arg2);
 }
 
 export function CreateAlbum(arg1) {
@@ -60,6 +80,26 @@ export function CreateFilmRoll(arg1) {
 
 export function CreateFriend(arg1) {
   return window['go']['main']['App']['CreateFriend'](arg1);
+}
+
+export function CreateLocalLibrary(arg1, arg2) {
+  return window['go']['main']['App']['CreateLocalLibrary'](arg1, arg2);
+}
+
+export function CreateLocalLibraryCollection(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateLocalLibraryCollection'](arg1, arg2, arg3);
+}
+
+export function CreateLocalLibraryCollectionGroup(arg1, arg2) {
+  return window['go']['main']['App']['CreateLocalLibraryCollectionGroup'](arg1, arg2);
+}
+
+export function CreateLocalLibraryFolder(arg1, arg2) {
+  return window['go']['main']['App']['CreateLocalLibraryFolder'](arg1, arg2);
+}
+
+export function CreateLocalLibraryTag(arg1, arg2) {
+  return window['go']['main']['App']['CreateLocalLibraryTag'](arg1, arg2);
 }
 
 export function CreateStorageSource(arg1) {
@@ -92,6 +132,22 @@ export function DeleteFilmRoll(arg1) {
 
 export function DeleteFriend(arg1) {
   return window['go']['main']['App']['DeleteFriend'](arg1);
+}
+
+export function DeleteLocalLibraryCollection(arg1) {
+  return window['go']['main']['App']['DeleteLocalLibraryCollection'](arg1);
+}
+
+export function DeleteLocalLibraryCollectionGroup(arg1, arg2) {
+  return window['go']['main']['App']['DeleteLocalLibraryCollectionGroup'](arg1, arg2);
+}
+
+export function DeleteLocalLibraryFolder(arg1) {
+  return window['go']['main']['App']['DeleteLocalLibraryFolder'](arg1);
+}
+
+export function DeleteLocalLibraryTag(arg1) {
+  return window['go']['main']['App']['DeleteLocalLibraryTag'](arg1);
 }
 
 export function DeletePhoto(arg1, arg2) {
@@ -206,6 +262,26 @@ export function GetLinuxDoBinding() {
   return window['go']['main']['App']['GetLinuxDoBinding']();
 }
 
+export function GetLocalAssetOriginalPaths(arg1) {
+  return window['go']['main']['App']['GetLocalAssetOriginalPaths'](arg1);
+}
+
+export function GetLocalLibraryEntryState() {
+  return window['go']['main']['App']['GetLocalLibraryEntryState']();
+}
+
+export function GetLocalLibraryFolderProperties(arg1) {
+  return window['go']['main']['App']['GetLocalLibraryFolderProperties'](arg1);
+}
+
+export function GetLocalLibraryPreferences() {
+  return window['go']['main']['App']['GetLocalLibraryPreferences']();
+}
+
+export function GetLocalLibrarySnapshot() {
+  return window['go']['main']['App']['GetLocalLibrarySnapshot']();
+}
+
 export function GetLogConfig() {
   return window['go']['main']['App']['GetLogConfig']();
 }
@@ -266,20 +342,100 @@ export function GetZineImageDataURL(arg1) {
   return window['go']['main']['App']['GetZineImageDataURL'](arg1);
 }
 
+export function ImportLocalLibraryFiles(arg1, arg2) {
+  return window['go']['main']['App']['ImportLocalLibraryFiles'](arg1, arg2);
+}
+
+export function InitializeLocalLibrary(arg1, arg2) {
+  return window['go']['main']['App']['InitializeLocalLibrary'](arg1, arg2);
+}
+
 export function IsLinuxDoEnabled() {
   return window['go']['main']['App']['IsLinuxDoEnabled']();
+}
+
+export function ListLocalAssets(arg1) {
+  return window['go']['main']['App']['ListLocalAssets'](arg1);
+}
+
+export function ListLocalFolders() {
+  return window['go']['main']['App']['ListLocalFolders']();
+}
+
+export function ListLocalLibraryCollectionGroups() {
+  return window['go']['main']['App']['ListLocalLibraryCollectionGroups']();
+}
+
+export function ListLocalLibraryCollections() {
+  return window['go']['main']['App']['ListLocalLibraryCollections']();
+}
+
+export function ListLocalLibraryTags() {
+  return window['go']['main']['App']['ListLocalLibraryTags']();
+}
+
+export function ListLocalLibraryTrashedFolders() {
+  return window['go']['main']['App']['ListLocalLibraryTrashedFolders']();
 }
 
 export function Login(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function MoveLocalAssets(arg1, arg2) {
+  return window['go']['main']['App']['MoveLocalAssets'](arg1, arg2);
+}
+
+export function MoveLocalLibraryFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MoveLocalLibraryFolder'](arg1, arg2, arg3);
+}
+
+export function OpenLocalAssetInDefaultApp(arg1) {
+  return window['go']['main']['App']['OpenLocalAssetInDefaultApp'](arg1);
+}
+
+export function OpenLocalLibrary(arg1) {
+  return window['go']['main']['App']['OpenLocalLibrary'](arg1);
+}
+
 export function OpenLogDir() {
   return window['go']['main']['App']['OpenLogDir']();
 }
 
+export function PauseLocalLibraryScan() {
+  return window['go']['main']['App']['PauseLocalLibraryScan']();
+}
+
+export function PermanentDeleteActiveLocalLibraryFolder(arg1) {
+  return window['go']['main']['App']['PermanentDeleteActiveLocalLibraryFolder'](arg1);
+}
+
+export function PermanentDeleteLocalAssets(arg1) {
+  return window['go']['main']['App']['PermanentDeleteLocalAssets'](arg1);
+}
+
+export function PermanentDeleteLocalLibraryFolder(arg1) {
+  return window['go']['main']['App']['PermanentDeleteLocalLibraryFolder'](arg1);
+}
+
+export function PrepareLocalAssetUpload(arg1) {
+  return window['go']['main']['App']['PrepareLocalAssetUpload'](arg1);
+}
+
 export function PrepareUpload(arg1) {
   return window['go']['main']['App']['PrepareUpload'](arg1);
+}
+
+export function PreviewLocalLibraryFolderDeletion(arg1) {
+  return window['go']['main']['App']['PreviewLocalLibraryFolderDeletion'](arg1);
+}
+
+export function RecheckMissingLocalAssets(arg1) {
+  return window['go']['main']['App']['RecheckMissingLocalAssets'](arg1);
+}
+
+export function RemoveMissingLocalAssets(arg1) {
+  return window['go']['main']['App']['RemoveMissingLocalAssets'](arg1);
 }
 
 export function RemovePhotoFromAlbum(arg1, arg2) {
@@ -290,8 +446,16 @@ export function RemovePhotoFromFilmRoll(arg1, arg2) {
   return window['go']['main']['App']['RemovePhotoFromFilmRoll'](arg1, arg2);
 }
 
+export function RemoveRecentLocalLibrary(arg1) {
+  return window['go']['main']['App']['RemoveRecentLocalLibrary'](arg1);
+}
+
 export function RemoveStoryPhoto(arg1, arg2) {
   return window['go']['main']['App']['RemoveStoryPhoto'](arg1, arg2);
+}
+
+export function RenameLocalAsset(arg1, arg2) {
+  return window['go']['main']['App']['RenameLocalAsset'](arg1, arg2);
 }
 
 export function ReorderFilmRollFrames(arg1) {
@@ -300,6 +464,22 @@ export function ReorderFilmRollFrames(arg1) {
 
 export function ReorderStoryPhotos(arg1, arg2) {
   return window['go']['main']['App']['ReorderStoryPhotos'](arg1, arg2);
+}
+
+export function RestoreLocalAsset(arg1) {
+  return window['go']['main']['App']['RestoreLocalAsset'](arg1);
+}
+
+export function RestoreLocalLibraryFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RestoreLocalLibraryFolder'](arg1, arg2, arg3);
+}
+
+export function ResumeLocalLibraryScan() {
+  return window['go']['main']['App']['ResumeLocalLibraryScan']();
+}
+
+export function RetryLocalAssetPreviews(arg1) {
+  return window['go']['main']['App']['RetryLocalAssetPreviews'](arg1);
 }
 
 export function SaveAiImageToAlbum(arg1) {
@@ -322,6 +502,14 @@ export function SelectFolder() {
   return window['go']['main']['App']['SelectFolder']();
 }
 
+export function SelectLocalLibraryFolder(arg1) {
+  return window['go']['main']['App']['SelectLocalLibraryFolder'](arg1);
+}
+
+export function SelectLocalLibraryImportFiles() {
+  return window['go']['main']['App']['SelectLocalLibraryImportFiles']();
+}
+
 export function SetAlbumCover(arg1, arg2) {
   return window['go']['main']['App']['SetAlbumCover'](arg1, arg2);
 }
@@ -330,12 +518,32 @@ export function SetAuth(arg1, arg2) {
   return window['go']['main']['App']['SetAuth'](arg1, arg2);
 }
 
+export function SetLocalAssetCollections(arg1, arg2) {
+  return window['go']['main']['App']['SetLocalAssetCollections'](arg1, arg2);
+}
+
+export function SetLocalAssetTags(arg1, arg2) {
+  return window['go']['main']['App']['SetLocalAssetTags'](arg1, arg2);
+}
+
+export function SetLocalLibraryImportMode(arg1) {
+  return window['go']['main']['App']['SetLocalLibraryImportMode'](arg1);
+}
+
+export function StartLocalLibraryScan() {
+  return window['go']['main']['App']['StartLocalLibraryScan']();
+}
+
 export function ToggleFeatured(arg1) {
   return window['go']['main']['App']['ToggleFeatured'](arg1);
 }
 
 export function ToggleShowFlag(arg1) {
   return window['go']['main']['App']['ToggleShowFlag'](arg1);
+}
+
+export function TrashLocalAssets(arg1) {
+  return window['go']['main']['App']['TrashLocalAssets'](arg1);
 }
 
 export function UnbindLinuxDoAccount() {
@@ -374,6 +582,22 @@ export function UpdateFriend(arg1, arg2) {
   return window['go']['main']['App']['UpdateFriend'](arg1, arg2);
 }
 
+export function UpdateLocalAsset(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['UpdateLocalAsset'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function UpdateLocalLibraryCollection(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateLocalLibraryCollection'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function UpdateLocalLibraryCollectionGroup(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateLocalLibraryCollectionGroup'](arg1, arg2, arg3, arg4);
+}
+
+export function UpdateLocalLibraryTag(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateLocalLibraryTag'](arg1, arg2, arg3);
+}
+
 export function UpdateLogConfig(arg1) {
   return window['go']['main']['App']['UpdateLogConfig'](arg1);
 }
@@ -396,6 +620,10 @@ export function UpdateStory(arg1, arg2) {
 
 export function UploadFile(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UploadFile'](arg1, arg2, arg3, arg4);
+}
+
+export function UploadLocalAsset(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UploadLocalAsset'](arg1, arg2, arg3, arg4);
 }
 
 export function ValidateToken(arg1) {

@@ -1,5 +1,5 @@
 export namespace config {
-	
+
 	export class AIProviderConfig {
 	    base_url: string;
 	    api_key: string;
@@ -9,11 +9,11 @@ export namespace config {
 	    tool_models?: string[];
 	    structured_output_models?: string[];
 	    context_windows?: Record<string, number>;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AIProviderConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.base_url = source["base_url"];
@@ -33,11 +33,11 @@ export namespace config {
 	    default_model: string;
 	    default_image_model?: string;
 	    providers: Record<string, AIProviderConfig>;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AIConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.base_url = source["base_url"];
@@ -47,7 +47,7 @@ export namespace config {
 	        this.default_image_model = source["default_image_model"];
 	        this.providers = this.convertValues(source["providers"], AIProviderConfig, true);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -70,17 +70,17 @@ export namespace config {
 }
 
 export namespace image {
-	
+
 	export class GPSData {
 	    latitude: number;
 	    longitude: number;
 	    altitude?: number;
 	    dateStamp?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new GPSData(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.latitude = source["latitude"];
@@ -103,11 +103,11 @@ export namespace image {
 	    software?: string;
 	    gps?: GPSData;
 	    raw?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ExifData(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cameraMake = source["cameraMake"];
@@ -123,7 +123,7 @@ export namespace image {
 	        this.gps = this.convertValues(source["gps"], GPSData);
 	        this.raw = source["raw"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -145,16 +145,662 @@ export namespace image {
 
 }
 
+export namespace local_library {
+
+	export class AssetCollectionDTO {
+	    id: string;
+	    name: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AssetCollectionDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
+	export class TagDTO {
+	    id: string;
+	    name: string;
+	    color?: string;
+	    assetCount: number;
+
+	    static createFrom(source: any = {}) {
+	        return new TagDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.assetCount = source["assetCount"];
+	    }
+	}
+	export class ExifMetadataDTO {
+	    cameraMake?: string;
+	    cameraModel?: string;
+	    lensModel?: string;
+	    iso?: number;
+	    aperture?: number;
+	    shutterSeconds?: number;
+	    focalLengthMm?: number;
+	    latitude?: number;
+	    longitude?: number;
+
+	    static createFrom(source: any = {}) {
+	        return new ExifMetadataDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cameraMake = source["cameraMake"];
+	        this.cameraModel = source["cameraModel"];
+	        this.lensModel = source["lensModel"];
+	        this.iso = source["iso"];
+	        this.aperture = source["aperture"];
+	        this.shutterSeconds = source["shutterSeconds"];
+	        this.focalLengthMm = source["focalLengthMm"];
+	        this.latitude = source["latitude"];
+	        this.longitude = source["longitude"];
+	    }
+	}
+	export class AssetDTO {
+	    id: string;
+	    relativePath: string;
+	    fileName: string;
+	    extension: string;
+	    format: string;
+	    mimeType: string;
+	    byteSize: number;
+	    modifiedAtNs: number;
+	    width: number;
+	    height: number;
+	    orientation: number;
+	    isAnimated: boolean;
+	    frameCount: number;
+	    availability: string;
+	    trashEntryId?: string;
+	    trashEntryKind?: string;
+	    previewStatus: string;
+	    previewError?: string;
+	    metadataStatus: string;
+	    displayTitle?: string;
+	    notes?: string;
+	    rating: number;
+	    colorLabel?: string;
+	    isFavorite: boolean;
+	    // Go type: time
+	    capturedAt?: any;
+	    exif?: ExifMetadataDTO;
+	    // Go type: time
+	    discoveredAt: any;
+	    thumbnailUrl: string;
+	    previewUrl: string;
+	    originalUrl: string;
+	    tags: TagDTO[];
+	    collections: AssetCollectionDTO[];
+
+	    static createFrom(source: any = {}) {
+	        return new AssetDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.relativePath = source["relativePath"];
+	        this.fileName = source["fileName"];
+	        this.extension = source["extension"];
+	        this.format = source["format"];
+	        this.mimeType = source["mimeType"];
+	        this.byteSize = source["byteSize"];
+	        this.modifiedAtNs = source["modifiedAtNs"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.orientation = source["orientation"];
+	        this.isAnimated = source["isAnimated"];
+	        this.frameCount = source["frameCount"];
+	        this.availability = source["availability"];
+	        this.trashEntryId = source["trashEntryId"];
+	        this.trashEntryKind = source["trashEntryKind"];
+	        this.previewStatus = source["previewStatus"];
+	        this.previewError = source["previewError"];
+	        this.metadataStatus = source["metadataStatus"];
+	        this.displayTitle = source["displayTitle"];
+	        this.notes = source["notes"];
+	        this.rating = source["rating"];
+	        this.colorLabel = source["colorLabel"];
+	        this.isFavorite = source["isFavorite"];
+	        this.capturedAt = this.convertValues(source["capturedAt"], null);
+	        this.exif = this.convertValues(source["exif"], ExifMetadataDTO);
+	        this.discoveredAt = this.convertValues(source["discoveredAt"], null);
+	        this.thumbnailUrl = source["thumbnailUrl"];
+	        this.previewUrl = source["previewUrl"];
+	        this.originalUrl = source["originalUrl"];
+	        this.tags = this.convertValues(source["tags"], TagDTO);
+	        this.collections = this.convertValues(source["collections"], AssetCollectionDTO);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AssetMaintenanceResult {
+	    assetId: string;
+	    status: string;
+	    error?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AssetMaintenanceResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetId = source["assetId"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
+	export class AssetMoveResult {
+	    assetId: string;
+	    source?: string;
+	    destination?: string;
+	    status: string;
+	    error?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AssetMoveResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetId = source["assetId"];
+	        this.source = source["source"];
+	        this.destination = source["destination"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
+	export class ScanStatus {
+	    state: string;
+	    current: number;
+	    total?: number;
+	    lastPath?: string;
+	    error?: string;
+	    // Go type: time
+	    startedAt?: any;
+	    // Go type: time
+	    finishedAt?: any;
+
+	    static createFrom(source: any = {}) {
+	        return new ScanStatus(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.current = source["current"];
+	        this.total = source["total"];
+	        this.lastPath = source["lastPath"];
+	        this.error = source["error"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AssetPage {
+	    items: AssetDTO[];
+	    nextCursor?: string;
+	    total: number;
+	    isComplete: boolean;
+	    scan: ScanStatus;
+
+	    static createFrom(source: any = {}) {
+	        return new AssetPage(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], AssetDTO);
+	        this.nextCursor = source["nextCursor"];
+	        this.total = source["total"];
+	        this.isComplete = source["isComplete"];
+	        this.scan = this.convertValues(source["scan"], ScanStatus);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AssetQuery {
+	    cursor?: string;
+	    limit?: number;
+	    folder?: string;
+	    search?: string;
+	    availability?: string;
+	    favoritesOnly?: boolean;
+	    tagIds?: string[];
+	    collectionIds?: string[];
+	    ratingMin?: number;
+	    ratingMax?: number;
+	    colorLabels?: string[];
+	    formats?: string[];
+	    previewStatuses?: string[];
+	    capturedFromMs?: number;
+	    capturedToMs?: number;
+	    discoveredFromMs?: number;
+	    discoveredToMs?: number;
+	    cameraMakes?: string[];
+	    cameraModels?: string[];
+	    lensModels?: string[];
+	    isoMin?: number;
+	    isoMax?: number;
+	    apertureMin?: number;
+	    apertureMax?: number;
+	    focalLengthMin?: number;
+	    focalLengthMax?: number;
+	    orientation?: string;
+	    widthMin?: number;
+	    widthMax?: number;
+	    heightMin?: number;
+	    heightMax?: number;
+	    sort?: string;
+	    sortDirection?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new AssetQuery(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cursor = source["cursor"];
+	        this.limit = source["limit"];
+	        this.folder = source["folder"];
+	        this.search = source["search"];
+	        this.availability = source["availability"];
+	        this.favoritesOnly = source["favoritesOnly"];
+	        this.tagIds = source["tagIds"];
+	        this.collectionIds = source["collectionIds"];
+	        this.ratingMin = source["ratingMin"];
+	        this.ratingMax = source["ratingMax"];
+	        this.colorLabels = source["colorLabels"];
+	        this.formats = source["formats"];
+	        this.previewStatuses = source["previewStatuses"];
+	        this.capturedFromMs = source["capturedFromMs"];
+	        this.capturedToMs = source["capturedToMs"];
+	        this.discoveredFromMs = source["discoveredFromMs"];
+	        this.discoveredToMs = source["discoveredToMs"];
+	        this.cameraMakes = source["cameraMakes"];
+	        this.cameraModels = source["cameraModels"];
+	        this.lensModels = source["lensModels"];
+	        this.isoMin = source["isoMin"];
+	        this.isoMax = source["isoMax"];
+	        this.apertureMin = source["apertureMin"];
+	        this.apertureMax = source["apertureMax"];
+	        this.focalLengthMin = source["focalLengthMin"];
+	        this.focalLengthMax = source["focalLengthMax"];
+	        this.orientation = source["orientation"];
+	        this.widthMin = source["widthMin"];
+	        this.widthMax = source["widthMax"];
+	        this.heightMin = source["heightMin"];
+	        this.heightMax = source["heightMax"];
+	        this.sort = source["sort"];
+	        this.sortDirection = source["sortDirection"];
+	    }
+	}
+	export class BatchAssetOrganizationUpdate {
+	    assetIds: string[];
+	    rating?: number;
+	    colorLabel?: string;
+	    isFavorite?: boolean;
+	    addTagIds?: string[];
+	    removeTagIds?: string[];
+	    addCollectionIds?: string[];
+	    removeCollectionIds?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new BatchAssetOrganizationUpdate(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetIds = source["assetIds"];
+	        this.rating = source["rating"];
+	        this.colorLabel = source["colorLabel"];
+	        this.isFavorite = source["isFavorite"];
+	        this.addTagIds = source["addTagIds"];
+	        this.removeTagIds = source["removeTagIds"];
+	        this.addCollectionIds = source["addCollectionIds"];
+	        this.removeCollectionIds = source["removeCollectionIds"];
+	    }
+	}
+	export class CollectionDTO {
+	    id: string;
+	    groupId?: string;
+	    name: string;
+	    notes?: string;
+	    position: number;
+	    assetCount: number;
+
+	    static createFrom(source: any = {}) {
+	        return new CollectionDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.groupId = source["groupId"];
+	        this.name = source["name"];
+	        this.notes = source["notes"];
+	        this.position = source["position"];
+	        this.assetCount = source["assetCount"];
+	    }
+	}
+	export class CollectionGroupDTO {
+	    id: string;
+	    parentId?: string;
+	    name: string;
+	    position: number;
+
+	    static createFrom(source: any = {}) {
+	        return new CollectionGroupDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.parentId = source["parentId"];
+	        this.name = source["name"];
+	        this.position = source["position"];
+	    }
+	}
+
+	export class FolderDTO {
+	    id: string;
+	    parentId?: string;
+	    relativePath: string;
+	    name: string;
+	    assetCount: number;
+
+	    static createFrom(source: any = {}) {
+	        return new FolderDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.parentId = source["parentId"];
+	        this.relativePath = source["relativePath"];
+	        this.name = source["name"];
+	        this.assetCount = source["assetCount"];
+	    }
+	}
+	export class FolderDeletionPreview {
+	    relativePath: string;
+	    name: string;
+	    managedAssetCount: number;
+	    otherFileCount: number;
+	    directoryCount: number;
+	    totalBytes: number;
+
+	    static createFrom(source: any = {}) {
+	        return new FolderDeletionPreview(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relativePath = source["relativePath"];
+	        this.name = source["name"];
+	        this.managedAssetCount = source["managedAssetCount"];
+	        this.otherFileCount = source["otherFileCount"];
+	        this.directoryCount = source["directoryCount"];
+	        this.totalBytes = source["totalBytes"];
+	    }
+	}
+	export class FolderProperties {
+	    relativePath: string;
+	    name: string;
+	    photoCount: number;
+	    childCount: number;
+	    byteSize: number;
+	    // Go type: time
+	    modifiedAt: any;
+	    isRoot: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new FolderProperties(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.relativePath = source["relativePath"];
+	        this.name = source["name"];
+	        this.photoCount = source["photoCount"];
+	        this.childCount = source["childCount"];
+	        this.byteSize = source["byteSize"];
+	        this.modifiedAt = this.convertValues(source["modifiedAt"], null);
+	        this.isRoot = source["isRoot"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FolderTrashEntry {
+	    id: string;
+	    originalPath: string;
+	    name: string;
+	    managedAssetCount: number;
+	    otherFileCount: number;
+	    directoryCount: number;
+	    totalBytes: number;
+	    // Go type: time
+	    trashedAt: any;
+
+	    static createFrom(source: any = {}) {
+	        return new FolderTrashEntry(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.originalPath = source["originalPath"];
+	        this.name = source["name"];
+	        this.managedAssetCount = source["managedAssetCount"];
+	        this.otherFileCount = source["otherFileCount"];
+	        this.directoryCount = source["directoryCount"];
+	        this.totalBytes = source["totalBytes"];
+	        this.trashedAt = this.convertValues(source["trashedAt"], null);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ImportResult {
+	    source: string;
+	    destination?: string;
+	    assetId?: string;
+	    status: string;
+	    error?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ImportResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.destination = source["destination"];
+	        this.assetId = source["assetId"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
+	export class LibrarySnapshot {
+	    sessionId: string;
+	    libraryId: string;
+	    name: string;
+	    rootPath: string;
+	    state: string;
+	    assetCount: number;
+	    missingCount: number;
+	    trashCount: number;
+	    scan: ScanStatus;
+
+	    static createFrom(source: any = {}) {
+	        return new LibrarySnapshot(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.libraryId = source["libraryId"];
+	        this.name = source["name"];
+	        this.rootPath = source["rootPath"];
+	        this.state = source["state"];
+	        this.assetCount = source["assetCount"];
+	        this.missingCount = source["missingCount"];
+	        this.trashCount = source["trashCount"];
+	        this.scan = this.convertValues(source["scan"], ScanStatus);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LocalLibraryPreferences {
+	    importMode?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new LocalLibraryPreferences(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.importMode = source["importMode"];
+	    }
+	}
+
+
+	export class TrashResult {
+	    assetId: string;
+	    status: string;
+	    error?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new TrashResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetId = source["assetId"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
 export namespace services {
-	
+
 	export class LensDTO {
 	    id: string;
 	    name: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new LensDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -164,11 +810,11 @@ export namespace services {
 	export class CameraDTO {
 	    id: string;
 	    name: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CameraDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -213,11 +859,11 @@ export namespace services {
 	    photoType: string;
 	    filmRollId?: string;
 	    filmRollName?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PhotoDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -256,7 +902,7 @@ export namespace services {
 	        this.filmRollId = source["filmRollId"];
 	        this.filmRollName = source["filmRollName"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -289,11 +935,11 @@ export namespace services {
 	    // Go type: time
 	    updatedAt: any;
 	    photos?: PhotoDTO[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new AlbumDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -308,7 +954,7 @@ export namespace services {
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	        this.photos = this.convertValues(source["photos"], PhotoDTO);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -332,11 +978,11 @@ export namespace services {
 	    deleteOriginal: boolean;
 	    deleteThumbnail: boolean;
 	    force: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new BatchDeleteParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.photoIds = source["photoIds"];
@@ -349,11 +995,11 @@ export namespace services {
 	    success: number;
 	    failed: number;
 	    errors?: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new BatchResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.success = source["success"];
@@ -373,11 +1019,11 @@ export namespace services {
 	    createdAt: any;
 	    // Go type: time
 	    updatedAt: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new BlogDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -390,7 +1036,7 @@ export namespace services {
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -409,7 +1055,7 @@ export namespace services {
 		    return a;
 		}
 	}
-	
+
 	export class CommentDTO {
 	    id: string;
 	    photoId: string;
@@ -423,11 +1069,11 @@ export namespace services {
 	    createdAt: any;
 	    // Go type: time
 	    updatedAt: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CommentDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -441,7 +1087,7 @@ export namespace services {
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -467,11 +1113,11 @@ export namespace services {
 	    location?: string;
 	    isPublished: boolean;
 	    sortOrder: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CreateAlbumParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -489,11 +1135,11 @@ export namespace services {
 	    category: string;
 	    tags: string;
 	    isPublished: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CreateBlogParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -515,11 +1161,11 @@ export namespace services {
 	    shootDate?: any;
 	    // Go type: time
 	    endDate?: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CreateFilmRollParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -531,7 +1177,7 @@ export namespace services {
 	        this.shootDate = this.convertValues(source["shootDate"], null);
 	        this.endDate = this.convertValues(source["endDate"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -558,11 +1204,11 @@ export namespace services {
 	    featured: boolean;
 	    sortOrder: number;
 	    isActive: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CreateFriendParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -584,11 +1230,11 @@ export namespace services {
 	    coverCrop?: number[];
 	    // Go type: time
 	    storyDate?: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CreateStoryParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -600,7 +1246,7 @@ export namespace services {
 	        this.coverCrop = source["coverCrop"];
 	        this.storyDate = this.convertValues(source["storyDate"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -623,11 +1269,11 @@ export namespace services {
 	    deleteOriginal: boolean;
 	    deleteThumbnail: boolean;
 	    force: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DeletePhotoParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.deleteOriginal = source["deleteOriginal"];
@@ -641,11 +1287,11 @@ export namespace services {
 	    thumbnailUrl?: string;
 	    url?: string;
 	    createdAt?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DuplicateInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -658,17 +1304,17 @@ export namespace services {
 	export class DuplicateCheckResult {
 	    duplicates: Record<string, DuplicateInfo>;
 	    hasDuplicates: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DuplicateCheckResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.duplicates = this.convertValues(source["duplicates"], DuplicateInfo, true);
 	        this.hasDuplicates = source["hasDuplicates"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -687,16 +1333,16 @@ export namespace services {
 		    return a;
 		}
 	}
-	
+
 	export class EditorAiConversationCreateInput {
 	    scopeId: string;
 	    title?: string;
 	    systemPrompt?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiConversationCreateInput(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scopeId = source["scopeId"];
@@ -713,11 +1359,11 @@ export namespace services {
 	    systemPrompt?: string;
 	    createdAt: string;
 	    updatedAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiConversationDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -733,11 +1379,11 @@ export namespace services {
 	export class EditorAiConversationUpdateInput {
 	    title?: string;
 	    systemPrompt?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiConversationUpdateInput(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -755,11 +1401,11 @@ export namespace services {
 	    metadata?: any;
 	    error?: string;
 	    createdAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiMessageDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -784,11 +1430,11 @@ export namespace services {
 	    createdAt: string;
 	    updatedAt: string;
 	    messages: EditorAiMessageDTO[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiConversationWithMessagesDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -801,7 +1447,7 @@ export namespace services {
 	        this.updatedAt = source["updatedAt"];
 	        this.messages = this.convertValues(source["messages"], EditorAiMessageDTO);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -829,11 +1475,11 @@ export namespace services {
 	    action?: string;
 	    metadata?: number[];
 	    error?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiMessageAppendInput(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.conversationId = source["conversationId"];
@@ -846,7 +1492,7 @@ export namespace services {
 	        this.error = source["error"];
 	    }
 	}
-	
+
 	export class EditorAiMessageFinishInput {
 	    messageId: string;
 	    status: string;
@@ -854,11 +1500,11 @@ export namespace services {
 	    model?: string;
 	    metadata?: number[];
 	    error?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiMessageFinishInput(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.messageId = source["messageId"];
@@ -872,11 +1518,11 @@ export namespace services {
 	export class EditorAiTaskStateUpdateInput {
 	    messageId: string;
 	    state: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new EditorAiTaskStateUpdateInput(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.messageId = source["messageId"];
@@ -891,11 +1537,11 @@ export namespace services {
 	    // Go type: time
 	    createdAt: any;
 	    photo?: PhotoDTO;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FilmPhotoDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -905,7 +1551,7 @@ export namespace services {
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.photo = this.convertValues(source["photo"], PhotoDTO);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -942,11 +1588,11 @@ export namespace services {
 	    // Go type: time
 	    updatedAt: any;
 	    filmPhotos?: FilmPhotoDTO[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FilmRollDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -963,7 +1609,7 @@ export namespace services {
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	        this.filmPhotos = this.convertValues(source["filmPhotos"], FilmPhotoDTO);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -984,11 +1630,11 @@ export namespace services {
 	}
 	export class FixMissingPhotosResult {
 	    deleted: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FixMissingPhotosResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.deleted = source["deleted"];
@@ -1007,11 +1653,11 @@ export namespace services {
 	    createdAt: any;
 	    // Go type: time
 	    updatedAt: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FriendDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1025,7 +1671,7 @@ export namespace services {
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1044,15 +1690,15 @@ export namespace services {
 		    return a;
 		}
 	}
-	
+
 	export class LinuxDoAuthUrlDTO {
 	    url: string;
 	    state: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new LinuxDoAuthUrlDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.url = source["url"];
@@ -1063,11 +1709,11 @@ export namespace services {
 	    username: string;
 	    avatarUrl?: string;
 	    trustLevel?: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new LinuxDoBindingDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.username = source["username"];
@@ -1080,11 +1726,11 @@ export namespace services {
 	    photoId: string;
 	    page: number;
 	    limit: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ListCommentsParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
@@ -1108,11 +1754,11 @@ export namespace services {
 	    page: number;
 	    pageSize: number;
 	    all: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ListPhotosParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.category = source["category"];
@@ -1140,11 +1786,11 @@ export namespace services {
 	    action: string;
 	    message: string;
 	    details?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new LogEntry(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1155,7 +1801,7 @@ export namespace services {
 	        this.message = source["message"];
 	        this.details = source["details"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1179,11 +1825,11 @@ export namespace services {
 	    username: string;
 	    isAdmin: boolean;
 	    avatarUrl?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UserInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1196,18 +1842,18 @@ export namespace services {
 	    token: string;
 	    user: UserInfo;
 	    server: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new LoginResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.token = source["token"];
 	        this.user = this.convertValues(source["user"], UserInfo);
 	        this.server = source["server"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1231,11 +1877,11 @@ export namespace services {
 	    title: string;
 	    createdAt: string;
 	    isPublished: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new RecentBlogDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1249,11 +1895,11 @@ export namespace services {
 	    title: string;
 	    createdAt: string;
 	    isPublished: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new RecentStoryDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1268,11 +1914,11 @@ export namespace services {
 	    url: string;
 	    thumbnailUrl?: string;
 	    createdAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new RecentPhotoDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1312,11 +1958,11 @@ export namespace services {
 	    recentBlogs: RecentBlogDTO[];
 	    photosThisMonth: number;
 	    photosThisYear: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new OverviewDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.photoCount = source["photoCount"];
@@ -1349,7 +1995,7 @@ export namespace services {
 	        this.photosThisMonth = source["photosThisMonth"];
 	        this.photosThisYear = source["photosThisYear"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1374,11 +2020,11 @@ export namespace services {
 	    pageSize: number;
 	    totalPages: number;
 	    hasMore: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PaginationMeta(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.total = source["total"];
@@ -1391,17 +2037,17 @@ export namespace services {
 	export class PaginatedResponse_mo_gallery_desktop_services_CommentDTO_ {
 	    data: CommentDTO[];
 	    meta: PaginationMeta;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PaginatedResponse_mo_gallery_desktop_services_CommentDTO_(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.data = this.convertValues(source["data"], CommentDTO);
 	        this.meta = this.convertValues(source["meta"], PaginationMeta);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1423,17 +2069,17 @@ export namespace services {
 	export class PaginatedResponse_mo_gallery_desktop_services_PhotoDTO_ {
 	    data: PhotoDTO[];
 	    meta: PaginationMeta;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PaginatedResponse_mo_gallery_desktop_services_PhotoDTO_(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.data = this.convertValues(source["data"], PhotoDTO);
 	        this.meta = this.convertValues(source["meta"], PaginationMeta);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1452,22 +2098,24 @@ export namespace services {
 		    return a;
 		}
 	}
-	
-	
+
+
 	export class PreparedFile {
+	    assetId?: string;
 	    filePath: string;
 	    fileName: string;
 	    fileSize: number;
 	    hash: string;
 	    exif?: image.ExifData;
 	    error?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PreparedFile(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetId = source["assetId"];
 	        this.filePath = source["filePath"];
 	        this.fileName = source["fileName"];
 	        this.fileSize = source["fileSize"];
@@ -1475,7 +2123,7 @@ export namespace services {
 	        this.exif = this.convertValues(source["exif"], image.ExifData);
 	        this.error = source["error"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1494,18 +2142,18 @@ export namespace services {
 		    return a;
 		}
 	}
-	
-	
-	
+
+
+
 	export class StorageCleanupResult {
 	    deleted: number;
 	    failed: number;
 	    errors: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StorageCleanupResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.deleted = source["deleted"];
@@ -1523,11 +2171,11 @@ export namespace services {
 	    photoTitle?: string;
 	    missingType?: string;
 	    hasThumb?: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StorageFileDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -1545,11 +2193,11 @@ export namespace services {
 	    provider: string;
 	    status?: string;
 	    search?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StorageScanParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.provider = source["provider"];
@@ -1564,11 +2212,11 @@ export namespace services {
 	    missing: number;
 	    missingOriginal: number;
 	    missingThumbnail: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StorageScanStats(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.total = source["total"];
@@ -1582,17 +2230,17 @@ export namespace services {
 	export class StorageScanResult {
 	    files: StorageFileDTO[];
 	    stats: StorageScanStats;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StorageScanResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.files = this.convertValues(source["files"], StorageFileDTO);
 	        this.stats = this.convertValues(source["stats"], StorageScanStats);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1611,7 +2259,7 @@ export namespace services {
 		    return a;
 		}
 	}
-	
+
 	export class StoryAiModelOption {
 	    id: string;
 	    label: string;
@@ -1622,11 +2270,11 @@ export namespace services {
 	    tools: boolean;
 	    structuredOutput: boolean;
 	    contextWindow: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StoryAiModelOption(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1644,18 +2292,18 @@ export namespace services {
 	    defaultModel: string;
 	    defaultImageModel?: string;
 	    models: StoryAiModelOption[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StoryAiModelsResponseDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.defaultModel = source["defaultModel"];
 	        this.defaultImageModel = source["defaultImageModel"];
 	        this.models = this.convertValues(source["models"], StoryAiModelOption);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1689,11 +2337,11 @@ export namespace services {
 	    // Go type: time
 	    updatedAt: any;
 	    photos?: PhotoDTO[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StoryDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1708,7 +2356,7 @@ export namespace services {
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	        this.photos = this.convertValues(source["photos"], PhotoDTO);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1734,11 +2382,11 @@ export namespace services {
 	    location?: string;
 	    isPublished?: boolean;
 	    sortOrder?: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateAlbumParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -1756,11 +2404,11 @@ export namespace services {
 	    category?: string;
 	    tags?: string;
 	    isPublished?: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateBlogParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -1782,11 +2430,11 @@ export namespace services {
 	    shootDate?: any;
 	    // Go type: time
 	    endDate?: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateFilmRollParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -1798,7 +2446,7 @@ export namespace services {
 	        this.shootDate = this.convertValues(source["shootDate"], null);
 	        this.endDate = this.convertValues(source["endDate"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1825,11 +2473,11 @@ export namespace services {
 	    featured?: boolean;
 	    sortOrder?: number;
 	    isActive?: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateFriendParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -1848,11 +2496,11 @@ export namespace services {
 	    // Go type: time
 	    takenAt?: any;
 	    category?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdatePhotoParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -1861,7 +2509,7 @@ export namespace services {
 	        this.takenAt = this.convertValues(source["takenAt"], null);
 	        this.category = source["category"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1889,11 +2537,11 @@ export namespace services {
 	    coverCrop?: number[];
 	    // Go type: time
 	    storyDate?: any;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateStoryParams(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -1904,7 +2552,7 @@ export namespace services {
 	        this.coverCrop = source["coverCrop"];
 	        this.storyDate = this.convertValues(source["storyDate"], null);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1930,11 +2578,11 @@ export namespace services {
 	    error?: string;
 	    isDuplicate?: boolean;
 	    existing?: DuplicateInfo;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UploadResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.filePath = source["filePath"];
@@ -1944,7 +2592,7 @@ export namespace services {
 	        this.isDuplicate = source["isDuplicate"];
 	        this.existing = this.convertValues(source["existing"], DuplicateInfo);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1976,11 +2624,11 @@ export namespace services {
 	    stripGPS: boolean;
 	    filmRollId: string;
 	    originFlag: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UploadSettings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -1997,16 +2645,16 @@ export namespace services {
 	        this.originFlag = source["originFlag"];
 	    }
 	}
-	
+
 	export class ZineCJKFontInfo {
 	    found: boolean;
 	    path: string;
 	    postscriptName: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ZineCJKFontInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.found = source["found"];
@@ -2018,7 +2666,7 @@ export namespace services {
 }
 
 export namespace types {
-	
+
 	export class StorageSourceDTO {
 	    id: string;
 	    name: string;
@@ -2032,11 +2680,11 @@ export namespace types {
 	    basePath?: string;
 	    branch?: string;
 	    accessMethod?: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StorageSourceDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];

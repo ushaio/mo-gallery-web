@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/db"
@@ -48,19 +49,33 @@ func main() {
 
 	// 启动 Wails 应用
 	err = wails.Run(&options.App{
-		Title:  "MO Gallery Desktop",
-		Width:  1440,
-		Height: 900,
-		MinWidth: 1024,
+		Title:     "MO Gallery Desktop",
+		Width:     1440,
+		Height:    900,
+		MinWidth:  1024,
 		MinHeight: 700,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
-			// /__zine/* 同源动态资源：PDF 导出用的系统中文字体与远程图片代理
-			Handler: services.NewZineAssetHandler(app.Proxy),
+			Handler: services.NewDesktopAssetHandler(
+				services.NewZineAssetHandler(app.Proxy),
+				app.LocalLibrary.AssetHandler(),
+			),
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+		// Keep production WebView free from browser chrome such as its native right-click menu.
+		// Feature-specific application context menus continue to work in the frontend.
+		EnableDefaultContextMenu: false,
+		OnStartup:                app.startup,
+		OnShutdown:               app.shutdown,
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "mo-gallery-desktop-single-instance-v1",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx != nil {
+					runtime.WindowShow(app.ctx)
+					runtime.WindowUnminimise(app.ctx)
+				}
+			},
+		},
 		DragAndDrop: &options.DragAndDrop{
 			EnableFileDrop: true,
 		},
@@ -70,6 +85,9 @@ func main() {
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
+			// Prevent Ctrl+wheel/keyboard zoom and touch pinch zoom from making the app feel like a browser.
+			IsZoomControlEnabled: false,
+			DisablePinchZoom:     true,
 			Theme:                windows.SystemDefault,
 		},
 	})
