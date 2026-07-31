@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
 	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
@@ -230,6 +230,30 @@ func (s *store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_collection_assets_asset_collection ON collection_assets(asset_id, collection_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_collection_groups_parent_position ON collection_groups(parent_id, position, name COLLATE NOCASE)`,
 		`CREATE INDEX IF NOT EXISTS idx_collections_group_position ON collections(group_id, position, name COLLATE NOCASE)`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS asset_search USING fts5(
+            asset_id UNINDEXED, file_name, relative_path, display_title, notes, tags, collections, camera,
+            tokenize='unicode61'
+        )`,
+		`CREATE VIEW IF NOT EXISTS asset_search_source AS
+        SELECT a.id AS asset_id,a.file_name,a.relative_path,a.display_title,a.notes,
+            COALESCE((SELECT group_concat(t.name, ' ') FROM asset_tags at JOIN tags t ON t.id=at.tag_id WHERE at.asset_id=a.id), '') AS tags,
+            COALESCE((SELECT group_concat(c.name, ' ') FROM collection_assets ca JOIN collections c ON c.id=ca.collection_id WHERE ca.asset_id=a.id), '') AS collections,
+            trim(COALESCE(e.camera_make,'') || ' ' || COALESCE(e.camera_model,'') || ' ' || COALESCE(e.lens_model,'')) AS camera
+        FROM assets a LEFT JOIN exif_metadata e ON e.asset_id=a.id`,
+		assetSearchTrigger("asset_search_assets_insert", "AFTER INSERT ON assets", "NEW.id"),
+		assetSearchTrigger("asset_search_assets_update", "AFTER UPDATE OF file_name,relative_path,display_title,notes ON assets", "NEW.id"),
+		`CREATE TRIGGER IF NOT EXISTS asset_search_assets_delete AFTER DELETE ON assets BEGIN
+            DELETE FROM asset_search WHERE asset_id=OLD.id;
+        END`,
+		assetSearchTrigger("asset_search_exif_insert", "AFTER INSERT ON exif_metadata", "NEW.asset_id"),
+		assetSearchTrigger("asset_search_exif_update", "AFTER UPDATE OF camera_make,camera_model,lens_model ON exif_metadata", "NEW.asset_id"),
+		assetSearchTrigger("asset_search_exif_delete", "AFTER DELETE ON exif_metadata", "OLD.asset_id"),
+		assetSearchTrigger("asset_search_asset_tags_insert", "AFTER INSERT ON asset_tags", "NEW.asset_id"),
+		assetSearchTrigger("asset_search_asset_tags_delete", "AFTER DELETE ON asset_tags", "OLD.asset_id"),
+		assetSearchRelatedTrigger("asset_search_tags_update", "AFTER UPDATE OF name ON tags", "asset_tags", "tag_id", "NEW.id"),
+		assetSearchTrigger("asset_search_collection_assets_insert", "AFTER INSERT ON collection_assets", "NEW.asset_id"),
+		assetSearchTrigger("asset_search_collection_assets_delete", "AFTER DELETE ON collection_assets", "OLD.asset_id"),
+		assetSearchRelatedTrigger("asset_search_collections_update", "AFTER UPDATE OF name ON collections", "collection_assets", "collection_id", "NEW.id"),
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -259,10 +283,33 @@ func (s *store) migrate() error {
 	if _, err := tx.Exec(`UPDATE trash_entries SET entry_kind='asset',managed_asset_count=1 WHERE entry_kind IS NULL OR entry_kind=''`); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`INSERT INTO asset_search(asset_id,file_name,relative_path,display_title,notes,tags,collections,camera)
+        SELECT asset_id,file_name,relative_path,display_title,notes,tags,collections,camera FROM asset_search_source source
+        WHERE NOT EXISTS (SELECT 1 FROM asset_search search WHERE search.asset_id=source.asset_id)`); err != nil {
+		return fmt.Errorf("migrate local library search index: %w", err)
+	}
 	if _, err := tx.Exec(`INSERT INTO library_meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(currentSchemaVersion)); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func assetSearchTrigger(name, event, assetID string) string {
+	return fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %s %s BEGIN
+        DELETE FROM asset_search WHERE asset_id=%s;
+        INSERT INTO asset_search(asset_id,file_name,relative_path,display_title,notes,tags,collections,camera)
+            SELECT asset_id,file_name,relative_path,display_title,notes,tags,collections,camera
+            FROM asset_search_source WHERE asset_id=%s;
+    END`, name, event, assetID, assetID)
+}
+
+func assetSearchRelatedTrigger(name, event, relation, foreignKey, relatedID string) string {
+	return fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %s %s BEGIN
+        DELETE FROM asset_search WHERE asset_id IN (SELECT asset_id FROM %s WHERE %s=%s);
+        INSERT INTO asset_search(asset_id,file_name,relative_path,display_title,notes,tags,collections,camera)
+            SELECT source.asset_id,source.file_name,source.relative_path,source.display_title,source.notes,source.tags,source.collections,source.camera
+            FROM asset_search_source source JOIN %s relation ON relation.asset_id=source.asset_id WHERE relation.%s=%s;
+    END`, name, event, relation, foreignKey, relatedID, relation, foreignKey, relatedID)
 }
 
 func unixMillis(t time.Time) int64 { return t.UTC().UnixMilli() }
@@ -513,14 +560,9 @@ func appendInFilter(where *[]string, args *[]any, expression string, values []st
 func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, error) {
 	where := []string{"a.availability=?"}
 	args := []any{availability}
-	if query.Search != "" {
-		where = append(where, `(a.file_name LIKE ? ESCAPE '\' OR a.relative_path LIKE ? ESCAPE '\' OR a.display_title LIKE ? ESCAPE '\' OR a.notes LIKE ? ESCAPE '\'
-			OR EXISTS (SELECT 1 FROM asset_tags sat JOIN tags st ON st.id=sat.tag_id WHERE sat.asset_id=a.id AND st.name LIKE ? ESCAPE '\')
-			OR EXISTS (SELECT 1 FROM collection_assets sca JOIN collections sc ON sc.id=sca.collection_id WHERE sca.asset_id=a.id AND sc.name LIKE ? ESCAPE '\')
-			OR COALESCE(e.camera_make,'') LIKE ? ESCAPE '\' OR COALESCE(e.camera_model,'') LIKE ? ESCAPE '\' OR COALESCE(e.lens_model,'') LIKE ? ESCAPE '\')`)
-		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(query.Search)
-		like := "%" + escaped + "%"
-		args = append(args, like, like, like, like, like, like, like, like, like)
+	if search := buildAssetSearchQuery(query.Search); search != "" {
+		where = append(where, `EXISTS (SELECT 1 FROM asset_search search WHERE search.asset_id=a.id AND asset_search MATCH ?)`)
+		args = append(args, search)
 	}
 	if query.Folder != "" {
 		_, folderKey, err := normalizeRelative(query.Folder)
@@ -634,6 +676,17 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 		args = append(args, *query.HeightMax)
 	}
 	return where, args, nil
+}
+
+func buildAssetSearchQuery(value string) string {
+	terms := strings.Fields(strings.TrimSpace(value))
+	if len(terms) == 0 {
+		return ""
+	}
+	for index, term := range terms {
+		terms[index] = `"` + strings.ReplaceAll(term, `"`, `""`) + `"*`
+	}
+	return strings.Join(terms, " ")
 }
 
 func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID string, scan ScanStatus) (AssetPage, error) {
