@@ -59,6 +59,8 @@ public/uploads
 /.workbuddy/
 /outputs/
 /_tmp_*
+/.aeroric/
+/.tmp-overview-*.tsx
 
 # kilo / kilocode tooling
 .kilo
