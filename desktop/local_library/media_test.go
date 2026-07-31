@@ -216,33 +216,7 @@ func firstDerivativeMatch(t *testing.T, root string, id AssetID, variant derivat
 }
 
 func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
-	root := t.TempDir()
-	if err := prepareLibraryStructure(root); err != nil {
-		t.Fatal(err)
-	}
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(internalPath(root, "library.db")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`CREATE TABLE library_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        INSERT INTO library_meta(key,value) VALUES('schema_version','2');
-        CREATE TABLE assets (
-            id TEXT PRIMARY KEY, folder_id TEXT, relative_path TEXT NOT NULL, path_key TEXT NOT NULL UNIQUE, file_name TEXT NOT NULL,
-            extension TEXT NOT NULL, format TEXT NOT NULL, mime_type TEXT NOT NULL, media_kind TEXT NOT NULL DEFAULT 'image',
-            byte_size INTEGER NOT NULL, modified_at_ns INTEGER NOT NULL, width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
-            orientation INTEGER NOT NULL DEFAULT 1, is_animated INTEGER NOT NULL DEFAULT 0, frame_count INTEGER NOT NULL DEFAULT 1,
-            availability TEXT NOT NULL DEFAULT 'active', preview_status TEXT NOT NULL DEFAULT 'pending', metadata_status TEXT NOT NULL DEFAULT 'pending',
-            display_title TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', rating INTEGER NOT NULL DEFAULT 0, color_label TEXT NOT NULL DEFAULT '',
-            is_favorite INTEGER NOT NULL DEFAULT 0, captured_at INTEGER, discovered_at INTEGER NOT NULL, technical_updated_at INTEGER NOT NULL,
-            scan_token TEXT NOT NULL DEFAULT '', trash_entry_id TEXT
-        )`)
-	if err != nil {
-		_ = db.Close()
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
+	root := createVersionTwoTestDatabase(t)
 	store, err := openStore(root)
 	if err != nil {
 		t.Fatal(err)
@@ -278,6 +252,38 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='exif_metadata'`).Scan(&table); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func createVersionTwoTestDatabase(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := prepareLibraryStructure(root); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(internalPath(root, "library.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE library_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO library_meta(key,value) VALUES('schema_version','2');
+        CREATE TABLE assets (
+            id TEXT PRIMARY KEY, folder_id TEXT, relative_path TEXT NOT NULL, path_key TEXT NOT NULL UNIQUE, file_name TEXT NOT NULL,
+            extension TEXT NOT NULL, format TEXT NOT NULL, mime_type TEXT NOT NULL, media_kind TEXT NOT NULL DEFAULT 'image',
+            byte_size INTEGER NOT NULL, modified_at_ns INTEGER NOT NULL, width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
+            orientation INTEGER NOT NULL DEFAULT 1, is_animated INTEGER NOT NULL DEFAULT 0, frame_count INTEGER NOT NULL DEFAULT 1,
+            availability TEXT NOT NULL DEFAULT 'active', preview_status TEXT NOT NULL DEFAULT 'pending', metadata_status TEXT NOT NULL DEFAULT 'pending',
+            display_title TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', rating INTEGER NOT NULL DEFAULT 0, color_label TEXT NOT NULL DEFAULT '',
+            is_favorite INTEGER NOT NULL DEFAULT 0, captured_at INTEGER, discovered_at INTEGER NOT NULL, technical_updated_at INTEGER NOT NULL,
+            scan_token TEXT NOT NULL DEFAULT '', trash_entry_id TEXT
+        )`)
+	if err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func writeTestJPEGWithEXIF(t *testing.T, path string) {

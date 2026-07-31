@@ -193,6 +193,42 @@ func resolveBackupPath(root, id string) (string, error) {
 	return path, nil
 }
 
+func latestBackupByKind(root, kind string) (BackupInfo, error) {
+	items, err := listBackupFiles(root)
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	for _, item := range items {
+		if item.Kind == kind {
+			return item, nil
+		}
+	}
+	return BackupInfo{}, newError(ErrBackupNotFound, "backup file not found", map[string]any{"kind": kind})
+}
+
+func restoreLatestBackupFile(root, kind, databasePath string) error {
+	backup, err := latestBackupByKind(root, kind)
+	if err != nil {
+		return err
+	}
+	backupPath := filepath.Join(backupDirectory(root), backup.ID)
+	if err := checkSQLiteIntegrity(backupPath, true); err != nil {
+		return err
+	}
+	temporaryPath := databasePath + ".migration-rollback-" + newID() + ".tmp"
+	_ = os.Remove(temporaryPath)
+	if err := copyFile(backupPath, temporaryPath); err != nil {
+		return err
+	}
+	defer os.Remove(temporaryPath)
+	_ = os.Remove(databasePath + "-wal")
+	_ = os.Remove(databasePath + "-shm")
+	if err := os.Remove(databasePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.Rename(temporaryPath, databasePath)
+}
+
 func createBackupFile(ctx context.Context, root, kind string, db *sql.DB) (BackupInfo, error) {
 	now := time.Now().UTC()
 	name := backupFileName(kind, now)
@@ -243,22 +279,71 @@ func pruneBackups(root, kind string, keep int) error {
 	return nil
 }
 
-func hasDailyBackupForDate(root string, date time.Time) (bool, error) {
+func hasDailyBackupSince(root string, since time.Time) (bool, error) {
 	items, err := listBackupFiles(root)
 	if err != nil {
 		return false, err
 	}
-	year, month, day := date.Local().Date()
 	for _, item := range items {
-		if item.Kind != BackupKindDaily {
-			continue
-		}
-		itemYear, itemMonth, itemDay := item.CreatedAt.Local().Date()
-		if year == itemYear && month == itemMonth && day == itemDay {
+		if item.Kind == BackupKindDaily && !item.CreatedAt.Before(since) {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func (m *Manager) scheduleDailyBackup(session *librarySession) {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	if session.dailyBackupRunning || session.state != "open" || session.ctx.Err() != nil {
+		session.mu.Unlock()
+		return
+	}
+	session.dailyBackupRunning = true
+	session.mu.Unlock()
+
+	go m.runDailyBackup(session)
+}
+
+func (m *Manager) runDailyBackup(session *librarySession) {
+	defer func() {
+		session.mu.Lock()
+		session.dailyBackupRunning = false
+		session.mu.Unlock()
+	}()
+
+	m.backupMu.Lock()
+	defer m.backupMu.Unlock()
+
+	m.mu.RLock()
+	current := m.current
+	m.mu.RUnlock()
+	if current != session {
+		return
+	}
+	session.mu.RLock()
+	available := session.state == "open" && session.ctx.Err() == nil
+	session.mu.RUnlock()
+	if !available {
+		return
+	}
+	exists, err := hasDailyBackupSince(session.root, session.openedAt)
+	if err == nil && exists {
+		return
+	}
+	if err == nil {
+		_, err = createBackupFile(context.Background(), session.root, BackupKindDaily, session.store.db)
+	}
+	if err == nil {
+		err = pruneBackups(session.root, BackupKindDaily, dailyBackupRetention)
+	}
+	if err != nil {
+		m.emitSessionEvent(session, "daily_backup_failed")
+		return
+	}
+	m.emitSessionEvent(session, "daily_backup_completed")
 }
 
 func copyFile(source, destination string) error {

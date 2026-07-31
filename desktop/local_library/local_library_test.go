@@ -1019,7 +1019,7 @@ func TestRecheckMissingAssetsRestoresSameRecordAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := session.store.markUnseenMissing(context.Background(), newID()); err != nil {
+	if _, err := session.store.markUnseenMissing(context.Background(), newID()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1068,7 +1068,7 @@ func TestRemoveMissingAssetsOnlyRemovesStaleIndexAndCaches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := session.store.markUnseenMissing(context.Background(), newID()); err != nil {
+	if _, err := session.store.markUnseenMissing(context.Background(), newID()); err != nil {
 		t.Fatal(err)
 	}
 	thumbnail := internalPath(root, "thumbnails", string(id)+".jpg")
@@ -1113,7 +1113,7 @@ func TestRemoveMissingAssetsRejectsReturnedAndNonMissingFiles(t *testing.T) {
 	if err := os.Remove(returnedPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.store.markUnseenMissing(context.Background(), newID()); err != nil {
+	if _, err := session.store.markUnseenMissing(context.Background(), newID()); err != nil {
 		t.Fatal(err)
 	}
 	session.ignoreWatcherPath(returnedPath, time.Minute)
@@ -1188,7 +1188,7 @@ func TestOperationReconcileUsesRunningScanToken(t *testing.T) {
 	if id == "" || missing {
 		t.Fatalf("id=%q missing=%v", id, missing)
 	}
-	if err := session.store.markUnseenMissing(context.Background(), scanToken); err != nil {
+	if _, err := session.store.markUnseenMissing(context.Background(), scanToken); err != nil {
 		t.Fatal(err)
 	}
 	_, _, status, err := session.store.assetPath(context.Background(), id)

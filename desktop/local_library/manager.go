@@ -22,6 +22,7 @@ type librarySession struct {
 	store               *store
 	lock                *libraryLock
 	sessionID           string
+	openedAt            time.Time
 	mu                  sync.RWMutex
 	state               string
 	scan                ScanStatus
@@ -219,6 +220,7 @@ func (m *Manager) newLibrarySession(root string, manifest Manifest, database *st
 		store:               database,
 		lock:                lock,
 		sessionID:           newID(),
+		openedAt:            time.Now().UTC(),
 		state:               "open",
 		scan:                ScanStatus{State: "idle"},
 		ignoredWatcherPaths: make(map[string]time.Time),
@@ -493,6 +495,7 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 	m.folderMutationMu.Lock()
 	defer m.folderMutationMu.Unlock()
 	var count int64
+	changed := false
 	lastEvent := time.Now()
 	err := filepath.WalkDir(session.root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -540,6 +543,7 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 			return err
 		}
 		count++
+		changed = changed || reconciled.Created
 		if reconciled.NeedsPreview {
 			m.queueThumbnail(session, reconciled.AssetID)
 		}
@@ -596,7 +600,7 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 		m.handleLibraryProbeFailure(session, probe, probeErr)
 		return
 	}
-	markErr := session.store.markUnseenMissing(session.ctx, token)
+	markedMissing, markErr := session.store.markUnseenMissing(session.ctx, token)
 	if markErr != nil {
 		session.scan.State = "failed"
 		session.scan.Error = markErr.Error()
@@ -604,6 +608,7 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 		m.emitSessionEvent(session, "scan_failed")
 		return
 	}
+	changed = changed || markedMissing
 	now := time.Now().UTC()
 	session.state = "open"
 	session.scan.State = "completed"
@@ -619,6 +624,9 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 		session.mu.Unlock()
 	}
 	m.emitSessionEvent(session, "scan_completed")
+	if changed {
+		m.scheduleDailyBackup(session)
+	}
 
 }
 
@@ -631,6 +639,9 @@ func (m *Manager) emitEvent(kind string) {
 }
 
 func (m *Manager) emitSessionEvent(session *librarySession, kind string) {
+	if triggersDailyBackup(kind) {
+		m.scheduleDailyBackup(session)
+	}
 	if m.emit == nil || session == nil {
 		return
 	}
@@ -645,6 +656,18 @@ func (m *Manager) emitSessionEvent(session *librarySession, kind string) {
 	sessionID := session.sessionID
 	session.mu.RUnlock()
 	m.emit(LocalLibraryEvent{SessionID: sessionID, Kind: kind, State: &state})
+}
+
+func triggersDailyBackup(kind string) bool {
+	switch kind {
+	case "asset_updated", "organization_updated", "assets_imported", "assets_trashed",
+		"assets_permanently_deleted", "asset_restored", "missing_assets_removed",
+		"asset_renamed", "assets_moved", "folder_created", "folder_moved",
+		"folder_trashed", "folder_restored", "folder_permanently_deleted":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) emitPreviewStatus(session *librarySession, id AssetID, status string) {
@@ -990,6 +1013,7 @@ func (m *Manager) startWatcher(session *librarySession) error {
 				return
 			}
 			operationID := newID()
+			changed := false
 			for relative := range pendingPaths {
 				delete(pendingPaths, relative)
 				reconciled, reconcileErr := m.reconcilePath(
@@ -1015,6 +1039,7 @@ func (m *Manager) startWatcher(session *librarySession) error {
 				if reconciled.NeedsPreview {
 					m.queueThumbnail(session, reconciled.AssetID)
 				}
+				changed = changed || reconciled.Created || reconciled.Missing
 			}
 			if needsFullScan {
 				needsFullScan = false
@@ -1023,6 +1048,9 @@ func (m *Manager) startWatcher(session *librarySession) error {
 				return
 			}
 			m.emitSessionEvent(session, "library_reconciled")
+			if changed {
+				m.scheduleDailyBackup(session)
+			}
 		}
 
 		for {

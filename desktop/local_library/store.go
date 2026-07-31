@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,13 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+const currentSchemaVersion = 5
+
+var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
+	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
+	return err
+}
 
 type store struct {
 	db       *sql.DB
@@ -44,6 +52,10 @@ type indexedFile struct {
 }
 
 func openStore(root string) (*store, error) {
+	return openStoreWithMigration(root, nil)
+}
+
+func openStoreWithMigration(root string, migrateStore func(*store) error) (*store, error) {
 	dbPath := internalPath(root, "library.db")
 	dsn := "file:" + filepath.ToSlash(dbPath) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
@@ -56,12 +68,67 @@ func openStore(root string) (*store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &store{db: db}
-	if err := s.migrate(); err != nil {
+	needsMigration, err := databaseNeedsMigration(db)
+	if err != nil {
 		db.Close()
 		return nil, err
 	}
+	if needsMigration {
+		if err := createUpgradeBackup(context.Background(), root, db); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("create pre-upgrade backup: %w", err)
+		}
+		if err := pruneBackups(root, BackupKindUpgrade, upgradeBackupRetention); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("prune pre-upgrade backups: %w", err)
+		}
+	}
+	s := &store{db: db}
+	if migrateStore == nil {
+		migrateStore = func(store *store) error { return store.migrate() }
+	}
+	if err := migrateStore(s); err != nil {
+		db.Close()
+		if needsMigration {
+			if restoreErr := restoreLatestBackupFile(root, BackupKindUpgrade, dbPath); restoreErr != nil {
+				return nil, fmt.Errorf("migrate local library: %v; restore pre-upgrade backup: %w", err, restoreErr)
+			}
+		}
+		return nil, err
+	}
 	return s, nil
+}
+
+func databaseNeedsMigration(db *sql.DB) (bool, error) {
+	var userTableCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`).Scan(&userTableCount); err != nil {
+		return false, err
+	}
+	if userTableCount == 0 {
+		return false, nil
+	}
+	var hasMetaTable int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='library_meta'`).Scan(&hasMetaTable); err != nil {
+		return false, err
+	}
+	if hasMetaTable == 0 {
+		return true, nil
+	}
+	var rawVersion string
+	if err := db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&rawVersion); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil
+		}
+		return false, err
+	}
+	version, err := strconv.Atoi(rawVersion)
+	if err != nil || version < 0 {
+		return false, fmt.Errorf("invalid local library schema version %q", rawVersion)
+	}
+	if version > currentSchemaVersion {
+		return false, fmt.Errorf("local library schema version %d is newer than supported version %d", version, currentSchemaVersion)
+	}
+	return version < currentSchemaVersion, nil
 }
 
 func (s *store) Close() error { return s.db.Close() }
@@ -192,7 +259,7 @@ func (s *store) migrate() error {
 	if _, err := tx.Exec(`UPDATE trash_entries SET entry_kind='asset',managed_asset_count=1 WHERE entry_kind IS NULL OR entry_kind=''`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT INTO library_meta(key,value) VALUES('schema_version','5') ON CONFLICT(key) DO UPDATE SET value=excluded.value`); err != nil {
+	if _, err := tx.Exec(`INSERT INTO library_meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(currentSchemaVersion)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -354,9 +421,13 @@ func (s *store) markAssetMissingPath(ctx context.Context, pathKey string) (Asset
 	return AssetID(id), true, nil
 }
 
-func (s *store) markUnseenMissing(ctx context.Context, token string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE assets SET availability='missing',technical_updated_at=? WHERE availability='active' AND scan_token<>?`, time.Now().UnixMilli(), token)
-	return err
+func (s *store) markUnseenMissing(ctx context.Context, token string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE assets SET availability='missing',technical_updated_at=? WHERE availability='active' AND scan_token<>?`, time.Now().UnixMilli(), token)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	return changed > 0, err
 }
 
 func (s *store) counts(ctx context.Context) (active, missing, trashed int64, err error) {
