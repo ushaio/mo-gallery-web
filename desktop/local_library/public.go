@@ -1,6 +1,7 @@
 package local_library
 
 import (
+	"errors"
 	"os"
 )
 
@@ -52,6 +53,28 @@ func (m *Manager) OriginalPath(id AssetID) (string, error) {
 	m.assetFileMutationMu.RLock()
 	defer m.assetFileMutationMu.RUnlock()
 	return m.originalPathUnlocked(id)
+}
+
+func (m *Manager) FolderPath(relative string) (string, error) {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return "", err
+	}
+	path, err := resolveWithinRoot(session.root, relative)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", newError(ErrInvalidPath, "文件夹不存在", map[string]any{"path": relative})
+	}
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", newError(ErrInvalidPath, "目标不是文件夹", map[string]any{"path": relative})
+	}
+	return path, nil
 }
 
 // WithOriginalPaths prevents application-managed move, rename, trash and restore

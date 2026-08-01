@@ -1,43 +1,32 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { toast } from 'sonner'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  FileWarning,
+  HardDrive,
+  ImageOff,
+  Link2,
+  Loader2,
+  Search,
+  Trash2,
+  X,
+  XCircle,
+} from 'lucide-react'
+import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { usePreferences } from '@/store/preferences'
+import { getErrorMessage } from '@/lib/auth-errors'
 import { t } from '@/lib/i18n'
-import {
-  HardDrive, Loader2, Check, X, ChevronLeft, ChevronRight,
-} from 'lucide-react'
+import { usePreferences } from '@/store/preferences'
+import { CleanupStorage, FixMissingPhotos, GenerateThumbnail, ScanStorage } from '../../wailsjs/go/main/App'
+import type { services } from '../../wailsjs/go/models'
 
-// ─── 类型定义（与 Web 端一致）───────────────────────
-
-interface StorageFile {
-  key: string
-  url: string
-  photoId?: string
-  photoTitle?: string
-  hasThumb?: boolean
-  size: number
-  lastModified?: string
-  status: 'linked' | 'orphan' | 'missing' | 'missing_original' | 'missing_thumbnail'
-  missingType?: string
-}
-
-interface StorageScanStats {
-  total: number
-  linked: number
-  orphan: number
-  missing: number
-  missingOriginal: number
-  missingThumbnail: number
-}
-
-interface Notification {
-  id: string
-  message: string
-  type: 'success' | 'error' | 'info'
-}
-
-// ─── 工具函数（与 Web 端一致）────────────────────────
+// ── 类型定义 ───────────────────────────────────────────────
 
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB']
 
@@ -56,10 +45,10 @@ function isImageFile(key: string): boolean {
 }
 
 interface GroupedFiles {
-  [folder: string]: StorageFile[]
+  [folder: string]: services.StorageFileDTO[]
 }
 
-function groupFilesByFolder(files: StorageFile[]): GroupedFiles {
+function groupFilesByFolder(files: services.StorageFileDTO[]): GroupedFiles {
   const grouped: GroupedFiles = {}
   for (const file of files) {
     const lastSlash = file.key.lastIndexOf('/')
@@ -70,16 +59,14 @@ function groupFilesByFolder(files: StorageFile[]): GroupedFiles {
   return grouped
 }
 
-// ─── 主组件 ─────────────────────────────────────────
-
 export function StoragePage() {
   const { language } = usePreferences()
   const [provider, setProvider] = useState('local')
-  const [files, setFiles] = useState<StorageFile[]>([])
-  const [stats, setStats] = useState<StorageScanStats>({
+  const [files, setFiles] = useState<services.StorageFileDTO[]>([])
+  const [stats, setStats] = useState<services.StorageScanStats>({
     total: 0, linked: 0, orphan: 0, missing: 0, missingOriginal: 0, missingThumbnail: 0,
   })
-  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -88,19 +75,17 @@ export function StoragePage() {
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
   const [cleanupDeleting, setCleanupDeleting] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
-  const [reuploadFile, setReuploadFile] = useState<StorageFile | null>(null)
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [generatingThumb, setGeneratingThumb] = useState<Set<string>>(new Set())
   const [colWidths, setColWidths] = useState<Record<string, number | null>>({
     key: null, title: null, date: null, size: null, thumb: null, status: null,
   })
-  const [generatingThumb, setGeneratingThumb] = useState<Set<string>>(new Set())
   const resizingCol = useRef<string | null>(null)
   const startX = useRef(0)
   const startWidth = useRef(0)
 
-  // ─── 列宽调整 ─────────────────────────────────────
+  // ── 列宽调整 ─────────────────────────────────────────────
 
-  const handleMouseDown = (col: string, e: React.MouseEvent) => {
+  const handleMouseDown = (col: string, e: ReactMouseEvent) => {
     e.preventDefault()
     resizingCol.current = col
     startX.current = e.clientX
@@ -123,19 +108,7 @@ export function StoragePage() {
     document.removeEventListener('mouseup', handleMouseUp)
   }
 
-  // ─── 通知 ─────────────────────────────────────────────
-
-  const notify = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = crypto.randomUUID()
-    setNotifications(prev => [...prev, { id, message, type }])
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 3000)
-  }
-
-  const removeNotification = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id))
-  }
-
-  // ─── 数据加载 ─────────────────────────────────────
+  // ── 数据加载 ─────────────────────────────────────────────
 
   const groupedFiles = groupFilesByFolder(files)
   const sortedFolders = Object.keys(groupedFiles).sort()
@@ -151,33 +124,27 @@ export function StoragePage() {
   }
 
   const loadFiles = useCallback(async () => {
-    if (!window || !(window as any).go?.main?.App?.ScanStorage) return
     setLoading(true)
     try {
-      const result = await (window as any).go.main.App.ScanStorage({
+      const result = await ScanStorage({
         provider,
         status: statusFilter || undefined,
         search: search || undefined,
       })
       setFiles(result?.files || [])
       setStats(result?.stats || { total: 0, linked: 0, orphan: 0, missing: 0, missingOriginal: 0, missingThumbnail: 0 })
-    } catch (err: any) {
-      toast.error('扫描失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [provider, statusFilter, search])
-
-  useEffect(() => {
-    loadFiles()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, statusFilter, search])
 
   const handleSearch = () => {
     setSearch(searchInput)
   }
 
-  // ─── 清理操作 ─────────────────────────────────────
+  // ── 清理操作 ─────────────────────────────────────────────
 
   const handleCleanup = async () => {
     if (selected.size === 0 || cleanupDeleting) return
@@ -193,19 +160,19 @@ export function StoragePage() {
     setCleanupDeleting(true)
     try {
       if (orphanKeys.length > 0) {
-        await (window as any).go.main.App.CleanupStorage(orphanKeys, provider)
+        await CleanupStorage(orphanKeys, provider)
       }
 
       if (missingIds.length > 0) {
-        await (window as any).go.main.App.FixMissingPhotos(missingIds)
+        await FixMissingPhotos(missingIds)
       }
 
       setSelected(new Set())
       setCleanupDialogOpen(false)
       loadFiles()
-      toast.success('清理完成')
-    } catch (err: any) {
-      toast.error('清理失败: ' + (err?.message || '未知错误'))
+      toast.success(t('admin.storage_cleanup_success', language))
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err))
     } finally {
       setCleanupDeleting(false)
     }
@@ -226,7 +193,7 @@ export function StoragePage() {
     setSelected(new Set(actionable.map(f => f.key)))
   }
 
-  // ─── 状态样式 ─────────────────────────────────────
+  // ── 状态样式 ─────────────────────────────────────────────
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -241,330 +208,384 @@ export function StoragePage() {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'linked': return `✓ ${t('admin.storage_linked')}`
-      case 'orphan': return `⚠ ${t('admin.storage_orphan')}`
-      case 'missing': return `✗ ${t('admin.storage_missing')}`
-      case 'missing_original': return `✗ ${t('admin.storage_missing_original')}`
-      case 'missing_thumbnail': return `⚠ ${t('admin.storage_missing_thumb')}`
+      case 'linked': return `✓ ${t('admin.storage_linked', language)}`
+      case 'orphan': return `⚠ ${t('admin.storage_orphan', language)}`
+      case 'missing': return `✗ ${t('admin.storage_missing', language)}`
+      case 'missing_original': return `✗ ${t('admin.storage_missing_original', language)}`
+      case 'missing_thumbnail': return `⚠ ${t('admin.storage_missing_thumb', language)}`
       default: return status
     }
   }
 
-  const isMissingStatus = (status: string) =>
-    status === 'missing' || status === 'missing_original' || status === 'missing_thumbnail'
+  // ── 生成缩略图 ───────────────────────────────────────────
 
-  // ─── 生成缩略图 ─────────────────────────────────────
-
-  const handleGenerateThumb = async (file: StorageFile) => {
+  const handleGenerateThumb = async (file: services.StorageFileDTO) => {
     if (!file.photoId) return
+    setGeneratingThumb(prev => new Set(prev).add(file.photoId!))
     try {
-      setGeneratingThumb(prev => new Set(prev).add(file.photoId!))
-      await (window as any).go.main.App.GenerateThumbnail(file.photoId)
-      notify(t('admin.notify_success'), 'success')
+      await GenerateThumbnail(file.photoId)
+      toast.success(t('admin.notify_success', language))
       loadFiles()
-    } catch (err: any) {
-      toast.error('生成缩略图失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err))
     } finally {
-      setGeneratingThumb(prev => { const n = new Set(prev); n.delete(file.photoId!); return n })
+      setGeneratingThumb(prev => {
+        const next = new Set(prev)
+        next.delete(file.photoId!)
+        return next
+      })
     }
   }
 
-  // ─── 渲染 ─────────────────────────────────────────
+  // ── 渲染 ─────────────────────────────────────────────────
+
+  const providerOptions = [
+    { value: 'local', label: t('admin.storage_provider_local', language) },
+    { value: 's3', label: 'S3' },
+    { value: 'github', label: t('admin.storage_provider_github', language) },
+  ]
+
+  const statusOptions = [
+    { value: '', label: t('admin.all_status', language) },
+    { value: 'linked', label: t('admin.storage_linked', language) },
+    { value: 'orphan', label: t('admin.storage_orphan', language) },
+    { value: 'missing', label: t('admin.storage_missing', language) },
+  ]
+
+  const statCards = [
+    { labelKey: 'admin.storage_total', value: stats.total, icon: HardDrive, iconClass: 'bg-muted/60 text-muted-foreground', valueClass: 'text-foreground' },
+    { labelKey: 'admin.storage_linked', value: stats.linked, icon: Link2, iconClass: 'bg-primary/10 text-primary', valueClass: 'text-primary' },
+    { labelKey: 'admin.storage_orphan', value: stats.orphan, icon: AlertTriangle, iconClass: 'bg-amber-500/10 text-amber-500', valueClass: 'text-amber-500' },
+    { labelKey: 'admin.storage_missing', value: stats.missing, icon: XCircle, iconClass: 'bg-destructive/10 text-destructive', valueClass: 'text-destructive' },
+    { labelKey: 'admin.storage_missing_original', value: stats.missingOriginal, icon: FileWarning, iconClass: 'bg-destructive/10 text-destructive', valueClass: 'text-destructive' },
+    { labelKey: 'admin.storage_missing_thumb', value: stats.missingThumbnail, icon: ImageOff, iconClass: 'bg-orange-500/10 text-orange-500', valueClass: 'text-orange-500' },
+  ]
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-[1920px] p-6">
-      <div className="pb-6 border-b mb-8" style={{ borderColor: 'var(--border)' }}>
-        <h1 className="font-serif text-3xl">{t('admin.page_storage', language)}</h1>
-      </div>
+    <>
+      <PageHeader title={t('admin.page_storage', language)} />
 
-      {/* 帮助信息 */}
-      <div className="mb-8 p-6 border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)/20' }}>
-        <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_help_title')}</div>
-        <div className="text-xs font-mono" style={{ color: 'var(--primary)' }}>✓ {t('admin.storage_help_linked')}</div>
-        <div className="text-xs font-mono" style={{ color: '#d97706' }}>⚠ {t('admin.storage_help_orphan')}</div>
-        <div className="text-xs font-mono" style={{ color: 'var(--destructive)' }}>✗ {t('admin.storage_help_missing')}</div>
-      </div>
-
-      {/* 筛选器 */}
-      <div className="flex flex-wrap gap-4 mb-8 items-end">
-        <div className="space-y-2">
-          <label className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>Provider</label>
-          <select
-            value={provider}
-            onChange={e => setProvider(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded border outline-none"
-            style={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          >
-            <option value="local">{t('admin.storage_provider_local')}</option>
-            <option value="s3">S3</option>
-            <option value="github">{t('admin.storage_provider_github')}</option>
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>Status</label>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded border outline-none"
-            style={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          >
-            <option value="">{t('admin.all_status')}</option>
-            <option value="linked">{t('admin.storage_linked')}</option>
-            <option value="orphan">{t('admin.storage_orphan')}</option>
-            <option value="missing">{t('admin.storage_missing')}</option>
-          </select>
-        </div>
-
-        <div className="flex gap-2 flex-1 min-w-[200px]">
-          <input
-            type="text"
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder={t('common.search')}
-            className="flex-1 px-3 py-1.5 text-sm rounded border outline-none"
-            style={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
-          <button
-            onClick={handleSearch}
-            className="px-4 py-2 text-xs rounded-md border"
-            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
-          >
-            {t('common.search').replace('...', '')}
-          </button>
-        </div>
-
-        <button
-          onClick={() => loadFiles()}
-          disabled={loading}
-          className="px-6 py-2 text-xs rounded-md disabled:opacity-50"
-          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-        >
-          {loading ? t('admin.storage_scanning') : t('admin.storage_scan')}
-        </button>
-      </div>
-
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-        <div className="p-4 border" style={{ borderColor: 'var(--border)' }}>
-          <div className="text-2xl font-bold font-mono">{stats.total}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_total')}</div>
-        </div>
-        <div className="p-4 border" style={{ borderColor: 'var(--primary)/30', backgroundColor: 'var(--primary)/5' }}>
-          <div className="text-2xl font-bold font-mono" style={{ color: 'var(--primary)' }}>{stats.linked}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_linked')}</div>
-        </div>
-        <div className="p-4 border" style={{ borderColor: '#f59e0b/30', backgroundColor: '#f59e0b/5' }}>
-          <div className="text-2xl font-bold font-mono" style={{ color: '#f59e0b' }}>{stats.orphan}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_orphan')}</div>
-        </div>
-        <div className="p-4 border" style={{ borderColor: 'var(--destructive)/30', backgroundColor: 'var(--destructive)/5' }}>
-          <div className="text-2xl font-bold font-mono" style={{ color: 'var(--destructive)' }}>{stats.missing}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_missing')}</div>
-        </div>
-        <div className="p-4 border" style={{ borderColor: 'var(--destructive)/20', backgroundColor: 'var(--destructive)/5' }}>
-          <div className="text-2xl font-bold font-mono" style={{ color: 'var(--destructive)/80' }}>{stats.missingOriginal}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_missing_original')}</div>
-        </div>
-        <div className="p-4 border" style={{ borderColor: '#f97316/30', backgroundColor: '#f97316/5' }}>
-          <div className="text-2xl font-bold font-mono" style={{ color: '#f97316' }}>{stats.missingThumbnail}</div>
-          <div className="text-[9px] font-bold uppercase tracking-widest mt-1" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_missing_thumb')}</div>
-        </div>
-      </div>
-
-      {/* 选中操作栏 */}
-      {selected.size > 0 && (
-        <div className="flex gap-4 mb-6 p-4 border" style={{ borderColor: 'var(--primary)/30', backgroundColor: 'var(--primary)/5' }}>
-          <span className="text-xs font-bold uppercase tracking-widest">{t('admin.selected')} {selected.size}</span>
-          <button
-            onClick={() => setCleanupDialogOpen(true)}
-            disabled={cleanupDeleting}
-            className="px-4 py-2 text-xs rounded-md disabled:opacity-60 disabled:cursor-wait inline-flex items-center gap-2"
-            style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
-          >
-            {cleanupDeleting ? <Loader2 size={14} className="animate-spin" /> : null}
-            {t('admin.storage_cleanup_selected')}
-          </button>
-          <button
-            onClick={() => setSelected(new Set())}
-            disabled={cleanupDeleting}
-            className="px-4 py-2 text-xs rounded-md border"
-            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
-      )}
-
-      {/* 文件列表 */}
-      <div className="border" style={{ borderColor: 'var(--border)' }}>
-        {/* 表头 */}
-        <div className="flex items-center p-3" style={{ backgroundColor: 'var(--muted)/30', borderColor: 'var(--border)', borderBottomWidth: '1px' }}>
-          <input
-            type="checkbox"
-            className="mr-4"
-            onChange={e => e.target.checked ? selectAll() : setSelected(new Set())}
-            checked={selected.size > 0 && selected.size === files.filter(f => f.status !== 'linked').length}
-          />
-          <span className="flex-1 min-w-[100px] relative border-r px-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            {t('admin.storage_file_key')}
-            <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('key', e)} />
-          </span>
-          <span className="flex-1 min-w-[100px] hidden md:block relative border-r px-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            {t('admin.photo_title')}
-            <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('title', e)} />
-          </span>
-          <span className="w-28 hidden lg:block text-right relative border-r px-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            {t('admin.storage_last_modified')}
-            <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('date', e)} />
-          </span>
-          <span className="w-20 text-right relative border-r px-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            {t('admin.storage_file_size')}
-            <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('size', e)} />
-          </span>
-          <span className="w-20 text-center relative border-r px-2 text-[10px] font-bold uppercase tracking-widest" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            {t('admin.storage_thumb')}
-            <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('thumb', e)} />
-          </span>
-          <span className="w-32 text-right px-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_file_status')}</span>
-        </div>
-
-        {/* 文件列表 */}
-        {files.length === 0 && !loading && (
-          <div className="p-12 text-center">
-            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>{t('admin.storage_no_files')}</p>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-8" style={{ color: 'var(--muted-foreground)' }}>
-            <Loader2 size={20} className="animate-spin" />
-          </div>
-        ) : (
-          sortedFolders.map(folder => (
-            <div key={folder}>
-              <div
-                className="flex items-center p-3 cursor-pointer hover:bg-muted/50 transition-colors border-b"
-                style={{ borderColor: 'var(--border)' }}
-                onClick={() => toggleFolder(folder)}
-              >
-                <span className="mr-3 text-muted-foreground text-xs">{collapsedFolders.has(folder) ? '▶' : '▼'}</span>
-                <span className="font-mono text-xs font-bold">{folder || '/'}</span>
-                <span className="ml-2 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>({groupedFiles[folder].length})</span>
-              </div>
-              {!collapsedFolders.has(folder) && groupedFiles[folder].map(file => (
-                <div key={file.key} className="flex items-center p-3 pl-8 border-b hover:bg-muted/30 transition-colors" style={{ borderColor: 'var(--border)' }}>
-                  <input
-                    type="checkbox"
-                    className="mr-4"
-                    checked={selected.has(file.key)}
-                    onChange={() => toggleSelect(file.key)}
-                    disabled={file.status === 'linked'}
-                  />
-                  <div className="flex-1 min-w-[100px] border-r px-2" style={{ borderColor: 'var(--border)/30' }}>
-                    <div
-                      className={`font-mono text-sm truncate ${
-                        isMissingStatus(file.status)
-                          ? 'cursor-pointer hover:text-red-500 hover:underline'
-                          : isImageFile(file.key)
-                            ? 'cursor-pointer hover:text-blue-600 hover:underline'
-                            : ''
-                      }`}
-                      onClick={() => {
-                        if (isMissingStatus(file.status)) {
-                          setReuploadFile(file)
-                        } else if (isImageFile(file.key)) {
-                          setPreviewUrl(file.url)
-                        }
-                      }}
-                      title={file.key}
-                    >
-                      {file.key.split('/').pop()}
-                    </div>
-                  </div>
-                  <span className="flex-1 min-w-[100px] hidden md:block text-xs truncate border-r px-2" style={{ borderColor: 'var(--border)/30', color: 'var(--muted-foreground)' }} title={file.photoTitle}>
-                    {file.photoTitle || '-'}
-                  </span>
-                  <span className="w-28 hidden lg:block text-right text-xs border-r px-2" style={{ borderColor: 'var(--border)/30', color: 'var(--muted-foreground)' }}>
-                    {file.lastModified ? new Date(file.lastModified).toLocaleDateString() : '-'}
-                  </span>
-                  <span className="w-20 text-right text-sm border-r px-2" style={{ borderColor: 'var(--border)/30' }}>{formatSize(file.size)}</span>
-                  <span className="w-20 text-center text-sm border-r px-2" style={{ borderColor: 'var(--border)/30' }}>
-                    {file.status === 'linked' ? (
-                      file.hasThumb ? (
-                        <span className="text-green-600 dark:text-green-400">✓</span>
-                      ) : generatingThumb.has(file.photoId || '') ? (
-                        <span className="text-zinc-400 animate-pulse">...</span>
-                      ) : (
-                        <button
-                          onClick={() => handleGenerateThumb(file)}
-                          className="text-xs text-primary hover:underline normal-case"
-                        >
-                          {t('admin.storage_generate')}
-                        </button>
-                      )
-                    ) : '-'}
-                  </span>
-                  <span
-                    className={`w-32 text-right text-sm px-2 ${getStatusStyle(file.status)} ${isMissingStatus(file.status) ? 'cursor-pointer hover:underline' : ''}`}
-                    onClick={() => isMissingStatus(file.status) && setReuploadFile(file)}
-                  >
-                    {getStatusLabel(file.status)}
-                  </span>
-                </div>
-              ))}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[1920px] space-y-6 p-6">
+          {/* 状态说明 */}
+          <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-4">
+            <div className="text-xs font-semibold text-muted-foreground">
+              {t('admin.storage_help_title', language)}
             </div>
-          ))
-        )}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 size={14} className="shrink-0 text-primary" />
+              <span>{t('admin.storage_help_linked', language)}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <AlertTriangle size={14} className="shrink-0 text-amber-500" />
+              <span>{t('admin.storage_help_orphan', language)}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <XCircle size={14} className="shrink-0 text-destructive" />
+              <span>{t('admin.storage_help_missing', language)}</span>
+            </div>
+          </div>
+
+          {/* 筛选器 */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className="block text-xs text-muted-foreground">
+                {t('admin.storage_provider', language)}
+              </label>
+              <AdminSelect
+                value={provider}
+                onChange={setProvider}
+                options={providerOptions}
+                className="min-w-[160px]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs text-muted-foreground">
+                {t('admin.storage_file_status', language)}
+              </label>
+              <AdminSelect
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={statusOptions}
+                className="min-w-[160px]"
+              />
+            </div>
+
+            <div className="flex min-w-[240px] flex-1 gap-2">
+              <AdminInput
+                variant="search"
+                icon={Search}
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder={t('common.search', language)}
+                className="flex-1"
+              />
+              <AdminButton
+                onClick={handleSearch}
+                adminVariant="outline"
+                size="lg"
+              >
+                {t('common.search', language).replace('...', '')}
+              </AdminButton>
+              <AdminButton
+                onClick={() => loadFiles()}
+                disabled={loading}
+                adminVariant="primary"
+                size="lg"
+                className="gap-2"
+              >
+                {loading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
+                {loading ? t('admin.storage_scanning', language) : t('admin.storage_scan', language)}
+              </AdminButton>
+            </div>
+          </div>
+
+          {/* 统计卡片 */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+            {statCards.map(card => (
+              <div key={card.labelKey} className="min-w-0 rounded-lg border border-border bg-card p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className={`text-2xl font-semibold tabular-nums ${card.valueClass}`}>{card.value}</div>
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${card.iconClass}`}>
+                    <card.icon size={16} />
+                  </div>
+                </div>
+                <div className="mt-1.5 truncate text-xs text-muted-foreground">
+                  {t(card.labelKey, language)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 选中操作条 */}
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+              <span className="text-xs font-semibold text-primary">
+                {t('admin.selected', language)} {selected.size}
+              </span>
+              <AdminButton
+                onClick={() => setCleanupDialogOpen(true)}
+                disabled={cleanupDeleting}
+                adminVariant="destructive"
+                size="md"
+                className="gap-1.5"
+              >
+                {cleanupDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {t('admin.storage_cleanup_selected', language)}
+              </AdminButton>
+              <AdminButton
+                onClick={() => setSelected(new Set())}
+                disabled={cleanupDeleting}
+                adminVariant="outline"
+                size="md"
+              >
+                {t('common.cancel', language)}
+              </AdminButton>
+            </div>
+          )}
+
+          {/* 文件列表 */}
+          <div className="overflow-hidden rounded-lg border border-border">
+            {/* 表头 */}
+            <div className="flex select-none items-center border-b border-border bg-muted/40 p-3 text-xs font-semibold text-muted-foreground">
+              <input
+                type="checkbox"
+                className="mr-4 shrink-0 accent-primary"
+                onChange={e => e.target.checked ? selectAll() : setSelected(new Set())}
+                checked={selected.size > 0 && selected.size === files.filter(f => f.status !== 'linked').length}
+              />
+              <span
+                className="relative min-w-[100px] flex-1 border-r border-border/60 px-2"
+                style={colWidths.key ? { width: colWidths.key, flex: 'none' } : undefined}
+              >
+                {t('admin.storage_file_key', language)}
+                <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('key', e)} />
+              </span>
+              <span
+                className="relative hidden min-w-[100px] flex-1 border-r border-border/60 px-2 md:block"
+                style={colWidths.title ? { width: colWidths.title, flex: 'none' } : undefined}
+              >
+                {t('admin.photo_title', language)}
+                <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('title', e)} />
+              </span>
+              <span
+                className="relative hidden w-28 border-r border-border/60 px-2 text-right lg:block"
+                style={colWidths.date ? { width: colWidths.date } : undefined}
+              >
+                {t('admin.storage_last_modified', language)}
+                <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('date', e)} />
+              </span>
+              <span
+                className="relative w-20 border-r border-border/60 px-2 text-right"
+                style={colWidths.size ? { width: colWidths.size } : undefined}
+              >
+                {t('admin.storage_file_size', language)}
+                <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('size', e)} />
+              </span>
+              <span
+                className="relative w-20 border-r border-border/60 px-2 text-center"
+                style={colWidths.thumb ? { width: colWidths.thumb } : undefined}
+              >
+                {t('admin.storage_thumb', language)}
+                <div className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/50" onMouseDown={e => handleMouseDown('thumb', e)} />
+              </span>
+              <span
+                className="w-32 px-2 text-right"
+                style={colWidths.status ? { width: colWidths.status } : undefined}
+              >
+                {t('admin.storage_file_status', language)}
+              </span>
+            </div>
+
+            {/* 空状态 */}
+            {files.length === 0 && !loading && (
+              <div className="p-12 text-center">
+                <p className="text-xs text-muted-foreground">{t('admin.storage_no_files', language)}</p>
+              </div>
+            )}
+
+            {/* 加载中 */}
+            {loading ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : (
+              sortedFolders.map(folder => (
+                <div key={folder}>
+                  {/* 文件夹行 */}
+                  <div
+                    className="flex cursor-pointer items-center border-b border-border bg-muted/40 p-3 transition-colors hover:bg-muted/60"
+                    onClick={() => toggleFolder(folder)}
+                  >
+                    {collapsedFolders.has(folder)
+                      ? <ChevronRight size={14} className="mr-3 shrink-0 text-muted-foreground" />
+                      : <ChevronDown size={14} className="mr-3 shrink-0 text-muted-foreground" />}
+                    <span className="truncate font-mono text-xs font-semibold">{folder || '/'}</span>
+                    <span className="ml-2 shrink-0 font-mono text-[10px] text-muted-foreground">
+                      ({groupedFiles[folder].length})
+                    </span>
+                  </div>
+
+                  {/* 文件行 */}
+                  {!collapsedFolders.has(folder) && groupedFiles[folder].map(file => (
+                    <div
+                      key={file.key}
+                      className="flex items-center border-b border-border p-3 pl-8 transition-colors hover:bg-muted/30"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mr-4 shrink-0 accent-primary"
+                        checked={selected.has(file.key)}
+                        onChange={() => toggleSelect(file.key)}
+                        disabled={file.status === 'linked'}
+                      />
+                      <div
+                        className="min-w-[100px] flex-1 border-r border-border/60 px-2"
+                        style={colWidths.key ? { width: colWidths.key, flex: 'none' } : undefined}
+                      >
+                        <div
+                          className={`truncate font-mono text-xs ${
+                            isImageFile(file.key)
+                              ? 'cursor-pointer hover:text-primary hover:underline'
+                              : ''
+                          }`}
+                          onClick={() => {
+                            if (isImageFile(file.key)) setPreviewUrl(file.url)
+                          }}
+                          title={file.key}
+                        >
+                          {file.key.split('/').pop()}
+                        </div>
+                      </div>
+                      <span
+                        className="hidden min-w-[100px] flex-1 truncate border-r border-border/60 px-2 text-xs text-muted-foreground md:block"
+                        style={colWidths.title ? { width: colWidths.title, flex: 'none' } : undefined}
+                        title={file.photoTitle}
+                      >
+                        {file.photoTitle || '-'}
+                      </span>
+                      <span
+                        className="hidden w-28 border-r border-border/60 px-2 text-right text-xs text-muted-foreground lg:block"
+                        style={colWidths.date ? { width: colWidths.date } : undefined}
+                      >
+                        {file.lastModified ? new Date(file.lastModified).toLocaleDateString() : '-'}
+                      </span>
+                      <span
+                        className="w-20 border-r border-border/60 px-2 text-right text-xs"
+                        style={colWidths.size ? { width: colWidths.size } : undefined}
+                      >
+                        {formatSize(file.size)}
+                      </span>
+                      <span
+                        className="w-20 border-r border-border/60 px-2 text-center text-xs"
+                        style={colWidths.thumb ? { width: colWidths.thumb } : undefined}
+                      >
+                        {file.status === 'linked' ? (
+                          file.hasThumb ? (
+                            <span className="text-green-600 dark:text-green-400">✓</span>
+                          ) : generatingThumb.has(file.photoId || '') ? (
+                            <span className="animate-pulse text-zinc-400">...</span>
+                          ) : (
+                            <AdminButton
+                              onClick={() => handleGenerateThumb(file)}
+                              adminVariant="link"
+                              size="xs"
+                              className="normal-case text-primary"
+                            >
+                              {t('admin.storage_generate', language)}
+                            </AdminButton>
+                          )
+                        ) : '-'}
+                      </span>
+                      <span
+                        className={`w-32 px-2 text-right text-xs ${getStatusStyle(file.status)}`}
+                        style={colWidths.status ? { width: colWidths.status } : undefined}
+                      >
+                        {getStatusLabel(file.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* 预览模态框 */}
+      {/* 图片预览 */}
       {previewUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-8"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-8 backdrop-blur-sm"
           onClick={() => setPreviewUrl(null)}
         >
           <img
             src={previewUrl}
-            alt={t('admin.preview')}
-            className="max-w-full max-h-full object-contain"
+            alt={t('admin.preview', language)}
+            className="max-h-full max-w-full rounded-lg object-contain"
             onClick={e => e.stopPropagation()}
           />
-          <button
+          <AdminButton
             onClick={() => setPreviewUrl(null)}
-            className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-white/70 hover:text-white border border-white/20 hover:border-white/50 transition-all"
+            adminVariant="unstyled"
+            size="none"
+            className="absolute right-6 top-6 flex h-10 w-10 items-center justify-center rounded-md border border-white/20 bg-black/40 text-white/80 transition-colors hover:border-white/50 hover:text-white"
+            aria-label={t('admin.close_preview', language)}
           >
-            ✕
-          </button>
+            <X size={18} />
+          </AdminButton>
         </div>
       )}
 
-      {/* 通知 */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
-        {notifications.map(n => (
-          <div
-            key={n.id}
-            className={`px-4 py-2 rounded-md text-xs ${
-              n.type === 'success' ? 'bg-green-500 text-white' :
-              n.type === 'error' ? 'bg-red-500 text-white' :
-              'bg-blue-500 text-white'
-            }`}
-          >
-            {n.message}
-          </div>
-        ))}
-      </div>
       <SimpleDeleteDialog
         isOpen={cleanupDialogOpen}
-        title={t('common.confirm')}
-        message={`确定要清理选中的 ${selected.size} 个存储项吗？孤立文件会被不可逆删除。`}
+        title={t('admin.storage_cleanup_selected', language)}
+        message={`${t('admin.storage_cleanup_confirm', language)} (${selected.size})`}
         onConfirm={handleCleanup}
         onCancel={() => setCleanupDialogOpen(false)}
         t={(key) => t(key, language)}
       />
-      </div>
-    </div>
+    </>
   )
 }

@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Copy, FileImage, FilePenLine, FolderInput, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, Copy, FileImage, FilePenLine, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Trash2, Upload } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,8 +26,12 @@ interface Props {
   emptyHint?: string
   uploadAlbums: UploadAlbum[]
   uploadAlbumsLoading: boolean
+  viewMode: 'crop' | 'fit'
+  gridSize: number
+  pathSegments: string[]
   onSelect: (asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => void
   onOpen: (asset: LocalAsset) => void
+  onOpenInFileManager: (asset: LocalAsset) => void
   onLoadMore: () => void
   onClipboard: (asset: LocalAsset, cut: boolean) => void
   onUpload: (asset: LocalAsset, albumId?: string) => void
@@ -47,8 +51,10 @@ interface AssetCardProps {
   copy: LocalLibraryCopy
   uploadAlbums: UploadAlbum[]
   uploadAlbumsLoading: boolean
+  viewMode: 'crop' | 'fit'
   onSelect: (asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => void
   onOpen: (asset: LocalAsset) => void
+  onOpenInFileManager: (asset: LocalAsset) => void
   onClipboard: (asset: LocalAsset, cut: boolean) => void
   onUpload: (asset: LocalAsset, albumId?: string) => void
   onDelete: (asset: LocalAsset) => void
@@ -61,8 +67,8 @@ interface AssetCardProps {
 }
 
 const AssetCard = memo(function AssetCard({
-  asset, dragIds, selected, copy, uploadAlbums, uploadAlbumsLoading,
-  onSelect, onOpen, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
+  asset, dragIds, selected, copy, uploadAlbums, uploadAlbumsLoading, viewMode,
+  onSelect, onOpen, onOpenInFileManager, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: AssetCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
 
@@ -98,7 +104,7 @@ const AssetCard = memo(function AssetCard({
         >
           <span className="relative min-h-0 flex-1 overflow-hidden bg-secondary">
             {!imageFailed && asset.previewStatus === 'ready' ? (
-              <img src={asset.thumbnailUrl} alt="" loading="lazy" draggable={false} onError={() => setImageFailed(true)} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]" />
+              <img src={asset.thumbnailUrl} alt="" loading="lazy" draggable={false} onError={() => setImageFailed(true)} className={`h-full w-full transition duration-300 ${viewMode === 'fit' ? 'object-contain p-1' : 'object-cover group-hover:scale-[1.025]'}`} />
             ) : (
               <span className="flex h-full w-full flex-col items-center justify-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
                 <FileImage size={25} strokeWidth={1.4} />
@@ -135,6 +141,7 @@ const AssetCard = memo(function AssetCard({
           <>
             <ContextMenuItem onSelect={() => onClipboard(asset, true)}><Scissors size={14} />{copy.cut}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onClipboard(asset, false)}><Copy size={14} />{copy.copyAsset}</ContextMenuItem>
+            <ContextMenuItem onSelect={() => onOpenInFileManager(asset)}><FolderSearch2 size={14} />{copy.openInFileManager}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onRename(asset)}><FilePenLine size={14} />{copy.renameAsset}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onMove(asset)}><FolderInput size={14} />{copy.moveAssetsToFolder}</ContextMenuItem>
             <ContextMenuSub>
@@ -167,8 +174,8 @@ const AssetCard = memo(function AssetCard({
 })
 
 export function LocalAssetGrid({
-  assets, selectedIds, loading, hasMore, total, copy, emptyTitle, emptyHint, uploadAlbums, uploadAlbumsLoading,
-  onSelect, onOpen, onLoadMore, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
+  assets, selectedIds, loading, hasMore, total, copy, emptyTitle, emptyHint, uploadAlbums, uploadAlbumsLoading, viewMode, gridSize, pathSegments,
+  onSelect, onOpen, onLoadMore, onOpenInFileManager, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(900)
@@ -181,12 +188,14 @@ export function LocalAssetGrid({
     return () => observer.disconnect()
   }, [])
 
-  const columns = Math.max(2, Math.floor((width - 28) / 176))
+  const columns = Math.max(1, Math.floor((width - 24) / gridSize))
+  const columnWidth = Math.max(1, (width - 24 - Math.max(0, columns - 1) * 10) / columns)
+  const rowHeight = Math.round(columnWidth * 0.82) + 54
   const rowCount = Math.ceil(assets.length / columns)
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 198,
+    estimateSize: () => rowHeight,
     overscan: 3,
   })
   const rows = virtualizer.getVirtualItems()
@@ -196,36 +205,53 @@ export function LocalAssetGrid({
     if (hasMore && !loading && rowCount > 0 && lastRow >= rowCount - 2) onLoadMore()
   }, [hasMore, lastRow, loading, onLoadMore, rowCount])
 
+  useEffect(() => {
+    virtualizer.measure()
+  }, [rowHeight, virtualizer])
+
   const gridStyle = useMemo(() => ({ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }), [columns])
+  const locationHeader = (
+    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-3 bg-background/90 text-[10px] backdrop-blur" style={{ color: 'var(--muted-foreground)' }}>
+      <div className="flex min-w-0 items-center gap-1" title={pathSegments.join(' > ')}>
+        <span className="mr-1 flex size-5 shrink-0 items-center justify-center rounded bg-secondary" style={{ color: 'var(--foreground)' }}><FolderOpen size={11} /></span>
+        {pathSegments.map((segment, index) => <span key={`${segment}-${index}`} className="contents">
+          {index > 0 && <ChevronRight size={10} className="shrink-0 opacity-45" />}
+          <span className={`min-w-0 truncate ${index === pathSegments.length - 1 ? 'font-medium' : ''}`} style={{ color: index === pathSegments.length - 1 ? 'var(--foreground)' : undefined }}>{segment}</span>
+        </span>)}
+      </div>
+      <span className="shrink-0 rounded bg-secondary px-2 py-0.5 tabular-nums">{total.toLocaleString()} {copy.count}</span>
+    </div>
+  )
 
   if (!loading && assets.length === 0) {
     return (
-      <div ref={scrollRef} className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-8">
-        <div className="max-w-md text-center">
-          <FileImage size={34} strokeWidth={1.25} className="mx-auto mb-4" style={{ color: 'var(--muted-foreground)' }} />
-          <h3 className="font-sans text-sm font-medium">{emptyTitle || copy.empty}</h3>
-          <p className="mt-2 text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>{emptyHint || copy.emptyHint}</p>
+      <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3" data-local-library-guide="grid">
+        {locationHeader}
+        <div className="flex min-h-[calc(100%-2rem)] items-center justify-center p-8">
+          <div className="max-w-md text-center">
+            <FileImage size={34} strokeWidth={1.25} className="mx-auto mb-4" style={{ color: 'var(--muted-foreground)' }} />
+            <h3 className="font-sans text-sm font-medium">{emptyTitle || copy.empty}</h3>
+            <p className="mt-2 text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>{emptyHint || copy.emptyHint}</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3 pb-4">
-      <div className="sticky top-0 z-10 flex h-8 items-center justify-end bg-background/90 text-[10px] backdrop-blur" style={{ color: 'var(--muted-foreground)' }}>
-        {total.toLocaleString()} {copy.count}
-      </div>
+    <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3 pb-4" data-local-library-guide="grid">
+      {locationHeader}
       <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
         {rows.map((row) => {
           const start = row.index * columns
           const rowAssets = assets.slice(start, start + columns)
           return (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 grid w-full gap-2.5 pb-2.5"
-              style={{ ...gridStyle, height: 198, transform: `translateY(${row.start}px)` }}>
+              style={{ ...gridStyle, height: rowHeight, transform: `translateY(${row.start}px)` }}>
               {rowAssets.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} dragIds={selectedIds.includes(asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [asset.id]} selected={selectedIds.includes(asset.id)} copy={copy}
+                <AssetCard key={asset.id} asset={asset} dragIds={selectedIds.includes(asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [asset.id]} selected={selectedIds.includes(asset.id)} copy={copy} viewMode={viewMode}
                   uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading}
-                  onSelect={onSelect} onOpen={onOpen} onClipboard={onClipboard} onUpload={onUpload} onDelete={onDelete} onRename={onRename} onMove={onMove} onRestore={onRestore}
+                  onSelect={onSelect} onOpen={onOpen} onOpenInFileManager={onOpenInFileManager} onClipboard={onClipboard} onUpload={onUpload} onDelete={onDelete} onRename={onRename} onMove={onMove} onRestore={onRestore}
                   onRetryPreview={onRetryPreview} onRecheckMissing={onRecheckMissing} onRemoveMissing={onRemoveMissing} />
               ))}
             </div>

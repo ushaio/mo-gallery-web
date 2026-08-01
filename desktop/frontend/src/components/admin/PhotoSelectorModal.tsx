@@ -6,7 +6,6 @@ import {
   X,
   Search,
   SlidersHorizontal,
-  ChevronDown,
   Star,
   RefreshCw,
   LayoutGrid,
@@ -18,6 +17,7 @@ import { getPhotos } from '@/lib/api/photos'
 import { getAlbums } from '@/lib/api/albums'
 import { useSettings } from '@/contexts/SettingsContext'
 import { AdminButton } from '@/components/admin/AdminButton'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 
 interface PhotoSelectorModalProps {
   isOpen: boolean
@@ -366,18 +366,13 @@ export function PhotoSelectorModal({
                 {/* Sort */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.sort')}:</span>
-                  <div className="relative">
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as SortOption)}
-                      className="appearance-none h-8 pl-3 pr-8 bg-background border border-border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
-                    >
-                      {sortOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                  </div>
+                  <SelectDropdown
+                    value={sortBy}
+                    options={sortOptions}
+                    onChange={(value) => setSortBy(value as SortOption)}
+                    ariaLabel={t('admin.sort')}
+                    className="w-32"
+                  />
                 </div>
 
                 <div className="h-5 w-px bg-border hidden sm:block" />
@@ -385,67 +380,48 @@ export function PhotoSelectorModal({
                 {/* Category Filter */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.category_filter')}:</span>
-                  <div className="relative">
-                    <select
-                      value={categoryFilter}
-                      onChange={(e) => setCategoryFilter(e.target.value)}
-                      className={`appearance-none h-8 pl-3 pr-8 border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer ${
-                        categoryFilter !== 'all' 
-                          ? 'bg-primary/10 border-primary/30 text-primary' 
-                          : 'bg-background border-border'
-                      }`}
-                    >
-                      <option value="all">{t('gallery.all')}</option>
-                      {photoCategories.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                  </div>
+                  <SelectDropdown
+                    value={categoryFilter}
+                    options={[
+                      { value: 'all', label: t('gallery.all') },
+                      ...photoCategories.map((cat) => ({ value: cat, label: cat })),
+                    ]}
+                    onChange={(value) => setCategoryFilter(value as string)}
+                    ariaLabel={t('ui.category_filter')}
+                    className="w-32"
+                  />
                 </div>
 
                 {/* Album Filter */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">{t('admin.album') || 'Album'}:</span>
-                  <div className="relative">
-                    <select
-                      value={albumFilter}
-                      onChange={(e) => setAlbumFilter(e.target.value)}
-                      className={`appearance-none h-8 pl-3 pr-8 border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer ${
-                        albumFilter !== 'all' 
-                          ? 'bg-primary/10 border-primary/30 text-primary' 
-                          : 'bg-background border-border'
-                      }`}
-                    >
-                      <option value="all">{t('gallery.all')}</option>
-                      {albums.map((album) => (
-                        <option key={album.id} value={album.id}>{album.name} ({album.photoCount})</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                  </div>
+                  <SelectDropdown
+                    value={albumFilter}
+                    options={[
+                      { value: 'all', label: t('gallery.all') },
+                      ...albums.map((album) => ({ value: album.id, label: `${album.name} (${album.photoCount})` })),
+                    ]}
+                    onChange={(value) => setAlbumFilter(value as string)}
+                    ariaLabel={t('admin.album') || 'Album'}
+                    className="w-40"
+                  />
                 </div>
 
                 {/* Storage Filter */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.channel_filter')}:</span>
-                  <div className="relative">
-                    <select
-                      value={channelFilter}
-                      onChange={(e) => setChannelFilter(e.target.value)}
-                      className={`appearance-none h-8 pl-3 pr-8 border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer ${
-                        channelFilter !== 'all' 
-                          ? 'bg-primary/10 border-primary/30 text-primary' 
-                          : 'bg-background border-border'
-                      }`}
-                    >
-                      <option value="all">{t('gallery.all')}</option>
-                      <option value="local">{t('admin.local_storage')}</option>
-                      <option value="s3">S3</option>
-                      <option value="github">GitHub</option>
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                  </div>
+                  <SelectDropdown
+                    value={channelFilter}
+                    options={[
+                      { value: 'all', label: t('gallery.all') },
+                      { value: 'local', label: t('admin.local_storage') },
+                      { value: 's3', label: 'S3' },
+                      { value: 'github', label: 'GitHub' },
+                    ]}
+                    onChange={(value) => setChannelFilter(value as string)}
+                    ariaLabel={t('ui.channel_filter')}
+                    className="w-32"
+                  />
                 </div>
 
                 {/* Featured Toggle */}

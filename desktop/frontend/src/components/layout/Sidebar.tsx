@@ -8,6 +8,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { GetApiConfig, GetSettings } from '../../../wailsjs/go/main/App'
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 
 const navItems = [
   { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
@@ -41,7 +43,33 @@ export function Sidebar() {
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [siteTitle, setSiteTitle] = useState('MO Gallery')
+  const [siteUrl, setSiteUrl] = useState('')
   const menuRef = useRef<HTMLDivElement | null>(null)
+
+  // 站点标题 + 站点地址：标题与「系统设置-站点-站点信息」一致（来自服务端 SITE_TITLE），
+  // 地址取桌面端连接的服务器 base_url，即网站入口
+  useEffect(() => {
+    let cancelled = false
+    Promise.allSettled([GetSettings(), GetApiConfig()]).then(([settingsRes, apiRes]) => {
+      if (cancelled) return
+      if (settingsRes.status === 'fulfilled' && settingsRes.value?.site_title) {
+        setSiteTitle(settingsRes.value.site_title)
+      }
+      const baseUrl = apiRes.status === 'fulfilled' ? apiRes.value?.base_url : ''
+      if (typeof baseUrl === 'string' && baseUrl) {
+        setSiteUrl(baseUrl.replace(/\/+$/, ''))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // 点击站点标题：浏览器打开网站
+  const handleOpenSite = () => {
+    if (siteUrl) BrowserOpenURL(siteUrl)
+  }
 
   const handleLogoutConfirm = () => {
     setShowLogoutConfirm(false)
@@ -72,14 +100,21 @@ export function Sidebar() {
         borderColor: 'var(--border)',
       }}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
+      {/* Logo（点击站点标题 → 浏览器打开网站） */}
+      <button
+        type="button"
+        onClick={handleOpenSite}
+        title={siteUrl ? `打开网站：${siteUrl}` : undefined}
+        disabled={!siteUrl}
+        className="flex h-16 w-full items-center gap-3 border-b px-5 min-w-0 text-left transition-opacity hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100"
+        style={{ borderColor: 'var(--border)', backgroundColor: 'transparent', color: 'var(--foreground)' }}
+      >
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold font-serif shrink-0"
           style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-          M
+          {siteTitle.charAt(0).toUpperCase() || 'M'}
         </div>
-        <span className="font-semibold text-sm">MO Gallery</span>
-      </div>
+        <span className="font-serif font-bold text-sm tracking-widest uppercase truncate">{siteTitle}</span>
+      </button>
 
       {/* 导航 */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">

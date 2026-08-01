@@ -18,6 +18,7 @@ import {
   Loader2,
   Check,
   Clock,
+  Search,
 } from 'lucide-react'
 import type { PhotoDto, BlogDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
@@ -37,7 +38,8 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
-import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
+import type { SelectOption } from '@/components/admin/AdminFormControls'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 
 import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
 
@@ -103,6 +105,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   
   // 发布状态筛选
   const [statusFilter, setStatusFilter] = useState('')
+  // 搜索关键字
+  const [blogSearchQuery, setBlogSearchQuery] = useState('')
   
   // 草稿恢复对话框状态
   const [draftRestoreDialog, setDraftRestoreDialog] = useState<{
@@ -469,21 +473,48 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     { value: 'draft', label: t('admin.draft') || '草稿' },
   ]
 
+  const filteredBlogs = useMemo(() => {
+    const query = blogSearchQuery.trim().toLowerCase()
+    return blogs.filter((blog) => {
+      const matchesStatus =
+        !statusFilter ||
+        (statusFilter === 'published' ? blog.isPublished : !blog.isPublished)
+      const matchesQuery =
+        !query ||
+        [blog.title, blog.content, blog.category, blog.tags].some((value) =>
+          value?.toLowerCase().includes(query),
+        )
+      return matchesStatus && matchesQuery
+    })
+  }, [blogs, blogSearchQuery, statusFilter])
+
+  const hasActiveFilters = !!blogSearchQuery.trim() || !!statusFilter
+
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
       {editMode === 'list' ? (
-        <div className="space-y-8 flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-            <div className="flex items-center gap-4">
-              <input
-                type="text"
-                placeholder={t('admin.search_placeholder') || '搜索...'}
-                className="px-3 py-2 text-sm bg-transparent border border-border rounded-md focus:border-primary outline-none w-48"
-              />
-              <AdminSelect
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="relative">
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--muted-foreground)' }}
+                />
+                <input
+                  type="text"
+                  value={blogSearchQuery}
+                  onChange={(e) => setBlogSearchQuery(e.target.value)}
+                  placeholder={t('admin.search_placeholder') || '搜索...'}
+                  className="w-56 rounded-md border py-1.5 pl-8 pr-3 text-xs outline-none transition-colors focus:border-primary"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
+                />
+              </div>
+              <SelectDropdown
                 value={statusFilter}
                 options={statusOptions}
-                onChange={setStatusFilter}
+                onChange={(value) => setStatusFilter(value as string)}
                 placeholder={t('admin.all_status') || '全部状态'}
                 className="w-32"
               />
@@ -491,84 +522,124 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
             <AdminButton
               onClick={handleCreateBlog}
               adminVariant="primary"
-              size="lg"
-              className="flex items-center rounded-md"
+              size="sm"
+              className="flex items-center rounded-md px-3 py-1.5"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
               {t('ui.create_blog')}
             </AdminButton>
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div className="custom-scrollbar flex-1 overflow-y-auto">
             {loading ? (
               <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
-            ) : (
-              <div className="grid grid-cols-1 gap-4">
-              {blogs
-                .filter((blog) => {
-                  if (!statusFilter) return true
-                  if (statusFilter === 'published') return blog.isPublished
-                  if (statusFilter === 'draft') return !blog.isPublished
-                  return true
-                })
-                .map((blog) => (
-                <div
-                  key={blog.id}
-                  className="flex items-center justify-between p-6 border border-border hover:border-primary transition-all group"
-                >
+            ) : filteredBlogs.length > 0 ? (
+              <div className="space-y-2">
+                {filteredBlogs.map((blog) => (
                   <div
-                    className="flex-1 min-w-0"
-                    onClick={() => handleEditBlog(blog)}
-                    style={{ cursor: 'pointer' }}
+                    key={blog.id}
+                    className="group flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors hover:border-primary/50"
+                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
                   >
-                    <div className="flex items-center gap-3 mb-1">
-                      <h4 className="font-serif text-xl group-hover:text-primary transition-colors">
-                        {blog.title || t('admin.untitled')}
-                      </h4>
-                      <span
-                        className={`text-[8px] font-black uppercase px-1.5 py-0.5 border ${
-                          blog.isPublished
-                            ? 'border-primary text-primary'
-                            : 'border-muted-foreground text-muted-foreground'
-                        }`}
+                    <div
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md"
+                      style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)' }}
+                    >
+                      <BookText className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
+                    </div>
+                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => handleEditBlog(blog)}>
+                      <div className="mb-1 flex items-center gap-3">
+                        <h4 className="truncate font-serif text-lg transition-colors group-hover:text-primary">
+                          {blog.title || t('admin.untitled')}
+                        </h4>
+                        <span
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
+                          style={
+                            blog.isPublished
+                              ? { backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }
+                              : { backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }
+                          }
+                        >
+                          {blog.isPublished ? t('admin.published') : t('admin.draft')}
+                        </span>
+                      </div>
+                      <div
+                        className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[10px] uppercase tracking-wide"
+                        style={{ color: 'var(--muted-foreground)' }}
                       >
-                        {blog.isPublished ? 'published' : 'draft'}
-                      </span>
+                        <span className="flex items-center gap-1.5">
+                          <History className="h-3 w-3" />
+                          {new Date(blog.updatedAt).toLocaleString()}
+                        </span>
+                        {blog.category && <span>{blog.category}</span>}
+                        <span className="flex items-center gap-1.5">
+                          <FileText className="h-3 w-3" />
+                          {blog.content.length} {t('admin.characters')}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
-                      <span className="flex items-center gap-1">
-                        <History className="w-3 h-3" />{' '}
-                        {new Date(blog.updatedAt).toLocaleString()}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-3 h-3" /> {blog.content.length}{' '}
-                        {t('admin.characters')}
-                      </span>
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                      <AdminButton onClick={() => handleEditBlog(blog)} adminVariant="iconPrimary">
+                        <Edit3 className="h-4 w-4" />
+                      </AdminButton>
+                      <AdminButton onClick={() => setDeleteBlogId(blog.id)} adminVariant="iconDestructive">
+                        <Trash2 className="h-4 w-4" />
+                      </AdminButton>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <AdminButton
-                      onClick={() => handleEditBlog(blog)}
-                      adminVariant="iconPrimary"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </AdminButton>
-                    <AdminButton
-                      onClick={() => setDeleteBlogId(blog.id)}
-                      adminVariant="iconDestructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </AdminButton>
+                ))}
+              </div>
+            ) : blogs.length === 0 ? (
+              <div
+                className="flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-20 text-center"
+                style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--card) 50%, transparent)' }}
+              >
+                <div
+                  className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}
+                >
+                  <BookText className="h-6 w-6" style={{ color: 'var(--muted-foreground)' }} />
+                </div>
+                <h3 className="mb-4 text-sm font-semibold">{t('ui.no_blog')}</h3>
+              </div>
+            ) : (
+              <div
+                className="flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-20 text-center"
+                style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--card) 50%, transparent)' }}
+              >
+                <div
+                  className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}
+                >
+                  <Search className="h-6 w-6" style={{ color: 'var(--muted-foreground)' }} />
+                </div>
+                <h3 className="mb-2 text-sm font-semibold">{t('common.search')}</h3>
+                <p className="mb-4 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  {t('admin.no_albums_match_filters') || 'No blogs match the current filters'}
+                </p>
+                {hasActiveFilters && (
+                  <div className="flex items-center gap-2">
+                    {!!blogSearchQuery.trim() && (
+                      <button
+                        onClick={() => setBlogSearchQuery('')}
+                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
+                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        {t('common.search')}
+                      </button>
+                    )}
+                    {!!statusFilter && (
+                      <button
+                        onClick={() => setStatusFilter('')}
+                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
+                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        {t('admin.filter') || 'Filter'}
+                      </button>
+                    )}
                   </div>
-                </div>
-              ))}
-              {blogs.length === 0 && (
-                <div className="py-24 text-center border border-dashed border-border">
-                  <BookText className="w-12 h-12 mx-auto mb-4 opacity-10" />
-                  <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                    {t('ui.no_blog')}
-                  </p>
-                </div>
-              )}
+                )}
               </div>
             )}
           </div>

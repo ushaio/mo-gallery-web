@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
 	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
@@ -48,7 +48,14 @@ type indexedFile struct {
 	PreviewStatus  string
 	PreviewError   string
 	MetadataStatus string
+	DominantColors []string
 	EXIF           exifMetadata
+}
+
+type unchangedAsset struct {
+	ID             AssetID
+	PreviewStatus  string
+	DominantColors string
 }
 
 func openStore(root string) (*store, error) {
@@ -57,7 +64,10 @@ func openStore(root string) (*store, error) {
 
 func openStoreWithMigration(root string, migrateStore func(*store) error) (*store, error) {
 	dbPath := internalPath(root, "library.db")
-	dsn := "file:" + filepath.ToSlash(dbPath) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	// Acquire the WAL write reservation when a transaction begins. Deferred
+	// transactions can read an old snapshot and then fail with SQLITE_BUSY_SNAPSHOT
+	// (517) when thumbnail workers commit before the scanner starts writing.
+	dsn := "file:" + filepath.ToSlash(dbPath) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -182,6 +192,7 @@ func (s *store) migrate() error {
             preview_status TEXT NOT NULL DEFAULT 'pending', preview_error TEXT NOT NULL DEFAULT '', metadata_status TEXT NOT NULL DEFAULT 'pending',
             display_title TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
             rating INTEGER NOT NULL DEFAULT 0 CHECK(rating BETWEEN 0 AND 5), color_label TEXT NOT NULL DEFAULT '',
+            dominant_colors TEXT NOT NULL DEFAULT '[]',
             is_favorite INTEGER NOT NULL DEFAULT 0, captured_at INTEGER,
             discovered_at INTEGER NOT NULL, technical_updated_at INTEGER NOT NULL,
             scan_token TEXT NOT NULL DEFAULT '', trash_entry_id TEXT
@@ -267,6 +278,9 @@ func (s *store) migrate() error {
 	}
 	if err := addColumnIfMissing(tx, "assets", "preview_error", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return fmt.Errorf("migrate local library preview error: %w", err)
+	}
+	if err := addColumnIfMissing(tx, "assets", "dominant_colors", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return fmt.Errorf("migrate local library dominant colors: %w", err)
 	}
 	trashColumns := []struct{ name, definition string }{
 		{"folder_id", "TEXT REFERENCES folders(id) ON DELETE SET NULL"},
@@ -380,10 +394,10 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 		return "", false, err
 	}
 	now := time.Now().UTC().UnixMilli()
-	var existingID, oldPreviewStatus, oldPreviewError string
+	var existingID, oldPreviewStatus, oldPreviewError, oldDominantColors string
 	var oldSize, oldMtime int64
-	err = tx.QueryRowContext(ctx, `SELECT id,byte_size,modified_at_ns,preview_status,preview_error FROM assets WHERE path_key=?`, file.PathKey).
-		Scan(&existingID, &oldSize, &oldMtime, &oldPreviewStatus, &oldPreviewError)
+	err = tx.QueryRowContext(ctx, `SELECT id,byte_size,modified_at_ns,preview_status,preview_error,dominant_colors FROM assets WHERE path_key=?`, file.PathKey).
+		Scan(&existingID, &oldSize, &oldMtime, &oldPreviewStatus, &oldPreviewError, &oldDominantColors)
 	created := false
 	capturedAt := nullableUnixMillis(file.CapturedAt)
 	switch err {
@@ -392,20 +406,22 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 		created = true
 		_, err = tx.ExecContext(ctx, `INSERT INTO assets(
             id,folder_id,relative_path,path_key,file_name,extension,format,mime_type,byte_size,modified_at_ns,width,height,orientation,is_animated,frame_count,
-            availability,preview_status,preview_error,metadata_status,captured_at,discovered_at,technical_updated_at,scan_token
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?)`,
+            availability,preview_status,preview_error,metadata_status,dominant_colors,captured_at,discovered_at,technical_updated_at,scan_token
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)`,
 			existingID, folderID, file.RelativePath, file.PathKey, file.FileName, file.Extension, file.Format, file.MimeType,
 			file.ByteSize, file.ModifiedAtNS, file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount,
-			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, capturedAt, now, now, scanToken)
+			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, encodeDominantColors(file.DominantColors), capturedAt, now, now, scanToken)
 	case nil:
 		previewStatus, previewError := file.PreviewStatus, boundedError(file.PreviewError)
+		dominantColors := "[]"
 		if oldSize == file.ByteSize && oldMtime == file.ModifiedAtNS && oldPreviewStatus == "ready" {
 			previewStatus, previewError = oldPreviewStatus, oldPreviewError
+			dominantColors = oldDominantColors
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL WHERE id=?`,
+		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL WHERE id=?`,
 			folderID, file.RelativePath, file.FileName, file.Extension, file.Format, file.MimeType, file.ByteSize, file.ModifiedAtNS,
 			file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount, previewStatus, previewError,
-			file.MetadataStatus, capturedAt, now, scanToken, existingID)
+			file.MetadataStatus, dominantColors, capturedAt, now, scanToken, existingID)
 	default:
 		return "", false, err
 	}
@@ -419,6 +435,34 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 		return "", false, err
 	}
 	return AssetID(existingID), created, nil
+}
+
+func (s *store) touchUnchangedAsset(ctx context.Context, pathKey string, byteSize, modifiedAtNS int64, scanToken string) (*unchangedAsset, error) {
+	var item unchangedAsset
+	err := s.db.QueryRowContext(ctx, `SELECT id,preview_status,dominant_colors FROM assets WHERE path_key=? AND byte_size=? AND modified_at_ns=?`, pathKey, byteSize, modifiedAtNS).
+		Scan(&item.ID, &item.PreviewStatus, &item.DominantColors)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE assets SET availability='active',scan_token=?,trash_entry_id=NULL WHERE id=?`, scanToken, item.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func encodeDominantColors(colors []string) string {
+	if colors == nil {
+		return "[]"
+	}
+	b, err := json.Marshal(colors)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }
 
 func normalizedOrientation(value int) int {
@@ -468,13 +512,49 @@ func (s *store) markAssetMissingPath(ctx context.Context, pathKey string) (Asset
 	return AssetID(id), true, nil
 }
 
-func (s *store) markUnseenMissing(ctx context.Context, token string) (bool, error) {
-	result, err := s.db.ExecContext(ctx, `UPDATE assets SET availability='missing',technical_updated_at=? WHERE availability='active' AND scan_token<>?`, time.Now().UnixMilli(), token)
+func (s *store) finishScan(ctx context.Context, token string, relativePaths []string, syncFolders bool) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
 	}
-	changed, err := result.RowsAffected()
-	return changed > 0, err
+	defer tx.Rollback()
+
+	missingResult, err := tx.ExecContext(ctx, `UPDATE assets SET availability='missing',technical_updated_at=? WHERE availability='active' AND scan_token<>?`, time.Now().UnixMilli(), token)
+	if err != nil {
+		return false, err
+	}
+	missingCount, err := missingResult.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	var deletedCount int64
+	if syncFolders {
+		if _, err := tx.ExecContext(ctx, `UPDATE folders SET availability='missing' WHERE availability='active'`); err != nil {
+			return false, err
+		}
+		for _, relative := range relativePaths {
+			if _, err := ensureFolderWith(ctx, tx, relative); err != nil {
+				return false, err
+			}
+		}
+		deletedResult, err := tx.ExecContext(ctx, `DELETE FROM folders WHERE availability='missing'`)
+		if err != nil {
+			return false, err
+		}
+		deletedCount, err = deletedResult.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return missingCount > 0 || deletedCount > 0, nil
+}
+
+func (s *store) markUnseenMissing(ctx context.Context, token string) (bool, error) {
+	return s.finishScan(ctx, token, nil, false)
 }
 
 func (s *store) counts(ctx context.Context) (active, missing, trashed int64, err error) {
@@ -564,14 +644,19 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 		where = append(where, `EXISTS (SELECT 1 FROM asset_search search WHERE search.asset_id=a.id AND asset_search MATCH ?)`)
 		args = append(args, search)
 	}
-	if query.Folder != "" {
+	if query.Folder != "" || query.DirectFolderOnly {
 		_, folderKey, err := normalizeRelative(query.Folder)
 		if err != nil {
 			return nil, nil, err
 		}
-		where = append(where, "(f.path_key=? OR f.path_key LIKE ? ESCAPE '\\')")
-		escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(folderKey)
-		args = append(args, folderKey, escaped+"/%")
+		if query.DirectFolderOnly {
+			where = append(where, "COALESCE(f.path_key,'')=?")
+			args = append(args, folderKey)
+		} else {
+			where = append(where, "(f.path_key=? OR f.path_key LIKE ? ESCAPE '\\')")
+			escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(folderKey)
+			args = append(args, folderKey, escaped+"/%")
+		}
 	}
 	if query.FavoritesOnly {
 		where = append(where, "a.is_favorite=1")
@@ -755,7 +840,7 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		return AssetPage{}, err
 	}
 	args = append(args, limit+1)
-	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,
+	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,
         e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
         FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
         WHERE ` + baseWhere + ` ORDER BY ` + sortExpr + ` ` + direction + `,a.id ` + direction + ` LIMIT ?`
@@ -780,12 +865,14 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		var iso sql.NullInt64
 		var aperture, shutterSeconds, focalLengthMM, latitude, longitude sql.NullFloat64
 		var sortValue any
-		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
+		var dominantColors string
+		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
 			return AssetPage{}, err
 		}
 		item.IsAnimated = animated != 0
 		item.IsFavorite = favorite != 0
 		item.CapturedAt = timeFromMillis(captured)
+		_ = json.Unmarshal([]byte(dominantColors), &item.DominantColors)
 		if cameraMake.Valid || cameraModel.Valid || lensModel.Valid || iso.Valid || aperture.Valid || shutterSeconds.Valid || focalLengthMM.Valid || latitude.Valid || longitude.Valid {
 			item.EXIF = &ExifMetadataDTO{
 				CameraMake: cameraMake.String, CameraModel: cameraModel.String, LensModel: lensModel.String,
@@ -822,6 +909,36 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		next = encodeCursor(lastValue, lastID)
 	}
 	return AssetPage{Items: items, NextCursor: next, Total: total, IsComplete: scan.State == "completed", Scan: scan}, rows.Err()
+}
+
+func (s *store) assetIDsForQuery(ctx context.Context, query AssetQuery) ([]AssetID, int64, error) {
+	availability := query.Availability
+	if availability == "" {
+		availability = "active"
+	}
+	where, args, err := buildAssetWhere(query, availability)
+	if err != nil {
+		return nil, 0, err
+	}
+	whereSQL := strings.Join(where, " AND ")
+	var total int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id WHERE `+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id WHERE `+whereSQL+` ORDER BY a.id`, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	ids := make([]AssetID, 0, total)
+	for rows.Next() {
+		var id AssetID
+		if err := rows.Scan(&id); err != nil {
+			return nil, 0, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, total, rows.Err()
 }
 
 func (s *store) listFolders(ctx context.Context) ([]FolderDTO, error) {
@@ -1029,6 +1146,11 @@ func (s *store) deleteDerivative(ctx context.Context, id AssetID, variant deriva
 
 func (s *store) setPreviewResult(ctx context.Context, id AssetID, status, previewError string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE assets SET preview_status=?,preview_error=?,technical_updated_at=? WHERE id=?`, status, boundedError(previewError), time.Now().UnixMilli(), id)
+	return err
+}
+
+func (s *store) setDominantColors(ctx context.Context, id AssetID, colors []string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE assets SET dominant_colors=?,technical_updated_at=? WHERE id=?`, encodeDominantColors(colors), time.Now().UnixMilli(), id)
 	return err
 }
 

@@ -226,8 +226,8 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "6" {
-		t.Fatalf("schema version=%q, want 6", version)
+	if version != "7" {
+		t.Fatalf("schema version=%q, want 7", version)
 	}
 	columns, err := store.db.Query(`PRAGMA table_info(assets)`)
 	if err != nil {

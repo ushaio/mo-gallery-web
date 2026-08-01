@@ -18,6 +18,8 @@ export function BatchDeletePhotos(arg1:services.BatchDeleteParams):Promise<servi
 
 export function BatchUpdateLocalAssetOrganization(arg1:local_library.BatchAssetOrganizationUpdate):Promise<void>;
 
+export function BatchUpdateLocalAssetOrganizationByQuery(arg1:string,arg2:local_library.BatchAssetOrganizationUpdate):Promise<void>;
+
 export function BatchUpdateShowFlag(arg1:Array<string>,arg2:boolean):Promise<services.BatchResult>;
 
 export function CancelLocalLibraryScan():Promise<void>;
@@ -46,13 +48,13 @@ export function CreateFilmRoll(arg1:services.CreateFilmRollParams):Promise<servi
 
 export function CreateFriend(arg1:services.CreateFriendParams):Promise<services.FriendDTO>;
 
+export function CreateLocalAssetQueryToken(arg1:local_library.AssetQuery):Promise<local_library.AssetQueryToken>;
+
 export function CreateLocalLibrary(arg1:string,arg2:string):Promise<local_library.LibrarySnapshot>;
 
 export function CreateLocalLibraryBackup():Promise<local_library.BackupInfo>;
 
 export function CreateLocalLibraryCollection(arg1:any,arg2:string,arg3:string):Promise<local_library.CollectionDTO>;
-
-export function CreateLocalLibraryCollectionGroup(arg1:any,arg2:string):Promise<local_library.CollectionGroupDTO>;
 
 export function CreateLocalLibraryFolder(arg1:string,arg2:string):Promise<local_library.FolderDTO>;
 
@@ -89,6 +91,10 @@ export function DeleteStorageSource(arg1:string):Promise<void>;
 export function DeleteStory(arg1:string):Promise<void>;
 
 export function DownloadMessageImageToLocal(arg1:string):Promise<string>;
+
+export function ExecuteLocalAssetMovePlan(arg1:string):Promise<local_library.AssetFileOperationExecution>;
+
+export function ExecuteLocalLibraryFolderMovePlan(arg1:string):Promise<local_library.FolderFileOperationExecution>;
 
 export function FinishEditorAiMessage(arg1:services.EditorAiMessageFinishInput):Promise<services.EditorAiMessageDTO>;
 
@@ -206,7 +212,11 @@ export function MoveLocalLibraryFolder(arg1:string,arg2:string,arg3:string):Prom
 
 export function OpenLocalAssetInDefaultApp(arg1:string):Promise<void>;
 
+export function OpenLocalAssetInFileManager(arg1:string):Promise<void>;
+
 export function OpenLocalLibrary(arg1:string):Promise<local_library.LibrarySnapshot>;
+
+export function OpenLocalLibraryFolderInFileManager(arg1:string):Promise<void>;
 
 export function OpenLogDir():Promise<void>;
 
@@ -217,6 +227,10 @@ export function PermanentDeleteActiveLocalLibraryFolder(arg1:string):Promise<voi
 export function PermanentDeleteLocalAssets(arg1:Array<string>):Promise<Array<local_library.TrashResult>>;
 
 export function PermanentDeleteLocalLibraryFolder(arg1:string):Promise<void>;
+
+export function PlanLocalAssetMove(arg1:Array<string>,arg2:string,arg3:string):Promise<local_library.AssetFileOperationPlan>;
+
+export function PlanLocalLibraryFolderMove(arg1:string,arg2:string,arg3:string,arg4:string):Promise<local_library.FolderFileOperationPlan>;
 
 export function PrepareLocalAssetUpload(arg1:Array<string>):Promise<Array<services.PreparedFile>>;
 

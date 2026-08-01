@@ -741,6 +741,11 @@ func (a *App) GetLocalLibraryEntryState() (map[string]interface{}, error) {
 	if snapshot, snapshotErr := a.LocalLibrary.Snapshot(); snapshotErr == nil {
 		state["active"] = true
 		state["snapshot"] = snapshot
+	} else if snapshot, restored, restoreErr := a.LocalLibrary.RestoreLastLibrary(); restoreErr != nil {
+		return nil, restoreErr
+	} else if restored {
+		state["active"] = true
+		state["snapshot"] = snapshot
 	}
 	return state, nil
 }
@@ -778,13 +783,19 @@ func (a *App) OpenLocalLibrary(root string) (local_library.LibrarySnapshot, erro
 	return a.LocalLibrary.Open(root)
 }
 
-func (a *App) CloseLocalLibrary() error                   { return a.LocalLibrary.Close() }
+func (a *App) CloseLocalLibrary() error                   { return a.LocalLibrary.CloseManually() }
 func (a *App) RemoveRecentLocalLibrary(root string) error { return a.LocalLibrary.RemoveRecent(root) }
 func (a *App) GetLocalLibrarySnapshot() (local_library.LibrarySnapshot, error) {
 	return a.LocalLibrary.Snapshot()
 }
 func (a *App) ListLocalAssets(query local_library.AssetQuery) (local_library.AssetPage, error) {
 	return a.LocalLibrary.ListAssets(query)
+}
+func (a *App) CreateLocalAssetQueryToken(query local_library.AssetQuery) (local_library.AssetQueryToken, error) {
+	return a.LocalLibrary.CreateAssetQueryToken(query)
+}
+func (a *App) BatchUpdateLocalAssetOrganizationByQuery(token string, update local_library.BatchAssetOrganizationUpdate) error {
+	return a.LocalLibrary.BatchUpdateAssetOrganizationByQuery(token, update)
 }
 func (a *App) ListLocalFolders() ([]local_library.FolderDTO, error) {
 	return a.LocalLibrary.ListFolders()
@@ -810,9 +821,6 @@ func (a *App) BatchUpdateLocalAssetOrganization(update local_library.BatchAssetO
 
 func (a *App) ListLocalLibraryCollectionGroups() ([]local_library.CollectionGroupDTO, error) {
 	return a.LocalLibrary.ListCollectionGroups()
-}
-func (a *App) CreateLocalLibraryCollectionGroup(parentID *string, name string) (local_library.CollectionGroupDTO, error) {
-	return a.LocalLibrary.CreateCollectionGroup(parentID, name)
 }
 func (a *App) UpdateLocalLibraryCollectionGroup(id string, parentID *string, name string, position int) (local_library.CollectionGroupDTO, error) {
 	return a.LocalLibrary.UpdateCollectionGroup(id, parentID, name, position)
@@ -840,6 +848,12 @@ func (a *App) CreateLocalLibraryFolder(parentRelative, name string) (local_libra
 }
 func (a *App) MoveLocalLibraryFolder(relative, destinationParent, topLevelName string) (local_library.FolderDTO, error) {
 	return a.LocalLibrary.MoveFolder(relative, destinationParent, topLevelName)
+}
+func (a *App) PlanLocalLibraryFolderMove(relative, destinationParent, topLevelName, conflictPolicy string) (local_library.FolderFileOperationPlan, error) {
+	return a.LocalLibrary.PlanFolderMove(relative, destinationParent, topLevelName, conflictPolicy)
+}
+func (a *App) ExecuteLocalLibraryFolderMovePlan(planID string) (local_library.FolderFileOperationExecution, error) {
+	return a.LocalLibrary.ExecuteFolderMovePlan(planID)
 }
 func (a *App) GetLocalLibraryFolderProperties(relative string) (local_library.FolderProperties, error) {
 	return a.LocalLibrary.GetFolderProperties(relative)
@@ -901,6 +915,16 @@ func (a *App) MoveLocalAssets(ids []string, destinationFolder string) ([]local_l
 		assetIDs[index] = local_library.AssetID(id)
 	}
 	return a.LocalLibrary.MoveAssets(assetIDs, destinationFolder)
+}
+func (a *App) PlanLocalAssetMove(ids []string, destinationFolder, conflictPolicy string) (local_library.AssetFileOperationPlan, error) {
+	assetIDs := make([]local_library.AssetID, len(ids))
+	for index, id := range ids {
+		assetIDs[index] = local_library.AssetID(id)
+	}
+	return a.LocalLibrary.PlanAssetMove(assetIDs, destinationFolder, conflictPolicy)
+}
+func (a *App) ExecuteLocalAssetMovePlan(planID string) (local_library.AssetFileOperationExecution, error) {
+	return a.LocalLibrary.ExecuteAssetMovePlan(planID)
 }
 func (a *App) TrashLocalAssets(ids []string) ([]local_library.TrashResult, error) {
 	assetIDs := make([]local_library.AssetID, len(ids))
@@ -966,4 +990,20 @@ func (a *App) OpenLocalAssetInDefaultApp(id string) error {
 		return err
 	}
 	return exec.Command("rundll32", "url.dll,FileProtocolHandler", path).Start()
+}
+
+func (a *App) OpenLocalAssetInFileManager(id string) error {
+	path, err := a.LocalLibrary.OriginalPath(local_library.AssetID(id))
+	if err != nil {
+		return err
+	}
+	return exec.Command("explorer.exe", "/select,"+path).Start()
+}
+
+func (a *App) OpenLocalLibraryFolderInFileManager(relative string) error {
+	path, err := a.LocalLibrary.FolderPath(relative)
+	if err != nil {
+		return err
+	}
+	return exec.Command("explorer.exe", path).Start()
 }

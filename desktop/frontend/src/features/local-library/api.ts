@@ -1,10 +1,10 @@
 import {
   BatchUpdateLocalAssetOrganization,
+  BatchUpdateLocalAssetOrganizationByQuery,
   CancelLocalLibraryScan,
   CloseLocalLibrary,
   CreateLocalLibraryBackup,
   CreateLocalLibraryCollection,
-  CreateLocalLibraryCollectionGroup,
   CreateLocalLibraryTag,
   CopyLocalAssetsToClipboard,
   CreateLocalLibrary,
@@ -23,14 +23,21 @@ import {
   ImportLocalLibraryFiles,
   InitializeLocalLibrary,
   ListLocalAssets,
+  CreateLocalAssetQueryToken,
   ListLocalFolders,
   ListLocalLibraryCollectionGroups,
   ListLocalLibraryCollections,
   ListLocalLibraryTags,
   ListLocalLibraryTrashedFolders,
   MoveLocalLibraryFolder,
+  PlanLocalLibraryFolderMove,
+  ExecuteLocalLibraryFolderMovePlan,
   MoveLocalAssets,
+  PlanLocalAssetMove,
+  ExecuteLocalAssetMovePlan,
   OpenLocalAssetInDefaultApp,
+  OpenLocalAssetInFileManager,
+  OpenLocalLibraryFolderInFileManager,
   OpenLocalLibrary,
   PauseLocalLibraryScan,
   PermanentDeleteLocalAssets,
@@ -61,9 +68,13 @@ import {
 import type {
   AssetMaintenanceResult,
   AssetMoveResult,
+  AssetFileOperationPlan,
+  FolderFileOperationPlan,
+  AssetFileOperationExecution,
   AssetOperationResult,
   AssetPage,
   AssetQuery,
+  AssetQueryToken,
   BatchAssetOrganizationUpdate,
   BackupInfo,
   BackupOverview,
@@ -227,6 +238,16 @@ export const localLibraryApi = {
     }
   },
   batchUpdateAssetOrganization: (update: BatchAssetOrganizationUpdate) => BatchUpdateLocalAssetOrganization(update),
+  async createAssetQueryToken(query: AssetQuery): Promise<AssetQueryToken> {
+    const source = await CreateLocalAssetQueryToken(query) as any
+    return { token: String(source.token), total: Number(source.total ?? 0), expiresAt: asIsoTime(source.expiresAt) ?? '' }
+  },
+  batchUpdateAssetOrganizationByQuery: (token: string, update: Omit<BatchAssetOrganizationUpdate, 'assetIds'>) => BatchUpdateLocalAssetOrganizationByQuery(token, { assetIds: [], ...update }),
+  async planAssetMove(assetIds: string[], destinationFolder: string, conflictPolicy: 'skip' | 'rename' = 'skip'): Promise<AssetFileOperationPlan> {
+    const source = await PlanLocalAssetMove(assetIds, destinationFolder, conflictPolicy) as any
+    return { ...source, conflictPolicy: source?.conflictPolicy === 'rename' ? 'rename' : 'skip', createdAt: asIsoTime(source?.createdAt) ?? '' }
+  },
+  executeAssetMovePlan: (planId: string): Promise<AssetFileOperationExecution> => ExecuteLocalAssetMovePlan(planId),
   async listTags(): Promise<LocalTag[]> {
     const source = await ListLocalLibraryTags()
     return (source || []).map((item) => ({ id: String(item.id), name: String(item.name), color: item.color || undefined, assetCount: Number(item.assetCount ?? 0) }))
@@ -244,10 +265,6 @@ export const localLibraryApi = {
   async listCollectionGroups(): Promise<CollectionGroup[]> {
     const source = await ListLocalLibraryCollectionGroups()
     return (source || []).map((item) => ({ id: String(item.id), parentId: item.parentId || undefined, name: String(item.name), position: Number(item.position ?? 0) }))
-  },
-  async createCollectionGroup(parentId: string | undefined, name: string): Promise<CollectionGroup> {
-    const item = await CreateLocalLibraryCollectionGroup(parentId || null, name)
-    return { id: String(item.id), parentId: item.parentId || undefined, name: String(item.name), position: Number(item.position ?? 0) }
   },
   async updateCollectionGroup(id: string, parentId: string | undefined, name: string, position: number): Promise<CollectionGroup> {
     const item = await UpdateLocalLibraryCollectionGroup(id, parentId || null, name, position)
@@ -289,7 +306,10 @@ export const localLibraryApi = {
     }
   },
   async moveFolder(relative: string, destinationParent: string, topLevelName: string): Promise<FolderItem> {
-    const item = await MoveLocalLibraryFolder(relative, destinationParent, topLevelName) as any
+    const plan = await localLibraryApi.planFolderMove(relative, destinationParent, topLevelName, 'skip')
+    const execution = await localLibraryApi.executeFolderMovePlan(plan.id) as any
+    if (execution.status !== 'completed') throw new Error('目标位置存在同名文件夹，已跳过移动')
+    const item = execution.folder
     return {
       id: String(item.id),
       parentId: item.parentId || undefined,
@@ -353,7 +373,16 @@ export const localLibraryApi = {
   updateAsset: (id: string, title: string, notes: string, rating: number, color: string, favorite: boolean) =>
     UpdateLocalAsset(id, title, notes, rating, color, favorite),
   renameAsset: (id: string, fileName: string) => RenameLocalAsset(id, fileName) as Promise<AssetMoveResult>,
-  moveAssets: (ids: string[], destinationFolder: string) => MoveLocalAssets(ids, destinationFolder) as Promise<AssetMoveResult[]>,
+  async moveAssets(ids: string[], destinationFolder: string): Promise<AssetMoveResult[]> {
+    const plan = await PlanLocalAssetMove(ids, destinationFolder, 'skip')
+    const execution = await ExecuteLocalAssetMovePlan(plan.id)
+    return execution.results
+  },
+  async planFolderMove(relative: string, destinationParent: string, topLevelName: string, conflictPolicy: 'skip' | 'rename' = 'skip'): Promise<FolderFileOperationPlan> {
+    const source = await PlanLocalLibraryFolderMove(relative, destinationParent, topLevelName, conflictPolicy) as any
+    return { ...source, conflictPolicy: source?.conflictPolicy === 'rename' ? 'rename' : 'skip', createdAt: asIsoTime(source?.createdAt) ?? '' }
+  },
+  executeFolderMovePlan: (planId: string) => ExecuteLocalLibraryFolderMovePlan(planId),
   trashAssets: (ids: string[]) => TrashLocalAssets(ids) as Promise<AssetOperationResult[]>,
   permanentlyDeleteAssets: (ids: string[]) => PermanentDeleteLocalAssets(ids) as Promise<AssetOperationResult[]>,
   recheckMissingAssets: (ids: string[]) => RecheckMissingLocalAssets(ids) as Promise<AssetMaintenanceResult[]>,
@@ -361,6 +390,8 @@ export const localLibraryApi = {
   removeMissingAssets: (ids: string[]) => RemoveMissingLocalAssets(ids) as Promise<AssetMaintenanceResult[]>,
   restoreAsset: (id: string) => RestoreLocalAsset(id),
   openInDefaultApp: (id: string) => OpenLocalAssetInDefaultApp(id),
+  openAssetInFileManager: (id: string) => OpenLocalAssetInFileManager(id),
+  openFolderInFileManager: (relative: string) => OpenLocalLibraryFolderInFileManager(relative),
 }
 
 export { normalizeSnapshot }

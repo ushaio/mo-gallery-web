@@ -19,7 +19,8 @@ import { getAdminAlbums } from '@/lib/api/albums'
 import { getFilmRolls } from '@/lib/api/film-rolls'
 import { getStorageSources } from '@/lib/api/storage-sources'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
+import { AdminInput, AdminMultiSelect } from '@/components/admin/AdminFormControls'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { StorySelectorModal } from '@/components/admin/StorySelectorModal'
 import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
 
@@ -389,9 +390,9 @@ export function PhotoUploadParams({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
-                <AdminSelect
+                <SelectDropdown
                   value={uploadSourceId}
-                  onChange={setUploadSourceId}
+                  onChange={(value) => setUploadSourceId(value as string)}
                   options={storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` }))}
                 />
               </div>

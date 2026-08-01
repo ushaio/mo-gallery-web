@@ -66,6 +66,8 @@ type Manager struct {
 	folderMutationMu    sync.Mutex
 	assetFileMutationMu sync.RWMutex
 	backupMu            sync.Mutex
+	queryTokenMu        sync.Mutex
+	queryTokens         map[string]queryTokenRecord
 }
 
 func NewManager(configDir string, emit func(LocalLibraryEvent)) *Manager {
@@ -77,7 +79,14 @@ func NewManager(configDir string, emit func(LocalLibraryEvent)) *Manager {
 		probeLibrary:     probeLibraryIdentity,
 		startWatch:       nil,
 		recoveryInterval: 2 * time.Second,
+		queryTokens:      make(map[string]queryTokenRecord),
 	}
+}
+
+type queryTokenRecord struct {
+	SessionID string
+	Query     AssetQuery
+	ExpiresAt time.Time
 }
 
 func (m *Manager) startSessionWatcher(session *librarySession) error {
@@ -113,6 +122,30 @@ func sessionClosed(done <-chan struct{}) bool {
 
 func (m *Manager) RecentLibraries() ([]RecentLibrary, error) { return m.registry.List() }
 func (m *Manager) RemoveRecent(path string) error            { return m.registry.Remove(path) }
+
+func (m *Manager) RestoreLastLibrary() (LibrarySnapshot, bool, error) {
+	if snapshot, err := m.Snapshot(); err == nil {
+		return snapshot, true, nil
+	}
+	shouldRestore, err := m.registry.ShouldRestoreLast()
+	if err != nil || !shouldRestore {
+		return LibrarySnapshot{}, false, err
+	}
+	recent, err := m.registry.List()
+	if err != nil {
+		return LibrarySnapshot{}, false, err
+	}
+	for _, item := range recent {
+		if !item.Available {
+			continue
+		}
+		snapshot, openErr := m.Open(item.Path)
+		if openErr == nil {
+			return snapshot, true, nil
+		}
+	}
+	return LibrarySnapshot{}, false, nil
+}
 
 func (m *Manager) ImportPreferences() (LocalLibraryPreferences, error) {
 	return m.preferences.Get()
@@ -266,6 +299,13 @@ func (m *Manager) Close() error {
 		return nil
 	}
 	return closeLibrarySession(session, true)
+}
+
+func (m *Manager) CloseManually() error {
+	if err := m.Close(); err != nil {
+		return err
+	}
+	return m.registry.SetManuallyClosed(true)
 }
 
 func stopLibrarySessionWorkers(session *librarySession, state string) {
@@ -491,15 +531,27 @@ func (session *librarySession) upsertAssetForScan(ctx context.Context, file inde
 	return session.store.upsertAsset(ctx, file, token)
 }
 
+func (session *librarySession) touchUnchangedAssetForScan(ctx context.Context, pathKey string, byteSize, modifiedAtNS int64, scanID, token string) (*unchangedAsset, error) {
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	if session.scanID != scanID {
+		return nil, context.Canceled
+	}
+	return session.store.touchUnchangedAsset(ctx, pathKey, byteSize, modifiedAtNS, token)
+}
+
 func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, token string) {
 	m.folderMutationMu.Lock()
 	defer m.folderMutationMu.Unlock()
 	var count int64
 	changed := false
+	folderPaths := make([]string, 0)
+	canPruneFolders := true
 	lastEvent := time.Now()
 	err := filepath.WalkDir(session.root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if errors.Is(walkErr, fs.ErrPermission) {
+				canPruneFolders = false
 				return nil
 			}
 			return walkErr
@@ -515,6 +567,12 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 			}
 			if entry.Type()&os.ModeSymlink != 0 {
 				return filepath.SkipDir
+			}
+			if path != session.root {
+				relative, relErr := filepath.Rel(session.root, path)
+				if relErr == nil {
+					folderPaths = append(folderPaths, filepath.ToSlash(relative))
+				}
 			}
 			return nil
 		}
@@ -600,15 +658,15 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 		m.handleLibraryProbeFailure(session, probe, probeErr)
 		return
 	}
-	markedMissing, markErr := session.store.markUnseenMissing(session.ctx, token)
-	if markErr != nil {
+	scanChanged, finishErr := session.store.finishScan(session.ctx, token, folderPaths, canPruneFolders)
+	if finishErr != nil {
 		session.scan.State = "failed"
-		session.scan.Error = markErr.Error()
+		session.scan.Error = finishErr.Error()
 		session.mu.Unlock()
 		m.emitSessionEvent(session, "scan_failed")
 		return
 	}
-	changed = changed || markedMissing
+	changed = changed || scanChanged
 	now := time.Now().UTC()
 	session.state = "open"
 	session.scan.State = "completed"

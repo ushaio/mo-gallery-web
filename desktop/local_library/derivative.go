@@ -314,6 +314,11 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 	if record, recordErr := session.store.derivativeRecord(ctx, request.assetID, request.variant); recordErr == nil && record.CacheKey == request.cacheKey && record.Status == "ready" {
 		if validDerivativeFile(destination, derivativeDimension(request.variant)) {
 			_ = session.store.touchDerivative(ctx, request.assetID, request.variant)
+			if request.variant == derivativeThumbnail {
+				if thumbnail, colorErr := decodeImage(destination); colorErr == nil {
+					_ = session.store.setDominantColors(ctx, request.assetID, extractDominantColors(thumbnail, 5))
+				}
+			}
 			result.path, result.mime, result.status = destination, "image/jpeg", "ready"
 			return result
 		}
@@ -323,6 +328,9 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		config, _ := decodeImageConfig(destination)
 		_ = session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), config.Width, config.Height, info.Size(), "ready", "")
 		if request.variant == derivativeThumbnail {
+			if thumbnail, colorErr := decodeImage(destination); colorErr == nil {
+				_ = session.store.setDominantColors(ctx, request.assetID, extractDominantColors(thumbnail, 5))
+			}
 			_ = session.store.setPreviewResult(ctx, request.assetID, "ready", "")
 			m.emitPreviewStatus(session, request.assetID, "ready")
 		}
@@ -369,6 +377,11 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		result.err = err
 		m.recordDerivativeFailure(session, request, err)
 		return result
+	}
+	if request.variant == derivativeThumbnail {
+		if thumbnail, colorErr := decodeImage(destination); colorErr == nil {
+			_ = session.store.setDominantColors(ctx, request.assetID, extractDominantColors(thumbnail, 5))
+		}
 	}
 	if err := session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), config.Width, config.Height, generated.Size(), "ready", ""); err != nil {
 		result.err = err

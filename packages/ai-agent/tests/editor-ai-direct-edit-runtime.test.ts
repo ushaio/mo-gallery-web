@@ -545,11 +545,6 @@ await test('bounds every model-produced non-delete text and JSON payload', async
       oversized: { operationId: 'zine-attrs-oversized', type: 'set_slot_attrs', spreadId: 'spread-1', slotId: 'slot-1', attrs: oversizedJson },
     },
     {
-      name: 'inserted Zine slot', capability: 'zine' as const,
-      exact: { operationId: 'slot-exact', type: 'insert_slot', spreadId: 'spread-1', index: 0, slot: exactJson },
-      oversized: { operationId: 'slot-oversized', type: 'insert_slot', spreadId: 'spread-1', index: 0, slot: oversizedJson },
-    },
-    {
       name: 'Zine template options', capability: 'zine' as const,
       exact: { operationId: 'options-exact', type: 'apply_layout_template', spreadId: 'spread-1', templateId: 'template-1', targetSlotIds: [], options: exactJson },
       oversized: { operationId: 'options-oversized', type: 'apply_layout_template', spreadId: 'spread-1', templateId: 'template-1', targetSlotIds: [], options: oversizedJson },
@@ -574,6 +569,41 @@ await test('bounds every model-produced non-delete text and JSON payload', async
     assert.ok(batch, boundaryCase.name)
     assert.deepEqual(batch.batch.operations, [boundaryCase.exact], boundaryCase.name)
   }
+})
+
+await test('bounds inserted Zine text slot content and rejects incomplete slot payloads', async () => {
+  const slot = (contentLength: number) => ({
+    id: 'slot-new',
+    kind: 'text' as const,
+    page: 'left' as const,
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 100,
+    rotation: 0,
+    zIndex: 1,
+    content: 'x'.repeat(contentLength),
+    align: 'left' as const,
+    fontSize: 16,
+    lineHeight: 1.5,
+    color: '#000000',
+    fontFamily: 'sans-serif',
+  })
+  const exact = { operationId: 'slot-exact', type: 'insert_slot' as const, spreadId: 'spread-1', index: 0, slot: slot(MODEL_OPERATION_TEXT_LIMIT) }
+  const events = await collect(runtime(model([
+    [call('slot-incomplete', 'add_zine_operation', { operationId: 'slot-incomplete', type: 'insert_slot', spreadId: 'spread-1', index: 0, slot: jsonObjectAtCanonicalLimit(MODEL_OPERATION_JSON_LIMIT) }), finish('tool-calls')],
+    [call('slot-oversized', 'add_zine_operation', { operationId: 'slot-oversized', type: 'insert_slot', spreadId: 'spread-1', index: 0, slot: slot(MODEL_OPERATION_TEXT_LIMIT + 1) }), finish('tool-calls')],
+    [call('slot-exact', 'add_zine_operation', exact), finish('tool-calls')],
+    [call('slot-submit', 'submit_operation_batch', { summary: ['Inserted Zine slot'] }), finish('tool-calls')],
+    [finish('stop')],
+  ])), task(zineSnapshot()))
+  const outputs = toolOutputs(events)
+  const batch = events.find((event) => event.type === 'operation_batch_created')
+
+  assert.equal((outputs[0] as { error: { code: string } }).error.code, 'invalid_tool_input')
+  assert.equal((outputs[1] as { error: { code: string } }).error.code, 'invalid_tool_input')
+  assert.ok(batch)
+  assert.deepEqual(batch.batch.operations, [exact])
 })
 
 await test('bounds Zine template targetSlotIds at 500', async () => {
@@ -680,13 +710,13 @@ await test('enforces delete tool exposure and exact targets', async () => {
   )
   assert.deepEqual(
     await requestedToolNames(task(zineSnapshot())),
-    [...commonTools, 'add_zine_operation'].toSorted(),
+    [...commonTools, 'add_zine_operation', 'insert_zine_text_slot'].toSorted(),
   )
   assert.deepEqual(
     await requestedToolNames(task(zineSnapshot(), {
       authorization: { allowDelete: true, deleteTargetIds: ['slot-1'], targetSpreadId: 'spread-1', projectAssetIds: ['asset-1'] },
     })),
-    [...commonTools, 'add_zine_operation', 'delete_slot'].toSorted(),
+    [...commonTools, 'add_zine_operation', 'delete_slot', 'insert_zine_text_slot'].toSorted(),
   )
 
   const narrativeAuthorized = task(narrativeSnapshot(), { authorization: { allowDelete: true, deleteTargetIds: ['p1'] } })

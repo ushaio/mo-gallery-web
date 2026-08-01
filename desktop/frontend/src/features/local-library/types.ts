@@ -170,6 +170,7 @@ export interface LocalAsset {
   previewStatus: string
   previewError?: string
   metadataStatus: string
+  dominantColors?: string[]
   displayTitle?: string
   notes?: string
   rating: number
@@ -223,6 +224,7 @@ export interface AssetQuery extends AssetStructuredFilters {
   cursor?: string
   limit?: number
   folder?: string
+  directFolderOnly?: boolean
   search?: string
   availability?: AssetAvailability
   favoritesOnly?: boolean
@@ -263,6 +265,60 @@ export interface AssetMoveResult {
   destination?: string
   status: 'moved' | 'unchanged' | 'failed' | string
   error?: string
+}
+
+export interface AssetQueryToken {
+  token: string
+  total: number
+  expiresAt: string
+}
+
+export interface AssetFileOperationItem {
+  assetId: string
+  source: string
+  destination: string
+  conflict: boolean
+  warning?: string
+}
+
+export interface AssetFileOperationPlan {
+  id: string
+  version: number
+  kind: string
+  destinationFolder: string
+  conflictPolicy: 'skip' | 'rename'
+  items: AssetFileOperationItem[]
+  conflictCount: number
+  totalBytes: number
+  createdAt: string
+}
+
+export interface AssetFileOperationExecution {
+  planId: string
+  status: 'completed' | 'partial' | string
+  results: AssetMoveResult[]
+}
+
+export interface FolderFileOperationExecution {
+  planId: string
+  status: string
+  folder: FolderItem
+}
+
+export interface FolderFileOperationPlan {
+  id: string
+  version: number
+  kind: string
+  source: string
+  destination: string
+  conflictPolicy: 'skip' | 'rename'
+  items: Array<{ source: string, destination: string, kind: string, conflict: boolean }>
+  managedAssetCount: number
+  otherFileCount: number
+  directoryCount: number
+  totalBytes: number
+  conflictCount: number
+  createdAt: string
 }
 
 export interface AssetMaintenanceResult {

@@ -1,6 +1,6 @@
 # ADR-0039：媒体后端与逐格式能力等级
 
-- 状态：已接受（真实样本与发布环境验证仍待完成）
+- 状态：已接受（AVIF/HEIC 与 RAW 预览已实现，真实机型矩阵仍待完成）
 - 日期：2026-07-31
 - 关联：ADR-0009、ADR-0010、ADR-0035、`verification-matrix.md`
 
@@ -19,7 +19,7 @@ MVP 当前采用 Go 进程内媒体管线：
 - 512px 缩略图与 2048px 预览统一编码为 JPEG；
 - 原文件和派生图只通过当前资源库、session 与资产 ID 校验后的同源 handler 提供。
 
-当前不引入依赖系统 codec 的正式后端，也没有 HEIF/AVIF/RAW 原生解码器。前端已有的 `@jsquash/avif` 用于其他图片处理流程，不构成本地资源库后端的 AVIF 支持证据。
+AVIF 使用 `github.com/gen2brain/avif`，HEIC/HEIF 使用 `github.com/gen2brain/heic`。两者在 `nodynamic` 构建标签下使用内嵌 WASM 与 wazero，不依赖系统 codec 或 CGO。RAW 优先使用 `github.com/evanoberholster/imagemeta` 提取 CR3 预览，CR2/CR3/NEF/ARW/DNG/RAF 还会扫描、完整解码校验并选择最大的内嵌 JPEG。Wails 生产构建固定使用 `nodynamic`。
 
 ## 当前能力矩阵
 
@@ -30,10 +30,10 @@ MVP 当前采用 Go 进程内媒体管线：
 | WebP | 是 | `x/image/webp` | 是 | 不承诺 | 代码支持，待真实矩阵验收 |
 | GIF | 是 | Go 首帧解码并统计帧数 | 静态首帧 | 不承诺 | 代码支持；动画交互/减少动态效果待验收 |
 | TIFF | 是 | `x/image/tiff` 可解码的变体 | 可解码时生成 | 部分变体 | 实验性，未完成 8/16-bit 样本验证 |
-| 静态 AVIF | 是 | 当前 Go 管线无解码器 | 否 | 否 | 占位建档，不是 ADR-0035 所要求的正式支持 |
-| 动画 AVIF | 是 | 仅文件头识别 | 否 | 否 | 占位建档，明确不支持播放 |
-| HEIC/HEIF | 是 | 当前 Go 管线无解码器 | 否 | 不承诺 | 占位建档 |
-| CR2/CR3/NEF/ARW/DNG/RAF | 是 | 文件头/扩展名识别；无通用 RAW 预览提取器 | 通常否 | `goexif` 可读时部分提取 | 占位建档；未达到承诺的内嵌 JPEG 支持 |
+| 静态 AVIF | 是 | 内嵌 WASM 解码 | 是 | 当前可读取部分 | 代码支持，待真实样本矩阵验收 |
+| 动画 AVIF | 是 | 首帧可解码 | 静态首帧 | 当前可读取部分 | 建档与静态预览支持，播放仍不承诺 |
+| HEIC/HEIF | 是 | 内嵌 WASM 解码 | 是 | 当前可读取部分 | 代码支持，待真实设备样本矩阵验收 |
+| CR2/CR3/NEF/ARW/DNG/RAF | 是 | 提取并校验最高分辨率内嵌 JPEG | 是 | `imagemeta`/`goexif` 可读字段 | 内嵌预览支持，待六类真实机型矩阵验收 |
 
 “建档”表示保存路径、文件名、大小、修改时间和可读取元数据，并允许组织、移动、重命名、系统程序打开和重试预览。它不表示完整预览支持。
 
@@ -72,6 +72,6 @@ MVP 当前采用 Go 进程内媒体管线：
 ## 后果
 
 - 当前可以安全组织无法预览的受支持扩展名文件；
-- 产品文案不得宣称 AVIF、HEIC/HEIF 或 RAW 已完整支持；
-- ADR-0009 和 ADR-0035 中高于当前能力矩阵的承诺仍是待实现需求；
+- 产品文案可以声明 AVIF、HEIC/HEIF 静态预览和 RAW 内嵌 JPEG 预览，但不能宣称 RAW 显影或动画 AVIF 播放；
+- 六类 RAW 的厂商/机型差异仍须真实样本矩阵验证；
 - 后续替换或增加解码后端时，必须递增派生图 decoder/content version，使旧缓存可重建。

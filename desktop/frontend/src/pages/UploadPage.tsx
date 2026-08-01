@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
@@ -149,25 +150,16 @@ export function UploadPage() {
   const [stories, setStories] = useState<any[]>([])
   const [filmRolls, setFilmRolls] = useState<any[]>([])
   const [storageSources, setStorageSources] = useState<any[]>([])
-  const [showAlbumDropdown, setShowAlbumDropdown] = useState(false)
-  const [showStoryDropdown, setShowStoryDropdown] = useState(false)
-  const [showFilmRollDropdown, setShowFilmRollDropdown] = useState(false)
-  const [showStorageSourceDropdown, setShowStorageSourceDropdown] = useState(false)
 
   // 点击外部关闭下拉框
   useEffect(() => {
-    const anyOpen = showPrefixDropdown || showAlbumDropdown || showStoryDropdown || showFilmRollDropdown || showStorageSourceDropdown
-    if (!anyOpen) return
+    if (!showPrefixDropdown) return
     const handleClick = () => {
       setShowPrefixDropdown(false)
-      setShowAlbumDropdown(false)
-      setShowStoryDropdown(false)
-      setShowFilmRollDropdown(false)
-      setShowStorageSourceDropdown(false)
     }
     window.addEventListener('click', handleClick)
     return () => window.removeEventListener('click', handleClick)
-  }, [showPrefixDropdown, showAlbumDropdown, showStoryDropdown, showFilmRollDropdown, showStorageSourceDropdown])
+  }, [showPrefixDropdown])
 
   // 加载关联数据
   useEffect(() => {
@@ -338,16 +330,10 @@ export function UploadPage() {
   const toggleSelect = (filePath: string) => { setSelectedIds(prev => { const n = new Set(prev); if (n.has(filePath)) n.delete(filePath); else n.add(filePath); return n }) }
   const toggleSelectAll = () => { if (selectedIds.size === items.length) setSelectedIds(new Set()); else setSelectedIds(new Set(items.map(i => i.file.filePath))) }
 
-  const toggleAlbum = (id: string) => {
-    setSettings(s => ({
-      ...s,
-      albumIds: s.albumIds.includes(id) ? s.albumIds.filter(x => x !== id) : [...s.albumIds, id]
-    }))
-  }
-
-  const selectedAlbumNames = albums.filter(a => settings.albumIds.includes(a.id)).map(a => a.name)
-  const selectedStoryTitle = stories.find(s => s.id === settings.storyId)?.title || ''
-  const selectedFilmRollName = filmRolls.find(r => r.id === settings.filmRollId)?.name || ''
+  const albumOptions = albums.map(a => ({ value: a.id, label: a.name }))
+  const storyOptions = stories.map(s => ({ value: s.id, label: s.title }))
+  const filmRollOptions = filmRolls.map(r => ({ value: r.id, label: `${r.name} · ${r.brand} · ${r.format}` }))
+  const storageSourceOptions = storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` }))
 
   const pendingCount = items.filter(i => i.status === 'pending').length
   const doneCount = items.filter(i => i.status === 'done').length
@@ -439,27 +425,14 @@ export function UploadPage() {
                     <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
                       <FolderOpen size={11} /> 相册
                     </label>
-                    <div className="relative">
-                      <button onClick={(e) => { e.stopPropagation(); setShowAlbumDropdown(!showAlbumDropdown) }}
-                        className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg border text-left"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: settings.albumIds.length ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                        <span className="truncate">{selectedAlbumNames.join(', ') || '选择相册'}</span>
-                      </button>
-                      {showAlbumDropdown && (
-                        <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
-                          onClick={e => e.stopPropagation()}>
-                          {albums.map(a => (
-                            <button key={a.id} onClick={() => toggleAlbum(a.id)}
-                              className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-muted/50"
-                              style={{ color: settings.albumIds.includes(a.id) ? 'var(--primary)' : 'var(--foreground)' }}>
-                              <span>{a.name}</span>
-                              {settings.albumIds.includes(a.id) && <CheckCircle size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <SelectDropdown
+                      value={settings.albumIds}
+                      options={albumOptions}
+                      onChange={(value) => setSettings(s => ({ ...s, albumIds: value as string[] }))}
+                      placeholder="选择相册"
+                      multiple
+                      ariaLabel="选择相册"
+                    />
                   </div>
                 </div>
 
@@ -468,31 +441,16 @@ export function UploadPage() {
                   <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
                     <BookOpen size={11} /> 故事
                   </label>
-                  <div className="relative">
-                    <button onClick={(e) => { e.stopPropagation(); setShowStoryDropdown(!showStoryDropdown) }}
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg border text-left"
-                      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: selectedStoryTitle ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                      <span className="truncate">{selectedStoryTitle || '不关联'}</span>
-                      <BookOpen size={12} style={{ color: 'var(--muted-foreground)' }} />
-                    </button>
-                    {showStoryDropdown && (
-                      <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
-                        onClick={e => e.stopPropagation()}>
-                        <button onClick={() => { setSettings(s => ({ ...s, storyId: '' })); setShowStoryDropdown(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50"
-                          style={{ color: 'var(--muted-foreground)' }}>不关联</button>
-                        {stories.map(s => (
-                          <button key={s.id} onClick={() => { setSettings(st => ({ ...st, storyId: s.id })); setShowStoryDropdown(false) }}
-                            className="w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-muted/50"
-                            style={{ color: settings.storyId === s.id ? 'var(--primary)' : 'var(--foreground)' }}>
-                            <span className="truncate">{s.title}</span>
-                            {settings.storyId === s.id && <CheckCircle size={12} />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <SelectDropdown
+                    value={settings.storyId}
+                    options={storyOptions}
+                    onChange={(value) => setSettings(s => ({ ...s, storyId: value as string }))}
+                    placeholder="不关联"
+                    clearLabel="不关联"
+                    size="md"
+                    icon={BookOpen}
+                    ariaLabel="关联故事"
+                  />
                 </div>
 
                 {/* 胶卷（仅胶片模式） */}
@@ -501,31 +459,16 @@ export function UploadPage() {
                     <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
                       <Film size={11} /> 胶卷
                     </label>
-                    <div className="relative">
-                      <button onClick={(e) => { e.stopPropagation(); setShowFilmRollDropdown(!showFilmRollDropdown) }}
-                        className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg border text-left"
-                        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: selectedFilmRollName ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                        <span className="truncate">{selectedFilmRollName || '选择胶卷'}</span>
-                        <Film size={12} style={{ color: 'var(--muted-foreground)' }} />
-                      </button>
-                      {showFilmRollDropdown && (
-                        <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
-                          onClick={e => e.stopPropagation()}>
-                          <button onClick={() => { setSettings(s => ({ ...s, filmRollId: '' })); setShowFilmRollDropdown(false) }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50"
-                            style={{ color: 'var(--muted-foreground)' }}>不选择</button>
-                          {filmRolls.map(r => (
-                            <button key={r.id} onClick={() => { setSettings(s => ({ ...s, filmRollId: r.id })); setShowFilmRollDropdown(false) }}
-                              className="w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-muted/50"
-                              style={{ color: settings.filmRollId === r.id ? 'var(--primary)' : 'var(--foreground)' }}>
-                              <span>{r.name} · {r.brand} · {r.format}</span>
-                              {settings.filmRollId === r.id && <CheckCircle size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <SelectDropdown
+                      value={settings.filmRollId}
+                      options={filmRollOptions}
+                      onChange={(value) => setSettings(s => ({ ...s, filmRollId: value as string }))}
+                      placeholder="选择胶卷"
+                      clearLabel="不选择"
+                      size="md"
+                      icon={Film}
+                      ariaLabel="选择胶卷"
+                    />
                   </div>
                 )}
 
@@ -534,28 +477,17 @@ export function UploadPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>存储源 <span className="text-destructive">*</span></label>
-                      <div className="relative">
-                        <button onClick={(e) => { e.stopPropagation(); setShowStorageSourceDropdown(!showStorageSourceDropdown) }}
-                          className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg border text-left"
-                          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: settings.storageSourceId ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                          <span className="truncate">{storageSources.find(s => s.id === settings.storageSourceId)?.name || '选择存储源'}</span>
-                          <HardDrive size={12} style={{ color: 'var(--muted-foreground)' }} />
-                        </button>
-                        {showStorageSourceDropdown && (
-                          <div className="absolute z-20 left-0 top-full mt-1 w-full max-h-40 overflow-y-auto rounded-lg border shadow-lg"
-                            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
-                            onClick={e => e.stopPropagation()}>
-                            {storageSources.map(s => (
-                              <button key={s.id} onClick={() => { setSettings(prev => ({ ...prev, storageSourceId: s.id, storagePath: '' })); setShowStorageSourceDropdown(false); setUseCustomPrefix(false) }}
-                                className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-muted/50"
-                                style={{ color: settings.storageSourceId === s.id ? 'var(--primary)' : 'var(--foreground)' }}>
-                                <span>{s.name} ({s.type})</span>
-                                {settings.storageSourceId === s.id && <CheckCircle size={12} />}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <SelectDropdown
+                        value={settings.storageSourceId}
+                        options={storageSourceOptions}
+                        onChange={(value) => {
+                          setSettings(prev => ({ ...prev, storageSourceId: value as string, storagePath: '' }))
+                          setUseCustomPrefix(false)
+                        }}
+                        placeholder="选择存储源"
+                        icon={HardDrive}
+                        ariaLabel="选择存储源"
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>路径前缀</label>

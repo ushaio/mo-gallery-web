@@ -2,20 +2,26 @@ package local_library
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"mime"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/evanoberholster/imagemeta"
+	avifcodec "github.com/gen2brain/avif"
+	heiccodec "github.com/gen2brain/heic"
 	"github.com/rwcarlsen/goexif/exif"
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/tiff"
@@ -116,6 +122,18 @@ func formatAndMIME(format string) (string, string) {
 		return "avif", "image/avif"
 	case "heic", "heif":
 		return "heif", "image/heif"
+	case "cr2":
+		return "cr2", "image/x-canon-cr2"
+	case "cr3":
+		return "cr3", "image/x-canon-cr3"
+	case "nef":
+		return "nef", "image/x-nikon-nef"
+	case "arw":
+		return "arw", "image/x-sony-arw"
+	case "dng":
+		return "dng", "image/x-adobe-dng"
+	case "raf":
+		return "raf", "image/x-fuji-raf"
 	default:
 		return format, "application/octet-stream"
 	}
@@ -155,7 +173,7 @@ func inspectMedia(path string, info os.FileInfo) (result indexedFile) {
 		result.PreviewError = boundedError("seek media: " + err.Error())
 		return result
 	}
-	config, decodedFormat, decodeErr := image.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+	config, decodedFormat, decodeErr := decodeMediaConfig(path, result.Format)
 	if decodeErr == nil {
 		result.Format, result.MimeType = formatAndMIME(decodedFormat)
 		result.Width, result.Height = config.Width, config.Height
@@ -441,24 +459,196 @@ func boundedString(value string, limit int) string {
 }
 func boundedError(value string) string { return boundedString(value, maxPreviewError) }
 
+type dominantColorBucket struct {
+	count   int
+	r, g, b uint64
+}
+
+func extractDominantColors(source image.Image, count int) []string {
+	if source == nil || count <= 0 {
+		return nil
+	}
+	bounds := source.Bounds()
+	step := 1
+	for bounds.Dx()/step > 200 || bounds.Dy()/step > 200 {
+		step++
+	}
+	buckets := make(map[uint16]*dominantColorBucket)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y += step {
+		for x := bounds.Min.X; x < bounds.Max.X; x += step {
+			pixel := color.NRGBAModel.Convert(source.At(x, y)).(color.NRGBA)
+			if pixel.A < 125 || (pixel.R > 250 && pixel.G > 250 && pixel.B > 250) {
+				continue
+			}
+			key := uint16(pixel.R>>4)<<8 | uint16(pixel.G>>4)<<4 | uint16(pixel.B>>4)
+			bucket := buckets[key]
+			if bucket == nil {
+				bucket = &dominantColorBucket{}
+				buckets[key] = bucket
+			}
+			bucket.count++
+			bucket.r += uint64(pixel.R)
+			bucket.g += uint64(pixel.G)
+			bucket.b += uint64(pixel.B)
+		}
+	}
+	values := make([]dominantColorBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		values = append(values, *bucket)
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i].count > values[j].count })
+	if len(values) > count {
+		values = values[:count]
+	}
+	result := make([]string, 0, len(values))
+	for _, bucket := range values {
+		result = append(result, fmt.Sprintf("#%02x%02x%02x", bucket.r/uint64(bucket.count), bucket.g/uint64(bucket.count), bucket.b/uint64(bucket.count)))
+	}
+	return result
+}
+
 func decodeImage(path string) (image.Image, error) {
+	ext := filepath.Ext(path)
+	if isRAWExtension(ext) {
+		preview, err := extractRAWPreview(path)
+		if err != nil {
+			return nil, err
+		}
+		return jpeg.Decode(bytes.NewReader(preview))
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+	format, _ := formatForExtension(ext)
+	header := make([]byte, mediaHeaderBytes)
+	headerLength, readErr := io.ReadFull(file, header)
+	if readErr != nil && readErr != io.ErrUnexpectedEOF && readErr != io.EOF {
+		return nil, readErr
+	}
+	if detectedFormat, _, ok := detectMediaHeader(header[:headerLength], ext); ok {
+		format = detectedFormat
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	switch strings.ToLower(format) {
+	case "avif":
+		return avifcodec.Decode(io.LimitReader(file, maxDecodeBytes))
+	case "heic", "heif":
+		return heiccodec.Decode(io.LimitReader(file, maxDecodeBytes))
+	}
 	source, _, err := image.Decode(io.LimitReader(file, maxDecodeBytes))
 	return source, err
 }
 
-func decodeImageConfig(path string) (image.Config, error) {
+func decodeMediaConfig(path, format string) (image.Config, string, error) {
+	if isRAWFormat(format) {
+		preview, err := extractRAWPreview(path)
+		if err != nil {
+			return image.Config{}, "", err
+		}
+		config, err := jpeg.DecodeConfig(bytes.NewReader(preview))
+		return config, format, err
+	}
 	file, err := os.Open(path)
 	if err != nil {
-		return image.Config{}, err
+		return image.Config{}, "", err
 	}
 	defer file.Close()
-	config, _, err := image.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+	switch strings.ToLower(format) {
+	case "avif":
+		config, err := avifcodec.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+		return config, "avif", err
+	case "heic", "heif":
+		config, err := heiccodec.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+		return config, "heif", err
+	}
+	return image.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+}
+
+func decodeImageConfig(path string) (image.Config, error) {
+	format, _ := formatForExtension(filepath.Ext(path))
+	config, _, err := decodeMediaConfig(path, format)
 	return config, err
+}
+
+func isRAWExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf":
+		return true
+	}
+	return false
+}
+
+func isRAWFormat(format string) bool {
+	switch strings.ToLower(format) {
+	case "cr2", "cr3", "nef", "arw", "dng", "raf":
+		return true
+	}
+	return false
+}
+
+func extractRAWPreview(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if strings.EqualFold(filepath.Ext(path), ".cr3") {
+		if preview, previewErr := imagemeta.PreviewCR3(file); previewErr == nil {
+			if config, configErr := jpeg.DecodeConfig(bytes.NewReader(preview)); configErr == nil && validateDimensions(config.Width, config.Height) == nil {
+				if _, decodeErr := jpeg.Decode(bytes.NewReader(preview)); decodeErr == nil {
+					return preview, nil
+				}
+			}
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+	}
+	return largestEmbeddedJPEG(file, maxDecodeBytes)
+}
+
+func largestEmbeddedJPEG(reader io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("RAW exceeds preview scan limit")
+	}
+	var best []byte
+	var bestArea int64
+	for offset := 0; offset+3 < len(data); {
+		start := bytes.Index(data[offset:], []byte{0xff, 0xd8, 0xff})
+		if start < 0 {
+			break
+		}
+		start += offset
+		endRelative := bytes.Index(data[start+3:], []byte{0xff, 0xd9})
+		if endRelative < 0 {
+			break
+		}
+		end := start + 3 + endRelative + 2
+		candidate := data[start:end]
+		config, configErr := jpeg.DecodeConfig(bytes.NewReader(candidate))
+		if configErr == nil && validateDimensions(config.Width, config.Height) == nil {
+			if _, decodeErr := jpeg.Decode(bytes.NewReader(candidate)); decodeErr == nil {
+				area := int64(config.Width) * int64(config.Height)
+				if area > bestArea {
+					bestArea = area
+					best = append([]byte(nil), candidate...)
+				}
+			}
+		}
+		offset = start + 3
+	}
+	if len(best) == 0 {
+		return nil, fmt.Errorf("RAW contains no decodable embedded JPEG preview")
+	}
+	return best, nil
 }
 
 func renderJPEGThumbnail(ctx context.Context, sourcePath, destination string, maxDimension int) error {

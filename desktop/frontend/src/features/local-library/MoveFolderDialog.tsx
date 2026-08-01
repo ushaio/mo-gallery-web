@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FolderInput, Loader2, X } from 'lucide-react'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import type { LocalLibraryCopy } from './copy'
-import type { FolderItem } from './types'
+import type { FolderFileOperationPlan, FolderItem } from './types'
 
 interface Props {
   mode: 'rename' | 'move'
@@ -10,11 +11,13 @@ interface Props {
   folders: FolderItem[]
   copy: LocalLibraryCopy
   busy: boolean
+  plan?: FolderFileOperationPlan
   onClose: () => void
   onConfirm: (destinationParent: string, topLevelName: string) => void
+  onExecute: () => void
 }
 
-export function MoveFolderDialog({ mode, relativePath, currentName, folders, copy, busy, onClose, onConfirm }: Props) {
+export function MoveFolderDialog({ mode, relativePath, currentName, folders, copy, busy, plan, onClose, onConfirm, onExecute }: Props) {
   const currentParent = relativePath.includes('/') ? relativePath.slice(0, relativePath.lastIndexOf('/')) : ''
   const [name, setName] = useState(currentName)
   const [destinationParent, setDestinationParent] = useState(currentParent)
@@ -27,7 +30,8 @@ export function MoveFolderDialog({ mode, relativePath, currentName, folders, cop
 
   const submit = () => {
     const normalized = name.trim()
-    if (normalized && !busy) onConfirm(destinationParent, normalized)
+    if (plan) onExecute()
+    else if (normalized && !busy) onConfirm(destinationParent, normalized)
   }
 
   return (
@@ -51,19 +55,27 @@ export function MoveFolderDialog({ mode, relativePath, currentName, folders, cop
             </div>
           ) : (
             <div>
-              <label className="text-[11px] font-medium" htmlFor="local-library-move-folder-parent">{copy.destinationFolder}</label>
-              <select id="local-library-move-folder-parent" value={destinationParent} onChange={(event) => setDestinationParent(event.target.value)} disabled={busy}
-                className="mt-2 h-9 w-full rounded-md border bg-input px-3 text-xs outline-none focus:ring-1 focus:ring-ring">
-                <option value="">{copy.root}</option>
-                {destinations.map((folder) => <option key={folder.id} value={folder.relativePath}>{folder.relativePath}</option>)}
-              </select>
+              <label className="text-[11px] font-medium">{copy.destinationFolder}</label>
+              <div className="mt-2">
+                <SelectDropdown
+                  value={destinationParent}
+                  options={[
+                    { value: '', label: copy.root },
+                    ...destinations.map((folder) => ({ value: folder.relativePath, label: folder.relativePath })),
+                  ]}
+                  onChange={(value) => setDestinationParent(value as string)}
+                  disabled={busy}
+                  ariaLabel={copy.destinationFolder}
+                />
+              </div>
             </div>
           )}
           <p className="text-[10px] leading-4 text-muted-foreground">{copy.moveFolderHint}</p>
+          {plan && <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] leading-5"><p className="font-medium">{copy.folderMovePlanReady}</p><p className="text-muted-foreground">{plan.managedAssetCount} {copy.managedAssets}, {plan.otherFileCount} {copy.otherFiles}, {plan.conflictCount} {copy.conflictsCount}.</p></div>}
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} disabled={busy} className="rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:opacity-50">{copy.cancelAction}</button>
-            <button type="submit" disabled={busy || !name.trim()} className="flex min-w-20 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">
-              {busy ? <Loader2 size={13} className="animate-spin" /> : null}{copy.moveAction}
+            <button type="submit" disabled={busy || (!plan && !name.trim())} className="flex min-w-20 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : null}{plan ? copy.confirmPlan : copy.moveAction}
             </button>
           </div>
         </form>

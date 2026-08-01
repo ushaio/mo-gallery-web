@@ -105,6 +105,18 @@ func (m *Manager) reconcileKnownFile(
 	if info.IsDir() || !isSupportedMedia(absolutePath) {
 		return reconcileResult{}, newError(ErrUnsupportedFile, "path is not a supported media file", map[string]any{"path": normalized})
 	}
+	if source == reconcileSourceScan {
+		unchanged, unchangedErr := session.touchUnchangedAssetForScan(ctx, key, info.Size(), info.ModTime().UnixNano(), scanID, operationID)
+		if unchangedErr != nil {
+			return reconcileResult{}, unchangedErr
+		}
+		if unchanged != nil {
+			return reconcileResult{
+				AssetID: unchanged.ID, RelativePath: string(normalized),
+				NeedsPreview: unchanged.PreviewStatus != "ready" || unchanged.DominantColors == "" || unchanged.DominantColors == "[]",
+			}, nil
+		}
+	}
 
 	file := inspectMedia(absolutePath, info)
 	file.RelativePath = string(normalized)

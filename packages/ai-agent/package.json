@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test": "tsx tests/editor-ai-domain.test.ts && tsx tests/editor-ai-runtime.test.ts && tsx tests/editor-ai-execution.test.ts && tsx tests/editor-ai-direct-edit-prompt.test.ts && tsx tests/editor-ai-direct-edit-runtime.test.ts && tsx tests/editor-ai-orchestration.test.ts",
-    "typecheck": "tsc --noEmit -p ../../tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.7",

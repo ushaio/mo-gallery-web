@@ -1,11 +1,11 @@
 /**
- * 照片日志页 — 故事 + 博客 + 草稿三标签。
+ * 照片日志页 —— 叙事 + 博客 + 草稿三个子页签。
  * 数据/交互逻辑与 web 后台 logs/page.tsx 一致（直接调用 @/lib/api 与 @/lib/client-db）；
- * UI 样式遵循桌面端自己的设计语言（参照登录页/系统配置页），不照搬 web。
+ * UI 遵循桌面端自己的设计语言：页头 + 下划线页签 + 卡片式列表行（对齐相册/胶卷页）。
  */
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -13,6 +13,7 @@ import { useAdmin, AdminLogsProvider } from '@/pages/admin-logs/layout'
 import { type PhotoDto } from '@/lib/api'
 import { StoriesTab } from '@/pages/admin-logs/StoriesTab'
 import { BlogTab } from '@/pages/admin-logs/BlogTab'
+import { PageHeader } from '@/components/layout/PageHeader'
 import {
   getAllDraftsFromDB,
   clearDraftFromDB,
@@ -26,13 +27,80 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
+import { SelectDropdown, type SelectDropdownOption } from '@/components/ui/SelectDropdown'
 import { countStoryCharacters } from '@/lib/story-rich-content'
 import { formatRelativeTimeLabel } from '@/lib/utils'
-import { BookText, BookOpen, FileArchive, Clock, Trash2, Eye, X, Image as ImageIcon, Edit3, ArrowRight } from 'lucide-react'
+import {
+  BookText,
+  BookOpen,
+  FileArchive,
+  Clock,
+  Trash2,
+  Eye,
+  X,
+  Image as ImageIcon,
+  Edit3,
+  ArrowRight,
+  Search,
+  RefreshCw,
+  type LucideIcon,
+} from 'lucide-react'
 
 interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
   files: { id: string; file: File; preview: string }[]
+}
+
+interface DraftCardProps {
+  icon: LucideIcon
+  title: string
+  snippet: string
+  badge?: ReactNode
+  meta: ReactNode
+  actions: ReactNode
+}
+
+function DraftCard({ icon: Icon, title, snippet, badge, meta, actions }: DraftCardProps) {
+  return (
+    <div
+      className="group flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors hover:border-primary/50"
+      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
+    >
+      <div
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md"
+        style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)' }}
+      >
+        <Icon className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <h4 className="truncate font-serif text-base">{title}</h4>
+          {badge}
+        </div>
+        <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          {snippet}
+        </p>
+        <div
+          className="mt-1.5 flex items-center gap-4 font-mono text-[10px] uppercase tracking-wide"
+          style={{ color: 'var(--muted-foreground)' }}
+        >
+          {meta}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        {actions}
+      </div>
+    </div>
+  )
+}
+
+function DraftSectionLabel({ icon: Icon, label, count }: { icon: LucideIcon; label: string; count?: number }) {
+  return (
+    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>
+      <Icon className="h-3.5 w-3.5" />
+      <span>{label}</span>
+      {typeof count === 'number' && <span style={{ opacity: 0.5 }}>({count})</span>}
+    </div>
+  )
 }
 
 export function PhotoJournalPage() {
@@ -87,7 +155,9 @@ function PhotoJournalContent() {
     let cancelled = false
     ;(async () => {
       try {
-        const data = await (window as any).go.main.App.GetAllPhotos()
+        const data = await (
+          window as unknown as { go: { main: { App: { GetAllPhotos: () => Promise<PhotoDto[]> } } } }
+        ).go.main.App.GetAllPhotos()
         if (!cancelled) setPhotos(data || [])
       } catch (err) {
         console.error('Failed to load photos:', err)
@@ -197,7 +267,7 @@ function PhotoJournalContent() {
     return count
   }, [storyDraft, blogDrafts, storyEditorDrafts])
 
-  const draftTypeOptions: SelectOption[] = useMemo(
+  const draftTypeOptions: SelectDropdownOption[] = useMemo(
     () => [
       { value: '', label: t('admin.all_types') },
       { value: 'story', label: t('nav.story') },
@@ -249,48 +319,58 @@ function PhotoJournalContent() {
     setActiveSubTab(tab)
   }
 
+  const chromeVisible = !((isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode)
+  const contentPadding =
+    (isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'pt-0' : 'px-6 pb-6 pt-3'
+
   return (
-    <div className="h-full flex flex-col">
-      {/* 子标签页导航（桌面语言：accent 胶囊按钮，参照系统配置页） */}
-      <div
-        className={`${
-          (isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'
-        } items-center gap-1 border-b px-6 py-2.5 flex-shrink-0`}
-        style={{ borderColor: 'var(--border)' }}
-      >
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* 桌面端页头 */}
+      <div className={chromeVisible ? 'block' : 'hidden'}>
+        <PageHeader
+          title={t('admin.page_photo_journal')}
+        />
+      </div>
+
+      {/* 子页签导航：下划线样式，双击刷新 */}
+      <div className={`${chromeVisible ? 'flex' : 'hidden'} shrink-0 items-center gap-7 px-6`}>
         {([
           { key: 'stories' as const, icon: BookOpen, label: t('nav.story') },
           { key: 'blog' as const, icon: BookText, label: t('admin.blog') },
           { key: 'drafts' as const, icon: FileArchive, label: t('admin.drafts') },
-        ]).map(({ key, icon: Icon, label }) => (
-          <button
-            key={key}
-            onClick={() => handleTabClick(key)}
-            title={t('admin.double_click_refresh')}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors"
-            style={{
-              backgroundColor: activeSubTab === key ? 'var(--accent)' : 'transparent',
-              color: activeSubTab === key ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-            }}
-          >
-            <Icon size={15} />
-            {label}
-            {key === 'drafts' && totalDrafts > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] rounded-full"
-                style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-                {totalDrafts}
-              </span>
-            )}
-          </button>
-        ))}
+        ]).map(({ key, icon: Icon, label }) => {
+          const active = activeSubTab === key
+          return (
+            <button
+              key={key}
+              onClick={() => handleTabClick(key)}
+              title={t('admin.double_click_refresh')}
+              className="relative flex items-center gap-2 py-2.5 text-sm transition-colors hover:opacity-80"
+              style={{ color: active ? 'var(--foreground)' : 'var(--muted-foreground)' }}
+            >
+              <Icon size={15} />
+              <span>{label}</span>
+              {key === 'drafts' && totalDrafts > 0 && (
+                <span
+                  className="rounded-full px-1.5 py-0.5 text-[10px] leading-none"
+                  style={{
+                    backgroundColor: active ? 'var(--primary)' : 'var(--accent)',
+                    color: active ? 'var(--primary-foreground)' : 'var(--accent-foreground)',
+                  }}
+                >
+                  {totalDrafts}
+                </span>
+              )}
+              {active && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--primary)' }} />
+              )}
+            </button>
+          )
+        })}
       </div>
 
-      {/* 子标签页内容 */}
-      <div
-        className={`flex-1 overflow-hidden ${
-          isImmersiveMode ? 'pt-0' : isStoriesEditing && activeSubTab === 'stories' ? 'pt-0' : 'px-6 pb-6 pt-4'
-        }`}
-      >
+      {/* 子页签内容 */}
+      <div className={`flex-1 overflow-hidden ${contentPadding}`}>
         <div className={activeSubTab === 'blog' ? 'h-full' : 'hidden'}>
           <BlogTab photos={photos} settings={settings} t={t} notify={notify} refreshKey={blogRefreshKey} />
         </div>
@@ -306,20 +386,31 @@ function PhotoJournalContent() {
           />
         </div>
         {activeSubTab === 'drafts' ? (
-          <div className="h-full flex flex-col gap-6 overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-              <div className="flex items-center gap-4">
-                <input
-                  type="text"
-                  value={draftSearchQuery}
-                  onChange={(e) => setDraftSearchQuery(e.target.value)}
-                  placeholder={t('admin.search_placeholder')}
-                  className="px-3 py-2 text-sm bg-transparent border border-border rounded-md focus:border-primary outline-none w-48"
-                />
-                <AdminSelect
+          <div className="flex h-full flex-col gap-5 overflow-hidden">
+            <div
+              className="flex shrink-0 items-center justify-between border-b pb-4"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                    style={{ color: 'var(--muted-foreground)' }}
+                  />
+                  <input
+                    type="text"
+                    value={draftSearchQuery}
+                    onChange={(e) => setDraftSearchQuery(e.target.value)}
+                    placeholder={t('admin.search_placeholder')}
+                    className="w-60 rounded-md border py-1.5 pl-8 pr-3 text-xs outline-none transition-colors focus:border-primary"
+                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
+                  />
+                </div>
+                <SelectDropdown
                   value={draftTypeFilter}
                   options={draftTypeOptions}
-                  onChange={setDraftTypeFilter}
+                  onChange={(value) => setDraftTypeFilter(value as string)}
                   placeholder={t('admin.all_types')}
                   className="w-32"
                 />
@@ -328,8 +419,8 @@ function PhotoJournalContent() {
                 {totalDrafts > 0 && (
                   <button
                     onClick={() => setDeleteDialog({ isOpen: true, type: 'all' })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-opacity hover:opacity-80"
-                    style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)' }}
+                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
+                    style={{ borderColor: 'color-mix(in srgb, var(--destructive) 35%, transparent)', color: 'var(--destructive)' }}
                   >
                     <Trash2 size={13} />
                     {t('admin.delete_all')}
@@ -337,248 +428,249 @@ function PhotoJournalContent() {
                 )}
                 <button
                   onClick={loadDrafts}
-                  className="px-3 py-1.5 text-xs rounded-md border transition-opacity hover:opacity-80"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                  className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
+                  style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
                 >
+                  <RefreshCw size={13} />
                   {t('common.refresh')}
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6">
+            <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto pb-2">
               {loadingDrafts ? (
                 <div className="flex items-center justify-center py-20">
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </div>
               ) : (
                 <>
-                  {/* 故事上传草稿区 */}
+                  {/* 叙事上传草稿（只读） */}
                   {filteredStoryDraft && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <BookOpen className="w-3.5 h-3.5" />
-                        <span>{t('admin.story_draft')}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 rounded">
-                          {t('admin.read_only')}
-                        </span>
-                      </div>
-                      <div className="p-5 border border-border hover:border-primary/50 transition-colors rounded-lg group">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-base mb-1">{filteredStoryDraft.title || t('story.untitled')}</h4>
-                            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                              {filteredStoryDraft.content?.substring(0, 150) || t('admin.no_content')}
-                              {filteredStoryDraft.content?.length > 150 ? '...' : ''}
-                            </p>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatRelativeTime(filteredStoryDraft.savedAt)}
+                      <DraftSectionLabel
+                        icon={BookOpen}
+                        label={t('admin.story_draft')}
+                      />
+                      <DraftCard
+                        icon={BookOpen}
+                        title={filteredStoryDraft.title || t('story.untitled')}
+                        snippet={`${filteredStoryDraft.content?.substring(0, 150) || t('admin.no_content')}${
+                          (filteredStoryDraft.content?.length || 0) > 150 ? '...' : ''
+                        }`}
+                        badge={
+                          <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                            {t('admin.read_only')}
+                          </span>
+                        }
+                        meta={
+                          <>
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatRelativeTime(filteredStoryDraft.savedAt)}
+                            </span>
+                            {filteredStoryDraft.files && filteredStoryDraft.files.length > 0 && (
+                              <span>
+                                {filteredStoryDraft.files.length} {t('admin.photos')}
                               </span>
-                              {filteredStoryDraft.files && filteredStoryDraft.files.length > 0 && (
-                                <span>
-                                  {filteredStoryDraft.files.length} {t('admin.photos')}
-                                </span>
-                              )}
-                              {filteredStoryDraft.selectedAlbumIds && filteredStoryDraft.selectedAlbumIds.length > 0 && (
-                                <span>
-                                  {filteredStoryDraft.selectedAlbumIds.length} {t('admin.albums')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            )}
+                            {filteredStoryDraft.selectedAlbumIds && filteredStoryDraft.selectedAlbumIds.length > 0 && (
+                              <span>
+                                {filteredStoryDraft.selectedAlbumIds.length} {t('admin.albums')}
+                              </span>
+                            )}
+                          </>
+                        }
+                        actions={
+                          <>
                             <AdminButton
                               onClick={() => setSelectedDraft(filteredStoryDraft)}
                               adminVariant="icon"
                               size="xs"
-                              className="p-2 rounded-md"
+                              className="rounded-md p-2"
                               title={t('common.view')}
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="h-4 w-4" />
                             </AdminButton>
                             <AdminButton
                               onClick={() => setDeleteDialog({ isOpen: true, type: 'story' })}
                               adminVariant="iconDestructive"
                               size="xs"
-                              className="p-2 rounded-md"
+                              className="rounded-md p-2"
                               title={t('common.delete')}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                             </AdminButton>
-                          </div>
-                        </div>
-                      </div>
+                          </>
+                        }
+                      />
                     </div>
                   )}
 
-                  {/* 故事编辑器草稿区 */}
+                  {/* 叙事编辑器草稿区 */}
                   {filteredStoryEditorDrafts.length > 0 && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>{t('admin.story_editor_drafts')}</span>
-                        <span className="text-muted-foreground/50">({filteredStoryEditorDrafts.length})</span>
-                      </div>
-                      <div className="space-y-3">
-                        {filteredStoryEditorDrafts.map((draft) => (
-                          <div
-                            key={draft.id}
-                            className="p-5 border border-border hover:border-primary/50 transition-colors rounded-lg group"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="text-base">{draft.title || t('story.untitled')}</h4>
-                                  {draft.storyId ? (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                      {t('common.edit')}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                                      {t('admin.new')}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                  {draft.content?.substring(0, 150) || t('admin.no_content')}
-                                  {draft.content?.length > 150 ? '...' : ''}
-                                </p>
-                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {formatRelativeTime(draft.savedAt)}
-                                  </span>
-                                  {draft.content && (
-                                    <span>
-                                      {countStoryCharacters(draft.content)} {t('admin.characters')}
-                                    </span>
-                                  )}
-                                  {draft.photoIds?.length > 0 && (
-                                    <span>
-                                      {draft.photoIds.length} {t('admin.photos')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <AdminButton
-                                  onClick={() => handleEditStoryFromDraft(draft)}
-                                  adminVariant="icon"
-                                  size="xs"
-                                  className="p-2 rounded-md flex items-center gap-1"
-                                  title={t('common.edit')}
-                                >
-                                  <ArrowRight className="w-4 h-4" />
-                                </AdminButton>
-                                <AdminButton
-                                  onClick={() => setSelectedDraft(draft)}
-                                  adminVariant="icon"
-                                  size="xs"
-                                  className="p-2 rounded-md"
-                                  title={t('common.view')}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </AdminButton>
-                                <AdminButton
-                                  onClick={() => setDeleteDialog({ isOpen: true, type: 'storyEditor', id: draft.id })}
-                                  adminVariant="iconDestructive"
-                                  size="xs"
-                                  className="p-2 rounded-md"
-                                  title={t('common.delete')}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </AdminButton>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <DraftSectionLabel
+                        icon={Edit3}
+                        label={t('admin.story_editor_drafts')}
+                        count={filteredStoryEditorDrafts.length}
+                      />
+                      {filteredStoryEditorDrafts.map((draft) => (
+                        <DraftCard
+                          key={draft.id}
+                          icon={Edit3}
+                          title={draft.title || t('story.untitled')}
+                          snippet={`${draft.content?.substring(0, 150) || t('admin.no_content')}${
+                            (draft.content?.length || 0) > 150 ? '...' : ''
+                          }`}
+                          badge={
+                            draft.storyId ? (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                                {t('common.edit')}
+                              </span>
+                            ) : (
+                              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                                {t('admin.new')}
+                              </span>
+                            )
+                          }
+                          meta={
+                            <>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {formatRelativeTime(draft.savedAt)}
+                              </span>
+                              {draft.content && (
+                                <span>
+                                  {countStoryCharacters(draft.content)} {t('admin.characters')}
+                                </span>
+                              )}
+                              {draft.photoIds?.length > 0 && (
+                                <span>
+                                  {draft.photoIds.length} {t('admin.photos')}
+                                </span>
+                              )}
+                            </>
+                          }
+                          actions={
+                            <>
+                              <AdminButton
+                                onClick={() => handleEditStoryFromDraft(draft)}
+                                adminVariant="icon"
+                                size="xs"
+                                className="flex items-center gap-1 rounded-md p-2"
+                                title={t('common.edit')}
+                              >
+                                <ArrowRight className="h-4 w-4" />
+                              </AdminButton>
+                              <AdminButton
+                                onClick={() => setSelectedDraft(draft)}
+                                adminVariant="icon"
+                                size="xs"
+                                className="rounded-md p-2"
+                                title={t('common.view')}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </AdminButton>
+                              <AdminButton
+                                onClick={() => setDeleteDialog({ isOpen: true, type: 'storyEditor', id: draft.id })}
+                                adminVariant="iconDestructive"
+                                size="xs"
+                                className="rounded-md p-2"
+                                title={t('common.delete')}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </AdminButton>
+                            </>
+                          }
+                        />
+                      ))}
                     </div>
                   )}
 
                   {/* 博客草稿区 */}
                   {filteredBlogDrafts.length > 0 && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <BookText className="w-3.5 h-3.5" />
-                        <span>{t('admin.blog_drafts')}</span>
-                        <span className="text-muted-foreground/50">({filteredBlogDrafts.length})</span>
-                      </div>
-                      <div className="space-y-3">
-                        {filteredBlogDrafts.map((draft) => (
-                          <div
-                            key={draft.id}
-                            className="p-5 border border-border hover:border-primary/50 transition-colors rounded-lg group"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="text-base">{draft.title || t('admin.untitled')}</h4>
-                                  {draft.blogId ? (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                      {t('common.edit')}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                                      {t('admin.new')}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                  {draft.content?.substring(0, 150) || t('admin.no_content')}
-                                  {draft.content?.length > 150 ? '...' : ''}
-                                </p>
-                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {formatRelativeTime(draft.savedAt)}
-                                  </span>
-                                  {draft.category && <span>{draft.category}</span>}
-                                  {draft.content && (
-                                    <span>
-                                      {draft.content.length} {t('admin.characters')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <AdminButton
-                                  onClick={() => setSelectedDraft(draft)}
-                                  adminVariant="icon"
-                                  size="xs"
-                                  className="p-2 rounded-md"
-                                  title={t('common.view')}
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </AdminButton>
-                                <AdminButton
-                                  onClick={() => setDeleteDialog({ isOpen: true, type: 'blog', id: draft.blogId })}
-                                  adminVariant="iconDestructive"
-                                  size="xs"
-                                  className="p-2 rounded-md"
-                                  title={t('common.delete')}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </AdminButton>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <DraftSectionLabel
+                        icon={BookText}
+                        label={t('admin.blog_drafts')}
+                        count={filteredBlogDrafts.length}
+                      />
+                      {filteredBlogDrafts.map((draft) => (
+                        <DraftCard
+                          key={draft.id}
+                          icon={BookText}
+                          title={draft.title || t('admin.untitled')}
+                          snippet={`${draft.content?.substring(0, 150) || t('admin.no_content')}${
+                            (draft.content?.length || 0) > 150 ? '...' : ''
+                          }`}
+                          badge={
+                            draft.blogId ? (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                                {t('common.edit')}
+                              </span>
+                            ) : (
+                              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                                {t('admin.new')}
+                              </span>
+                            )
+                          }
+                          meta={
+                            <>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {formatRelativeTime(draft.savedAt)}
+                              </span>
+                              {draft.category && <span>{draft.category}</span>}
+                              {draft.content && (
+                                <span>
+                                  {draft.content.length} {t('admin.characters')}
+                                </span>
+                              )}
+                            </>
+                          }
+                          actions={
+                            <>
+                              <AdminButton
+                                onClick={() => setSelectedDraft(draft)}
+                                adminVariant="icon"
+                                size="xs"
+                                className="rounded-md p-2"
+                                title={t('common.view')}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </AdminButton>
+                              <AdminButton
+                                onClick={() => setDeleteDialog({ isOpen: true, type: 'blog', id: draft.blogId })}
+                                adminVariant="iconDestructive"
+                                size="xs"
+                                className="rounded-md p-2"
+                                title={t('common.delete')}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </AdminButton>
+                            </>
+                          }
+                        />
+                      ))}
                     </div>
                   )}
 
                   {/* 空状态提示 */}
                   {!filteredStoryDraft && filteredBlogDrafts.length === 0 && filteredStoryEditorDrafts.length === 0 && (
-                    <div className="py-24 text-center border border-dashed border-border rounded-lg">
-                      <div className="w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-muted">
-                        <FileArchive className="w-5 h-5 text-muted-foreground" />
+                    <div
+                      className="flex flex-col items-center justify-center rounded-lg border border-dashed py-20"
+                      style={{ borderColor: 'var(--border)' }}
+                    >
+                      <div
+                        className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl"
+                        style={{ backgroundColor: 'var(--muted)' }}
+                      >
+                        <FileArchive className="h-6 w-6" style={{ color: 'var(--muted-foreground)' }} />
                       </div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        {t('admin.no_drafts')}
+                      <p className="mb-1 text-sm">{t('admin.no_drafts')}</p>
+                      <p className="max-w-sm text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {t('admin.drafts_hint')}
                       </p>
-                      <p className="text-xs text-muted-foreground/60 max-w-sm mx-auto">{t('admin.drafts_hint')}</p>
                     </div>
                   )}
                 </>
@@ -595,94 +687,108 @@ function PhotoJournalContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-12"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm md:p-12"
             onClick={() => setSelectedDraft(null)}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              exit={{ scale: 0.96, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-3xl max-h-[80vh] bg-background border border-border shadow-2xl flex flex-col overflow-hidden rounded-lg"
+              className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
+              style={{ borderColor: 'var(--border)' }}
             >
               {/* 弹窗头部 */}
-              <div className="flex items-center justify-between p-6 border-b border-border">
-                <div>
-                  <h3 className="text-lg font-semibold">{selectedDraft.title || t('admin.untitled')}</h3>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between border-b p-6" style={{ borderColor: 'var(--border)' }}>
+                <div className="min-w-0">
+                  <h3 className="truncate font-serif text-xl">{selectedDraft.title || t('admin.untitled')}</h3>
+                  <div
+                    className="mt-1 flex items-center gap-3 font-mono text-[10px] uppercase tracking-wide"
+                    style={{ color: 'var(--muted-foreground)' }}
+                  >
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
+                      <Clock className="h-3 w-3" />
                       {formatRelativeTime(selectedDraft.savedAt)}
                     </span>
                     {'blogId' in selectedDraft ? (
                       <span className="flex items-center gap-1">
-                        <BookText className="w-3 h-3" />
+                        <BookText className="h-3 w-3" />
                         {t('admin.blog')}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1">
-                        <BookOpen className="w-3 h-3" />
+                        <BookOpen className="h-3 w-3" />
                         {t('nav.story')}
                       </span>
                     )}
                   </div>
                 </div>
-                <AdminButton
-                  onClick={() => setSelectedDraft(null)}
-                  adminVariant="icon"
-                  size="sm"
-                  className="p-2 rounded-md"
-                >
-                  <X className="w-5 h-5" />
+                <AdminButton onClick={() => setSelectedDraft(null)} adminVariant="icon" size="sm" className="rounded-md p-2">
+                  <X className="h-5 w-5" />
                 </AdminButton>
               </div>
 
               {/* 弹窗内容 */}
-              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/30 p-4 rounded-lg overflow-x-auto">
-                    {selectedDraft.content || t('admin.no_content')}
-                  </pre>
-                </div>
+              <div className="custom-scrollbar flex-1 overflow-y-auto p-6">
+                <pre
+                  className="whitespace-pre-wrap rounded-lg bg-muted/40 p-4 font-mono text-sm leading-relaxed"
+                  style={{ color: 'var(--foreground)' }}
+                >
+                  {selectedDraft.content || t('admin.no_content')}
+                </pre>
 
                 {/* 博客草稿元信息 */}
                 {'category' in selectedDraft && (
-                  <div className="mt-6 pt-6 border-t border-border">
+                  <div className="mt-6 border-t pt-5" style={{ borderColor: 'var(--border)' }}>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-xs font-medium text-muted-foreground">
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-widest"
+                          style={{ color: 'var(--muted-foreground)' }}
+                        >
                           {t('ui.category_filter')}
                         </span>
                         <p className="mt-1">{(selectedDraft as BlogDraftData).category || '-'}</p>
                       </div>
                       <div>
-                        <span className="text-xs font-medium text-muted-foreground">Tags</span>
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-widest"
+                          style={{ color: 'var(--muted-foreground)' }}
+                        >
+                          Tags
+                        </span>
                         <p className="mt-1">{(selectedDraft as BlogDraftData).tags || '-'}</p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* 故事草稿元信息 */}
+                {/* 叙事草稿元信息 */}
                 {'files' in selectedDraft &&
                   (selectedDraft as StoryDraftWithPreviews).files?.length > 0 && (
-                    <div className="mt-6 pt-6 border-t border-border">
-                      <span className="text-xs font-medium text-muted-foreground">
+                    <div className="mt-6 border-t pt-5" style={{ borderColor: 'var(--border)' }}>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-widest"
+                        style={{ color: 'var(--muted-foreground)' }}
+                      >
                         {t('admin.pending_files')} ({(selectedDraft as StoryDraftWithPreviews).files.length})
                       </span>
                       <div className="mt-3 grid grid-cols-4 gap-2">
                         {(selectedDraft as StoryDraftWithPreviews).files.slice(0, 8).map((f, i) => (
-                          <div key={f.id || i} className="aspect-square bg-muted rounded-md overflow-hidden">
+                          <div key={f.id || i} className="aspect-square overflow-hidden rounded-md bg-muted">
                             {f.preview ? (
                               <img
                                 src={f.preview}
                                 alt={f.file?.name || `${t('admin.files')} ${i + 1}`}
-                                className="w-full h-full object-cover"
+                                className="h-full w-full object-cover"
                               />
                             ) : (
-                              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-1">
-                                <ImageIcon className="w-4 h-4 opacity-30" />
-                                <span className="text-[10px] truncate max-w-full px-1">
+                              <div
+                                className="flex h-full w-full flex-col items-center justify-center gap-1"
+                                style={{ color: 'var(--muted-foreground)' }}
+                              >
+                                <ImageIcon className="h-4 w-4 opacity-30" />
+                                <span className="max-w-full truncate px-1 text-[10px]">
                                   {f.file?.name?.substring(0, 10) || `${t('admin.files')} ${i + 1}`}
                                 </span>
                               </div>
@@ -690,7 +796,10 @@ function PhotoJournalContent() {
                           </div>
                         ))}
                         {(selectedDraft as StoryDraftWithPreviews).files.length > 8 && (
-                          <div className="aspect-square bg-muted rounded-md flex items-center justify-center text-muted-foreground text-xs">
+                          <div
+                            className="flex aspect-square items-center justify-center rounded-md bg-muted text-xs"
+                            style={{ color: 'var(--muted-foreground)' }}
+                          >
                             +{(selectedDraft as StoryDraftWithPreviews).files.length - 8}
                           </div>
                         )}
@@ -700,8 +809,10 @@ function PhotoJournalContent() {
               </div>
 
               {/* 弹窗底部 */}
-              <div className="p-4 border-t border-border bg-muted/20">
-                <p className="text-[10px] text-muted-foreground text-center">{t('admin.draft_preview_hint')}</p>
+              <div className="border-t bg-muted/20 p-4" style={{ borderColor: 'var(--border)' }}>
+                <p className="text-center text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                  {t('admin.draft_preview_hint')}
+                </p>
               </div>
             </motion.div>
           </motion.div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences, usePhotoFilters } from '@/store/preferences'
@@ -553,7 +554,7 @@ export function PhotosPage() {
       />
 
       {/* 筛选栏 */}
-      <div className="flex items-center gap-2 px-6 py-2.5 border-b overflow-x-auto shrink-0"
+      <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 border-b shrink-0"
         style={{ borderColor: 'var(--border)' }}>
         <div className="relative shrink-0">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -571,27 +572,37 @@ export function PhotosPage() {
             </button>
           )}
         </div>
-        <select value={filters.category}
-          onChange={(e) => filters.setCategory(e.target.value)}
-          className="px-2 py-1.5 text-xs rounded-md border outline-none shrink-0"
-          style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={filters.photoType || ''}
-          onChange={(e) => filters.setPhotoType(e.target.value || null)}
-          className="px-2 py-1.5 text-xs rounded-md border outline-none shrink-0"
-          style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-          <option value="">全部类型</option>
-          <option value="digital">{t('admin.photos_type_digital', language)}</option>
-          <option value="film">{t('admin.photos_type_film', language)}</option>
-        </select>
-        <select value={filters.sortBy}
-          onChange={(e) => filters.setSortBy(e.target.value as any)}
-          className="px-2 py-1.5 text-xs rounded-md border outline-none shrink-0"
-          style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-          <option value="createdAt">上传时间</option>
-          <option value="takenAt">拍摄时间</option>
-        </select>
+        <SelectDropdown
+          value={filters.category}
+          options={categories.map((c) => ({ value: c, label: c }))}
+          onChange={(value) => filters.setCategory(value as string)}
+          placeholder={t('common.all', language)}
+          ariaLabel={t('ui.category_filter', language)}
+          className="w-32 shrink-0"
+        />
+        <SelectDropdown
+          value={filters.photoType || ''}
+          options={[
+            { value: '', label: '全部类型' },
+            { value: 'digital', label: t('admin.photos_type_digital', language) },
+            { value: 'film', label: t('admin.photos_type_film', language) },
+          ]}
+          onChange={(value) => filters.setPhotoType((value as string) || null)}
+          placeholder="全部类型"
+          ariaLabel="照片类型"
+          className="w-28 shrink-0"
+        />
+        <SelectDropdown
+          value={filters.sortBy}
+          options={[
+            { value: 'createdAt', label: '上传时间' },
+            { value: 'takenAt', label: '拍摄时间' },
+          ]}
+          onChange={(value) => filters.setSortBy(value as 'createdAt' | 'takenAt')}
+          placeholder="排序"
+          ariaLabel="排序"
+          className="w-28 shrink-0"
+        />
       </div>
 
       {/* 内容区 */}

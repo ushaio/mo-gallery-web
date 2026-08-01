@@ -315,6 +315,47 @@ func TestManagerCreateScanAndReopen(t *testing.T) {
 	}
 }
 
+func TestRestoreLastLibraryUnlessManuallyClosed(t *testing.T) {
+	root := t.TempDir()
+	config := t.TempDir()
+	manager := NewManager(config, nil)
+	if _, err := manager.Create(root, "Restore Library", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewManager(config, nil)
+	defer restarted.Close()
+	snapshot, restored, err := restarted.RestoreLastLibrary()
+	if err != nil || !restored || snapshot.Name != "Restore Library" {
+		t.Fatalf("restore snapshot=%+v restored=%v err=%v", snapshot, restored, err)
+	}
+	if err := restarted.CloseManually(); err != nil {
+		t.Fatal(err)
+	}
+
+	restartedAgain := NewManager(config, nil)
+	defer restartedAgain.Close()
+	if snapshot, restored, err := restartedAgain.RestoreLastLibrary(); err != nil || restored {
+		t.Fatalf("manual close restored snapshot=%+v restored=%v err=%v", snapshot, restored, err)
+	}
+	if _, err := restartedAgain.Open(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := restartedAgain.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	finalRestart := NewManager(config, nil)
+	defer finalRestart.Close()
+	if snapshot, restored, err := finalRestart.RestoreLastLibrary(); err != nil || !restored || snapshot.Name != "Restore Library" {
+		t.Fatalf("reopened restore snapshot=%+v restored=%v err=%v", snapshot, restored, err)
+	}
+	_ = finalRestart.Close()
+}
+
 func writeTestJPEG(t *testing.T, path string) {
 	t.Helper()
 	file, err := os.Create(path)
@@ -372,6 +413,29 @@ func openTestManager(t *testing.T) (*Manager, string) {
 	}
 	t.Cleanup(func() { _ = manager.Close() })
 	return manager, root
+}
+
+func waitForScanState(t *testing.T, manager *Manager, expected string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, err := manager.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.Scan.State == expected {
+			return
+		}
+		if snapshot.Scan.State == "failed" {
+			t.Fatalf("scan failed: %s", snapshot.Scan.Error)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	snapshot, err := manager.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("scan state=%q, want %q", snapshot.Scan.State, expected)
 }
 
 func indexTestFile(t *testing.T, manager *Manager, root, relative string) AssetID {
@@ -625,6 +689,50 @@ func TestCreateFolderIndexesEmptyFolderAndValidatesName(t *testing.T) {
 	for _, name := range []string{"", "CON", "bad:name", ".mo-gallery", "trailing."} {
 		_, err = manager.CreateFolder("", name)
 		assertAppErrorCode(t, err, ErrInvalidPath)
+	}
+}
+
+func TestScanSynchronizesExternalFolderChanges(t *testing.T) {
+	manager, root := openTestManager(t)
+	externalEmpty := filepath.Join(root, "External", "Empty")
+	if err := os.MkdirAll(externalEmpty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestJPEG(t, filepath.Join(root, "External", "photo.jpg"))
+
+	if err := manager.StartScan(); err != nil {
+		t.Fatal(err)
+	}
+	waitForScanState(t, manager, "completed")
+	folders, err := manager.ListFolders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := findFolderByRelative(folders, "External/Empty"); !found {
+		t.Fatal("externally created empty folder was not indexed")
+	}
+
+	if err := os.RemoveAll(filepath.Join(root, "External")); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.StartScan(); err != nil {
+		t.Fatal(err)
+	}
+	waitForScanState(t, manager, "completed")
+	folders, err = manager.ListFolders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := findFolderByRelative(folders, "External"); found {
+		t.Fatal("externally deleted folder remained in the folder index")
+	}
+
+	page, err := manager.ListAssets(AssetQuery{Availability: "missing", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].RelativePath != "External/photo.jpg" {
+		t.Fatalf("missing asset was not retained after external folder deletion: %+v", page.Items)
 	}
 }
 
@@ -1495,6 +1603,34 @@ func TestListAssetsStructuredFiltersAndSort(t *testing.T) {
 	}
 	if len(descending.Items) != 3 || descending.Items[0].ID != ids[2] || descending.Items[2].ID != ids[0] {
 		t.Fatalf("unexpected descending order: %+v", descending.Items)
+	}
+}
+
+func TestListAssetsDirectFolderOnly(t *testing.T) {
+	manager, root := openTestManager(t)
+	for _, relative := range []string{"root.jpg", "Trips/direct.jpg", "Trips/Child/nested.jpg"} {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeTestJPEG(t, path)
+		indexTestFile(t, manager, root, relative)
+	}
+
+	page, err := manager.ListAssets(AssetQuery{Folder: "Trips", DirectFolderOnly: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].RelativePath != "Trips/direct.jpg" {
+		t.Fatalf("expected only direct folder asset, got %+v", page.Items)
+	}
+
+	page, err = manager.ListAssets(AssetQuery{DirectFolderOnly: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].RelativePath != "root.jpg" {
+		t.Fatalf("expected only root asset, got %+v", page.Items)
 	}
 }
 

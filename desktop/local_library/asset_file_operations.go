@@ -19,6 +19,166 @@ const (
 	assetMoveStageDatabaseCommitted = "database_committed"
 )
 
+const assetFileOperationPlanKind = "asset_move_plan"
+
+func assetFileOperationPlanPath(root, id string) string {
+	return internalPath(root, "operations", id+".asset-plan.json")
+}
+
+func (m *Manager) PlanAssetMove(ids []AssetID, destinationFolder, conflictPolicy string) (AssetFileOperationPlan, error) {
+	if conflictPolicy == "" {
+		conflictPolicy = "skip"
+	}
+	if conflictPolicy != "skip" && conflictPolicy != "rename" {
+		return AssetFileOperationPlan{}, newError(ErrInvalidPath, "不支持的冲突处理策略", map[string]any{"policy": conflictPolicy})
+	}
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return AssetFileOperationPlan{}, err
+	}
+	destinationFolder, err = validateAssetDestinationFolder(session, destinationFolder)
+	if err != nil {
+		return AssetFileOperationPlan{}, err
+	}
+	plan := AssetFileOperationPlan{ID: newID(), Version: 1, Kind: assetFileOperationPlanKind, DestinationFolder: destinationFolder, ConflictPolicy: conflictPolicy, CreatedAt: time.Now().UTC()}
+	seen := make(map[AssetID]struct{}, len(ids))
+	reserved := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		item := AssetFileOperationItem{AssetID: id}
+		source, _, availability, pathErr := session.store.assetPath(session.ctx, id)
+		if pathErr != nil {
+			item.Warning = pathErr.Error()
+			plan.Items = append(plan.Items, item)
+			continue
+		}
+		item.Source = source
+		if availability != "active" {
+			item.Warning = "只有正常状态的资产可以移动"
+			plan.Items = append(plan.Items, item)
+			continue
+		}
+		name := filepath.Base(filepath.FromSlash(source))
+		destination, _, destErr := destinationAssetRelative(destinationFolder, name)
+		if destErr != nil {
+			item.Warning = destErr.Error()
+			plan.Items = append(plan.Items, item)
+			continue
+		}
+		item.Destination = destination
+		if _, statErr := os.Lstat(filepath.Join(session.root, filepath.FromSlash(destination))); statErr == nil {
+			item.Conflict = true
+			plan.ConflictCount++
+			if conflictPolicy == "rename" {
+				item.Destination = nextAvailableAssetName(session.root, destination, reserved)
+			} else {
+				item.Warning = "目标已存在，执行时将跳过"
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			item.Warning = statErr.Error()
+		}
+		reserved[item.Destination] = struct{}{}
+		if info, statErr := os.Stat(filepath.Join(session.root, filepath.FromSlash(source))); statErr == nil {
+			plan.TotalBytes += info.Size()
+		}
+		plan.Items = append(plan.Items, item)
+	}
+	if err := writeJSONAtomic(assetFileOperationPlanPath(session.root, plan.ID), plan); err != nil {
+		return AssetFileOperationPlan{}, err
+	}
+	return plan, nil
+}
+
+func nextAvailableAssetName(root, relative string, reserved map[string]struct{}) string {
+	dir, name := filepath.ToSlash(filepath.Dir(filepath.FromSlash(relative))), filepath.Base(filepath.FromSlash(relative))
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for index := 1; ; index++ {
+		candidateName := fmt.Sprintf("%s (%d)%s", stem, index, ext)
+		candidate := candidateName
+		if dir != "." && dir != "" {
+			candidate = dir + "/" + candidateName
+		}
+		if _, ok := reserved[candidate]; ok {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(candidate))); errors.Is(err, os.ErrNotExist) {
+			return candidate
+		}
+	}
+}
+
+func (m *Manager) ExecuteAssetMovePlan(planID string) (AssetFileOperationExecution, error) {
+	m.folderMutationMu.Lock()
+	defer m.folderMutationMu.Unlock()
+	m.assetFileMutationMu.Lock()
+	defer m.assetFileMutationMu.Unlock()
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return AssetFileOperationExecution{}, err
+	}
+	data, err := os.ReadFile(assetFileOperationPlanPath(session.root, planID))
+	if err != nil {
+		return AssetFileOperationExecution{}, err
+	}
+	var plan AssetFileOperationPlan
+	if err := json.Unmarshal(data, &plan); err != nil || plan.ID != planID || plan.Version != 1 || plan.Kind != assetFileOperationPlanKind {
+		return AssetFileOperationExecution{}, newError(ErrInvalidPath, "文件操作计划无效", nil)
+	}
+	execution := AssetFileOperationExecution{PlanID: plan.ID, Status: "completed", Results: make([]AssetMoveResult, 0, len(plan.Items))}
+	for _, item := range plan.Items {
+		result := AssetMoveResult{AssetID: item.AssetID, Source: item.Source, Destination: item.Destination, Status: "failed"}
+		if item.Warning != "" && !item.Conflict {
+			result.Error = item.Warning
+			execution.Results = append(execution.Results, result)
+			execution.Status = "partial"
+			continue
+		}
+		destination, destinationErr := resolveWithinRoot(session.root, item.Destination)
+		if destinationErr != nil {
+			result.Error = destinationErr.Error()
+			execution.Results = append(execution.Results, result)
+			execution.Status = "partial"
+			continue
+		}
+		if _, statErr := os.Lstat(destination); statErr == nil {
+			if plan.ConflictPolicy == "skip" {
+				result.Status = "skipped"
+				result.Error = "目标已存在，按计划跳过"
+				execution.Results = append(execution.Results, result)
+				execution.Status = "partial"
+				continue
+			}
+			item.Destination = nextAvailableAssetName(session.root, item.Destination, map[string]struct{}{})
+			result.Destination = item.Destination
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			result.Error = statErr.Error()
+			execution.Results = append(execution.Results, result)
+			execution.Status = "partial"
+			continue
+		}
+		moved, moveErr := m.moveOneAsset(session, item.AssetID, item.Source, item.Destination)
+		if moveErr != nil {
+			result.Error = moveErr.Error()
+			execution.Status = "partial"
+		} else {
+			result = moved
+		}
+		execution.Results = append(execution.Results, result)
+	}
+	_ = os.Remove(assetFileOperationPlanPath(session.root, planID))
+	if len(execution.Results) > 0 {
+		m.emitEvent("assets_moved")
+	}
+	return execution, nil
+}
+
 type assetMoveOperation struct {
 	ID                  string    `json:"id"`
 	Kind                string    `json:"kind"`

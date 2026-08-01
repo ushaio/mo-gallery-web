@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, Filter, X } from 'lucide-react'
+import { Check, Filter, X } from 'lucide-react'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import type { AssetStructuredFilters } from './types'
-import type { LocalLibraryCopy } from './copy'
+import type { LocalLibraryCopy, LocalLibraryStringKey } from './copy'
 
 interface Props {
   copy: LocalLibraryCopy
@@ -59,6 +60,16 @@ function TextListInput({ value, placeholder, onCommit }: { value?: string[], pla
 export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
   const [open, setOpen] = useState(false)
   const count = activeCount(filters)
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open])
+
   const update = <K extends FilterKey>(key: K, value: AssetStructuredFilters[K]) => {
     const next = { ...filters, [key]: value }
     if (value === undefined || (Array.isArray(value) && value.length === 0)) delete next[key]
@@ -96,29 +107,73 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
   }, [copy, filters]) // callback closures intentionally track current filters
 
   return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex h-8 items-center gap-1.5 rounded-md border bg-input px-2.5 text-xs hover:bg-secondary">
-        <Filter size={13} />{copy.filters}{count > 0 && <span className="rounded-full bg-primary px-1.5 text-[9px] text-primary-foreground">{count}</span>}<ChevronDown size={11} />
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={copy.filters}
+        aria-label={copy.filters}
+        className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-input hover:bg-secondary"
+      >
+        <Filter size={13} />
+        {count > 0 && (
+          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-medium text-primary-foreground">
+            {count}
+          </span>
+        )}
       </button>
       {open && (
-        <div className="absolute right-0 top-10 z-40 w-[min(720px,calc(100vw-260px))] rounded-lg border bg-card p-4 shadow-xl" style={{ borderColor: 'var(--border)' }}>
-          <div className="mb-3 flex items-center justify-between">
-            <div><h2 className="text-sm font-semibold">{copy.filters}</h2><p className="mt-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{copy.filterLogicHint}</p></div>
-            <div className="flex items-center gap-2"><button type="button" disabled={count === 0} onClick={onClear} className="rounded px-2 py-1 text-[10px] hover:bg-secondary disabled:opacity-40">{copy.clearFilters}</button><button type="button" onClick={() => setOpen(false)} className="rounded p-1 hover:bg-secondary" aria-label={copy.close}><X size={14} /></button></div>
-          </div>
-          {chips.length > 0 && <div className="mb-4 flex flex-wrap gap-1.5">{chips.map((chip) => <button key={chip.key} type="button" onClick={chip.remove} className="flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] hover:bg-secondary">{chip.label}<X size={10} /></button>)}</div>}
-          <div className="custom-scrollbar grid max-h-[62vh] grid-cols-2 gap-x-5 gap-y-4 overflow-y-auto pr-1">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-5">
+          <button type="button" aria-label={copy.closeFilters} className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div role="dialog" aria-modal="true" aria-labelledby="local-library-filters-title" className="relative flex max-h-[86vh] w-full max-w-3xl flex-col rounded-xl border bg-background shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4" style={{ borderColor: 'var(--border)' }}>
+              <div>
+                <h2 id="local-library-filters-title" className="text-sm font-semibold">{copy.filters}</h2>
+                <p className="mt-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{copy.filterLogicHint}</p>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} aria-label={copy.closeFilters} className="rounded-md p-1.5 hover:bg-secondary"><X size={15} /></button>
+            </div>
+            {chips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 border-b px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+                {chips.map((chip) => <button key={chip.key} type="button" onClick={chip.remove} className="flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] hover:bg-secondary">{chip.label}<X size={10} /></button>)}
+              </div>
+            )}
+            <div className="custom-scrollbar grid min-h-0 flex-1 grid-cols-2 gap-x-5 gap-y-4 overflow-y-auto p-5">
             <FilterSection title={copy.filterRating}>
               <RangeInputs min={filters.ratingMin} max={filters.ratingMax} minLimit={0} maxLimit={5} onMin={(value) => update('ratingMin', value)} onMax={(value) => update('ratingMax', value)} />
             </FilterSection>
             <FilterSection title={copy.filterColor}>
-              <div className="flex flex-wrap gap-1">{COLORS.map((color) => <Toggle key={color} active={filters.colorLabels?.includes(color) ?? false} onClick={() => update('colorLabels', toggleValue(filters.colorLabels, color))}>{copy[color]}</Toggle>)}</div>
+              <div className="flex flex-wrap gap-2">
+                {COLORS.map((color) => {
+                  const active = filters.colorLabels?.includes(color) ?? false
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => update('colorLabels', toggleValue(filters.colorLabels, color))}
+                      title={copy[color]}
+                      aria-label={copy[color]}
+                      aria-pressed={active}
+                      className="relative h-6 w-6 rounded-full border transition-transform hover:scale-110"
+                      style={{
+                        backgroundColor: color,
+                        borderColor: active ? 'var(--foreground)' : 'var(--border)',
+                        boxShadow: active ? '0 0 0 2px var(--background), 0 0 0 4px var(--foreground)' : undefined,
+                      }}
+                    >
+                      {active && <Check size={13} className="absolute inset-0 m-auto" style={{ color: 'white', filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,0.9))' }} />}
+                    </button>
+                  )
+                })}
+              </div>
             </FilterSection>
             <FilterSection title={copy.filterFormat}>
               <div className="flex flex-wrap gap-1">{FORMATS.map((format) => <Toggle key={format} active={filters.formats?.includes(format) ?? false} onClick={() => update('formats', toggleValue(filters.formats, format))}>{format.toUpperCase()}</Toggle>)}</div>
             </FilterSection>
             <FilterSection title={copy.filterPreview}>
-              <div className="flex flex-wrap gap-1">{PREVIEW_STATUSES.map((status) => <Toggle key={status} active={filters.previewStatuses?.includes(status) ?? false} onClick={() => update('previewStatuses', toggleValue(filters.previewStatuses, status))}>{copy[`preview_${status}` as keyof LocalLibraryCopy]}</Toggle>)}</div>
+              <div className="flex flex-wrap gap-1">{PREVIEW_STATUSES.map((status) => <Toggle key={status} active={filters.previewStatuses?.includes(status) ?? false} onClick={() => update('previewStatuses', toggleValue(filters.previewStatuses, status))}>{copy[`preview_${status}` as LocalLibraryStringKey]}</Toggle>)}</div>
             </FilterSection>
             <FilterSection title={copy.filterCapturedDate}>
               <DateRange from={filters.capturedFromMs} to={filters.capturedToMs} copy={copy} onFrom={(value) => update('capturedFromMs', value)} onTo={(value) => update('capturedToMs', value)} />
@@ -133,15 +188,30 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
               <div className="space-y-2"><LabeledRange label="ISO" min={filters.isoMin} max={filters.isoMax} onMin={(value) => update('isoMin', value)} onMax={(value) => update('isoMax', value)} /><LabeledRange label={copy.filterAperture} min={filters.apertureMin} max={filters.apertureMax} step="0.1" onMin={(value) => update('apertureMin', value)} onMax={(value) => update('apertureMax', value)} /><LabeledRange label={`${copy.filterFocalLength} (mm)`} min={filters.focalLengthMin} max={filters.focalLengthMax} step="0.1" onMin={(value) => update('focalLengthMin', value)} onMax={(value) => update('focalLengthMax', value)} /></div>
             </FilterSection>
             <FilterSection title={copy.filterOrientation}>
-              <select value={filters.orientation ?? ''} onChange={(event) => update('orientation', (event.target.value || undefined) as AssetStructuredFilters['orientation'])} className="h-8 w-full rounded-md border bg-input px-2 text-xs"><option value="">{copy.any}</option><option value="landscape">{copy.landscape}</option><option value="portrait">{copy.portrait}</option><option value="square">{copy.square}</option></select>
+              <SelectDropdown
+                value={filters.orientation ?? ''}
+                options={[
+                  { value: '', label: copy.any },
+                  { value: 'landscape', label: copy.landscape },
+                  { value: 'portrait', label: copy.portrait },
+                  { value: 'square', label: copy.square },
+                ]}
+                onChange={(value) => update('orientation', ((value as string) || undefined) as AssetStructuredFilters['orientation'])}
+                ariaLabel={copy.filterOrientation}
+              />
             </FilterSection>
             <FilterSection title={copy.filterDimensions}>
               <div className="space-y-2"><LabeledRange label={`${copy.filterWidth} (px)`} min={filters.widthMin} max={filters.widthMax} onMin={(value) => update('widthMin', value)} onMax={(value) => update('widthMax', value)} /><LabeledRange label={`${copy.filterHeight} (px)`} min={filters.heightMin} max={filters.heightMax} onMin={(value) => update('heightMin', value)} onMax={(value) => update('heightMax', value)} /></div>
             </FilterSection>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+              <button type="button" disabled={count === 0} onClick={onClear} className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-[10px] hover:bg-secondary disabled:opacity-40"><X size={11} />{copy.clearFilters}</button>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-primary px-4 py-1.5 text-[10px] font-medium text-primary-foreground hover:opacity-90">{copy.filterDone}</button>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

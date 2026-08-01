@@ -11,7 +11,29 @@ import (
 )
 
 type registryFile struct {
-	Libraries []RecentLibrary `json:"libraries"`
+	Libraries      []RecentLibrary `json:"libraries"`
+	ManuallyClosed bool            `json:"manuallyClosed,omitempty"`
+}
+
+func (r *Registry) ShouldRestoreLast() (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	file, err := r.readFileLocked()
+	if err != nil {
+		return false, err
+	}
+	return !file.ManuallyClosed, nil
+}
+
+func (r *Registry) SetManuallyClosed(value bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	file, err := r.readFileLocked()
+	if err != nil {
+		return err
+	}
+	file.ManuallyClosed = value
+	return r.writeFileLocked(file)
 }
 
 type Registry struct {
@@ -60,7 +82,13 @@ func (r *Registry) Touch(item RecentLibrary) error {
 	if len(next) > 20 {
 		next = next[:20]
 	}
-	return r.writeLocked(next)
+	file, err := r.readFileLocked()
+	if err != nil {
+		return err
+	}
+	file.Libraries = next
+	file.ManuallyClosed = false
+	return r.writeFileLocked(file)
 }
 
 func (r *Registry) Remove(path string) error {
@@ -80,25 +108,42 @@ func (r *Registry) Remove(path string) error {
 }
 
 func (r *Registry) readLocked() ([]RecentLibrary, error) {
+	file, err := r.readFileLocked()
+	return file.Libraries, err
+}
+
+func (r *Registry) readFileLocked() (registryFile, error) {
 	data, err := os.ReadFile(r.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return []RecentLibrary{}, nil
+		return registryFile{Libraries: []RecentLibrary{}}, nil
 	}
 	if err != nil {
-		return nil, err
+		return registryFile{}, err
 	}
 	var file registryFile
 	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, err
+		return registryFile{}, err
 	}
-	return file.Libraries, nil
+	if file.Libraries == nil {
+		file.Libraries = []RecentLibrary{}
+	}
+	return file, nil
 }
 
 func (r *Registry) writeLocked(items []RecentLibrary) error {
+	file, err := r.readFileLocked()
+	if err != nil {
+		return err
+	}
+	file.Libraries = items
+	return r.writeFileLocked(file)
+}
+
+func (r *Registry) writeFileLocked(file registryFile) error {
 	if err := os.MkdirAll(filepath.Dir(r.path), 0o700); err != nil {
 		return err
 	}
-	return writeJSONAtomic(r.path, registryFile{Libraries: items})
+	return writeJSONAtomic(r.path, file)
 }
 
 func recentFrom(manifest Manifest, root string) RecentLibrary {

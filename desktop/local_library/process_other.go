@@ -5,6 +5,9 @@ package local_library
 import (
 	"os"
 	"syscall"
+	"time"
 )
 
-func signalProcessZero(process *os.Process) error { return process.Signal(syscall.Signal(0)) }
+func processMatchesLock(process *os.Process, _ time.Time) bool {
+	return process.Signal(syscall.Signal(0)) == nil
+}

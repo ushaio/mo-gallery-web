@@ -1,6 +1,6 @@
-const API_KEY = "sk-HloolAPI-01b0TpEcFTMeSF5SmDYRxtNADuXnzn2NXXeQGd9wy0ErtK2m";
-const BASE_URL = "https://api.shuaiapi.com/v1" ?? "https://api.openai.com/v1";
-const MODEL = "gpt-5.6-terra";
+const API_KEY = process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
+const BASE_URL = process.env.AI_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+const MODEL = process.env.AI_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-5.6-terra";
 
 if (!API_KEY) {
   throw new Error("缺少 OPENAI_API_KEY 环境变量");

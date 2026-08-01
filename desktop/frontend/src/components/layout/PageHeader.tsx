@@ -8,12 +8,12 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-b shrink-0"
+    <div className="flex h-16 shrink-0 items-center justify-between border-b px-6"
       style={{ borderColor: 'var(--border)' }}>
       <div>
         <h1 className="text-lg font-semibold">{title}</h1>
         {description && (
-          <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
+          <p style={{ color: 'var(--muted-foreground)' }}>
             {description}
           </p>
         )}

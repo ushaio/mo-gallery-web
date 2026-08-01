@@ -162,6 +162,7 @@ type AssetDTO struct {
 	PreviewStatus  string               `json:"previewStatus"`
 	PreviewError   string               `json:"previewError,omitempty"`
 	MetadataStatus string               `json:"metadataStatus"`
+	DominantColors []string             `json:"dominantColors,omitempty"`
 	DisplayTitle   string               `json:"displayTitle,omitempty"`
 	Notes          string               `json:"notes,omitempty"`
 	Rating         int                  `json:"rating"`
@@ -189,6 +190,7 @@ type AssetQuery struct {
 	Cursor           string   `json:"cursor,omitempty"`
 	Limit            int      `json:"limit,omitempty"`
 	Folder           string   `json:"folder,omitempty"`
+	DirectFolderOnly bool     `json:"directFolderOnly,omitempty"`
 	Search           string   `json:"search,omitempty"`
 	Availability     string   `json:"availability,omitempty"`
 	FavoritesOnly    bool     `json:"favoritesOnly,omitempty"`
@@ -219,6 +221,12 @@ type AssetQuery struct {
 	HeightMax        *int     `json:"heightMax,omitempty"`
 	Sort             string   `json:"sort,omitempty"`
 	SortDirection    string   `json:"sortDirection,omitempty"`
+}
+
+type AssetQueryToken struct {
+	Token     string    `json:"token"`
+	Total     int64     `json:"total"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 type BatchAssetOrganizationUpdate struct {
@@ -253,6 +261,61 @@ type AssetMoveResult struct {
 	Destination string  `json:"destination,omitempty"`
 	Status      string  `json:"status"`
 	Error       string  `json:"error,omitempty"`
+}
+
+type AssetFileOperationItem struct {
+	AssetID     AssetID `json:"assetId"`
+	Source      string  `json:"source"`
+	Destination string  `json:"destination"`
+	Conflict    bool    `json:"conflict"`
+	Warning     string  `json:"warning,omitempty"`
+}
+
+type AssetFileOperationPlan struct {
+	ID                string                   `json:"id"`
+	Version           int                      `json:"version"`
+	Kind              string                   `json:"kind"`
+	DestinationFolder string                   `json:"destinationFolder"`
+	ConflictPolicy    string                   `json:"conflictPolicy"`
+	Items             []AssetFileOperationItem `json:"items"`
+	ConflictCount     int                      `json:"conflictCount"`
+	TotalBytes        int64                    `json:"totalBytes"`
+	CreatedAt         time.Time                `json:"createdAt"`
+}
+
+type AssetFileOperationExecution struct {
+	PlanID  string            `json:"planId"`
+	Status  string            `json:"status"`
+	Results []AssetMoveResult `json:"results"`
+}
+
+type FolderFileOperationItem struct {
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	Kind        string `json:"kind"`
+	Conflict    bool   `json:"conflict"`
+}
+
+type FolderFileOperationPlan struct {
+	ID                string                    `json:"id"`
+	Version           int                       `json:"version"`
+	Kind              string                    `json:"kind"`
+	Source            string                    `json:"source"`
+	Destination       string                    `json:"destination"`
+	ConflictPolicy    string                    `json:"conflictPolicy"`
+	Items             []FolderFileOperationItem `json:"items"`
+	ManagedAssetCount int64                     `json:"managedAssetCount"`
+	OtherFileCount    int64                     `json:"otherFileCount"`
+	DirectoryCount    int64                     `json:"directoryCount"`
+	TotalBytes        int64                     `json:"totalBytes"`
+	ConflictCount     int                       `json:"conflictCount"`
+	CreatedAt         time.Time                 `json:"createdAt"`
+}
+
+type FolderFileOperationExecution struct {
+	PlanID string    `json:"planId"`
+	Status string    `json:"status"`
+	Folder FolderDTO `json:"folder"`
 }
 
 // FolderDeletionPreview describes everything that will move with a real folder.
