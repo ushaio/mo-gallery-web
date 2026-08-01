@@ -282,6 +282,8 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
   try {
     const category = c.req.query('category')
     const search = c.req.query('search')
+    const photoType = c.req.query('photoType')
+    const featured = c.req.query('featured')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
     const sortBy = c.req.query('sortBy') || 'createdAt'
@@ -298,6 +300,16 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     }
     if (search) {
       where.title = { contains: search, mode: 'insensitive' }
+    }
+    if (photoType === 'film') {
+      where.filmPhoto = { isNot: null }
+    } else if (photoType === 'digital') {
+      where.filmPhoto = { is: null }
+    }
+    if (featured === 'true') {
+      where.isFeatured = true
+    } else if (featured === 'false') {
+      where.isFeatured = false
     }
 
     // 排序

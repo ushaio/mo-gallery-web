@@ -1,22 +1,32 @@
-import { useState, useEffect, useCallback, useRef, useLayoutEffect, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
+import { PhotoInfoSidebar } from '@/components/admin/PhotoInfoSidebar'
+import { PhotoPreviewOverlay } from '@/components/admin/PhotoPreviewOverlay'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences, usePhotoFilters } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
-import type { Photo, PaginatedResponse } from '@/types'
+import { normalizePhotoCategories } from '@/lib/photoCategories'
+import type { Album, Photo, PaginatedResponse } from '@/types'
 import { toast } from 'sonner'
-import { ThumbGridSkeleton, ListSkeleton } from '@/components/admin/Skeleton'
+import { ThumbGridSkeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import {
-  Grid3X3, List, Star, StarOff, Eye, EyeOff, Trash2, Loader2, Check,
-  RefreshCw, Search, X, CheckSquare, Film, ImageOff,
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/ContextMenu'
+import {
+  ArrowDown, ArrowUp, BookOpen, Columns3, LayoutGrid, Star, Eye, EyeOff, Trash2, Loader2, Check,
+  Maximize2, Minus, Pencil, Plus, RefreshCw, Search, X, CheckSquare, Film, ImageOff,
 } from 'lucide-react'
 
-const PAGE_SIZE = 50
+// 三栏资源库中间区域较窄，8 列视图下 50 张可能不足以撑满一屏，导致没有滚动事件。
+// 与本地资源库保持一致，每页加载 100 张，并由视口填充逻辑按需继续请求。
+const PAGE_SIZE = 100
+const MIN_PHOTO_GRID_SIZE = 120
+const MAX_PHOTO_GRID_SIZE = 280
 
 // 模块级缓存：路由切换会卸载页面组件，把已加载的分页数据和滚动位置留在
 // 模块作用域里，筛选条件未变时返回本页即恢复，不再从第 1 页重新加载
@@ -28,22 +38,50 @@ let photosPageCache: {
   hasMore: boolean
   page: number
   scrollTop: number
+  loaded: boolean
 } | null = null
 
-const formatListDate = (dateStr?: string) => {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
+interface AlbumPhotoFilters {
+  search: string
+  category: string
+  photoType: string | null
+  featured: boolean | null
+  cameraId: string | null
+  lensId: string | null
+  sortBy: 'createdAt' | 'takenAt'
+  sortOrder: 'asc' | 'desc'
+}
+
+function filterAndSortAlbumPhotos(photos: Photo[], filters: AlbumPhotoFilters) {
+  const search = filters.search.trim().toLocaleLowerCase()
+  const category = filters.category === '全部' ? '' : filters.category
+
+  return photos
+    .filter((photo) => !category || photo.category?.split(',').includes(category))
+    .filter((photo) => !search || photo.title?.toLocaleLowerCase().includes(search))
+    .filter((photo) => !filters.photoType || photo.photoType === filters.photoType)
+    .filter((photo) => filters.featured === null || photo.isFeatured === filters.featured)
+    .filter((photo) => !filters.cameraId || photo.cameraId === filters.cameraId)
+    .filter((photo) => !filters.lensId || photo.lensId === filters.lensId)
+    .sort((left, right) => {
+      const field = filters.sortBy === 'takenAt' ? 'takenAt' : 'createdAt'
+      const leftTime = new Date(left[field] || 0).getTime()
+      const rightTime = new Date(right[field] || 0).getTime()
+      const comparison = leftTime - rightTime
+      return filters.sortOrder === 'asc' ? comparison : -comparison
+    })
 }
 
 // 缩略图：加载完成前保持透明，避免滚动时图片"闪现"；
 // ref 回调兜底缓存命中场景（complete 已为 true 时 onLoad 不会再触发）
-function Thumb({ src, alt, className }: { src: string; alt: string; className: string }) {
+function Thumb({ src, alt, className, width, height }: { src: string; alt: string; className: string; width?: number; height?: number }) {
   const [loaded, setLoaded] = useState(false)
   return (
     <img
       src={src}
       alt={alt}
+      width={width || undefined}
+      height={height || undefined}
       loading="lazy"
       decoding="async"
       draggable={false}
@@ -56,6 +94,10 @@ function Thumb({ src, alt, className }: { src: string; alt: string; className: s
 
 interface PhotoCardActions {
   onCardClick: (event: React.MouseEvent, photo: Photo) => void
+  onCardDoubleClick: (photo: Photo) => void
+  onContextOpen: (photo: Photo) => void
+  onEditDetails: (photo: Photo) => void
+  onEditStory: (photo: Photo) => void
   onToggleSelect: (id: string) => void
   onToggleFeatured: (id: string) => void
   onToggleShow: (id: string) => void
@@ -66,129 +108,114 @@ interface PhotoCardProps extends PhotoCardActions {
   photo: Photo
   isSelected: boolean
   isDeleting: boolean
+  language: 'zh' | 'en'
+  viewMode: 'crop' | 'fit' | 'masonry'
+}
+
+function PhotoContextTarget({
+  photo, isSelected, isDeleting, language, children,
+  onCardDoubleClick, onContextOpen, onEditDetails, onEditStory,
+  onToggleSelect, onToggleFeatured, onToggleShow, onRequestDelete,
+}: Omit<PhotoCardProps, 'onCardClick' | 'viewMode'> & { children: React.ReactElement }) {
+  return (
+    <ContextMenu onOpenChange={(open) => { if (open && !isDeleting) onContextOpen(photo) }}>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuLabel className="max-w-64 truncate">{photo.title || (language === 'zh' ? '未命名照片' : 'Untitled photo')}</ContextMenuLabel>
+        <ContextMenuSeparator />
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onCardDoubleClick(photo)}><Maximize2 size={14} />{language === 'zh' ? '大图预览' : 'Preview'}</ContextMenuItem>
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onEditDetails(photo)}><Pencil size={14} />{t('admin.edit_photo', language)}</ContextMenuItem>
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onEditStory(photo)}><BookOpen size={14} />{t('admin.edit_story', language)}</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onToggleSelect(photo.id)}><CheckSquare size={14} />{isSelected ? (language === 'zh' ? '取消选择' : 'Deselect') : t('admin.select_photos', language)}</ContextMenuItem>
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onToggleFeatured(photo.id)}><Star size={14} fill={photo.isFeatured ? 'currentColor' : 'none'} />{photo.isFeatured ? (language === 'zh' ? '取消精选' : 'Remove featured') : t('admin.featured', language)}</ContextMenuItem>
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onToggleShow(photo.id)}>{photo.showFlag ? <EyeOff size={14} /> : <Eye size={14} />}{t(photo.showFlag ? 'admin.hide_in_gallery' : 'admin.show_in_gallery', language)}</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem disabled={isDeleting} variant="destructive" onSelect={() => onRequestDelete(photo)}><Trash2 size={14} />{t('common.delete', language)}</ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
 }
 
 // memo 化的网格卡片：勾选/搜索输入/加载更多等页面状态变化时，
 // 只有 props 变化的卡片重渲染，而不是全部已加载的几百张
 const PhotoGridCard = memo(function PhotoGridCard({
-  photo, isSelected, isDeleting,
-  onCardClick, onToggleSelect, onToggleFeatured, onToggleShow, onRequestDelete,
+  photo, isSelected, isDeleting, language, viewMode,
+  onCardClick, onCardDoubleClick, onContextOpen, onEditDetails, onEditStory,
+  onToggleSelect, onToggleFeatured, onToggleShow, onRequestDelete,
 }: PhotoCardProps) {
+  const masonry = viewMode === 'masonry'
+
   return (
-    <div
-      className={`group relative aspect-square rounded-lg overflow-hidden transition-all ${isDeleting ? 'cursor-wait opacity-75' : 'cursor-pointer'}`}
-      style={{
-        backgroundColor: 'var(--muted)',
-        boxShadow: isSelected ? '0 0 0 2px var(--primary)' : 'none',
-        // 离屏卡片跳过渲染（尺寸由 aspect-square + 网格列宽决定，不依赖内容）
-        contentVisibility: 'auto',
-      }}
-      onClick={(e) => { if (!isDeleting) onCardClick(e, photo) }}>
-      <Thumb src={resolveAssetUrl(photo.thumbnailUrl || photo.url)} alt={photo.title}
-        className={`w-full h-full object-cover transition-[transform,opacity] duration-300 group-hover:scale-[1.03] ${isDeleting ? '!opacity-50' : ''}`} />
-
-      {/* 复选框（左上，悬停或已选中时显示） */}
-      <button
-        onClick={(e) => { e.stopPropagation(); if (!isDeleting) onToggleSelect(photo.id) }}
-        className={`absolute top-2 left-2 z-10 flex h-5 w-5 items-center justify-center rounded border transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+    <PhotoContextTarget
+      photo={photo}
+      isSelected={isSelected}
+      isDeleting={isDeleting}
+      language={language}
+      onCardDoubleClick={onCardDoubleClick}
+      onContextOpen={onContextOpen}
+      onEditDetails={onEditDetails}
+      onEditStory={onEditStory}
+      onToggleSelect={onToggleSelect}
+      onToggleFeatured={onToggleFeatured}
+      onToggleShow={onToggleShow}
+      onRequestDelete={onRequestDelete}
+    >
+      <div
+        className={`group overflow-hidden border text-left transition focus:outline-none ${masonry ? 'mb-1.5 inline-block w-full rounded-sm align-top' : 'flex h-full min-w-0 flex-col rounded-lg'} ${isDeleting ? 'cursor-wait opacity-75' : 'cursor-pointer'}`}
         style={{
-          backgroundColor: isSelected ? 'var(--primary)' : 'rgba(0,0,0,0.35)',
-          borderColor: isSelected ? 'var(--primary)' : 'rgba(255,255,255,0.6)',
-        }}>
-        {isSelected && <Check size={12} className="text-white" />}
-      </button>
-
-      {/* 状态角标（右上，常驻） */}
-      {(photo.isFeatured || !photo.showFlag || photo.photoType === 'film') && (
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md bg-black/45 px-1.5 py-1 backdrop-blur-[2px]">
-          {photo.isFeatured && <Star size={11} className="text-yellow-400 fill-yellow-400" />}
-          {!photo.showFlag && <EyeOff size={11} className="text-white/85" />}
-          {photo.photoType === 'film' && <Film size={11} className="text-white/85" />}
-        </div>
-      )}
-
-      {/* 底部渐变信息条（悬停显示：标题 + 操作） */}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent pt-8 pb-1.5 px-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="flex items-end justify-between gap-1">
-          <span className="text-white text-xs truncate leading-6">{photo.title || 'Untitled'}</span>
-          <div className="flex items-center shrink-0">
-            <button onClick={(e) => { e.stopPropagation(); onToggleFeatured(photo.id) }}
-              disabled={isDeleting} className="p-1 rounded hover:bg-white/20 disabled:opacity-50 disabled:cursor-wait">
-              {photo.isFeatured ? <Star size={13} className="text-yellow-400 fill-yellow-400" /> : <Star size={13} className="text-white/70" />}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); onToggleShow(photo.id) }}
-              disabled={isDeleting} className="p-1 rounded hover:bg-white/20 disabled:opacity-50 disabled:cursor-wait">
-              {photo.showFlag ? <Eye size={13} className="text-white/80" /> : <EyeOff size={13} className="text-white/50" />}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); onRequestDelete(photo) }}
-              disabled={isDeleting} className="p-1 rounded hover:bg-red-500/60 disabled:cursor-wait">
-              {isDeleting ? <Loader2 size={13} className="text-white/80 animate-spin" /> : <Trash2 size={13} className="text-white/80" />}
-            </button>
+          borderColor: isSelected ? 'var(--primary)' : masonry ? 'transparent' : 'var(--border)',
+          backgroundColor: isSelected ? 'var(--accent)' : masonry ? 'transparent' : 'var(--card)',
+          boxShadow: isSelected ? '0 0 0 1px var(--primary)' : undefined,
+          breakInside: masonry ? 'avoid' : undefined,
+          contentVisibility: masonry ? undefined : 'auto',
+        }}
+        onClick={(event) => { if (!isDeleting) onCardClick(event, photo) }}
+        onDoubleClick={() => { if (!isDeleting) onCardDoubleClick(photo) }}
+      >
+        <div className={`relative min-h-0 w-full overflow-hidden bg-secondary ${masonry ? '' : 'aspect-[5/4]'}`}>
+          <Thumb
+            src={resolveAssetUrl(photo.thumbnailUrl || photo.url)}
+            alt={photo.title}
+            width={masonry ? photo.width : undefined}
+            height={masonry ? photo.height : undefined}
+            className={`w-full transition-[transform,opacity] duration-300 ${masonry ? 'block h-auto object-cover group-hover:scale-[1.015]' : viewMode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]'} ${isDeleting ? '!opacity-50' : ''}`}
+          />
+          <button
+            onClick={(event) => { event.stopPropagation(); if (!isDeleting) onToggleSelect(photo.id) }}
+            className={`absolute left-2 top-2 z-30 flex h-5 w-5 items-center justify-center rounded border transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            style={{ backgroundColor: isSelected ? 'var(--primary)' : 'rgba(0,0,0,0.4)', borderColor: isSelected ? 'var(--primary)' : 'rgba(255,255,255,0.7)' }}
+          >
+            {isSelected && <Check size={12} className="text-white" />}
+          </button>
+          <div className="absolute right-2 top-2 z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button onClick={(event) => { event.stopPropagation(); onToggleFeatured(photo.id) }} disabled={isDeleting} title={photo.isFeatured ? '取消精选' : '设为精选'} className="rounded bg-black/60 p-1.5 text-white hover:bg-black/75 disabled:opacity-50"><Star size={12} fill={photo.isFeatured ? 'currentColor' : 'none'} /></button>
+            <button onClick={(event) => { event.stopPropagation(); onToggleShow(photo.id) }} disabled={isDeleting} title={photo.showFlag ? '设为隐藏' : '设为展示'} className="rounded bg-black/60 p-1.5 text-white hover:bg-black/75 disabled:opacity-50">{photo.showFlag ? <Eye size={12} /> : <EyeOff size={12} />}</button>
+            <button onClick={(event) => { event.stopPropagation(); onRequestDelete(photo) }} disabled={isDeleting} title="删除照片" className="rounded bg-black/60 p-1.5 text-white hover:bg-red-600/85 disabled:opacity-50">{isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}</button>
           </div>
+          {(photo.isFeatured || !photo.showFlag || photo.photoType === 'film') && (
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded bg-black/60 px-1.5 py-1 text-white">
+              {photo.isFeatured && <Star size={11} fill="currentColor" />}
+              {!photo.showFlag && <EyeOff size={11} />}
+              {photo.photoType === 'film' && <Film size={11} />}
+            </div>
+          )}
+          {isDeleting && <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 bg-black/45 text-white"><Loader2 size={20} className="animate-spin" /><span className="text-xs">删除中...</span></div>}
         </div>
+        {!masonry && (
+          <div className="block w-full px-2.5 py-2">
+            <span className="block truncate text-xs font-medium">{photo.title || 'Untitled'}</span>
+            <span className="mt-0.5 block truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{photo.width && photo.height ? `${photo.width} × ${photo.height}` : photo.category || '—'}</span>
+          </div>
+        )}
       </div>
-
-      {isDeleting && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/45 text-white">
-          <Loader2 size={20} className="animate-spin" />
-          <span className="text-xs">删除中...</span>
-        </div>
-      )}
-    </div>
-  )
-})
-
-const PhotoListRow = memo(function PhotoListRow({
-  photo, isSelected, isDeleting,
-  onCardClick, onToggleSelect, onToggleFeatured, onRequestDelete,
-}: Omit<PhotoCardProps, 'onToggleShow'>) {
-  return (
-    <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${isDeleting ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}
-      style={{
-        backgroundColor: isSelected ? 'var(--accent)' : 'transparent',
-        contentVisibility: 'auto',
-        containIntrinsicSize: '0 56px',
-      }}
-      onClick={(e) => { if (!isDeleting) onCardClick(e, photo) }}>
-      <button
-        onClick={(e) => { e.stopPropagation(); if (!isDeleting) onToggleSelect(photo.id) }}
-        className="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors"
-        style={{
-          backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-          borderColor: isSelected ? 'var(--primary)' : 'var(--border)',
-        }}>
-        {isSelected && <Check size={11} className="text-white" />}
-      </button>
-      <Thumb src={resolveAssetUrl(photo.thumbnailUrl || photo.url)} alt=""
-        className="w-10 h-10 rounded object-cover shrink-0 transition-opacity duration-300" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm truncate">{photo.title || 'Untitled'}</p>
-        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-          {isDeleting
-            ? '删除中...'
-            : [photo.category || '-', `${photo.width}×${photo.height}`, formatListDate(photo.takenAt || photo.createdAt)]
-                .filter(Boolean).join(' · ')}
-        </p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {photo.isFeatured && <Star size={14} className="text-yellow-500" />}
-        {!photo.showFlag && <EyeOff size={14} style={{ color: 'var(--muted-foreground)' }} />}
-        <button onClick={(e) => { e.stopPropagation(); onToggleFeatured(photo.id) }}
-          disabled={isDeleting} className="p-1 rounded hover:opacity-80 disabled:opacity-50 disabled:cursor-wait" style={{ color: 'var(--muted-foreground)' }}>
-          {photo.isFeatured ? <StarOff size={14} /> : <Star size={14} />}
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); onRequestDelete(photo) }}
-          disabled={isDeleting} className="p-1 rounded hover:opacity-80 disabled:cursor-wait" style={{ color: 'var(--destructive)' }}>
-          {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-        </button>
-      </div>
-    </div>
+    </PhotoContextTarget>
   )
 })
 
 export function PhotosPage() {
-  const { language, photoColumns } = usePreferences()
+  const { language, photoGridSize, photoViewMode: viewMode, setPhotoGridSize, setPhotoViewMode: setViewMode } = usePreferences()
+  const gridSize = Math.min(MAX_PHOTO_GRID_SIZE, Math.max(MIN_PHOTO_GRID_SIZE, photoGridSize))
   const filters = usePhotoFilters()
   const { token, logout } = useAuth()
   const navigate = useNavigate()
@@ -198,7 +225,9 @@ export function PhotosPage() {
     filters.albumId, filters.cameraId, filters.lensId, filters.featured,
     filters.sortBy, filters.sortOrder,
   ])
-  const cacheHitRef = useRef(photosPageCache !== null && photosPageCache.filterKey === filterKey)
+  const cacheHitRef = useRef(
+    photosPageCache !== null && photosPageCache.loaded && photosPageCache.filterKey === filterKey,
+  )
 
   const [photos, setPhotos] = useState<Photo[]>(() => cacheHitRef.current ? photosPageCache!.photos : [])
   const [total, setTotal] = useState(() => cacheHitRef.current ? photosPageCache!.total : 0)
@@ -206,7 +235,6 @@ export function PhotosPage() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [categories, setCategories] = useState<string[]>([])
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
@@ -215,12 +243,20 @@ export function PhotosPage() {
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
   const [batchUpdating, setBatchUpdating] = useState(false)
   const [detailPhoto, setDetailPhoto] = useState<Photo | null>(null)
+  // 大图预览（双击卡片/点击侧栏缩略图打开）
+  const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null)
+  // 完整编辑/叙事弹层（从右侧信息栏打开，信息页签或叙事页签）
+  const [editorState, setEditorState] = useState<{ photo: Photo; mode: 'info' | 'story' } | null>(null)
   // 搜索输入本地回显，300ms 防抖后才写入筛选（避免每键一次全量请求）
   const [searchInput, setSearchInput] = useState(filters.search)
 
   const pageRef = useRef(cacheHitRef.current ? photosPageCache!.page : 1)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
+  const autoFillAttemptPageRef = useRef<number | null>(null)
   const fetchingRef = useRef(false)
+  const fetchRequestIdRef = useRef(0)
+  const hasLoadedInitialPageRef = useRef(cacheHitRef.current)
   const lastScrollTopRef = useRef(0)
   const scrollRafPendingRef = useRef(false)
   // Shift 范围选择的锚点（最近一次勾选的照片）
@@ -238,6 +274,12 @@ export function PhotosPage() {
   }, [])
 
   useEffect(() => () => {
+    // 让卸载前尚未完成的请求失效，避免 StrictMode/HMR 的旧闭包继续参与状态判断。
+    fetchRequestIdRef.current += 1
+    fetchingRef.current = false
+
+    // 只缓存已完成的首屏结果；请求中的空数组不能成为下一次挂载的“有效缓存”。
+    if (!hasLoadedInitialPageRef.current) return
     photosPageCache = {
       filterKey: latestRef.current.filterKey,
       photos: latestRef.current.photos,
@@ -245,24 +287,42 @@ export function PhotosPage() {
       hasMore: latestRef.current.hasMore,
       page: pageRef.current,
       scrollTop: lastScrollTopRef.current,
+      loaded: true,
     }
   }, [])
 
-  // 加载照片（追加模式）
+  // 全部照片使用分页接口；选中相册后直接读取相册管理详情接口中的 photos。
   const fetchPhotos = useCallback(async (pageNum: number, append: boolean) => {
-    if (fetchingRef.current) return
+    if (append && (fetchingRef.current || filters.albumId)) return
+
+    const requestId = ++fetchRequestIdRef.current
     fetchingRef.current = true
+    if (!append) hasLoadedInitialPageRef.current = false
 
     if (append) setLoadingMore(true)
     else setLoading(true)
 
     try {
+      if (filters.albumId) {
+        const album: Album = await (window as any).go.main.App.GetAlbum(filters.albumId)
+        if (requestId !== fetchRequestIdRef.current) return
+
+        const albumPhotos = filterAndSortAlbumPhotos(album?.photos || [], filters)
+        setPhotos(albumPhotos)
+        setTotal(albumPhotos.length)
+        setHasMore(false)
+        pageRef.current = 1
+        hasLoadedInitialPageRef.current = true
+        setLoadError(null)
+        return
+      }
+
       const result: PaginatedResponse<Photo> = await (window as any).go.main.App.GetPhotos({
         category: filters.category === '全部' ? '' : filters.category,
         search: filters.search,
         photoType: filters.photoType,
         channel: filters.channel,
-        albumId: filters.albumId,
+        albumId: '',
         cameraId: filters.cameraId,
         lensId: filters.lensId,
         featured: filters.featured,
@@ -271,21 +331,31 @@ export function PhotosPage() {
         page: pageNum,
         pageSize: PAGE_SIZE,
       })
+      if (requestId !== fetchRequestIdRef.current) return
 
       const newData = result.data || []
       setPhotos(prev => append ? [...prev, ...newData] : newData)
-      setTotal(result.meta?.total || 0)
-      setHasMore(result.meta?.hasMore ?? false)
+      if (result.meta?.total !== undefined) setTotal(result.meta.total)
+      else setTotal(prev => append ? prev + newData.length : newData.length)
+      // 某些旧服务响应可能不含 meta；满页时继续尝试下一页，空页后自然停止。
+      setHasMore(result.meta?.hasMore ?? newData.length >= PAGE_SIZE)
       pageRef.current = pageNum
+      if (!append) hasLoadedInitialPageRef.current = true
       setLoadError(null)
     } catch (err: any) {
+      if (requestId !== fetchRequestIdRef.current) return
       console.error('获取照片失败:', err)
       setLoadError(err?.message || '加载照片失败，请检查网络连接')
-      if (append) toast.error(err?.message || '加载更多失败')
+      if (append) {
+        if (autoFillAttemptPageRef.current === pageNum) autoFillAttemptPageRef.current = null
+        toast.error(err?.message || '加载更多失败')
+      }
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
-      fetchingRef.current = false
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false)
+        setLoadingMore(false)
+        fetchingRef.current = false
+      }
     }
   }, [filters])
 
@@ -309,6 +379,7 @@ export function PhotosPage() {
       return
     }
     pageRef.current = 1
+    autoFillAttemptPageRef.current = null
     setHasMore(true)
     setPhotos([])
     setSelected(new Set())
@@ -323,7 +394,7 @@ export function PhotosPage() {
     (async () => {
       try {
         const result = await (window as any).go.main.App.GetCategories()
-        setCategories(result || [])
+        setCategories(normalizePhotoCategories(result))
       } catch {}
     })()
   }, [])
@@ -340,12 +411,63 @@ export function PhotosPage() {
       scrollRafPendingRef.current = false
       const node = scrollRef.current
       if (!node || fetchingRef.current || !latestRef.current.hasMore) return
-      // 距离底部 300px 时触发
+      // 距离底部 300px 时触发（IntersectionObserver 的备用机制）
       if (node.scrollTop + node.clientHeight >= node.scrollHeight - 300) {
         fetchPhotosRef.current(pageRef.current + 1, true)
       }
     })
   }, [])
+
+  // 嵌套到资源库三栏布局后，滚动事件在部分 WebView 中不会稳定抵达底部。
+  // 使用滚动容器内的底部哨兵作为主分页触发；每次追加后重新观察，
+  // 即使首屏高度不足以产生滚动条，也会继续加载直到填满视口。
+  useEffect(() => {
+    const root = scrollRef.current
+    const sentinel = loadMoreSentinelRef.current
+    if (!root || !sentinel || loading || photos.length === 0 || !hasMore) return
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting || fetchingRef.current || !latestRef.current.hasMore) return
+      fetchPhotosRef.current(pageRef.current + 1, true)
+    }, {
+      root,
+      rootMargin: '360px 0px',
+      threshold: 0,
+    })
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, loading, photos.length, viewMode])
+
+  // 页面没有产生滚动条时，单靠 onScroll 永远无法触发下一页。
+  // 渲染完成后直接比较 scrollHeight/clientHeight，未填满视口则自动请求下一页。
+  useEffect(() => {
+    const node = scrollRef.current
+    if (!node || loading || loadingMore || photos.length === 0 || !hasMore) return
+
+    let frame = 0
+    const checkViewportFill = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        if (fetchingRef.current || !latestRef.current.hasMore) return
+        if (node.scrollHeight > node.clientHeight + 8) return
+
+        const nextPage = pageRef.current + 1
+        if (autoFillAttemptPageRef.current === nextPage) return
+        autoFillAttemptPageRef.current = nextPage
+        fetchPhotosRef.current(nextPage, true)
+      })
+    }
+
+    checkViewportFill()
+    const resizeObserver = new ResizeObserver(checkViewportFill)
+    resizeObserver.observe(node)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+    }
+  }, [gridSize, hasMore, loading, loadingMore, photos.length, viewMode])
 
   const toggleSelect = useCallback((id: string) => {
     anchorIdRef.current = id
@@ -380,11 +502,45 @@ export function PhotosPage() {
     setDetailPhoto(photo)
   }, [toggleSelect])
 
+  // 双击卡片：打开全屏大图预览
+  const handlePhotoDoubleClick = useCallback((photo: Photo) => {
+    setPreviewPhoto(photo)
+  }, [])
+
+  // 右侧信息栏按钮：打开完整编辑弹层（info/story 页签）
+  const openEditor = useCallback((photo: Photo, mode: 'info' | 'story') => {
+    setEditorState({ photo, mode })
+  }, [])
+
   // 详情面板保存后把更新合并回列表（接口 JSON 不含 undefined 键，直接展开安全）
   const handleDetailSave = useCallback((updated: PhotoDto) => {
     setPhotos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } as Photo : p))
     setDetailPhoto(prev => prev && prev.id === updated.id ? { ...prev, ...updated } as Photo : prev)
+    setEditorState(prev => prev && prev.photo.id === updated.id ? { ...prev, photo: { ...prev.photo, ...updated } as Photo } : prev)
   }, [])
+
+  // 右侧信息栏始终以列表数据为准（乐观更新/删除后自动同步）
+  const sidebarPhoto = useMemo(() => {
+    if (!detailPhoto) return null
+    return photos.find(p => p.id === detailPhoto.id) ?? detailPhoto
+  }, [detailPhoto, photos])
+
+  // 筛选变化/批量删除后若选中照片已不在列表，清空选中
+  useEffect(() => {
+    if (detailPhoto && !photos.some(p => p.id === detailPhoto.id)) setDetailPhoto(null)
+  }, [photos, detailPhoto])
+
+  // 大图预览：←/→ 切换当前已加载照片，接近末尾预取下一页
+  const previewIndex = previewPhoto ? photos.findIndex(p => p.id === previewPhoto.id) : -1
+  const goPreview = useCallback((direction: 1 | -1) => {
+    if (previewIndex === -1) return
+    const nextIndex = previewIndex + direction
+    if (nextIndex < 0 || nextIndex >= photos.length) return
+    setPreviewPhoto(photos[nextIndex])
+    if (direction === 1 && nextIndex >= photos.length - 5 && latestRef.current.hasMore && !fetchingRef.current) {
+      fetchPhotosRef.current(pageRef.current + 1, true)
+    }
+  }, [photos, previewIndex])
 
   const tForPanel = useCallback((key: string) => t(key, language), [language])
 
@@ -432,6 +588,8 @@ export function PhotosPage() {
       setPhotos(prev => prev.filter(p => p.id !== id))
       setSelected(prev => { const next = new Set(prev); next.delete(id); return next })
       setDetailPhoto(prev => prev && prev.id === id ? null : prev)
+      setPreviewPhoto(prev => prev && prev.id === id ? null : prev)
+      setEditorState(prev => prev && prev.photo.id === id ? null : prev)
       setTotal(prev => prev - 1)
       toast.success('照片已删除', { id: toastId })
     } catch (err: any) {
@@ -492,22 +650,22 @@ export function PhotosPage() {
       : new Set(photos.map(p => p.id)))
   }
 
-  // Esc 清除多选（详情面板/对话框打开时让位）
+  // Esc 清除多选（编辑弹层/大图预览/对话框打开时让位）
   useEffect(() => {
     if (selected.size === 0) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !detailPhoto && !batchDeleteDialogOpen && !deleteTarget) {
+      if (e.key === 'Escape' && !detailPhoto && !editorState && !previewPhoto && !batchDeleteDialogOpen && !deleteTarget) {
         setSelected(new Set())
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selected.size, detailPhoto, batchDeleteDialogOpen, deleteTarget])
+  }, [selected.size, detailPhoto, editorState, previewPhoto, batchDeleteDialogOpen, deleteTarget])
 
-  // 详情面板键盘导航：←/→ 切换上一张/下一张，Esc 关闭；
+  // 右侧信息栏键盘导航：←/→ 切换上一张/下一张选中照片，Esc 取消选中；
   // 输入控件聚焦时不拦截，接近已加载末尾时预取下一页
   useEffect(() => {
-    if (!detailPhoto) return
+    if (!detailPhoto || previewPhoto || editorState) return
     const onKey = (e: KeyboardEvent) => {
       if (batchDeleteDialogOpen || deleteTarget) return
       const target = e.target as HTMLElement | null
@@ -530,51 +688,43 @@ export function PhotosPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [detailPhoto, batchDeleteDialogOpen, deleteTarget])
+  }, [detailPhoto, previewPhoto, editorState, batchDeleteDialogOpen, deleteTarget])
+
+  const collectionTitle = filters.featured
+    ? t('admin.featured', language)
+    : filters.albumId
+      ? (language === 'zh' ? '相册照片' : 'Album photos')
+      : filters.category !== '全部'
+        ? filters.category
+        : filters.photoType === 'digital'
+          ? t('admin.photos_type_digital', language)
+          : filters.photoType === 'film'
+            ? t('admin.photos_type_film', language)
+            : t('admin.resource_library_all_photos', language)
 
   return (
     <>
-      <PageHeader
-        title={t('admin.page_photos', language)}
-        description={`${total} ${t('admin.photos', language)}`}
-        actions={
-          <div className="flex rounded-md border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-            <button onClick={() => setViewMode('grid')} className="p-1.5 transition-colors"
-              style={{ backgroundColor: viewMode === 'grid' ? 'var(--accent)' : 'transparent',
-                color: viewMode === 'grid' ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}>
-              <Grid3X3 size={16} />
-            </button>
-            <button onClick={() => setViewMode('list')} className="p-1.5 transition-colors"
-              style={{ backgroundColor: viewMode === 'list' ? 'var(--accent)' : 'transparent',
-                color: viewMode === 'list' ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}>
-              <List size={16} />
-            </button>
-          </div>
-        }
-      />
+      <PageHeader title={collectionTitle} />
 
-      {/* 筛选栏 */}
-      <div className="flex flex-wrap items-center gap-2 px-6 py-2.5 border-b shrink-0"
-        style={{ borderColor: 'var(--border)' }}>
-        <div className="relative shrink-0">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: 'var(--muted-foreground)' }} />
-          <input type="text" placeholder={t('common.search', language)}
+      {/* 与本地资源库一致：搜索、筛选、视图和排序集中在内容工具栏。 */}
+      <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+        <div className="relative min-w-0 flex-1">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
+          <input
+            type="text"
+            placeholder={t('common.search', language)}
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="w-56 pl-8 pr-7 py-1.5 text-xs rounded-md border outline-none transition-colors focus:ring-1"
-            style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', color: 'var(--foreground)' }} />
-          {searchInput && (
-            <button onClick={() => setSearchInput('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:opacity-70"
-              style={{ color: 'var(--muted-foreground)' }}>
-              <X size={12} />
-            </button>
-          )}
+            onChange={(event) => setSearchInput(event.target.value)}
+            className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1"
+          />
+          {searchInput && <button type="button" onClick={() => setSearchInput('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1"><X size={13} /></button>}
         </div>
         <SelectDropdown
           value={filters.category}
-          options={categories.map((c) => ({ value: c, label: c }))}
+          options={[
+            { value: '全部', label: t('common.all', language) },
+            ...categories.filter((category) => category !== '全部').map((category) => ({ value: category, label: category })),
+          ]}
           onChange={(value) => filters.setCategory(value as string)}
           placeholder={t('common.all', language)}
           ariaLabel={t('ui.category_filter', language)}
@@ -583,68 +733,74 @@ export function PhotosPage() {
         <SelectDropdown
           value={filters.photoType || ''}
           options={[
-            { value: '', label: '全部类型' },
+            { value: '', label: language === 'zh' ? '全部类型' : 'All types' },
             { value: 'digital', label: t('admin.photos_type_digital', language) },
             { value: 'film', label: t('admin.photos_type_film', language) },
           ]}
           onChange={(value) => filters.setPhotoType((value as string) || null)}
-          placeholder="全部类型"
-          ariaLabel="照片类型"
+          placeholder={language === 'zh' ? '全部类型' : 'All types'}
+          ariaLabel={language === 'zh' ? '照片类型' : 'Photo type'}
           className="w-28 shrink-0"
         />
+        <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5">
+          <button type="button" onClick={() => setViewMode('crop')} title={language === 'zh' ? '裁切填充' : 'Cropped view'} aria-label={language === 'zh' ? '裁切填充' : 'Cropped view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'crop' ? 'var(--secondary)' : undefined }}><LayoutGrid size={13} /></button>
+          <button type="button" onClick={() => setViewMode('fit')} title={language === 'zh' ? '适应显示' : 'Fitted view'} aria-label={language === 'zh' ? '适应显示' : 'Fitted view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'fit' ? 'var(--secondary)' : undefined }}><Maximize2 size={13} /></button>
+          <button type="button" onClick={() => setViewMode('masonry')} title={language === 'zh' ? '瀑布流' : 'Masonry view'} aria-label={language === 'zh' ? '瀑布流' : 'Masonry view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'masonry' ? 'var(--secondary)' : undefined }}><Columns3 size={13} /></button>
+        </div>
         <SelectDropdown
           value={filters.sortBy}
           options={[
-            { value: 'createdAt', label: '上传时间' },
-            { value: 'takenAt', label: '拍摄时间' },
+            { value: 'createdAt', label: language === 'zh' ? '上传时间' : 'Uploaded' },
+            { value: 'takenAt', label: language === 'zh' ? '拍摄时间' : 'Captured' },
           ]}
           onChange={(value) => filters.setSortBy(value as 'createdAt' | 'takenAt')}
-          placeholder="排序"
-          ariaLabel="排序"
+          ariaLabel={language === 'zh' ? '排序' : 'Sort'}
           className="w-28 shrink-0"
         />
+        <button type="button" onClick={() => filters.setSortOrder(filters.sortOrder === 'asc' ? 'desc' : 'asc')} title={filters.sortOrder === 'asc' ? (language === 'zh' ? '升序' : 'Ascending') : (language === 'zh' ? '降序' : 'Descending')} aria-label={filters.sortOrder === 'asc' ? (language === 'zh' ? '升序' : 'Ascending') : (language === 'zh' ? '降序' : 'Descending')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-input hover:bg-secondary">{filters.sortOrder === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
       </div>
 
-      {/* 内容区 */}
-      <div ref={scrollRef} className="flex-1 overflow-auto p-6" onScroll={handleScroll}>
+      {/* 与本地资源库一致：中间浏览工作区 + 底部状态栏 + 右侧详情栏。 */}
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col">
+        <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3 pb-4" onScroll={handleScroll}>
+        <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-3 bg-background/90 text-[10px] backdrop-blur" style={{ color: 'var(--muted-foreground)' }}>
+          <div className="flex min-w-0 items-center gap-2"><span className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary" style={{ color: 'var(--foreground)' }}><LayoutGrid size={11} /></span><span className="truncate font-medium" style={{ color: 'var(--foreground)' }}>{collectionTitle}</span></div>
+          <span className="shrink-0 rounded bg-secondary px-2 py-0.5 tabular-nums">{total.toLocaleString()} {t('admin.photos', language)}</span>
+        </div>
         {loading ? (
-          viewMode === 'grid'
-            ? <ThumbGridSkeleton count={photoColumns * 3} cols={photoColumns} />
-            : <ListSkeleton count={10} />
+          <ThumbGridSkeleton count={15} cols={Math.max(2, Math.floor(900 / gridSize))} aspectClassName="aspect-[5/4]" gapClassName="gap-2.5" />
         ) : photos.length === 0 && loadError ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'var(--muted-foreground)' }}>
+          <div className="flex h-full flex-col items-center justify-center gap-3" style={{ color: 'var(--muted-foreground)' }}>
             <span className="text-sm">{loadError}</span>
-            <button onClick={() => fetchPhotos(1, false)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border"
-              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
-              <RefreshCw size={14} /> {t('common.retry', language)}
-            </button>
+            <button onClick={() => fetchPhotos(1, false)} className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}><RefreshCw size={14} /> {t('common.retry', language)}</button>
           </div>
         ) : photos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-              style={{ backgroundColor: 'var(--muted)' }}>
-              <ImageOff size={20} style={{ color: 'var(--muted-foreground)' }} />
-            </div>
-            <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              {t('admin.no_photos', language)}
-            </p>
-            <button onClick={() => navigate('/upload')}
-              className="px-3 py-1.5 text-xs font-medium rounded-md transition-opacity hover:opacity-90"
-              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-              {t('admin.upload', language)}
-            </button>
+          <div className="flex h-full flex-col items-center justify-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--muted)' }}><ImageOff size={20} style={{ color: 'var(--muted-foreground)' }} /></div>
+            <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{t('admin.no_photos', language)}</p>
+            <button onClick={() => navigate('/upload')} className="rounded-md px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{t('admin.upload', language)}</button>
           </div>
-        ) : viewMode === 'grid' ? (
+        ) : (
           <>
-            <div className="grid gap-3"
-              style={{ gridTemplateColumns: `repeat(${photoColumns}, minmax(0, 1fr))` }}>
+            <div
+              className={viewMode === 'masonry' ? 'w-full' : 'grid gap-2.5'}
+              style={viewMode === 'masonry'
+                ? { columnWidth: `${gridSize}px`, columnGap: '6px' }
+                : { gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))` }}
+            >
               {photos.map(photo => (
                 <PhotoGridCard key={photo.id}
                   photo={photo}
                   isSelected={selected.has(photo.id)}
                   isDeleting={deletingIds.has(photo.id)}
+                  language={language}
+                  viewMode={viewMode}
                   onCardClick={handlePhotoClick}
+                  onCardDoubleClick={handlePhotoDoubleClick}
+                  onContextOpen={setDetailPhoto}
+                  onEditDetails={(photo) => openEditor(photo, 'info')}
+                  onEditStory={(photo) => openEditor(photo, 'story')}
                   onToggleSelect={toggleSelect}
                   onToggleFeatured={toggleFeatured}
                   onToggleShow={toggleShowFlag}
@@ -652,94 +808,58 @@ export function PhotosPage() {
                 />
               ))}
             </div>
-
-            {/* 加载更多指示器 */}
-            {loadingMore && (
-              <div className="flex items-center justify-center py-4 gap-2" style={{ color: 'var(--muted-foreground)' }}>
-                <Loader2 size={16} className="animate-spin" />
-                <span className="text-xs">加载中...</span>
-              </div>
-            )}
-            {!hasMore && photos.length > 0 && (
-              <div className="text-center py-4 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                已加载全部 {total} 张照片
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="space-y-1">
-              {photos.map(photo => (
-                <PhotoListRow key={photo.id}
-                  photo={photo}
-                  isSelected={selected.has(photo.id)}
-                  isDeleting={deletingIds.has(photo.id)}
-                  onCardClick={handlePhotoClick}
-                  onToggleSelect={toggleSelect}
-                  onToggleFeatured={toggleFeatured}
-                  onRequestDelete={requestDeletePhoto}
-                />
-              ))}
-            </div>
-
-            {loadingMore && (
-              <div className="flex items-center justify-center py-4 gap-2" style={{ color: 'var(--muted-foreground)' }}>
-                <Loader2 size={16} className="animate-spin" />
-                <span className="text-xs">加载中...</span>
-              </div>
-            )}
-            {!hasMore && photos.length > 0 && (
-              <div className="text-center py-4 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                已加载全部 {total} 张照片
-              </div>
-            )}
+            {loadingMore && <div className="flex items-center justify-center gap-2 py-5 text-xs" style={{ color: 'var(--muted-foreground)' }}><Loader2 size={14} className="animate-spin" />{language === 'zh' ? '加载中...' : 'Loading...'}</div>}
+            {!hasMore && photos.length > 0 && <div className="py-4 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>{language === 'zh' ? `已加载全部 ${total} 张照片` : `All ${total} photos loaded`}</div>}
           </>
         )}
 
-        {/* 底部浮动选中操作条 */}
+        {/* 保留原有多选交互：照片区域底部悬浮操作栏。 */}
         {selected.size > 0 && (
-          <div className="sticky bottom-4 z-20 flex justify-center pointer-events-none mt-4">
-            <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-lg"
-              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}>
-              <span className="px-2 text-xs font-medium whitespace-nowrap">
-                {t('admin.selected', language)} {selected.size}
-              </span>
-              <div className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border)' }} />
-              <button onClick={toggleSelectAllLoaded}
-                title={selected.size === photos.length ? '取消全选' : '全选已加载'}
-                className="p-1.5 rounded-md transition-colors hover:opacity-80"
-                style={{
-                  backgroundColor: selected.size === photos.length ? 'var(--accent)' : 'transparent',
-                  color: selected.size === photos.length ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-                }}>
-                <CheckSquare size={15} />
-              </button>
-              <button onClick={() => handleBatchShowFlag(true)} disabled={batchUpdating}
-                title="设为展示" className="p-1.5 rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-wait"
-                style={{ color: 'var(--muted-foreground)' }}>
-                {batchUpdating ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
-              </button>
-              <button onClick={() => handleBatchShowFlag(false)} disabled={batchUpdating}
-                title="设为隐藏" className="p-1.5 rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-wait"
-                style={{ color: 'var(--muted-foreground)' }}>
-                <EyeOff size={15} />
-              </button>
-              <button onClick={() => setBatchDeleteDialogOpen(true)} disabled={batchDeleting}
-                title={t('admin.delete_selected', language)}
-                className="p-1.5 rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-wait"
-                style={{ color: 'var(--destructive)' }}>
-                {batchDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-              </button>
-              <div className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border)' }} />
-              <button onClick={() => setSelected(new Set())}
-                title={`${t('common.cancel', language)} (Esc)`}
-                className="p-1.5 rounded-md hover:opacity-80"
-                style={{ color: 'var(--muted-foreground)' }}>
-                <X size={15} />
-              </button>
+          <div className="sticky bottom-4 z-20 mt-4 flex justify-center pointer-events-none">
+            <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-lg" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}>
+              <span className="whitespace-nowrap px-2 text-xs font-medium">{t('admin.selected', language)} {selected.size}</span>
+              <div className="mx-0.5 h-4 w-px" style={{ backgroundColor: 'var(--border)' }} />
+              <button onClick={toggleSelectAllLoaded} title={selected.size === photos.length ? (language === 'zh' ? '取消全选' : 'Deselect all') : (language === 'zh' ? '全选已加载' : 'Select loaded')} className="rounded-md p-1.5 transition-colors hover:opacity-80" style={{ backgroundColor: selected.size === photos.length ? 'var(--accent)' : 'transparent', color: selected.size === photos.length ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}><CheckSquare size={15} /></button>
+              <button onClick={() => handleBatchShowFlag(true)} disabled={batchUpdating} title={language === 'zh' ? '设为展示' : 'Show in gallery'} className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-wait disabled:opacity-50" style={{ color: 'var(--muted-foreground)' }}>{batchUpdating ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}</button>
+              <button onClick={() => handleBatchShowFlag(false)} disabled={batchUpdating} title={language === 'zh' ? '设为隐藏' : 'Hide from gallery'} className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-wait disabled:opacity-50" style={{ color: 'var(--muted-foreground)' }}><EyeOff size={15} /></button>
+              <button onClick={() => setBatchDeleteDialogOpen(true)} disabled={batchDeleting} title={t('admin.delete_selected', language)} className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-wait disabled:opacity-50" style={{ color: 'var(--destructive)' }}>{batchDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}</button>
+              <div className="mx-0.5 h-4 w-px" style={{ backgroundColor: 'var(--border)' }} />
+              <button onClick={() => setSelected(new Set())} title={`${t('common.cancel', language)} (Esc)`} className="rounded-md p-1.5 hover:opacity-80" style={{ color: 'var(--muted-foreground)' }}><X size={15} /></button>
             </div>
           </div>
         )}
+
+        <div ref={loadMoreSentinelRef} className="h-px w-full" aria-hidden="true" />
+        </div>
+
+        <div className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+            <span>{photos.length.toLocaleString()} / {total.toLocaleString()} {t('admin.photos', language)}</span>
+          </div>
+          <button type="button" disabled={loading} onClick={() => fetchPhotos(1, false)} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary disabled:cursor-wait disabled:opacity-50"><RefreshCw size={11} className={loading ? 'animate-spin' : ''} />{t('common.refresh', language)}</button>
+          <div className="ml-1 flex shrink-0 items-center gap-2 border-l pl-3" style={{ borderColor: 'var(--border)' }}>
+            <Minus size={11} style={{ color: 'var(--muted-foreground)' }} />
+            <input type="range" min={MIN_PHOTO_GRID_SIZE} max={MAX_PHOTO_GRID_SIZE} step={8} value={gridSize} onChange={(event) => setPhotoGridSize(Number(event.target.value))} aria-label={language === 'zh' ? '网格缩放' : 'Grid zoom'} title={language === 'zh' ? '网格缩放' : 'Grid zoom'} className="h-1 w-28 cursor-pointer accent-current" />
+            <Plus size={11} style={{ color: 'var(--muted-foreground)' }} />
+            <span className="w-8 text-right text-[9px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{Math.round(gridSize / 176 * 100)}%</span>
+          </div>
+        </div>
+        </main>
+
+        <PhotoInfoSidebar
+          photo={sidebarPhoto}
+          token={token}
+          t={tForPanel}
+          notify={notifyForPanel}
+          onOpenPreview={handlePhotoDoubleClick}
+          onEditDetails={(photo) => openEditor(photo, 'info')}
+          onEditStory={(photo) => openEditor(photo, 'story')}
+          onToggleFeatured={toggleFeatured}
+          onToggleShow={toggleShowFlag}
+          onDelete={requestDeletePhoto}
+          onSave={handleDetailSave}
+          onUnauthorized={logout}
+        />
       </div>
 
       <SimpleDeleteDialog
@@ -759,18 +879,33 @@ export function PhotosPage() {
         t={(key) => t(key, language)}
       />
 
+      {/* 完整编辑/叙事弹层（从右侧信息栏打开） */}
       <PhotoDetailPanel
-        photo={detailPhoto as unknown as PhotoDto | null}
-        isOpen={!!detailPhoto}
+        photo={editorState ? (editorState.photo as unknown as PhotoDto) : null}
+        isOpen={!!editorState}
+        initialTab={editorState?.mode}
         categories={categories}
         allPhotos={photos as unknown as PhotoDto[]}
         token={token}
-        onClose={() => setDetailPhoto(null)}
+        onClose={() => setEditorState(null)}
         onSave={handleDetailSave}
         onUnauthorized={logout}
         t={tForPanel}
         notify={notifyForPanel}
       />
+
+      {/* 大图预览（双击卡片/点击侧栏缩略图打开） */}
+      {previewPhoto && (
+        <PhotoPreviewOverlay
+          photo={previewPhoto}
+          t={tForPanel}
+          onClose={() => setPreviewPhoto(null)}
+          onPrevious={() => goPreview(-1)}
+          onNext={() => goPreview(1)}
+          hasPrevious={previewIndex > 0}
+          hasNext={previewIndex >= 0 && previewIndex < photos.length - 1}
+        />
+      )}
     </>
   )
 }

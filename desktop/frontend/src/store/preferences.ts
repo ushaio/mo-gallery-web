@@ -1,11 +1,17 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+type PhotoViewMode = 'crop' | 'fit' | 'masonry'
+
 interface AdminPreferences {
   photoColumns: number
+  photoGridSize: number
+  photoViewMode: PhotoViewMode
   language: 'zh' | 'en'
   theme: 'light' | 'dark' | 'system'
   setPhotoColumns: (n: number) => void
+  setPhotoGridSize: (n: number) => void
+  setPhotoViewMode: (mode: PhotoViewMode) => void
   setLanguage: (lang: 'zh' | 'en') => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
 }
@@ -13,10 +19,14 @@ interface AdminPreferences {
 export const usePreferences = create<AdminPreferences>()(
   persist(
     (set) => ({
-      photoColumns: 8,
+      photoColumns: 6,
+      photoGridSize: 176,
+      photoViewMode: 'fit',
       language: 'zh',
       theme: 'system',
       setPhotoColumns: (n) => set({ photoColumns: n }),
+      setPhotoGridSize: (n) => set({ photoGridSize: n }),
+      setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
       setLanguage: (lang) => set({ language: lang }),
       setTheme: (theme) => set({ theme }),
     }),

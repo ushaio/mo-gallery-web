@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   getPhotos,
   type PhotoDto,
@@ -56,6 +56,7 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
 
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { settings, categories, isImmersiveMode, setIsImmersiveMode } = useAdmin()
 
   const [stories, setStories] = useState<StoryDto[]>([])
@@ -189,7 +190,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       setStoryEditMode('list')
       setCurrentStory(null)
       await loadStories()
-      if (window.location.search.includes('editStory=')) {
+      if (location.search.includes('editStory=')) {
         navigate('/photo-journal', { replace: true })
       }
     } catch (error) {
@@ -199,7 +200,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = false
       setSaving(false)
     }
-  }, [clearDraft, currentStory, initialStory, loadStories, notify, pendingImages, resetDraftState, navigate, stories, t])
+  }, [clearDraft, currentStory, initialStory, loadStories, location.search, notify, pendingImages, resetDraftState, navigate, stories, t])
 
   const {
     editorRef,
@@ -275,10 +276,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setCurrentStory(null)
     resetDraftState()
     setIsDraggingOver(false)
-    if (window.location.search.includes('editStory=')) {
+    if (location.search.includes('editStory=')) {
       navigate('/photo-journal', { replace: true })
     }
-  }, [pendingImages, resetDraftState, navigate, setIsDraggingOver])
+  }, [location.search, pendingImages, resetDraftState, navigate, setIsDraggingOver])
 
   const handleSaveStory = useCallback(async () => {
     if (!token || !currentStory) return

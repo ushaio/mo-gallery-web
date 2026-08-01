@@ -65,11 +65,21 @@ export function ListSkeleton({ count = 5 }: { count?: number }) {
 }
 
 /** 缩略图网格骨架（照片等） */
-export function ThumbGridSkeleton({ count = 12, cols = 6 }: { count?: number; cols?: number }) {
+export function ThumbGridSkeleton({
+  count = 12,
+  cols = 6,
+  aspectClassName = 'aspect-square',
+  gapClassName = 'gap-2',
+}: {
+  count?: number
+  cols?: number
+  aspectClassName?: string
+  gapClassName?: string
+}) {
   return (
-    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+    <div className={`grid ${gapClassName}`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {Array.from({ length: count }).map((_, i) => (
-        <Skeleton key={i} className="aspect-square w-full" />
+        <Skeleton key={i} className={`${aspectClassName} w-full`} />
       ))}
     </div>
   )

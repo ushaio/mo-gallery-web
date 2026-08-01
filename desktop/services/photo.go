@@ -128,6 +128,12 @@ func (s *PhotoService) List(params ListPhotosParams) (*PaginatedResponse[PhotoDT
 	if params.Search != "" {
 		q.Set("search", params.Search)
 	}
+	if params.PhotoType != nil && (*params.PhotoType == "digital" || *params.PhotoType == "film") {
+		q.Set("photoType", *params.PhotoType)
+	}
+	if params.Featured != nil {
+		q.Set("featured", fmt.Sprintf("%t", *params.Featured))
+	}
 	if params.All {
 		q.Set("all", "true")
 		var photos []PhotoDTO

@@ -487,7 +487,7 @@ export function OverviewPage() {
       label: t('admin.overview_film_rolls', language),
       value: data?.filmRollCount ?? 0,
       color: '#ec4899',
-      to: '/film-rolls',
+      to: '/library?source=cloud&view=film-rolls',
     },
     {
       icon: Users,

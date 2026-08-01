@@ -82,11 +82,10 @@ interface FolderTarget {
 export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: Props) {
   const navigate = useNavigate()
   const {
-    folder, search, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, filters, selectedAsset, previewAsset,
-    setFolder, setSearch, setSort, setSortDirection, setAvailability, setFavoritesOnly, setTagIds, setCollectionIds, setFilters, clearFilters, selectAsset, setPreviewAsset,
+    folder, folders, search, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, filters, selectedAsset, previewAsset, expandedFolderPaths,
+    setFolder, setFolders, setSearch, setSort, setSortDirection, setAvailability, setFavoritesOnly, setTagIds, setCollectionIds, setFilters, clearFilters, selectAsset, setPreviewAsset, toggleFolderExpanded,
   } = useLocalLibraryStore()
   const deferredSearch = useDeferredValue(search.trim())
-  const [folders, setFolders] = useState<FolderItem[]>([])
   const [page, setPage] = useState<AssetPage>(EMPTY_PAGE)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -104,7 +103,6 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [assetDropTargetFolder, setAssetDropTargetFolder] = useState<string | null>(null)
   const [draggedFolderPath, setDraggedFolderPath] = useState<string | null>(null)
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null)
-  const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(() => new Set())
   const [viewMode, setViewMode] = useState<'crop' | 'fit'>('fit')
   const [gridSize, setGridSize] = useState(176)
   const [directFolderOnly, setDirectFolderOnly] = useState(false)
@@ -152,14 +150,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [selectedQueryTotal, setSelectedQueryTotal] = useState(0)
   const selectionAnchorRef = useRef<string | null>(null)
 
-  const toggleFolderCollapsed = useCallback((relativePath: string) => {
-    setCollapsedFolderPaths((current) => {
-      const next = new Set(current)
-      if (next.has(relativePath)) next.delete(relativePath)
-      else next.add(relativePath)
-      return next
-    })
-  }, [])
+  const toggleFolderCollapsed = toggleFolderExpanded
 
   const query = useMemo(() => ({
     folder, directFolderOnly, search: deferredSearch, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, ...filters, limit: 100,
@@ -969,7 +960,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     foldersByParentId.get(parentId)?.map((item) => {
       const target = { relativePath: item.relativePath, name: item.name, isRoot: false }
       const children = foldersByParentId.get(item.id) || []
-      const collapsed = collapsedFolderPaths.has(item.relativePath)
+      const collapsed = !expandedFolderPaths.has(item.relativePath)
       const highlighted = assetDropTargetFolder === item.relativePath || folderDropTarget === item.relativePath
       const selected = folder === item.relativePath && availability === 'active' && tagIds.length === 0 && collectionIds.length === 0
       return (

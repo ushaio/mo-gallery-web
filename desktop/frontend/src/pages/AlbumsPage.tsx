@@ -102,7 +102,21 @@ function isCoverPhoto(album: Album, photo: Photo) {
     .some(url => resolveAssetUrl(url) === coverUrl)
 }
 
-export function AlbumsPage() {
+interface AlbumsPageProps {
+  initialAlbumId?: string | null
+  initialTab?: DetailTab
+  createMode?: boolean
+  onBackToBrowser?: () => void
+  onAlbumsChanged?: () => void
+}
+
+export function AlbumsPage({
+  initialAlbumId = null,
+  initialTab = 'photos',
+  createMode = false,
+  onBackToBrowser,
+  onAlbumsChanged,
+}: AlbumsPageProps = {}) {
   const { language } = usePreferences()
   const [albums, setAlbums] = useState<Album[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -115,6 +129,7 @@ export function AlbumsPage() {
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
   const currentAlbumRequestIdRef = useRef(0)
+  const handledExternalIntentRef = useRef('')
 
   const fetchAlbums = useCallback(async () => {
     setLoading(true)
@@ -141,10 +156,10 @@ export function AlbumsPage() {
     void fetchPhotos()
   }, [fetchAlbums, fetchPhotos])
 
-  const openAlbum = useCallback(async (album: Album) => {
+  const openAlbum = useCallback(async (album: Album, tab: DetailTab = 'photos') => {
     const requestId = ++currentAlbumRequestIdRef.current
     setCurrentAlbum(normalizeAlbum(album))
-    setActiveTab('photos')
+    setActiveTab(tab)
     setShowPhotoSelector(false)
     setSelectedPhotoIds(new Set())
     setPhotoSelectorSearch('')
@@ -173,6 +188,24 @@ export function AlbumsPage() {
     setLoadingCurrentAlbum(false)
   }, [albums.length])
 
+  useEffect(() => {
+    const intentKey = createMode ? 'create' : initialAlbumId ? `${initialAlbumId}:${initialTab}` : ''
+    if (!intentKey) {
+      handledExternalIntentRef.current = ''
+      return
+    }
+    if (loading || handledExternalIntentRef.current === intentKey) return
+
+    handledExternalIntentRef.current = intentKey
+    if (createMode) {
+      handleCreateAlbum()
+      return
+    }
+
+    const target = albums.find(album => album.id === initialAlbumId)
+    if (target) void openAlbum(target, initialTab)
+  }, [albums, createMode, handleCreateAlbum, initialAlbumId, initialTab, loading, openAlbum])
+
   const handleBackToList = useCallback(() => {
     const isUnsavedDraft = !currentAlbum?.id && Boolean(
       currentAlbum?.name.trim() || currentAlbum?.description?.trim() || currentAlbum?.location?.trim(),
@@ -180,8 +213,9 @@ export function AlbumsPage() {
     if (isUnsavedDraft && !confirm(t('admin.discard_album_confirm', language))) return
     currentAlbumRequestIdRef.current += 1
     setCurrentAlbum(null)
-    void fetchAlbums()
-  }, [currentAlbum, fetchAlbums, language])
+    if (onBackToBrowser) onBackToBrowser()
+    else void fetchAlbums()
+  }, [currentAlbum, fetchAlbums, language, onBackToBrowser])
 
   const handleSave = useCallback(async () => {
     if (!currentAlbum) return
@@ -211,12 +245,13 @@ export function AlbumsPage() {
       setActiveTab('photos')
       toast.success(t(wasExisting ? 'admin.album_updated' : 'admin.album_created', language))
       await fetchAlbums()
+      onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     } finally {
       setSaving(false)
     }
-  }, [currentAlbum, fetchAlbums, language])
+  }, [currentAlbum, fetchAlbums, language, onAlbumsChanged])
 
   const handleDelete = useCallback(async (album: Album) => {
     if (!confirm(t('admin.album_delete_confirm', language))) return
@@ -253,12 +288,13 @@ export function AlbumsPage() {
       setPhotoSelectorSearch('')
       setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
       toast.success(t('admin.photos_added', language))
+      onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     } finally {
       setSaving(false)
     }
-  }, [currentAlbum?.id, language, selectedPhotoIds])
+  }, [currentAlbum?.id, language, onAlbumsChanged, selectedPhotoIds])
 
   const handleRemovePhoto = useCallback(async (photoId: string) => {
     if (!currentAlbum?.id) return
@@ -267,10 +303,11 @@ export function AlbumsPage() {
       setCurrentAlbum(updated)
       setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
       toast.success(t('admin.photo_removed', language))
+      onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
-  }, [currentAlbum?.id, language])
+  }, [currentAlbum?.id, language, onAlbumsChanged])
 
   const handleSetCover = useCallback(async (photoId: string) => {
     if (!currentAlbum?.id) return
@@ -279,10 +316,11 @@ export function AlbumsPage() {
       setCurrentAlbum(updated)
       setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
       toast.success(t('admin.cover_set', language))
+      onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
-  }, [currentAlbum?.id, language])
+  }, [currentAlbum?.id, language, onAlbumsChanged])
 
   const availablePhotos = useMemo(() => {
     const currentPhotoIds = new Set(currentAlbum?.photos?.map(photo => photo.id) ?? [])

@@ -3,6 +3,7 @@ import type { LocaleDictionaryGroup } from './types'
 export const coreMessages: LocaleDictionaryGroup = {
   zh: {
     common: {
+      all: '全部',
       loading: '加载中...',
       loading_progress: '正在加载...',
       error: '发生错误',
@@ -10,8 +11,10 @@ export const coreMessages: LocaleDictionaryGroup = {
       collapse: '收起',
       confirm: '确认',
       cancel: '取消',
+      close: '关闭',
       save: '保存',
       delete: '删除',
+      deleted: '已删除',
       edit: '编辑',
       view: '查看',
       refresh: '刷新',
@@ -60,6 +63,7 @@ export const coreMessages: LocaleDictionaryGroup = {
   },
   en: {
     common: {
+      all: 'All',
       loading: 'Loading...',
       loading_progress: 'Loading...',
       error: 'An error occurred',
@@ -67,8 +71,10 @@ export const coreMessages: LocaleDictionaryGroup = {
       collapse: 'Collapse',
       confirm: 'Confirm',
       cancel: 'Cancel',
+      close: 'Close',
       save: 'Save',
       delete: 'Delete',
+      deleted: 'Deleted',
       edit: 'Edit',
       view: 'View',
       refresh: 'Refresh',

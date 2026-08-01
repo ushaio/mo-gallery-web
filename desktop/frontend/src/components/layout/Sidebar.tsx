@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Image, LibraryBig, BookOpen, Film, Upload, BookMarked,
+  LayoutDashboard, LibraryBig, Upload, BookMarked,
   BookImage, Bot, HardDrive, Settings, Users, LogOut,
   Sun, Moon, Monitor, Globe, Check, ChevronDown,
 } from 'lucide-react'
@@ -13,10 +13,7 @@ import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 
 const navItems = [
   { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
-  { path: '/photos', icon: Image, key: 'admin.library' },
-  { path: '/local-library', icon: LibraryBig, key: 'admin.local_library' },
-  { path: '/albums', icon: BookOpen, key: 'admin.albums' },
-  { path: '/film-rolls', icon: Film, key: 'admin.film_rolls' },
+  { path: '/library', icon: LibraryBig, key: 'admin.resource_library' },
   { path: '/upload', icon: Upload, key: 'admin.upload' },
   { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
   { path: '/zine', icon: BookImage, key: 'admin.zine' },

@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
@@ -8,10 +7,7 @@ import { UploadQueueProvider } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LoginPage } from '@/pages/LoginPage'
-import { PhotosPage } from '@/pages/PhotosPage'
-import { LocalLibraryPage } from '@/pages/LocalLibraryPage'
-import { AlbumsPage } from '@/pages/AlbumsPage'
-import { FilmRollsPage } from '@/pages/FilmRollsPage'
+import { ResourceLibraryPage } from '@/pages/ResourceLibraryPage'
 import { UploadPage } from '@/pages/UploadPage'
 import { PhotoJournalPage } from '@/pages/PhotoJournalPage'
 import { ZinePage } from '@/pages/ZinePage'
@@ -22,9 +18,6 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { FriendsPage } from '@/pages/FriendsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import type { ReactNode } from 'react'
-
-const SERVER_KEY = 'mo-gallery-server'
-const TOKEN_KEY = 'mo-gallery-token'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isReady } = useAuth()
@@ -60,10 +53,11 @@ function AppRoutes() {
       }>
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="overview" element={<OverviewPage />} />
-        <Route path="photos" element={<PhotosPage />} />
-        <Route path="local-library" element={<LocalLibraryPage />} />
-        <Route path="albums" element={<AlbumsPage />} />
-        <Route path="film-rolls" element={<FilmRollsPage />} />
+        <Route path="library" element={<ResourceLibraryPage />} />
+        <Route path="photos" element={<Navigate to="/library?source=cloud" replace />} />
+        <Route path="local-library" element={<Navigate to="/library?source=local" replace />} />
+        <Route path="albums" element={<Navigate to="/library?source=cloud&view=albums" replace />} />
+        <Route path="film-rolls" element={<Navigate to="/library?source=cloud&view=film-rolls" replace />} />
         <Route path="upload" element={<UploadPage />} />
         <Route path="photo-journal" element={<PhotoJournalPage />} />
         <Route path="zine" element={<ZinePage />} />
@@ -78,29 +72,12 @@ function AppRoutes() {
   )
 }
 
-function AuthSync() {
-  const { isAuthenticated, token } = useAuth()
-
-  useEffect(() => {
-    if (isAuthenticated && token) {
-      const server = localStorage.getItem(SERVER_KEY)
-      if (server) {
-        // 恢复登录状态时，配置 Go 后端的代理客户端
-        ;(window as any).go.main.App.SetAuth(server, token).catch(() => {})
-      }
-    }
-  }, [isAuthenticated, token])
-
-  return null
-}
-
 export default function App() {
   return (
     <LanguageProvider>
       <SettingsProvider>
         <AuthProvider>
           <UploadQueueProvider>
-            <AuthSync />
             <Toaster position="top-right" richColors closeButton />
             <AppRoutes />
             <UploadProgressPopup />

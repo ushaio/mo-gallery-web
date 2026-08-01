@@ -50,12 +50,13 @@ export function isAuthError(error: unknown): boolean {
   return message.includes('登录已失效')
     || message.includes('登录状态已失效')
     || message.includes('登录已过期')
+    || message.includes('token 已过期')
+    || message.includes('签名无效')
+    || message.includes('jwt 密钥') // 未配置 JWT 密钥 / 请检查 JWT 密钥配置
     || message.includes('401')
     || message.includes('unauthorized')
     || message.includes('invalid token')
     || message.includes('administrator login url has changed')
-    || message.includes('token 已过期')
-    || message.includes('jwt')
 }
 
 export function reportAuthFailure(error: unknown) {

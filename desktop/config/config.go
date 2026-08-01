@@ -19,6 +19,9 @@ import (
 
 // Config 应用配置
 type Config struct {
+	// 配置加载/保存路径，不参与序列化。为空时 Save 回退到默认路径。
+	path string
+
 	Database DatabaseConfig `json:"database"`
 	API      APIConfig      `json:"api"`
 	UI       UIConfig       `json:"ui"`
@@ -319,6 +322,7 @@ func Load(customPath string) (*Config, error) {
 	}
 
 	cfg := defaultConfig()
+	cfg.path = path
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -343,7 +347,12 @@ func Load(customPath string) (*Config, error) {
 // Save 保存配置到文件
 func (c *Config) Save(path string) error {
 	if path == "" {
-		path = configPath()
+		// 优先写回配置加载时的路径（支持 -config 指定独立配置文件），
+		// 未记录时回退到默认路径。
+		path = c.path
+		if path == "" {
+			path = configPath()
+		}
 	}
 
 	dir := filepath.Dir(path)

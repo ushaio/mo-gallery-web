@@ -239,6 +239,14 @@ cd desktop
 wails dev
 ```
 
+> **开发环境隔离配置**：`wails dev` 会复用正式 `config.json`（Windows 位于 `%APPDATA%\mo-gallery-desktop\config.json`），调试中登录、改设置会把正式配置写坏。开发时用 `-appargs` 把 `-config` 指向独立配置文件（首次运行会自动创建默认配置）：
+>
+> ```bash
+> wails dev -appargs "-config %APPDATA%\mo-gallery-desktop\config.dev.json"
+> ```
+>
+> 应用内所有配置保存（登录、设置页等）都会写回该独立文件，不影响正式配置。
+
 Desktop 的数据库、Web API、JWT、存储和 AI 配置可在应用设置中维护。Desktop 与 Web 使用同一个 JWT 密钥时，`desktop` 配置中的 `api.jwt_secret` 必须与 Web 的 `JWT_SECRET` 一致。
 
 ---
