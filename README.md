@@ -6,6 +6,7 @@
 
 MO Gallery 由 **Next.js Web 站点**、**Wails Desktop 工作台**和 **Flutter Mobile 客户端**组成，覆盖公开展示、云端内容管理、本地照片资源库、移动上传、故事与博客编辑、胶卷归档、Zine 排版及 AI 辅助创作。
 
+<a href="https://linux.do/"><img src="https://img.shields.io/badge/Linux.do-Community-2b6de8?style=flat-square" alt="Linux.do"></a>
 [![Version](https://img.shields.io/badge/version-0.7.0--beta-2563eb?style=flat-square)](RELEASE.md)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react)](https://react.dev/)
