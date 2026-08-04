@@ -104,6 +104,12 @@ jobs:
         working-directory: desktop/frontend
         run: pnpm list react-router-dom sonner
 
+      - name: Install NSIS (for installer packaging)
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Build desktop app
         working-directory: desktop
         run: wails build -nsis
