@@ -202,6 +202,7 @@ export const localLibraryApi = {
         ...item,
         id: String(item.id),
         byteSize: Number(item.byteSize ?? 0),
+        mediaKind: String(item.mediaKind ?? 'image'),
         modifiedAtNs: Number(item.modifiedAtNs ?? 0),
         width: Number(item.width ?? 0),
         height: Number(item.height ?? 0),

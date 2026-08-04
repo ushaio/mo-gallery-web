@@ -22,7 +22,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   getEquipmentItemsCache,
   getOverviewCache,
+  isEquipmentCacheFresh,
   isEquipmentCacheLoaded,
+  isOverviewCacheFresh,
   setEquipmentItemsCache,
   setOverviewCache,
   type EquipmentItem,
@@ -396,6 +398,7 @@ export function OverviewPage() {
       setData(cache)
       setLoading(false)
       setError(null)
+      if (isOverviewCacheFresh()) return
     }
 
     setLoading(!cache)
@@ -421,7 +424,8 @@ export function OverviewPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const fetchEquipment = useCallback(async (kind: EquipmentKind) => {
-    if (equipmentLoaded[kind] || equipmentLoading[kind]) return
+    if (equipmentLoading[kind]) return
+    if (equipmentLoaded[kind] && isEquipmentCacheFresh(kind)) return
 
     setEquipmentLoading(prev => ({ ...prev, [kind]: true }))
     setEquipmentErrors(prev => ({ ...prev, [kind]: null }))

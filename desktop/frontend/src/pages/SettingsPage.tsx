@@ -1,27 +1,38 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { clearDesktopRuntimeCache, getDesktopCacheSnapshot } from '@/lib/app-cache'
+import {
+  clearCloudLibraryPageCache,
+  clearDesktopRuntimeCache,
+  clearEquipmentCache,
+  clearOverviewPageCache,
+  getDesktopCacheSnapshot,
+} from '@/lib/app-cache'
+import { clearCurrentPersistentCache, getCurrentPersistentCacheScope } from '@/lib/persistent-cache'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { formatBytes } from '@/lib/utils'
 import { Skeleton } from '@/components/admin/Skeleton'
-import { ClearLocalLibraryPreviewCache, GetAiConfig, GetLocalLibraryPreferences, GetStoryAiProviderModels, SetLocalLibraryImportMode, UpdateAiConfig } from '../../wailsjs/go/main/App'
-import { config as wailsConfig } from '../../wailsjs/go/models'
+import { ClearLocalLibraryPreviewCache, GetAiConfig, GetLocalLibraryCacheStats, GetLocalLibraryPreferences, GetStoryAiProviderModels, SetLocalLibraryImportMode, UpdateAiConfig } from '../../wailsjs/go/main/App'
+import { config as wailsConfig, local_library } from '../../wailsjs/go/models'
 import { version } from '../../package.json'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+import { getWindowAppearance, restartApplication, updateWindowStyle, type WindowAppearance, type WindowStyle } from '@/lib/window-appearance'
 import {
   Settings, Info,
-  Save, Loader2, HardDrive, MessageSquare, User, Server,
-  Tag, Pencil, Trash2, Plus, X, Check,
+  Save, Loader2, HardDrive, MessageSquare, User, Server, RefreshCw,
+  Pencil, Trash2, Plus, X, Check, Cloud,
   Unlink, Link, Sparkles, Eye, EyeOff,
   FileText, Trash, Filter, FolderOpen, FolderInput, Copy, Database, Image as ImageIcon,
-  Github, ExternalLink,
+  Github, ExternalLink, LayoutDashboard, Images, ChevronRight,
+  AppWindow, Monitor, Moon, Palette, Sun,
 } from 'lucide-react'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
 
-type Tab = 'site' | 'categories' | 'storage' | 'local-library' | 'comments' | 'account' | 'ai' | 'log' | 'cache' | 'about'
+type Tab = 'site' | 'appearance' | 'storage' | 'local-library' | 'comments' | 'account' | 'ai' | 'log' | 'cache' | 'about'
 type CommentsSubTab = 'manage' | 'config'
 
 export function SettingsPage() {
@@ -67,7 +78,7 @@ export function SettingsPage() {
 
   const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
     { key: 'site', label: '站点', icon: Server },
-    { key: 'categories', label: '分类', icon: Tag },
+    { key: 'appearance', label: '外观', icon: Palette },
     { key: 'storage', label: '存储', icon: HardDrive },
     { key: 'local-library', label: '本地资源库', icon: FolderOpen },
     { key: 'comments', label: '评论', icon: MessageSquare },
@@ -78,8 +89,7 @@ export function SettingsPage() {
     { key: 'about', label: '关于', icon: Info },
   ]
 
-  // 与 Web 端一致：只有 categories 标签显示保存按钮（其他标签要么只读要么有独立保存）
-  // 但桌面端 comments/config 也需要保存，所以条件放宽
+  // site 与 comments/config 标签有保存按钮（其他标签要么只读要么有独立保存）
   const showSaveButton = tab === 'comments' || tab === 'site'
 
   return (
@@ -88,7 +98,7 @@ export function SettingsPage() {
         title={t('admin.page_settings', language)}
         actions={dirty && showSaveButton ? (
           <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md disabled:opacity-50"
+            className={btnPrimary}
             style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {saving ? '保存中...' : t('common.save', language)}
@@ -98,11 +108,11 @@ export function SettingsPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧标签栏 */}
-        <div className="w-48 border-r p-3 shrink-0 flex flex-col" style={{ borderColor: 'var(--border)' }}>
-          <div className="space-y-0.5">
+        <div className="flex w-48 shrink-0 flex-col overflow-hidden border-r p-3" style={{ borderColor: 'var(--border)' }}>
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button key={key} onClick={() => setTab(key)}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-secondary"
                 style={{
                   backgroundColor: tab === key ? 'var(--accent)' : 'transparent',
                   color: tab === key ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
@@ -116,7 +126,7 @@ export function SettingsPage() {
         </div>
 
         {/* 右侧内容 */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className={tab === 'ai' || tab === 'cache' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-auto p-6'}>
           {loading ? (
             <div className="max-w-2xl space-y-6">
               <Skeleton className="h-4 w-20" />
@@ -126,17 +136,23 @@ export function SettingsPage() {
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-9 w-full" />
             </div>
+          ) : tab === 'ai' ? (
+            <div className="h-full min-h-0">
+              <AiTab />
+            </div>
+          ) : tab === 'cache' ? (
+            <div className="h-full min-h-0">
+              <CacheTab />
+            </div>
           ) : (
             <div className="max-w-2xl">
               {tab === 'site' && <SiteTab config={config} updateConfig={updateConfig} />}
-              {tab === 'categories' && <CategoriesTab />}
+              {tab === 'appearance' && <AppearanceTab />}
               {tab === 'storage' && <StorageTab />}
-              {tab === 'local-library' && <LocalLibraryTab />}
+              {tab === 'local-library' && <LocalLibraryTab onManageCache={() => setTab('cache')} />}
               {tab === 'comments' && <CommentsTab config={config} updateConfig={updateConfig} />}
               {tab === 'account' && <AccountTab />}
-              {tab === 'ai' && <AiTab />}
               {tab === 'log' && <LogTab />}
-              {tab === 'cache' && <CacheTab />}
               {tab === 'about' && <AboutTab />}
             </div>
           )}
@@ -157,12 +173,12 @@ function SiteTab({ config }: {
       <Section title="站点信息">
         <Field label="站点标题" description="通过 .env 文件中的 SITE_TITLE 配置">
           <input type="text" value={config.site_title || ''} disabled
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none opacity-60 cursor-not-allowed"
+            className={`${inputClass} cursor-not-allowed opacity-60`}
             style={inputStyle} />
         </Field>
         <Field label="CDN 域名" description="通过 .env 文件中的 CDN_DOMAIN 配置">
           <input type="text" value={config.cdn_domain || ''} disabled
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none opacity-60 cursor-not-allowed"
+            className={`${inputClass} cursor-not-allowed opacity-60`}
             style={inputStyle} />
         </Field>
       </Section>
@@ -170,49 +186,205 @@ function SiteTab({ config }: {
   )
 }
 
-// ─── Tab 2: 分类（与 Web 端一致：只读展示） ────────────
+// ─── Tab 2: 外观 ─────────────────────────────────────
 
-function CategoriesTab() {
-  const [categories, setCategories] = useState<string[]>([])
+const themeChoices = [
+  { value: 'light' as const, label: '浅色', icon: Sun },
+  { value: 'dark' as const, label: '深色', icon: Moon },
+  { value: 'system' as const, label: '跟随系统', icon: Monitor },
+]
+
+const windowStyleChoices: { value: WindowStyle; label: string; description: string }[] = [
+  { value: 'native', label: '原生', description: '使用操作系统提供的标题栏与窗口控制按钮。' },
+  { value: 'integrated', label: '一体化', description: '使用与应用界面一致的紧凑标题栏和窗口控制按钮。' },
+]
+
+function AppearanceTab() {
+  const { theme, setTheme, language } = usePreferences()
+  const [appearance, setAppearance] = useState<WindowAppearance | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [savingStyle, setSavingStyle] = useState<WindowStyle | null>(null)
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false)
 
   useEffect(() => {
-    (async () => {
-      try {
-        const result = await (window as any).go.main.App.GetCategories()
-        setCategories((result || []).filter((c: string) => c !== '全部'))
-      } catch {}
-    })()
+    let cancelled = false
+    getWindowAppearance()
+      .then((result) => {
+        if (!cancelled) setAppearance(result)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) toast.error('读取窗口外观失败: ' + getErrorMessage(error))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [])
+
+  const handleWindowStyleChange = async (style: WindowStyle) => {
+    if (savingStyle || appearance?.configuredStyle === style) return
+    setSavingStyle(style)
+    try {
+      const result = await updateWindowStyle(style)
+      setAppearance(result)
+      if (result.activeStyle === result.configuredStyle) {
+        toast.success('窗口风格已保存')
+      } else {
+        setRestartDialogOpen(true)
+      }
+    } catch (error: unknown) {
+      toast.error('保存窗口风格失败: ' + getErrorMessage(error))
+    } finally {
+      setSavingStyle(null)
+    }
+  }
+
+  const handleRestartConfirm = async () => {
+    toast.success('正在重新加载窗口…')
+    try {
+      await restartApplication()
+      setRestartDialogOpen(false)
+    } catch (error: unknown) {
+      toast.error('自动切换窗口风格失败: ' + getErrorMessage(error))
+    }
+  }
+
+  const handleRestartCancel = () => {
+    setRestartDialogOpen(false)
+    toast.info('窗口风格已保存，将在下次启动时生效')
+  }
+
+  const configuredStyle = appearance?.configuredStyle ?? 'native'
+  const restartRequired = Boolean(appearance && appearance.activeStyle !== appearance.configuredStyle)
 
   return (
     <div className="space-y-6">
-      <Section title="分类管理">
-        <p className="text-xs mb-4" style={{ color: 'var(--muted-foreground)' }}>
-          分类根据照片元数据自动管理。
-        </p>
-        {categories.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>暂无分类</p>
+      <Section title="主题" description="调整应用界面的明暗外观，修改后立即生效。">
+        <div className="flex h-10 items-center rounded-md border bg-background p-0.5" role="radiogroup" aria-label="主题">
+          {themeChoices.map(({ value, label, icon: Icon }) => {
+            const selected = theme === value
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setTheme(value)}
+                className="flex h-8 min-w-0 flex-1 items-center justify-center gap-2 rounded px-3 text-xs font-medium transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                style={{
+                  backgroundColor: selected ? 'var(--accent)' : 'transparent',
+                  color: selected ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+                }}
+              >
+                <Icon size={14} />
+                <span className="truncate">{label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Section>
+
+      <Section title="窗口风格" description="窗口边框由桌面运行时创建，保存后会询问是否立即重启以应用新的外观。">
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-16 w-full rounded-md" />
+            <Skeleton className="h-16 w-full rounded-md" />
+          </div>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {categories.map(c => (
-              <span key={c} className="px-2.5 py-1 text-xs rounded-md"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }}>
-                {c}
-              </span>
-            ))}
+          <div className="divide-y border-y" role="radiogroup" aria-label="窗口风格" style={{ borderColor: 'var(--border)' }}>
+            {windowStyleChoices.map(({ value, label, description }) => {
+              const selected = configuredStyle === value
+              const saving = savingStyle === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={savingStyle !== null}
+                  onClick={() => void handleWindowStyleChange(value)}
+                  className="flex w-full items-center gap-3 px-2 py-3 text-left transition-colors hover:bg-secondary disabled:cursor-wait disabled:opacity-60"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+                    {value === 'native' ? <Monitor size={16} /> : <AppWindow size={16} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium">{label}</span>
+                    <span className="mt-0.5 block text-[11px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{description}</span>
+                  </span>
+                  {saving ? <Loader2 size={14} className="shrink-0 animate-spin" /> : selected ? <Check size={14} className="shrink-0" /> : null}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {restartRequired && (
+          <div className="flex items-start gap-2 rounded-md border px-3 py-2.5 text-[11px] leading-5" role="status" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <span>当前窗口仍使用“{appearance?.activeStyle === 'integrated' ? '一体化' : '原生'}”风格；已保存的“{configuredStyle === 'integrated' ? '一体化' : '原生'}”风格将在下次启动时生效。</span>
           </div>
         )}
       </Section>
+
+      <SimpleDeleteDialog
+        isOpen={restartDialogOpen}
+        title="应用窗口风格"
+        message={`窗口风格已保存为“${configuredStyle === 'integrated' ? '一体化' : '原生'}”。是否立即重启 MO Gallery Desktop 以应用新风格？`}
+        confirmLabel="立即重启"
+        cancelLabel="稍后重启"
+        pendingLabel="正在重启..."
+        confirmIcon="refresh"
+        confirmVariant="primary"
+        onConfirm={handleRestartConfirm}
+        onCancel={handleRestartCancel}
+        t={(key) => t(key, language)}
+      />
     </div>
   )
 }
 
 // ─── 本地资源库 ──────────────────────────────────────
 
-function LocalLibraryTab() {
+type LocalLibraryCacheInfo = {
+  loading: boolean
+  stats: local_library.LocalLibraryCacheStats | null
+  error: string | null
+}
+
+function useLocalLibraryCacheInfo() {
+  const [cacheInfo, setCacheInfo] = useState<LocalLibraryCacheInfo>({ loading: true, stats: null, error: null })
+  const requestIdRef = useRef(0)
+
+  const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    setCacheInfo(prev => ({ ...prev, loading: true, error: null }))
+    try {
+      const stats = await GetLocalLibraryCacheStats()
+      if (requestId !== requestIdRef.current) return
+      setCacheInfo({ loading: false, stats, error: null })
+    } catch (error: unknown) {
+      if (requestId !== requestIdRef.current) return
+      setCacheInfo({
+        loading: false,
+        stats: null,
+        error: error instanceof Error ? error.message : '本地资源库不可用',
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    return () => { requestIdRef.current += 1 }
+  }, [refresh])
+  return { ...cacheInfo, refresh }
+}
+
+function LocalLibraryTab({ onManageCache }: { onManageCache: () => void }) {
   const [importMode, setImportMode] = useState<'copy' | 'move' | undefined>()
-  const [loading, setLoading] = useState(true)
+  const [preferencesLoading, setPreferencesLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const localCacheInfo = useLocalLibraryCacheInfo()
 
   useEffect(() => {
     let active = true
@@ -222,7 +394,7 @@ function LocalLibraryTab() {
         setImportMode(result?.importMode === 'copy' || result?.importMode === 'move' ? result.importMode : undefined)
       })
       .catch((error) => toast.error('读取本地资源库设置失败: ' + getErrorMessage(error)))
-      .finally(() => { if (active) setLoading(false) })
+      .finally(() => { if (active) setPreferencesLoading(false) })
     return () => { active = false }
   }, [])
 
@@ -240,11 +412,13 @@ function LocalLibraryTab() {
     }
   }
 
+  const stats = localCacheInfo.stats
+
   return (
     <div className="space-y-6">
       <Section title="本地资源库">
         <Field label="应用内导入方式" description="选择或拖入库外照片时使用。系统文件资源管理器中的复制、移动操作不受此设置影响。">
-          {loading ? (
+          {preferencesLoading ? (
             <div className="flex h-20 items-center justify-center"><Loader2 size={16} className="animate-spin" /></div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -262,14 +436,75 @@ function LocalLibraryTab() {
               </button>
             </div>
           )}
-          {!loading && !importMode && <p className="mt-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>尚未选择。首次导入照片时会提示选择。</p>}
+          {!preferencesLoading && !importMode && <p className="mt-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>尚未选择。首次导入照片时会提示选择。</p>}
         </Field>
+      </Section>
+
+      <Section title="存储占用" description="统计当前资源库的 .mo-gallery 保留目录。资源库数据不可再生，不会被缓存清理删除。">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] leading-5" style={{ color: 'var(--muted-foreground)' }}>
+            缩略图与大图预览可由原文件重新生成；数据库、清单、备份和回收站属于资源库数据。
+          </p>
+          <button type="button" onClick={() => void localCacheInfo.refresh()} disabled={localCacheInfo.loading}
+            className={`${btnOutline} shrink-0`} title="重新统计存储占用">
+            <RefreshCw size={13} className={localCacheInfo.loading ? 'animate-spin' : ''} />
+            重新统计
+          </button>
+        </div>
+
+        {localCacheInfo.loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full rounded-md" />
+            <Skeleton className="h-14 w-full rounded-md" />
+            <Skeleton className="h-14 w-full rounded-md" />
+          </div>
+        ) : stats ? (
+          <div className="divide-y border-y" style={{ borderColor: 'var(--border)' }}>
+            <StorageUsageRow icon={HardDrive} label=".mo-gallery 总占用" value={formatBytes(stats.internal.bytes)} detail={`${stats.internal.fileCount} 个文件`} />
+            <StorageUsageRow icon={Database} label="资源库数据" value={formatBytes(stats.libraryData.bytes)} detail={`${stats.libraryData.fileCount} 个文件 · 不可作为缓存清理`} />
+            <StorageUsageRow icon={Images} label="网格缩略图" value={formatBytes(stats.thumbnails.bytes)} detail={`${stats.thumbnails.fileCount} 个文件 · 长期保留以保证浏览速度`} />
+            <StorageUsageRow icon={ImageIcon} label="大图预览" value={formatBytes(stats.previews.bytes)} detail={`${stats.previews.fileCount} 个文件 · 空间上限 ${formatBytes(stats.previewLimitBytes)}`} />
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed px-4 py-6 text-center" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-xs font-medium">当前未打开本地资源库</p>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{localCacheInfo.error || '打开资源库后可查看实际磁盘占用。'}</p>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <button type="button" onClick={onManageCache} className={btnOutline}>
+            <Database size={13} />
+            管理缓存
+            <ChevronRight size={13} />
+          </button>
+        </div>
       </Section>
     </div>
   )
 }
 
-// ─── Tab 3: 存储（与 Web 端一致：StorageSource CRUD） ──
+function StorageUsageRow({ icon: Icon, label, value, detail }: {
+  icon: typeof Database
+  label: string
+  value: string
+  detail: string
+}) {
+  return (
+    <div className="flex min-h-14 items-center gap-3 py-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+        <Icon size={15} style={{ color: 'var(--muted-foreground)' }} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium">{label}</p>
+        <p className="mt-0.5 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{detail}</p>
+      </div>
+      <span className="shrink-0 text-xs font-medium tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+// ─── Tab 3: 存储（StorageSource CRUD） ─────────────────
 
 interface StorageSource {
   id: string
@@ -286,11 +521,23 @@ interface StorageSource {
   accessMethod?: string
 }
 
+const STORAGE_TYPE_META: Record<string, { label: string; icon: typeof HardDrive }> = {
+  local: { label: '本地存储', icon: HardDrive },
+  github: { label: 'GitHub', icon: Github },
+  s3: { label: 'S3/R2', icon: Cloud },
+}
+
+function storageTypeMeta(type: string) {
+  return STORAGE_TYPE_META[type] || { label: type, icon: Database }
+}
+
 function StorageTab() {
+  const { language } = usePreferences()
   const [sources, setSources] = useState<StorageSource[]>([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [adding, setAdding] = useState<string | null>(null) // 'local' | 'github' | 's3'
+  const [deleteTarget, setDeleteTarget] = useState<StorageSource | null>(null)
 
   const fetchSources = useCallback(async () => {
     setLoading(true)
@@ -302,55 +549,71 @@ function StorageTab() {
 
   useEffect(() => { fetchSources() }, [fetchSources])
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除此存储源吗？')) return
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
     try {
-      await (window as any).go.main.App.DeleteStorageSource(id)
+      await (window as any).go.main.App.DeleteStorageSource(deleteTarget.id)
       toast.success('已删除')
+      setDeleteTarget(null)
       fetchSources()
     } catch (err: any) {
       toast.error(err?.message || '删除失败')
     }
   }
 
+  const addActions = [
+    { type: 'local' as const, label: '添加本地存储', icon: HardDrive },
+    { type: 'github' as const, label: '添加 GitHub', icon: Github },
+    { type: 's3' as const, label: '添加 S3/R2', icon: Cloud },
+  ]
+
   return (
     <div className="space-y-6">
       <Section title="存储源">
+        <p className="text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>
+          配置照片原图与缩略图的存储位置，支持本地目录、GitHub 仓库或 S3/R2 兼容服务。
+        </p>
         {loading ? (
-          <div className="flex items-center justify-center py-8" style={{ color: 'var(--muted-foreground)' }}>
-            <Loader2 size={16} className="animate-spin" />
+          <div className="space-y-3">
+            <Skeleton className="h-14 w-full rounded-lg" />
+            <Skeleton className="h-14 w-full rounded-lg" />
           </div>
         ) : (
           <div className="space-y-3">
+            {sources.length === 0 && !adding && (
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-10 text-center" style={{ borderColor: 'var(--border)' }}>
+                <span className="flex size-12 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--muted)' }}>
+                  <Database size={22} style={{ color: 'var(--muted-foreground)' }} />
+                </span>
+                <p className="text-sm font-medium">暂无存储源</p>
+                <p className="max-w-sm text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>
+                  添加本地目录、GitHub 仓库或 S3/R2 兼容存储，用于保存照片原图与缩略图。
+                </p>
+              </div>
+            )}
+
             {sources.map(source => (
               <StorageSourceCard
                 key={source.id}
                 source={source}
                 isEditing={editingId === source.id}
-                onEdit={() => setEditingId(editingId === source.id ? null : source.id)}
-                onDelete={() => handleDelete(source.id)}
+                onEdit={() => { setEditingId(editingId === source.id ? null : source.id); setAdding(null) }}
+                onDelete={() => setDeleteTarget(source)}
                 onSaved={() => { setEditingId(null); fetchSources() }}
               />
             ))}
 
             {/* 新增按钮 */}
             {!adding ? (
-              <div className="flex gap-2">
-                <button onClick={() => setAdding('local')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
-                  style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
-                  <Plus size={14} /> 添加本地存储
-                </button>
-                <button onClick={() => setAdding('github')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
-                  style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
-                  <Plus size={14} /> 添加 GitHub
-                </button>
-                <button onClick={() => setAdding('s3')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md"
-                  style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
-                  <Plus size={14} /> 添加 S3/R2
-                </button>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {addActions.map(({ type, label, icon: Icon }) => (
+                  <button key={type} onClick={() => { setAdding(type); setEditingId(null) }}
+                    className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
+                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                    <Plus size={14} />
+                    {label}
+                  </button>
+                ))}
               </div>
             ) : (
               <StorageSourceForm
@@ -362,6 +625,15 @@ function StorageTab() {
           </div>
         )}
       </Section>
+
+      <SimpleDeleteDialog
+        isOpen={!!deleteTarget}
+        title="删除存储源"
+        message={deleteTarget ? `确定要删除「${deleteTarget.name}」吗？已上传的照片文件不会被删除，但该存储源将无法再用于上传与访问。` : ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+        t={(key) => t(key, language)}
+      />
     </div>
   )
 }
@@ -373,28 +645,38 @@ function StorageSourceCard({ source, isEditing, onEdit, onDelete, onSaved }: {
     return <StorageSourceForm source={source} onCancel={onEdit} onSaved={onSaved} />
   }
 
+  const meta = storageTypeMeta(source.type)
+  const Icon = meta.icon
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-lg border"
+    <div className="flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-secondary/40"
       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-      <div className="flex-1 min-w-0">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+        <Icon size={16} style={{ color: 'var(--muted-foreground)' }} />
+      </span>
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{source.name}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded"
-            style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
-            {source.type}
+          <span className="truncate text-sm font-medium">{source.name}</span>
+          <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px]"
+            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+            {meta.label}
           </span>
         </div>
-        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--muted-foreground)' }}>
+        <p className="mt-0.5 truncate font-mono text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
           {source.type === 'local' && (source.basePath || '/')}
           {source.type === 'github' && `${source.bucket || ''} / ${source.branch || 'main'}`}
           {source.type === 's3' && `${source.bucket || ''} @ ${source.endpoint || source.region || ''}`}
         </p>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <button onClick={onEdit} className="p-1 rounded hover:opacity-80" style={{ color: 'var(--muted-foreground)' }}>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <button onClick={onEdit} title="编辑" aria-label="编辑"
+          className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+          style={{ color: 'var(--muted-foreground)' }}>
           <Pencil size={14} />
         </button>
-        <button onClick={onDelete} className="p-1 rounded hover:opacity-80" style={{ color: 'var(--destructive)' }}>
+        <button onClick={onDelete} title="删除" aria-label="删除"
+          className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+          style={{ color: 'var(--destructive)' }}>
           <Trash2 size={14} />
         </button>
       </div>
@@ -438,134 +720,160 @@ function StorageSourceForm({ source, type, onCancel, onSaved }: {
     }
   }
 
+  const meta = storageTypeMeta(form.type)
+  const Icon = meta.icon
+  const isEditing = Boolean(source?.id)
+
   return (
-    <div className="rounded-lg border p-4 space-y-3"
-      style={{ borderColor: 'var(--ring)', backgroundColor: 'var(--card)' }}>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="名称">
-          <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-        </Field>
-        <Field label="类型">
-          <select value={form.type} disabled
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none opacity-60" style={inputStyle}>
-            <option value="local">本地</option>
-            <option value="github">GitHub</option>
-            <option value="s3">S3/R2</option>
-          </select>
-        </Field>
+    <div className="rounded-lg border p-4" style={{ borderColor: 'var(--ring)', backgroundColor: 'var(--card)' }}>
+      <div className="mb-4 flex items-center justify-between gap-2 border-b pb-3" style={{ borderColor: 'var(--border)' }}>
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <span className="flex size-7 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+            <Icon size={14} style={{ color: 'var(--muted-foreground)' }} />
+          </span>
+          {isEditing ? '编辑存储源' : `添加${meta.label}`}
+        </span>
+        <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px]"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+          {meta.label}
+        </span>
       </div>
 
-      {form.type === 'local' && (
-        <Field label="路径前缀">
-          <input value={form.basePath} placeholder="/"
-            onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-        </Field>
-      )}
-
-      {form.type === 'github' && (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Personal Access Token">
-              <input type="password" value={form.accessKey}
-                onChange={e => setForm(f => ({ ...f, accessKey: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-            <Field label="仓库 (owner/repo)">
-              <input value={form.bucket} placeholder="user/repo"
-                onChange={e => setForm(f => ({ ...f, bucket: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="分支">
-              <input value={form.branch} placeholder="main"
-                onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-            <Field label="路径前缀">
-              <input value={form.basePath} placeholder="images/"
-                onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-            <Field label="访问方式">
-              <select value={form.accessMethod}
-                onChange={e => setForm(f => ({ ...f, accessMethod: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle}>
-                <option value="raw">Raw</option>
-                <option value="jsdelivr">jsDelivr</option>
-                <option value="pages">GitHub Pages</option>
-              </select>
-            </Field>
-          </div>
-          {form.accessMethod === 'pages' && (
-            <Field label="Pages URL">
-              <input value={form.publicUrl} placeholder="https://user.github.io/repo"
-                onChange={e => setForm(f => ({ ...f, publicUrl: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-          )}
-        </>
-      )}
-
-      {form.type === 's3' && (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Endpoint">
-              <input value={form.endpoint} placeholder="https://xxx.r2.cloudflarestorage.com"
-                onChange={e => setForm(f => ({ ...f, endpoint: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-            <Field label="Region">
-              <input value={form.region} placeholder="auto"
-                onChange={e => setForm(f => ({ ...f, region: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Access Key ID">
-              <input value={form.accessKey}
-                onChange={e => setForm(f => ({ ...f, accessKey: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-            <Field label="Secret Access Key">
-              <input type="password" value={form.secretKey}
-                onChange={e => setForm(f => ({ ...f, secretKey: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Bucket">
-              <input value={form.bucket}
-                onChange={e => setForm(f => ({ ...f, bucket: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-            <Field label="公开访问 URL">
-              <input value={form.publicUrl} placeholder="https://pub-xxx.r2.dev"
-                onChange={e => setForm(f => ({ ...f, publicUrl: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
-            </Field>
-          </div>
-          <Field label="路径前缀">
-            <input value={form.basePath} placeholder="photos/"
-              onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
-              className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="名称">
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              className={inputClass} style={inputStyle} />
           </Field>
-        </>
-      )}
+          <Field label="类型">
+            <SelectDropdown
+              value={form.type}
+              options={[
+                { value: 'local', label: '本地' },
+                { value: 'github', label: 'GitHub' },
+                { value: 's3', label: 'S3/R2' },
+              ]}
+              onChange={() => {}}
+              disabled
+              ariaLabel="类型"
+            />
+          </Field>
+        </div>
 
-      <div className="flex gap-2 pt-2">
+        {form.type === 'local' && (
+          <Field label="路径前缀" description="本地存储的根目录路径，默认为服务器存储根目录。">
+            <input value={form.basePath} placeholder="/"
+              onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
+              className={inputClass} style={inputStyle} />
+          </Field>
+        )}
+
+        {form.type === 'github' && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Personal Access Token" description="需要 repo 写权限，仅保存在服务端配置中。">
+                <input type="password" value={form.accessKey}
+                  onChange={e => setForm(f => ({ ...f, accessKey: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+              <Field label="仓库 (owner/repo)">
+                <input value={form.bucket} placeholder="user/repo"
+                  onChange={e => setForm(f => ({ ...f, bucket: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="分支">
+                <input value={form.branch} placeholder="main"
+                  onChange={e => setForm(f => ({ ...f, branch: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+              <Field label="路径前缀">
+                <input value={form.basePath} placeholder="images/"
+                  onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+              <Field label="访问方式">
+                <SelectDropdown
+                  value={form.accessMethod}
+                  options={[
+                    { value: 'raw', label: 'Raw' },
+                    { value: 'jsdelivr', label: 'jsDelivr' },
+                    { value: 'pages', label: 'GitHub Pages' },
+                  ]}
+                  onChange={value => setForm(f => ({ ...f, accessMethod: String(value) }))}
+                  ariaLabel="访问方式"
+                />
+              </Field>
+            </div>
+            {form.accessMethod === 'pages' && (
+              <Field label="Pages URL">
+                <input value={form.publicUrl} placeholder="https://user.github.io/repo"
+                  onChange={e => setForm(f => ({ ...f, publicUrl: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+            )}
+          </>
+        )}
+
+        {form.type === 's3' && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Endpoint">
+                <input value={form.endpoint} placeholder="https://xxx.r2.cloudflarestorage.com"
+                  onChange={e => setForm(f => ({ ...f, endpoint: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+              <Field label="Region">
+                <input value={form.region} placeholder="auto"
+                  onChange={e => setForm(f => ({ ...f, region: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Access Key ID">
+                <input value={form.accessKey}
+                  onChange={e => setForm(f => ({ ...f, accessKey: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+              <Field label="Secret Access Key" description="仅保存在服务端配置中，不会回显。">
+                <input type="password" value={form.secretKey}
+                  onChange={e => setForm(f => ({ ...f, secretKey: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Bucket">
+                <input value={form.bucket}
+                  onChange={e => setForm(f => ({ ...f, bucket: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+              <Field label="公开访问 URL">
+                <input value={form.publicUrl} placeholder="https://pub-xxx.r2.dev"
+                  onChange={e => setForm(f => ({ ...f, publicUrl: e.target.value }))}
+                  className={inputClass} style={inputStyle} />
+              </Field>
+            </div>
+            <Field label="路径前缀">
+              <input value={form.basePath} placeholder="photos/"
+                onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
+                className={inputClass} style={inputStyle} />
+            </Field>
+          </>
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-end gap-2 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+        <button onClick={onCancel}
+          className="rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-secondary"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+          取消
+        </button>
         <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-opacity disabled:opacity-50 hover:opacity-90"
           style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           {saving ? '保存中...' : '保存'}
-        </button>
-        <button onClick={onCancel}
-          className="px-3 py-1.5 text-xs rounded-md"
-          style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
-          取消
         </button>
       </div>
     </div>
@@ -606,11 +914,13 @@ function CommentsTab({ config, updateConfig }: {
 }
 
 function CommentsManageTab() {
+  const { language } = usePreferences()
   const [comments, setComments] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
 
   const fetchComments = useCallback(async () => {
     setLoading(true)
@@ -632,10 +942,11 @@ function CommentsManageTab() {
     } catch {}
   }
 
-  const deleteComment = async (id: string) => {
-    if (!confirm('确定删除此评论？')) return
+  const deleteComment = async () => {
+    if (!deleteTarget) return
     try {
-      await (window as any).go.main.App.DeleteComment(id)
+      await (window as any).go.main.App.DeleteComment(deleteTarget.id)
+      setDeleteTarget(null)
       fetchComments()
     } catch {}
   }
@@ -643,14 +954,20 @@ function CommentsManageTab() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1) }}
-          className="px-2 py-1 text-xs rounded border outline-none"
-          style={inputStyle}>
-          <option value="">全部状态</option>
-          <option value="pending">待审核</option>
-          <option value="approved">已通过</option>
-          <option value="rejected">已拒绝</option>
-        </select>
+        <SelectDropdown
+          value={statusFilter}
+          options={[
+            { value: 'pending', label: '待审核' },
+            { value: 'approved', label: '已通过' },
+            { value: 'rejected', label: '已拒绝' },
+          ]}
+          onChange={value => { setStatusFilter(String(value)); setPage(1) }}
+          placeholder="全部状态"
+          clearLabel="全部状态"
+          size="sm"
+          ariaLabel="评论状态筛选"
+          className="w-36"
+        />
         <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{total} 条评论</span>
       </div>
 
@@ -669,37 +986,34 @@ function CommentsManageTab() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{c.author}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded"
-                      style={{
-                        backgroundColor: c.status === 'approved' ? '#dcfce7' : c.status === 'rejected' ? '#fee2e2' : 'var(--muted)',
-                        color: c.status === 'approved' ? '#166534' : c.status === 'rejected' ? '#991b1b' : 'var(--muted-foreground)',
-                      }}>
+                    <Badge tone={c.status === 'approved' ? 'green' : c.status === 'rejected' ? 'red' : undefined}>
                       {c.status === 'pending' ? '待审核' : c.status === 'approved' ? '已通过' : '已拒绝'}
-                    </span>
+                    </Badge>
                   </div>
-                  <p className="text-xs mt-1" style={{ color: 'var(--foreground)' }}>{c.content}</p>
-                  <p className="text-[11px] mt-1" style={{ color: 'var(--muted-foreground)' }}>
+                  <p className="mt-1 text-xs" style={{ color: 'var(--foreground)' }}>{c.content}</p>
+                  <p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
                     {c.email && `${c.email} · `}{new Date(c.createdAt).toLocaleString()}
                   </p>
                 </div>
-                <div className="flex items-center gap-1 shrink-0 ml-2">
+                <div className="ml-2 flex shrink-0 items-center gap-0.5">
                   {c.status !== 'approved' && (
                     <button onClick={() => updateStatus(c.id, 'approved')}
-                      className="px-2 py-1 text-[11px] rounded" title="通过"
-                      style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
-                      ✓
+                      className="flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-secondary"
+                      style={{ borderColor: 'var(--border)', color: STATUS_COLORS.green.fg }} title="通过" aria-label="通过">
+                      <Check size={13} />
                     </button>
                   )}
                   {c.status !== 'rejected' && (
                     <button onClick={() => updateStatus(c.id, 'rejected')}
-                      className="px-2 py-1 text-[11px] rounded" title="拒绝"
-                      style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
-                      ✗
+                      className="flex size-7 items-center justify-center rounded-md border transition-colors hover:bg-secondary"
+                      style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }} title="拒绝" aria-label="拒绝">
+                      <X size={13} />
                     </button>
                   )}
-                  <button onClick={() => deleteComment(c.id)}
-                    className="p-1 rounded hover:opacity-80" style={{ color: 'var(--destructive)' }}>
-                    <Trash2 size={12} />
+                  <button onClick={() => setDeleteTarget(c)}
+                    className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+                    style={{ color: 'var(--destructive)' }} title="删除" aria-label="删除">
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
@@ -727,6 +1041,15 @@ function CommentsManageTab() {
           </div>
         </div>
       )}
+
+      <SimpleDeleteDialog
+        isOpen={!!deleteTarget}
+        title="删除评论"
+        message={deleteTarget ? `确定要删除 ${deleteTarget.author || '此用户'} 的评论吗？` : ''}
+        onConfirm={deleteComment}
+        onCancel={() => setDeleteTarget(null)}
+        t={(key) => t(key, language)}
+      />
     </div>
   )
 }
@@ -751,14 +1074,18 @@ function CommentsConfigTab({ config, updateConfig }: {
         </Field>
 
         <Field label="评论提供者">
-          <select value={provider}
-            onChange={e => updateConfig('comment_provider', e.target.value)}
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle}>
-            <option value="local">本地</option>
-            <option value="openai">OpenAI</option>
-            <option value="gemini">Gemini</option>
-            <option value="anthropic">Anthropic</option>
-          </select>
+          <SelectDropdown
+            value={provider}
+            options={[
+              { value: 'local', label: '本地' },
+              { value: 'openai', label: 'OpenAI' },
+              { value: 'gemini', label: 'Gemini' },
+              { value: 'anthropic', label: 'Anthropic' },
+            ]}
+            onChange={value => updateConfig('comment_provider', String(value))}
+            placeholder="请选择评论提供者"
+            ariaLabel="评论提供者"
+          />
         </Field>
 
         {provider !== 'local' && (
@@ -766,17 +1093,17 @@ function CommentsConfigTab({ config, updateConfig }: {
             <Field label="API Key">
               <input type="password" value={config.comment_api_key || ''}
                 onChange={e => updateConfig('comment_api_key', e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
+                className={inputClass} style={inputStyle} />
             </Field>
             <Field label="API Endpoint">
               <input type="text" value={config.comment_api_endpoint || ''}
                 onChange={e => updateConfig('comment_api_endpoint', e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
+                className={inputClass} style={inputStyle} />
             </Field>
             <Field label="模型">
               <input type="text" value={config.comment_model || ''}
                 onChange={e => updateConfig('comment_model', e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded border outline-none" style={inputStyle} />
+                className={inputClass} style={inputStyle} />
             </Field>
           </>
         )}
@@ -785,7 +1112,7 @@ function CommentsConfigTab({ config, updateConfig }: {
           <textarea value={config.blocked_keywords || ''}
             onChange={e => updateConfig('blocked_keywords', e.target.value)}
             rows={3}
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none resize-none" style={inputStyle} />
+            className={textareaClass} style={inputStyle} />
         </Field>
       </Section>
     </div>
@@ -795,6 +1122,7 @@ function CommentsConfigTab({ config, updateConfig }: {
 // ─── Tab 5: 账户（与 Web 端一致：Linux DO 绑定） ────────────
 
 function AccountTab() {
+  const { language } = usePreferences()
   const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
   const [linuxDoBinding, setLinuxDoBinding] = useState<any>(null)
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
@@ -855,7 +1183,7 @@ function AccountTab() {
             <svg className="w-5 h-5 text-[#f8d568]" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
             </svg>
-            <h4 className="text-[10px] font-bold text-foreground uppercase tracking-widest">
+            <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--foreground)' }}>
               Linux DO
             </h4>
           </div>
@@ -865,11 +1193,11 @@ function AccountTab() {
         </div>
 
         {!linuxDoEnabled ? (
-          <div className="p-6 border border-dashed border-border text-center">
-            <p className="text-xs text-muted-foreground">
+          <div className="p-6 rounded-lg border border-dashed text-center" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
               Linux DO 未配置
             </p>
-            <p className="text-[10px] text-muted-foreground/70 mt-2 font-mono">
+            <p className="mt-2 font-mono text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
               请在 .env 中配置 LINUXDO_CLIENT_ID 和 LINUXDO_CLIENT_SECRET
             </p>
           </div>
@@ -878,39 +1206,39 @@ function AccountTab() {
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : linuxDoBinding ? (
-          <div className="p-6 border border-border bg-muted/10 space-y-6">
+          <div className="space-y-6 rounded-lg border p-6" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-4">
               {linuxDoBinding.avatarUrl ? (
                 <img
                   src={linuxDoBinding.avatarUrl}
                   alt={linuxDoBinding.username || ''}
-                  className="w-12 h-12 rounded-full border border-border"
+                  className="h-12 w-12 rounded-full border"
+                  style={{ borderColor: 'var(--border)' }}
                 />
               ) : (
-                <div className="w-12 h-12 rounded-full border border-border bg-muted flex items-center justify-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border bg-muted" style={{ borderColor: 'var(--border)' }}>
                   <User size={20} className="text-muted-foreground" />
                 </div>
               )}
               <div>
-                <p className="font-bold text-foreground">
+                <p className="font-medium" style={{ color: 'var(--foreground)' }}>
                   {linuxDoBinding.username}
                 </p>
                 {linuxDoBinding.trustLevel !== null && (
-                  <p className="text-[10px] text-muted-foreground font-mono">
+                  <p className="mt-0.5 font-mono text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
                     Trust Level: {linuxDoBinding.trustLevel}
                   </p>
                 )}
               </div>
               <div className="ml-auto">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-widest border border-primary/20">
-                  ✓ 已绑定
-                </span>
+                <Badge tone="green"><Check size={10} /> 已绑定</Badge>
               </div>
             </div>
             <button
               onClick={() => setDeleteDialog(true)}
               disabled={linuxDoBindLoading}
-              className="w-full py-3 border border-destructive/50 text-destructive hover:bg-destructive/10 text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary disabled:opacity-50"
+              style={{ borderColor: 'color-mix(in srgb, var(--destructive) 40%, transparent)', color: 'var(--destructive)' }}
             >
               {linuxDoBindLoading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -921,19 +1249,20 @@ function AccountTab() {
             </button>
           </div>
         ) : (
-          <div className="p-6 border border-dashed border-border text-center space-y-4">
+          <div className="space-y-4 rounded-lg border border-dashed p-6 text-center" style={{ borderColor: 'var(--border)' }}>
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                 未绑定 Linux DO 账户
               </p>
-              <p className="text-[10px] text-muted-foreground/70">
+              <p className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
                 绑定后可以使用 Linux DO 登录
               </p>
             </div>
             <button
               onClick={handleLinuxDoBind}
               disabled={linuxDoBindLoading}
-              className="px-6 py-3 bg-[#f8d568] text-[#1a1a1a] hover:bg-[#f5c842] text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2 mx-auto"
+              className="mx-auto flex items-center justify-center gap-2 rounded-md px-5 py-2 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: '#f8d568', color: '#1a1a1a' }}
             >
               {linuxDoBindLoading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -946,57 +1275,60 @@ function AccountTab() {
         )}
       </Section>
 
-      {/* 确认解绑对话框 */}
-      {deleteDialog && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-8">
-          <div className="bg-card border border-border p-6 max-w-sm w-full">
-            <h3 className="text-sm font-medium mb-4">确认解绑</h3>
-            <p className="text-xs text-muted-foreground mb-6">
-              确定要解绑 Linux DO 账户吗？解绑后无法使用 Linux DO 登录。
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeleteDialog(false)}
-                className="px-3 py-1.5 text-xs rounded-md"
-                style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
-              >
-                取消
-              </button>
-              <button
-                onClick={handleLinuxDoUnbind}
-                className="px-3 py-1.5 text-xs rounded-md"
-                style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
-              >
-                确认解绑
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SimpleDeleteDialog
+        isOpen={deleteDialog}
+        title="解绑 Linux DO"
+        message="确定要解绑 Linux DO 账户吗？解绑后无法使用 Linux DO 登录。"
+        onConfirm={handleLinuxDoUnbind}
+        onCancel={() => setDeleteDialog(false)}
+        t={(key) => t(key, language)}
+      />
     </div>
   )
 }
 
 // ─── Tab 8: 缓存管理 ─────────────────────────────────
 
+const APP_CACHE_STORAGE_PREFIX = 'mo-gallery:desktop-cache-storage'
+
+async function getCurrentAppCacheStorageKeys() {
+  if (!('caches' in window)) return []
+  const scope = getCurrentPersistentCacheScope()
+  if (!scope) return []
+  const prefix = `${APP_CACHE_STORAGE_PREFIX}:${scope}:`
+  return (await caches.keys()).filter(key => key.startsWith(prefix))
+}
+
 function CacheTab() {
+  const { language } = usePreferences()
   const [snapshot, setSnapshot] = useState(getDesktopCacheSnapshot)
-  const [clearingRuntime, setClearingRuntime] = useState(false)
+  const [clearingPage, setClearingPage] = useState<'overview' | 'cloud' | null>(null)
+  const [clearingApplication, setClearingApplication] = useState(false)
   const [clearingLocalPreviews, setClearingLocalPreviews] = useState(false)
   const [clearingCacheStorage, setClearingCacheStorage] = useState(false)
-  const [cacheStorageInfo, setCacheStorageInfo] = useState({ supported: false, loading: true, count: 0, bytes: 0 })
+  const [confirmAction, setConfirmAction] = useState<'application' | 'previews' | null>(null)
+  const [cacheStorageInfo, setCacheStorageInfo] = useState({
+    supported: false,
+    loading: true,
+    count: 0,
+    bytes: 0,
+    error: null as string | null,
+  })
+  const cacheStorageRequestIdRef = useRef(0)
+  const localCacheInfo = useLocalLibraryCacheInfo()
 
   const refreshSnapshot = () => setSnapshot(getDesktopCacheSnapshot())
 
   const refreshCacheStorageInfo = useCallback(async () => {
+    const requestId = ++cacheStorageRequestIdRef.current
     if (!('caches' in window)) {
-      setCacheStorageInfo({ supported: false, loading: false, count: 0, bytes: 0 })
+      setCacheStorageInfo({ supported: false, loading: false, count: 0, bytes: 0, error: null })
       return
     }
 
-    setCacheStorageInfo(prev => ({ ...prev, supported: true, loading: true }))
+    setCacheStorageInfo(prev => ({ ...prev, supported: true, loading: true, error: null }))
     try {
-      const keys = await caches.keys()
+      const keys = await getCurrentAppCacheStorageKeys()
       let count = 0
       let bytes = 0
       for (const key of keys) {
@@ -1006,117 +1338,325 @@ function CacheTab() {
         for (const request of requests) {
           const response = await cache.match(request)
           if (!response) continue
-          const blob = await response.clone().blob()
-          bytes += blob.size
+          bytes += (await response.clone().blob()).size
         }
       }
-      setCacheStorageInfo({ supported: true, loading: false, count, bytes })
-    } catch {
-      setCacheStorageInfo({ supported: true, loading: false, count: 0, bytes: 0 })
+      if (requestId !== cacheStorageRequestIdRef.current) return
+      setCacheStorageInfo({ supported: true, loading: false, count, bytes, error: null })
+    } catch (error: unknown) {
+      if (requestId !== cacheStorageRequestIdRef.current) return
+      setCacheStorageInfo({
+        supported: true,
+        loading: false,
+        count: 0,
+        bytes: 0,
+        error: error instanceof Error ? error.message : '统计失败',
+      })
     }
   }, [])
 
-  useEffect(() => { refreshCacheStorageInfo() }, [refreshCacheStorageInfo])
+  useEffect(() => {
+    void refreshCacheStorageInfo()
+    return () => { cacheStorageRequestIdRef.current += 1 }
+  }, [refreshCacheStorageInfo])
 
-  const handleClearRuntimeCache = () => {
-    setClearingRuntime(true)
-    clearDesktopRuntimeCache()
+  const refreshAll = () => {
     refreshSnapshot()
-    setClearingRuntime(false)
-    toast.success('运行时缓存已清理')
+    void refreshCacheStorageInfo()
+    void localCacheInfo.refresh()
   }
 
-  const handleClearLocalPreviews = async () => {
-    setClearingLocalPreviews(true)
-    try {
-      await ClearLocalLibraryPreviewCache()
-      toast.success('本地图库大图预览缓存已清理；缩略图和资产数据仍会保留')
-    } catch (err: unknown) {
-      toast.error('清理本地图库预览缓存失败: ' + (err instanceof Error ? err.message : '未知错误'))
-    } finally {
-      setClearingLocalPreviews(false)
+  const handleClearPageCache = (scope: 'overview' | 'cloud') => {
+    setClearingPage(scope)
+    if (scope === 'overview') {
+      clearOverviewPageCache()
+      clearEquipmentCache()
+    } else {
+      clearCloudLibraryPageCache()
     }
+    refreshSnapshot()
+    setClearingPage(null)
+    toast.success(scope === 'overview' ? '概览页缓存已清理，下次进入时会重新加载' : '云端照片列表缓存已清理，下次进入时会重新加载')
+  }
+
+  const deleteCacheStorage = async () => {
+    if (!('caches' in window)) return 0
+    cacheStorageRequestIdRef.current += 1
+    const keys = await getCurrentAppCacheStorageKeys()
+    await Promise.all(keys.map(key => caches.delete(key)))
+    return keys.length
   }
 
   const handleClearCacheStorage = async () => {
-    if (!('caches' in window)) {
+    if (!cacheStorageInfo.supported) {
       toast.error('当前 WebView 不支持 CacheStorage')
       return
     }
 
     setClearingCacheStorage(true)
     try {
-      const keys = await caches.keys()
-      await Promise.all(keys.map(key => caches.delete(key)))
+      const count = await deleteCacheStorage()
       await refreshCacheStorageInfo()
-      toast.success(keys.length > 0 ? `已清理 ${keys.length} 个 CacheStorage` : '没有可清理的 CacheStorage')
-    } catch (err: any) {
-      toast.error('清理失败: ' + (err?.message || '未知错误'))
+      toast.success(count > 0 ? `已清理 ${count} 个 CacheStorage` : '没有可清理的 CacheStorage')
+    } catch (error: unknown) {
+      toast.error('清理 CacheStorage 失败: ' + getErrorMessage(error))
     } finally {
       setClearingCacheStorage(false)
     }
   }
 
+  const handleClearApplicationCache = async () => {
+    setClearingApplication(true)
+    try {
+      clearDesktopRuntimeCache()
+      clearCurrentPersistentCache()
+      await deleteCacheStorage()
+      refreshSnapshot()
+      await refreshCacheStorageInfo()
+      toast.success('应用缓存已清理；相关页面会在下次进入时自动重建')
+    } catch (error: unknown) {
+      refreshSnapshot()
+      await refreshCacheStorageInfo()
+      toast.error('部分应用缓存清理失败: ' + getErrorMessage(error))
+    } finally {
+      setClearingApplication(false)
+      setConfirmAction(null)
+    }
+  }
+
+  const handleClearLocalPreviews = async () => {
+    setClearingLocalPreviews(true)
+    try {
+      await ClearLocalLibraryPreviewCache()
+      await localCacheInfo.refresh()
+      toast.success('本地大图预览已清理；查看照片时会按需重新生成')
+    } catch (error: unknown) {
+      toast.error('清理本地大图预览失败: ' + getErrorMessage(error))
+    } finally {
+      setClearingLocalPreviews(false)
+      setConfirmAction(null)
+    }
+  }
+
+  const cachedPageCount = Number(snapshot.overviewLoaded || snapshot.cameraLoaded || snapshot.lensLoaded) + Number(snapshot.photosLoaded)
+  const runtimeBytes = snapshot.overviewPageBytes + snapshot.photosBytes
+  const applicationDiskBytes = snapshot.persistentBytes + cacheStorageInfo.bytes
+  const previewBytes = localCacheInfo.stats?.previews.bytes ?? 0
+  const reclaimableBytes = applicationDiskBytes + previewBytes
+  const hasApplicationCache = cachedPageCount > 0 || snapshot.persistentResourceCount > 0 || cacheStorageInfo.count > 0
+  const isClearing = clearingApplication || clearingLocalPreviews || clearingCacheStorage || clearingPage !== null
+  const isRefreshing = cacheStorageInfo.loading || localCacheInfo.loading || isClearing
+  const previewUsagePercent = localCacheInfo.stats?.previewLimitBytes
+    ? Math.min(100, Math.round((previewBytes / localCacheInfo.stats.previewLimitBytes) * 100))
+    : 0
+
   return (
-    <div className="space-y-6">
-      <Section title="运行时数据缓存">
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-          管理 desktop 前端在当前应用进程内缓存的数据。清理后，再进入相关页面会重新通过 Go 调用 Web API。
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <CacheStat label="概览数据" value={snapshot.overviewLoaded ? '已缓存' : '未缓存'} detail={formatBytes(snapshot.overviewBytes)} />
-          <CacheStat label="相机列表" value={snapshot.cameraLoaded ? `${snapshot.cameraCount} 项` : '未缓存'} detail={formatBytes(snapshot.cameraBytes)} />
-          <CacheStat label="镜头列表" value={snapshot.lensLoaded ? `${snapshot.lensCount} 项` : '未缓存'} detail={formatBytes(snapshot.lensBytes)} />
-          <CacheStat label="合计" value={formatBytes(snapshot.totalBytes)} detail="估算大小" />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5" style={{ borderColor: 'var(--border)' }}>
+        <div className="min-w-0">
+          <h2 className="text-sm font-medium">缓存与空间</h2>
+          <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+            释放可再生数据占用，或在页面数据异常时清理并重建缓存。
+          </p>
         </div>
-        <button
-          onClick={handleClearRuntimeCache}
-          disabled={clearingRuntime}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50"
-          style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}
-        >
-          {clearingRuntime ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
-          清理运行时缓存
+        <button type="button" onClick={refreshAll} disabled={isRefreshing} className={btnOutline} title="重新统计缓存">
+          <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+          重新统计
         </button>
-      </Section>
+      </header>
 
-      <Section title="本地图库预览缓存">
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-          清理按需生成的 2048px 大图预览以释放磁盘空间。512px 网格缩略图、原始文件和图库数据不会被删除；之后查看时会自动重新生成。
-        </p>
-        <button
-          onClick={handleClearLocalPreviews}
-          disabled={clearingLocalPreviews}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-        >
-          {clearingLocalPreviews ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
-          清理大图预览缓存
-        </button>
-      </Section>
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-5">
+        <div className="mx-auto max-w-4xl space-y-5">
+          <section className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4" style={{ borderColor: 'var(--border)' }}>
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>可释放空间</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{isRefreshing ? '正在统计' : formatBytes(reclaimableBytes)}</p>
+                <p className="mt-1 text-[11px] leading-5" style={{ color: 'var(--muted-foreground)' }}>
+                  仅计算可清理的磁盘数据，不包含运行时内存、原文件或资源库数据。
+                </p>
+              </div>
+              <Badge tone={reclaimableBytes > 0 ? 'green' : undefined}>{reclaimableBytes > 0 ? '可清理' : '无需清理'}</Badge>
+            </div>
+            <div className="grid sm:grid-cols-3 sm:divide-x" style={{ borderColor: 'var(--border)' }}>
+              <CacheSummaryMetric label="应用磁盘缓存" value={formatBytes(applicationDiskBytes)} detail={`${snapshot.persistentResourceCount} 项持久化数据 · ${cacheStorageInfo.count} 项当前账号网络响应`} />
+              <CacheSummaryMetric label="本地大图预览" value={localCacheInfo.loading ? '统计中' : localCacheInfo.stats ? formatBytes(previewBytes) : '未打开资源库'} detail={localCacheInfo.stats ? `${localCacheInfo.stats.previews.fileCount} 个文件` : '打开本地资源库后可统计'} />
+              <CacheSummaryMetric label="页面运行时状态" value={formatBytes(runtimeBytes)} detail={`${cachedPageCount}/2 个页面已缓存 · 不计入磁盘空间`} />
+            </div>
+          </section>
 
-      <Section title="WebView 缓存">
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-          R2/CDN 图片的 HTTP 缓存由系统 WebView 和 Cloudflare 管理。这里可清理前端 CacheStorage；底层 HTTP 图片缓存不在 JS 中直接删除，避免运行中破坏 WebView 数据目录。
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <CacheStat
-            label="CacheStorage"
-            value={cacheStorageInfo.loading ? '计算中...' : cacheStorageInfo.supported ? `${cacheStorageInfo.count} 项` : '不支持'}
-            detail={cacheStorageInfo.supported ? formatBytes(cacheStorageInfo.bytes) : '不可用'}
-          />
-          <CacheStat label="HTTP 图片缓存" value="由 WebView 管理" detail="无法从 JS 精确读取" />
+          <CacheDetailSection
+            title="应用数据缓存"
+            description="包含页面运行时状态、按账号保存的页面数据和 CacheStorage。清理后不会退出登录，相关页面会在下次进入时重新请求。"
+            footer={(
+              <button type="button" onClick={() => setConfirmAction('application')}
+                disabled={isRefreshing || !hasApplicationCache} className={btnOutline} style={{ color: 'var(--destructive)' }}>
+                {clearingApplication ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                清理并重建
+              </button>
+            )}
+          >
+            <CacheManagementRow
+              icon={LayoutDashboard}
+              title="概览页"
+              description="统计概览、相机列表和镜头列表的已加载数据。"
+              status={snapshot.overviewLoaded || snapshot.cameraLoaded || snapshot.lensLoaded ? '已缓存' : '未缓存'}
+              detail={`${formatBytes(snapshot.overviewPageBytes)} 运行时估算 · 相机 ${snapshot.cameraCount} · 镜头 ${snapshot.lensCount}`}
+              actionLabel="清理"
+              onAction={() => handleClearPageCache('overview')}
+              disabled={isRefreshing || !(snapshot.overviewLoaded || snapshot.cameraLoaded || snapshot.lensLoaded)}
+              loading={clearingPage === 'overview'}
+            />
+            <CacheManagementRow
+              icon={Images}
+              title="云端照片列表"
+              description="已加载的分页数据与滚动位置。"
+              status={snapshot.photosLoaded ? '已缓存' : '未缓存'}
+              detail={snapshot.photosLoaded ? `${snapshot.photosCount} 张 · ${formatBytes(snapshot.photosBytes)} 运行时估算` : '进入云端照片页面后生成'}
+              actionLabel="清理"
+              onAction={() => handleClearPageCache('cloud')}
+              disabled={isRefreshing || !snapshot.photosLoaded}
+              loading={clearingPage === 'cloud'}
+            />
+            <CacheManagementRow
+              icon={Database}
+              title="持久化页面数据"
+              description="按当前服务端与登录账号保存的概览、相册、分类、胶卷、故事和朋友列表。"
+              status={snapshot.persistentResourceCount > 0 ? `${snapshot.persistentResourceCount} 项` : '无缓存'}
+              detail={`${formatBytes(snapshot.persistentBytes)} 磁盘估算 · 清理并重建时统一移除`}
+            />
+            <CacheManagementRow
+              icon={Cloud}
+              title="CacheStorage"
+              description="由 MO Gallery 网页功能写入、按当前服务端与账号隔离的网络响应缓存。"
+              status={cacheStorageInfo.loading ? '计算中' : cacheStorageInfo.error ? '统计失败' : cacheStorageInfo.supported ? `${cacheStorageInfo.count} 项` : '不支持'}
+              detail={cacheStorageInfo.error || (cacheStorageInfo.supported ? `${formatBytes(cacheStorageInfo.bytes)} 磁盘估算` : '当前 WebView 未提供 CacheStorage')}
+              actionLabel="清理"
+              onAction={handleClearCacheStorage}
+              disabled={isRefreshing || !cacheStorageInfo.supported || cacheStorageInfo.count === 0}
+              loading={clearingCacheStorage}
+            />
+          </CacheDetailSection>
+
+          <CacheDetailSection
+            title="本地预览缓存"
+            description="管理当前本地资源库按需生成的 2048px 屏幕预览。清理不会影响 512px 网格缩略图、原文件、索引或整理数据。"
+            footer={localCacheInfo.stats ? (
+              <button type="button" onClick={() => setConfirmAction('previews')}
+                disabled={isRefreshing || localCacheInfo.stats.previews.fileCount === 0}
+                className={btnOutline} style={{ color: 'var(--destructive)' }}>
+                {clearingLocalPreviews ? <Loader2 size={13} className="animate-spin" /> : <Trash size={13} />}
+                清理大图预览
+              </button>
+            ) : undefined}
+          >
+            <CacheManagementRow
+              icon={ImageIcon}
+              title="大图预览"
+              description="首次查看照片时生成，之后直接复用；清理后首次打开可能需要等待重新生成。"
+              status={localCacheInfo.loading ? '计算中' : localCacheInfo.stats ? formatBytes(previewBytes) : '未打开资源库'}
+              detail={localCacheInfo.stats
+                ? `${localCacheInfo.stats.previews.fileCount} 个文件 · 已使用上限的 ${previewUsagePercent}% · 上限 ${formatBytes(localCacheInfo.stats.previewLimitBytes)}`
+                : localCacheInfo.error || '打开本地资源库后可统计和清理'}
+            />
+          </CacheDetailSection>
+
+          <div className="flex items-start gap-2 rounded-md border px-4 py-3 text-[11px] leading-5" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <span>缓存清理不会删除账户、设置、照片原文件或资源库数据库。系统 WebView 管理的 HTTP 图片缓存无法准确统计，因此不计入可释放空间。</span>
+          </div>
         </div>
-        <button
-          onClick={handleClearCacheStorage}
-          disabled={clearingCacheStorage}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-        >
-          {clearingCacheStorage ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
-          清理 CacheStorage
+      </div>
+
+      <SimpleDeleteDialog
+        isOpen={confirmAction === 'application'}
+        title="清理并重建应用缓存"
+        message={`将清理约 ${formatBytes(applicationDiskBytes)} 的应用磁盘缓存，以及当前页面运行时状态。不会退出登录或删除任何照片；相关页面会在下次进入时重新加载。`}
+        confirmLabel="清理并重建"
+        pendingLabel="正在清理..."
+        confirmIcon="refresh"
+        onConfirm={handleClearApplicationCache}
+        onCancel={() => setConfirmAction(null)}
+        t={(key) => t(key, language)}
+      />
+      <SimpleDeleteDialog
+        isOpen={confirmAction === 'previews'}
+        title="清理本地大图预览"
+        message={`将释放约 ${formatBytes(previewBytes)} 的大图预览缓存。原文件、网格缩略图和资源库数据会保留；之后首次查看照片时需要重新生成预览。`}
+        confirmLabel="清理预览"
+        pendingLabel="正在清理..."
+        onConfirm={handleClearLocalPreviews}
+        onCancel={() => setConfirmAction(null)}
+        t={(key) => t(key, language)}
+      />
+    </div>
+  )
+}
+
+function CacheSummaryMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="px-5 py-4">
+      <p className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
+      <p className="mt-1 text-sm font-semibold tabular-nums">{value}</p>
+      <p className="mt-1 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{detail}</p>
+    </div>
+  )
+}
+
+function CacheDetailSection({ title, description, footer, children }: {
+  title: string
+  description: string
+  footer?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <section>
+      <div className="mb-3">
+        <h3 className="text-sm font-medium">{title}</h3>
+        <p className="mt-1 max-w-3xl text-[11px] leading-5" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
+      </div>
+      <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+        <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{children}</div>
+        {footer && (
+          <div className="flex justify-end border-t px-4 py-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CacheManagementRow({ icon: Icon, title, description, status, detail, actionLabel, onAction, disabled, loading }: {
+  icon: typeof Database
+  title: string
+  description: string
+  status: string
+  detail: string
+  actionLabel?: string
+  onAction?: () => void
+  disabled?: boolean
+  loading?: boolean
+}) {
+  return (
+    <div className="flex min-h-20 items-center gap-4 px-4 py-3.5">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+        <Icon size={16} style={{ color: 'var(--muted-foreground)' }} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="text-xs font-medium">{title}</h4>
+          <Badge>{status}</Badge>
+        </div>
+        <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
+        <p className="mt-0.5 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{detail}</p>
+      </div>
+      {actionLabel && onAction && (
+        <button type="button" onClick={onAction} disabled={disabled} className={`${btnOutline} shrink-0`}>
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <Trash size={13} />}
+          {actionLabel}
         </button>
-      </Section>
+      )}
     </div>
   )
 }
@@ -1125,8 +1665,8 @@ function CacheStat({ label, value, detail }: { label: string; value: string; det
   return (
     <div className="rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--muted)' }}>
       <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</p>
-      <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--foreground)' }}>{value}</p>
-      {detail && <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{detail}</p>}
+      <p className="mt-0.5 text-sm font-medium" style={{ color: 'var(--foreground)' }}>{value}</p>
+      {detail && <p className="mt-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{detail}</p>}
     </div>
   )
 }
@@ -1259,10 +1799,61 @@ const inputStyle = {
   color: 'var(--foreground)',
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// 桌面端统一的表单控件样式（与资源库、信息面板一致）
+const inputClass = 'h-8 w-full rounded-md border bg-input px-2.5 text-xs outline-none focus:ring-1 focus:ring-ring'
+const textareaClass = 'w-full rounded-md border bg-input px-2.5 py-2 text-xs outline-none focus:ring-1 focus:ring-ring resize-none'
+const btnPrimary = 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50'
+const btnOutline = 'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-secondary disabled:opacity-50'
+
+// 语义色（与桌面端状态点一致），深色/浅色主题均可读
+const STATUS_COLORS: Record<string, { fg: string; bg: string }> = {
+  green: { fg: '#4f9d69', bg: 'color-mix(in srgb, #4f9d69 14%, transparent)' },
+  red: { fg: 'var(--destructive)', bg: 'color-mix(in srgb, var(--destructive) 12%, transparent)' },
+  amber: { fg: '#b45309', bg: 'color-mix(in srgb, #f59e0b 14%, transparent)' },
+}
+
+// AI 能力标记色（500 色阶，深浅主题均可读）
+const CAPABILITY_COLORS = {
+  vision: '#3b82f6',
+  tools: '#8b5cf6',
+  structured: '#10b981',
+  image: '#f59e0b',
+}
+
+function capabilityStyle(color: string, active: boolean): React.CSSProperties {
+  return {
+    borderColor: active ? color : 'var(--border)',
+    color: active ? color : 'var(--muted-foreground)',
+    backgroundColor: active ? `color-mix(in srgb, ${color} 12%, var(--card))` : 'transparent',
+  }
+}
+
+function Badge({ children, tone, style: extraStyle }: {
+  children: React.ReactNode
+  tone?: keyof typeof STATUS_COLORS
+  style?: React.CSSProperties
+}) {
+  const toneStyle = tone ? STATUS_COLORS[tone] : null
   return (
-    <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-      <h3 className="text-sm font-medium mb-4">{title}</h3>
+    <span className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]"
+      style={{
+        borderColor: toneStyle ? 'color-mix(in srgb, currentColor 30%, transparent)' : 'var(--border)',
+        backgroundColor: toneStyle?.bg || 'var(--muted)',
+        color: toneStyle?.fg || 'var(--muted-foreground)',
+        ...extraStyle,
+      }}>
+      {children}
+    </span>
+  )
+}
+
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border p-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+      <div className="mb-4">
+        <h3 className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{title}</h3>
+        {description && <p className="mt-1 text-[11px] leading-5" style={{ color: 'var(--muted-foreground)' }}>{description}</p>}
+      </div>
       <div className="space-y-4">{children}</div>
     </div>
   )
@@ -1273,12 +1864,12 @@ function Field({ label, description, children }: {
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>
+      <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>
         {label}
       </label>
       {children}
       {description && (
-        <p className="text-[11px] mt-1" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
+        <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
       )}
     </div>
   )
@@ -1412,13 +2003,29 @@ function buildAiConfigPayload(aiConfig: AiConfig): AiConfig {
   }
 }
 
+const AI_SELECTED_PROVIDER_KEY = 'mo-gallery:ai:selected-provider'
+
+function readSelectedAiProvider(): string | null {
+  try {
+    return window.localStorage.getItem(AI_SELECTED_PROVIDER_KEY)
+  } catch {
+    return null
+  }
+}
+
 function AiTab() {
+  const { language } = usePreferences()
   const [aiConfig, setAiConfig] = useState<AiConfig>({ default_model: '', default_image_model: '', providers: {} })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
   const [fetchingProvider, setFetchingProvider] = useState<string | null>(null)
   const [modelCandidates, setModelCandidates] = useState<Record<string, string[]>>({})
+  const [deleteProviderId, setDeleteProviderId] = useState<string | null>(null)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(readSelectedAiProvider())
+  const [editingId, setEditingId] = useState(false)
+  const [idDraft, setIdDraft] = useState('')
+  const cancelEditRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -1431,6 +2038,23 @@ function AiTab() {
   }, [])
 
   const providerIds = Object.keys(aiConfig.providers).sort()
+  // 选中项跟随数据变化：删除/重命名后自动回退到第一个可用模型源
+  const selectedId = selectedProvider && aiConfig.providers[selectedProvider]
+    ? selectedProvider
+    : providerIds[0] ?? null
+
+  // 选中模型源持久化（与胶卷页视图偏好一致：跨页面/重启保留）
+  useEffect(() => {
+    try {
+      if (selectedId) window.localStorage.setItem(AI_SELECTED_PROVIDER_KEY, selectedId)
+      else window.localStorage.removeItem(AI_SELECTED_PROVIDER_KEY)
+    } catch {
+      // localStorage 不可用时忽略
+    }
+  }, [selectedId])
+
+  // 切换模型源时退出标识编辑态
+  useEffect(() => { setEditingId(false) }, [selectedId])
   const defaultOptions = providerIds.flatMap(providerId => (
     aiConfig.providers[providerId].models
       .filter(model => model.trim())
@@ -1498,10 +2122,31 @@ function AiTab() {
         },
       },
     }))
+    // 新建后自动选中并进入标识编辑态，方便直接命名
+    cancelEditRef.current = false
+    setSelectedProvider(providerId)
+    setIdDraft(providerId)
+    setEditingId(true)
+  }
+
+  const commitProviderId = () => {
+    setEditingId(false)
+    if (cancelEditRef.current) {
+      cancelEditRef.current = false
+      return
+    }
+    if (!selectedId) return
+    const next = idDraft.trim()
+    if (!next || next === selectedId) return
+    if (aiConfig.providers[next]) {
+      toast.error('模型源标识已存在')
+      return
+    }
+    updateProviderId(selectedId, next)
+    setSelectedProvider(next)
   }
 
   const removeProvider = (providerId: string) => {
-    if (!confirm(`确定要删除模型源 ${providerId} 吗？`)) return
     setAiConfig(prev => {
       const providers = Object.fromEntries(Object.entries(prev.providers).filter(([id]) => id !== providerId))
       const default_model = prev.default_model.startsWith(`${providerId}:`) ? '' : prev.default_model
@@ -1512,6 +2157,7 @@ function AiTab() {
       const rest = Object.fromEntries(Object.entries(prev).filter(([id]) => id !== providerId))
       return rest
     })
+    setDeleteProviderId(null)
   }
 
   const updateModel = (providerId: string, index: number, value: string) => {
@@ -1694,209 +2340,333 @@ function AiTab() {
     )
   }
 
+  const provider = selectedId ? aiConfig.providers[selectedId] : null
+  const showKey = selectedId ? showKeys[selectedId] === true : false
+  const modelCandidateListId = selectedId ? `ai-model-candidates-${selectedId.replace(/[^a-zA-Z0-9_-]/g, '-')}` : ''
+  const candidates = selectedId ? (modelCandidates[selectedId] || []) : []
+  const configured = Boolean(provider && provider.base_url.trim() && provider.api_key.trim())
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-medium">模型源</h3>
-          <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-            每个模型源独立配置；请按模型实际能力标记视觉理解、工具调用和结构化输出。
-          </p>
+    <div className="flex h-full min-h-0">
+      {/* ── 左侧：模型源列表（master-detail 主列表） ── */}
+      <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-r bg-card" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex h-9 shrink-0 items-center justify-between border-b px-3" style={{ borderColor: 'var(--border)' }}>
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>模型源</span>
+          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] tabular-nums" style={{ color: 'var(--foreground)' }}>{providerIds.length}</span>
         </div>
-        <button onClick={addProvider}
-          className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-2 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-          <Plus size={14} /> 添加模型源
-        </button>
-      </div>
 
-      {providerIds.length === 0 && (
-        <div className="rounded-lg border border-dashed px-4 py-8 text-center text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-          暂无模型源，请先添加。
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+          {providerIds.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 p-6 text-center">
+              <span className="flex size-10 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
+                <Server size={18} style={{ color: 'var(--muted-foreground)' }} />
+              </span>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>暂无模型源，点击下方添加</p>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {providerIds.map(providerId => (
+                <ProviderListItem
+                  key={providerId}
+                  id={providerId}
+                  provider={aiConfig.providers[providerId]}
+                  selected={selectedId === providerId}
+                  isDefault={
+                    aiConfig.default_model.startsWith(`${providerId}:`) ||
+                    aiConfig.default_image_model.startsWith(`${providerId}:`)
+                  }
+                  onClick={() => setSelectedProvider(providerId)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
 
-      {providerIds.map(providerId => {
-        const provider = aiConfig.providers[providerId]
-        const showKey = showKeys[providerId] === true
-        const modelCandidateListId = `ai-model-candidates-${providerId.replace(/[^a-zA-Z0-9_-]/g, '-')}`
-        const candidates = modelCandidates[providerId] || []
-        return (
-          <section key={providerId} className="space-y-4 rounded-xl border p-5 shadow-sm"
-            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-            <div className="flex items-end gap-2 border-b pb-4" style={{ borderColor: 'var(--border)' }}>
-              <div className="flex-1">
-                <label className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
-                  模型源标识
-                </label>
-                <input defaultValue={providerId} onBlur={e => updateProviderId(providerId, e.target.value)}
-                  className="w-full rounded border px-3 py-1.5 text-sm font-medium outline-none" style={inputStyle} />
-              </div>
-              <button onClick={() => removeProvider(providerId)}
-                className="flex h-8 w-8 items-center justify-center rounded-md border transition-opacity hover:opacity-80"
-                style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }} aria-label={`删除模型源 ${providerId}`}>
-                <Trash2 size={14} />
-              </button>
-            </div>
+        <div className="shrink-0 border-t p-2" style={{ borderColor: 'var(--border)' }}>
+          <button onClick={addProvider} className={`${btnOutline} w-full justify-center`}>
+            <Plus size={14} /> 添加模型源
+          </button>
+        </div>
+      </aside>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Field label="API 地址" description="OpenAI 兼容的 API 地址，如 https://api.openai.com/v1">
-                <input type="text" value={provider.base_url}
-                  onChange={e => updateProvider(providerId, { base_url: e.target.value })}
-                  className="w-full rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle} />
-              </Field>
-
-              <Field label="API Key">
-                <div className="relative">
-                  <input type={showKey ? 'text' : 'password'} value={provider.api_key}
-                    onChange={e => updateProvider(providerId, { api_key: e.target.value })}
-                    className="w-full rounded border px-3 py-1.5 pr-9 text-sm outline-none" style={inputStyle} />
-                  <button type="button" onClick={() => setShowKeys(prev => ({ ...prev, [providerId]: !showKey }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors"
-                    style={{ color: 'var(--muted-foreground)' }} aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}>
-                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </Field>
-            </div>
-
-            <Field label="模型列表" description="“视觉理解”用于读取 Zine 图片；上下文窗口留空时使用自动值，下方显示实际生效值。">
-              <div className="space-y-2">
-                {provider.models.map((model, index) => {
-                  const modelName = model.trim()
-                  const supportsImage = Boolean(modelName) && provider.image_models.includes(modelName)
-                  const supportsVision = Boolean(modelName) && provider.vision_models.includes(modelName)
-                  const supportsTools = Boolean(modelName) && provider.tool_models.includes(modelName)
-                  const supportsStructuredOutput = Boolean(modelName) && provider.structured_output_models.includes(modelName)
-                  const configuredContextWindow = provider.context_windows[modelName]
-                  const inferredContextWindow = inferAiModelContextWindow(modelName)
-                  const effectiveContextWindow = configuredContextWindow ?? inferredContextWindow
-                  return (
-                    <div key={index} className="flex flex-wrap gap-2">
-                      <input value={model} onChange={e => updateModel(providerId, index, e.target.value)} placeholder="gpt-4o"
-                        list={candidates.length > 0 ? modelCandidateListId : undefined}
-                        className="min-w-[12rem] flex-1 rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle} />
-                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
-                        style={{
-                          borderColor: supportsVision ? '#2563eb' : 'var(--border)',
-                          color: supportsVision ? '#2563eb' : 'var(--muted-foreground)',
-                          backgroundColor: supportsVision ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
-                        }}>
-                        <input type="checkbox" checked={supportsVision} disabled={!model.trim()}
-                          onChange={e => toggleCapabilityModel(providerId, model, 'vision_models', e.target.checked)} className="sr-only" />
-                        <Eye size={13} /> 视觉理解
-                      </label>
-                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
-                        style={{
-                          borderColor: supportsTools ? '#7c3aed' : 'var(--border)',
-                          color: supportsTools ? '#7c3aed' : 'var(--muted-foreground)',
-                          backgroundColor: supportsTools ? 'rgba(124, 58, 237, 0.08)' : 'transparent',
-                        }}>
-                        <input type="checkbox" checked={supportsTools} disabled={!model.trim()}
-                          onChange={e => toggleCapabilityModel(providerId, model, 'tool_models', e.target.checked)} className="sr-only" />
-                        <Settings size={13} /> 工具调用
-                      </label>
-                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
-                        style={{
-                          borderColor: supportsStructuredOutput ? '#059669' : 'var(--border)',
-                          color: supportsStructuredOutput ? '#059669' : 'var(--muted-foreground)',
-                          backgroundColor: supportsStructuredOutput ? 'rgba(5, 150, 105, 0.08)' : 'transparent',
-                        }}>
-                        <input type="checkbox" checked={supportsStructuredOutput} disabled={!model.trim()}
-                          onChange={e => toggleCapabilityModel(providerId, model, 'structured_output_models', e.target.checked)} className="sr-only" />
-                        <Check size={13} /> 结构化输出
-                      </label>
-                      <label className={`flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${!model.trim() ? 'cursor-not-allowed opacity-40' : ''}`}
-                        style={{
-                          borderColor: supportsImage ? '#f59e0b' : 'var(--border)',
-                          color: supportsImage ? '#d97706' : 'var(--muted-foreground)',
-                          backgroundColor: supportsImage ? 'rgba(245, 158, 11, 0.08)' : 'transparent',
-                        }}>
-                        <input type="checkbox" checked={supportsImage} disabled={!model.trim()}
-                          onChange={e => toggleImageModel(providerId, model, e.target.checked)} className="sr-only" />
-                        <ImageIcon size={13} /> 图片生成
-                      </label>
-                      <div className="min-w-[10.5rem] flex-1 sm:max-w-[12rem]">
-                        <input
-                          type="number"
-                          min={1}
-                          step={1000}
-                          value={configuredContextWindow ?? ''}
-                          placeholder={String(inferredContextWindow)}
-                          disabled={!modelName}
-                          onChange={event => updateContextWindow(providerId, model, event.target.value)}
-                          aria-label={`${modelName || '未命名模型'} 上下文窗口`}
-                          className="h-8 w-full rounded border px-2 text-xs outline-none disabled:opacity-40"
-                          style={inputStyle}
-                        />
-                        <p className="mt-0.5 px-0.5 text-[10px] leading-tight" style={{ color: 'var(--muted-foreground)' }}>
-                          生效 {formatContextWindow(effectiveContextWindow)} tokens
-                          {configuredContextWindow === undefined ? ' · 自动' : ' · 自定义'}
-                        </p>
-                      </div>
-                      <button onClick={() => removeModel(providerId, index)}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded border"
-                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }} aria-label="删除模型">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )
-                })}
-                {candidates.length > 0 && (
-                  <datalist id={modelCandidateListId}>
-                    {candidates.map(model => <option key={model} value={model} />)}
-                  </datalist>
+      {/* ── 右侧：模型源详情 ── */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {!provider || !selectedId ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6" style={{ color: 'var(--muted-foreground)' }}>
+            <span className="flex size-14 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
+              <Sparkles size={24} />
+            </span>
+            <p className="text-sm">暂无模型源，请先添加</p>
+            <button onClick={addProvider}
+              className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-secondary"
+              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+              <Plus size={14} /> 添加模型源
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* 详情头部 */}
+            <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5" style={{ borderColor: 'var(--border)' }}>
+              <div className="min-w-0">
+                {editingId ? (
+                  <input
+                    autoFocus
+                    value={idDraft}
+                    onChange={e => setIdDraft(e.target.value)}
+                    onBlur={commitProviderId}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitProviderId()
+                      if (e.key === 'Escape') {
+                        cancelEditRef.current = true
+                        setEditingId(false)
+                      }
+                    }}
+                    className={`${inputClass} h-7 w-52 font-medium`}
+                    style={inputStyle}
+                    aria-label="模型源标识"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate font-serif text-base font-medium" style={{ color: 'var(--foreground)' }}>{selectedId}</h2>
+                    <button
+                      onClick={() => { cancelEditRef.current = false; setIdDraft(selectedId); setEditingId(true) }}
+                      className="rounded p-1 transition-colors hover:bg-secondary"
+                      style={{ color: 'var(--muted-foreground)' }}
+                      aria-label="重命名模型源"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    {(aiConfig.default_model.startsWith(`${selectedId}:`) || aiConfig.default_image_model.startsWith(`${selectedId}:`)) && (
+                      <Badge tone="green">默认</Badge>
+                    )}
+                  </div>
                 )}
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <button onClick={() => addModel(providerId)}
-                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs"
-                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                    <Plus size={14} /> 添加模型
-                  </button>
-                  <button onClick={() => handleFetchModels(providerId)} disabled={fetchingProvider === providerId}
-                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs disabled:opacity-50"
-                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                    {fetchingProvider === providerId ? <Loader2 size={12} className="animate-spin" /> : null}
-                    获取模型
-                  </button>
-                </div>
+                <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                  {provider.base_url || '未配置 API 地址'}
+                  <span className="mx-1.5">·</span>
+                  {configured ? '已配置' : '未配置'}
+                </p>
               </div>
-            </Field>
-          </section>
-        )
-      })}
+              <div className="flex shrink-0 items-center gap-2">
+                <button onClick={() => handleFetchModels(selectedId)} disabled={fetchingProvider === selectedId}
+                  className={btnOutline}>
+                  {fetchingProvider === selectedId ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  获取模型
+                </button>
+                <button onClick={() => setDeleteProviderId(selectedId)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md border transition-colors hover:bg-secondary"
+                  style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}
+                  aria-label={`删除模型源 ${selectedId}`}>
+                  <Trash2 size={14} />
+                </button>
+                <button onClick={handleSave} disabled={saving}
+                  className={btnPrimary}
+                  style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={14} />}
+                  {saving ? '保存中...' : '保存'}
+                </button>
+              </div>
+            </header>
 
-      <div className="space-y-4 rounded-xl border p-5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-        <h3 className="text-sm font-medium">默认模型</h3>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="默认对话模型">
-            <select value={aiConfig.default_model} onChange={e => setAiConfig(prev => ({ ...prev, default_model: e.target.value }))}
-              className="w-full rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle}>
-              <option value="">请选择默认对话模型</option>
-              {defaultOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </Field>
-          <Field label="默认图片生成模型" description="仅显示已标记图片生成能力的模型。">
-            <select value={aiConfig.default_image_model}
-              onChange={e => setAiConfig(prev => ({ ...prev, default_image_model: e.target.value }))}
-              className="w-full rounded border px-3 py-1.5 text-sm outline-none" style={inputStyle}>
-              <option value="">请选择默认图片生成模型</option>
-              {defaultImageOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </Field>
-        </div>
+            {/* 详情内容 */}
+            <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-5">
+              <div className="mx-auto max-w-3xl space-y-5">
+                <Section title="连接信息" description="OpenAI 兼容的 API 端点。填写后可通过右上角「获取模型」连接并拉取可用模型列表。">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <Field label="API 地址" description="如 https://api.openai.com/v1">
+                      <input type="text" value={provider.base_url}
+                        onChange={e => updateProvider(selectedId, { base_url: e.target.value })}
+                        className={inputClass} style={inputStyle} />
+                    </Field>
+                    <Field label="API Key">
+                      <div className="relative">
+                        <input type={showKey ? 'text' : 'password'} value={provider.api_key}
+                          onChange={e => updateProvider(selectedId, { api_key: e.target.value })}
+                          className={`${inputClass} pr-9`} style={inputStyle} />
+                        <button type="button" onClick={() => setShowKeys(prev => ({ ...prev, [selectedId]: !showKey }))}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors"
+                          style={{ color: 'var(--muted-foreground)' }} aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}>
+                          {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </Field>
+                  </div>
+                </Section>
+
+                <Section title="模型列表" description="标记模型实际能力；“上下文窗口”留空时自动推断，右侧显示实际生效值。">
+                  <div className="space-y-2">
+                    {provider.models.map((model, index) => {
+                      const modelName = model.trim()
+                      const supportsImage = Boolean(modelName) && provider.image_models.includes(modelName)
+                      const supportsVision = Boolean(modelName) && provider.vision_models.includes(modelName)
+                      const supportsTools = Boolean(modelName) && provider.tool_models.includes(modelName)
+                      const supportsStructuredOutput = Boolean(modelName) && provider.structured_output_models.includes(modelName)
+                      const configuredContextWindow = provider.context_windows[modelName]
+                      const inferredContextWindow = inferAiModelContextWindow(modelName)
+                      const effectiveContextWindow = configuredContextWindow ?? inferredContextWindow
+                      return (
+                        <div key={index} className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+                          <div className="flex items-center gap-2">
+                            <input value={model} onChange={e => updateModel(selectedId, index, e.target.value)}
+                              placeholder="gpt-4o"
+                              list={candidates.length > 0 ? modelCandidateListId : undefined}
+                              className={`${inputClass} min-w-0 flex-1`} style={inputStyle} />
+                            <div className="w-32 shrink-0">
+                              <input
+                                type="number"
+                                min={1}
+                                step={1000}
+                                value={configuredContextWindow ?? ''}
+                                placeholder={String(inferredContextWindow)}
+                                disabled={!modelName}
+                                onChange={event => updateContextWindow(selectedId, model, event.target.value)}
+                                aria-label={`${modelName || '未命名模型'} 上下文窗口 (tokens)`}
+                                title="上下文窗口 (tokens)"
+                                className={`${inputClass} pr-1 disabled:opacity-40`}
+                                style={inputStyle}
+                              />
+                            </div>
+                            <button onClick={() => removeModel(selectedId, index)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors hover:bg-secondary"
+                              style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                              aria-label="删除模型">
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <CapabilityChip icon={Eye} label="视觉理解" color={CAPABILITY_COLORS.vision} active={supportsVision}
+                                disabled={!modelName}
+                                onClick={() => toggleCapabilityModel(selectedId, model, 'vision_models', !supportsVision)} />
+                              <CapabilityChip icon={Settings} label="工具调用" color={CAPABILITY_COLORS.tools} active={supportsTools}
+                                disabled={!modelName}
+                                onClick={() => toggleCapabilityModel(selectedId, model, 'tool_models', !supportsTools)} />
+                              <CapabilityChip icon={Check} label="结构化输出" color={CAPABILITY_COLORS.structured} active={supportsStructuredOutput}
+                                disabled={!modelName}
+                                onClick={() => toggleCapabilityModel(selectedId, model, 'structured_output_models', !supportsStructuredOutput)} />
+                              <CapabilityChip icon={ImageIcon} label="图片生成" color={CAPABILITY_COLORS.image} active={supportsImage}
+                                disabled={!modelName}
+                                onClick={() => toggleImageModel(selectedId, model, !supportsImage)} />
+                            </div>
+                            <span className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                              生效 {formatContextWindow(effectiveContextWindow)} tokens
+                              {configuredContextWindow === undefined ? ' · 自动' : ' · 自定义'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {candidates.length > 0 && (
+                      <datalist id={modelCandidateListId}>
+                        {candidates.map(model => <option key={model} value={model} />)}
+                      </datalist>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button onClick={() => addModel(selectedId)} className={btnOutline}>
+                        <Plus size={14} /> 添加模型
+                      </button>
+                      <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                        提示：填好 API 地址和 Key 后，可点击右上角「获取模型」拉取可用模型列表。
+                      </span>
+                    </div>
+                  </div>
+                </Section>
+
+                <Section title="默认模型" description="未指定模型时使用的回退值，仅显示已配置的模型。">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <Field label="默认对话模型">
+                      <SelectDropdown
+                        value={aiConfig.default_model}
+                        options={defaultOptions}
+                        onChange={value => setAiConfig(prev => ({ ...prev, default_model: String(value) }))}
+                        placeholder="请选择默认对话模型"
+                        clearLabel="请选择默认对话模型"
+                        ariaLabel="默认对话模型"
+                      />
+                    </Field>
+                    <Field label="默认图片生成模型" description="仅显示已标记图片生成能力的模型。">
+                      <SelectDropdown
+                        value={aiConfig.default_image_model}
+                        options={defaultImageOptions}
+                        onChange={value => setAiConfig(prev => ({ ...prev, default_image_model: String(value) }))}
+                        placeholder="请选择默认图片生成模型"
+                        clearLabel="请选择默认图片生成模型"
+                        ariaLabel="默认图片生成模型"
+                      />
+                    </Field>
+                  </div>
+                </Section>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="flex justify-end">
-        <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-1.5 rounded-md px-4 py-2 text-xs disabled:opacity-50"
-          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          {saving ? '保存中...' : '保存'}
-        </button>
-      </div>
+      <SimpleDeleteDialog
+        isOpen={!!deleteProviderId}
+        title="删除模型源"
+        message={deleteProviderId ? `确定要删除模型源「${deleteProviderId}」吗？其模型配置与默认模型选择将一并移除。` : ''}
+        onConfirm={() => {
+          if (deleteProviderId) removeProvider(deleteProviderId)
+        }}
+        onCancel={() => setDeleteProviderId(null)}
+        t={(key) => t(key, language)}
+      />
     </div>
+  )
+}
+
+// ─── AiTab 辅助组件（桌面 master-detail 风格） ─────────
+
+function ProviderListItem({ id, provider, selected, isDefault, onClick }: {
+  id: string
+  provider: AiProviderConfig
+  selected: boolean
+  isDefault: boolean
+  onClick: () => void
+}) {
+  const configured = Boolean(provider.base_url.trim() && provider.api_key.trim())
+  const modelCount = provider.models.filter(model => model.trim()).length
+  return (
+    <button onClick={onClick}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${selected ? '' : 'hover:bg-secondary'}`}
+      style={{ backgroundColor: selected ? 'var(--accent)' : 'transparent' }}>
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md"
+        style={{ backgroundColor: selected ? 'color-mix(in srgb, var(--accent-foreground) 14%, transparent)' : 'var(--muted)' }}>
+        <Server size={14} style={{ color: selected ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-xs font-medium" style={{ color: selected ? 'var(--accent-foreground)' : 'var(--foreground)' }}>{id}</span>
+          {isDefault && (
+            <span className="shrink-0 rounded px-1 py-px text-[9px] font-medium"
+              style={{ backgroundColor: 'color-mix(in srgb, #4f9d69 14%, transparent)', color: '#4f9d69' }}>默认</span>
+          )}
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[10px]"
+          style={{ color: selected ? 'color-mix(in srgb, var(--accent-foreground) 72%, transparent)' : 'var(--muted-foreground)' }}>
+          <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: configured ? '#4f9d69' : 'var(--muted-foreground)' }} />
+          {configured ? `${modelCount} 个模型` : '未配置'}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function CapabilityChip({ label, icon: Icon, color, active, disabled, onClick }: {
+  label: string
+  icon: typeof Eye
+  color: string
+  active: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+      style={capabilityStyle(color, active)}>
+      <Icon size={13} /> {label}
+    </button>
   )
 }
 
@@ -1923,12 +2693,13 @@ const LOG_LEVELS = [
 ]
 
 const LOG_LEVEL_COLORS: Record<string, { bg: string; text: string }> = {
-  info: { bg: '#dbeafe', text: '#1e40af' },
-  warn: { bg: '#fef3c7', text: '#92400e' },
-  error: { bg: '#fee2e2', text: '#991b1b' },
+  info: { bg: 'color-mix(in srgb, #3b82f6 14%, transparent)', text: '#3b82f6' },
+  warn: { bg: 'color-mix(in srgb, #f59e0b 14%, transparent)', text: '#d97706' },
+  error: { bg: 'color-mix(in srgb, var(--destructive) 12%, transparent)', text: 'var(--destructive)' },
 }
 
 function LogTab() {
+  const { language } = usePreferences()
   const [logConfig, setLogConfig] = useState({ enabled: false, max_entries: 1000 })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -1937,6 +2708,7 @@ function LogTab() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
   const [stats, setStats] = useState<any>(null)
+  const [clearLogsDialog, setClearLogsDialog] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -1981,10 +2753,10 @@ function LogTab() {
   }
 
   const handleClearLogs = async () => {
-    if (!confirm('确定要清空所有日志吗？')) return
     try {
       await (window as any).go.main.App.ClearLogs()
       toast.success('日志已清空')
+      setClearLogsDialog(false)
       fetchLogs()
       fetchStats()
     } catch {}
@@ -2017,7 +2789,7 @@ function LogTab() {
             onChange={e => setLogConfig(prev => ({ ...prev, max_entries: parseInt(e.target.value) || 1000 }))}
             min={100}
             max={10000}
-            className="w-full px-3 py-1.5 text-sm rounded border outline-none"
+            className={inputClass}
             style={inputStyle} />
         </Field>
 
@@ -2035,14 +2807,8 @@ function LogTab() {
       {stats && (
         <Section title="日志统计">
           <div className="grid grid-cols-2 gap-3">
-            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
-              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>总日志数</p>
-              <p className="text-lg font-medium">{stats.total || 0}</p>
-            </div>
-            <div className="px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
-              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>状态</p>
-              <p className="text-lg font-medium">{stats.enabled ? '已启用' : '已禁用'}</p>
-            </div>
+            <CacheStat label="总日志数" value={String(stats.total || 0)} />
+            <CacheStat label="状态" value={stats.enabled ? '已启用' : '已禁用'} />
           </div>
           {stats.by_category && (
             <div className="flex flex-wrap gap-2 mt-2">
@@ -2062,32 +2828,35 @@ function LogTab() {
         {/* 过滤器 */}
         <div className="flex items-center gap-2 mb-4">
           <Filter size={14} style={{ color: 'var(--muted-foreground)' }} />
-          <select value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value)}
-            className="px-2 py-1 text-xs rounded border outline-none"
-            style={inputStyle}>
-            {LOG_CATEGORIES.map(c => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
-          <select value={levelFilter}
-            onChange={e => setLevelFilter(e.target.value)}
-            className="px-2 py-1 text-xs rounded border outline-none"
-            style={inputStyle}>
-            {LOG_LEVELS.map(l => (
-              <option key={l.value} value={l.value}>{l.label}</option>
-            ))}
-          </select>
+          <SelectDropdown
+            value={categoryFilter}
+            options={LOG_CATEGORIES.filter(c => c.value !== '').map(c => ({ value: c.value, label: c.label }))}
+            onChange={value => setCategoryFilter(String(value))}
+            placeholder="全部"
+            clearLabel="全部"
+            size="sm"
+            ariaLabel="日志分类筛选"
+            className="w-36"
+          />
+          <SelectDropdown
+            value={levelFilter}
+            options={LOG_LEVELS.filter(l => l.value !== '').map(l => ({ value: l.value, label: l.label }))}
+            onChange={value => setLevelFilter(String(value))}
+            placeholder="全部"
+            clearLabel="全部"
+            size="sm"
+            ariaLabel="日志级别筛选"
+            className="w-36"
+          />
           <div className="flex-1" />
           <button onClick={() => (window as any).go.main.App.OpenLogDir()}
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded border"
-            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+            className={btnOutline}>
             <FolderOpen size={12} />
             打开目录
           </button>
-          <button onClick={handleClearLogs}
-            className="flex items-center gap-1 px-2 py-1 text-xs rounded border"
-            style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}>
+          <button onClick={() => setClearLogsDialog(true)}
+            className={btnOutline}
+            style={{ color: 'var(--destructive)' }}>
             <Trash size={12} />
             清空
           </button>
@@ -2135,6 +2904,15 @@ function LogTab() {
           </div>
         )}
       </Section>
+
+      <SimpleDeleteDialog
+        isOpen={clearLogsDialog}
+        title="清空日志"
+        message="确定要清空所有操作日志吗？此操作不可撤销。"
+        onConfirm={handleClearLogs}
+        onCancel={() => setClearLogsDialog(false)}
+        t={(key) => t(key, language)}
+      />
     </div>
   )
 }

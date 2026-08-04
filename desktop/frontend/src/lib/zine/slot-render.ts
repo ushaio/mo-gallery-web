@@ -9,9 +9,8 @@ export function getZineAssetImageSource(asset?: ZineAsset, preferred: 'full' | '
   return source ? resolveAssetUrl(source) : ''
 }
 
-export function renderSlot(slot: Slot, pageWmm: number, assets: ZineAsset[] = []): RenderedSlot {
-  const left = slot.page === 'right' ? pageWmm + slot.x : slot.x
-  const base = { position: 'absolute', left, top: slot.y, width: slot.w, height: slot.h, overflow: 'hidden' } as const
+export function renderSlot(slot: Slot, _pageWmm: number, assets: ZineAsset[] = []): RenderedSlot {
+  const base = { position: 'absolute', left: slot.x, top: slot.y, width: slot.w, height: slot.h, overflow: 'hidden' } as const
   const transform = `rotate(${slot.rotation}deg)`
   const htmlStyle = { ...base, zIndex: slot.zIndex, transform } as CSSProperties
   // pdfStyle 不能带 zIndex：react-pdf 会按 zIndex 重排绘制顺序，且把无 zIndex 的

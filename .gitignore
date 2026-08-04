@@ -67,6 +67,10 @@ public/uploads
 .kilocode
 
 # desktop client build artifacts
+/desktop/testdata/local-library/manifest.local.json
+/desktop/testdata/local-library/samples/
+/desktop/testdata/local-library/reports/
+/desktop/testdata/**/__pycache__/
 /desktop/frontend/node_modules
 /desktop/frontend/dist
 /desktop/frontend/package.json.md5

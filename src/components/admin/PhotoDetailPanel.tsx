@@ -52,6 +52,7 @@ interface PhotoDetailPanelProps {
   onUnauthorized: () => void
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
+  initialTab?: 'info' | 'story'
 }
 
 export function PhotoDetailPanel({
@@ -66,6 +67,7 @@ export function PhotoDetailPanel({
   onUnauthorized,
   t,
   notify,
+  initialTab = 'info',
 }: PhotoDetailPanelProps) {
   const [editData, setEditData] = useState({
     title: '',
@@ -120,7 +122,7 @@ export function PhotoDetailPanel({
         filmRollName: photo.filmRollName || '',
       })
       setDisplayColors(photo.dominantColors || [])
-      setActiveTab('info')
+      setActiveTab(initialTab)
       setStory(null)
       setStoryLoaded(false)
       setStoryData({ title: '', content: '', isPublished: false })
@@ -128,7 +130,7 @@ export function PhotoDetailPanel({
       setShowFilmRollSelector(false)
       setSelectedPhotoIds(new Set())
     }
-  }, [photo])
+  }, [initialTab, photo])
 
   // Load story when story tab is active
   useEffect(() => {

@@ -2,8 +2,15 @@
 
 import { useAdmin } from '../layout'
 import { PhotosTab } from '@/app/admin/photos/PhotosTab'
+import type { PhotosFilterPreference } from '@/lib/admin-preferences'
+import type { PhotoDto } from '@/lib/api/types'
 
-export default function PhotosPage() {
+interface PhotosPageProps {
+  initialFilters?: Partial<Pick<PhotosFilterPreference, 'categoryFilter' | 'photoTypeFilter' | 'albumFilter' | 'onlyFeatured'>>
+  onPreview?: (photo: PhotoDto) => void
+}
+
+export default function PhotosPage({ initialFilters, onPreview: onPreviewOverride }: PhotosPageProps) {
   const {
     photos,
     categories,
@@ -39,10 +46,11 @@ export default function PhotosPage() {
       onBatchAction={onBatchAction}
       onRefresh={onRefresh}
       onToggleFeatured={onToggleFeatured}
-      onPreview={onPreview}
+      onPreview={onPreviewOverride ?? onPreview}
       t={t}
       settings={settings}
       notify={notify}
+      initialFilters={initialFilters}
     />
   )
 }

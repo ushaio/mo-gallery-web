@@ -91,6 +91,38 @@ export async function getFeaturedPhotos(): Promise<PhotoDto[]> {
   return apiRequestData<PhotoDto[]>('/api/photos/featured')
 }
 
+export interface AdminPhotosQuery {
+  category?: string
+  search?: string
+  photoType?: 'digital' | 'film'
+  featured?: boolean
+  page?: number
+  pageSize?: number
+  sortBy?: 'createdAt' | 'takenAt'
+  sortOrder?: 'asc' | 'desc'
+}
+
+export async function getAdminPhotos(
+  token: string,
+  params: AdminPhotosQuery = {},
+): Promise<{ data: PhotoDto[]; meta: PhotoPaginationMeta }> {
+  const query = buildQuery({
+    category: params.category && params.category !== '全部' && params.category !== 'all' ? params.category : undefined,
+    search: params.search,
+    photoType: params.photoType,
+    featured: params.featured === undefined ? undefined : params.featured ? 'true' : 'false',
+    page: params.page,
+    pageSize: params.pageSize,
+    sortBy: params.sortBy,
+    sortOrder: params.sortOrder,
+  })
+  return apiRequestWithMeta<PhotoDto[], PhotoPaginationMeta>(
+    `/api/admin/photos${query}`,
+    {},
+    token,
+  )
+}
+
 // Check for duplicate photos by file hash (single)
 export async function checkDuplicatePhoto(
   token: string,

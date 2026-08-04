@@ -1,3 +1,4 @@
+import { migrateProjectGeometry } from './geometry'
 import type { ZineProject } from './types'
 
 const DB_NAME = 'mo-gallery-zine'
@@ -54,7 +55,7 @@ async function withStore<T>(storeName: string, mode: IDBTransactionMode, action:
 
 export async function listZineProjects(): Promise<ZineProject[]> {
   const projects = await withStore<ZineProject[]>(PROJECTS_STORE, 'readonly', (store) => store.getAll())
-  return projects.sort((a, b) => b.updatedAt - a.updatedAt)
+  return projects.map(migrateProjectGeometry).sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export async function getZineProject(id: string): Promise<ZineProject | null> {

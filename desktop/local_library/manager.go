@@ -62,6 +62,7 @@ type Manager struct {
 	thumbnailSem        chan struct{}
 	probeLibrary        libraryProbeFunc
 	startWatch          watcherStartFunc
+	skipInitialScan     bool
 	recoveryInterval    time.Duration
 	folderMutationMu    sync.Mutex
 	assetFileMutationMu sync.RWMutex
@@ -282,7 +283,9 @@ func (m *Manager) activateLibrarySession(session *librarySession) (LibrarySnapsh
 	}
 	if session.state != "repair_required" {
 		_ = m.startSessionWatcher(session)
-		_ = m.StartScan()
+		if !m.skipInitialScan {
+			_ = m.StartScan()
+		}
 	}
 	return m.Snapshot()
 }
@@ -576,7 +579,7 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 			}
 			return nil
 		}
-		if !isSupportedMedia(path) {
+		if !isIndexableFile(path) {
 			return nil
 		}
 		relative, err := filepath.Rel(session.root, path)
@@ -1044,9 +1047,9 @@ func (m *Manager) startWatcher(session *librarySession) error {
 				return
 			}
 
-			if !isSupportedMedia(event.Name) {
+			if !isIndexableFile(event.Name) {
 				// A removed or renamed path can no longer be statted, so an
-				// unsupported suffix may represent a directory and its subtree.
+				// unindexable suffix may represent a directory and its subtree.
 				// Fall back to a full scan rather than silently losing descendants.
 				if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 					needsFullScan = true

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, FolderInput, Heart, ImageOff, Loader2, Maximize2, Plus, RefreshCw, RotateCcw, Star, Trash2, X } from 'lucide-react'
+import { ExternalLink, FileText, FolderInput, Heart, ImageOff, Loader2, Maximize2, Pencil, Plus, RefreshCw, RotateCcw, Star, Trash2, X } from 'lucide-react'
+import { isPhotoAsset } from './types'
 import type { LocalAsset, LocalCollection, LocalTag } from './types'
 import type { LocalLibraryCopy } from './copy'
 
@@ -32,6 +33,21 @@ function formatBytes(value: number) {
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
   if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`
   return `${(value / 1024 ** 3).toFixed(2)} GB`
+}
+
+function formatDate(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return '—'
+  const date = typeof value === 'number' ? new Date(value / 1e6) : new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <span className="mb-2 block text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
+  )
 }
 
 export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, collections, organizationBusy, onSave, onPreview, onOpenSystem, onMove, onDelete, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing, onSetTags, onCreateTag, onSetCollections }: Props) {
@@ -118,23 +134,29 @@ export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, 
   const unavailable = asset.previewStatus === 'unavailable'
   const missing = asset.availability === 'missing'
   const trashed = asset.availability === 'trashed'
+  const isPhoto = isPhotoAsset(asset)
   return (
     <aside className="custom-scrollbar hidden h-full w-[292px] shrink-0 overflow-y-auto border-l bg-card xl:block" style={{ borderColor: 'var(--border)' }} data-local-library-guide="details">
       <div className="border-b p-3" style={{ borderColor: 'var(--border)' }}>
         <button type="button" onClick={() => onPreview(asset)} disabled={previewPending || missing || trashed} className="group relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-md bg-secondary disabled:cursor-not-allowed">
-          {asset.previewStatus === 'ready' ? (
+          {asset.previewStatus === 'ready' && isPhoto ? (
             <img src={asset.previewUrl} alt="" className="h-full w-full object-contain" />
-          ) : previewPending ? (
+          ) : previewPending && isPhoto ? (
             <Loader2 size={28} className="animate-spin" style={{ color: 'var(--muted-foreground)' }} />
-          ) : (
+          ) : isPhoto ? (
             <ImageOff size={28} style={{ color: 'var(--muted-foreground)' }} />
+          ) : (
+            <span className="flex flex-col items-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
+              <FileText size={30} strokeWidth={1.4} />
+              <span className="max-w-[80%] truncate text-[10px] uppercase tracking-wider">{asset.format}</span>
+            </span>
           )}
           {!previewPending && !missing && !trashed && <span className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 transition group-hover:opacity-100"><Maximize2 size={15} /></span>}
         </button>
-        {previewPending && <p className="mt-2 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{copy.generatingPreview}</p>}
+        {previewPending && isPhoto && <p className="mt-2 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{copy.generatingPreview}</p>}
         {missing && <p className="mt-2 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{copy.missingHint}</p>}
         {trashed && asset.trashEntryKind === 'folder' && <p className="mt-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-[10px] leading-4 text-amber-700 dark:text-amber-300">{copy.folderBatchHint}</p>}
-        {!missing && unavailable && (
+        {!missing && unavailable && isPhoto && (
           <div className="mt-2 space-y-2 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>
             <p>{copy.unavailablePreview}</p>
             {asset.previewError && <p className="line-clamp-3 break-words"><span className="font-medium">{copy.previewFailureReason}:</span> {asset.previewError}</p>}
@@ -143,22 +165,35 @@ export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, 
       </div>
 
       <div className="space-y-5 p-4">
+        {/* 标题信息块：双击或点击铅笔编辑 */}
         <div ref={infoEditorRef} onDoubleClick={() => setEditingInfo(true)} className="rounded-md border border-transparent p-1 transition hover:border-border">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-sans text-sm font-medium">{copy.details}</h2>
-            <button
-              type="button"
-              title={favorite ? copy.unmarkFavorite : copy.markFavorite}
-              aria-label={favorite ? copy.unmarkFavorite : copy.markFavorite}
-              onClick={() => {
-                const next = !favorite
-                setFavorite(next)
-                void saveCurrent({ isFavorite: next })
-              }}
-              className="flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-secondary"
-            >
-              <Heart size={17} fill={favorite ? 'currentColor' : 'none'} style={{ color: favorite ? 'var(--primary)' : 'var(--muted-foreground)' }} />
-            </button>
+            <span className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{copy.details}</span>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                title={copy.autoSaveHint}
+                aria-label={copy.autoSaveHint}
+                onClick={() => setEditingInfo(true)}
+                className="flex size-8 items-center justify-center rounded-md hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                type="button"
+                title={favorite ? copy.unmarkFavorite : copy.markFavorite}
+                aria-label={favorite ? copy.unmarkFavorite : copy.markFavorite}
+                onClick={() => {
+                  const next = !favorite
+                  setFavorite(next)
+                  void saveCurrent({ isFavorite: next })
+                }}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-secondary"
+              >
+                <Heart size={17} fill={favorite ? 'currentColor' : 'none'} style={{ color: favorite ? 'var(--primary)' : 'var(--muted-foreground)' }} />
+              </button>
+            </div>
           </div>
           <p className="mt-1 break-all text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{asset.relativePath}</p>
           {editingInfo ? (
@@ -169,16 +204,32 @@ export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, 
             }}>
               <label className="block text-xs"><span className="mb-1.5 block" style={{ color: 'var(--muted-foreground)' }}>{copy.titleField}</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} className="w-full rounded-md border bg-input px-2.5 py-2 outline-none focus:ring-1" /></label>
               <label className="block text-xs"><span className="mb-1.5 block" style={{ color: 'var(--muted-foreground)' }}>{copy.notes}</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} className="w-full resize-none rounded-md border bg-input px-2.5 py-2 outline-none focus:ring-1" /></label>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={finishInfoEditing}
+                  className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                >
+                  {copy.save}
+                </button>
+              </div>
             </div>
           ) : (
             <div className="mt-3 space-y-2 text-xs">
-              <p className="font-medium">{title || asset.fileName}</p>
+              <h2 className="break-words font-sans text-sm font-semibold leading-5">{title || asset.fileName}</h2>
               {notes && <p className="whitespace-pre-wrap leading-5" style={{ color: 'var(--muted-foreground)' }}>{notes}</p>}
             </div>
           )}
+          <div className="mt-2 flex min-h-4 items-center gap-1.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+            {saving && <Loader2 size={10} className="animate-spin" />}
+            {saving ? copy.autoSaving : copy.autoSaveHint}
+          </div>
         </div>
+
+        {/* 标签 */}
         <div>
-          <span className="mb-1.5 block text-xs" style={{ color: 'var(--muted-foreground)' }}>{copy.tags}</span>
+          <SectionLabel label={copy.tags} />
           <div className="flex flex-wrap gap-1.5">
             {assignedTags.map((tag) => <span key={tag.id} className="flex max-w-full items-center gap-1 rounded border bg-secondary px-1.5 py-1 text-[10px]"><span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color || 'var(--muted-foreground)' }} /><span className="truncate">{tag.name}</span><button type="button" disabled={organizationBusy} aria-label={copy.remove} onClick={() => void updateTags(assignedTagIds.filter((id) => id !== tag.id))} className="rounded p-0.5 hover:bg-background disabled:opacity-50"><X size={10} /></button></span>)}
           </div>
@@ -193,48 +244,60 @@ export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, 
             </div>}
           </div>
         </div>
+
+        {/* 集合 */}
         <div>
-          <span className="mb-1.5 block text-xs" style={{ color: 'var(--muted-foreground)' }}>{copy.collections}</span>
-          <div className="max-h-28 space-y-1 overflow-y-auto rounded-md border p-2">
+          <SectionLabel label={copy.collections} />
+          <div className="custom-scrollbar max-h-28 space-y-1 overflow-y-auto rounded-md border p-2">
             {collections.length === 0 ? <p className="text-[10px] text-muted-foreground">{copy.noCollections}</p> : collections.map((collection) => {
               const checked = asset.collections.some((item) => item.id === collection.id)
               return <label key={collection.id} className="flex cursor-pointer items-center gap-2 text-[11px]"><input type="checkbox" disabled={organizationBusy} checked={checked} onChange={() => void onSetCollections(asset.id, checked ? asset.collections.filter((item) => item.id !== collection.id).map((item) => item.id) : [...asset.collections.map((item) => item.id), collection.id])} /><span className="truncate">{collection.name}</span></label>
             })}
           </div>
         </div>
-        <div>
-          <span className="mb-1.5 block text-xs" style={{ color: 'var(--muted-foreground)' }}>{copy.rating}</span>
-          <div className="flex gap-1">{[1,2,3,4,5].map((value) => <button key={value} type="button" onClick={() => { const next = rating === value ? 0 : value; setRating(next); void saveCurrent({ rating: next }) }} className="p-0.5"><Star size={18} fill={value <= rating ? 'currentColor' : 'none'} style={{ color: value <= rating ? 'var(--primary)' : 'var(--muted-foreground)' }} /></button>)}</div>
+
+        {/* 评分 + 颜色标记 */}
+        {isPhoto && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <SectionLabel label={copy.rating} />
+            <div className="flex gap-0.5">{[1,2,3,4,5].map((value) => <button key={value} type="button" title={`${value}★`} onClick={() => { const next = rating === value ? 0 : value; setRating(next); void saveCurrent({ rating: next }) }} className="p-0.5"><Star size={16} fill={value <= rating ? 'currentColor' : 'none'} style={{ color: value <= rating ? 'var(--primary)' : 'var(--muted-foreground)' }} /></button>)}</div>
+          </div>
+          <div>
+            <SectionLabel label={copy.color} />
+            <div className="flex flex-wrap gap-2">{colors.map((value) => <button key={value || 'none'} type="button" title={value || copy.noColor} onClick={() => { setColor(value); void saveCurrent({ colorLabel: value }) }} className="h-5 w-5 rounded-full border-2 transition-transform hover:scale-110" style={{ background: value || 'transparent', borderColor: color === value ? 'var(--foreground)' : 'var(--border)' }} />)}</div>
+          </div>
         </div>
-        <div>
-          <span className="mb-2 block text-xs" style={{ color: 'var(--muted-foreground)' }}>{copy.color}</span>
-          <div className="flex gap-2">{colors.map((value) => <button key={value || 'none'} type="button" onClick={() => { setColor(value); void saveCurrent({ colorLabel: value }) }} className="h-5 w-5 rounded-full border-2" style={{ background: value || 'transparent', borderColor: color === value ? 'var(--foreground)' : 'var(--border)' }} />)}</div>
-        </div>
-        {asset.dominantColors && asset.dominantColors.length > 0 && <div>
-          <span className="mb-2 block text-xs" style={{ color: 'var(--muted-foreground)' }}>{copy.dominantColors}</span>
+        )}
+
+        {/* 主色 */}
+        {isPhoto && asset.dominantColors && asset.dominantColors.length > 0 && <div>
+          <SectionLabel label={copy.dominantColors} />
           <div className="flex h-7 overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
             {asset.dominantColors.map((value) => <span key={value} title={value} className="min-w-0 flex-1" style={{ backgroundColor: value }} />)}
           </div>
         </div>}
-        <div className="flex min-h-5 items-center gap-1.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-          {saving && <Loader2 size={11} className="animate-spin" />}
-          {saving ? copy.autoSaving : copy.autoSaveHint}
-        </div>
 
-        <dl className="grid grid-cols-[78px_1fr] gap-x-3 gap-y-2 border-t pt-4 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-          <dt style={{ color: 'var(--muted-foreground)' }}>{copy.dimensions}</dt><dd>{asset.width && asset.height ? `${asset.width} \u00d7 ${asset.height}` : '\u2014'}</dd>
+        {/* 文件信息 */}
+        <dl className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-2 border-t pt-4 text-[11px]" style={{ borderColor: 'var(--border)' }}>
+          {isPhoto && <><dt style={{ color: 'var(--muted-foreground)' }}>{copy.dimensions}</dt><dd>{asset.width && asset.height ? `${asset.width} \u00d7 ${asset.height}` : '\u2014'}</dd></>}
           <dt style={{ color: 'var(--muted-foreground)' }}>{copy.format}</dt><dd className="uppercase">{asset.format}</dd>
           <dt style={{ color: 'var(--muted-foreground)' }}>{copy.fileSize}</dt><dd>{formatBytes(asset.byteSize)}</dd>
+          {isPhoto && <><dt style={{ color: 'var(--muted-foreground)' }}>{copy.captured}</dt><dd>{formatDate(asset.capturedAt)}</dd></>}
+          <dt style={{ color: 'var(--muted-foreground)' }}>{copy.modified}</dt><dd>{formatDate(asset.modifiedAtNs)}</dd>
+          <dt style={{ color: 'var(--muted-foreground)' }}>{copy.originalPath}</dt><dd className="break-all font-mono text-[10px]">{asset.relativePath}</dd>
         </dl>
+
+        {/* 操作 */}
         <div className="space-y-2 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
           {missing ? (
             <>
               <button type="button" disabled={maintenanceBusy} onClick={() => onRecheckMissing(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:cursor-wait disabled:opacity-50"><RefreshCw size={14} className={maintenanceBusy ? 'animate-spin' : ''} />{copy.recheckMissing}</button>
-              <button type="button" disabled={maintenanceBusy} onClick={() => onRemoveMissing(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:opacity-50" style={{ color: 'var(--destructive)' }}><Trash2 size={14} />{copy.removeMissingRecord}</button>
+              <button type="button" disabled={maintenanceBusy} onClick={() => onRemoveMissing(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs text-destructive hover:bg-secondary disabled:opacity-50"><Trash2 size={14} />{copy.removeMissingRecord}</button>
             </>
           ) : (
             <>
-              {asset.availability === 'active' && unavailable && (
+              {asset.availability === 'active' && unavailable && isPhoto && (
                 <button type="button" disabled={maintenanceBusy} onClick={() => onRetryPreview(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:cursor-wait disabled:opacity-50"><RefreshCw size={14} className={maintenanceBusy ? 'animate-spin' : ''} />{copy.retryPreview}</button>
               )}
               {trashed ? (
@@ -246,7 +309,7 @@ export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, 
                 <>
                   <button type="button" onClick={() => onOpenSystem(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary"><ExternalLink size={14} />{copy.openSystem}</button>
                   <button type="button" onClick={() => onMove(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary"><FolderInput size={14} />{copy.moveAssetsToFolder}</button>
-                  <button type="button" onClick={() => onDelete(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary" style={{ color: 'var(--destructive)' }}><Trash2 size={14} />{copy.delete}</button>
+                  <button type="button" onClick={() => onDelete(asset)} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs text-destructive hover:bg-secondary"><Trash2 size={14} />{copy.delete}</button>
                 </>
               )}
             </>

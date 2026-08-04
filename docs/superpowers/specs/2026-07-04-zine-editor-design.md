@@ -286,10 +286,11 @@ renderSlot(spread: Spread, slot: Slot, pageWmm: number, pageHmm: number): Render
 
 ## 10. 测试
 
-无统一测试框架（与 AGENTS.md 一致）。
+Zine 回归测试使用 Node 内置测试执行器，由前端工作区的 `tsx` 负责加载 TypeScript。
 
-- 单元 / 纯函数：`lib/zine/` 模板 `buildSlots` 与 `slot-render` 的 renderSlot，加进 `tests/zine-slot-render.test.ts`。
-- 类型安全：`pnpm typecheck` / `cd desktop/frontend && npm run build`（tsc + vite build）作为门禁。
+- 单元 / 纯函数测试与源码共置在 `desktop/frontend/src/**/**.test.ts`，其中槽位渲染测试为 `desktop/frontend/src/lib/zine/slot-render.test.ts`。
+- Zine 回归入口：`cd desktop/frontend && npm run test:zine`，覆盖跨页坐标、手势吸附与边界、裁切 session、缩放中心、direct-edit 和撤销粒度。
+- 类型安全：`cd desktop/frontend && npm exec tsc -- --noEmit` / `npm run build`（tsc + vite build）作为门禁。
 - 手验流程（spec 附带验证清单，实现完成后逐项勾选）：
   1. 新建工程 / 重命名 / 列表显示
   2. 拖本地文件到 PhotoTray → 出现在底抽屉

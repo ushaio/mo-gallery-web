@@ -204,7 +204,7 @@ function drawImageSlot(
   pixelsPerMm: number,
   image: DecodedImage | undefined,
 ): void {
-  const left = (slot.page === 'right' ? pageWidthPx : 0) + slot.x * pixelsPerMm
+  const left = slot.x * pixelsPerMm
   const top = slot.y * pixelsPerMm
   const width = slot.w * pixelsPerMm
   const height = slot.h * pixelsPerMm
@@ -282,7 +282,7 @@ function drawTextSlot(
   pageWidthPx: number,
   pixelsPerMm: number,
 ): void {
-  const left = (slot.page === 'right' ? pageWidthPx : 0) + slot.x * pixelsPerMm
+  const left = slot.x * pixelsPerMm
   const top = slot.y * pixelsPerMm
   const width = slot.w * pixelsPerMm
   const height = slot.h * pixelsPerMm

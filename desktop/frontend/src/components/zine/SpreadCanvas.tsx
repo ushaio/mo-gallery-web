@@ -52,6 +52,10 @@ export function toScreenPx(valueMm: number, scale: number) {
   return valueMm * scale
 }
 
+export function calculatePointerAnchoredScroll(scroll: number, pointer: number, zoom: number, nextZoom: number) {
+  return (scroll + pointer) * (nextZoom / zoom) - pointer
+}
+
 function clampZoom(zoom: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
 }
@@ -81,6 +85,11 @@ function CropMarks() {
 export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZoomChange, onSelectSlot }: SpreadCanvasProps) {
   const { language } = usePreferences()
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const panRef = useRef<{ pointerId: number; x: number; y: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
+  const [spacePressed, setSpacePressed] = useState(false)
+  const [panning, setPanning] = useState(false)
   const [availableSize, setAvailableSize] = useState({ width: MAX_CANVAS_WIDTH, height: 640 })
   const { pageW, pageH, spreadW, spreadH } = getProjectSpreadSize(project)
   const bleed = getProjectBleedMm(project)
@@ -104,11 +113,62 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
     return () => observer.disconnect()
   }, [])
 
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null) {
+      return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.code !== 'Space' || isEditableTarget(event.target)) return
+      event.preventDefault()
+      setSpacePressed(true)
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.code === 'Space') setSpacePressed(false)
+    }
+
+    function onBlur() {
+      setSpacePressed(false)
+      setPanning(false)
+      panRef.current = null
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+
   function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
-    if (!event.ctrlKey && !event.metaKey) return
+    const viewport = viewportRef.current
+    if (!viewport) return
+
     event.preventDefault()
-    const nextZoom = zoom + (event.deltaY > 0 ? -0.08 : 0.08)
-    onZoomChange(clampZoom(nextZoom))
+    if (!event.ctrlKey && !event.metaKey) {
+      viewport.scrollBy({
+        left: event.deltaX + (event.shiftKey ? event.deltaY : 0),
+        top: event.shiftKey ? 0 : event.deltaY,
+      })
+      return
+    }
+
+    const nextZoom = clampZoom(zoom + (event.deltaY > 0 ? -0.08 : 0.08))
+    if (nextZoom === zoom) return
+    const rect = viewport.getBoundingClientRect()
+    const pointerX = event.clientX - rect.left
+    const pointerY = event.clientY - rect.top
+    const previousScrollLeft = viewport.scrollLeft
+    const previousScrollTop = viewport.scrollTop
+    onZoomChange(nextZoom)
+    requestAnimationFrame(() => {
+      viewport.scrollLeft = calculatePointerAnchoredScroll(previousScrollLeft, pointerX, zoom, nextZoom)
+      viewport.scrollTop = calculatePointerAnchoredScroll(previousScrollTop, pointerY, zoom, nextZoom)
+    })
   }
 
   const spreadIndex = Math.max(0, project.spreads.findIndex((spread) => spread.id === activeSpread?.id))
@@ -128,8 +188,54 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
       : `P${pageNumbers.left} · P${pageNumbers.right}`
 
   return (
-    <div ref={containerRef} className="zine-desk zine-canvas relative min-h-0 min-w-0 flex-1 overflow-hidden" onWheel={handleWheel}>
-      <div className="flex h-full w-full items-center justify-center overflow-auto p-6" onClick={() => onSelectSlot(null)}>
+    <div ref={containerRef} className="zine-desk zine-canvas relative min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        ref={viewportRef}
+        className={`flex h-full w-full items-center justify-center overflow-auto p-6 ${panning ? 'cursor-grabbing' : spacePressed ? 'cursor-grab' : ''}`}
+        onWheel={handleWheel}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false
+            return
+          }
+          onSelectSlot(null)
+        }}
+        onPointerDown={(event) => {
+          if (!spacePressed || event.button !== 0) return
+          const viewport = viewportRef.current
+          if (!viewport) return
+          event.preventDefault()
+          event.stopPropagation()
+          viewport.setPointerCapture(event.pointerId)
+          panRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            scrollLeft: viewport.scrollLeft,
+            scrollTop: viewport.scrollTop,
+            moved: false,
+          }
+          setPanning(true)
+        }}
+        onPointerMove={(event) => {
+          const pan = panRef.current
+          const viewport = viewportRef.current
+          if (!pan || !viewport || pan.pointerId !== event.pointerId) return
+          const deltaX = event.clientX - pan.x
+          const deltaY = event.clientY - pan.y
+          if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) pan.moved = true
+          viewport.scrollLeft = pan.scrollLeft - deltaX
+          viewport.scrollTop = pan.scrollTop - deltaY
+        }}
+        onPointerUp={(event) => {
+          if (panRef.current?.pointerId !== event.pointerId) return
+          const moved = panRef.current.moved
+          panRef.current = null
+          suppressClickRef.current = moved
+          setPanning(false)
+          if (moved) event.stopPropagation()
+        }}
+      >
         <div className="flex shrink-0 flex-col items-center gap-3">
           {/* 纸张 = 成品 + 出血：满版内容需延伸到纸边，裁切后才无白边 */}
           <div
@@ -150,6 +256,9 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                   spread={activeSpread}
                   slot={slot}
                   pageW={pageW}
+                  pageH={pageH}
+                  spreadW={spreadW}
+                  bleed={bleed}
                   assets={project.assets}
                   selected={selectedSlotId === slot.id}
                   scale={scale}

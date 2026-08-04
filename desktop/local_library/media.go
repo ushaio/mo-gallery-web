@@ -29,19 +29,40 @@ import (
 )
 
 const (
-	mediaHeaderBytes   = 64
-	maxDecodeBytes     = 256 * 1024 * 1024
-	maxImagePixels     = 180_000_000
-	maxGIFFrames       = 10_000
-	maxEXIFStringBytes = 4 * 1024
-	maxEXIFJSONBytes   = 64 * 1024
-	maxPreviewError    = 2 * 1024
+	mediaHeaderBytes           = 64
+	maxDecodeBytes             = 256 * 1024 * 1024
+	maxRAWPreviewScanBytes     = 64 * 1024 * 1024
+	maxImagePixels             = 180_000_000
+	maxOriginalViewPixels      = 100_000_000
+	maxOriginalViewMemoryBytes = 512 * 1024 * 1024
+	maxGIFFrames               = 10_000
+	maxEXIFStringBytes         = 4 * 1024
+	maxEXIFJSONBytes           = 64 * 1024
+	maxPreviewError            = 2 * 1024
 )
 
 var supportedExtensions = map[string]struct{}{
 	".jpg": {}, ".jpeg": {}, ".png": {}, ".webp": {}, ".gif": {}, ".avif": {},
 	".heic": {}, ".heif": {}, ".tif": {}, ".tiff": {}, ".cr2": {}, ".cr3": {},
-	".nef": {}, ".arw": {}, ".dng": {}, ".raf": {},
+	".nef": {}, ".arw": {}, ".dng": {}, ".raf": {}, ".rw2": {},
+}
+
+// ignoredFileNames are common OS-level junk files that are never indexed.
+var ignoredFileNames = map[string]struct{}{
+	"thumbs.db": {}, "ehthumbs.db": {}, "ehthumbs_vista.db": {},
+	"desktop.ini": {}, ".ds_store": {},
+}
+
+// isIndexableFile reports whether a regular file should be indexed by the
+// library. The library indexes every file so the local view can show all
+// content; only hidden/system junk files are skipped.
+func isIndexableFile(name string) bool {
+	base := filepath.Base(filepath.Clean(name))
+	if strings.HasPrefix(base, ".") || strings.HasPrefix(base, "._") {
+		return false
+	}
+	_, ignored := ignoredFileNames[strings.ToLower(base)]
+	return !ignored
 }
 
 var derivativeRenderer = renderJPEGDerivative
@@ -98,6 +119,8 @@ func formatForExtension(ext string) (string, string) {
 		return "dng", "image/x-adobe-dng"
 	case ".raf":
 		return "raf", "image/x-fuji-raf"
+	case ".rw2":
+		return "rw2", "image/x-panasonic-rw2"
 	default:
 		if detected := mime.TypeByExtension(ext); detected != "" {
 			return strings.TrimPrefix(ext, "."), detected
@@ -134,6 +157,8 @@ func formatAndMIME(format string) (string, string) {
 		return "dng", "image/x-adobe-dng"
 	case "raf":
 		return "raf", "image/x-fuji-raf"
+	case "rw2":
+		return "rw2", "image/x-panasonic-rw2"
 	default:
 		return format, "application/octet-stream"
 	}
@@ -145,6 +170,15 @@ func inspectMedia(path string, info os.FileInfo) (result indexedFile) {
 	result = indexedFile{FileName: filepath.Base(path), Extension: ext, Format: candidateFormat, MimeType: candidateMIME,
 		ByteSize: info.Size(), ModifiedAtNS: info.ModTime().UnixNano(), Orientation: 1, FrameCount: 1,
 		PreviewStatus: "unavailable", MetadataStatus: "partial"}
+	if !isSupportedMedia(path) {
+		// Non-photo files are indexed for browsing but never decoded: they
+		// stay with a file-format placeholder preview.
+		result.MediaKind = "file"
+		result.MetadataStatus = "unavailable"
+		result.PreviewError = "no decoder is available for this file type"
+		return result
+	}
+	result.MediaKind = "image"
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			result.PreviewStatus = "unavailable"
@@ -236,7 +270,7 @@ func detectMediaHeader(header []byte, ext string) (string, string, bool) {
 			return "cr2", "image/x-canon-cr2", true
 		}
 		switch strings.ToLower(ext) {
-		case ".dng", ".nef", ".arw":
+		case ".dng", ".nef", ".arw", ".rw2":
 			format, mimeType := formatForExtension(ext)
 			return format, mimeType, true
 		default:
@@ -278,6 +312,20 @@ func validateDimensions(width, height int) error {
 	}
 	if int64(width)*int64(height) > maxImagePixels {
 		return fmt.Errorf("image exceeds pixel safety limit")
+	}
+	return nil
+}
+
+func validateOriginalViewDimensions(width, height int) error {
+	if err := validateDimensions(width, height); err != nil {
+		return err
+	}
+	pixels := int64(width) * int64(height)
+	if pixels > maxOriginalViewPixels {
+		return fmt.Errorf("original exceeds view pixel limit")
+	}
+	if pixels > maxOriginalViewMemoryBytes/4 {
+		return fmt.Errorf("original exceeds estimated decode memory limit")
 	}
 	return nil
 }
@@ -358,11 +406,11 @@ func skipGIFSubBlocks(reader *bufio.Reader) error {
 
 func supportsEXIFInspection(format, ext string) bool {
 	switch format {
-	case "jpeg", "tiff", "cr2", "dng", "nef", "arw":
+	case "jpeg", "tiff", "cr2", "dng", "nef", "arw", "rw2":
 		return true
 	}
 	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg", ".tif", ".tiff", ".cr2", ".dng", ".nef", ".arw":
+	case ".jpg", ".jpeg", ".tif", ".tiff", ".cr2", ".dng", ".nef", ".arw", ".rw2":
 		return true
 	}
 	return false
@@ -544,12 +592,16 @@ func decodeImage(path string) (image.Image, error) {
 }
 
 func decodeMediaConfig(path, format string) (image.Config, string, error) {
+	return decodeMediaConfigContext(context.Background(), path, format)
+}
+
+func decodeMediaConfigContext(ctx context.Context, path, format string) (image.Config, string, error) {
 	if isRAWFormat(format) {
-		preview, err := extractRAWPreview(path)
+		preview, err := extractRAWPreviewContext(ctx, path)
 		if err != nil {
 			return image.Config{}, "", err
 		}
-		config, err := jpeg.DecodeConfig(bytes.NewReader(preview))
+		config, err := jpeg.DecodeConfig(contextBoundReader{ctx: ctx, reader: bytes.NewReader(preview)})
 		return config, format, err
 	}
 	file, err := os.Open(path)
@@ -557,15 +609,20 @@ func decodeMediaConfig(path, format string) (image.Config, string, error) {
 		return image.Config{}, "", err
 	}
 	defer file.Close()
+	return decodeMediaConfigReaderContext(ctx, file, format)
+}
+
+func decodeMediaConfigReaderContext(ctx context.Context, source io.Reader, format string) (image.Config, string, error) {
+	reader := contextBoundReader{ctx: ctx, reader: source}
 	switch strings.ToLower(format) {
 	case "avif":
-		config, err := avifcodec.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+		config, err := avifcodec.DecodeConfig(io.LimitReader(reader, maxDecodeBytes))
 		return config, "avif", err
 	case "heic", "heif":
-		config, err := heiccodec.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+		config, err := heiccodec.DecodeConfig(io.LimitReader(reader, maxDecodeBytes))
 		return config, "heif", err
 	}
-	return image.DecodeConfig(io.LimitReader(file, maxDecodeBytes))
+	return image.DecodeConfig(io.LimitReader(reader, maxDecodeBytes))
 }
 
 func decodeImageConfig(path string) (image.Config, error) {
@@ -576,7 +633,7 @@ func decodeImageConfig(path string) (image.Config, error) {
 
 func isRAWExtension(ext string) bool {
 	switch strings.ToLower(ext) {
-	case ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf":
+	case ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2":
 		return true
 	}
 	return false
@@ -584,13 +641,22 @@ func isRAWExtension(ext string) bool {
 
 func isRAWFormat(format string) bool {
 	switch strings.ToLower(format) {
-	case "cr2", "cr3", "nef", "arw", "dng", "raf":
+	case "cr2", "cr3", "nef", "arw", "dng", "raf", "rw2":
 		return true
 	}
 	return false
 }
 
 func extractRAWPreview(path string) ([]byte, error) {
+	return extractRAWPreviewContext(context.Background(), path)
+}
+
+func extractRAWPreviewContext(ctx context.Context, path string) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -598,21 +664,46 @@ func extractRAWPreview(path string) ([]byte, error) {
 	defer file.Close()
 	if strings.EqualFold(filepath.Ext(path), ".cr3") {
 		if preview, previewErr := imagemeta.PreviewCR3(file); previewErr == nil {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			if config, configErr := jpeg.DecodeConfig(bytes.NewReader(preview)); configErr == nil && validateDimensions(config.Width, config.Height) == nil {
-				if _, decodeErr := jpeg.Decode(bytes.NewReader(preview)); decodeErr == nil {
-					return preview, nil
-				}
+				return preview, nil
 			}
 		}
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return nil, err
 		}
 	}
-	return largestEmbeddedJPEG(file, maxDecodeBytes)
+	return largestEmbeddedJPEGWithValidatorContext(ctx, file, maxRAWPreviewScanBytes, validateDimensions)
+}
+
+type contextBoundReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader contextBoundReader) Read(buffer []byte) (int, error) {
+	select {
+	case <-reader.ctx.Done():
+		return 0, reader.ctx.Err()
+	default:
+		return reader.reader.Read(buffer)
+	}
 }
 
 func largestEmbeddedJPEG(reader io.Reader, limit int64) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	return largestEmbeddedJPEGWithValidatorContext(context.Background(), reader, limit, validateDimensions)
+}
+
+func largestEmbeddedJPEGWithValidator(reader io.Reader, limit int64, validate func(int, int) error) ([]byte, error) {
+	return largestEmbeddedJPEGWithValidatorContext(context.Background(), reader, limit, validate)
+}
+
+func largestEmbeddedJPEGWithValidatorContext(ctx context.Context, reader io.Reader, limit int64, validate func(int, int) error) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(contextBoundReader{ctx: ctx, reader: reader}, limit+1))
 	if err != nil {
 		return nil, err
 	}
@@ -622,33 +713,59 @@ func largestEmbeddedJPEG(reader io.Reader, limit int64) ([]byte, error) {
 	var best []byte
 	var bestArea int64
 	for offset := 0; offset+3 < len(data); {
-		start := bytes.Index(data[offset:], []byte{0xff, 0xd8, 0xff})
+		start, findErr := findBytesContext(ctx, data, offset, []byte{0xff, 0xd8, 0xff})
+		if findErr != nil {
+			return nil, findErr
+		}
 		if start < 0 {
 			break
 		}
-		start += offset
-		endRelative := bytes.Index(data[start+3:], []byte{0xff, 0xd9})
-		if endRelative < 0 {
+		endMarker, findErr := findBytesContext(ctx, data, start+3, []byte{0xff, 0xd9})
+		if findErr != nil {
+			return nil, findErr
+		}
+		if endMarker < 0 {
 			break
 		}
-		end := start + 3 + endRelative + 2
-		candidate := data[start:end]
-		config, configErr := jpeg.DecodeConfig(bytes.NewReader(candidate))
-		if configErr == nil && validateDimensions(config.Width, config.Height) == nil {
-			if _, decodeErr := jpeg.Decode(bytes.NewReader(candidate)); decodeErr == nil {
-				area := int64(config.Width) * int64(config.Height)
-				if area > bestArea {
-					bestArea = area
-					best = append([]byte(nil), candidate...)
-				}
+		candidate := data[start : endMarker+2]
+		config, configErr := jpeg.DecodeConfig(contextBoundReader{ctx: ctx, reader: bytes.NewReader(candidate)})
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if configErr == nil && validate(config.Width, config.Height) == nil {
+			area := int64(config.Width) * int64(config.Height)
+			if area > bestArea {
+				bestArea = area
+				best = candidate
 			}
 		}
 		offset = start + 3
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
 	}
 	if len(best) == 0 {
 		return nil, fmt.Errorf("RAW contains no decodable embedded JPEG preview")
 	}
 	return best, nil
+}
+
+func findBytesContext(ctx context.Context, data []byte, offset int, needle []byte) (int, error) {
+	const scanChunkBytes = 64 * 1024
+	for offset+len(needle) <= len(data) {
+		if err := ctx.Err(); err != nil {
+			return -1, err
+		}
+		end := min(len(data), offset+scanChunkBytes+len(needle)-1)
+		if index := bytes.Index(data[offset:end], needle); index >= 0 {
+			return offset + index, nil
+		}
+		if end == len(data) {
+			break
+		}
+		offset += scanChunkBytes
+	}
+	return -1, nil
 }
 
 func renderJPEGThumbnail(ctx context.Context, sourcePath, destination string, maxDimension int) error {

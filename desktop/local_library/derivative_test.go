@@ -173,6 +173,26 @@ func TestDerivativeHandlerGeneratesVersionedVariantsAndClearsOnlyPreview(t *test
 	assertDerivativeRow(t, session, id, derivativeThumbnail, thumbnailMaxDimension)
 	assertDerivativeRow(t, session, id, derivativePreview, previewMaxDimension)
 
+	stats, err := manager.CacheStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Thumbnails.FileCount != 1 || stats.Previews.FileCount != 1 {
+		t.Fatalf("cache file counts thumbnails=%d previews=%d", stats.Thumbnails.FileCount, stats.Previews.FileCount)
+	}
+	if stats.Thumbnails.Bytes <= 0 || stats.Previews.Bytes <= 0 || stats.TotalBytes != stats.Internal.Bytes {
+		t.Fatalf("invalid cache byte stats: %+v", stats)
+	}
+	if stats.Internal.Bytes != stats.LibraryData.Bytes+stats.Thumbnails.Bytes+stats.Previews.Bytes {
+		t.Fatalf("cache byte breakdown does not match total: %+v", stats)
+	}
+	if stats.Internal.FileCount != stats.LibraryData.FileCount+stats.Thumbnails.FileCount+stats.Previews.FileCount {
+		t.Fatalf("cache file breakdown does not match total: %+v", stats)
+	}
+	if stats.PreviewLimitBytes != defaultPreviewCacheBytes {
+		t.Fatalf("preview limit=%d", stats.PreviewLimitBytes)
+	}
+
 	if err := manager.ClearPreviewCache(); err != nil {
 		t.Fatal(err)
 	}
@@ -186,6 +206,20 @@ func TestDerivativeHandlerGeneratesVersionedVariantsAndClearsOnlyPreview(t *test
 		t.Fatalf("preview derivative row should be removed, got %v", err)
 	}
 	assertDerivativeRow(t, session, id, derivativeThumbnail, thumbnailMaxDimension)
+
+	stats, err = manager.CacheStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Previews.FileCount != 0 || stats.Previews.Bytes != 0 {
+		t.Fatalf("preview cache stats after clear: %+v", stats.Previews)
+	}
+	if stats.Thumbnails.FileCount != 1 || stats.Thumbnails.Bytes <= 0 || stats.TotalBytes != stats.Internal.Bytes {
+		t.Fatalf("thumbnail cache stats after clear: %+v", stats)
+	}
+	if stats.Internal.Bytes != stats.LibraryData.Bytes+stats.Thumbnails.Bytes || stats.Internal.FileCount != stats.LibraryData.FileCount+stats.Thumbnails.FileCount {
+		t.Fatalf("cache breakdown after clear does not match total: %+v", stats)
+	}
 }
 
 func TestDerivativeSourceChangeUsesNewKeysAndRemovesStaleFiles(t *testing.T) {

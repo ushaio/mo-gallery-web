@@ -94,9 +94,14 @@ export function SlotContextBar() {
             <ImageOff size={14} />
           </BarButton>
           <BarButton
-            label={t('admin.zine_reset_rotation', language)}
-            onClick={() => patchSlot({ rotation: 0 })}
-            disabled={slot.rotation === 0}
+            label={t('admin.zine_reset_crop', language)}
+            onClick={() => patchSlot({ imageTransform: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 } } satisfies Partial<ImageSlot>)}
+            disabled={
+              (slot as ImageSlot).imageTransform.scale === 1
+              && (slot as ImageSlot).imageTransform.offsetX === 0
+              && (slot as ImageSlot).imageTransform.offsetY === 0
+              && (slot as ImageSlot).imageTransform.rotation === 0
+            }
           >
             <RotateCcw size={14} />
           </BarButton>

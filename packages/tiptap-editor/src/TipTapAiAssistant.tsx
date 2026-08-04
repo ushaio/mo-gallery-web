@@ -1012,9 +1012,9 @@ export function TipTapAiAssistant({
                   <div className="relative min-w-0 flex-1">
                     <div
                       ref={conversationMenuButtonRef}
-                      className={`flex h-10 min-w-0 items-center justify-between gap-2 rounded-full border px-3 text-left text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[border-color,box-shadow,background-color] ${
+                      className={`flex h-9 min-w-0 items-center justify-between gap-2 rounded-md border px-3 text-left text-xs transition-[border-color,background-color] ${
                         showConversationMenu
-                          ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
+                          ? 'border-primary/60 bg-background'
                           : 'border-border/80 bg-background/90 hover:border-primary/30'
                       } ${conversationSaving || conversationLoading ? 'cursor-not-allowed opacity-60' : ''}`}
                       role="button"
@@ -1049,7 +1049,7 @@ export function TipTapAiAssistant({
                       <div
                         ref={conversationMenuRef}
                         id={conversationMenuId}
-                        className="absolute left-0 top-[calc(100%+8px)] z-30 w-full overflow-hidden rounded-2xl border border-border/80 bg-background/98 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur"
+                        className="absolute left-0 top-[calc(100%+8px)] z-30 w-full overflow-hidden rounded-lg border border-border/80 bg-background shadow-[0_16px_32px_-24px_rgba(15,23,42,0.18)]"
                         role="listbox"
                       >
                         <div className="border-b border-border/60 p-2">
@@ -1057,7 +1057,7 @@ export function TipTapAiAssistant({
                             type="button"
                             onClick={() => void handleCreateConversation()}
                             disabled={isAiTaskLocked || conversationSaving}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Plus className="h-4 w-4" />
                             {t('editor.ai_conversation_new')}
@@ -1065,7 +1065,7 @@ export function TipTapAiAssistant({
                         </div>
                         <div className="max-h-64 overflow-y-auto p-2">
                           {conversations.length === 0 ? (
-                            <div className="rounded-xl px-3 py-2 text-sm text-muted-foreground">
+                            <div className="rounded-md px-3 py-2 text-sm text-muted-foreground">
                               {t('editor.ai_conversation_empty')}
                             </div>
                           ) : (
@@ -1078,8 +1078,8 @@ export function TipTapAiAssistant({
                               return (
                                 <div
                                   key={conversation.id}
-                                  className={`flex items-center gap-2 rounded-xl px-3 py-2 transition-colors ${
-                                    isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/70'
+                                  className={`flex items-center gap-2 rounded-md px-3 py-2 transition-colors ${
+                                    isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                                   }`}
                                 >
                                   <button
@@ -1103,7 +1103,7 @@ export function TipTapAiAssistant({
                                       setPendingDeleteConversationId(conversation.id)
                                     }}
                                     disabled={isAiTaskLocked || conversationDeleting}
-                                    className={`flex h-8 shrink-0 items-center justify-center rounded-full px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    className={`flex h-8 shrink-0 items-center justify-center rounded-md px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                                       isPendingDelete
                                         ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                                         : 'w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
@@ -1140,9 +1140,9 @@ export function TipTapAiAssistant({
                 {t('editor.ai_conversation_loading')}
               </div>
             ) : sessionMessages.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
                 <div className="flex items-center gap-3 text-foreground">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <Wand2 className="h-5 w-5" />
                   </span>
                   <div>
@@ -1150,7 +1150,7 @@ export function TipTapAiAssistant({
                     <div className="mt-1 text-xs text-muted-foreground">{t('editor.ai_chat_subtitle')}</div>
                   </div>
                 </div>
-                <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground">
+                <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
                   <Sparkles className="h-3.5 w-3.5 text-primary" />
                   <span className="truncate">
                     {context.hasSelection && aiSelectionPreview
@@ -1174,13 +1174,13 @@ export function TipTapAiAssistant({
 
                 if (message.role === 'user') {
                   return (
-                    <div key={message.id} className="ml-8 rounded-[24px] border border-border/60 bg-muted/25 px-4 py-3">
+                    <div key={message.id} className="ml-8 rounded-lg border border-border/60 bg-muted/25 px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        <div className="text-[10px] font-mono font-medium uppercase tracking-wide text-muted-foreground">
                           {t('editor.ai_chat_you')}
                         </div>
                         {actionLabel ? (
-                          <div className="rounded-full bg-background px-2.5 py-1 text-[11px] font-medium text-foreground">
+                          <div className="rounded-md border border-border/50 bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             {actionLabel}
                           </div>
                         ) : null}
@@ -1198,10 +1198,10 @@ export function TipTapAiAssistant({
                 }
 
                 return (
-                  <div key={message.id} className="mr-8 rounded-[24px] border border-border/70 bg-background px-4 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+                  <div key={message.id} className="mr-8 rounded-lg border border-border/70 bg-card px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <div className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-wide text-muted-foreground">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                           <Sparkles className="h-3.5 w-3.5" />
                         </span>
                         {t('editor.ai_panel_title')}
@@ -1230,7 +1230,7 @@ export function TipTapAiAssistant({
                     ) : null}
 
                     {message.status === 'error' && message.error ? (
-                      <div className="mt-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      <div className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                         {message.error}
                       </div>
                     ) : null}
@@ -1241,7 +1241,7 @@ export function TipTapAiAssistant({
                         type="button"
                         disabled={isAiTaskLocked || !canReplace || message.status === 'streaming'}
                         onClick={() => handleApplyResult(message, 'replace')}
-                        className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                           appliedModes.includes('replace')
                             ? 'border-primary/30 bg-primary/10 text-primary'
                             : 'border-border text-foreground hover:border-foreground/20'
@@ -1253,7 +1253,7 @@ export function TipTapAiAssistant({
                         type="button"
                         disabled={isAiTaskLocked || !canApply || message.status === 'streaming'}
                         onClick={() => handleApplyResult(message, 'insert')}
-                        className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                           appliedModes.includes('insert')
                             ? 'border-primary/30 bg-primary/10 text-primary'
                             : 'border-border text-foreground hover:border-foreground/20'
@@ -1265,7 +1265,7 @@ export function TipTapAiAssistant({
                         type="button"
                         disabled={isAiTaskLocked || !canApply || message.status === 'streaming'}
                         onClick={() => handleApplyResult(message, 'append')}
-                        className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                           appliedModes.includes('append')
                             ? 'border-primary/30 bg-primary/10 text-primary'
                             : 'border-border text-foreground hover:border-foreground/20'
@@ -1278,7 +1278,7 @@ export function TipTapAiAssistant({
                           type="button"
                           disabled={isAiTaskLocked || isAiGenerating}
                           onClick={() => void runAiAction(message.action === 'custom' ? 'custom' : message.action, message.prompt)}
-                          className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                           {t('common.retry')}
@@ -1300,7 +1300,7 @@ export function TipTapAiAssistant({
                     type="button"
                     onClick={() => setAiMode((current) => (current === item.action ? null : item.action))}
                     disabled={isAiTaskLocked || isAiGenerating}
-                    className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                       aiMode === item.action
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
@@ -1314,8 +1314,8 @@ export function TipTapAiAssistant({
             <div className="relative">
               {showSlashCommandMenu ? (
                 <div className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+10px)] z-20">
-                  <div className="pointer-events-auto rounded-2xl border border-border/70 bg-background/95 p-2 shadow-[0_16px_40px_rgba(15,23,42,0.14)] backdrop-blur">
-                    <div className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <div className="pointer-events-auto rounded-lg border border-border/70 bg-background p-2 shadow-[0_16px_32px_-24px_rgba(15,23,42,0.18)]">
+                    <div className="px-2 pb-2 text-[10px] font-mono font-medium uppercase tracking-wide text-muted-foreground">
                       {t('editor.ai_commands')}
                     </div>
                     <div className="space-y-1">
@@ -1324,7 +1324,7 @@ export function TipTapAiAssistant({
                           key={item.command}
                           type="button"
                           onClick={() => handleSelectSlashCommand(item.command)}
-                          className="flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-muted/70"
+                          className="flex w-full items-start justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted"
                         >
                           <span className="text-sm font-medium text-foreground">{item.command}</span>
                           <span className="text-xs leading-5 text-muted-foreground">{item.description}</span>
@@ -1334,7 +1334,7 @@ export function TipTapAiAssistant({
                   </div>
                 </div>
               ) : null}
-              <div className="rounded-[24px] border border-border/70 bg-muted/15 p-3">
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
               <textarea
                 value={aiPrompt}
                 onChange={(event) => setAiPrompt(event.target.value)}
@@ -1353,9 +1353,9 @@ export function TipTapAiAssistant({
                   <div className="relative min-w-0">
                     <div
                       ref={aiModelButtonRef}
-                      className={`flex h-10 w-[156px] items-center justify-between gap-2 rounded-full border px-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition-[border-color,box-shadow,background-color] ${
+                      className={`flex h-9 w-[156px] items-center justify-between gap-2 rounded-md border px-3 text-left outline-none transition-[border-color,background-color] ${
                         showAiModelMenu
-                          ? 'border-primary/50 bg-background shadow-[0_0_0_4px_rgba(59,130,246,0.08)]'
+                          ? 'border-primary/60 bg-background'
                           : 'border-border/80 bg-background/90 hover:border-primary/30'
                       } ${aiModelsLoading || isAiGenerating ? 'cursor-not-allowed opacity-60' : ''}`}
                       role="combobox"
@@ -1382,7 +1382,7 @@ export function TipTapAiAssistant({
                         type="button"
                         onClick={() => setShowAiModelMenu((current) => !current)}
                         disabled={isAiTaskLocked || aiModelsLoading || isAiGenerating}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
                         tabIndex={-1}
                       >
                         <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAiModelMenu ? 'rotate-180' : ''}`} />
@@ -1393,12 +1393,12 @@ export function TipTapAiAssistant({
                       <div
                         ref={aiModelMenuRef}
                         id={aiModelMenuId}
-                        className="absolute bottom-[calc(100%+8px)] left-0 z-20 max-h-56 w-[208px] overflow-hidden rounded-2xl border border-border/80 bg-background/98 shadow-[0_20px_40px_rgba(15,23,42,0.16)] backdrop-blur"
+                        className="absolute bottom-[calc(100%+8px)] left-0 z-20 max-h-56 w-[208px] overflow-hidden rounded-lg border border-border/80 bg-background shadow-[0_16px_32px_-24px_rgba(15,23,42,0.18)]"
                         role="listbox"
                       >
                         <div ref={aiModelListRef} className="max-h-56 overflow-y-auto p-2">
                           {filteredAiModelOptions.length === 0 ? (
-                            <div className="rounded-xl px-3 py-2 text-sm text-muted-foreground">
+                            <div className="rounded-md px-3 py-2 text-sm text-muted-foreground">
                               {aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_models_empty')}
                             </div>
                           ) : (
@@ -1414,8 +1414,8 @@ export function TipTapAiAssistant({
                                     setAiSelectedModel(option.id)
                                     setShowAiModelMenu(false)
                                   }}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors ${
-                                    isSelected ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted/70'
+                                  className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors ${
+                                    isSelected ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'
                                   }`}
                                   title={option.label}
                                 >
@@ -1434,7 +1434,7 @@ export function TipTapAiAssistant({
                     type="button"
                     onClick={() => void refreshAiModels()}
                     disabled={isAiTaskLocked || aiModelsLoading || isAiGenerating || conversationLoading}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     title={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
                     aria-label={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
                   >
@@ -1446,7 +1446,7 @@ export function TipTapAiAssistant({
                     type="button"
                     onClick={() => void handlePolishPrompt()}
                     disabled={isAiTaskLocked || !aiPrompt.trim() || isAiGenerating || aiPromptPolishing || conversationClearing}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
                     title={t('editor.ai_polish_prompt')}
                     aria-label={t('editor.ai_polish_prompt')}
                   >
@@ -1461,7 +1461,7 @@ export function TipTapAiAssistant({
                     }}
                     onClick={handlePrimaryAiButtonAction}
                     disabled={isAiGenerating ? false : (isAiTaskLocked || aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing)}
-                    className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     aria-label={isAiGenerating ? t('editor.ai_stop_generating') : t('editor.ai_generate')}
                   >
                     {isAiGenerating
@@ -1478,7 +1478,7 @@ export function TipTapAiAssistant({
                 </div>
               </div>
               {aiError ? (
-                <div className="mt-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <div className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                   {aiError}
                 </div>
               ) : null}

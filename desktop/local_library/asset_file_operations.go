@@ -253,15 +253,12 @@ func validateAssetFileName(name string) (string, error) {
 	if strings.ContainsAny(name, `<>:"/\\|?*`) || strings.ContainsRune(name, 0) {
 		return "", newError(ErrInvalidPath, "\u6587\u4ef6\u540d\u5305\u542b Windows \u4e0d\u5141\u8bb8\u7684\u5b57\u7b26", map[string]any{"name": name})
 	}
-	normalized, _, err := normalizeRelative(name)
+	names, _, err := normalizeRelative(name)
 	if err != nil {
 		return "", err
 	}
-	if normalized == "" || strings.Contains(string(normalized), "/") {
+	if names == "" || strings.Contains(string(names), "/") {
 		return "", newError(ErrInvalidPath, "\u6587\u4ef6\u540d\u5fc5\u987b\u662f\u5355\u4e2a\u6587\u4ef6\u540d", map[string]any{"name": name})
-	}
-	if !isSupportedMedia(name) {
-		return "", newError(ErrUnsupportedFile, "\u6587\u4ef6\u6269\u5c55\u4e0d\u53d7\u652f\u6301", map[string]any{"name": name})
 	}
 	return name, nil
 }

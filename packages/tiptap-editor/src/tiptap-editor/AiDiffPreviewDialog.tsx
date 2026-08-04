@@ -60,7 +60,7 @@ export function AiDiffPreviewDialog({
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-bold uppercase tracking-widest">{title}</h3>
               {progress && (
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground">
+                <span className="rounded-md border border-border/50 bg-card px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
                   {progress.index} / {progress.total}
                 </span>
               )}

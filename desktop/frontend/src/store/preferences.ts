@@ -86,3 +86,36 @@ export const usePhotoFilters = create<PhotoFilters>()((set) => ({
   setSortOrder: (o) => set({ sortOrder: o }),
   reset: () => set(defaultFilters),
 }))
+
+// 资源库左侧分区折叠状态（持久化：用户操作的展开/折叠跨页面保留，首次进入默认展开）
+export type LibrarySectionKey =
+  | 'cloudPhotoType'
+  | 'cloudCategories'
+  | 'cloudAlbums'
+  | 'localFolders'
+  | 'localCollections'
+  | 'localTags'
+
+interface LibrarySectionsState {
+  sections: Record<LibrarySectionKey, boolean>
+  toggleSection: (key: LibrarySectionKey) => void
+}
+
+const defaultSections: Record<LibrarySectionKey, boolean> = {
+  cloudPhotoType: true,
+  cloudCategories: true,
+  cloudAlbums: true,
+  localFolders: true,
+  localCollections: true,
+  localTags: true,
+}
+
+export const useLibrarySections = create<LibrarySectionsState>()(
+  persist(
+    (set) => ({
+      sections: defaultSections,
+      toggleSection: (key) => set((state) => ({ sections: { ...state.sections, [key]: !state.sections[key] } })),
+    }),
+    { name: 'mo-gallery-library-sections' },
+  ),
+)

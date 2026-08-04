@@ -1,9 +1,11 @@
 package local_library
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"mime"
 	"net/http"
@@ -61,8 +63,8 @@ func (m *Manager) ImportFiles(paths []string, destination string) ([]ImportResul
 			results = append(results, result)
 			continue
 		}
-		if !isSupportedMedia(sourceAbs) {
-			result.Error = "不支持的图片格式"
+		if !isIndexableFile(sourceAbs) {
+			result.Error = "不支持导入该文件类型"
 			results = append(results, result)
 			continue
 		}
@@ -456,18 +458,74 @@ func (m *Manager) AssetHandler() http.Handler {
 			http.Error(w, "asset unavailable", http.StatusNotFound)
 			return
 		}
-		if mimeType == "" {
-			mimeType = mime.TypeByExtension(filepath.Ext(resolved))
-		}
-		if mimeType != "" {
-			w.Header().Set("Content-Type", mimeType)
-		}
 		if kind == "original" {
+			session, sessionErr := m.currentSession()
+			if sessionErr != nil || session.sessionID != r.URL.Query().Get("session") || session.ctx.Err() != nil {
+				http.Error(w, "asset unavailable", http.StatusNotFound)
+				return
+			}
+			file, openErr := openVerifiedWithinRoot(session.root, resolved)
+			if openErr != nil {
+				http.Error(w, "asset unavailable", http.StatusNotFound)
+				return
+			}
+			defer file.Close()
+			info, statErr := file.Stat()
+			if statErr != nil || !info.Mode().IsRegular() {
+				http.Error(w, "asset unavailable", http.StatusNotFound)
+				return
+			}
+			if isRAWExtension(filepath.Ext(resolved)) {
+				preview, previewErr := largestEmbeddedJPEGWithValidatorContext(r.Context(), file, maxRAWPreviewScanBytes, validateOriginalViewDimensions)
+				if previewErr != nil {
+					http.Error(w, "RAW embedded preview unavailable", http.StatusUnprocessableEntity)
+					return
+				}
+				config, configErr := jpeg.DecodeConfig(contextBoundReader{ctx: r.Context(), reader: bytes.NewReader(preview)})
+				if configErr != nil || validateOriginalViewDimensions(config.Width, config.Height) != nil {
+					http.Error(w, "RAW embedded preview exceeds original-view limits", http.StatusUnprocessableEntity)
+					return
+				}
+				w.Header().Set("Content-Type", "image/jpeg")
+				w.Header().Set("Cache-Control", "no-store")
+				http.ServeContent(w, r, filepath.Base(resolved)+".jpg", time.Time{}, contextReadSeeker{ctx: r.Context(), ReadSeeker: bytes.NewReader(preview)})
+				return
+			}
+			format, _ := formatForExtension(filepath.Ext(resolved))
+			config, _, configErr := decodeMediaConfigReaderContext(r.Context(), file, format)
+			if configErr != nil || validateOriginalViewDimensions(config.Width, config.Height) != nil {
+				http.Error(w, "original image exceeds decode limits or is unsupported", http.StatusUnprocessableEntity)
+				return
+			}
+			if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+				http.Error(w, "asset unavailable", http.StatusNotFound)
+				return
+			}
+			if mimeType == "" {
+				mimeType = mime.TypeByExtension(filepath.Ext(resolved))
+			}
+			if mimeType != "" {
+				w.Header().Set("Content-Type", mimeType)
+			}
 			w.Header().Set("Cache-Control", "no-store")
-		} else {
-			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+			http.ServeContent(w, r, filepath.Base(resolved), info.ModTime(), contextReadSeeker{ctx: r.Context(), ReadSeeker: file})
+			return
 		}
-		file, err := os.Open(resolved)
+		session, sessionErr := m.currentSession()
+		if sessionErr != nil || session.sessionID != r.URL.Query().Get("session") || session.ctx.Err() != nil {
+			http.Error(w, "asset unavailable", http.StatusNotFound)
+			return
+		}
+		var file *os.File
+		if kind == "preview" && mimeType == "image/gif" {
+			file, err = openVerifiedWithinRoot(session.root, resolved)
+		} else {
+			variant := derivativeThumbnail
+			if kind == "preview" {
+				variant = derivativePreview
+			}
+			file, err = openVerifiedWithinInternalDirectory(internalPath(session.root, derivativeDirectory(variant)), resolved)
+		}
 		if err != nil {
 			http.Error(w, "asset unavailable", http.StatusNotFound)
 			return
@@ -478,6 +536,13 @@ func (m *Manager) AssetHandler() http.Handler {
 			http.Error(w, "asset unavailable", http.StatusNotFound)
 			return
 		}
+		if mimeType == "" {
+			mimeType = mime.TypeByExtension(filepath.Ext(resolved))
+		}
+		if mimeType != "" {
+			w.Header().Set("Content-Type", mimeType)
+		}
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 		http.ServeContent(w, r, filepath.Base(resolved), info.ModTime(), contextReadSeeker{ctx: r.Context(), ReadSeeker: file})
 	})
 }

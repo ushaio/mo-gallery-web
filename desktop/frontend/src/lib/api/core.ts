@@ -1,4 +1,5 @@
 import { reportAuthFailure } from '@/lib/auth-errors'
+import { invalidateDesktopCacheForApiRequest } from '@/lib/app-cache'
 
 function getApiBase(): string {
   // Desktop (Wails webview)：从 localStorage 读取 mo-gallery-web 服务器地址
@@ -91,9 +92,11 @@ export async function apiRequest(
     if ('success' in envelope && envelope.success === false) {
       throw new Error(extractErrorMessage(payload) ?? 'Request failed')
     }
+    invalidateDesktopCacheForApiRequest(path, init.method)
     return envelope
   }
 
+  invalidateDesktopCacheForApiRequest(path, init.method)
   return { success: true, data: payload }
 }
 

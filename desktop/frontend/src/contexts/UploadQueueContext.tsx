@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
 import { getErrorMessage, isAuthError } from '@/lib/auth-errors'
+import { invalidateDesktopCache } from '@/lib/app-cache'
 import { useAuth } from '@/contexts/AuthContext'
 
 export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
@@ -122,6 +123,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       } else if (result?.success && result.photo?.id) {
         const photoId = result.photo.id
         updateTask(task.id, { status: 'completed', progress: 100, photoId })
+        invalidateDesktopCache(['overview', 'equipment', 'photos', 'albums', 'categories', 'film-rolls', 'stories'])
 
         // ── 补偿调用：关联相册/故事 ──────────────────────────────────
         // Go UploadSettings 不包含 albumIds/storyId，所以在此处通过 HTTP

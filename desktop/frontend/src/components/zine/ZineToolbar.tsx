@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, Download, FileImage, FileText, Hash, ImagePlus, LayoutTemplate, Loader2, Redo2, Type, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, CircleAlert, Download, FileImage, FileText, Hash, ImagePlus, LayoutTemplate, Loader2, Redo2, RefreshCw, Type, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { t } from '@/lib/i18n'
@@ -64,6 +64,7 @@ export function ZineToolbar() {
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const saving = useZineStore((state) => state.saving)
   const dirty = useZineStore((state) => state.dirty)
+  const saveStatus = useZineStore((state) => state.saveStatus)
   const canUndo = useZineStore((state) => state.undoStack.length > 0)
   const canRedo = useZineStore((state) => state.redoStack.length > 0)
   const rename = useZineStore((state) => state.rename)
@@ -72,6 +73,7 @@ export function ZineToolbar() {
   const addSpread = useZineStore((state) => state.addSpread)
   const addSlot = useZineStore((state) => state.addSlot)
   const setPageNumbers = useZineStore((state) => state.setPageNumbers)
+  const save = useZineStore((state) => state.save)
 
   const [title, setTitle] = useState(project?.title ?? '')
   const [templatesOpen, setTemplatesOpen] = useState(false)
@@ -154,16 +156,30 @@ export function ZineToolbar() {
         spellCheck={false}
       />
 
-      <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-        {saving ? (
-          <Loader2 size={11} className="animate-spin" />
-        ) : dirty ? (
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        ) : (
-          <Check size={11} />
-        )}
-        {saving ? t('admin.zine_saving', language) : dirty ? t('admin.zine_unsaved', language) : t('admin.zine_saved', language)}
-      </span>
+      {saveStatus === 'failed' ? (
+        <button
+          type="button"
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+          onClick={() => void save()}
+          title={t('admin.zine_retry_save', language)}
+          aria-label={t('admin.zine_retry_save', language)}
+        >
+          <CircleAlert size={12} />
+          {t('admin.zine_save_failed', language)}
+          <RefreshCw size={11} />
+        </button>
+      ) : (
+        <span className="flex shrink-0 items-center gap-1.5 px-1.5 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+          {saving ? (
+            <Loader2 size={11} className="animate-spin" />
+          ) : dirty ? (
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          ) : (
+            <Check size={11} />
+          )}
+          {saving ? t('admin.zine_saving', language) : dirty ? t('admin.zine_unsaved', language) : t('admin.zine_saved', language)}
+        </span>
+      )}
 
       <div className="min-w-2 flex-1" />
 

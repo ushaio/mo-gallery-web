@@ -19,7 +19,7 @@ MVP 当前采用 Go 进程内媒体管线：
 - 512px 缩略图与 2048px 预览统一编码为 JPEG；
 - 原文件和派生图只通过当前资源库、session 与资产 ID 校验后的同源 handler 提供。
 
-AVIF 使用 `github.com/gen2brain/avif`，HEIC/HEIF 使用 `github.com/gen2brain/heic`。两者在 `nodynamic` 构建标签下使用内嵌 WASM 与 wazero，不依赖系统 codec 或 CGO。RAW 优先使用 `github.com/evanoberholster/imagemeta` 提取 CR3 预览，CR2/CR3/NEF/ARW/DNG/RAF 还会扫描、完整解码校验并选择最大的内嵌 JPEG。Wails 生产构建固定使用 `nodynamic`。
+AVIF 使用 `github.com/gen2brain/avif`，HEIC/HEIF 使用 `github.com/gen2brain/heic`。两者在 `nodynamic` 构建标签下使用内嵌 WASM 与 wazero，不依赖系统 codec 或 CGO。RAW 优先使用 `github.com/evanoberholster/imagemeta` 提取 CR3 预览，CR2/CR3/NEF/ARW/DNG/RAF/RW2 还会扫描、完整解码校验并选择最大的内嵌 JPEG。Wails 生产构建固定使用 `nodynamic`。
 
 ## 当前能力矩阵
 
@@ -33,7 +33,7 @@ AVIF 使用 `github.com/gen2brain/avif`，HEIC/HEIF 使用 `github.com/gen2brain
 | 静态 AVIF | 是 | 内嵌 WASM 解码 | 是 | 当前可读取部分 | 代码支持，待真实样本矩阵验收 |
 | 动画 AVIF | 是 | 首帧可解码 | 静态首帧 | 当前可读取部分 | 建档与静态预览支持，播放仍不承诺 |
 | HEIC/HEIF | 是 | 内嵌 WASM 解码 | 是 | 当前可读取部分 | 代码支持，待真实设备样本矩阵验收 |
-| CR2/CR3/NEF/ARW/DNG/RAF | 是 | 提取并校验最高分辨率内嵌 JPEG | 是 | `imagemeta`/`goexif` 可读字段 | 内嵌预览支持，待六类真实机型矩阵验收 |
+| CR2/CR3/NEF/ARW/DNG/RAF/RW2 | 是 | 提取并校验最高分辨率内嵌 JPEG | 是 | `imagemeta`/`goexif` 可读字段 | 内嵌预览支持，待七类真实机型矩阵验收 |
 
 “建档”表示保存路径、文件名、大小、修改时间和可读取元数据，并允许组织、移动、重命名、系统程序打开和重试预览。它不表示完整预览支持。
 
@@ -73,5 +73,5 @@ AVIF 使用 `github.com/gen2brain/avif`，HEIC/HEIF 使用 `github.com/gen2brain
 
 - 当前可以安全组织无法预览的受支持扩展名文件；
 - 产品文案可以声明 AVIF、HEIC/HEIF 静态预览和 RAW 内嵌 JPEG 预览，但不能宣称 RAW 显影或动画 AVIF 播放；
-- 六类 RAW 的厂商/机型差异仍须真实样本矩阵验证；
+- 七类 RAW 的厂商/机型差异仍须真实样本矩阵验证；
 - 后续替换或增加解码后端时，必须递增派生图 decoder/content version，使旧缓存可重建。

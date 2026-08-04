@@ -533,6 +533,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   const sidebarItems = getAdminSidebarItems(t)
   const activeSidebarItem = getActiveAdminSidebarItem(pathname)
+  const isLibraryWorkspace = pathname === '/admin/library'
   const pageTitle = t(activeSidebarItem.labelKey)
 
   const contextValue: AdminContextType = {
@@ -640,7 +641,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             isImmersiveMode ? 'md:ml-0' : isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
           }`}>
             {!isImmersiveMode ? (
-            <header className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-background/95 backdrop-blur-xl border-b border-border">
+            <header className="flex-shrink-0 flex h-20 items-center justify-between px-8 bg-background/95 backdrop-blur-xl border-b border-border">
             <div className="flex items-center">
               <AdminButton
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -668,7 +669,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           </header>
             ) : null}
 
-           <div className={isImmersiveMode ? 'flex-1 overflow-hidden' : 'p-8 flex-1 overflow-y-auto'}>
+           <div className={isImmersiveMode || isLibraryWorkspace ? 'flex-1 overflow-hidden' : 'p-8 flex-1 overflow-y-auto'}>
             {children}
           </div>
         </main>

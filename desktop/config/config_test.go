@@ -212,3 +212,33 @@ func TestNormalizedCopyDoesNotMutateSource(t *testing.T) {
 		t.Fatalf("source ContextWindows shares storage with normalized copy")
 	}
 }
+
+func TestLoadDefaultsMissingWindowStyleToNative(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"ui":{"language":"zh","theme":"system"}}`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.UI.WindowStyle != WindowStyleNative {
+		t.Fatalf("WindowStyle = %q", cfg.UI.WindowStyle)
+	}
+}
+
+func TestLoadPreservesIntegratedWindowStyle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"ui":{"window_style":"integrated"}}`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.UI.WindowStyle != WindowStyleIntegrated {
+		t.Fatalf("WindowStyle = %q", cfg.UI.WindowStyle)
+	}
+}

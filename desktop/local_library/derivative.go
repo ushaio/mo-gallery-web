@@ -468,6 +468,69 @@ func (m *Manager) trimPreviewCache(ctx context.Context, session *librarySession,
 	return nil
 }
 
+func derivativeCacheUsage(directory string) (CacheUsage, error) {
+	var usage CacheUsage
+	err := filepath.WalkDir(directory, func(_ string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, os.ErrNotExist) {
+				return nil
+			}
+			return walkErr
+		}
+		if entry.IsDir() || !entry.Type().IsRegular() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		usage.FileCount++
+		usage.Bytes += info.Size()
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return CacheUsage{}, nil
+	}
+	return usage, err
+}
+
+func (m *Manager) CacheStats() (LocalLibraryCacheStats, error) {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return LocalLibraryCacheStats{}, err
+	}
+	internal, err := derivativeCacheUsage(internalPath(session.root))
+	if err != nil {
+		return LocalLibraryCacheStats{}, err
+	}
+	thumbnails, err := derivativeCacheUsage(internalPath(session.root, derivativeDirectory(derivativeThumbnail)))
+	if err != nil {
+		return LocalLibraryCacheStats{}, err
+	}
+	previews, err := derivativeCacheUsage(internalPath(session.root, derivativeDirectory(derivativePreview)))
+	if err != nil {
+		return LocalLibraryCacheStats{}, err
+	}
+	libraryData := CacheUsage{
+		FileCount: internal.FileCount - thumbnails.FileCount - previews.FileCount,
+		Bytes:     internal.Bytes - thumbnails.Bytes - previews.Bytes,
+	}
+	if libraryData.FileCount < 0 {
+		libraryData.FileCount = 0
+	}
+	if libraryData.Bytes < 0 {
+		libraryData.Bytes = 0
+	}
+	return LocalLibraryCacheStats{
+		Internal:          internal,
+		LibraryData:       libraryData,
+		Thumbnails:        thumbnails,
+		Previews:          previews,
+		TotalBytes:        internal.Bytes,
+		PreviewLimitBytes: defaultPreviewCacheBytes,
+	}, nil
+}
+
 // ClearPreviewCache removes only regenerable 2048px previews. Grid thumbnails are retained.
 func (m *Manager) ClearPreviewCache() error {
 	session, err := m.requireAvailableSession()

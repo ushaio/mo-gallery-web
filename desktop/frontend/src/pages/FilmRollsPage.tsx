@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Check, ChevronLeft, Film, Image as ImageIcon, LayoutGrid, List, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react'
+import { Check, Film, Image as ImageIcon, LayoutGrid, List, Loader2, Pencil, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react'
 
-import { CardGridSkeleton, ListSkeleton } from '@/components/admin/Skeleton'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/ContextMenu'
 import { resolveAssetUrl } from '@/lib/api'
+import { invalidateDesktopCache } from '@/lib/app-cache'
+import { loadPersistentResource } from '@/lib/persistent-cache'
 import { FILM_FORMATS, FILM_STOCK_BRANDS, FILM_STOCK_PRESETS, getFilmStockDisplay, getFilmStockDisplayStyle, getFilmStockNames, type FilmFormat } from '@/lib/film-presets'
 import { t, type Locale } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
@@ -69,6 +75,7 @@ interface WailsAppAPI {
   AddPhotosToFilmRoll(id: string, photoIds: string[]): Promise<FilmRollDTO>
   RemovePhotoFromFilmRoll(rollId: string, photoId: string): Promise<FilmRollDTO>
   ReorderFilmRollFrames(id: string): Promise<FilmRollDTO>
+  SetFilmRollFrameOrder(id: string, filmPhotoIds: string[]): Promise<FilmRollDTO>
   GetAllPhotos(): Promise<PhotoDTO[]>
 }
 
@@ -80,6 +87,34 @@ declare global {
 
 const FORMAT_OPTIONS = FILM_FORMATS.map(value => ({ value, label: value }))
 const BRAND_OPTIONS = FILM_STOCK_BRANDS.map(value => ({ value, label: value }))
+
+// 视图与排序偏好持久化到 localStorage：跨页面/重启保留（与照片库一致）
+const VIEW_MODE_KEY = 'mo-gallery:film-rolls:view-mode'
+const SORT_KEY = 'mo-gallery:film-rolls:sort'
+const DEFAULT_SORT = 'createdAt:desc'
+
+const SORT_OPTIONS = [
+  { value: 'shootDate:desc', labelKey: 'admin.film_roll_sort_shoot_desc' },
+  { value: 'shootDate:asc', labelKey: 'admin.film_roll_sort_shoot_asc' },
+  { value: 'createdAt:desc', labelKey: 'admin.film_roll_sort_created_desc' },
+  { value: 'createdAt:asc', labelKey: 'admin.film_roll_sort_created_asc' },
+] as const
+
+function readLocal(key: string, fallback: string): string {
+  try {
+    return window.localStorage.getItem(key) || fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeLocal(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // ignore quota / privacy mode errors
+  }
+}
 
 function appApi(): WailsAppAPI {
   const app = window.go?.main?.App
@@ -140,6 +175,8 @@ function inputStyle(): CSSProperties {
   return { borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }
 }
 
+const formInputClass = 'w-full rounded-lg border bg-input px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20'
+
 export function FilmRollsPage() {
   const { language } = usePreferences()
   const [rolls, setRolls] = useState<FilmRollDTO[]>([])
@@ -152,17 +189,30 @@ export function FilmRollsPage() {
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
   const [pendingDelete, setPendingDelete] = useState<FilmRollDTO | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => readLocal(VIEW_MODE_KEY, 'list') === 'grid' ? 'grid' : 'list')
   const [searchQuery, setSearchQuery] = useState('')
   const [filterBrand, setFilterBrand] = useState('')
+  const [sort, setSort] = useState(() => {
+    const stored = readLocal(SORT_KEY, DEFAULT_SORT)
+    return SORT_OPTIONS.some(option => option.value === stored) ? stored : DEFAULT_SORT
+  })
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
   const [photoTypeFilter, setPhotoTypeFilter] = useState<PhotoTypeFilter>('film')
   const currentRollRequestIdRef = useRef(0)
+  const didAutoSelectRef = useRef(false)
 
-  const fetchRolls = useCallback(async () => {
+  useEffect(() => {
+    writeLocal(VIEW_MODE_KEY, viewMode)
+  }, [viewMode])
+
+  useEffect(() => {
+    writeLocal(SORT_KEY, sort)
+  }, [sort])
+
+  const fetchRolls = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      const data = await appApi().GetFilmRolls()
+      const data = await loadPersistentResource('film-rolls', () => appApi().GetFilmRolls(), { force })
       setRolls((data ?? []).map(normalizeRoll))
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
@@ -183,22 +233,25 @@ export function FilmRollsPage() {
     void fetchRolls()
     void fetchPhotos()
   }, [fetchPhotos, fetchRolls])
-  const openRoll = useCallback(async (roll: FilmRollDTO) => {
+
+  const openRoll = useCallback(async (roll: FilmRollDTO, tab: DetailTab = 'photos') => {
     const requestId = ++currentRollRequestIdRef.current
     setCurrentRoll(normalizeRoll(roll))
-    setActiveTab('photos')
+    setActiveTab(tab)
     setShowPhotoSelector(false)
     setSelectedPhotoIds(new Set())
     setPhotoSelectorSearch('')
     setPhotoTypeFilter('film')
-    setLoadingCurrentRoll(true)
-    try {
-      const full = await appApi().GetFilmRoll(roll.id)
-      if (requestId === currentRollRequestIdRef.current) setCurrentRoll(normalizeRoll(full))
-    } catch (error) {
-      toast.error(errorMessage(error, t('common.error', language)))
-    } finally {
-      if (requestId === currentRollRequestIdRef.current) setLoadingCurrentRoll(false)
+    if (tab === 'photos') {
+      setLoadingCurrentRoll(true)
+      try {
+        const full = await appApi().GetFilmRoll(roll.id)
+        if (requestId === currentRollRequestIdRef.current) setCurrentRoll(normalizeRoll(full))
+      } catch (error) {
+        toast.error(errorMessage(error, t('common.error', language)))
+      } finally {
+        if (requestId === currentRollRequestIdRef.current) setLoadingCurrentRoll(false)
+      }
     }
   }, [language])
 
@@ -245,7 +298,8 @@ export function FilmRollsPage() {
       setCurrentRoll(normalizeRoll(full))
       setActiveTab('photos')
       toast.success(t(currentRoll.id ? 'admin.film_roll_updated' : 'admin.film_roll_created', language))
-      await fetchRolls()
+      await fetchRolls(true)
+      invalidateDesktopCache(['overview'])
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     } finally {
@@ -265,14 +319,19 @@ export function FilmRollsPage() {
     try {
       await appApi().DeleteFilmRoll(pendingDelete.id)
       toast.success(t('common.deleted', language))
-      if (currentRoll?.id === pendingDelete.id) setCurrentRoll(null)
+      if (currentRoll?.id === pendingDelete.id) {
+        const next = rolls.find(roll => roll.id !== pendingDelete.id)
+        setCurrentRoll(null)
+        if (next) void openRoll(next)
+      }
       setPendingDelete(null)
-      await fetchRolls()
+      await fetchRolls(true)
+      invalidateDesktopCache(['overview'])
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
       setPendingDelete(null)
     }
-  }, [currentRoll?.id, fetchRolls, language, pendingDelete])
+  }, [currentRoll?.id, fetchRolls, language, openRoll, pendingDelete, rolls])
 
   const handleAddPhotos = useCallback(async () => {
     if (!currentRoll?.id || selectedPhotoIds.size === 0) return
@@ -285,8 +344,9 @@ export function FilmRollsPage() {
       setPhotoSelectorSearch('')
       setPhotoTypeFilter('film')
       toast.success(t('admin.photos_added', language))
-      await fetchRolls()
+      await fetchRolls(true)
       await fetchPhotos()
+      invalidateDesktopCache(['photos'])
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     } finally {
@@ -300,8 +360,9 @@ export function FilmRollsPage() {
       const updated = await appApi().RemovePhotoFromFilmRoll(currentRoll.id, photoId)
       setCurrentRoll(normalizeRoll(updated))
       toast.success(t('admin.photo_removed', language))
-      await fetchRolls()
+      await fetchRolls(true)
       await fetchPhotos()
+      invalidateDesktopCache(['photos'])
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
@@ -320,6 +381,33 @@ export function FilmRollsPage() {
     }
   }, [currentRoll?.id, language])
 
+  // 拖拽排序：先乐观更新本地顺序，再提交到后端；失败时回滚重载
+  const handleReorderByDrag = useCallback(async (orderedIds: string[]) => {
+    if (!currentRoll?.id) return
+    const currentPhotos = currentRoll.filmPhotos ?? []
+    const byId = new Map(currentPhotos.map(fp => [fp.id, fp]))
+    const ordered = orderedIds.map(id => byId.get(id)).filter((fp): fp is FilmPhotoDTO => Boolean(fp))
+    if (ordered.length === currentPhotos.length) {
+      setCurrentRoll({ ...currentRoll, filmPhotos: ordered })
+    }
+    setSaving(true)
+    try {
+      const updated = await appApi().SetFilmRollFrameOrder(currentRoll.id, orderedIds)
+      setCurrentRoll(normalizeRoll(updated))
+      toast.success(t('admin.film_roll_frames_reordered', language))
+      await fetchRolls(true)
+    } catch (error) {
+      toast.error(errorMessage(error, t('common.error', language)))
+      try {
+        setCurrentRoll(normalizeRoll(await appApi().GetFilmRoll(currentRoll.id)))
+      } catch {
+        // 回滚失败时保留本地状态，等待用户手动刷新
+      }
+    } finally {
+      setSaving(false)
+    }
+  }, [currentRoll, fetchRolls, language])
+
   const brands = useMemo(() => Array.from(new Set(rolls.map(roll => roll.brand))).sort(), [rolls])
   const filteredRolls = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -329,7 +417,33 @@ export function FilmRollsPage() {
     })
   }, [filterBrand, rolls, searchQuery])
 
-  const rollPhotoIds = useMemo(() => new Set(currentRoll?.filmPhotos?.map(item => item.photoId) ?? []), [currentRoll?.filmPhotos])
+  const sortedRolls = useMemo(() => {
+    const [key, order] = sort.split(':') as ['shootDate' | 'createdAt', 'asc' | 'desc']
+    return [...filteredRolls].sort((left, right) => {
+      const leftTime = new Date(left[key] || 0).getTime()
+      const rightTime = new Date(right[key] || 0).getTime()
+      return order === 'asc' ? leftTime - rightTime : rightTime - leftTime
+    })
+  }, [filteredRolls, sort])
+
+  const totalFrames = useMemo(() => filteredRolls.reduce((sum, roll) => sum + (roll.photoCount ?? roll.filmPhotos?.length ?? 0), 0), [filteredRolls])
+
+  const currentFilmPhotos = useMemo(() => currentRoll?.filmPhotos ?? [], [currentRoll?.filmPhotos])
+
+  // 首次加载完成后自动选中第一卷（桌面资源管理器习惯）
+  useEffect(() => {
+    if (didAutoSelectRef.current || loading) return
+    if (currentRoll) {
+      didAutoSelectRef.current = true
+      return
+    }
+    if (sortedRolls.length === 0) return
+    didAutoSelectRef.current = true
+    void openRoll(sortedRolls[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, sortedRolls, currentRoll])
+
+  const rollPhotoIds = useMemo(() => new Set(currentFilmPhotos.map(item => item.photoId)), [currentFilmPhotos])
   const availablePhotos = useMemo(() => {
     const query = photoSelectorSearch.trim().toLowerCase()
     return photos.filter(photo => {
@@ -342,179 +456,384 @@ export function FilmRollsPage() {
     })
   }, [currentRoll?.id, photoSelectorSearch, photoTypeFilter, photos, rollPhotoIds])
 
-  if (currentRoll) {
-    return (
-      <>
-        <PageHeader
-          title={currentRoll.name || t('admin.new_film_roll', language)}
-          description={currentRoll.brand ? `${currentRoll.brand} · ISO ${currentRoll.iso}` : t('admin.new_film_roll', language)}
-          actions={
-            <div className="flex items-center gap-2">
-              <button onClick={() => { setCurrentRoll(null); void fetchRolls() }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                <ChevronLeft size={14} /> {t('admin.back_list', language)}
-              </button>
-              {activeTab === 'overview' && (
-                <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md disabled:opacity-50" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-                  {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                  {t('common.save', language)}
-                </button>
-              )}
-            </div>
-          }
-        />
-        <div className="flex-1 overflow-auto p-6">
-          <div className="flex gap-4 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
-            {(['overview', 'photos'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className="pb-2 text-sm transition-colors relative" style={{ color: activeTab === tab ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                {tab === 'overview' ? t('admin.overview', language) : t('admin.associate_photos', language)}
-                {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--primary)' }} />}
-              </button>
-            ))}
-          </div>
-          {activeTab === 'overview' ? (
-            <OverviewTab roll={currentRoll} onChange={setCurrentRoll} language={language} />
-          ) : loadingCurrentRoll ? (
-            <ListSkeleton count={3} />
-          ) : showPhotoSelector ? (
-            <PhotoSelector
-              photos={availablePhotos}
-              selectedIds={selectedPhotoIds}
-              search={photoSelectorSearch}
-              typeFilter={photoTypeFilter}
-              saving={saving}
-              onSearchChange={setPhotoSelectorSearch}
-              onTypeFilterChange={setPhotoTypeFilter}
-              onToggle={(id) => setSelectedPhotoIds(prev => {
-                const next = new Set(prev)
-                if (next.has(id)) next.delete(id)
-                else next.add(id)
-                return next
-              })}
-              onConfirm={handleAddPhotos}
-              onClose={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()); setPhotoSelectorSearch(''); setPhotoTypeFilter('film') }}
-              language={language}
-            />
-          ) : (
-            <PhotosTab
-              roll={currentRoll}
-              saving={saving}
-              onRemovePhoto={handleRemovePhoto}
-              onReorderFrames={handleReorderFrames}
-              onShowSelector={() => setShowPhotoSelector(true)}
-              language={language}
-            />
-          )}
-        </div>
-      </>
-    )
-  }
+  const clearFilters = useCallback(() => {
+    setSearchQuery('')
+    setFilterBrand('')
+  }, [])
 
   return (
     <>
       <PageHeader
         title={t('admin.page_film_rolls', language)}
-        description={`${filteredRolls.length} ${t('admin.film_rolls', language)}`}
+        description={`${filteredRolls.length} ${t('admin.film_roll_unit', language)}`}
         actions={
-          <div className="flex items-center gap-2">
-            <button onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} className="p-1.5 rounded-md border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-              {viewMode === 'grid' ? <List size={14} /> : <LayoutGrid size={14} />}
-            </button>
-            <button onClick={handleCreateRoll} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-              <Plus size={14} /> {t('admin.new_film_roll', language)}
-            </button>
-          </div>
+          <button onClick={handleCreateRoll} className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90">
+            <Plus size={14} /> {t('admin.new_film_roll', language)}
+          </button>
         }
       />
-      <div className="flex-1 overflow-auto p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
-            <input value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder={`${t('admin.film_roll_name', language)} / ${t('admin.film_roll_brand', language)}`} className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md border outline-none" style={inputStyle()} />
-          </div>
-          <select value={filterBrand} onChange={event => setFilterBrand(event.target.value)} className="px-2.5 py-1.5 text-xs rounded-md border outline-none" style={inputStyle()}>
-            <option value="">{t('common.all', language)}</option>
-            {brands.map(brand => <option key={brand} value={brand}>{brand}</option>)}
-          </select>
-        </div>
 
-        {loading ? (
-          viewMode === 'grid' ? <CardGridSkeleton count={6} cols={3} /> : <ListSkeleton count={5} />
-        ) : filteredRolls.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 border border-dashed" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            <Film size={32} className="mb-2 opacity-40" />
-            <p className="text-sm mb-4">{searchQuery || filterBrand ? t('admin.no_film_rolls_match_filters', language) : t('admin.no_film_rolls', language)}</p>
-            {!searchQuery && !filterBrand && (
-              <button onClick={handleCreateRoll} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border" style={{ borderColor: 'var(--border)' }}>
-                <Plus size={14} /> {t('admin.create_first_film_roll', language)}
-              </button>
-            )}
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredRolls.map(roll => (
-              <FilmRollCard key={roll.id} roll={roll} onClick={() => void openRoll(roll)} onDelete={() => setPendingDelete(roll)} language={language} />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filteredRolls.map(roll => (
-              <FilmRollListItem key={roll.id} roll={roll} onClick={() => void openRoll(roll)} onDelete={() => setPendingDelete(roll)} language={language} />
-            ))}
-          </div>
-        )}
+      {/* 内容工具栏：与照片库保持一致的位置与样式 */}
+      <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+        <div className="relative min-w-0 max-w-sm flex-1">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            placeholder={`${t('admin.film_roll_name', language)} / ${t('admin.film_roll_brand', language)}`}
+            className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1"
+          />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} aria-label={t('common.close', language)} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-secondary">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <SelectDropdown
+          value={filterBrand}
+          options={brands.map(brand => ({ value: brand, label: brand }))}
+          onChange={value => setFilterBrand(String(value))}
+          placeholder={t('common.all', language)}
+          clearLabel={t('common.all', language)}
+          ariaLabel={t('admin.film_roll_brand', language)}
+          className="w-32 shrink-0"
+        />
+        <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5" style={{ borderColor: 'var(--border)' }}>
+          <button type="button" onClick={() => setViewMode('grid')} title={language === 'zh' ? '网格视图' : 'Grid view'} aria-label={language === 'zh' ? '网格视图' : 'Grid view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'grid' ? 'var(--secondary)' : undefined }}><LayoutGrid size={13} /></button>
+          <button type="button" onClick={() => setViewMode('list')} title={language === 'zh' ? '列表视图' : 'List view'} aria-label={language === 'zh' ? '列表视图' : 'List view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'list' ? 'var(--secondary)' : undefined }}><List size={13} /></button>
+        </div>
+        <SelectDropdown
+          value={sort}
+          options={SORT_OPTIONS.map(option => ({ value: option.value, label: t(option.labelKey, language) }))}
+          onChange={value => setSort(String(value))}
+          ariaLabel={language === 'zh' ? '排序' : 'Sort'}
+          className="w-32 shrink-0"
+        />
       </div>
 
-      {pendingDelete && (
-        <DeleteDialog roll={pendingDelete} onCancel={() => setPendingDelete(null)} onConfirm={handleDelete} language={language} />
-      )}
+      {/* 主区域：左侧胶卷列表 + 右侧详情（桌面 master-detail） */}
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r bg-card" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex h-9 shrink-0 items-center justify-between border-b px-3" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.film_roll_list', language)}</span>
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] tabular-nums" style={{ color: 'var(--foreground)' }}>{filteredRolls.length}</span>
+          </div>
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+            {loading ? (
+              Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className="mb-2 flex items-center gap-2.5 rounded-lg px-2 py-2">
+                  <div className="h-10 w-14 shrink-0 animate-pulse rounded-md" style={{ backgroundColor: 'var(--muted)' }} />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="h-3 w-3/4 animate-pulse rounded" style={{ backgroundColor: 'var(--muted)' }} />
+                    <div className="h-2 w-1/2 animate-pulse rounded" style={{ backgroundColor: 'var(--muted)' }} />
+                    <div className="h-1 w-full animate-pulse rounded" style={{ backgroundColor: 'var(--muted)' }} />
+                  </div>
+                </div>
+              ))
+            ) : rolls.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 p-6 text-center">
+                <span className="flex size-12 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--muted)' }}><Film size={20} style={{ color: 'var(--muted-foreground)' }} /></span>
+                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t('admin.no_film_rolls', language)}</p>
+                <button onClick={handleCreateRoll} className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+                  <Plus size={14} /> {t('admin.create_first_film_roll', language)}
+                </button>
+              </div>
+            ) : filteredRolls.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-6 text-center">
+                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t('admin.no_film_rolls_match_filters', language)}</p>
+                <button onClick={clearFilters} className="text-xs underline-offset-2 hover:underline" style={{ color: 'var(--muted-foreground)' }}>{t('common.reset', language)}</button>
+              </div>
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 gap-2">
+                {sortedRolls.map(roll => (
+                  <RollGridCard
+                    key={roll.id}
+                    roll={roll}
+                    selected={currentRoll?.id === roll.id}
+                    language={language}
+                    onClick={() => void openRoll(roll)}
+                    onEdit={() => void openRoll(roll, 'overview')}
+                    onDelete={() => setPendingDelete(roll)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {sortedRolls.map(roll => (
+                  <RollRow
+                    key={roll.id}
+                    roll={roll}
+                    selected={currentRoll?.id === roll.id}
+                    language={language}
+                    onClick={() => void openRoll(roll)}
+                    onEdit={() => void openRoll(roll, 'overview')}
+                    onDelete={() => setPendingDelete(roll)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {!currentRoll ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6" style={{ color: 'var(--muted-foreground)' }}>
+              <span className="flex size-14 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--muted)' }}><Film size={24} /></span>
+              <p className="text-sm">{t('admin.film_roll_select_hint', language)}</p>
+              <button onClick={handleCreateRoll} className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}>
+                <Plus size={14} /> {t('admin.new_film_roll', language)}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 详情头部：胶卷信息 + 上下文操作 */}
+              <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5" style={{ borderColor: 'var(--border)' }}>
+                <div className="min-w-0">
+                  <h2 className="truncate font-serif text-base font-medium">{currentRoll.name || t('admin.new_film_roll', language)}</h2>
+                  <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                    {currentRoll.brand ? `${currentRoll.brand} · ${currentFormat(currentRoll)} · ISO ${currentRoll.iso}` : t('admin.new_film_roll', language)}
+                    {currentRoll.shootDate && ` · ${new Date(currentRoll.shootDate).toLocaleDateString()}`}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {activeTab === 'overview' ? (
+                    <button onClick={handleSave} disabled={saving} className="flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-50" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                      {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                      {t('common.save', language)}
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={handleReorderFrames} disabled={saving || currentFilmPhotos.length === 0} className="flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+                        <RefreshCw size={13} /> {t('admin.reorder_frames', language)}
+                      </button>
+                      <button onClick={() => setShowPhotoSelector(true)} className="flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-90" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                        <Plus size={14} /> {t('admin.add_photos', language)}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </header>
+
+              {/* 详情页签 */}
+              <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3" style={{ borderColor: 'var(--border)' }}>
+                <DetailTabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
+                  {t('admin.overview', language)}
+                </DetailTabButton>
+                <DetailTabButton active={activeTab === 'photos'} onClick={() => setActiveTab('photos')}>
+                  {t('admin.associate_photos', language)}
+                  {currentRoll.id && (
+                    <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+                      {currentFilmPhotos.length}/{currentRoll.frameCount}
+                    </span>
+                  )}
+                </DetailTabButton>
+              </div>
+
+              <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-5">
+                {activeTab === 'overview' ? (
+                  <OverviewTab roll={currentRoll} onChange={setCurrentRoll} language={language} />
+                ) : loadingCurrentRoll ? (
+                  <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3" style={{ color: 'var(--muted-foreground)' }}>
+                    <Loader2 size={22} className="animate-spin" />
+                    <p className="text-xs">{t('common.loading', language)}</p>
+                  </div>
+                ) : showPhotoSelector ? (
+                  <PhotoSelector
+                    photos={availablePhotos}
+                    selectedIds={selectedPhotoIds}
+                    search={photoSelectorSearch}
+                    typeFilter={photoTypeFilter}
+                    saving={saving}
+                    language={language}
+                    onSearchChange={setPhotoSelectorSearch}
+                    onTypeFilterChange={setPhotoTypeFilter}
+                    onToggle={(id) => setSelectedPhotoIds(prev => {
+                      const next = new Set(prev)
+                      if (next.has(id)) next.delete(id)
+                      else next.add(id)
+                      return next
+                    })}
+                    onConfirm={handleAddPhotos}
+                    onClose={() => { setShowPhotoSelector(false); setSelectedPhotoIds(new Set()); setPhotoSelectorSearch(''); setPhotoTypeFilter('film') }}
+                  />
+                ) : (
+                  <PhotosTab
+                    roll={currentRoll}
+                    language={language}
+                    saving={saving}
+                    onRemovePhoto={handleRemovePhoto}
+                    onReorderFrames={handleReorderByDrag}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 底部状态栏：与照片库一致 */}
+      <div className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+          <span>{filteredRolls.length} {t('admin.film_roll_unit', language)}</span>
+          <span className="opacity-60">·</span>
+          <span>{totalFrames} {t('admin.film_roll_frames', language)}</span>
+          {(searchQuery || filterBrand) && filteredRolls.length !== rolls.length && (
+            <>
+              <span className="opacity-60">·</span>
+              <span>{rolls.length} {t('admin.film_roll_unit', language)}</span>
+            </>
+          )}
+        </div>
+        <button type="button" disabled={loading} onClick={() => void fetchRolls(true)} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary disabled:cursor-wait disabled:opacity-50">
+          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />{t('common.refresh', language)}
+        </button>
+      </div>
+
+      <SimpleDeleteDialog
+        isOpen={!!pendingDelete}
+        title={t('admin.delete_film_roll', language)}
+        message={pendingDelete ? `${t('admin.film_roll_delete_confirm', language)}：${pendingDelete.name}` : ''}
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+        t={(key) => t(key, language)}
+      />
     </>
   )
 }
 
-function FilmRollCard({ roll, onClick, onDelete, language }: { roll: FilmRollDTO; onClick: () => void; onDelete: () => void; language: Locale }) {
+function DetailTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex h-full items-center gap-1.5 px-3 text-xs font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      style={{ color: active ? 'var(--foreground)' : 'var(--muted-foreground)' }}
+    >
+      {children}
+      {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full" style={{ backgroundColor: 'var(--primary)' }} />}
+    </button>
+  )
+}
+
+function RollRow({ roll, selected, language, onClick, onEdit, onDelete }: {
+  roll: FilmRollDTO
+  selected: boolean
+  language: Locale
+  onClick: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const display = getFilmStockDisplay(roll.brand, roll.name, currentFormat(roll), 14 / 10)
+  const style = getFilmStockDisplayStyle(display)
+  const photoCount = roll.photoCount ?? roll.filmPhotos?.length ?? 0
+  const percent = roll.frameCount > 0 ? Math.min(100, Math.round(photoCount / roll.frameCount * 100)) : 0
+  const accentText = selected ? 'color-mix(in srgb, var(--accent-foreground) 70%, transparent)' : 'var(--muted-foreground)'
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          className="group relative flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          style={{ backgroundColor: selected ? 'var(--accent)' : undefined }}
+        >
+          <span className="flex h-10 w-14 shrink-0 items-center justify-center rounded-md border p-1" style={{ borderColor: 'var(--border)', backgroundColor: selected ? 'color-mix(in srgb, var(--accent-foreground) 8%, transparent)' : 'var(--muted)' }}>
+            <img src={display.asset} alt="" className="max-h-full max-w-full object-contain" style={style} />
+          </span>
+          <span className="min-w-0 flex-1 pr-7">
+            <span className="block truncate text-xs font-medium" style={{ color: selected ? 'var(--accent-foreground)' : 'var(--foreground)' }}>{roll.name}</span>
+            <span className="mt-0.5 block truncate text-[10px]" style={{ color: accentText }}>{roll.brand} · {currentFormat(roll)} · ISO {roll.iso}</span>
+            <span className="mt-1.5 flex items-center gap-1.5">
+              <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: selected ? 'color-mix(in srgb, var(--accent-foreground) 18%, transparent)' : 'var(--muted)' }}>
+                <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: 'var(--primary)' }} />
+              </span>
+              <span className="shrink-0 text-[9px] tabular-nums" style={{ color: accentText }}>{photoCount}/{roll.frameCount}</span>
+            </span>
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={event => { event.stopPropagation(); onDelete() }}
+            onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onDelete() } }}
+            title={t('common.delete', language)}
+            aria-label={t('common.delete', language)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            style={{ backgroundColor: 'rgba(0,0,0,0.55)', color: 'white' }}
+          >
+            <Trash2 size={12} />
+          </span>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuLabel className="max-w-56 truncate">{roll.name}</ContextMenuLabel>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onClick}><Film size={14} />{t('admin.film_roll_open', language)}</ContextMenuItem>
+        <ContextMenuItem onSelect={onEdit}><Pencil size={14} />{t('admin.edit_film_roll', language)}</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onSelect={onDelete}><Trash2 size={14} />{t('common.delete', language)}</ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
+function RollGridCard({ roll, selected, language, onClick, onEdit, onDelete }: {
+  roll: FilmRollDTO
+  selected: boolean
+  language: Locale
+  onClick: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
   const display = getFilmStockDisplay(roll.brand, roll.name, currentFormat(roll), 4 / 3)
   const style = getFilmStockDisplayStyle(display)
+  const photoCount = roll.photoCount ?? roll.filmPhotos?.length ?? 0
+  const accentText = selected ? 'color-mix(in srgb, var(--accent-foreground) 70%, transparent)' : 'var(--muted-foreground)'
 
   return (
-    <button type="button" onClick={onClick} className="group overflow-hidden rounded-lg border text-left transition-opacity hover:opacity-90" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-      <div className="aspect-[4/3] relative overflow-hidden" style={{ backgroundColor: 'var(--muted)' }}>
-        <div className="w-full h-full flex items-center justify-center p-6" style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 50%, transparent)' }}>
-          <img src={display.asset} alt="" className="max-h-full max-w-full object-contain opacity-90" style={style} />
-        </div>
-        <span className="absolute top-2 right-2 rounded bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">{roll.photoCount ?? 0}</span>
-        <span role="button" tabIndex={0} onClick={event => { event.stopPropagation(); onDelete() }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onDelete() } }} className="absolute bottom-2 right-2 p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: 'rgba(0,0,0,0.6)', color: 'white' }}>
-          <Trash2 size={12} />
-        </span>
-      </div>
-      <div className="p-3">
-        <h3 className="text-sm font-medium truncate">{roll.name}</h3>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{roll.brand} · {currentFormat(roll)} · ISO {roll.iso} · {roll.frameCount} {t('admin.film_roll_frames', language)}</p>
-        {roll.shootDate && <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{new Date(roll.shootDate).toLocaleDateString()}</p>}
-      </div>
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          className="group relative min-w-0 rounded-lg border p-1 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          style={{ borderColor: selected ? 'var(--primary)' : 'var(--border)', backgroundColor: selected ? 'var(--accent)' : undefined }}
+        >
+          <span className="relative block aspect-[4/3] w-full overflow-hidden rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+            <img src={display.asset} alt="" className="h-full w-full object-contain p-2" style={style} />
+            <span className="absolute left-1.5 top-1.5 rounded bg-black/50 px-1.5 py-0.5 text-[9px] font-medium text-white tabular-nums">{photoCount}</span>
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={event => { event.stopPropagation(); onDelete() }}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onDelete() } }}
+              title={t('common.delete', language)}
+              aria-label={t('common.delete', language)}
+              className="absolute right-1.5 top-1.5 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              style={{ backgroundColor: 'rgba(0,0,0,0.55)', color: 'white' }}
+            >
+              <Trash2 size={11} />
+            </span>
+          </span>
+          <span className="block min-w-0 px-1 pb-1 pt-1.5">
+            <span className="block truncate text-[11px] font-medium" style={{ color: selected ? 'var(--accent-foreground)' : 'var(--foreground)' }}>{roll.name}</span>
+            <span className="mt-0.5 block truncate text-[9px]" style={{ color: accentText }}>{roll.brand} · ISO {roll.iso}</span>
+          </span>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuLabel className="max-w-56 truncate">{roll.name}</ContextMenuLabel>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onClick}><Film size={14} />{t('admin.film_roll_open', language)}</ContextMenuItem>
+        <ContextMenuItem onSelect={onEdit}><Pencil size={14} />{t('admin.edit_film_roll', language)}</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onSelect={onDelete}><Trash2 size={14} />{t('common.delete', language)}</ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
-function FilmRollListItem({ roll, onClick, onDelete, language }: { roll: FilmRollDTO; onClick: () => void; onDelete: () => void; language: Locale }) {
-  const display = getFilmStockDisplay(roll.brand, roll.name, currentFormat(roll), 20 / 14)
-  const style = getFilmStockDisplayStyle(display)
-
-  return (
-    <button type="button" onClick={onClick} className="flex items-center gap-4 px-4 py-3 rounded-lg border text-left w-full transition-opacity hover:opacity-90" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-      <div className="w-20 h-14 flex-shrink-0 flex items-center justify-center p-1.5" style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 40%, transparent)' }}>
-        <img src={display.asset} alt="" className="max-h-full max-w-full object-contain" style={style} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-medium truncate">{roll.name}</h3>
-        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{roll.brand} · ISO {roll.iso} · {roll.photoCount ?? 0}/{roll.frameCount} {t('admin.film_roll_frames', language)}</p>
-      </div>
-      <span className="hidden sm:block text-xs" style={{ color: 'var(--muted-foreground)' }}>{roll.shootDate ? new Date(roll.shootDate).toLocaleDateString() : ''}</span>
-      <span role="button" tabIndex={0} onClick={event => { event.stopPropagation(); onDelete() }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onDelete() } }} className="p-1 rounded" style={{ color: 'var(--destructive)' }}>
-        <Trash2 size={14} />
-      </span>
-    </button>
-  )
-}
 function OverviewTab({ roll, onChange, language }: { roll: FilmRollDTO; onChange: (roll: FilmRollDTO) => void; language: Locale }) {
   const format = currentFormat(roll)
   const nameOptions = useMemo(() => getFilmStockNames(roll.brand, format), [format, roll.brand])
@@ -541,141 +860,189 @@ function OverviewTab({ roll, onChange, language }: { roll: FilmRollDTO; onChange
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Field label="画幅">
-          <select value={format} onChange={event => handleFormatChange(event.target.value as FilmFormat)} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()}>
-            {FORMAT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Field label={language === 'zh' ? '画幅' : 'Format'}>
+          <SelectDropdown value={format} options={FORMAT_OPTIONS} onChange={value => handleFormatChange(value as FilmFormat)} size="md" ariaLabel={language === 'zh' ? '画幅' : 'Format'} className="w-full" />
         </Field>
         <Field label={t('admin.film_roll_brand', language)}>
-          <select value={roll.brand} onChange={event => handleBrandChange(event.target.value)} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()}>
-            {BRAND_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+          <SelectDropdown value={roll.brand} options={BRAND_OPTIONS} onChange={value => handleBrandChange(String(value))} size="md" ariaLabel={t('admin.film_roll_brand', language)} className="w-full" />
         </Field>
         <Field label={t('admin.film_roll_name', language)}>
           {nameOptions.length > 0 ? (
-            <select value={roll.name} onChange={event => handleNameChange(event.target.value)} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()}>
-              {nameOptions.map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
+            <SelectDropdown value={roll.name} options={nameOptions.map(name => ({ value: name, label: name }))} onChange={value => handleNameChange(String(value))} size="md" ariaLabel={t('admin.film_roll_name', language)} className="w-full" />
           ) : (
-            <input value={roll.name} onChange={event => update({ name: event.target.value })} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()} />
+            <input value={roll.name} onChange={event => update({ name: event.target.value })} className={formInputClass} style={inputStyle()} />
           )}
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label={t('admin.film_roll_iso', language)}>
-          <input type="number" min={1} value={roll.iso} onChange={event => update({ iso: Number(event.target.value) || 1 })} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()} />
+          <input type="number" min={1} value={roll.iso} onChange={event => update({ iso: Number(event.target.value) || 1 })} className={formInputClass} style={inputStyle()} />
         </Field>
         <Field label={t('admin.film_roll_frame_count', language)}>
-          <input type="number" min={1} value={roll.frameCount} onChange={event => update({ frameCount: Number(event.target.value) || 1 })} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()} />
+          <input type="number" min={1} value={roll.frameCount} onChange={event => update({ frameCount: Number(event.target.value) || 1 })} className={formInputClass} style={inputStyle()} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label={t('admin.film_roll_shoot_date', language)}>
-          <input type="date" value={dateInputValue(roll.shootDate)} onChange={event => update({ shootDate: isoFromDateInput(event.target.value) })} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()} />
+          <input type="date" value={dateInputValue(roll.shootDate)} onChange={event => update({ shootDate: isoFromDateInput(event.target.value) })} className={formInputClass} style={inputStyle()} />
         </Field>
         <Field label={t('admin.film_roll_end_date', language)}>
-          <input type="date" value={dateInputValue(roll.endDate)} onChange={event => update({ endDate: isoFromDateInput(event.target.value) })} className="w-full px-2.5 py-1.5 text-xs rounded-lg border outline-none" style={inputStyle()} />
+          <input type="date" value={dateInputValue(roll.endDate)} onChange={event => update({ endDate: isoFromDateInput(event.target.value) })} className={formInputClass} style={inputStyle()} />
         </Field>
       </div>
       <Field label={t('admin.film_roll_notes', language)}>
-        <textarea value={roll.notes ?? ''} onChange={event => update({ notes: event.target.value })} rows={4} className="w-full px-2.5 py-2 text-xs rounded-lg border outline-none resize-none" style={inputStyle()} />
+        <textarea value={roll.notes ?? ''} onChange={event => update({ notes: event.target.value })} rows={4} className={`${formInputClass} resize-none`} style={inputStyle()} />
       </Field>
     </div>
   )
 }
 
-function PhotosTab({ roll, saving, onRemovePhoto, onReorderFrames, onShowSelector, language }: {
+function PhotosTab({ roll, language, saving, onRemovePhoto, onReorderFrames }: {
   roll: FilmRollDTO
+  language: Locale
   saving: boolean
   onRemovePhoto: (photoId: string) => void
-  onReorderFrames: () => void
-  onShowSelector: () => void
-  language: Locale
+  onReorderFrames: (orderedIds: string[]) => void
 }) {
   const filmPhotos = roll.filmPhotos ?? []
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{filmPhotos.length} / {roll.frameCount} {t('admin.film_roll_frames', language)}</span>
-        <div className="flex items-center gap-2">
-          <button onClick={onReorderFrames} disabled={saving || filmPhotos.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            <RefreshCw size={12} /> {t('admin.reorder_frames', language)}
-          </button>
-          <button onClick={onShowSelector} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-            <Plus size={14} /> {t('admin.add_photos', language)}
-          </button>
-        </div>
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [previewOrder, setPreviewOrder] = useState<FilmPhotoDTO[] | null>(null)
+
+  // 拖拽过程中用 previewOrder 实时预览，释放时提交最终顺序
+  const displayOrder = previewOrder ?? filmPhotos
+  const dragEnabled = filmPhotos.length > 1 && !saving
+
+  const handleDragStart = (item: FilmPhotoDTO) => {
+    if (!dragEnabled) return
+    setDraggingId(item.id)
+    setPreviewOrder([...filmPhotos])
+  }
+
+  const handleDragEnter = (targetId: string) => {
+    if (!draggingId || draggingId === targetId || !previewOrder) return
+    const from = previewOrder.findIndex(fp => fp.id === draggingId)
+    const to = previewOrder.findIndex(fp => fp.id === targetId)
+    if (from < 0 || to < 0 || from === to) return
+    const next = [...previewOrder]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setPreviewOrder(next)
+  }
+
+  const handleDrop = () => {
+    if (draggingId && previewOrder) onReorderFrames(previewOrder.map(fp => fp.id))
+    setDraggingId(null)
+    setPreviewOrder(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggingId(null)
+    setPreviewOrder(null)
+  }
+
+  if (filmPhotos.length === 0) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-3 rounded-lg border border-dashed" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+        <span className="flex size-12 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--muted)' }}><ImageIcon size={20} /></span>
+        <p className="text-sm">{t('admin.no_photos', language)}</p>
       </div>
-      {filmPhotos.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-          {filmPhotos.map(item => (
-            <div key={item.id} className="relative group rounded-lg overflow-hidden" style={{ backgroundColor: 'var(--muted)' }}>
-              <div className="aspect-square">
-                {item.photo?.thumbnailUrl || item.photo?.url ? (
-                  <img src={resolveAssetUrl(item.photo.thumbnailUrl || item.photo.url)} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center"><ImageIcon size={24} style={{ color: 'var(--muted-foreground)' }} /></div>
-                )}
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/70 to-transparent"><span className="text-[10px] text-white">#{item.frameNumber}</span></div>
-              <button onClick={() => onRemovePhoto(item.photoId)} className="absolute top-1.5 right-1.5 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: 'rgba(0,0,0,0.6)', color: 'white' }}>
-                <X size={12} />
-              </button>
+    )
+  }
+
+  return (
+    <div
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4"
+      onDrop={handleDrop}
+      onDragOver={event => { if (draggingId) event.preventDefault() }}
+    >
+      {displayOrder.map(item => (
+        <div
+          key={item.id}
+          draggable={dragEnabled}
+          onDragStart={() => handleDragStart(item)}
+          onDragEnter={() => handleDragEnter(item.id)}
+          onDragEnd={handleDragEnd}
+          className={`group relative overflow-hidden rounded-lg border ${dragEnabled ? 'cursor-grab active:cursor-grabbing' : ''} transition-colors ${draggingId === item.id ? 'opacity-50 ring-2 ring-primary' : ''}`}
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}
+        >
+            <div className="aspect-square">
+              {item.photo?.thumbnailUrl || item.photo?.url ? (
+                <img src={resolveAssetUrl(item.photo.thumbnailUrl || item.photo.url)} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center"><ImageIcon size={22} style={{ color: 'var(--muted-foreground)' }} /></div>
+              )}
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center h-48 border border-dashed rounded-lg" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-          <ImageIcon size={32} className="mb-2 opacity-40" />
-          <p className="text-sm">{t('admin.no_photos', language)}</p>
-        </div>
-      )}
+            <span draggable={false} className="absolute left-1.5 top-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-medium text-white tabular-nums backdrop-blur-sm">#{item.frameNumber}</span>
+            <button
+              draggable={false}
+              onMouseDown={event => event.stopPropagation()}
+              onClick={() => onRemovePhoto(item.photoId)}
+              title={t('common.delete', language)}
+              aria-label={t('common.delete', language)}
+              className="absolute right-1.5 top-1.5 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              style={{ backgroundColor: 'rgba(0,0,0,0.6)', color: 'white' }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
     </div>
   )
 }
 
-function PhotoSelector({ photos, selectedIds, search, typeFilter, saving, onSearchChange, onTypeFilterChange, onToggle, onConfirm, onClose, language }: {
+function PhotoSelector({ photos, selectedIds, search, typeFilter, saving, language, onSearchChange, onTypeFilterChange, onToggle, onConfirm, onClose }: {
   photos: PhotoDTO[]
   selectedIds: Set<string>
   search: string
   typeFilter: PhotoTypeFilter
   saving: boolean
+  language: Locale
   onSearchChange: (value: string) => void
   onTypeFilterChange: (value: PhotoTypeFilter) => void
   onToggle: (id: string) => void
   onConfirm: () => void
   onClose: () => void
-  language: Locale
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+      <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={onClose} className="p-1.5 rounded-md border" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}><X size={14} /></button>
-          <span className="text-sm">{selectedIds.size} {t('admin.selected', language)}</span>
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
-            <input value={search} onChange={event => onSearchChange(event.target.value)} placeholder={t('common.search', language)} className="w-44 pl-8 pr-3 py-1.5 text-xs rounded-md border outline-none" style={inputStyle()} />
+          <button onClick={onClose} title={t('common.close', language)} aria-label={t('common.close', language)} className="flex h-8 w-8 items-center justify-center rounded-md border transition-colors hover:bg-secondary" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}><X size={14} /></button>
+          <span className="text-xs font-medium">{selectedIds.size} {t('admin.selected', language)}</span>
+          <div className="relative w-44">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
+            <input value={search} onChange={event => onSearchChange(event.target.value)} placeholder={t('common.search', language)} className="h-8 w-full rounded-md border bg-input pl-8 pr-3 text-xs outline-none focus:ring-1" />
           </div>
-          <select value={typeFilter} onChange={event => onTypeFilterChange(event.target.value as PhotoTypeFilter)} className="px-2.5 py-1.5 text-xs rounded-md border outline-none" style={inputStyle()}>
-            <option value="all">{t('common.all', language)}</option>
-            <option value="digital">{t('admin.upload_type_digital', language)}</option>
-            <option value="film">{t('admin.upload_type_film', language)}</option>
-          </select>
+          <SelectDropdown
+            value={typeFilter}
+            options={[
+              { value: 'all', label: t('common.all', language) },
+              { value: 'digital', label: t('admin.upload_type_digital', language) },
+              { value: 'film', label: t('admin.upload_type_film', language) },
+            ]}
+            onChange={value => onTypeFilterChange(value as PhotoTypeFilter)}
+            ariaLabel={language === 'zh' ? '照片类型' : 'Photo type'}
+            className="w-32"
+          />
         </div>
-        <button onClick={onConfirm} disabled={saving || selectedIds.size === 0} className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md disabled:opacity-50" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+        <button onClick={onConfirm} disabled={saving || selectedIds.size === 0} className="flex h-8 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
           {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
           {t('admin.confirm_add', language)} ({selectedIds.size})
         </button>
       </div>
       {photos.length === 0 ? (
-        <div className="flex items-center justify-center h-48 border border-dashed rounded-lg" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}><p className="text-sm">{t('admin.no_photos', language)}</p></div>
+        <div className="flex items-center justify-center rounded-lg border border-dashed" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
+          <div className="flex h-48 flex-col items-center justify-center gap-2">
+            <ImageIcon size={22} className="opacity-40" />
+            <p className="text-sm">{t('admin.no_photos_available', language)}</p>
+          </div>
+        </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-5 xl:grid-cols-6 gap-2">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
           {photos.map(photo => (
-            <button key={photo.id} onClick={() => onToggle(photo.id)} className="relative aspect-square rounded-md overflow-hidden border-2 transition-all" style={{ borderColor: selectedIds.has(photo.id) ? 'var(--primary)' : 'transparent', backgroundColor: 'var(--muted)' }}>
-              {photo.thumbnailUrl || photo.url ? <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url)} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={16} style={{ color: 'var(--muted-foreground)' }} /></div>}
+            <button key={photo.id} onClick={() => onToggle(photo.id)} className="relative aspect-square overflow-hidden rounded-md border-2 transition-all" style={{ borderColor: selectedIds.has(photo.id) ? 'var(--primary)' : 'transparent', backgroundColor: 'var(--muted)' }}>
+              {photo.thumbnailUrl || photo.url ? <img src={resolveAssetUrl(photo.thumbnailUrl || photo.url)} alt="" loading="lazy" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><ImageIcon size={16} style={{ color: 'var(--muted-foreground)' }} /></div>}
               {selectedIds.has(photo.id) && <div className="absolute inset-0 flex items-center justify-center bg-black/30"><Check size={20} className="text-white" /></div>}
             </button>
           ))}
@@ -685,25 +1052,10 @@ function PhotoSelector({ photos, selectedIds, search, typeFilter, saving, onSear
   )
 }
 
-function DeleteDialog({ roll, onCancel, onConfirm, language }: { roll: FilmRollDTO; onCancel: () => void; onConfirm: () => void; language: Locale }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="rounded-lg border p-6 max-w-sm w-full mx-4" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}>
-        <h3 className="text-sm font-medium mb-2">{t('common.confirm', language)}</h3>
-        <p className="text-xs mb-4" style={{ color: 'var(--muted-foreground)' }}>{t('admin.film_roll_delete_confirm', language)}: {roll.name}</p>
-        <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 text-xs rounded-md" style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>{t('common.cancel', language)}</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 text-xs rounded-md" style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}>{t('common.delete', language)}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
+      <span className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
       {children}
     </label>
   )

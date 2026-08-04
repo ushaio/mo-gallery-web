@@ -15,7 +15,7 @@ const PREVIEW_WIDTH = 104
 
 function TemplatePreviewSlot({ slot, pageW, scale }: { slot: Slot; pageW: number; scale: number }) {
   const style = {
-    left: (slot.page === 'right' ? pageW + slot.x : slot.x) * scale,
+    left: slot.x * scale,
     top: slot.y * scale,
     width: slot.w * scale,
     height: slot.h * scale,

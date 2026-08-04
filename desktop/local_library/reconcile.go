@@ -73,8 +73,8 @@ func (m *Manager) reconcilePath(
 	if statErr != nil {
 		return reconcileResult{}, statErr
 	}
-	if info.IsDir() || !isSupportedMedia(target) {
-		return reconcileResult{}, newError(ErrUnsupportedFile, "path is not a supported media file", map[string]any{"path": normalized})
+	if info.IsDir() || !isIndexableFile(target) {
+		return reconcileResult{}, newError(ErrUnsupportedFile, "path is not an indexable file", map[string]any{"path": normalized})
 	}
 	if source != reconcileSourceScan {
 		info, err = waitForStableFile(ctx, target, 60*time.Millisecond, 600*time.Millisecond)
@@ -102,8 +102,8 @@ func (m *Manager) reconcileKnownFile(
 	if string(normalized) == "" {
 		return reconcileResult{}, newError(ErrInvalidPath, "a library-relative media path is required", nil)
 	}
-	if info.IsDir() || !isSupportedMedia(absolutePath) {
-		return reconcileResult{}, newError(ErrUnsupportedFile, "path is not a supported media file", map[string]any{"path": normalized})
+	if info.IsDir() || !isIndexableFile(absolutePath) {
+		return reconcileResult{}, newError(ErrUnsupportedFile, "path is not an indexable file", map[string]any{"path": normalized})
 	}
 	if source == reconcileSourceScan {
 		unchanged, unchangedErr := session.touchUnchangedAssetForScan(ctx, key, info.Size(), info.ModTime().UnixNano(), scanID, operationID)
@@ -111,9 +111,13 @@ func (m *Manager) reconcileKnownFile(
 			return reconcileResult{}, unchangedErr
 		}
 		if unchanged != nil {
+			// Non-photo files never get an image preview, so they are not queued
+			// for thumbnail generation even though their preview stays unavailable.
+			needPreview := isSupportedMedia(absolutePath) &&
+				(unchanged.PreviewStatus != "ready" || unchanged.DominantColors == "" || unchanged.DominantColors == "[]")
 			return reconcileResult{
 				AssetID: unchanged.ID, RelativePath: string(normalized),
-				NeedsPreview: unchanged.PreviewStatus != "ready" || unchanged.DominantColors == "" || unchanged.DominantColors == "[]",
+				NeedsPreview: needPreview,
 			}, nil
 		}
 	}

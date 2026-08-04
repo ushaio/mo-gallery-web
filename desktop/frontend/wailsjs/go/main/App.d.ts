@@ -4,6 +4,7 @@ import {services} from '../models';
 import {local_library} from '../models';
 import {types} from '../models';
 import {config} from '../models';
+import {main} from '../models';
 import {image} from '../models';
 
 export function AddPhotosToAlbum(arg1:string,arg2:Array<string>):Promise<services.AlbumDTO>;
@@ -148,6 +149,8 @@ export function GetLocalAssetOriginalPaths(arg1:Array<string>):Promise<Array<str
 
 export function GetLocalLibraryBackups():Promise<local_library.BackupOverview>;
 
+export function GetLocalLibraryCacheStats():Promise<local_library.LocalLibraryCacheStats>;
+
 export function GetLocalLibraryEntryState():Promise<Record<string, any>>;
 
 export function GetLocalLibraryFolderProperties(arg1:string):Promise<local_library.FolderProperties>;
@@ -181,6 +184,8 @@ export function GetStory(arg1:string):Promise<services.StoryDTO>;
 export function GetStoryAiModels():Promise<services.StoryAiModelsResponseDTO>;
 
 export function GetStoryAiProviderModels(arg1:string):Promise<services.StoryAiModelsResponseDTO>;
+
+export function GetWindowAppearance():Promise<main.WindowAppearance>;
 
 export function GetZineCJKFontInfo():Promise<services.ZineCJKFontInfo>;
 
@@ -256,6 +261,8 @@ export function ReorderFilmRollFrames(arg1:string):Promise<services.FilmRollDTO>
 
 export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<services.StoryDTO>;
 
+export function RestartApplication():Promise<void>;
+
 export function RestoreLocalAsset(arg1:string):Promise<void>;
 
 export function RestoreLocalLibraryBackup(arg1:string):Promise<local_library.LibrarySnapshot>;
@@ -283,6 +290,8 @@ export function SelectLocalLibraryImportFiles():Promise<Array<string>>;
 export function SetAlbumCover(arg1:string,arg2:string):Promise<services.AlbumDTO>;
 
 export function SetAuth(arg1:string,arg2:string):Promise<services.UserInfo>;
+
+export function SetFilmRollFrameOrder(arg1:string,arg2:Array<string>):Promise<services.FilmRollDTO>;
 
 export function SetLocalAssetCollections(arg1:string,arg2:Array<string>):Promise<void>;
 
@@ -333,6 +342,8 @@ export function UpdateSettings(arg1:Record<string, string>):Promise<Record<strin
 export function UpdateStorageSource(arg1:string,arg2:Record<string, string>):Promise<types.StorageSourceDTO>;
 
 export function UpdateStory(arg1:string,arg2:services.UpdateStoryParams):Promise<services.StoryDTO>;
+
+export function UpdateWindowStyle(arg1:string):Promise<main.WindowAppearance>;
 
 export function UploadFile(arg1:string,arg2:services.UploadSettings,arg3:string,arg4:image.ExifData):Promise<services.UploadResult>;
 

@@ -184,7 +184,7 @@ preview_cache(asset_id, variant, cache_key, relative_cache_path,
 | 静态 AVIF | 是 | 解码派生图 | 解码器支持时原文件 |
 | 动画 AVIF | 是 | 可降级 | MVP 明确不承诺播放 |
 | HEIC/HEIF、TIFF | 是 | 解码派生图 | 受控解码 |
-| CR2/CR3/NEF/ARW/DNG/RAF | 是 | 内嵌 JPEG | 最高内嵌 JPEG并标注 |
+| CR2/CR3/NEF/ARW/DNG/RAF/RW2 | 是 | 内嵌 JPEG | 最高内嵌 JPEG并标注 |
 
 格式识别组合扩展名白名单、文件头与解码结果。受支持格式解码失败仍建档为 `preview_status=unavailable`。现有 `goexif` 不足以满足全部矩阵，媒体后端必须经 Windows 打包与真实样本 spike 决定。
 

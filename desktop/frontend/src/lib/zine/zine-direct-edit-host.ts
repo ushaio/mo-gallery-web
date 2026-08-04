@@ -16,6 +16,7 @@ import {
   type ZineEditorOperation,
 } from '@mo-gallery/ai-agent'
 
+import { getSlotLocalX } from './geometry'
 import { cloneSpreads } from './history'
 import { getSpreadSize } from './page-sizes'
 import { getProjectBleedMm } from './print'
@@ -71,12 +72,12 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-function slotToJson(slot: Slot): Record<string, JsonValue> {
+function slotToJson(slot: Slot, pageW: number): Record<string, JsonValue> {
   const base: Record<string, JsonValue> = {
     id: slot.id,
     kind: slot.kind,
     page: slot.page,
-    x: slot.x,
+    x: getSlotLocalX(slot, pageW),
     y: slot.y,
     w: slot.w,
     h: slot.h,
@@ -106,12 +107,12 @@ function slotToJson(slot: Slot): Record<string, JsonValue> {
   }
 }
 
-function spreadToJson(spread: Spread): Record<string, JsonValue> {
+function spreadToJson(spread: Spread, pageW: number): Record<string, JsonValue> {
   return {
     id: spread.id,
     templateId: spread.templateId,
     ...(spread.role ? { role: spread.role } : {}),
-    slots: spread.slots.map(slotToJson),
+    slots: spread.slots.map((slot) => slotToJson(slot, pageW)),
   }
 }
 
@@ -142,12 +143,13 @@ function createSnapshot(
     throw new EditorAiExecutionError('stale_revision', `Zine spread ${targetSpreadId} no longer exists`)
   }
   const currentSpread = project.spreads[targetIndex]
+  const { pageW } = getSpreadSize(project.pageSize, project.pageOrientation, project.customSizeMm)
   const adjacentSpreads = [project.spreads[targetIndex - 1], project.spreads[targetIndex + 1]]
     .filter((spread): spread is Spread => spread !== undefined)
     .map((spread) => ({
       spreadId: spread.id,
       index: project.spreads.findIndex((candidate) => candidate.id === spread.id),
-      structure: spreadToJson(spread),
+      structure: spreadToJson(spread, pageW),
       summary: spreadSummary(spread),
     }))
   const spreadSummaries: Record<string, JsonValue> = {}
@@ -182,7 +184,7 @@ function createSnapshot(
     currentSpread: {
       spreadId: currentSpread.id,
       index: targetIndex,
-      structure: spreadToJson(currentSpread),
+      structure: spreadToJson(currentSpread, pageW),
       summary: spreadSummary(currentSpread),
       ...(visuals.preview ? { preview: visuals.preview } : {}),
     },
@@ -233,7 +235,7 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function parseSlot(value: unknown): Slot | null {
+function parseSlot(value: unknown, pageW: number): Slot | null {
   if (!isRecord(value)) return null
   if (
     typeof value.id !== 'string'
@@ -253,7 +255,7 @@ function parseSlot(value: unknown): Slot | null {
     id: value.id,
     kind: value.kind,
     page: value.page,
-    x: value.x,
+    x: value.page === 'right' ? pageW + value.x : value.x,
     y: value.y,
     w: value.w,
     h: value.h,
@@ -400,6 +402,7 @@ export function createZineDirectEditHost(
 
       const sourceSpread = liveProject.spreads.find((spread) => spread.id === targetSpreadId)
       if (!sourceSpread) throw new EditorAiExecutionError('stale_revision', 'Target Zine spread is unavailable')
+      const { pageW, pageH } = getSpreadSize(liveProject.pageSize, liveProject.pageOrientation, liveProject.customSizeMm)
       let sandboxSpread = cloneSpreads([sourceSpread])[0]
       const issues: EditorAiValidationIssue[] = []
       const changeEntries: ReadonlyAiChangeEntry[] = []
@@ -412,9 +415,13 @@ export function createZineDirectEditHost(
         }
 
         if (operation.type === 'insert_slot') {
-          const slot = parseSlot(operation.slot)
+          const slot = parseSlot(operation.slot, pageW)
           if (!slot) {
             issues.push(issue(operation, 'invalid_slot', 'Inserted slot is not a valid Zine slot'))
+            continue
+          }
+          if (slot.kind === 'image' && slot.assetId !== null && !liveProject.assets.some((asset) => asset.id === slot.assetId)) {
+            issues.push(issue(operation, 'asset_not_found', `Asset ${slot.assetId} is not in this project`))
             continue
           }
           if (sandboxSpread.slots.some((candidate) => candidate.id === slot.id)) {
@@ -431,7 +438,7 @@ export function createZineDirectEditHost(
             targetId: slot.id,
             targetLabel: `${slot.kind} slot`,
             category: 'structure',
-            after: slotToJson(slot),
+            after: slotToJson(slot, pageW),
           })
           continue
         }
@@ -456,16 +463,11 @@ export function createZineDirectEditHost(
             issues.push(issue(operation, 'template_not_found', `Template ${operation.templateId} is unavailable for this spread`))
             continue
           }
-          const { pageW, pageH } = getSpreadSize(
-            liveProject.pageSize,
-            liveProject.pageOrientation,
-            liveProject.customSizeMm,
-          )
           const replacement = buildSpreadFromTemplate(operation.templateId, pageW, pageH, {
             role: sandboxSpread.role,
             bleedMm: getProjectBleedMm(liveProject),
           })
-          const before = sandboxSpread.slots.map(slotToJson)
+          const before = sandboxSpread.slots.map((slot) => slotToJson(slot, pageW))
           sandboxSpread = { ...replacement, id: sandboxSpread.id, role: sandboxSpread.role }
           changeEntries.push({
             operation: operation.type,
@@ -473,7 +475,7 @@ export function createZineDirectEditHost(
             targetLabel: 'spread layout',
             category: 'layout',
             before,
-            after: sandboxSpread.slots.map(slotToJson),
+            after: sandboxSpread.slots.map((slot) => slotToJson(slot, pageW)),
           })
           continue
         }
@@ -492,7 +494,7 @@ export function createZineDirectEditHost(
             targetId: slot.id,
             targetLabel: `${slot.kind} slot`,
             category: 'structure',
-            before: slotToJson(slot),
+            before: slotToJson(slot, pageW),
           })
           continue
         }
@@ -506,11 +508,19 @@ export function createZineDirectEditHost(
           }
           const before: Record<string, JsonValue> = {}
           const after: Record<string, JsonValue> = {}
+          const nextPage = attrs.page === 'left' || attrs.page === 'right' ? attrs.page : slot.page
+          const internalAttrs = { ...attrs }
+          if ('page' in attrs || 'x' in attrs) {
+            const localX = finiteNumber(attrs.x) ? attrs.x : getSlotLocalX(slot, pageW)
+            internalAttrs.x = nextPage === 'right' ? pageW + localX : localX
+            internalAttrs.page = nextPage
+          }
+          const currentJson = slotToJson(slot, pageW)
           for (const [key, value] of Object.entries(attrs)) {
-            before[key] = slotToJson(slot)[key]
+            before[key] = currentJson[key]
             after[key] = value as JsonValue
           }
-          sandboxSpread.slots[slotIndex] = { ...slot, ...attrs } as Slot
+          sandboxSpread.slots[slotIndex] = { ...slot, ...internalAttrs } as Slot
           changeEntries.push({
             operation: operation.type,
             targetId: slot.id,

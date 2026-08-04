@@ -11,16 +11,25 @@ import { t } from '@/lib/i18n'
 import { GetApiConfig, GetSettings } from '../../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 
-const navItems = [
-  { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
-  { path: '/library', icon: LibraryBig, key: 'admin.resource_library' },
-  { path: '/upload', icon: Upload, key: 'admin.upload' },
-  { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
-  { path: '/zine', icon: BookImage, key: 'admin.zine' },
-  { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
-  { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
-  { path: '/settings', icon: Settings, key: 'admin.config' },
-  { path: '/friends', icon: Users, key: 'admin.friends' },
+const navGroups = [
+  [
+    { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
+  ],
+  [
+    { path: '/library', icon: LibraryBig, key: 'admin.resource_library' },
+    { path: '/upload', icon: Upload, key: 'admin.upload' },
+  ],
+  [
+    { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
+    { path: '/zine', icon: BookImage, key: 'admin.zine' },
+  ],
+  [
+    { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
+  ],
+  [
+    { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
+    { path: '/friends', icon: Users, key: 'admin.friends' },
+  ],
 ]
 
 const themeOptions = [
@@ -114,27 +123,40 @@ export function Sidebar() {
       </button>
 
       {/* 导航 */}
-      <nav className="flex-1 overflow-y-auto py-2 px-2">
-        {navItems.map(({ path, icon: Icon, key }) => (
-          <NavLink
-            key={path}
-            to={path}
-            draggable={false}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors mb-0.5 ${
-                isActive
-                  ? 'font-medium'
-                  : 'hover:opacity-80'
-              }`
-            }
-            style={({ isActive }) => ({
-              backgroundColor: isActive ? 'var(--accent)' : 'transparent',
-              color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-            })}
-          >
-            <Icon size={18} />
-            <span>{t(key, language)}</span>
-          </NavLink>
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
+        {navGroups.map((group, groupIndex) => (
+          <div key={group[0].path}>
+            {groupIndex > 0 && (
+              <div
+                aria-hidden="true"
+                className="mx-4 my-2 h-px opacity-50"
+                style={{
+                  background: 'linear-gradient(90deg, transparent, var(--border) 28%, var(--border) 72%, transparent)',
+                }}
+              />
+            )}
+            {group.map(({ path, icon: Icon, key }) => (
+              <NavLink
+                key={path}
+                to={path}
+                draggable={false}
+                className={({ isActive }) =>
+                  `mb-0.5 flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? 'font-medium'
+                      : 'hover:opacity-80'
+                  }`
+                }
+                style={({ isActive }) => ({
+                  backgroundColor: isActive ? 'var(--accent)' : 'transparent',
+                  color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+                })}
+              >
+                <Icon size={18} />
+                <span>{t(key, language)}</span>
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 
@@ -235,23 +257,42 @@ export function Sidebar() {
       {/* 用户信息 */}
       <div className="border-t px-3 py-3" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium shrink-0"
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
               style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
               {user?.username?.[0]?.toUpperCase() || 'A'}
             </div>
-            <span className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
+            <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
               {user?.username || 'Admin'}
             </span>
           </div>
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="p-1.5 rounded-md transition-colors hover:opacity-80"
-            style={{ color: 'var(--muted-foreground)' }}
-            title={t('admin.logout', language)}
-          >
-            <LogOut size={15} />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <NavLink
+              to="/settings"
+              draggable={false}
+              title={t('admin.config', language)}
+              aria-label={t('admin.config', language)}
+              className={({ isActive }) =>
+                `flex size-6 items-center justify-center rounded-md transition-colors ${
+                  isActive ? '' : 'hover:bg-secondary'
+                }`
+              }
+              style={({ isActive }) => ({
+                backgroundColor: isActive ? 'var(--accent)' : 'transparent',
+                color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+              })}
+            >
+              <Settings size={15} />
+            </NavLink>
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+              style={{ color: 'var(--muted-foreground)' }}
+              title={t('admin.logout', language)}
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -159,3 +159,14 @@ func (s *FilmRollService) ReorderFrames(id string) (*FilmRollDTO, error) {
 	}
 	return &roll, nil
 }
+
+func (s *FilmRollService) SetFrameOrder(id string, filmPhotoIDs []string) (*FilmRollDTO, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+	var roll FilmRollDTO
+	if err := s.proxy.POST("/admin/film-rolls/"+url.PathEscape(id)+"/frames/order", map[string]interface{}{"filmPhotoIds": filmPhotoIDs}, &roll); err != nil {
+		return nil, err
+	}
+	return &roll, nil
+}

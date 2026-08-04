@@ -28,7 +28,7 @@ type PhotoDTO struct {
 	Size            *int64     `json:"size,omitempty"`
 	IsFeatured      bool       `json:"isFeatured"`
 	ShowFlag        bool       `json:"showFlag"`
-	DominantColors  json.RawMessage `json:"dominantColors,omitempty"`
+	DominantColors  []string   `json:"dominantColors,omitempty"`
 	FileHash        *string    `json:"fileHash,omitempty"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	CameraID        *string    `json:"cameraId,omitempty"`
@@ -50,6 +50,43 @@ type PhotoDTO struct {
 	PhotoType       string     `json:"photoType"`
 	FilmRollID      *string    `json:"filmRollId,omitempty"`
 	FilmRollName    *string    `json:"filmRollName,omitempty"`
+}
+
+func (p *PhotoDTO) UnmarshalJSON(data []byte) error {
+	type photoDTOAlias PhotoDTO
+	decoded := struct {
+		DominantColors json.RawMessage `json:"dominantColors"`
+		*photoDTOAlias
+	}{
+		photoDTOAlias: (*photoDTOAlias)(p),
+	}
+
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	p.DominantColors = decodePhotoDominantColors(decoded.DominantColors)
+	return nil
+}
+
+func decodePhotoDominantColors(raw json.RawMessage) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+
+	var colors []string
+	if err := json.Unmarshal(raw, &colors); err == nil {
+		return colors
+	}
+
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err != nil || encoded == "" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(encoded), &colors); err != nil {
+		return nil
+	}
+	return colors
 }
 
 type CameraDTO struct {

@@ -10,6 +10,8 @@ import { usePreferences, usePhotoFilters } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 import { normalizePhotoCategories } from '@/lib/photoCategories'
+import { loadPersistentResource } from '@/lib/persistent-cache'
+import { getPhotosPageCache, getPhotosPageCacheGeneration, invalidateDesktopCache, setPhotosPageCache } from '@/lib/app-cache'
 import type { Album, Photo, PaginatedResponse } from '@/types'
 import { toast } from 'sonner'
 import { ThumbGridSkeleton } from '@/components/admin/Skeleton'
@@ -27,19 +29,8 @@ import {
 const PAGE_SIZE = 100
 const MIN_PHOTO_GRID_SIZE = 120
 const MAX_PHOTO_GRID_SIZE = 280
-
-// 模块级缓存：路由切换会卸载页面组件，把已加载的分页数据和滚动位置留在
-// 模块作用域里，筛选条件未变时返回本页即恢复，不再从第 1 页重新加载
-// （与 UploadPage 的模块级状态保留同一模式）。
-let photosPageCache: {
-  filterKey: string
-  photos: Photo[]
-  total: number
-  hasMore: boolean
-  page: number
-  scrollTop: number
-  loaded: boolean
-} | null = null
+const MASONRY_COLUMN_GAP = 6
+const MASONRY_CARD_MARGIN = 6
 
 interface AlbumPhotoFilters {
   search: string
@@ -70,6 +61,31 @@ function filterAndSortAlbumPhotos(photos: Photo[], filters: AlbumPhotoFilters) {
       const comparison = leftTime - rightTime
       return filters.sortOrder === 'asc' ? comparison : -comparison
     })
+}
+
+function estimateMasonryPhotoHeight(photo: Photo, columnWidth: number) {
+  const aspectRatio = photo.width > 0 && photo.height > 0
+    ? photo.width / photo.height
+    : 4 / 3
+
+  return Math.round(columnWidth / aspectRatio) + MASONRY_CARD_MARGIN
+}
+
+function distributeMasonryPhotos(photos: Photo[], columnCount: number, columnWidth: number) {
+  const columns = Array.from({ length: columnCount }, () => [] as Photo[])
+  const heights = Array.from({ length: columnCount }, () => 0)
+
+  for (const photo of photos) {
+    let targetColumn = 0
+    for (let index = 1; index < heights.length; index += 1) {
+      if (heights[index] < heights[targetColumn]) targetColumn = index
+    }
+
+    columns[targetColumn].push(photo)
+    heights[targetColumn] += estimateMasonryPhotoHeight(photo, columnWidth)
+  }
+
+  return columns
 }
 
 // 缩略图：加载完成前保持透明，避免滚动时图片"闪现"；
@@ -173,13 +189,16 @@ const PhotoGridCard = memo(function PhotoGridCard({
         onClick={(event) => { if (!isDeleting) onCardClick(event, photo) }}
         onDoubleClick={() => { if (!isDeleting) onCardDoubleClick(photo) }}
       >
-        <div className={`relative min-h-0 w-full overflow-hidden bg-secondary ${masonry ? '' : 'aspect-[5/4]'}`}>
+        <div
+          className={`relative min-h-0 w-full overflow-hidden bg-secondary ${masonry ? '' : 'aspect-[5/4]'}`}
+          style={masonry ? { aspectRatio: photo.width > 0 && photo.height > 0 ? `${photo.width} / ${photo.height}` : '4 / 3' } : undefined}
+        >
           <Thumb
             src={resolveAssetUrl(photo.thumbnailUrl || photo.url)}
             alt={photo.title}
             width={masonry ? photo.width : undefined}
             height={masonry ? photo.height : undefined}
-            className={`w-full transition-[transform,opacity] duration-300 ${masonry ? 'block h-auto object-cover group-hover:scale-[1.015]' : viewMode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]'} ${isDeleting ? '!opacity-50' : ''}`}
+            className={`w-full transition-[transform,opacity] duration-300 ${masonry ? 'block h-full object-cover group-hover:scale-[1.015]' : viewMode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]'} ${isDeleting ? '!opacity-50' : ''}`}
           />
           <button
             onClick={(event) => { event.stopPropagation(); if (!isDeleting) onToggleSelect(photo.id) }}
@@ -225,6 +244,12 @@ export function PhotosPage() {
     filters.albumId, filters.cameraId, filters.lensId, filters.featured,
     filters.sortBy, filters.sortOrder,
   ])
+  const photosPageCache = getPhotosPageCache()
+  const cacheGenerationRef = useRef(getPhotosPageCacheGeneration())
+  const invalidateAfterLocalMutation = useCallback((domains: Parameters<typeof invalidateDesktopCache>[0]) => {
+    invalidateDesktopCache(domains)
+    cacheGenerationRef.current = getPhotosPageCacheGeneration()
+  }, [])
   const cacheHitRef = useRef(
     photosPageCache !== null && photosPageCache.loaded && photosPageCache.filterKey === filterKey,
   )
@@ -249,6 +274,7 @@ export function PhotosPage() {
   const [editorState, setEditorState] = useState<{ photo: Photo; mode: 'info' | 'story' } | null>(null)
   // 搜索输入本地回显，300ms 防抖后才写入筛选（避免每键一次全量请求）
   const [searchInput, setSearchInput] = useState(filters.search)
+  const [photoGridWidth, setPhotoGridWidth] = useState(900)
 
   const pageRef = useRef(cacheHitRef.current ? photosPageCache!.page : 1)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -266,6 +292,33 @@ export function PhotosPage() {
   const latestRef = useRef({ photos, total, hasMore, filterKey })
   latestRef.current = { photos, total, hasMore, filterKey }
 
+  const masonryColumnCount = Math.max(1, Math.floor((photoGridWidth + MASONRY_COLUMN_GAP) / (gridSize + MASONRY_COLUMN_GAP)))
+  const masonryColumnWidth = Math.max(
+    1,
+    (photoGridWidth - Math.max(0, masonryColumnCount - 1) * MASONRY_COLUMN_GAP) / masonryColumnCount,
+  )
+  const masonryColumns = useMemo(
+    () => distributeMasonryPhotos(photos, masonryColumnCount, masonryColumnWidth),
+    [masonryColumnCount, masonryColumnWidth, photos],
+  )
+
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (!element) return
+
+    const updateGridWidth = () => {
+      const style = window.getComputedStyle(element)
+      const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight)
+      const width = Math.max(1, element.clientWidth - horizontalPadding)
+      setPhotoGridWidth(current => Math.abs(current - width) < 0.5 ? current : width)
+    }
+
+    updateGridWidth()
+    const observer = new ResizeObserver(updateGridWidth)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
   useLayoutEffect(() => {
     if (cacheHitRef.current && photosPageCache && scrollRef.current) {
       scrollRef.current.scrollTop = photosPageCache.scrollTop
@@ -280,7 +333,7 @@ export function PhotosPage() {
 
     // 只缓存已完成的首屏结果；请求中的空数组不能成为下一次挂载的“有效缓存”。
     if (!hasLoadedInitialPageRef.current) return
-    photosPageCache = {
+    setPhotosPageCache({
       filterKey: latestRef.current.filterKey,
       photos: latestRef.current.photos,
       total: latestRef.current.total,
@@ -288,7 +341,7 @@ export function PhotosPage() {
       page: pageRef.current,
       scrollTop: lastScrollTopRef.current,
       loaded: true,
-    }
+    }, cacheGenerationRef.current)
   }, [])
 
   // 全部照片使用分页接口；选中相册后直接读取相册管理详情接口中的 photos。
@@ -393,8 +446,10 @@ export function PhotosPage() {
   useEffect(() => {
     (async () => {
       try {
-        const result = await (window as any).go.main.App.GetCategories()
-        setCategories(normalizePhotoCategories(result))
+        const result = await loadPersistentResource('categories', async () => (
+          normalizePhotoCategories(await (window as any).go.main.App.GetCategories())
+        ))
+        setCategories(result)
       } catch {}
     })()
   }, [])
@@ -517,7 +572,8 @@ export function PhotosPage() {
     setPhotos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } as Photo : p))
     setDetailPhoto(prev => prev && prev.id === updated.id ? { ...prev, ...updated } as Photo : prev)
     setEditorState(prev => prev && prev.photo.id === updated.id ? { ...prev, photo: { ...prev.photo, ...updated } as Photo } : prev)
-  }, [])
+    invalidateAfterLocalMutation(['overview', 'equipment', 'photos', 'albums', 'film-rolls'])
+  }, [invalidateAfterLocalMutation])
 
   // 右侧信息栏始终以列表数据为准（乐观更新/删除后自动同步）
   const sidebarPhoto = useMemo(() => {
@@ -555,21 +611,23 @@ export function PhotosPage() {
     setPhotos(prev => prev.map(p => p.id === id ? { ...p, isFeatured: !p.isFeatured } : p))
     try {
       await (window as any).go.main.App.ToggleFeatured(id)
+      invalidateAfterLocalMutation(['overview', 'photos'])
     } catch (err: any) {
       setPhotos(prev => prev.map(p => p.id === id ? { ...p, isFeatured: !p.isFeatured } : p))
       toast.error(err?.message || '更新精选状态失败')
     }
-  }, [])
+  }, [invalidateAfterLocalMutation])
 
   const toggleShowFlag = useCallback(async (id: string) => {
     setPhotos(prev => prev.map(p => p.id === id ? { ...p, showFlag: !p.showFlag } : p))
     try {
       await (window as any).go.main.App.ToggleShowFlag(id)
+      invalidateAfterLocalMutation(['overview', 'photos'])
     } catch (err: any) {
       setPhotos(prev => prev.map(p => p.id === id ? { ...p, showFlag: !p.showFlag } : p))
       toast.error(err?.message || '更新展示状态失败')
     }
-  }, [])
+  }, [invalidateAfterLocalMutation])
 
   // 单张删除：用非阻塞对话框代替原生 confirm（不再冻结整个窗口）
   const requestDeletePhoto = useCallback((photo: Photo) => {
@@ -591,6 +649,7 @@ export function PhotosPage() {
       setPreviewPhoto(prev => prev && prev.id === id ? null : prev)
       setEditorState(prev => prev && prev.photo.id === id ? null : prev)
       setTotal(prev => prev - 1)
+      invalidateAfterLocalMutation(['overview', 'equipment', 'photos', 'albums', 'film-rolls', 'stories'])
       toast.success('照片已删除', { id: toastId })
     } catch (err: any) {
       toast.error(err?.message || '删除失败', { id: toastId })
@@ -615,6 +674,7 @@ export function PhotosPage() {
       setSelected(new Set())
       pageRef.current = 1
       await fetchPhotos(1, false)
+      invalidateAfterLocalMutation(['overview', 'equipment', 'photos', 'albums', 'film-rolls', 'stories'])
       toast.success('照片已删除', { id: toastId })
     } catch (err: any) {
       toast.error(err?.message || '批量删除失败', { id: toastId })
@@ -635,6 +695,7 @@ export function PhotosPage() {
     try {
       await (window as any).go.main.App.BatchUpdateShowFlag(ids, show)
       setPhotos(prev => prev.map(p => selected.has(p.id) ? { ...p, showFlag: show } : p))
+      invalidateAfterLocalMutation(['overview', 'photos'])
       toast.success(show ? `已将 ${ids.length} 张照片设为展示` : `已将 ${ids.length} 张照片设为隐藏`)
     } catch (err: any) {
       toast.error(err?.message || '批量更新失败')
@@ -689,6 +750,26 @@ export function PhotosPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [detailPhoto, previewPhoto, editorState, batchDeleteDialogOpen, deleteTarget])
+
+  const renderPhotoCard = (photo: Photo) => (
+    <PhotoGridCard
+      key={photo.id}
+      photo={photo}
+      isSelected={selected.has(photo.id)}
+      isDeleting={deletingIds.has(photo.id)}
+      language={language}
+      viewMode={viewMode}
+      onCardClick={handlePhotoClick}
+      onCardDoubleClick={handlePhotoDoubleClick}
+      onContextOpen={setDetailPhoto}
+      onEditDetails={(item) => openEditor(item, 'info')}
+      onEditStory={(item) => openEditor(item, 'story')}
+      onToggleSelect={toggleSelect}
+      onToggleFeatured={toggleFeatured}
+      onToggleShow={toggleShowFlag}
+      onRequestDelete={requestDeletePhoto}
+    />
+  )
 
   const collectionTitle = filters.featured
     ? t('admin.featured', language)
@@ -783,31 +864,22 @@ export function PhotosPage() {
           </div>
         ) : (
           <>
-            <div
-              className={viewMode === 'masonry' ? 'w-full' : 'grid gap-2.5'}
-              style={viewMode === 'masonry'
-                ? { columnWidth: `${gridSize}px`, columnGap: '6px' }
-                : { gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))` }}
-            >
-              {photos.map(photo => (
-                <PhotoGridCard key={photo.id}
-                  photo={photo}
-                  isSelected={selected.has(photo.id)}
-                  isDeleting={deletingIds.has(photo.id)}
-                  language={language}
-                  viewMode={viewMode}
-                  onCardClick={handlePhotoClick}
-                  onCardDoubleClick={handlePhotoDoubleClick}
-                  onContextOpen={setDetailPhoto}
-                  onEditDetails={(photo) => openEditor(photo, 'info')}
-                  onEditStory={(photo) => openEditor(photo, 'story')}
-                  onToggleSelect={toggleSelect}
-                  onToggleFeatured={toggleFeatured}
-                  onToggleShow={toggleShowFlag}
-                  onRequestDelete={requestDeletePhoto}
-                />
-              ))}
-            </div>
+            {viewMode === 'masonry' ? (
+              <div className="flex w-full items-start" style={{ gap: MASONRY_COLUMN_GAP }}>
+                {masonryColumns.map((columnPhotos, columnIndex) => (
+                  <div key={columnIndex} className="min-w-0 flex-1">
+                    {columnPhotos.map(renderPhotoCard)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="grid gap-2.5"
+                style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))` }}
+              >
+                {photos.map(renderPhotoCard)}
+              </div>
+            )}
             {loadingMore && <div className="flex items-center justify-center gap-2 py-5 text-xs" style={{ color: 'var(--muted-foreground)' }}><Loader2 size={14} className="animate-spin" />{language === 'zh' ? '加载中...' : 'Loading...'}</div>}
             {!hasMore && photos.length > 0 && <div className="py-4 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>{language === 'zh' ? `已加载全部 ${total} 张照片` : `All ${total} photos loaded`}</div>}
           </>

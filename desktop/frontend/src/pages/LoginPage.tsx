@@ -211,7 +211,7 @@ export function LoginPage() {
     : t('admin.login_notice_expired', language)
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
       {/* 品牌面板：窄窗口下隐藏 */}
       <aside className="relative hidden w-[46%] shrink-0 flex-col justify-between overflow-hidden bg-[#0d0d10] p-10 text-white lg:flex">
         {/* 背景氛围：金色光晕 + 细密网点 */}

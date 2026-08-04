@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, Copy, FileImage, FilePenLine, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Trash2, Upload } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,11 +13,17 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
-import type { LocalAsset, UploadAlbum } from './types'
+import { isPhotoAsset } from './types'
+import type { FolderItem, LocalAsset, UploadAlbum } from './types'
 import type { LocalLibraryCopy } from './copy'
+
+const MASONRY_COLUMN_GAP = 6
+const MASONRY_CARD_CAPTION_HEIGHT = 0
+const MASONRY_CARD_MARGIN = 6
 
 interface Props {
   assets: LocalAsset[]
+  folders: FolderItem[]
   selectedIds: string[]
   loading: boolean
   hasMore: boolean
@@ -26,11 +33,13 @@ interface Props {
   emptyHint?: string
   uploadAlbums: UploadAlbum[]
   uploadAlbumsLoading: boolean
-  viewMode: 'crop' | 'fit'
+  viewMode: 'crop' | 'fit' | 'masonry'
   gridSize: number
   pathSegments: string[]
+  resetKey: string
   onSelect: (asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => void
   onOpen: (asset: LocalAsset) => void
+  onOpenFolder: (folder: FolderItem) => void
   onOpenInFileManager: (asset: LocalAsset) => void
   onLoadMore: () => void
   onClipboard: (asset: LocalAsset, cut: boolean) => void
@@ -44,14 +53,14 @@ interface Props {
   onRemoveMissing: (asset: LocalAsset) => void
 }
 
-interface AssetCardProps {
+export interface AssetCardProps {
   asset: LocalAsset
   dragIds: string[]
   selected: boolean
   copy: LocalLibraryCopy
   uploadAlbums: UploadAlbum[]
   uploadAlbumsLoading: boolean
-  viewMode: 'crop' | 'fit'
+  viewMode: 'crop' | 'fit' | 'masonry'
   onSelect: (asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => void
   onOpen: (asset: LocalAsset) => void
   onOpenInFileManager: (asset: LocalAsset) => void
@@ -77,10 +86,14 @@ const AssetCard = memo(function AssetCard({
   }, [asset.previewStatus, asset.thumbnailUrl])
 
   const label = asset.displayTitle || asset.fileName
+  const isPhoto = isPhotoAsset(asset)
+  const masonry = viewMode === 'masonry'
   const unavailable = asset.availability !== 'active'
   const missing = asset.availability === 'missing'
   const trashed = asset.availability === 'trashed'
   const previewUnavailable = asset.availability === 'active' && asset.previewStatus === 'unavailable'
+
+  const aspectRatio = isPhoto && asset.width > 0 && asset.height > 0 ? `${asset.width} / ${asset.height}` : undefined
 
   return (
     <ContextMenu onOpenChange={(open) => { if (open) onSelect(asset) }}>
@@ -95,19 +108,19 @@ const AssetCard = memo(function AssetCard({
           }}
           onClick={(event) => onSelect(asset, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey })}
           onDoubleClick={() => { if (!missing && !trashed) onOpen(asset) }}
-          className="group flex h-full min-w-0 flex-col overflow-hidden rounded-lg border text-left transition focus:outline-none focus:ring-2"
+          className={`group min-w-0 overflow-hidden rounded-lg border text-left transition focus:outline-none focus:ring-2 ${masonry ? 'mb-1.5 inline-block w-full break-inside-avoid align-top' : 'flex h-full flex-col'}`}
           style={{
             borderColor: selected ? 'var(--primary)' : 'var(--border)',
             backgroundColor: selected ? 'var(--accent)' : 'var(--card)',
             boxShadow: selected ? '0 0 0 1px var(--primary)' : undefined,
           }}
         >
-          <span className="relative min-h-0 flex-1 overflow-hidden bg-secondary">
-            {!imageFailed && asset.previewStatus === 'ready' ? (
-              <img src={asset.thumbnailUrl} alt="" loading="lazy" draggable={false} onError={() => setImageFailed(true)} className={`h-full w-full transition duration-300 ${viewMode === 'fit' ? 'object-contain p-1' : 'object-cover group-hover:scale-[1.025]'}`} />
+          <span className={`relative overflow-hidden bg-secondary ${masonry ? 'w-full' : 'min-h-0 flex-1'}`} style={aspectRatio ? { aspectRatio } : undefined}>
+            {isPhoto && !imageFailed && asset.previewStatus === 'ready' ? (
+              <img src={asset.thumbnailUrl} alt="" loading="lazy" draggable={false} onError={() => setImageFailed(true)} className={`w-full transition duration-300 ${viewMode === 'fit' ? 'object-contain p-1' : 'object-cover group-hover:scale-[1.025]'} ${masonry ? 'block' : 'h-full'}`} />
             ) : (
-              <span className="flex h-full w-full flex-col items-center justify-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
-                <FileImage size={25} strokeWidth={1.4} />
+              <span className={`flex w-full flex-col items-center justify-center gap-2 ${masonry ? 'aspect-[4/3]' : 'h-full'}`} style={{ color: 'var(--muted-foreground)' }}>
+                {isPhoto ? <FileImage size={25} strokeWidth={1.4} /> : <File size={25} strokeWidth={1.4} />}
                 <span className="max-w-[85%] truncate text-[10px] uppercase tracking-wider">{asset.format}</span>
               </span>
             )}
@@ -115,10 +128,11 @@ const AssetCard = memo(function AssetCard({
             {asset.isAnimated && <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-white"><Play size={11} fill="currentColor" /></span>}
             {asset.isFavorite && <Heart size={15} fill="currentColor" className="absolute bottom-2 right-2 text-white drop-shadow" />}
           </span>
-          <span className="block w-full px-2.5 py-2">
-            <span className="block truncate text-xs font-medium">{label}</span>
-            <span className="mt-0.5 block truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : asset.relativePath}</span>
-          </span>
+          {!masonry && (
+            <span className="block w-full px-2.5 py-2">
+              <span className="block truncate text-xs font-medium">{label}</span>
+            </span>
+          )}
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -144,6 +158,7 @@ const AssetCard = memo(function AssetCard({
             <ContextMenuItem onSelect={() => onOpenInFileManager(asset)}><FolderSearch2 size={14} />{copy.openInFileManager}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onRename(asset)}><FilePenLine size={14} />{copy.renameAsset}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onMove(asset)}><FolderInput size={14} />{copy.moveAssetsToFolder}</ContextMenuItem>
+            {isPhoto && (
             <ContextMenuSub>
               <ContextMenuSubTrigger><Upload size={14} />{copy.uploadTo}</ContextMenuSubTrigger>
               <ContextMenuSubContent>
@@ -158,7 +173,8 @@ const AssetCard = memo(function AssetCard({
                 )}
               </ContextMenuSubContent>
             </ContextMenuSub>
-            {previewUnavailable && (
+            )}
+            {previewUnavailable && isPhoto && (
               <>
                 <ContextMenuSeparator />
                 <ContextMenuItem onSelect={() => onRetryPreview(asset)}><RefreshCw size={14} />{copy.retryPreview}</ContextMenuItem>
@@ -173,11 +189,74 @@ const AssetCard = memo(function AssetCard({
   )
 })
 
+const FolderCard = memo(function FolderCard({ folder, copy, onOpen, masonry = false }: {
+  folder: FolderItem
+  copy: LocalLibraryCopy
+  onOpen: (folder: FolderItem) => void
+  masonry?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`${copy.openFolder}: ${folder.name}`}
+      title={copy.doubleClickOpenFolder}
+      data-local-library-import-folder={folder.relativePath}
+      onDoubleClick={() => onOpen(folder)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          onOpen(folder)
+        }
+      }}
+      className={`group min-w-0 overflow-hidden rounded-lg border bg-card text-left transition hover:bg-secondary/60 focus:outline-none focus:ring-2 ${masonry ? 'mb-1.5 inline-block w-full break-inside-avoid align-top' : 'flex h-full flex-col'}`}
+      style={{ borderColor: 'var(--border)', '--wails-drop-target': 'drop' } as CSSProperties}
+    >
+      <span className={`flex items-center justify-center bg-secondary/60 ${masonry ? 'aspect-[4/3] w-full' : 'min-h-0 flex-1'}`}>
+        <Folder size={54} strokeWidth={1.25} className="transition-transform duration-200 group-hover:scale-105" style={{ color: 'var(--primary)' }} />
+      </span>
+      {!masonry && (
+        <span className="block w-full px-2.5 py-2">
+          <span className="block truncate text-xs font-medium">{folder.name}</span>
+          <span className="mt-0.5 block truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{folder.assetCount.toLocaleString()} {copy.assets}</span>
+        </span>
+      )}
+    </button>
+  )
+})
+
+type GridEntry = { kind: 'folder', folder: FolderItem } | { kind: 'asset', asset: LocalAsset }
+
+function estimateMasonryEntryHeight(entry: GridEntry, columnWidth: number) {
+  const aspectRatio = entry.kind === 'asset' && isPhotoAsset(entry.asset) && entry.asset.width > 0 && entry.asset.height > 0
+    ? entry.asset.width / entry.asset.height
+    : 4 / 3
+
+  return Math.round(columnWidth / aspectRatio) + MASONRY_CARD_CAPTION_HEIGHT + MASONRY_CARD_MARGIN
+}
+
+function distributeMasonryEntries(entries: GridEntry[], columnCount: number, columnWidth: number) {
+  const columns = Array.from({ length: columnCount }, () => [] as GridEntry[])
+  const heights = Array.from({ length: columnCount }, () => 0)
+
+  for (const entry of entries) {
+    let targetColumn = 0
+    for (let index = 1; index < heights.length; index += 1) {
+      if (heights[index] < heights[targetColumn]) targetColumn = index
+    }
+
+    columns[targetColumn].push(entry)
+    heights[targetColumn] += estimateMasonryEntryHeight(entry, columnWidth)
+  }
+
+  return columns
+}
+
 export function LocalAssetGrid({
-  assets, selectedIds, loading, hasMore, total, copy, emptyTitle, emptyHint, uploadAlbums, uploadAlbumsLoading, viewMode, gridSize, pathSegments,
-  onSelect, onOpen, onLoadMore, onOpenInFileManager, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
+  assets, folders, selectedIds, loading, hasMore, total, copy, emptyTitle, emptyHint, uploadAlbums, uploadAlbumsLoading, viewMode, gridSize, pathSegments, resetKey,
+  onSelect, onOpen, onOpenFolder, onLoadMore, onOpenInFileManager, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(900)
 
   useEffect(() => {
@@ -188,10 +267,19 @@ export function LocalAssetGrid({
     return () => observer.disconnect()
   }, [])
 
+  const entries = useMemo<GridEntry[]>(() => [
+    ...folders.map((folder) => ({ kind: 'folder' as const, folder })),
+    ...assets.map((asset) => ({ kind: 'asset' as const, asset })),
+  ], [assets, folders])
   const columns = Math.max(1, Math.floor((width - 24) / gridSize))
   const columnWidth = Math.max(1, (width - 24 - Math.max(0, columns - 1) * 10) / columns)
   const rowHeight = Math.round(columnWidth * 0.82) + 54
-  const rowCount = Math.ceil(assets.length / columns)
+  const rowCount = Math.ceil(entries.length / columns)
+  const isMasonry = viewMode === 'masonry'
+  const masonryColumns = useMemo(
+    () => distributeMasonryEntries(entries, columns, columnWidth),
+    [columnWidth, columns, entries],
+  )
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
@@ -202,12 +290,27 @@ export function LocalAssetGrid({
   const lastRow = rows.at(-1)?.index ?? 0
 
   useEffect(() => {
-    if (hasMore && !loading && rowCount > 0 && lastRow >= rowCount - 2) onLoadMore()
-  }, [hasMore, lastRow, loading, onLoadMore, rowCount])
+    if (!isMasonry && hasMore && !loading && rowCount > 0 && lastRow >= rowCount - 2) onLoadMore()
+  }, [hasMore, isMasonry, lastRow, loading, onLoadMore, rowCount])
+
+  useEffect(() => {
+    if (!isMasonry || !sentinelRef.current || !hasMore || loading) return
+    const target = sentinelRef.current
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onLoadMore()
+    }, { root: scrollRef.current, rootMargin: '400px' })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [hasMore, isMasonry, loading, onLoadMore])
 
   useEffect(() => {
     virtualizer.measure()
   }, [rowHeight, virtualizer])
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+    virtualizer.scrollToOffset(0)
+  }, [resetKey, virtualizer])
 
   const gridStyle = useMemo(() => ({ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }), [columns])
   const locationHeader = (
@@ -219,11 +322,13 @@ export function LocalAssetGrid({
           <span className={`min-w-0 truncate ${index === pathSegments.length - 1 ? 'font-medium' : ''}`} style={{ color: index === pathSegments.length - 1 ? 'var(--foreground)' : undefined }}>{segment}</span>
         </span>)}
       </div>
-      <span className="shrink-0 rounded bg-secondary px-2 py-0.5 tabular-nums">{total.toLocaleString()} {copy.count}</span>
+      <span className="shrink-0 rounded bg-secondary px-2 py-0.5 tabular-nums">
+        {folders.length > 0 && <>{folders.length.toLocaleString()} {copy.folders} · </>}{total.toLocaleString()} {copy.count}
+      </span>
     </div>
   )
 
-  if (!loading && assets.length === 0) {
+  if (!loading && entries.length === 0) {
     return (
       <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3" data-local-library-guide="grid">
         {locationHeader}
@@ -238,28 +343,46 @@ export function LocalAssetGrid({
     )
   }
 
+  const masonry = viewMode === 'masonry'
+  const assetCard = (entry: GridEntry) => entry.kind === 'folder' ? (
+    <FolderCard key={`folder-${entry.folder.id}`} folder={entry.folder} copy={copy} onOpen={onOpenFolder} masonry={masonry} />
+  ) : (
+    <AssetCard key={entry.asset.id} asset={entry.asset} dragIds={selectedIds.includes(entry.asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [entry.asset.id]} selected={selectedIds.includes(entry.asset.id)} copy={copy} viewMode={viewMode}
+      uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading}
+      onSelect={onSelect} onOpen={onOpen} onOpenInFileManager={onOpenInFileManager} onClipboard={onClipboard} onUpload={onUpload} onDelete={onDelete} onRename={onRename} onMove={onMove} onRestore={onRestore}
+      onRetryPreview={onRetryPreview} onRecheckMissing={onRecheckMissing} onRemoveMissing={onRemoveMissing} />
+  )
+
   return (
     <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3 pb-4" data-local-library-guide="grid">
       {locationHeader}
+      {masonry ? (
+        <>
+          <div className="flex items-start" style={{ gap: MASONRY_COLUMN_GAP }}>
+            {masonryColumns.map((columnEntries, columnIndex) => (
+              <div key={columnIndex} className="min-w-0 flex-1">
+                {columnEntries.map((entry) => assetCard(entry))}
+              </div>
+            ))}
+          </div>
+          {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+        </>
+      ) : (
       <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
         {rows.map((row) => {
           const start = row.index * columns
-          const rowAssets = assets.slice(start, start + columns)
+          const rowEntries = entries.slice(start, start + columns)
           return (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 grid w-full gap-2.5 pb-2.5"
               style={{ ...gridStyle, height: rowHeight, transform: `translateY(${row.start}px)` }}>
-              {rowAssets.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} dragIds={selectedIds.includes(asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [asset.id]} selected={selectedIds.includes(asset.id)} copy={copy} viewMode={viewMode}
-                  uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading}
-                  onSelect={onSelect} onOpen={onOpen} onOpenInFileManager={onOpenInFileManager} onClipboard={onClipboard} onUpload={onUpload} onDelete={onDelete} onRename={onRename} onMove={onMove} onRestore={onRestore}
-                  onRetryPreview={onRetryPreview} onRecheckMissing={onRecheckMissing} onRemoveMissing={onRemoveMissing} />
-              ))}
+              {rowEntries.map((entry) => assetCard(entry))}
             </div>
           )
         })}
       </div>
+      )}
       {loading && <div className="flex items-center justify-center gap-2 py-5 text-xs" style={{ color: 'var(--muted-foreground)' }}><Loader2 size={14} className="animate-spin" />{copy.loading}</div>}
-      {!loading && hasMore && <button type="button" onClick={onLoadMore} className="mx-auto my-3 block rounded-md border px-4 py-2 text-xs hover:bg-secondary">{copy.loadMore}</button>}
+      {!masonry && !loading && hasMore && <button type="button" onClick={onLoadMore} className="mx-auto my-3 block rounded-md border px-4 py-2 text-xs hover:bg-secondary">{copy.loadMore}</button>}
     </div>
   )
 }

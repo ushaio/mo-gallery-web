@@ -33,7 +33,7 @@
 
 ### C. 首期包含相机 RAW
 
-在 B 基础上支持主流 RAW（如 CR2/CR3、NEF、ARW、DNG、RAF），优先提取内嵌预览，不做 RAW 显影。
+在 B 基础上支持主流 RAW（如 CR2/CR3、NEF、ARW、DNG、RAF、RW2），优先提取内嵌预览，不做 RAW 显影。
 
 优点：适合摄影资产管理的核心用户。
 
@@ -56,7 +56,7 @@
 |---|---|---|
 | 常见静态图像 | JPEG/JPG、PNG、WebP | 索引、缩略图、大图预览、尺寸和可用元数据 |
 | 手机/高位深图像 | HEIC/HEIF、TIFF | 索引、缩略图、大图预览、尺寸和可用元数据 |
-| 相机 RAW | CR2/CR3、NEF、ARW、DNG、RAF | 索引、EXIF 和内嵌预览提取，不做 RAW 显影 |
+| 相机 RAW | CR2/CR3、NEF、ARW、DNG、RAF、RW2 | 索引、EXIF 和内嵌预览提取，不做 RAW 显影 |
 
 GIF、AVIF 及其他 RAW 厂商格式不因本决策自动纳入。GIF 与 AVIF 的后续决定见 ADR-0035：GIF 网格使用静态首帧、预览播放原动画，AVIF 首期正式支持静态单帧。
 

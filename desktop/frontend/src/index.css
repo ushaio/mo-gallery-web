@@ -230,6 +230,18 @@
   .custom-scrollbar::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 3px; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: var(--muted-foreground); }
 
+  .window-drag-region { --wails-draggable: drag; }
+  .window-no-drag { --wails-draggable: no-drag; }
+  .integrated-window-frame {
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.12);
+  }
+  .integrated-window-frame [data-sonner-toaster][data-y-position='top'] {
+    --offset: 3.75rem;
+    top: var(--offset) !important;
+    z-index: 60 !important;
+  }
+
   /* 登录页入场动画 */
   @keyframes fade-up {
     from {

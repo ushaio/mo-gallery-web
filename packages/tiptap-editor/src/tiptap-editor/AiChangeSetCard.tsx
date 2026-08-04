@@ -32,10 +32,10 @@ export function AiChangeSetCard({
   const state = historyState?.state ?? changeSet.state
 
   return (
-    <section className="mt-3 rounded-2xl border border-primary/20 bg-primary/5 p-3" data-ai-task-id={task.taskId}>
+    <section className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3" data-ai-task-id={task.taskId}>
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-semibold text-foreground">{changeSet.targetLabel}</div>
-        <div className="rounded-full bg-background px-2 py-1 text-[11px] text-muted-foreground">
+        <div className="rounded-md border border-border/50 bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {state}
         </div>
       </div>
@@ -48,7 +48,7 @@ export function AiChangeSetCard({
 
       <div className="mt-3 space-y-2">
         {changeSet.entries.map((entry, index) => (
-          <div key={`${entry.operation}-${entry.targetId}-${index}`} className="rounded-xl border border-border/70 bg-background/80 p-2 text-xs">
+          <div key={`${entry.operation}-${entry.targetId}-${index}`} className="rounded-md border border-border/70 bg-background/80 p-2 text-xs">
             <div className="font-medium text-foreground">{entry.targetLabel}</div>
             <div className="mt-1 grid gap-1 text-muted-foreground">
               <div className="whitespace-pre-wrap line-through opacity-70">{formatChangeValue(entry.before)}</div>
@@ -71,7 +71,7 @@ export function AiChangeSetCard({
           type="button"
           disabled={disabled || !historyState?.canUndo}
           onClick={onUndo}
-          className="rounded-full border border-border px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md border border-border px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t('editor.undo')}
         </button>
@@ -79,7 +79,7 @@ export function AiChangeSetCard({
           type="button"
           disabled={disabled || !historyState?.canRedo}
           onClick={onRedo}
-          className="rounded-full border border-border px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md border border-border px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t('editor.redo')}
         </button>

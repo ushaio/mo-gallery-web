@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
+import { loadPersistentResource } from '@/lib/persistent-cache'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import type { UploadTask } from '@/contexts/UploadQueueContext'
@@ -165,9 +166,18 @@ export function UploadPage() {
   useEffect(() => {
     (async () => {
       const failed: string[] = []
-      try { const r = await (window as any).go.main.App.GetAlbums(); setAlbums(r || []) } catch { failed.push('相册') }
-      try { const r = await (window as any).go.main.App.GetStories(); setStories(r || []) } catch { failed.push('故事') }
-      try { const r = await (window as any).go.main.App.GetFilmRolls(); setFilmRolls(r || []) } catch { failed.push('胶卷') }
+      try {
+        const r = await loadPersistentResource<any[]>('albums', () => (window as any).go.main.App.GetAlbums())
+        setAlbums(r || [])
+      } catch { failed.push('相册') }
+      try {
+        const r = await loadPersistentResource<any[]>('stories', () => (window as any).go.main.App.GetStories())
+        setStories(r || [])
+      } catch { failed.push('故事') }
+      try {
+        const r = await loadPersistentResource<any[]>('film-rolls', () => (window as any).go.main.App.GetFilmRolls())
+        setFilmRolls(r || [])
+      } catch { failed.push('胶卷') }
       try {
         const r = await (window as any).go.main.App.GetStorageSources()
         const sources = r || []

@@ -1,7 +1,9 @@
 package local_library
 
 import (
+	"bytes"
 	"context"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -86,6 +88,44 @@ func TestAssetHandlerValidatesCacheKeyAndHTTPStreamingSemantics(t *testing.T) {
 	}
 }
 
+func TestAssetHandlerOriginalRAWReturnsEmbeddedJPEG(t *testing.T) {
+	manager, root := openTestManager(t)
+	preview := testPreviewJPEG(t, 80, 60)
+	thumbnail := testPreviewJPEG(t, 8, 6)
+	path := filepath.Join(root, "sample.nef")
+	container := append([]byte("RAW-CONTAINER-HEADER"), thumbnail...)
+	container = append(container, make([]byte, 128)...)
+	container = append(container, preview...)
+	if err := os.WriteFile(path, container, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := indexTestFile(t, manager, root, "sample.nef")
+	snapshot, err := manager.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/__local-library/original/"+string(id)+"?session="+snapshot.SessionID, nil)
+	manager.AssetHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("RAW original status=%d body=%q", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("RAW original content type=%q", got)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("RAW original cache control=%q", got)
+	}
+	config, err := jpeg.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Width != 80 || config.Height != 60 {
+		t.Fatalf("RAW embedded preview config=%+v", config)
+	}
+}
+
 func TestAssetHandlerRejectsTraversalInternalPathsAndSymlinkEscape(t *testing.T) {
 	manager, root := openTestManager(t)
 	path := filepath.Join(root, "safe.jpg")
@@ -130,6 +170,23 @@ func TestAssetHandlerRejectsTraversalInternalPathsAndSymlinkEscape(t *testing.T)
 	manager.AssetHandler().ServeHTTP(linkResponse, httptest.NewRequest(http.MethodGet, "/__local-library/original/"+string(id)+"?session="+snapshot.SessionID, nil))
 	if linkResponse.Code != http.StatusNotFound {
 		t.Fatalf("symlink escape status=%d", linkResponse.Code)
+	}
+}
+
+func TestOpenVerifiedWithinInternalDirectoryRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.jpg")
+	writeTestJPEG(t, outside)
+	link := filepath.Join(root, "preview.jpg")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	file, err := openVerifiedWithinInternalDirectory(root, link)
+	if file != nil {
+		file.Close()
+	}
+	if err == nil {
+		t.Fatal("expected verified internal-directory open to reject symlink escape")
 	}
 }
 

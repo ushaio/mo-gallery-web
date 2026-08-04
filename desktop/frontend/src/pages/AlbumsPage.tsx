@@ -20,6 +20,8 @@ import {
 import { CardGridSkeleton, ListSkeleton } from '@/components/admin/Skeleton'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { resolveAssetUrl } from '@/lib/api'
+import { invalidateDesktopCache } from '@/lib/app-cache'
+import { loadPersistentResource } from '@/lib/persistent-cache'
 import { usePreferences } from '@/store/preferences'
 import { t, type Locale } from '@/lib/i18n'
 import type { Album, Photo } from '@/types'
@@ -131,10 +133,10 @@ export function AlbumsPage({
   const currentAlbumRequestIdRef = useRef(0)
   const handledExternalIntentRef = useRef('')
 
-  const fetchAlbums = useCallback(async () => {
+  const fetchAlbums = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      const result = await appApi().GetAlbums()
+      const result = await loadPersistentResource('albums', () => appApi().GetAlbums(), { force })
       setAlbums((result ?? []).map(normalizeAlbum))
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
@@ -244,7 +246,8 @@ export function AlbumsPage({
       setCurrentAlbum(fullAlbum)
       setActiveTab('photos')
       toast.success(t(wasExisting ? 'admin.album_updated' : 'admin.album_created', language))
-      await fetchAlbums()
+      await fetchAlbums(true)
+      invalidateDesktopCache(['overview'])
       onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
@@ -259,7 +262,8 @@ export function AlbumsPage({
       await appApi().DeleteAlbum(album.id)
       if (currentAlbum?.id === album.id) setCurrentAlbum(null)
       toast.success(t('common.deleted', language))
-      await fetchAlbums()
+      await fetchAlbums(true)
+      invalidateDesktopCache(['overview', 'photos'])
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
@@ -268,14 +272,15 @@ export function AlbumsPage({
   const togglePublished = useCallback(async (album: Album) => {
     try {
       const updated = normalizeAlbum(await appApi().UpdateAlbum(album.id, { isPublished: !album.isPublished }))
-      setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
+      await fetchAlbums(true)
+      invalidateDesktopCache(['overview'])
       if (currentAlbum?.id === updated.id) {
         setCurrentAlbum(current => current ? { ...current, isPublished: updated.isPublished } : current)
       }
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
-  }, [currentAlbum?.id, language])
+  }, [currentAlbum?.id, fetchAlbums, language])
 
   const handleAddPhotos = useCallback(async () => {
     if (!currentAlbum?.id || selectedPhotoIds.size === 0) return
@@ -286,7 +291,8 @@ export function AlbumsPage({
       setSelectedPhotoIds(new Set())
       setShowPhotoSelector(false)
       setPhotoSelectorSearch('')
-      setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
+      await fetchAlbums(true)
+      invalidateDesktopCache(['photos'])
       toast.success(t('admin.photos_added', language))
       onAlbumsChanged?.()
     } catch (error) {
@@ -294,33 +300,34 @@ export function AlbumsPage({
     } finally {
       setSaving(false)
     }
-  }, [currentAlbum?.id, language, onAlbumsChanged, selectedPhotoIds])
+  }, [currentAlbum?.id, fetchAlbums, language, onAlbumsChanged, selectedPhotoIds])
 
   const handleRemovePhoto = useCallback(async (photoId: string) => {
     if (!currentAlbum?.id) return
     try {
       const updated = normalizeAlbum(await appApi().RemovePhotoFromAlbum(currentAlbum.id, photoId))
       setCurrentAlbum(updated)
-      setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
+      await fetchAlbums(true)
+      invalidateDesktopCache(['photos'])
       toast.success(t('admin.photo_removed', language))
       onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
-  }, [currentAlbum?.id, language, onAlbumsChanged])
+  }, [currentAlbum?.id, fetchAlbums, language, onAlbumsChanged])
 
   const handleSetCover = useCallback(async (photoId: string) => {
     if (!currentAlbum?.id) return
     try {
       const updated = normalizeAlbum(await appApi().SetAlbumCover(currentAlbum.id, photoId))
       setCurrentAlbum(updated)
-      setAlbums(current => current.map(item => item.id === updated.id ? updated : item))
+      await fetchAlbums(true)
       toast.success(t('admin.cover_set', language))
       onAlbumsChanged?.()
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
-  }, [currentAlbum?.id, language, onAlbumsChanged])
+  }, [currentAlbum?.id, fetchAlbums, language, onAlbumsChanged])
 
   const availablePhotos = useMemo(() => {
     const currentPhotoIds = new Set(currentAlbum?.photos?.map(photo => photo.id) ?? [])

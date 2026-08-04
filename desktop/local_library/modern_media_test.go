@@ -3,6 +3,7 @@ package local_library
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -60,10 +61,10 @@ func goModuleCache(t *testing.T) string {
 	return filepath.Clean(string(bytes.TrimSpace(output)))
 }
 
-func TestSixRAWFormatsExtractLargestEmbeddedJPEG(t *testing.T) {
+func TestSupportedRAWFormatsExtractLargestEmbeddedJPEG(t *testing.T) {
 	preview := testPreviewJPEG(t, 80, 60)
 	thumbnail := testPreviewJPEG(t, 8, 6)
-	formats := []string{".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf"}
+	formats := []string{".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2"}
 	for _, ext := range formats {
 		t.Run(ext, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "sample"+ext)
@@ -100,6 +101,59 @@ func TestSixRAWFormatsExtractLargestEmbeddedJPEG(t *testing.T) {
 				t.Fatalf("indexed=%+v", indexed)
 			}
 		})
+	}
+}
+
+func TestOriginalViewResourceLimitsAndRAWCancellation(t *testing.T) {
+	if err := validateOriginalViewDimensions(10_000, 10_000); err != nil {
+		t.Fatalf("expected 100 MP original to pass: %v", err)
+	}
+	if err := validateOriginalViewDimensions(10_001, 10_000); err == nil {
+		t.Fatal("expected original pixel limit rejection")
+	}
+	large := testPreviewJPEG(t, 80, 60)
+	small := testPreviewJPEG(t, 40, 30)
+	container := append(append([]byte{}, large...), small...)
+	selected, err := largestEmbeddedJPEGWithValidator(bytes.NewReader(container), int64(len(container)), func(width, height int) error {
+		if width > 50 {
+			return errors.New("test view limit")
+		}
+		return validateDimensions(width, height)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedConfig, err := jpeg.DecodeConfig(bytes.NewReader(selected))
+	if err != nil || selectedConfig.Width != 40 || selectedConfig.Height != 30 {
+		t.Fatalf("selected bounded RAW preview config=%+v err=%v", selectedConfig, err)
+	}
+
+	scanCtx, cancelScan := context.WithCancel(context.Background())
+	validatorCalled := false
+	_, err = largestEmbeddedJPEGWithValidatorContext(scanCtx, bytes.NewReader(container), int64(len(container)), func(width, height int) error {
+		validatorCalled = true
+		cancelScan()
+		return validateDimensions(width, height)
+	})
+	if !validatorCalled || !errors.Is(err, context.Canceled) {
+		t.Fatalf("in-flight RAW scan cancellation called=%v error=%v", validatorCalled, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	path := filepath.Join(t.TempDir(), "cancelled.nef")
+	if err := os.WriteFile(path, testPreviewJPEG(t, 8, 6), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extractRAWPreviewContext(ctx, path); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled RAW preview error=%v", err)
+	}
+	jpegPath := filepath.Join(t.TempDir(), "cancelled.jpg")
+	if err := os.WriteFile(jpegPath, testPreviewJPEG(t, 8, 6), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := decodeMediaConfigContext(ctx, jpegPath, "jpeg"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled original config error=%v", err)
 	}
 }
 

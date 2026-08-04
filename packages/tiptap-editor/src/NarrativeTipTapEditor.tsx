@@ -13,6 +13,8 @@ import React, {
   useState,
 } from 'react'
 import { useEditorState, EditorContent } from '@tiptap/react'
+import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
+import DragHandle from '@tiptap/extension-drag-handle-react'
 import type { JSONContent } from '@tiptap/core'
 import {
   Bold,
@@ -34,8 +36,10 @@ import {
   Redo,
   Highlighter,
   Palette,
-  Clapperboard,
   RemoveFormatting,
+  Plus,
+  GripVertical,
+  MoreHorizontal,
 } from 'lucide-react'
 import TipTapAiAssistant, { type TipTapAiAgentRunner } from './TipTapAiAssistant'
 import type { NarrativeEditorRuntime } from './runtime'
@@ -68,7 +72,18 @@ import {
   resolveActiveInlineStyleValue,
   convertPlainTextToEditorHtml,
 } from './tiptap-editor/markdown-converter'
-import { ToolbarButton, ToolbarSelect, ToolbarDivider } from './tiptap-editor/EditorToolbar'
+import {
+  CommandMenuItem,
+  FloatingToolbarButton,
+  ToolbarButton,
+  ToolbarDivider,
+  ToolbarPopover,
+  ToolbarSelect,
+} from './tiptap-editor/EditorToolbar'
+import {
+  createEditorCommandRegistry,
+  getCommandsForSurface,
+} from './tiptap-editor/editor-command-registry'
 import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './tiptap-editor/ColorPickerMenu'
 import { useNarrativeEditor } from './tiptap-editor/useNarrativeEditor'
 import { useEditorImperativeHandle, type NarrativeTipTapEditorHandle } from './tiptap-editor/useEditorImperativeHandle'
@@ -105,6 +120,9 @@ export interface NarrativeTipTapEditorProps {
 
 export type { NarrativeTipTapEditorHandle }
 
+type BubbleMenuShouldShow = NonNullable<React.ComponentProps<typeof BubbleMenu>['shouldShow']>
+type FloatingMenuShouldShow = NonNullable<React.ComponentProps<typeof FloatingMenu>['shouldShow']>
+
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
   ({
     value,
@@ -121,6 +139,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     aiOptions,
   }, ref) => {
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
+    const toolbarRef = useRef<HTMLFieldSetElement | null>(null)
     const backgroundColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const backgroundColorMenuRef = useRef<HTMLDivElement | null>(null)
     const backgroundColorPickerRef = useRef<HTMLInputElement | null>(null)
@@ -132,6 +151,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
+    const [openToolbarMenu, setOpenToolbarMenu] = useState<'insert' | 'format' | null>(null)
     const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
     const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
     const [customBackgroundColor, setCustomBackgroundColor] = useState(DEFAULT_TEXT_HIGHLIGHT)
@@ -518,6 +538,37 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     useImperativeHandle(ref, () => imperativeHandle, [imperativeHandle])
 
+    useEffect(() => {
+      if (!editor) return
+      const handleToolbarShortcut = (event: KeyboardEvent) => {
+        if (!event.altKey || event.key !== 'F10' || !editor.view.hasFocus()) return
+        event.preventDefault()
+        toolbarRef.current?.querySelector<HTMLElement>('button:not([disabled]), select:not([disabled])')?.focus()
+      }
+      window.addEventListener('keydown', handleToolbarShortcut)
+      return () => window.removeEventListener('keydown', handleToolbarShortcut)
+    }, [editor])
+
+    const handleToolbarKeyDown = useCallback((event: React.KeyboardEvent<HTMLFieldSetElement>) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+      if ((event.target as HTMLElement).closest('input, select, textarea, [contenteditable="true"]')) return
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), select:not([disabled])',
+      )).filter((control) => control.offsetParent !== null)
+      if (controls.length === 0) return
+
+      event.preventDefault()
+      const currentIndex = controls.indexOf(document.activeElement as HTMLElement)
+      const nextIndex = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? controls.length - 1
+          : event.key === 'ArrowRight'
+            ? (currentIndex + 1 + controls.length) % controls.length
+            : (currentIndex - 1 + controls.length) % controls.length
+      controls[nextIndex]?.focus()
+    }, [])
+
     const toggleBold = () => !isAiTaskLocked && editor?.chain().focus().toggleBold().run()
     const toggleItalic = () => !isAiTaskLocked && editor?.chain().focus().toggleItalic().run()
     const toggleUnderline = () => !isAiTaskLocked && editor?.chain().focus().toggleUnderline().run()
@@ -699,6 +750,32 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       onSetPosition: setBackgroundColorMenuPosition,
     })
 
+    const toggleTextColorMenu = useCallback(() => {
+      if (!showTextColorMenu) {
+        setCustomTextColor(resolvedEditorUiState.color || DEFAULT_TEXT_COLOR)
+        setTextColorTab(
+          MORE_TEXT_COLOR_OPTIONS.includes(
+            (resolvedEditorUiState.color || '').toLowerCase() as (typeof MORE_TEXT_COLOR_OPTIONS)[number]
+          ) ? 'more' : 'basic'
+        )
+      }
+      setShowBackgroundColorMenu(false)
+      setShowTextColorMenu((current) => !current)
+    }, [resolvedEditorUiState.color, showTextColorMenu])
+
+    const toggleBackgroundColorMenu = useCallback(() => {
+      if (!showBackgroundColorMenu) {
+        setCustomBackgroundColor(resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT)
+        setBackgroundColorTab(
+          MORE_BACKGROUND_COLOR_OPTIONS.includes(
+            (resolvedEditorUiState.backgroundColor || '').toLowerCase() as (typeof MORE_BACKGROUND_COLOR_OPTIONS)[number]
+          ) ? 'more' : 'basic'
+        )
+      }
+      setShowTextColorMenu(false)
+      setShowBackgroundColorMenu((current) => !current)
+    }, [resolvedEditorUiState.backgroundColor, showBackgroundColorMenu])
+
     const preserveSelectionOnToolbarMouseDown = useCallback((event: React.MouseEvent<Element>) => {
       event.preventDefault()
     }, [])
@@ -722,6 +799,102 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const undo = () => !isAiTaskLocked && editor?.chain().focus().undo().run()
     const redo = () => !isAiTaskLocked && editor?.chain().focus().redo().run()
 
+    // The registry only stores callbacks for later user events; it never executes them during render.
+    /* eslint-disable react-hooks/refs */
+    const editorCommands = createEditorCommandRegistry([
+      { id: 'bold', group: 'inline', label: t('editor.bold'), keywords: ['bold', 'strong'], icon: Bold, shortcut: 'Mod+B', surfaces: ['main', 'bubble'] },
+      { id: 'italic', group: 'inline', label: t('editor.italic'), keywords: ['italic', 'emphasis'], icon: Italic, shortcut: 'Mod+I', surfaces: ['main', 'bubble', 'format'] },
+      { id: 'underline', group: 'inline', label: t('editor.underline'), keywords: ['underline'], icon: UnderlineIcon, shortcut: 'Mod+U', surfaces: ['main', 'bubble', 'format'] },
+      { id: 'strike', group: 'inline', label: t('editor.strike'), keywords: ['strike', 'strikethrough'], icon: Strikethrough, surfaces: ['main', 'bubble', 'format'] },
+      { id: 'inlineCode', group: 'inline', label: t('editor.inline_code'), keywords: ['code', 'inline code'], icon: Code, surfaces: ['main', 'bubble', 'format'] },
+      { id: 'link', group: 'inline', label: t('editor.link'), keywords: ['link', 'url'], icon: LinkIcon, shortcut: 'Mod+K', surfaces: ['bubble'] },
+      { id: 'heading1', group: 'block', label: t('editor.heading_1'), keywords: ['h1', 'heading'], icon: Pilcrow, surfaces: ['floating', 'slash'] },
+      { id: 'heading2', group: 'block', label: t('editor.heading_2'), keywords: ['h2', 'heading'], icon: Pilcrow, surfaces: ['floating', 'slash'] },
+      { id: 'bulletList', group: 'block', label: t('editor.bullet_list'), keywords: ['bullet', 'list'], icon: List, surfaces: ['main', 'floating', 'format', 'slash'] },
+      { id: 'orderedList', group: 'block', label: t('editor.ordered_list'), keywords: ['ordered', 'numbered', 'list'], icon: ListOrdered, surfaces: ['main', 'floating', 'format', 'slash'] },
+      { id: 'blockquote', group: 'block', label: t('editor.blockquote'), keywords: ['quote', 'blockquote'], icon: Quote, surfaces: ['main', 'floating', 'format', 'slash'] },
+      { id: 'dropCap', group: 'format', label: t('editor.drop_cap'), keywords: ['drop cap'], icon: Pilcrow, surfaces: ['format'] },
+      { id: 'alignLeft', group: 'format', label: t('editor.align_left'), keywords: ['align left'], icon: AlignLeft, surfaces: ['main', 'format'] },
+      { id: 'alignCenter', group: 'format', label: t('editor.align_center'), keywords: ['align center'], icon: AlignCenter, surfaces: ['main', 'format'] },
+      { id: 'alignRight', group: 'format', label: t('editor.align_right'), keywords: ['align right'], icon: AlignRight, surfaces: ['main', 'format'] },
+      { id: 'textColor', group: 'format', label: t('editor.text_color'), keywords: ['text color'], icon: Palette, surfaces: ['format'] },
+      { id: 'backgroundColor', group: 'format', label: t('editor.background_color'), keywords: ['highlight', 'background color'], icon: Highlighter, surfaces: ['format'] },
+      { id: 'image', group: 'insert', label: t('editor.image'), keywords: ['image', 'photo'], icon: ImageIcon, surfaces: ['insert', 'slash'] },
+      { id: 'table', group: 'insert', label: t('editor.table'), keywords: ['table', 'grid'], icon: TableIcon, surfaces: ['insert', 'slash'] },
+      { id: 'clearFormatting', group: 'format', label: t('editor.clear_formatting'), keywords: ['clear formatting'], icon: RemoveFormatting, surfaces: ['main', 'bubble', 'format'] },
+      { id: 'undo', group: 'history', label: t('editor.undo'), keywords: ['undo'], icon: Undo, shortcut: 'Mod+Z', surfaces: ['main'] },
+      { id: 'redo', group: 'history', label: t('editor.redo'), keywords: ['redo'], icon: Redo, shortcut: 'Mod+Shift+Z', surfaces: ['main', 'format'] },
+    ], {
+      bold: { active: resolvedEditorUiState.isBold, disabled: isAiTaskLocked, execute: toggleBold },
+      italic: { active: resolvedEditorUiState.isItalic, disabled: isAiTaskLocked, execute: toggleItalic },
+      underline: { active: resolvedEditorUiState.isUnderline, disabled: isAiTaskLocked, execute: toggleUnderline },
+      strike: { active: resolvedEditorUiState.isStrike, disabled: isAiTaskLocked, execute: toggleStrike },
+      inlineCode: { active: resolvedEditorUiState.isCode, disabled: isAiTaskLocked, execute: toggleCode },
+      link: { active: resolvedEditorUiState.isLink, disabled: isAiTaskLocked, execute: setLink },
+      heading1: { active: resolvedEditorUiState.isHeading1, disabled: isAiTaskLocked, execute: () => setHeadingLevel('1') },
+      heading2: { active: resolvedEditorUiState.isHeading2, disabled: isAiTaskLocked, execute: () => setHeadingLevel('2') },
+      bulletList: { active: resolvedEditorUiState.isBulletList, disabled: isAiTaskLocked, execute: toggleBulletList },
+      orderedList: { active: resolvedEditorUiState.isOrderedList, disabled: isAiTaskLocked, execute: toggleOrderedList },
+      blockquote: { active: resolvedEditorUiState.isBlockquote, disabled: isAiTaskLocked, execute: toggleBlockquote },
+      dropCap: { active: resolvedEditorUiState.hasDropCap, disabled: isAiTaskLocked, execute: toggleDropCap },
+      alignLeft: { active: resolvedEditorUiState.isAlignLeft, disabled: isAiTaskLocked, execute: () => setTextAlign('left') },
+      alignCenter: { active: resolvedEditorUiState.isAlignCenter, disabled: isAiTaskLocked, execute: () => setTextAlign('center') },
+      alignRight: { active: resolvedEditorUiState.isAlignRight, disabled: isAiTaskLocked, execute: () => setTextAlign('right') },
+      textColor: { active: Boolean(resolvedEditorUiState.color), disabled: isAiTaskLocked, execute: toggleTextColorMenu },
+      backgroundColor: { active: Boolean(resolvedEditorUiState.backgroundColor), disabled: isAiTaskLocked, execute: toggleBackgroundColorMenu },
+      image: { disabled: isAiTaskLocked, execute: addImage },
+      table: { disabled: isAiTaskLocked, execute: addTable },
+      clearFormatting: { disabled: isAiTaskLocked, execute: clearFormatting },
+      undo: { disabled: isAiTaskLocked || !editor?.can().undo(), execute: undo },
+      redo: { disabled: isAiTaskLocked || !editor?.can().redo(), execute: redo },
+    })
+    const mainCommands = getCommandsForSurface(editorCommands, 'main')
+    const mainInlineCommands = mainCommands.filter((command) => (
+      command.id === 'bold'
+      || command.id === 'italic'
+      || command.id === 'underline'
+      || command.id === 'strike'
+      || command.id === 'inlineCode'
+    ))
+    const mainListCommands = mainCommands.filter((command) => (
+      command.id === 'bulletList'
+      || command.id === 'orderedList'
+      || command.id === 'blockquote'
+    ))
+    const mainLayoutCommands = mainCommands.filter((command) => (
+      command.id === 'alignLeft'
+      || command.id === 'alignCenter'
+      || command.id === 'alignRight'
+      || command.id === 'clearFormatting'
+    ))
+    const bubbleCommands = getCommandsForSurface(editorCommands, 'bubble')
+    const floatingCommands = getCommandsForSurface(editorCommands, 'floating')
+    const insertCommands = getCommandsForSurface(editorCommands, 'insert')
+    const formatCommands = getCommandsForSurface(editorCommands, 'format')
+    /* eslint-enable react-hooks/refs */
+
+    const bubbleMenuOptions = useMemo(() => ({ placement: 'top' as const }), [])
+    const floatingMenuOptions = useMemo(() => ({ placement: 'right-start' as const }), [])
+    const dragHandlePositionConfig = useMemo(() => ({ placement: 'left-start' as const }), [])
+
+    const shouldShowBubbleMenu = useCallback<BubbleMenuShouldShow>(({ editor: currentEditor, from, to }) => (
+      !isAiTaskLocked
+      && currentEditor.isEditable
+      && from !== to
+      && !currentEditor.isActive('image')
+      && !currentEditor.isActive('mediaEmbed')
+      && !currentEditor.isActive('codeBlock')
+    ), [isAiTaskLocked])
+
+    const shouldShowFloatingMenu = useCallback<FloatingMenuShouldShow>(({ editor: currentEditor, state }) => {
+      if (isAiTaskLocked || !currentEditor.isEditable || currentEditor.isActive('table')) return false
+      const { $from } = state.selection
+      return state.selection.empty
+        && $from.depth === 1
+        && $from.parent.type.name === 'paragraph'
+        && $from.parent.content.size === 0
+    }, [isAiTaskLocked])
+
     if (!editor) {
       return (
         <div className={`h-full flex items-center justify-center bg-muted/30 ${className || ''}`}>
@@ -730,9 +903,124 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       )
     }
 
+    const editorCanvas = (
+      <div className="h-full overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
+        <div className="relative h-full">
+          {!isAiTaskLocked ? (
+            <DragHandle
+              editor={editor}
+              computePositionConfig={dragHandlePositionConfig}
+            >
+              <div
+                className="relative z-20 flex h-7 w-6 cursor-grab items-center justify-center rounded-md border border-transparent bg-background/80 text-muted-foreground/70 shadow-sm backdrop-blur-sm transition-[border-color,background-color,color,opacity] hover:border-border hover:bg-background hover:text-foreground active:cursor-grabbing"
+                title={t('editor.block_drag_handle')}
+              >
+                <GripVertical className="h-4 w-4" />
+              </div>
+            </DragHandle>
+          ) : null}
+
+          <BubbleMenu
+            editor={editor}
+            options={bubbleMenuOptions}
+            shouldShow={shouldShowBubbleMenu}
+          >
+            <div
+              role="toolbar"
+              aria-label={t('editor.selection_toolbar')}
+              className="z-30 flex max-w-[calc(100vw-1rem)] items-center gap-0.5 overflow-x-auto rounded-md border border-border/80 bg-background/95 p-1 text-foreground shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur-md"
+            >
+              {bubbleCommands.map((command, index) => {
+                const Icon = command.icon
+                return (
+                  <React.Fragment key={command.id}>
+                    {index === bubbleCommands.length - 1 ? <div className="mx-0.5 h-4 w-px bg-border/80" aria-hidden="true" /> : null}
+                    <FloatingToolbarButton
+                      onClick={command.execute}
+                      isActive={command.active}
+                      disabled={command.disabled}
+                      title={command.label}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </FloatingToolbarButton>
+                  </React.Fragment>
+                )
+              })}
+              {showLinkInput ? (
+                <div className="ml-1 flex items-center gap-1 border-l border-border/80 pl-1">
+                  <input
+                    type="url"
+                    value={linkUrl}
+                    onChange={(event) => setLinkUrl(event.target.value)}
+                    placeholder={t('editor.link_placeholder')}
+                    className="h-8 w-44 rounded-sm border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') setLink()
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setShowLinkInput(false)
+                        focusEditor()
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={setLink}
+                    className="h-8 rounded-sm bg-primary px-2 text-xs text-primary-foreground hover:bg-primary/90"
+                  >
+                    {t('editor.confirm')}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </BubbleMenu>
+
+          <FloatingMenu
+            editor={editor}
+            options={floatingMenuOptions}
+            shouldShow={shouldShowFloatingMenu}
+          >
+            <div
+              role="toolbar"
+              aria-label={t('editor.block_toolbar')}
+              className="z-30 flex max-w-[calc(100vw-1rem)] items-center gap-0.5 overflow-x-auto rounded-md border border-border/80 bg-background/95 p-1 text-foreground shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur-md"
+            >
+              <span className="flex h-7 w-7 items-center justify-center text-primary" aria-hidden="true">
+                <Plus className="h-3.5 w-3.5" />
+              </span>
+              <div className="mx-0.5 h-4 w-px bg-border/80" aria-hidden="true" />
+              {floatingCommands.map((command) => {
+                const Icon = command.icon
+                return (
+                  <FloatingToolbarButton
+                    key={command.id}
+                    onClick={command.execute}
+                    isActive={command.active}
+                    disabled={command.disabled}
+                    title={command.label}
+                  >
+                    {command.id === 'heading1' || command.id === 'heading2' ? (
+                      <span className="font-mono text-[10px] font-bold">{command.id === 'heading1' ? 'H1' : 'H2'}</span>
+                    ) : (
+                      <Icon className="h-3.5 w-3.5" />
+                    )}
+                  </FloatingToolbarButton>
+                )
+              })}
+            </div>
+          </FloatingMenu>
+
+          <EditorContent editor={editor} className="h-full custom-scrollbar" />
+        </div>
+      </div>
+    )
+
     return (
       <div
-        className={`tiptap-editor h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}
+        className={`tiptap-editor relative z-0 isolate h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}
         aria-busy={isAiTaskLocked}
         aria-readonly={isAiTaskLocked}
         data-document-id={documentId}
@@ -740,230 +1028,238 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       >
         {/* Toolbar */}
         <fieldset
+          ref={toolbarRef}
           disabled={isAiTaskLocked}
           aria-disabled={isAiTaskLocked}
-          className="scrollbar-hide flex min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto border-0 border-b border-border/70 bg-gradient-to-r from-muted/20 via-background to-muted/5 px-2 py-1.5 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label={t('editor.main_toolbar')}
+          onKeyDown={handleToolbarKeyDown}
+          className="relative z-20 flex min-w-0 items-center justify-between gap-1 overflow-visible border-0 border-b border-border/70 bg-background/96 px-2 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <ToolbarSelect
-            value={resolvedEditorUiState.headingLevel}
-            onChange={setHeadingLevel}
-            onMouseDown={preserveSelectionOnSelectMouseDown}
-            title={t('editor.heading_level')}
-            options={headingOptions}
-          />
-          <ToolbarSelect
-            value={resolvedEditorUiState.fontFamily}
-            onChange={setFontFamily}
-            onMouseDown={preserveSelectionOnSelectMouseDown}
-            title={t('editor.font_family')}
-            options={fontFamilyOptions}
-          />
-          <ToolbarSelect
-            value={resolvedEditorUiState.fontSize}
-            onChange={setFontSize}
-            onMouseDown={preserveSelectionOnSelectMouseDown}
-            title={t('editor.font_size')}
-            options={fontSizeOptions}
-          />
-
-          <ToolbarDivider />
-
-          <ToolbarButton onClick={toggleBold} isActive={resolvedEditorUiState.isBold} title={t('editor.bold')}>
-            <Bold className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleItalic} isActive={resolvedEditorUiState.isItalic} title={t('editor.italic')}>
-            <Italic className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleUnderline} isActive={resolvedEditorUiState.isUnderline} title={t('editor.underline')}>
-            <UnderlineIcon className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleStrike} isActive={resolvedEditorUiState.isStrike} title={t('editor.strike')}>
-            <Strikethrough className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleCode} isActive={resolvedEditorUiState.isCode} title={t('editor.inline_code')}>
-            <Code className="w-4 h-4" />
-          </ToolbarButton>
-
-          {/* Text Color */}
-          <div className="relative">
-            <ToolbarButton
-              buttonRef={textColorButtonRef}
-              onMouseDown={preserveSelectionOnToolbarMouseDown}
-              onClick={() => {
-                if (!showTextColorMenu) {
-                  setCustomTextColor(resolvedEditorUiState.color || DEFAULT_TEXT_COLOR)
-                  setTextColorTab(
-                    MORE_TEXT_COLOR_OPTIONS.includes(
-                      (resolvedEditorUiState.color || '').toLowerCase() as (typeof MORE_TEXT_COLOR_OPTIONS)[number]
-                    )
-                      ? 'more'
-                      : 'basic'
-                  )
-                }
-                setShowBackgroundColorMenu(false)
-                setShowTextColorMenu((current) => !current)
-              }}
-              isActive={Boolean(resolvedEditorUiState.color)}
-              title={t('editor.text_color')}
-            >
-              <span className="relative flex items-center justify-center">
-                <Palette className="h-4 w-4" />
-                <span
-                  className="absolute bottom-0 left-1/2 h-1.5 w-3 -translate-x-1/2 rounded-sm border border-black/5"
-                  style={{ backgroundColor: resolvedEditorUiState.color || DEFAULT_TEXT_COLOR }}
-                />
-              </span>
-            </ToolbarButton>
-          </div>
-
-          {/* Background Color */}
-          <div className="relative">
-            <ToolbarButton
-              buttonRef={backgroundColorButtonRef}
-              onMouseDown={preserveSelectionOnToolbarMouseDown}
-              onClick={() => {
-                if (!showBackgroundColorMenu) {
-                  setCustomBackgroundColor(resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT)
-                  setBackgroundColorTab(
-                    MORE_BACKGROUND_COLOR_OPTIONS.includes(
-                      (resolvedEditorUiState.backgroundColor || '').toLowerCase() as (typeof MORE_BACKGROUND_COLOR_OPTIONS)[number]
-                    )
-                      ? 'more'
-                      : 'basic'
-                  )
-                }
-                setShowTextColorMenu(false)
-                setShowBackgroundColorMenu((current) => !current)
-              }}
-              isActive={Boolean(resolvedEditorUiState.backgroundColor)}
-              title={t('editor.background_color')}
-            >
-              <span className="relative flex items-center justify-center">
-                <Highlighter className="h-4 w-4" />
-                <span
-                  className="absolute bottom-0 left-1/2 h-1.5 w-3 -translate-x-1/2 rounded-sm border border-black/5"
-                  style={{ backgroundColor: resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT }}
-                />
-              </span>
-            </ToolbarButton>
-          </div>
-
-          <ToolbarDivider />
-
-          <ToolbarButton onClick={toggleBulletList} isActive={resolvedEditorUiState.isBulletList} title={t('editor.bullet_list')}>
-            <List className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleOrderedList} isActive={resolvedEditorUiState.isOrderedList} title={t('editor.ordered_list')}>
-            <ListOrdered className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleBlockquote} isActive={resolvedEditorUiState.isBlockquote} title={t('editor.blockquote')}>
-            <Quote className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={toggleDropCap} isActive={resolvedEditorUiState.hasDropCap} title={t('editor.drop_cap')}>
-            <Pilcrow className="w-4 h-4" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('left')} isActive={resolvedEditorUiState.isAlignLeft} title={t('editor.align_left')}>
-            <AlignLeft className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('center')} isActive={resolvedEditorUiState.isAlignCenter} title={t('editor.align_center')}>
-            <AlignCenter className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onMouseDown={preserveSelectionOnToolbarMouseDown} onClick={() => setTextAlign('right')} isActive={resolvedEditorUiState.isAlignRight} title={t('editor.align_right')}>
-            <AlignRight className="w-4 h-4" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          {/* Link */}
-          <div className="relative">
-            <ToolbarButton onClick={setLink} isActive={resolvedEditorUiState.isLink} title={t('editor.link')}>
-              <LinkIcon className="w-4 h-4" />
-            </ToolbarButton>
-            {showLinkInput && (
-              <div className="absolute top-full left-0 z-10 mt-1 flex items-center gap-1 border border-border bg-background p-2 shadow-lg">
-                <input
-                  type="url"
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder={t('editor.link_placeholder')}
-                  className="w-40 border border-border px-2 py-1 text-xs focus:border-primary outline-none"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') setLink()
-                    if (e.key === 'Escape') setShowLinkInput(false)
-                  }}
-                  autoFocus
-                />
-                <button
-                  onClick={setLink}
-                  className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+          <div className="flex min-w-0 items-center gap-0.5">
+            <ToolbarSelect
+              value={resolvedEditorUiState.headingLevel}
+              onChange={setHeadingLevel}
+              onMouseDown={preserveSelectionOnSelectMouseDown}
+              title={t('editor.heading_level')}
+              options={headingOptions}
+              className="max-w-[4.5rem] min-[360px]:max-w-[5.5rem] sm:max-w-[7.5rem]"
+            />
+            <ToolbarSelect
+              value={resolvedEditorUiState.fontFamily}
+              onChange={setFontFamily}
+              onMouseDown={preserveSelectionOnSelectMouseDown}
+              title={t('editor.font_family')}
+              options={fontFamilyOptions}
+              className="hidden max-w-[7rem] md:block"
+            />
+            <ToolbarSelect
+              value={resolvedEditorUiState.fontSize}
+              onChange={setFontSize}
+              onMouseDown={preserveSelectionOnSelectMouseDown}
+              title={t('editor.font_size')}
+              options={fontSizeOptions}
+              className="hidden max-w-[5.5rem] md:block"
+            />
+            <ToolbarDivider className="hidden sm:block" />
+            {mainInlineCommands.map((command) => {
+              const Icon = command.icon
+              const responsiveClassName = command.id === 'italic'
+                ? 'max-[359px]:hidden'
+                : command.id === 'underline' || command.id === 'strike'
+                  ? 'hidden sm:flex'
+                  : command.id === 'inlineCode'
+                    ? 'hidden lg:flex'
+                    : ''
+              return (
+                <ToolbarButton
+                  key={command.id}
+                  onClick={command.execute}
+                  isActive={command.active}
+                  disabled={command.disabled}
+                  title={command.label}
+                  className={responsiveClassName}
                 >
-                  {t('editor.confirm')}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Image */}
-          <div className="relative">
-            <ToolbarButton onClick={addImage} title={t('editor.image')}>
-              <ImageIcon className="w-4 h-4" />
-            </ToolbarButton>
-            {showImageInput && (
-              <div className="absolute top-full left-0 z-10 mt-1 flex items-center gap-1 border border-border bg-background p-2 shadow-lg">
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder={t('editor.image_placeholder')}
-                  className="w-40 border border-border px-2 py-1 text-xs focus:border-primary outline-none"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') addImage()
-                    if (e.key === 'Escape') setShowImageInput(false)
-                  }}
-                  autoFocus
-                />
-                <button
-                  onClick={addImage}
-                  className="bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                  <Icon className="h-4 w-4" />
+                </ToolbarButton>
+              )
+            })}
+            <ToolbarDivider className="hidden sm:block" />
+            {mainListCommands.map((command) => {
+              const Icon = command.icon
+              return (
+                <ToolbarButton
+                  key={command.id}
+                  onClick={command.execute}
+                  isActive={command.active}
+                  disabled={command.disabled}
+                  title={command.label}
+                  className={command.id === 'blockquote' ? 'hidden lg:flex' : 'hidden sm:flex'}
                 >
-                  {t('editor.confirm')}
-                </button>
-              </div>
-            )}
+                  <Icon className="h-4 w-4" />
+                </ToolbarButton>
+              )
+            })}
+            <ToolbarDivider className="hidden lg:block" />
+            {mainLayoutCommands.map((command) => {
+              const Icon = command.icon
+              return (
+                <ToolbarButton
+                  key={command.id}
+                  onClick={command.execute}
+                  isActive={command.active}
+                  disabled={command.disabled}
+                  title={command.label}
+                  className="hidden lg:flex"
+                >
+                  <Icon className="h-4 w-4" />
+                </ToolbarButton>
+              )
+            })}
           </div>
 
-          <div className="relative">
-            <ToolbarButton
-              onMouseDown={preserveSelectionOnToolbarMouseDown}
-              onClick={focusEditor}
-              isActive={resolvedEditorUiState.isMediaEmbed}
-              title={t('editor.media')}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <ToolbarPopover
+              open={openToolbarMenu === 'insert'}
+              onOpenChange={(open) => {
+                setOpenToolbarMenu(open ? 'insert' : null)
+                if (open) {
+                  setShowLinkInput(false)
+                  setShowTextColorMenu(false)
+                  setShowBackgroundColorMenu(false)
+                }
+              }}
+              label={t('editor.insert_menu')}
+              icon={Plus}
+              disabled={isAiTaskLocked}
+              panelClassName="right-0 left-auto max-h-[calc(100vh-5rem)] w-64 overflow-y-auto"
             >
-              <Clapperboard className="w-4 h-4" />
-            </ToolbarButton>
+              {insertCommands.map((command) => (
+                <CommandMenuItem
+                  key={command.id}
+                  command={command}
+                  onSelect={command.id === 'image' ? undefined : () => setOpenToolbarMenu(null)}
+                />
+              ))}
+              {showImageInput ? (
+                <div className="mt-1 border-t border-border/70 p-2">
+                  <label className="mb-1 block text-[10px] font-medium uppercase text-muted-foreground">
+                    {t('editor.image_placeholder')}
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="url"
+                      value={imageUrl}
+                      onChange={(event) => setImageUrl(event.target.value)}
+                      placeholder="https://"
+                      className="h-9 min-w-0 flex-1 rounded-sm border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          addImage()
+                          setOpenToolbarMenu(null)
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          setShowImageInput(false)
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        addImage()
+                        setOpenToolbarMenu(null)
+                      }}
+                      className="h-9 rounded-sm bg-primary px-2 text-xs text-primary-foreground hover:bg-primary/90"
+                    >
+                      {t('editor.confirm')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </ToolbarPopover>
+
+            <ToolbarPopover
+              open={openToolbarMenu === 'format'}
+              onOpenChange={(open) => {
+                setOpenToolbarMenu(open ? 'format' : null)
+                if (open) {
+                  setShowImageInput(false)
+                  setShowLinkInput(false)
+                }
+              }}
+              label={t('editor.format_menu')}
+              icon={MoreHorizontal}
+              disabled={isAiTaskLocked}
+              panelClassName="right-0 left-auto max-h-[calc(100vh-5rem)] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto"
+            >
+              <div className="grid grid-cols-2 gap-1 p-1">
+                <ToolbarSelect
+                  value={resolvedEditorUiState.fontFamily}
+                  onChange={setFontFamily}
+                  onMouseDown={preserveSelectionOnSelectMouseDown}
+                  title={t('editor.font_family')}
+                  options={fontFamilyOptions}
+                  className="w-full max-w-none"
+                />
+                <ToolbarSelect
+                  value={resolvedEditorUiState.fontSize}
+                  onChange={setFontSize}
+                  onMouseDown={preserveSelectionOnSelectMouseDown}
+                  title={t('editor.font_size')}
+                  options={fontSizeOptions}
+                  className="w-full max-w-none"
+                />
+              </div>
+              <div className="my-1 h-px bg-border/70" />
+              {formatCommands.filter((command) => command.id !== 'textColor' && command.id !== 'backgroundColor').map((command) => (
+                <CommandMenuItem key={command.id} command={command} onSelect={() => setOpenToolbarMenu(null)} />
+              ))}
+              <div className="my-1 h-px bg-border/70" />
+              <button
+                ref={textColorButtonRef}
+                type="button"
+                role="menuitem"
+                onMouseDown={preserveSelectionOnToolbarMouseDown}
+                onClick={toggleTextColorMenu}
+                className="flex h-9 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+              >
+                <Palette className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">{t('editor.text_color')}</span>
+                <span className="h-3 w-6 rounded-sm border border-border" style={{ backgroundColor: resolvedEditorUiState.color || DEFAULT_TEXT_COLOR }} />
+              </button>
+              <button
+                ref={backgroundColorButtonRef}
+                type="button"
+                role="menuitem"
+                onMouseDown={preserveSelectionOnToolbarMouseDown}
+                onClick={toggleBackgroundColorMenu}
+                className="flex h-9 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+              >
+                <Highlighter className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">{t('editor.background_color')}</span>
+                <span className="h-3 w-6 rounded-sm border border-border" style={{ backgroundColor: resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT }} />
+              </button>
+            </ToolbarPopover>
+
+            <ToolbarDivider className="hidden sm:block" />
+            {mainCommands.filter((command) => command.id === 'undo' || command.id === 'redo').map((command) => {
+              const Icon = command.icon
+              return (
+                <ToolbarButton
+                  key={command.id}
+                  onClick={command.execute}
+                  disabled={command.disabled}
+                  title={command.label}
+                  className={command.id === 'redo' ? 'max-sm:hidden' : ''}
+                >
+                  <Icon className="h-4 w-4" />
+                </ToolbarButton>
+              )
+            })}
           </div>
-
-          <ToolbarButton onClick={addTable} title={t('editor.table')}>
-            <TableIcon className="w-4 h-4" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          <ToolbarButton onClick={clearFormatting} title={t('editor.clear_formatting')}>
-            <RemoveFormatting className="w-4 h-4" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          <ToolbarButton onClick={undo} disabled={isAiTaskLocked || !editor.can().undo()} title={t('editor.undo')}>
-            <Undo className="w-4 h-4" />
-          </ToolbarButton>
-          <ToolbarButton onClick={redo} disabled={isAiTaskLocked || !editor.can().redo()} title={t('editor.redo')}>
-            <Redo className="w-4 h-4" />
-          </ToolbarButton>
         </fieldset>
 
         {/* Color Picker Menus */}
@@ -1002,11 +1298,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         {aiOptions?.enabled ? (
           <AiSidebar label={t('editor.ai_button')} onExpand={syncAiSelectionState}>
             <AiSidebar.Content>
-              <div className="h-full overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
-                <div className="relative h-full">
-                  <EditorContent editor={editor} className="h-full custom-scrollbar" />
-                </div>
-              </div>
+              {editorCanvas}
             </AiSidebar.Content>
             <AiSidebar.Toggle />
             <AiSidebar.Panel>
@@ -1032,10 +1324,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             </AiSidebar.Panel>
           </AiSidebar>
         ) : (
-          <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,rgba(127,127,127,0.03),transparent_96px)]">
-            <div className="relative h-full">
-              <EditorContent editor={editor} className="h-full custom-scrollbar" />
-            </div>
+          <div className="min-h-0 flex-1">
+            {editorCanvas}
           </div>
         )}
 

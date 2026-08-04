@@ -66,7 +66,7 @@ function ColorPickerMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 flex w-[360px] flex-col gap-3 rounded-md border border-border bg-background p-4 shadow-xl"
+      className="fixed z-40 flex w-[360px] flex-col gap-3 rounded-md border border-border bg-background p-4 shadow-xl"
       style={{
         top: position.top,
         left: position.left,

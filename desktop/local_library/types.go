@@ -94,6 +94,20 @@ type LibrarySnapshot struct {
 	Scan         ScanStatus `json:"scan"`
 }
 
+type CacheUsage struct {
+	FileCount int64 `json:"fileCount"`
+	Bytes     int64 `json:"bytes"`
+}
+
+type LocalLibraryCacheStats struct {
+	Internal          CacheUsage `json:"internal"`
+	LibraryData       CacheUsage `json:"libraryData"`
+	Thumbnails        CacheUsage `json:"thumbnails"`
+	Previews          CacheUsage `json:"previews"`
+	TotalBytes        int64      `json:"totalBytes"`
+	PreviewLimitBytes int64      `json:"previewLimitBytes"`
+}
+
 type FolderDTO struct {
 	ID           string  `json:"id"`
 	ParentID     *string `json:"parentId,omitempty"`
@@ -149,6 +163,7 @@ type AssetDTO struct {
 	Extension      string               `json:"extension"`
 	Format         string               `json:"format"`
 	MimeType       string               `json:"mimeType"`
+	MediaKind      string               `json:"mediaKind"`
 	ByteSize       int64                `json:"byteSize"`
 	ModifiedAtNS   int64                `json:"modifiedAtNs"`
 	Width          int                  `json:"width"`
@@ -194,6 +209,7 @@ type AssetQuery struct {
 	Search           string   `json:"search,omitempty"`
 	Availability     string   `json:"availability,omitempty"`
 	FavoritesOnly    bool     `json:"favoritesOnly,omitempty"`
+	PhotosOnly       bool     `json:"photosOnly,omitempty"`
 	TagIDs           []string `json:"tagIds,omitempty"`
 	CollectionIDs    []string `json:"collectionIds,omitempty"`
 	RatingMin        *int     `json:"ratingMin,omitempty"`

@@ -3,7 +3,7 @@ import type { DragEvent as ReactDragEvent, ReactElement, ReactNode } from 'react
 import { useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
 import {
-  ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleHelp, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, FolderSearch2, Heart, Images, Info, LayoutGrid, Loader2,
+  ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleHelp, Columns3, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, FolderSearch2, Heart, Images, Info, LayoutGrid, Loader2,
   Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, Square, Trash2, Upload, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,6 +11,7 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { useLibrarySections } from '@/store/preferences'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import { EventsOn, OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime'
 import { localLibraryApi, parseLocalLibraryError } from './api'
@@ -38,6 +39,7 @@ import { PermanentDeleteFolderDialog } from './PermanentDeleteFolderDialog'
 import { RemoveMissingAssetDialog } from './RemoveMissingAssetDialog'
 import { RestoreFolderDialog } from './RestoreFolderDialog'
 import { useLocalLibraryStore } from './store'
+import { isPhotoAsset } from './types'
 import type { AssetFileOperationPlan, AssetPage, BackupOverview, BatchAssetOrganizationUpdate, FolderDeletionPreview, FolderFileOperationPlan, FolderItem, FolderProperties, FolderTrashEntry, LibrarySnapshot, LocalAsset, LocalLibraryEvent, LocalLibraryImportMode, UploadAlbum, LocalTag, LocalCollection, CollectionGroup } from './types'
 import type { LocalLibraryCopy } from './copy'
 
@@ -81,6 +83,8 @@ interface FolderTarget {
 
 export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: Props) {
   const navigate = useNavigate()
+  const foldersOpen = useLibrarySections((state) => state.sections.localFolders)
+  const toggleSection = useLibrarySections((state) => state.toggleSection)
   const {
     folder, folders, search, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, filters, selectedAsset, previewAsset, expandedFolderPaths,
     setFolder, setFolders, setSearch, setSort, setSortDirection, setAvailability, setFavoritesOnly, setTagIds, setCollectionIds, setFilters, clearFilters, selectAsset, setPreviewAsset, toggleFolderExpanded,
@@ -103,14 +107,16 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [assetDropTargetFolder, setAssetDropTargetFolder] = useState<string | null>(null)
   const [draggedFolderPath, setDraggedFolderPath] = useState<string | null>(null)
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'crop' | 'fit'>('fit')
+  const [viewMode, setViewMode] = useState<'crop' | 'fit' | 'masonry'>('fit')
   const [gridSize, setGridSize] = useState(176)
   const [directFolderOnly, setDirectFolderOnly] = useState(false)
+  const photosOnly = filters.photosOnly !== false
   const [importBusy, setImportBusy] = useState(false)
   const importBusyRef = useRef(false)
   const [pendingImportPaths, setPendingImportPaths] = useState<string[] | null>(null)
   const [pendingImportDestination, setPendingImportDestination] = useState<string | null>(null)
   const activeAssetRequestsRef = useRef(0)
+  const paginationRequestIdRef = useRef(0)
   const previewStatusOverridesRef = useRef(new Map<string, string>())
   const [scanBusy, setScanBusy] = useState(false)
   const [backupDialogOpen, setBackupDialogOpen] = useState(false)
@@ -153,8 +159,12 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const toggleFolderCollapsed = toggleFolderExpanded
 
   const query = useMemo(() => ({
-    folder, directFolderOnly, search: deferredSearch, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, ...filters, limit: 100,
+    folder, directFolderOnly, search: deferredSearch, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, ...filters, photosOnly, limit: 100,
   }), [availability, collectionIds, deferredSearch, directFolderOnly, favoritesOnly, filters, folder, sort, sortDirection, tagIds])
+  const queryKey = useMemo(() => JSON.stringify(query), [query])
+  const activeQueryKeyRef = useRef(queryKey)
+  const requestedQueryKeyRef = useRef(queryKey)
+  activeQueryKeyRef.current = queryKey
 
   const foldersByParentId = useMemo(() => {
     const map = new Map<string, FolderItem[]>()
@@ -252,6 +262,11 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
 
   useEffect(() => {
     let disposed = false
+    const queryChanged = requestedQueryKeyRef.current !== queryKey
+    requestedQueryKeyRef.current = queryKey
+    paginationRequestIdRef.current += 1
+    setLoadingMore(false)
+    if (queryChanged) setPage(EMPTY_PAGE)
     setLoading(true)
     activeAssetRequestsRef.current += 1
     localLibraryApi.listAssets(query).then((result) => {
@@ -510,10 +525,14 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
 
   const loadMore = useCallback(async () => {
     if (!page.nextCursor || loadingMore) return
+    const requestId = paginationRequestIdRef.current + 1
+    const requestQueryKey = queryKey
+    paginationRequestIdRef.current = requestId
     setLoadingMore(true)
     activeAssetRequestsRef.current += 1
     try {
       const next = await localLibraryApi.listAssets({ ...query, cursor: page.nextCursor })
+      if (paginationRequestIdRef.current !== requestId || activeQueryKeyRef.current !== requestQueryKey) return
       const overrides = previewStatusOverridesRef.current
       const nextItems = overrides.size === 0 ? next.items : next.items.map((asset) => {
         const previewStatus = overrides.get(asset.id)
@@ -521,13 +540,13 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       })
       setPage((current) => ({ ...next, items: [...current.items, ...nextItems] }))
     } catch (error) {
-      toast.error(parseLocalLibraryError(error).message)
+      if (paginationRequestIdRef.current === requestId && activeQueryKeyRef.current === requestQueryKey) toast.error(parseLocalLibraryError(error).message)
     } finally {
       activeAssetRequestsRef.current = Math.max(0, activeAssetRequestsRef.current - 1)
       if (activeAssetRequestsRef.current === 0) previewStatusOverridesRef.current.clear()
-      setLoadingMore(false)
+      if (paginationRequestIdRef.current === requestId && activeQueryKeyRef.current === requestQueryKey) setLoadingMore(false)
     }
-  }, [loadingMore, page.nextCursor, query])
+  }, [loadingMore, page.nextCursor, query, queryKey])
 
   const chooseFiles = async () => {
     try { await importPaths(await localLibraryApi.selectImportFiles()) }
@@ -749,7 +768,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   }, [copy.copiedToClipboard, copy.cutToClipboard])
 
   const uploadAsset = useCallback((asset: LocalAsset, albumId?: string) => {
-    if (asset.availability !== 'active') return
+    if (asset.availability !== 'active' || !isPhotoAsset(asset)) return
     useUploadIntentStore.getState().enqueue({ source: 'local-assets', assetIds: [asset.id], albumId })
     toast.success(copy.uploadPrepared)
     navigate('/upload')
@@ -1231,18 +1250,30 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       return
     }
     if (!page.nextCursor || loadingMore) return
+    const requestId = paginationRequestIdRef.current + 1
+    const requestQueryKey = queryKey
+    paginationRequestIdRef.current = requestId
     setLoadingMore(true)
+    activeAssetRequestsRef.current += 1
     try {
       const next = await localLibraryApi.listAssets({ ...query, cursor: page.nextCursor })
-      const nextActive = next.items.find((item) => item.availability === 'active')
-      setPage((current) => ({ ...next, items: [...current.items, ...next.items] }))
+      if (paginationRequestIdRef.current !== requestId || activeQueryKeyRef.current !== requestQueryKey) return
+      const overrides = previewStatusOverridesRef.current
+      const nextItems = overrides.size === 0 ? next.items : next.items.map((asset) => {
+        const previewStatus = overrides.get(asset.id)
+        return previewStatus ? { ...asset, previewStatus } : asset
+      })
+      const nextActive = nextItems.find((item) => item.availability === 'active')
+      setPage((current) => ({ ...next, items: [...current.items, ...nextItems] }))
       if (nextActive) setPreviewAsset(nextActive)
     } catch (error) {
-      toast.error(parseLocalLibraryError(error).message)
+      if (paginationRequestIdRef.current === requestId && activeQueryKeyRef.current === requestQueryKey) toast.error(parseLocalLibraryError(error).message)
     } finally {
-      setLoadingMore(false)
+      activeAssetRequestsRef.current = Math.max(0, activeAssetRequestsRef.current - 1)
+      if (activeAssetRequestsRef.current === 0) previewStatusOverridesRef.current.clear()
+      if (paginationRequestIdRef.current === requestId && activeQueryKeyRef.current === requestQueryKey) setLoadingMore(false)
     }
-  }, [loadingMore, page.nextCursor, previewNeighbors.next, query, setPreviewAsset])
+  }, [loadingMore, page.nextCursor, previewNeighbors.next, query, queryKey, setPreviewAsset])
   const currentPathSegments = useMemo(() => {
     const rootSegments = snapshot.rootPath.split(/[\\/]+/).filter(Boolean).map((segment, index) => index === 0 ? segment.replace(/:$/, '') : segment)
     return [...rootSegments, ...folder.split('/').filter(Boolean)]
@@ -1251,11 +1282,18 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const isRepairRequired = snapshot.state === 'repair_required'
   const isScanning = snapshot.scan.state === 'running'
   const hasStructuredFilters = Object.values(filters).some((value) => Array.isArray(value) ? value.length > 0 : value !== undefined && value !== '')
-  const canImportIntoCurrentView = availability === 'active' && !favoritesOnly && tagIds.length === 0 && collectionIds.length === 0 && !deferredSearch && !hasStructuredFilters
+  const canBrowsePhysicalFolders = availability === 'active' && !favoritesOnly && tagIds.length === 0 && collectionIds.length === 0 && !deferredSearch && !hasStructuredFilters
+  const currentChildFolders = useMemo(() => {
+    if (!canBrowsePhysicalFolders) return []
+    const parentId = folder ? folders.find((item) => item.relativePath === folder)?.id : ''
+    if (folder && !parentId) return []
+    return foldersByParentId.get(parentId || '') || []
+  }, [canBrowsePhysicalFolders, folder, folders, foldersByParentId])
+  const canImportIntoCurrentView = canBrowsePhysicalFolders
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-background" onDragEnd={() => { setAssetDropTargetFolder(null); setDraggedFolderPath(null); setFolderDropTarget(null) }}>
-      <header className="shrink-0 border-b" style={{ borderColor: 'var(--border)' }}>
+    <div className="relative grid h-full min-h-0 grid-cols-[218px_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] bg-background" onDragEnd={() => { setAssetDropTargetFolder(null); setDraggedFolderPath(null); setFolderDropTarget(null) }}>
+      <header className="col-span-2 col-start-2 row-start-1 shrink-0 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="flex h-16 items-center gap-4 px-4">
           <div className="min-w-0 flex-1" data-local-library-guide="library">
             <div className="flex items-center gap-2"><h1 className="truncate text-lg font-semibold">{snapshot.name}</h1><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isSuspended || isRepairRequired ? '#d97706' : isScanning ? 'var(--primary)' : '#4f9d69' }} /></div>
@@ -1268,17 +1306,25 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[218px] shrink-0 flex-col overflow-hidden border-r bg-card p-3" style={{ borderColor: 'var(--border)' }}>
+      <div className="contents">
+        <aside className="col-start-1 row-span-2 row-start-1 flex w-[218px] min-h-0 shrink-0 flex-col overflow-hidden border-r bg-card p-3" style={{ borderColor: 'var(--border)' }}>
           <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
             <div data-local-library-guide="nav">
               <NavButton active={availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} icon={Images} label={copy.allPhotos} count={snapshot.assetCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }} />
               <div data-local-library-logical-target {...assetDropHandlers((ids) => void applyOrganizationDrop(ids, { kind: 'favorite' }), 'link')}><NavButton active={availability === 'active' && favoritesOnly} icon={Heart} label={copy.favorites} count={favoriteCount} onClick={() => { setAvailability('active'); setFavoritesOnly(true); setFolder('') }} /></div>
-              <NavButton active={availability === 'missing'} icon={FileQuestion} label={copy.missingPhotos} count={snapshot.missingCount} onClick={() => { setAvailability('missing'); setFavoritesOnly(false); setFolder('') }} />
-              <NavButton active={availability === 'trashed'} icon={ArchiveRestore} label={copy.trash} count={snapshot.trashCount} onClick={() => { setAvailability('trashed'); setFavoritesOnly(false); setFolder('') }} />
             </div>
             <div data-local-library-guide="folders">
-              <div className="mb-2 mt-5 px-2 text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{copy.folders}</div>
+              <button
+                type="button"
+                onClick={() => toggleSection('localFolders')}
+                aria-expanded={foldersOpen}
+                className="mb-2 mt-5 flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[10px] font-medium uppercase tracking-[0.16em] transition hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                {foldersOpen ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+                <span className="truncate">{copy.folders}</span>
+              </button>
+              {foldersOpen && (<>
               <div data-local-library-import-folder="" style={{ '--wails-drop-target': 'drop' } as CSSProperties} {...folderDropHandlers('')}>
                 <FolderContextTarget
                   target={{ relativePath: '', name: copy.root, isRoot: true }} copy={copy}
@@ -1287,22 +1333,27 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
                   <button type="button" onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }}
                     className="mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition hover:bg-secondary"
                     style={{ backgroundColor: assetDropTargetFolder === '' || folderDropTarget === '' ? 'var(--primary)' : availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0 ? 'var(--accent)' : undefined, color: assetDropTargetFolder === '' || folderDropTarget === '' ? 'var(--primary-foreground)' : undefined, boxShadow: assetDropTargetFolder === '' || folderDropTarget === '' ? '0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent)' : undefined }}>
-                    <FolderOpen size={15} /><span className="min-w-0 flex-1 truncate">{copy.root}</span>
+                    <FolderOpen size={15} /><span className="min-w-0 flex-1 truncate">{copy.root}</span><span className="shrink-0 truncate text-[9px]" style={{ color: 'var(--muted-foreground)' }} title={snapshot.rootPath}>{snapshot.rootPath}</span>
                   </button>
                 </FolderContextTarget>
               </div>
               {renderFolderTree()}
+              </>)}
             </div>
             <OrganizationNavigation copy={copy} tags={tags} groups={collectionGroups} collections={collections} selectedTagIds={tagIds} selectedCollectionIds={collectionIds}
               onSelectTags={(ids) => { setAvailability('active'); setFavoritesOnly(false); setTagIds(ids) }} onSelectCollections={(ids) => { setAvailability('active'); setFavoritesOnly(false); setCollectionIds(ids) }}
               onEdit={setOrganizationEditor} onDelete={setOrganizationDelete} onDropAssets={(ids, target) => void applyOrganizationDrop(ids, target)} />
           </div>
           <div className="mt-3 shrink-0 rounded-lg border p-3 text-[10px] leading-4" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-            <div className="grid grid-cols-3 gap-2 text-center"><Stat value={snapshot.assetCount} label={copy.assets} /><Stat value={snapshot.missingCount} label={copy.missing} /><Stat value={snapshot.trashCount} label={copy.inTrash} /></div>
+            <div className="grid grid-cols-3 gap-1 text-center">
+              <StatButton active={availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} value={snapshot.assetCount} label={copy.allPhotos} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }} />
+              <StatButton active={availability === 'missing'} value={snapshot.missingCount} label={copy.missing} onClick={() => { setAvailability('missing'); setFavoritesOnly(false); setFolder('') }} />
+              <StatButton active={availability === 'trashed'} value={snapshot.trashCount} label={copy.inTrash} onClick={() => { setAvailability('trashed'); setFavoritesOnly(false); setFolder('') }} />
+            </div>
           </div>
         </aside>
 
-        <main data-local-library-import-folder={canImportIntoCurrentView ? folder : undefined} style={canImportIntoCurrentView ? { '--wails-drop-target': 'drop' } as CSSProperties : undefined} className="flex min-w-0 flex-1 flex-col">
+        <main data-local-library-import-folder={canImportIntoCurrentView ? folder : undefined} style={canImportIntoCurrentView ? { '--wails-drop-target': 'drop' } as CSSProperties : undefined} className="col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col overflow-hidden">
           <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }} data-local-library-guide="toolbar">
             <div className="relative min-w-0 flex-1"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1" />{search && <button type="button" onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1"><X size={13} /></button>}</div>
             <LocalAssetFilters copy={copy} filters={filters} onChange={setFilters} onClear={clearFilters} />
@@ -1314,6 +1365,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
             <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5">
               <button type="button" title={copy.croppedView} aria-label={copy.croppedView} onClick={() => setViewMode('crop')} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'crop' ? 'var(--secondary)' : undefined }}><LayoutGrid size={13} /></button>
               <button type="button" title={copy.fittedView} aria-label={copy.fittedView} onClick={() => setViewMode('fit')} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'fit' ? 'var(--secondary)' : undefined }}><Maximize2 size={13} /></button>
+              <button type="button" title={copy.masonryView} aria-label={copy.masonryView} onClick={() => setViewMode('masonry')} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'masonry' ? 'var(--secondary)' : undefined }}><Columns3 size={13} /></button>
             </div>
             <SelectDropdown
               value={sort}
@@ -1331,12 +1383,11 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
             <button type="button" onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')} title={sortDirection === 'asc' ? copy.ascending : copy.descending} aria-label={sortDirection === 'asc' ? copy.ascending : copy.descending} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-input hover:bg-secondary">{sortDirection === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
           </div>
           {(isSuspended || isRepairRequired) && <div className="border-b px-4 py-2 text-[11px]" style={{ borderColor: 'var(--border)', color: '#b45309', backgroundColor: 'color-mix(in srgb, #f59e0b 10%, var(--card))' }}>{scanLabel(snapshot, copy)}</div>}
-          {!page.isComplete && !isSuspended && !isRepairRequired && <div className="border-b px-4 py-1.5 text-[10px]" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)', backgroundColor: 'var(--card)' }}>{copy.incomplete}</div>}
           {availability === 'trashed' && <FolderTrashSection entries={trashedFolders} copy={copy} loading={trashedFoldersLoading} busyId={trashFolderBusyId} onRestore={setRestoreFolderTarget} onPermanentDelete={setPermanentFolderTarget} />}
-          <LocalAssetGrid assets={page.items} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
+          <LocalAssetGrid assets={page.items} folders={currentChildFolders} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
             emptyTitle={availability === 'missing' ? copy.missingEmpty : undefined} emptyHint={availability === 'missing' ? copy.missingEmptyHint : undefined}
-            uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments}
-            selectedIds={selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onLoadMore={loadMore}
+            uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
+            selectedIds={selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={(nextFolder) => { clearAssetSelection(); setFolder(nextFolder.relativePath) }} onLoadMore={loadMore}
             onOpenInFileManager={(asset) => void openAssetInFileManager(asset)}
             onClipboard={copyAssetToClipboard} onUpload={uploadAsset} onDelete={(asset) => { selectAsset(asset); setDeleteAsset(asset) }} onRename={openRenameAsset} onMove={openMoveAsset} onRestore={restoreAsset}
             onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => { selectAsset(asset); setRemoveMissingAsset(asset) }} />
@@ -1354,9 +1405,11 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
           </div>
         </main>
 
-        {(selectedAssetIds.length > 1 || selectedQueryToken) ? <LocalAssetBatchDetails selectedCount={selectedQueryToken ? selectedQueryTotal : selectedAssetIds.length} tags={tags} collections={collections} copy={copy} busy={organizationBusy || assetFileOperationBusy} canMove={!selectedQueryToken && selectedAssetIds.every((id) => page.items.find((item) => item.id === id)?.availability === 'active')} onClear={clearAssetSelection} onMove={openMoveSelectedAssets} onUpdate={(update) => void batchUpdateOrganization(update)} /> : <LocalAssetDetails asset={selectedAsset} copy={copy} saving={saving} maintenanceBusy={missingMaintenanceBusy || previewMaintenanceBusy} tags={tags} collections={collections} organizationBusy={organizationBusy} onSave={saveAsset}
-          onPreview={(asset) => { if (asset.availability !== 'missing') setPreviewAsset(asset) }} onOpenSystem={openSystem} onMove={openMoveAsset} onDelete={setDeleteAsset} onRestore={restoreAsset}
-          onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => setRemoveMissingAsset(asset)} onSetTags={setAssetTags} onCreateTag={createTagFromDetails} onSetCollections={setAssetCollections} />}
+        <div className="col-start-3 row-start-2 min-h-0 overflow-hidden">
+          {(selectedAssetIds.length > 1 || selectedQueryToken) ? <LocalAssetBatchDetails selectedCount={selectedQueryToken ? selectedQueryTotal : selectedAssetIds.length} tags={tags} collections={collections} copy={copy} busy={organizationBusy || assetFileOperationBusy} canMove={!selectedQueryToken && selectedAssetIds.every((id) => page.items.find((item) => item.id === id)?.availability === 'active')} onClear={clearAssetSelection} onMove={openMoveSelectedAssets} onUpdate={(update) => void batchUpdateOrganization(update)} /> : <LocalAssetDetails asset={selectedAsset} copy={copy} saving={saving} maintenanceBusy={missingMaintenanceBusy || previewMaintenanceBusy} tags={tags} collections={collections} organizationBusy={organizationBusy} onSave={saveAsset}
+            onPreview={(asset) => { if (asset.availability !== 'missing') setPreviewAsset(asset) }} onOpenSystem={openSystem} onMove={openMoveAsset} onDelete={setDeleteAsset} onRestore={restoreAsset}
+            onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => setRemoveMissingAsset(asset)} onSetTags={setAssetTags} onCreateTag={createTagFromDetails} onSetCollections={setAssetCollections} />}
+        </div>
       </div>
 
       {dropTargetFolder !== null && <div className="pointer-events-none absolute inset-3 z-50 flex items-center justify-center rounded-xl border-2 border-dashed bg-background/90 backdrop-blur" style={{ borderColor: 'var(--primary)' }}><div className="text-center"><Upload size={30} className="mx-auto mb-3" style={{ color: 'var(--primary)' }} /><p className="text-sm font-medium">{copy.drop}</p><p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>{dropTargetFolder || copy.root}</p></div></div>}
@@ -1419,4 +1472,19 @@ function NavButton({ active, icon: Icon, label, count, onClick }: { active: bool
 
 function Stat({ value, label }: { value: number; label: string }) {
   return <div><div className="font-medium" style={{ color: 'var(--foreground)' }}>{value.toLocaleString()}</div><div className="truncate">{label}</div></div>
+}
+
+function StatButton({ active, value, label, onClick }: { active: boolean; value: number; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      className="flex flex-col items-center gap-0.5 rounded-md px-1 py-1.5 transition hover:bg-secondary"
+      style={{ color: 'var(--muted-foreground)' }}
+    >
+      <span className="font-medium" style={{ color: active ? 'var(--primary)' : 'var(--foreground)' }}>{value.toLocaleString()}</span>
+      <span className="truncate max-w-full">{label}</span>
+    </button>
+  )
 }

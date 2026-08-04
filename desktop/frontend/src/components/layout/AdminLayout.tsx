@@ -20,7 +20,7 @@ export function AdminLayout() {
   }, [theme])
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       <Sidebar />
       <main className="min-w-0 flex-1 overflow-hidden flex flex-col">
         <Outlet />

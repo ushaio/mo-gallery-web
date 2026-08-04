@@ -214,6 +214,7 @@ export namespace local_library {
 	    extension: string;
 	    format: string;
 	    mimeType: string;
+	    mediaKind: string;
 	    byteSize: number;
 	    modifiedAtNs: number;
 	    width: number;
@@ -256,6 +257,7 @@ export namespace local_library {
 	        this.extension = source["extension"];
 	        this.format = source["format"];
 	        this.mimeType = source["mimeType"];
+	        this.mediaKind = source["mediaKind"];
 	        this.byteSize = source["byteSize"];
 	        this.modifiedAtNs = source["modifiedAtNs"];
 	        this.width = source["width"];
@@ -531,6 +533,7 @@ export namespace local_library {
 	    search?: string;
 	    availability?: string;
 	    favoritesOnly?: boolean;
+	    photosOnly?: boolean;
 	    tagIds?: string[];
 	    collectionIds?: string[];
 	    ratingMin?: number;
@@ -572,6 +575,7 @@ export namespace local_library {
 	        this.search = source["search"];
 	        this.availability = source["availability"];
 	        this.favoritesOnly = source["favoritesOnly"];
+	        this.photosOnly = source["photosOnly"];
 	        this.tagIds = source["tagIds"];
 	        this.collectionIds = source["collectionIds"];
 	        this.ratingMin = source["ratingMin"];
@@ -731,6 +735,20 @@ export namespace local_library {
 	        this.removeTagIds = source["removeTagIds"];
 	        this.addCollectionIds = source["addCollectionIds"];
 	        this.removeCollectionIds = source["removeCollectionIds"];
+	    }
+	}
+	export class CacheUsage {
+	    fileCount: number;
+	    bytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CacheUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fileCount = source["fileCount"];
+	        this.bytes = source["bytes"];
 	    }
 	}
 	export class CollectionDTO {
@@ -1077,6 +1095,46 @@ export namespace local_library {
 		    return a;
 		}
 	}
+	export class LocalLibraryCacheStats {
+	    internal: CacheUsage;
+	    libraryData: CacheUsage;
+	    thumbnails: CacheUsage;
+	    previews: CacheUsage;
+	    totalBytes: number;
+	    previewLimitBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalLibraryCacheStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.internal = this.convertValues(source["internal"], CacheUsage);
+	        this.libraryData = this.convertValues(source["libraryData"], CacheUsage);
+	        this.thumbnails = this.convertValues(source["thumbnails"], CacheUsage);
+	        this.previews = this.convertValues(source["previews"], CacheUsage);
+	        this.totalBytes = source["totalBytes"];
+	        this.previewLimitBytes = source["previewLimitBytes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LocalLibraryPreferences {
 	    importMode?: string;
 	
@@ -1105,6 +1163,25 @@ export namespace local_library {
 	        this.assetId = source["assetId"];
 	        this.status = source["status"];
 	        this.error = source["error"];
+	    }
+	}
+
+}
+
+export namespace main {
+	
+	export class WindowAppearance {
+	    activeStyle: string;
+	    configuredStyle: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowAppearance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.activeStyle = source["activeStyle"];
+	        this.configuredStyle = source["configuredStyle"];
 	    }
 	}
 
@@ -1154,7 +1231,7 @@ export namespace services {
 	    size?: number;
 	    isFeatured: boolean;
 	    showFlag: boolean;
-	    dominantColors?: number[];
+	    dominantColors?: string[];
 	    fileHash?: string;
 	    // Go type: time
 	    createdAt: any;

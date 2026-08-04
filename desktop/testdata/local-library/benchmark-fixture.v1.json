@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "mixed-photo-library-v1",
+  "seed": 440011,
+  "assetCount": 100000,
+  "maxFolderDepth": 6,
+  "emptyFolderCount": 64,
+  "tagCount": 24,
+  "collectionCount": 12,
+  "distributions": {
+    "formats": {
+      "jpeg": 41,
+      "png": 8,
+      "webp": 8,
+      "gif": 4,
+      "avif": 5,
+      "heif": 8,
+      "tiff": 7,
+      "cr2": 4,
+      "cr3": 3,
+      "nef": 3,
+      "arw": 3,
+      "dng": 3,
+      "raf": 2,
+      "rw2": 1
+    },
+    "dimensions": {
+      "small": 12,
+      "medium": 38,
+      "large": 38,
+      "very_large": 12
+    },
+    "fileSizes": {
+      "under_1mb": 14,
+      "1_to_5mb": 36,
+      "5_to_20mb": 32,
+      "over_20mb": 18
+    },
+    "exif": {
+      "complete": 62,
+      "partial": 23,
+      "missing": 15
+    },
+    "preview": {
+      "ready": 76,
+      "pending": 12,
+      "unavailable": 12
+    },
+    "availability": {
+      "active": 96,
+      "missing": 4
+    }
+  }
+}

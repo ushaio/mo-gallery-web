@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Camera,
+  ChevronDown,
+  ChevronRight,
   Eye,
   EyeOff,
   Film,
@@ -33,7 +35,9 @@ import {
 } from '@/components/ui/ContextMenu'
 import { resolveAssetUrl } from '@/lib/api'
 import { normalizePhotoCategories } from '@/lib/photoCategories'
-import { usePreferences, usePhotoFilters } from '@/store/preferences'
+import { invalidateDesktopCache } from '@/lib/app-cache'
+import { loadPersistentResource } from '@/lib/persistent-cache'
+import { useLibrarySections, usePreferences, usePhotoFilters } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { Album } from '@/types'
 
@@ -57,8 +61,47 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function SectionHeader({ open, onToggle, label, onRefresh, refreshing = false, refreshLabel }: {
+  open: boolean
+  onToggle: () => void
+  label: string
+  onRefresh?: () => void
+  refreshing?: boolean
+  refreshLabel?: string
+}) {
+  return (
+    <div className="mb-2 mt-5 flex items-center gap-1 px-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-left text-[10px] font-medium uppercase tracking-[0.16em] transition hover:bg-secondary"
+        style={{ color: 'var(--muted-foreground)' }}
+      >
+        {open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+        <span className="truncate">{label}</span>
+      </button>
+      {onRefresh && (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          title={refreshLabel}
+          aria-label={refreshLabel}
+          className="flex size-6 shrink-0 items-center justify-center rounded hover:bg-secondary disabled:cursor-wait disabled:opacity-50"
+          style={{ color: 'var(--muted-foreground)' }}
+        >
+          {refreshing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function CloudLibraryPage() {
   const language = usePreferences((state) => state.language)
+  const sections = useLibrarySections((state) => state.sections)
+  const toggleSection = useLibrarySections((state) => state.toggleSection)
   const albumId = usePhotoFilters((state) => state.albumId)
   const category = usePhotoFilters((state) => state.category)
   const photoType = usePhotoFilters((state) => state.photoType)
@@ -83,17 +126,17 @@ export function CloudLibraryPage() {
   const managerTab: AlbumDetailTab = searchParams.get('tab') === 'photos' ? 'photos' : 'overview'
   const showingAlbumBrowser = view === 'albums' && !createMode && !managingAlbumId
 
-  const fetchAlbums = useCallback(async () => {
+  const fetchAlbums = useCallback(async (force = false) => {
     const requestId = ++albumsRequestIdRef.current
     setLoading(true)
     try {
       const [result, categoryResult] = await Promise.all([
-        appApi().GetAlbums(),
-        appApi().GetCategories().catch(() => []),
+        loadPersistentResource('albums', () => appApi().GetAlbums(), { force }),
+        loadPersistentResource('categories', async () => normalizePhotoCategories(await appApi().GetCategories()), { force }),
       ])
       if (requestId !== albumsRequestIdRef.current) return
       setAlbums(result ?? [])
-      setCategories(normalizePhotoCategories(categoryResult))
+      setCategories(categoryResult)
       setAlbumsLoaded(true)
     } catch (error) {
       if (requestId !== albumsRequestIdRef.current) return
@@ -192,21 +235,23 @@ export function CloudLibraryPage() {
     setUpdatingAlbumId(album.id)
     try {
       const updated = await appApi().UpdateAlbum(album.id, { isPublished: !album.isPublished })
-      setAlbums(current => current.map(item => item.id === updated.id ? { ...item, ...updated } : item))
+      await fetchAlbums(true)
+      invalidateDesktopCache(['overview'])
       toast.success(t(updated.isPublished ? 'admin.album_published' : 'admin.album_unpublished', language))
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     } finally {
       setUpdatingAlbumId(null)
     }
-  }, [language, updatingAlbumId])
+  }, [fetchAlbums, language, updatingAlbumId])
 
   const deleteAlbum = useCallback(async () => {
     const target = deleteTarget
     if (!target) return
     try {
       await appApi().DeleteAlbum(target.id)
-      setAlbums(current => current.filter(album => album.id !== target.id))
+      await fetchAlbums(true)
+      invalidateDesktopCache(['overview', 'photos'])
       if (albumId === target.id) setAlbumId(null)
       if (managingAlbumId === target.id) showAlbumBrowser()
       setDeleteTarget(null)
@@ -214,7 +259,7 @@ export function CloudLibraryPage() {
     } catch (error) {
       toast.error(errorMessage(error, t('common.error', language)))
     }
-  }, [albumId, deleteTarget, language, managingAlbumId, setAlbumId, showAlbumBrowser])
+  }, [albumId, deleteTarget, fetchAlbums, language, managingAlbumId, setAlbumId, showAlbumBrowser])
 
   const albumMenuActions = useMemo(() => ({
     onOpen: showAlbum,
@@ -247,37 +292,63 @@ export function CloudLibraryPage() {
             onClick={showFilmRolls}
           />
 
-          <div className="mb-2 mt-5 px-2 text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{language === 'zh' ? '照片类型' : 'Photo type'}</div>
-          <div className="space-y-0.5">
-            <CloudNavButton
-              active={view === 'photos' && !albumId && featured !== true && category === '全部' && photoType === 'digital'}
-              icon={Camera}
-              label={t('admin.photos_type_digital', language)}
-              onClick={() => showPhotoType('digital')}
-            />
-            <CloudNavButton
-              active={view === 'photos' && !albumId && featured !== true && category === '全部' && photoType === 'film'}
-              icon={Film}
-              label={t('admin.photos_type_film', language)}
-              onClick={() => showPhotoType('film')}
-            />
-          </div>
-
-          <div className="mb-2 mt-5 px-2 text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{t('ui.category_filter', language)}</div>
-          <div className="space-y-0.5">
-            {categories.map((item) => (
+          <SectionHeader
+            open={sections.cloudPhotoType}
+            onToggle={() => toggleSection('cloudPhotoType')}
+            label={language === 'zh' ? '照片类型' : 'Photo type'}
+          />
+          {sections.cloudPhotoType && (
+            <div className="space-y-0.5">
               <CloudNavButton
-                key={item}
-                active={view === 'photos' && !albumId && featured !== true && !photoType && category === item}
-                icon={Tag}
-                label={item}
-                onClick={() => showCategory(item)}
+                active={view === 'photos' && !albumId && featured !== true && category === '全部' && photoType === 'digital'}
+                icon={Camera}
+                label={t('admin.photos_type_digital', language)}
+                onClick={() => showPhotoType('digital')}
               />
-            ))}
-            {!loading && categories.length === 0 && <p className="px-2.5 py-2 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{language === 'zh' ? '暂无分类' : 'No categories'}</p>}
-          </div>
+              <CloudNavButton
+                active={view === 'photos' && !albumId && featured !== true && category === '全部' && photoType === 'film'}
+                icon={Film}
+                label={t('admin.photos_type_film', language)}
+                onClick={() => showPhotoType('film')}
+              />
+            </div>
+          )}
+
+          <SectionHeader
+            open={sections.cloudCategories}
+            onToggle={() => toggleSection('cloudCategories')}
+            label={t('ui.category_filter', language)}
+            onRefresh={() => void fetchAlbums(true)}
+            refreshing={loading}
+            refreshLabel={t('common.refresh', language)}
+          />
+          {sections.cloudCategories && (
+            <div className="space-y-0.5">
+              {categories.map((item) => (
+                <CloudNavButton
+                  key={item}
+                  active={view === 'photos' && !albumId && featured !== true && !photoType && category === item}
+                  icon={Tag}
+                  label={item}
+                  onClick={() => showCategory(item)}
+                />
+              ))}
+              {!loading && categories.length === 0 && <p className="px-2.5 py-2 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{language === 'zh' ? '暂无分类' : 'No categories'}</p>}
+            </div>
+          )}
 
           <div className="mb-2 mt-5 flex items-center gap-1 px-1">
+            <button
+              type="button"
+              onClick={() => toggleSection('cloudAlbums')}
+              aria-expanded={sections.cloudAlbums}
+              aria-label={sections.cloudAlbums ? t('common.collapse', language) : t('common.expand', language)}
+              title={sections.cloudAlbums ? t('common.collapse', language) : t('common.expand', language)}
+              className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-secondary"
+              style={{ color: 'var(--muted-foreground)' }}
+            >
+              {sections.cloudAlbums ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
             <button
               type="button"
               onClick={showAlbumBrowser}
@@ -304,7 +375,7 @@ export function CloudLibraryPage() {
             </button>
             <button
               type="button"
-              onClick={() => void fetchAlbums()}
+              onClick={() => void fetchAlbums(true)}
               title={t('common.refresh', language)}
               aria-label={t('common.refresh', language)}
               className="flex size-6 shrink-0 items-center justify-center rounded hover:bg-secondary"
@@ -314,32 +385,34 @@ export function CloudLibraryPage() {
             </button>
           </div>
 
-          <div className="space-y-0.5">
-            {sortedAlbums.map((album) => (
-              <AlbumContextTarget key={album.id} album={album} language={language} busy={updatingAlbumId === album.id} {...albumMenuActions}>
-                <button
-                  type="button"
-                  onClick={() => showAlbum(album.id)}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition hover:bg-secondary"
-                  style={{
-                    backgroundColor: view === 'photos' && albumId === album.id ? 'var(--accent)' : undefined,
-                    color: view === 'photos' && albumId === album.id ? 'var(--accent-foreground)' : undefined,
-                  }}
-                  title={album.name}
-                >
-                  <Folder size={15} className="shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{album.name}</span>
-                  {!album.isPublished && <EyeOff size={11} className="shrink-0" style={{ color: 'var(--muted-foreground)' }} />}
-                  <span className="shrink-0 text-[10px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{album.photoCount || 0}</span>
+          {sections.cloudAlbums && (
+            <div className="space-y-0.5">
+              {sortedAlbums.map((album) => (
+                <AlbumContextTarget key={album.id} album={album} language={language} busy={updatingAlbumId === album.id} {...albumMenuActions}>
+                  <button
+                    type="button"
+                    onClick={() => showAlbum(album.id)}
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition hover:bg-secondary"
+                    style={{
+                      backgroundColor: view === 'photos' && albumId === album.id ? 'var(--accent)' : undefined,
+                      color: view === 'photos' && albumId === album.id ? 'var(--accent-foreground)' : undefined,
+                    }}
+                    title={album.name}
+                  >
+                    <Folder size={15} className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{album.name}</span>
+                    {!album.isPublished && <EyeOff size={11} className="shrink-0" style={{ color: 'var(--muted-foreground)' }} />}
+                    <span className="shrink-0 text-[10px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{album.photoCount || 0}</span>
+                  </button>
+                </AlbumContextTarget>
+              ))}
+              {!loading && sortedAlbums.length === 0 && (
+                <button type="button" onClick={createAlbum} className="w-full rounded-md px-2.5 py-3 text-left text-[10px] hover:bg-secondary" style={{ color: 'var(--muted-foreground)' }}>
+                  {t('admin.no_albums', language)} · {t('admin.create_album', language)}
                 </button>
-              </AlbumContextTarget>
-            ))}
-            {!loading && sortedAlbums.length === 0 && (
-              <button type="button" onClick={createAlbum} className="w-full rounded-md px-2.5 py-3 text-left text-[10px] hover:bg-secondary" style={{ color: 'var(--muted-foreground)' }}>
-                {t('admin.no_albums', language)} · {t('admin.create_album', language)}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -354,7 +427,7 @@ export function CloudLibraryPage() {
             initialTab={managerTab}
             createMode={createMode}
             onBackToBrowser={showAlbumBrowser}
-            onAlbumsChanged={() => void fetchAlbums()}
+            onAlbumsChanged={() => void fetchAlbums(true)}
           />
         ) : (
           <CloudAlbumsBrowser

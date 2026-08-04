@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Check, Filter, X } from 'lucide-react'
-import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import type { AssetStructuredFilters } from './types'
-import type { LocalLibraryCopy, LocalLibraryStringKey } from './copy'
+import type { LocalLibraryCopy } from './copy'
 
 interface Props {
   copy: LocalLibraryCopy
@@ -15,8 +14,7 @@ interface Props {
 type FilterKey = keyof AssetStructuredFilters
 
 const COLORS = ['red', 'yellow', 'green', 'blue', 'purple'] as const
-const FORMATS = ['jpeg', 'png', 'gif', 'webp', 'tiff', 'heif', 'avif', 'cr2', 'cr3', 'nef', 'arw', 'raf']
-const PREVIEW_STATUSES = ['pending', 'generating', 'ready', 'unavailable']
+const FORMATS = ['jpeg', 'png', 'gif', 'webp', 'tiff', 'heif', 'avif', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'rw2']
 
 function numberValue(value: string) {
   if (value.trim() === '') return undefined
@@ -40,7 +38,8 @@ function dateMilliseconds(value: string, endOfDay = false) {
 }
 
 function activeCount(filters: AssetStructuredFilters) {
-  return Object.values(filters).filter((value) => Array.isArray(value) ? value.length > 0 : value !== undefined && value !== '').length
+  const { photosOnly: _photosOnly, ...rest } = filters
+  return Object.values(rest).filter((value) => Array.isArray(value) ? value.length > 0 : value !== undefined).length
 }
 
 function toggleValue(values: string[] | undefined, value: string) {
@@ -91,18 +90,11 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
     range('rating', copy.filterRating, 'ratingMin', 'ratingMax')
     if (filters.colorLabels?.length) result.push({ key: 'colors', label: `${copy.filterColor}: ${filters.colorLabels.join('/')}`, remove: () => update('colorLabels', undefined) })
     if (filters.formats?.length) result.push({ key: 'formats', label: `${copy.filterFormat}: ${filters.formats.join('/')}`, remove: () => update('formats', undefined) })
-    if (filters.previewStatuses?.length) result.push({ key: 'previews', label: `${copy.filterPreview}: ${filters.previewStatuses.join('/')}`, remove: () => update('previewStatuses', undefined) })
     if (filters.capturedFromMs !== undefined || filters.capturedToMs !== undefined) result.push({ key: 'captured', label: copy.filterCapturedDate, remove: () => removeMany('capturedFromMs', 'capturedToMs') })
     if (filters.discoveredFromMs !== undefined || filters.discoveredToMs !== undefined) result.push({ key: 'discovered', label: copy.filterDiscoveredDate, remove: () => removeMany('discoveredFromMs', 'discoveredToMs') })
     if (filters.cameraMakes?.length) result.push({ key: 'make', label: `${copy.filterCameraMake}: ${filters.cameraMakes.join('/')}`, remove: () => update('cameraMakes', undefined) })
     if (filters.cameraModels?.length) result.push({ key: 'model', label: `${copy.filterCameraModel}: ${filters.cameraModels.join('/')}`, remove: () => update('cameraModels', undefined) })
     if (filters.lensModels?.length) result.push({ key: 'lens', label: `${copy.filterLens}: ${filters.lensModels.join('/')}`, remove: () => update('lensModels', undefined) })
-    range('iso', 'ISO', 'isoMin', 'isoMax')
-    range('aperture', copy.filterAperture, 'apertureMin', 'apertureMax')
-    range('focal', copy.filterFocalLength, 'focalLengthMin', 'focalLengthMax', 'mm')
-    if (filters.orientation) result.push({ key: 'orientation', label: `${copy.filterOrientation}: ${copy[filters.orientation]}`, remove: () => update('orientation', undefined) })
-    range('width', copy.filterWidth, 'widthMin', 'widthMax', 'px')
-    range('height', copy.filterHeight, 'heightMin', 'heightMax', 'px')
     return result
   }, [copy, filters]) // callback closures intentionally track current filters
 
@@ -141,6 +133,10 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
               </div>
             )}
             <div className="custom-scrollbar grid min-h-0 flex-1 grid-cols-2 gap-x-5 gap-y-4 overflow-y-auto p-5">
+            <label className="col-span-2 flex cursor-pointer items-center gap-2 text-[11px]">
+              <input type="checkbox" checked={filters.photosOnly !== false} onChange={(event) => update('photosOnly', event.target.checked)} />
+              {copy.photosOnly}
+            </label>
             <FilterSection title={copy.filterRating}>
               <RangeInputs min={filters.ratingMin} max={filters.ratingMax} minLimit={0} maxLimit={5} onMin={(value) => update('ratingMin', value)} onMax={(value) => update('ratingMax', value)} />
             </FilterSection>
@@ -172,9 +168,6 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
             <FilterSection title={copy.filterFormat}>
               <div className="flex flex-wrap gap-1">{FORMATS.map((format) => <Toggle key={format} active={filters.formats?.includes(format) ?? false} onClick={() => update('formats', toggleValue(filters.formats, format))}>{format.toUpperCase()}</Toggle>)}</div>
             </FilterSection>
-            <FilterSection title={copy.filterPreview}>
-              <div className="flex flex-wrap gap-1">{PREVIEW_STATUSES.map((status) => <Toggle key={status} active={filters.previewStatuses?.includes(status) ?? false} onClick={() => update('previewStatuses', toggleValue(filters.previewStatuses, status))}>{copy[`preview_${status}` as LocalLibraryStringKey]}</Toggle>)}</div>
-            </FilterSection>
             <FilterSection title={copy.filterCapturedDate}>
               <DateRange from={filters.capturedFromMs} to={filters.capturedToMs} copy={copy} onFrom={(value) => update('capturedFromMs', value)} onTo={(value) => update('capturedToMs', value)} />
             </FilterSection>
@@ -183,25 +176,6 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
             </FilterSection>
             <FilterSection title={copy.filterCamera}>
               <div className="space-y-2"><TextListInput value={filters.cameraMakes} placeholder={copy.filterCameraMake} onCommit={(value) => update('cameraMakes', value)} /><TextListInput value={filters.cameraModels} placeholder={copy.filterCameraModel} onCommit={(value) => update('cameraModels', value)} /><TextListInput value={filters.lensModels} placeholder={copy.filterLens} onCommit={(value) => update('lensModels', value)} /></div>
-            </FilterSection>
-            <FilterSection title={copy.filterExposure}>
-              <div className="space-y-2"><LabeledRange label="ISO" min={filters.isoMin} max={filters.isoMax} onMin={(value) => update('isoMin', value)} onMax={(value) => update('isoMax', value)} /><LabeledRange label={copy.filterAperture} min={filters.apertureMin} max={filters.apertureMax} step="0.1" onMin={(value) => update('apertureMin', value)} onMax={(value) => update('apertureMax', value)} /><LabeledRange label={`${copy.filterFocalLength} (mm)`} min={filters.focalLengthMin} max={filters.focalLengthMax} step="0.1" onMin={(value) => update('focalLengthMin', value)} onMax={(value) => update('focalLengthMax', value)} /></div>
-            </FilterSection>
-            <FilterSection title={copy.filterOrientation}>
-              <SelectDropdown
-                value={filters.orientation ?? ''}
-                options={[
-                  { value: '', label: copy.any },
-                  { value: 'landscape', label: copy.landscape },
-                  { value: 'portrait', label: copy.portrait },
-                  { value: 'square', label: copy.square },
-                ]}
-                onChange={(value) => update('orientation', ((value as string) || undefined) as AssetStructuredFilters['orientation'])}
-                ariaLabel={copy.filterOrientation}
-              />
-            </FilterSection>
-            <FilterSection title={copy.filterDimensions}>
-              <div className="space-y-2"><LabeledRange label={`${copy.filterWidth} (px)`} min={filters.widthMin} max={filters.widthMax} onMin={(value) => update('widthMin', value)} onMax={(value) => update('widthMax', value)} /><LabeledRange label={`${copy.filterHeight} (px)`} min={filters.heightMin} max={filters.heightMax} onMin={(value) => update('heightMin', value)} onMax={(value) => update('heightMax', value)} /></div>
             </FilterSection>
             </div>
             <div className="flex items-center justify-between gap-3 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
@@ -225,10 +199,6 @@ function Toggle({ active, onClick, children }: { active: boolean, onClick: () =>
 
 function RangeInputs({ min, max, minLimit, maxLimit, step, onMin, onMax }: { min?: number, max?: number, minLimit?: number, maxLimit?: number, step?: string, onMin: (value?: number) => void, onMax: (value?: number) => void }) {
   return <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2"><input type="number" value={min ?? ''} min={minLimit} max={maxLimit} step={step} placeholder="Min" onChange={(event) => onMin(numberValue(event.target.value))} className="h-8 min-w-0 rounded-md border bg-input px-2 text-xs" /><span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>?</span><input type="number" value={max ?? ''} min={minLimit} max={maxLimit} step={step} placeholder="Max" onChange={(event) => onMax(numberValue(event.target.value))} className="h-8 min-w-0 rounded-md border bg-input px-2 text-xs" /></div>
-}
-
-function LabeledRange({ label, ...props }: { label: string, min?: number, max?: number, step?: string, onMin: (value?: number) => void, onMax: (value?: number) => void }) {
-  return <label className="grid grid-cols-[80px_1fr] items-center gap-2 text-[10px]"><span style={{ color: 'var(--muted-foreground)' }}>{label}</span><RangeInputs {...props} /></label>
 }
 
 function DateRange({ from, to, copy, onFrom, onTo }: { from?: number, to?: number, copy: LocalLibraryCopy, onFrom: (value?: number) => void, onTo: (value?: number) => void }) {

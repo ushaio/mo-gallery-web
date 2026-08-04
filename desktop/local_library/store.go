@@ -37,6 +37,7 @@ type indexedFile struct {
 	Extension      string
 	Format         string
 	MimeType       string
+	MediaKind      string
 	ByteSize       int64
 	ModifiedAtNS   int64
 	Width          int
@@ -405,10 +406,10 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 		existingID = newID()
 		created = true
 		_, err = tx.ExecContext(ctx, `INSERT INTO assets(
-            id,folder_id,relative_path,path_key,file_name,extension,format,mime_type,byte_size,modified_at_ns,width,height,orientation,is_animated,frame_count,
+            id,folder_id,relative_path,path_key,file_name,extension,format,mime_type,media_kind,byte_size,modified_at_ns,width,height,orientation,is_animated,frame_count,
             availability,preview_status,preview_error,metadata_status,dominant_colors,captured_at,discovered_at,technical_updated_at,scan_token
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)`,
-			existingID, folderID, file.RelativePath, file.PathKey, file.FileName, file.Extension, file.Format, file.MimeType,
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)`,
+			existingID, folderID, file.RelativePath, file.PathKey, file.FileName, file.Extension, file.Format, file.MimeType, mediaKindOrDefault(file.MediaKind),
 			file.ByteSize, file.ModifiedAtNS, file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount,
 			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, encodeDominantColors(file.DominantColors), capturedAt, now, now, scanToken)
 	case nil:
@@ -418,8 +419,8 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 			previewStatus, previewError = oldPreviewStatus, oldPreviewError
 			dominantColors = oldDominantColors
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL WHERE id=?`,
-			folderID, file.RelativePath, file.FileName, file.Extension, file.Format, file.MimeType, file.ByteSize, file.ModifiedAtNS,
+		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,media_kind=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL WHERE id=?`,
+			folderID, file.RelativePath, file.FileName, file.Extension, file.Format, file.MimeType, mediaKindOrDefault(file.MediaKind), file.ByteSize, file.ModifiedAtNS,
 			file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount, previewStatus, previewError,
 			file.MetadataStatus, dominantColors, capturedAt, now, scanToken, existingID)
 	default:
@@ -470,6 +471,13 @@ func normalizedOrientation(value int) int {
 		return 1
 	}
 	return value
+}
+
+func mediaKindOrDefault(kind string) string {
+	if kind == "" {
+		return "image"
+	}
+	return kind
 }
 
 func nullableUnixMillis(value *time.Time) any {
@@ -661,6 +669,9 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 	if query.FavoritesOnly {
 		where = append(where, "a.is_favorite=1")
 	}
+	if query.PhotosOnly {
+		where = append(where, "a.media_kind='image'")
+	}
 	if ids := uniqueIDs(query.TagIDs); len(ids) > 0 {
 		where = append(where, "EXISTS (SELECT 1 FROM asset_tags qat WHERE qat.asset_id=a.id AND qat.tag_id IN ("+queryPlaceholders(len(ids))+"))")
 		for _, id := range ids {
@@ -840,7 +851,7 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		return AssetPage{}, err
 	}
 	args = append(args, limit+1)
-	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,
+	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,
         e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
         FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
         WHERE ` + baseWhere + ` ORDER BY ` + sortExpr + ` ` + direction + `,a.id ` + direction + ` LIMIT ?`
@@ -866,7 +877,7 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		var aperture, shutterSeconds, focalLengthMM, latitude, longitude sql.NullFloat64
 		var sortValue any
 		var dominantColors string
-		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
+		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
 			return AssetPage{}, err
 		}
 		item.IsAnimated = animated != 0

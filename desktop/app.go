@@ -24,9 +24,15 @@ import (
 	"mo-gallery-desktop/types"
 )
 
+type WindowAppearance struct {
+	ActiveStyle     string `json:"activeStyle"`
+	ConfiguredStyle string `json:"configuredStyle"`
+}
+
 type App struct {
-	ctx          context.Context
-	cfg          *config.Config
+	ctx               context.Context
+	cfg               *config.Config
+	activeWindowStyle string
 	Proxy        *services.ProxyClient
 	Auth         *services.AuthService
 	Photo        *services.PhotoService
@@ -47,9 +53,10 @@ type App struct {
 
 func NewApp(cfg *config.Config) *App {
 	app := &App{
-		cfg:    cfg,
-		Proxy:  services.NewProxyClient(),
-		Logger: services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
+		cfg:               cfg,
+		activeWindowStyle: config.NormalizeWindowStyle(cfg.UI.WindowStyle),
+		Proxy:             services.NewProxyClient(),
+		Logger:            services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 	}
 	app.LocalLibrary = local_library.NewManager(config.ConfigDir(), func(event local_library.LocalLibraryEvent) {
 		if app.ctx != nil {
@@ -168,6 +175,47 @@ func (a *App) shutdown(ctx context.Context) {
 		_ = a.LocalLibrary.Close()
 	}
 	db.Close()
+}
+
+func (a *App) GetWindowAppearance() WindowAppearance {
+	return WindowAppearance{
+		ActiveStyle:     a.activeWindowStyle,
+		ConfiguredStyle: config.NormalizeWindowStyle(a.cfg.UI.WindowStyle),
+	}
+}
+
+func (a *App) UpdateWindowStyle(style string) (WindowAppearance, error) {
+	if !config.IsValidWindowStyle(style) {
+		return a.GetWindowAppearance(), errors.New("不支持的窗口风格")
+	}
+	previousStyle := a.cfg.UI.WindowStyle
+	a.cfg.UI.WindowStyle = config.NormalizeWindowStyle(style)
+	if err := a.cfg.Save(""); err != nil {
+		a.cfg.UI.WindowStyle = previousStyle
+		return a.GetWindowAppearance(), err
+	}
+	return a.GetWindowAppearance(), nil
+}
+
+// RestartApplication starts a replacement process with the persisted settings,
+// then closes the current process. The restart marker lets the replacement
+// bypass the single-instance handoff while the old process is still exiting.
+func (a *App) RestartApplication() error {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	command := exec.Command(executable, os.Args[1:]...)
+	command.Env = append(os.Environ(), "MO_GALLERY_RESTART=1")
+	if err := command.Start(); err != nil {
+		return err
+	}
+
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
+	return nil
 }
 
 // ─── Auth ────────────────────────────────────────────
@@ -378,6 +426,9 @@ func (a *App) RemovePhotoFromFilmRoll(rollID, photoID string) (*services.FilmRol
 }
 func (a *App) ReorderFilmRollFrames(id string) (*services.FilmRollDTO, error) {
 	return a.FilmRoll.ReorderFrames(id)
+}
+func (a *App) SetFilmRollFrameOrder(id string, filmPhotoIDs []string) (*services.FilmRollDTO, error) {
+	return a.FilmRoll.SetFrameOrder(id, filmPhotoIDs)
 }
 
 // ─── Friends ─────────────────────────────────────────
@@ -759,11 +810,14 @@ func (a *App) SelectLocalLibraryFolder(title string) (string, error) {
 
 func (a *App) SelectLocalLibraryImportFiles() ([]string, error) {
 	files, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择要移入资源库的照片",
-		Filters: []runtime.FileFilter{{
-			DisplayName: "照片资源 (*.jpg;*.jpeg;*.png;*.webp;*.gif;*.avif;*.heic;*.heif;*.tif;*.tiff;*.cr2;*.cr3;*.nef;*.arw;*.dng;*.raf)",
-			Pattern:     "*.jpg;*.jpeg;*.png;*.webp;*.gif;*.avif;*.heic;*.heif;*.tif;*.tiff;*.cr2;*.cr3;*.nef;*.arw;*.dng;*.raf",
-		}},
+		Title: "选择要移入资源库的文件",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "照片资源 (*.jpg;*.jpeg;*.png;*.webp;*.gif;*.avif;*.heic;*.heif;*.tif;*.tiff;*.cr2;*.cr3;*.nef;*.arw;*.dng;*.raf;*.rw2)",
+				Pattern:     "*.jpg;*.jpeg;*.png;*.webp;*.gif;*.avif;*.heic;*.heif;*.tif;*.tiff;*.cr2;*.cr3;*.nef;*.arw;*.dng;*.raf;*.rw2",
+			},
+			{DisplayName: "所有文件 (*.*)", Pattern: "*.*"},
+		},
 	})
 	if files == nil {
 		return []string{}, err
@@ -882,6 +936,9 @@ func (a *App) ResumeLocalLibraryScan() error { return a.LocalLibrary.ResumeScan(
 func (a *App) CancelLocalLibraryScan() error { return a.LocalLibrary.CancelScan() }
 func (a *App) ClearLocalLibraryPreviewCache() error {
 	return a.LocalLibrary.ClearPreviewCache()
+}
+func (a *App) GetLocalLibraryCacheStats() (local_library.LocalLibraryCacheStats, error) {
+	return a.LocalLibrary.CacheStats()
 }
 func (a *App) GetLocalLibraryBackups() (local_library.BackupOverview, error) {
 	return a.LocalLibrary.BackupOverview()

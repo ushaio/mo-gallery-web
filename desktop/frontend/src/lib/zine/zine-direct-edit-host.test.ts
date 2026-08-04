@@ -16,6 +16,7 @@ const project: ZineProject = {
   title: 'Test Zine',
   pageSize: 'a5',
   pageOrientation: 'portrait',
+  geometryVersion: 2,
   createdBy: 'local',
   createdAt: 1,
   updatedAt: 1,
@@ -44,7 +45,7 @@ const project: ZineProject = {
         id: 'image-1',
         kind: 'image',
         page: 'right',
-        x: 12,
+        x: 160,
         y: 12,
         w: 80,
         h: 100,
@@ -85,6 +86,8 @@ assert.equal(snapshot.capability, 'zine')
 assert.equal(snapshot.projectId, 'project-1')
 assert.equal(snapshot.targetSpreadId, 'spread-1')
 assert.equal(snapshot.assetCandidates[0]?.assetId, 'asset-1')
+const snapshotStructure = snapshot.currentSpread.structure as unknown as { slots?: Array<{ x?: number }> }
+assert.equal(snapshotStructure.slots?.[1]?.x, 12, 'AI snapshot keeps right-page x page-relative')
 
 const invalidSimulation = await host.simulate(snapshot, [{
   operationId: 'assign-missing-photo',
@@ -95,6 +98,28 @@ const invalidSimulation = await host.simulate(snapshot, [{
 }])
 assert.equal(invalidSimulation.issues.length, 1)
 assert.equal(currentTextContent(), 'Old title', 'invalid simulation leaves the live store unchanged')
+
+const invalidInsertSimulation = await host.simulate(snapshot, [{
+  operationId: 'insert-missing-photo',
+  type: 'insert_slot',
+  spreadId: 'spread-1',
+  index: 0,
+  slot: {
+    id: 'image-missing',
+    kind: 'image',
+    page: 'left',
+    x: 12,
+    y: 12,
+    w: 80,
+    h: 100,
+    rotation: 0,
+    zIndex: 3,
+    assetId: 'missing-asset',
+    imageTransform: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 },
+  },
+}])
+assert.equal(invalidInsertSimulation.issues[0]?.code, 'asset_not_found')
+assert.equal(invalidInsertSimulation.changeEntries.length, 0)
 
 const operations: ZineEditorOperation[] = [
   {
@@ -111,10 +136,17 @@ const operations: ZineEditorOperation[] = [
     slotId: 'image-1',
     assetId: 'asset-1',
   },
+  {
+    operationId: 'move-photo-relative-x',
+    type: 'set_slot_attrs',
+    spreadId: 'spread-1',
+    slotId: 'image-1',
+    attrs: { page: 'right', x: 20 },
+  },
 ]
 const simulation = await host.simulate(snapshot, operations)
 assert.deepEqual(simulation.issues, [])
-assert.equal(simulation.changeEntries.length, 2)
+assert.equal(simulation.changeEntries.length, 3)
 assert.notEqual(simulation.resultRevision, snapshot.revision)
 assert.equal(
   currentTextContent(),
@@ -143,6 +175,7 @@ const appliedText = appliedSpread?.slots.find((slot) => slot.id === 'text-1')
 const appliedImage = appliedSpread?.slots.find((slot) => slot.id === 'image-1')
 assert.equal(appliedText?.kind === 'text' ? appliedText.content : undefined, 'New title')
 assert.equal(appliedImage?.kind === 'image' ? appliedImage.assetId : undefined, 'asset-1')
+assert.equal(appliedImage?.x, 168, 'AI relative right-page x is stored as internal spread x')
 assert.deepEqual(host.getTaskHistoryState('task-1'), {
   state: 'applied',
   canUndo: true,

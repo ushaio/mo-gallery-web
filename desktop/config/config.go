@@ -249,10 +249,32 @@ type APIConfig struct {
 	SavedPassword string `json:"saved_password"` // 保存的密码（AES-256-GCM 加密）
 }
 
+const (
+	WindowStyleNative     = "native"
+	WindowStyleIntegrated = "integrated"
+)
+
 // UIConfig 界面配置
 type UIConfig struct {
-	Language string `json:"language"` // zh / en
-	Theme    string `json:"theme"`    // light / dark / system
+	Language    string `json:"language"`     // zh / en
+	Theme       string `json:"theme"`        // light / dark / system
+	WindowStyle string `json:"window_style"` // native / integrated
+}
+
+// NormalizeWindowStyle returns a supported startup window style.
+func NormalizeWindowStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case WindowStyleIntegrated:
+		return WindowStyleIntegrated
+	default:
+		return WindowStyleNative
+	}
+}
+
+// IsValidWindowStyle reports whether style can be persisted as-is.
+func IsValidWindowStyle(style string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(style))
+	return normalized == WindowStyleNative || normalized == WindowStyleIntegrated
 }
 
 // LogConfig 日志配置
@@ -276,8 +298,9 @@ func defaultConfig() *Config {
 			JWTSecret: "secretKey",
 		},
 		UI: UIConfig{
-			Language: "zh",
-			Theme:    "system",
+			Language:    "zh",
+			Theme:       "system",
+			WindowStyle: WindowStyleNative,
 		},
 		Log: LogConfig{
 			Enabled:    false,
@@ -340,6 +363,7 @@ func Load(customPath string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 	cfg.AI.Normalize()
+	cfg.UI.WindowStyle = NormalizeWindowStyle(cfg.UI.WindowStyle)
 
 	return cfg, nil
 }

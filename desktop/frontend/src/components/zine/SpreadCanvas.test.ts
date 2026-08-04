@@ -1,4 +1,4 @@
-import { calculateSpreadCanvasScale, toScreenPx } from './SpreadCanvas'
+import { calculatePointerAnchoredScroll, calculateSpreadCanvasScale, toScreenPx } from './SpreadCanvas'
 
 const scale = calculateSpreadCanvasScale({
   availableWidth: 1200,
@@ -38,4 +38,9 @@ if (renderedWidth > 1200 - 48) {
 
 if (toScreenPx(296, scale) !== renderedWidth) {
   throw new Error('Expected screen px helper to map mm through the canvas scale only')
+}
+
+const anchoredScroll = calculatePointerAnchoredScroll(200, 120, 1, 1.5)
+if (anchoredScroll !== 360) {
+  throw new Error(`Expected pointer-anchored zoom to preserve the content point, got ${anchoredScroll}`)
 }

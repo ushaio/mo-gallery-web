@@ -59,7 +59,7 @@ export function AdminSidebar({
       )}
     >
       <div className="flex h-full flex-col">
-        <div className="h-24 border-b border-border px-6 py-6">
+        <div className="h-20 border-b border-border px-6 py-5">
           <div className="flex h-full items-start gap-3">
             <div className="min-w-0 flex-1 overflow-hidden">
               <h2
@@ -71,14 +71,6 @@ export function AdminSidebar({
               >
                 {siteTitle || '\u00A0'}
               </h2>
-              <p
-                className={cn(
-                  'mt-1 truncate whitespace-nowrap font-sans text-[10px] uppercase tracking-widest text-muted-foreground transition-opacity duration-300 motion-reduce:transition-none',
-                  isCollapsed && 'md:opacity-0'
-                )}
-              >
-                {t('admin.console')}
-              </p>
             </div>
           </div>
         </div>

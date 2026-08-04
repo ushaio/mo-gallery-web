@@ -6,6 +6,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext'
 import { UploadQueueProvider } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
+import { DesktopWindowFrame } from '@/components/layout/DesktopWindowFrame'
 import { LoginPage } from '@/pages/LoginPage'
 import { ResourceLibraryPage } from '@/pages/ResourceLibraryPage'
 import { UploadPage } from '@/pages/UploadPage'
@@ -24,7 +25,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!isReady) {
     return (
-      <div className="flex items-center justify-center h-screen w-screen"
+      <div className="flex h-full w-full items-center justify-center"
         style={{ backgroundColor: 'var(--background)', color: 'var(--muted-foreground)' }}>
         <span className="text-sm">Loading...</span>
       </div>
@@ -76,13 +77,15 @@ export default function App() {
   return (
     <LanguageProvider>
       <SettingsProvider>
-        <AuthProvider>
-          <UploadQueueProvider>
-            <Toaster position="top-right" richColors closeButton />
-            <AppRoutes />
-            <UploadProgressPopup />
-          </UploadQueueProvider>
-        </AuthProvider>
+        <DesktopWindowFrame>
+          <AuthProvider>
+            <UploadQueueProvider>
+              <Toaster position="top-right" richColors closeButton />
+              <AppRoutes />
+              <UploadProgressPopup />
+            </UploadQueueProvider>
+          </AuthProvider>
+        </DesktopWindowFrame>
       </SettingsProvider>
     </LanguageProvider>
   )

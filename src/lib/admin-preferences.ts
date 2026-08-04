@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 export type PhotosSortOption = 'upload-desc' | 'upload-asc' | 'taken-desc' | 'taken-asc'
+export type ResourceLibraryPhotoViewMode = 'crop' | 'fit' | 'masonry'
 
 export interface PhotosFilterPreference {
   search: string
@@ -43,6 +44,10 @@ export function normalizePhotoGridColumns(value: number) {
 interface AdminPreferenceStore {
   photoGridColumns: number
   setPhotoGridColumns: (value: number) => void
+  resourceLibraryPhotoViewMode: ResourceLibraryPhotoViewMode
+  setResourceLibraryPhotoViewMode: (value: ResourceLibraryPhotoViewMode) => void
+  resourceLibraryPhotoSize: number
+  setResourceLibraryPhotoSize: (value: number) => void
 }
 
 interface AdminSessionPreferenceStore {
@@ -56,11 +61,19 @@ export const useAdminPreferenceStore = create<AdminPreferenceStore>()(
     (set) => ({
       photoGridColumns: DEFAULT_PHOTO_GRID_COLUMNS,
       setPhotoGridColumns: (value) => set({ photoGridColumns: normalizePhotoGridColumns(value) }),
+      resourceLibraryPhotoViewMode: 'crop',
+      setResourceLibraryPhotoViewMode: (value) => set({ resourceLibraryPhotoViewMode: value }),
+      resourceLibraryPhotoSize: 176,
+      setResourceLibraryPhotoSize: (value) => set({ resourceLibraryPhotoSize: Math.min(280, Math.max(120, Math.round(value))) }),
     }),
     {
       name: 'admin-preferences',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ photoGridColumns: state.photoGridColumns }),
+      partialize: (state) => ({
+        photoGridColumns: state.photoGridColumns,
+        resourceLibraryPhotoViewMode: state.resourceLibraryPhotoViewMode,
+        resourceLibraryPhotoSize: state.resourceLibraryPhotoSize,
+      }),
     }
   )
 )

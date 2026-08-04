@@ -286,6 +286,10 @@ export function GetLocalLibraryBackups() {
   return window['go']['main']['App']['GetLocalLibraryBackups']();
 }
 
+export function GetLocalLibraryCacheStats() {
+  return window['go']['main']['App']['GetLocalLibraryCacheStats']();
+}
+
 export function GetLocalLibraryEntryState() {
   return window['go']['main']['App']['GetLocalLibraryEntryState']();
 }
@@ -352,6 +356,10 @@ export function GetStoryAiModels() {
 
 export function GetStoryAiProviderModels(arg1) {
   return window['go']['main']['App']['GetStoryAiProviderModels'](arg1);
+}
+
+export function GetWindowAppearance() {
+  return window['go']['main']['App']['GetWindowAppearance']();
 }
 
 export function GetZineCJKFontInfo() {
@@ -502,6 +510,10 @@ export function ReorderStoryPhotos(arg1, arg2) {
   return window['go']['main']['App']['ReorderStoryPhotos'](arg1, arg2);
 }
 
+export function RestartApplication() {
+  return window['go']['main']['App']['RestartApplication']();
+}
+
 export function RestoreLocalAsset(arg1) {
   return window['go']['main']['App']['RestoreLocalAsset'](arg1);
 }
@@ -556,6 +568,10 @@ export function SetAlbumCover(arg1, arg2) {
 
 export function SetAuth(arg1, arg2) {
   return window['go']['main']['App']['SetAuth'](arg1, arg2);
+}
+
+export function SetFilmRollFrameOrder(arg1, arg2) {
+  return window['go']['main']['App']['SetFilmRollFrameOrder'](arg1, arg2);
 }
 
 export function SetLocalAssetCollections(arg1, arg2) {
@@ -656,6 +672,10 @@ export function UpdateStorageSource(arg1, arg2) {
 
 export function UpdateStory(arg1, arg2) {
   return window['go']['main']['App']['UpdateStory'](arg1, arg2);
+}
+
+export function UpdateWindowStyle(arg1) {
+  return window['go']['main']['App']['UpdateWindowStyle'](arg1);
 }
 
 export function UploadFile(arg1, arg2, arg3, arg4) {

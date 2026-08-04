@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   Aperture, BookOpen, Camera, Check, Clock, Copy, Crosshair, Eye, EyeOff, Film, Focus,
   ImageOff, Maximize2, Pencil, RefreshCw, Star, Sun, Tag, Trash2,
 } from 'lucide-react'
 import { resolveAssetUrl, reanalyzePhotoColors, ApiUnauthorizedError, type PhotoDto } from '@/lib/api'
+import { normalizeDominantColors } from '@/lib/photoColors'
 import type { Photo } from '@/types'
 
 interface Props {
@@ -35,6 +37,15 @@ function formatDate(dateStr: string | null | undefined) {
   return new Date(dateStr).toLocaleDateString('zh-CN', {
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   })
+}
+
+function SectionLabel({ label, action }: { label: string; action?: ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <span className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
+      {action}
+    </div>
+  )
 }
 
 export function PhotoInfoSidebar({
@@ -100,6 +111,11 @@ export function PhotoInfoSidebar({
   }
 
   const storagePath = photo.storageKey ? photo.storageKey.replace(/\/[^/]+$/, '') : ''
+  const dominantColors = normalizeDominantColors(photo.dominantColors)
+  const copyableUrls = [
+    { label: t('admin.thumbnail_url'), key: 'thumb', value: photo.thumbnailUrl ? resolveAssetUrl(photo.thumbnailUrl) : '' },
+    { label: t('admin.original_url'), key: 'original', value: resolveAssetUrl(photo.url) },
+  ]
 
   return (
     <aside
@@ -122,16 +138,16 @@ export function PhotoInfoSidebar({
             <Maximize2 size={15} />
           </span>
         </button>
-        <p className="mt-2 text-[10px] leading-4" style={{ color: 'var(--muted-foreground)' }}>
+        <p className="mt-2 text-center text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
           {t('admin.double_click_hint')}
         </p>
       </div>
 
       <div className="space-y-5 p-4">
         {/* 标题 + 快捷操作 */}
-        <div>
+        <section>
           <div className="flex items-start justify-between gap-2">
-            <h2 className="min-w-0 break-words font-sans text-sm font-medium leading-5">
+            <h2 className="min-w-0 break-words font-sans text-sm font-semibold leading-5">
               {photo.title || t('admin.untitled_photo')}
             </h2>
             <div className="flex shrink-0 items-center gap-0.5">
@@ -156,9 +172,20 @@ export function PhotoInfoSidebar({
               </button>
             </div>
           </div>
-          <p className="mt-1 break-all font-mono text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-            {photo.id}
-          </p>
+
+          <button
+            type="button"
+            onClick={() => handleCopy(photo.id, 'id')}
+            title={`${t('admin.copy_link')}: ${photo.id}`}
+            className="group mt-1.5 flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left font-mono text-[10px] transition hover:bg-secondary"
+            style={{ color: 'var(--muted-foreground)' }}
+          >
+            {copiedKey === 'id'
+              ? <Check size={11} className="shrink-0 text-primary" />
+              : <Copy size={11} className="shrink-0 opacity-0 transition group-hover:opacity-100" />}
+            <span className="break-all">{photo.id}</span>
+          </button>
+
           <div className="mt-2 flex flex-wrap gap-1.5">
             {photo.category && (
               <span className="flex items-center gap-1 rounded border bg-secondary px-1.5 py-0.5 text-[10px]" style={{ borderColor: 'var(--border)' }}>
@@ -182,54 +209,62 @@ export function PhotoInfoSidebar({
               </span>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* 基础信息 */}
-        <dl className="grid grid-cols-[78px_1fr] gap-x-3 gap-y-2 border-t pt-4 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-          <dt style={{ color: 'var(--muted-foreground)' }}>{t('gallery.dimensions')}</dt>
-          <dd>{photo.width && photo.height ? `${photo.width} × ${photo.height}` : missing}</dd>
-          <dt style={{ color: 'var(--muted-foreground)' }}>{t('admin.file_size')}</dt>
-          <dd>{photo.size ? formatBytes(photo.size) : missing}</dd>
-          <dt style={{ color: 'var(--muted-foreground)' }}>{t('admin.captured_on')}</dt>
-          <dd>{formatDate(photo.takenAt || photo.createdAt)}</dd>
-          <dt style={{ color: 'var(--muted-foreground)' }}>{t('gallery.timeline_uploaded')}</dt>
-          <dd>{formatDate(photo.createdAt)}</dd>
-          <dt style={{ color: 'var(--muted-foreground)' }}>{t('admin.provider')}</dt>
-          <dd className="uppercase">{photo.storageProvider || missing}</dd>
-        </dl>
+        {/* 基本信息 */}
+        <section className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+          <SectionLabel label={t('admin.basic_info')} />
+          <dl className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-2 text-[11px]">
+            <dt style={{ color: 'var(--muted-foreground)' }}>{t('gallery.dimensions')}</dt>
+            <dd>{photo.width && photo.height ? `${photo.width} × ${photo.height}` : missing}</dd>
+            <dt style={{ color: 'var(--muted-foreground)' }}>{t('admin.file_size')}</dt>
+            <dd>{photo.size ? formatBytes(photo.size) : missing}</dd>
+            <dt style={{ color: 'var(--muted-foreground)' }}>{t('admin.captured_on')}</dt>
+            <dd>{formatDate(photo.takenAt || photo.createdAt)}</dd>
+            <dt style={{ color: 'var(--muted-foreground)' }}>{t('gallery.timeline_uploaded')}</dt>
+            <dd>{formatDate(photo.createdAt)}</dd>
+            <dt style={{ color: 'var(--muted-foreground)' }}>{t('admin.provider')}</dt>
+            <dd className="uppercase">{photo.storageProvider || missing}</dd>
+          </dl>
+        </section>
 
         {/* 拍摄参数 */}
-        <dl className="grid grid-cols-[78px_1fr] gap-x-3 gap-y-2 border-t pt-4 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-          {specs.map(({ label, icon: Icon, value }) => (
-            <div key={label} className="contents">
-              <dt className="flex items-center gap-1.5" style={{ color: 'var(--muted-foreground)' }}>
-                <Icon size={11} className="shrink-0 opacity-70" />
-                {label}
-              </dt>
-              <dd className="truncate" title={value}>{value}</dd>
-            </div>
-          ))}
-        </dl>
+        <section className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+          <SectionLabel label={t('admin.shooting_info')} />
+          <div className="grid grid-cols-2 gap-1.5">
+            {specs.map(({ label, icon: Icon, value }) => (
+              <div key={label} className="min-w-0 rounded-md border bg-secondary/40 px-2 py-1.5" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-1 text-[9px] uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
+                  <Icon size={10} className="shrink-0 opacity-70" />
+                  <span className="truncate">{label}</span>
+                </div>
+                <p className="mt-0.5 truncate text-[11px] font-medium" title={value}>{value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* 色彩分析 */}
-        <div className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t('gallery.palette')}</span>
-            <button
-              type="button"
-              disabled={reanalyzing}
-              onClick={handleReanalyze}
-              title={t('admin.re_analyze')}
-              className="flex items-center gap-1 rounded p-1 text-[10px] transition-colors hover:bg-secondary disabled:cursor-wait disabled:opacity-50"
-              style={{ color: 'var(--muted-foreground)' }}
-            >
-              <RefreshCw size={11} className={reanalyzing ? 'animate-spin' : ''} />
-              {t('admin.re_analyze')}
-            </button>
-          </div>
-          {photo.dominantColors && photo.dominantColors.length > 0 ? (
-            <div className="mt-2 flex h-7 overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
-              {photo.dominantColors.map((color) => (
+        <section className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+          <SectionLabel
+            label={t('gallery.palette')}
+            action={(
+              <button
+                type="button"
+                disabled={reanalyzing}
+                onClick={handleReanalyze}
+                title={t('admin.re_analyze')}
+                className="flex items-center gap-1 rounded p-1 text-[10px] transition-colors hover:bg-secondary disabled:cursor-wait disabled:opacity-50"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                <RefreshCw size={11} className={reanalyzing ? 'animate-spin' : ''} />
+                {t('admin.re_analyze')}
+              </button>
+            )}
+          />
+          {dominantColors.length > 0 ? (
+            <div className="flex h-7 overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)' }}>
+              {dominantColors.map((color) => (
                 <span
                   key={color}
                   title={`${t('admin.copy_link')}: ${color}`}
@@ -240,78 +275,84 @@ export function PhotoInfoSidebar({
               ))}
             </div>
           ) : (
-            <p className="mt-2 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.no_color_data')}</p>
+            <p className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.no_color_data')}</p>
           )}
-        </div>
+        </section>
 
         {/* 文件与存储 */}
-        <div className="space-y-2 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t('admin.path_prefix')}</span>
-            <button
-              type="button"
-              disabled={!storagePath}
-              onClick={() => handleCopy(storagePath, 'path')}
-              className="rounded p-1 transition-colors hover:bg-secondary disabled:opacity-40"
-              title={t('admin.copy_link')}
-            >
-              <Copy size={13} style={{ color: 'var(--muted-foreground)' }} />
-            </button>
+        <section className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+          <SectionLabel label={t('admin.file_storage')} />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>{t('admin.path_prefix')}</span>
+              <button
+                type="button"
+                disabled={!storagePath}
+                onClick={() => handleCopy(storagePath, 'path')}
+                className="flex items-center gap-1 rounded p-1 text-[10px] transition-colors hover:bg-secondary disabled:opacity-40"
+                title={t('admin.copy_link')}
+              >
+                {copiedKey === 'path' ? <Check size={11} className="text-primary" /> : <Copy size={12} style={{ color: 'var(--muted-foreground)' }} />}
+              </button>
+            </div>
+            <p className="break-all rounded-md border bg-input px-2.5 py-2 font-mono text-[10px]" style={{ borderColor: 'var(--border)' }}>
+              {storagePath || missing}
+            </p>
+            {copyableUrls.map((item) => (
+              <div key={item.key} className="flex items-start gap-2 rounded-md border px-2.5 py-2" style={{ borderColor: 'var(--border)' }}>
+                <button
+                  type="button"
+                  disabled={!item.value}
+                  onClick={() => handleCopy(item.value, item.key)}
+                  className="mt-0.5 shrink-0 transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-40"
+                  title={t('admin.copy_link')}
+                >
+                  {copiedKey === item.key ? <Check size={13} className="text-primary" /> : <Copy size={13} style={{ color: 'var(--muted-foreground)' }} />}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>{item.label}</p>
+                  <p className="mt-0.5 break-all font-mono text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                    {item.value || t('admin.not_available')}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
-          <p className="break-all rounded-md border bg-input px-2.5 py-2 font-mono text-[10px]" style={{ borderColor: 'var(--border)' }}>
-            {storagePath || missing}
-          </p>
-          {[
-            { label: t('admin.thumbnail_url'), key: 'thumb', value: photo.thumbnailUrl ? resolveAssetUrl(photo.thumbnailUrl) : '' },
-            { label: t('admin.original_url'), key: 'original', value: resolveAssetUrl(photo.url) },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              disabled={!item.value}
-              onClick={() => handleCopy(item.value, item.key)}
-              className="flex w-full items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors hover:bg-secondary disabled:cursor-default disabled:opacity-50"
-              style={{ borderColor: 'var(--border)' }}
-              title={t('admin.copy_link')}
-            >
-              {copiedKey === item.key ? <Check size={13} className="mt-0.5 shrink-0 text-primary" /> : <Copy size={13} className="mt-0.5 shrink-0" style={{ color: 'var(--muted-foreground)' }} />}
-              <span className="min-w-0 break-all font-mono text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-                {item.value || t('admin.not_available')}
-              </span>
-            </button>
-          ))}
-        </div>
+        </section>
 
         {/* 操作 */}
-        <div className="space-y-2 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
-          <button
-            type="button"
-            onClick={() => onEditDetails(photo)}
-            className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            <Pencil size={14} style={{ color: 'var(--muted-foreground)' }} />
-            {t('admin.edit_details')}
-          </button>
-          <button
-            type="button"
-            onClick={() => onEditStory(photo)}
-            className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            <BookOpen size={14} style={{ color: 'var(--muted-foreground)' }} />
-            {t('admin.edit_story')}
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(photo)}
-            className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
-            style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}
-          >
-            <Trash2 size={14} />
-            {t('admin.delete')}
-          </button>
-        </div>
+        <section className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+          <SectionLabel label={t('admin.actions')} />
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => onEditDetails(photo)}
+              className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-opacity hover:opacity-90"
+              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+            >
+              <Pencil size={14} />
+              {t('admin.edit_details')}
+            </button>
+            <button
+              type="button"
+              onClick={() => onEditStory(photo)}
+              className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <BookOpen size={14} style={{ color: 'var(--muted-foreground)' }} />
+              {t('admin.edit_story')}
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(photo)}
+              className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
+              style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}
+            >
+              <Trash2 size={14} />
+              {t('admin.delete')}
+            </button>
+          </div>
+        </section>
       </div>
     </aside>
   )

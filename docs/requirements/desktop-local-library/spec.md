@@ -104,7 +104,7 @@
 - GIF：网格静态首帧，详情/大图预览播放原动画；
 - 静态单帧 AVIF；动画 AVIF 可建档但不承诺播放；
 - HEIC/HEIF、TIFF；
-- CR2/CR3、NEF、ARW、DNG、RAF。
+- CR2/CR3、NEF、ARW、DNG、RAF、RW2。
 
 RAW 只提取内嵌 JPEG 与 EXIF，不显影、不修改。受支持格式无法预览时仍建档为 `preview_unavailable`，可组织、移动、重命名、系统打开和重试。视频、Live Photo 不属于 MVP。
 

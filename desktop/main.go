@@ -47,6 +47,20 @@ func main() {
 	// 创建 App 实例
 	app := NewApp(cfg)
 
+	// 重启流程中，新进程需要绕过旧进程尚未释放的单实例锁。
+	var singleInstanceLock *options.SingleInstanceLock
+	if os.Getenv("MO_GALLERY_RESTART") != "1" {
+		singleInstanceLock = &options.SingleInstanceLock{
+			UniqueId: "mo-gallery-desktop-single-instance-v1",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx != nil {
+					runtime.WindowShow(app.ctx)
+					runtime.WindowUnminimise(app.ctx)
+				}
+			},
+		}
+	}
+
 	// 启动 Wails 应用
 	err = wails.Run(&options.App{
 		Title:     "MO Gallery Desktop",
@@ -54,6 +68,7 @@ func main() {
 		Height:    900,
 		MinWidth:  1024,
 		MinHeight: 700,
+		Frameless: config.NormalizeWindowStyle(cfg.UI.WindowStyle) == config.WindowStyleIntegrated,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 			Handler: services.NewDesktopAssetHandler(
@@ -67,15 +82,7 @@ func main() {
 		EnableDefaultContextMenu: false,
 		OnStartup:                app.startup,
 		OnShutdown:               app.shutdown,
-		SingleInstanceLock: &options.SingleInstanceLock{
-			UniqueId: "mo-gallery-desktop-single-instance-v1",
-			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
-				if app.ctx != nil {
-					runtime.WindowShow(app.ctx)
-					runtime.WindowUnminimise(app.ctx)
-				}
-			},
-		},
+		SingleInstanceLock: singleInstanceLock,
 		DragAndDrop: &options.DragAndDrop{
 			EnableFileDrop: true,
 		},

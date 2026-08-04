@@ -125,7 +125,7 @@ func uploadFormatLabel(extension string) string {
 	}
 	extension = strings.ToUpper(strings.TrimPrefix(extension, "."))
 	switch extension {
-	case "CR2", "CR3", "NEF", "ARW", "DNG", "RAF":
+	case "CR2", "CR3", "NEF", "ARW", "DNG", "RAF", "RW2":
 		return "RAW"
 	case "HEIC", "HEIF":
 		return "HEIC/HEIF"

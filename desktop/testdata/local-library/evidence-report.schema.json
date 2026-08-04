@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mo.gallery/schemas/local-library/evidence-report.v1.json",
+  "title": "Local library release evidence report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "generatedAt", "status", "environment", "results"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "enum": ["private-media", "benchmark"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "$ref": "#/$defs/status" },
+    "manifest": { "$ref": "#/$defs/manifest" },
+    "fixture": { "$ref": "#/$defs/fixture" },
+    "environment": { "$ref": "#/$defs/environment" },
+    "results": { "type": "array", "minItems": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "private-media" } }, "required": ["kind"] },
+      "then": { "properties": { "results": { "items": { "$ref": "#/$defs/privateResult" } } } }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "private-media" }, "status": { "const": "passed" } },
+        "required": ["kind", "status"]
+      },
+      "then": { "required": ["manifest"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "benchmark" } }, "required": ["kind"] },
+      "then": {
+        "properties": { "results": { "items": { "$ref": "#/$defs/benchmarkResult" } } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "benchmark" }, "status": { "enum": ["passed", "failed"] } },
+        "required": ["kind", "status"]
+      },
+      "then": { "required": ["fixture"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "passed" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "environment": {
+            "properties": {
+              "os": { "const": "windows" },
+              "architecture": { "const": "amd64" },
+              "windowsVersion": { "type": "string", "minLength": 1 },
+              "cpu": { "type": "string", "minLength": 1 },
+              "ram": { "type": "string", "minLength": 1 },
+              "disk": { "type": "string", "minLength": 1 },
+              "diskType": { "type": "string", "minLength": 1 },
+              "fileSystem": { "type": "string", "minLength": 1 },
+              "appVersion": { "type": "string", "minLength": 1 },
+              "revision": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "const": "benchmark" }, "status": { "const": "passed" } },
+        "required": ["kind", "status"]
+      },
+      "then": {
+        "properties": {
+          "environment": {
+            "properties": {
+              "cacheState": { "enum": ["cold", "warm"] },
+              "cachePreparation": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": { "enum": ["passed", "failed", "not_verified"] },
+    "capability": { "enum": ["ready", "partial", "unavailable", "not_applicable", "not_verified", "supported", "unsupported"] },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtureSet", "sha256"],
+      "properties": {
+        "fixtureSet": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtureId", "seed", "assetCount", "folderCount", "emptyFolderCount", "tagCount", "collectionCount", "histograms", "signature"],
+      "properties": {
+        "fixtureId": { "type": "string", "minLength": 1 },
+        "seed": { "type": "integer" },
+        "assetCount": { "type": "integer", "minimum": 1 },
+        "folderCount": { "type": "integer", "minimum": 0 },
+        "emptyFolderCount": { "type": "integer", "minimum": 0 },
+        "tagCount": { "type": "integer", "minimum": 0 },
+        "collectionCount": { "type": "integer", "minimum": 0 },
+        "histograms": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } } },
+        "signature": { "type": "string" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "architecture", "windowsVersion", "cpu", "ram", "disk", "diskType", "fileSystem", "cacheState", "cachePreparation", "appVersion", "revision"],
+      "properties": {
+        "os": { "type": "string", "minLength": 1 },
+        "architecture": { "type": "string", "minLength": 1 },
+        "windowsVersion": { "type": "string" },
+        "cpu": { "type": "string" },
+        "ram": { "type": "string" },
+        "disk": { "type": "string" },
+        "diskType": { "type": "string" },
+        "fileSystem": { "type": "string" },
+        "cacheState": { "type": "string" },
+        "cachePreparation": { "type": "string" },
+        "appVersion": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "metadata", "thumbnail", "preview", "originalView"],
+      "properties": {
+        "format": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "byteSize": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 0 },
+        "height": { "type": "integer", "minimum": 0 },
+        "orientation": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "index": { "$ref": "#/$defs/capability" },
+        "metadata": { "$ref": "#/$defs/capability" },
+        "thumbnail": { "$ref": "#/$defs/capability" },
+        "preview": { "$ref": "#/$defs/capability" },
+        "originalView": { "$ref": "#/$defs/capability" },
+        "inspectionNote": { "type": "string" }
+      }
+    },
+    "privateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "observed"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "format": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" },
+        "observed": { "$ref": "#/$defs/observation" },
+        "differences": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      }
+    },
+    "benchmarkResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "iterations", "resultCount", "p50Ms", "p95Ms", "thresholdMs"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "iterations": { "type": "integer", "minimum": 0 },
+        "resultCount": { "type": "integer", "minimum": 0 },
+        "p50Ms": { "type": "number", "minimum": 0 },
+        "p95Ms": { "type": "number", "minimum": 0 },
+        "thresholdMs": { "type": "number", "minimum": 0 },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

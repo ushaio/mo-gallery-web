@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 
 export type ZinePageSize = 'a4' | 'a5' | 'b5' | 'letter' | 'square' | 'custom'
 export type ZinePageOrientation = 'portrait' | 'landscape'
+export type ZineGeometryVersion = 1 | 2
 export type ZinePageSide = 'left' | 'right'
 export type ZineSpreadRole = 'cover' | 'content'
 export type ZinePageNumberPosition = 'bottom-center' | 'bottom-outer'
@@ -11,7 +12,7 @@ export type ZineAssetSource = 'library' | 'local'
 export interface ZinePageNumberSettings { enabled: boolean; position: ZinePageNumberPosition }
 export interface ZineCustomSizeMm { width: number; height: number }
 export interface ZineImageTransform { scale: number; offsetX: number; offsetY: number; rotation: number }
-export interface ZineProject { id: string; title: string; pageSize: ZinePageSize; pageOrientation: ZinePageOrientation; customSizeMm?: ZineCustomSizeMm; bleedMm?: number; pageNumbers?: ZinePageNumberSettings; createdBy: string; createdAt: number; updatedAt: number; spreads: Spread[]; assets: ZineAsset[] }
+export interface ZineProject { id: string; title: string; pageSize: ZinePageSize; pageOrientation: ZinePageOrientation; geometryVersion?: ZineGeometryVersion; customSizeMm?: ZineCustomSizeMm; bleedMm?: number; pageNumbers?: ZinePageNumberSettings; createdBy: string; createdAt: number; updatedAt: number; spreads: Spread[]; assets: ZineAsset[] }
 export interface Spread { id: string; templateId: string; role?: ZineSpreadRole; slots: Slot[] }
 export interface SlotBase { id: string; kind: SlotKind; page: ZinePageSide; x: number; y: number; w: number; h: number; rotation: number; zIndex: number }
 export interface ImageSlot extends SlotBase { kind: 'image'; assetId: string | null; imageTransform: ZineImageTransform }

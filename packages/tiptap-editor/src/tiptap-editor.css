@@ -57,15 +57,15 @@
   right: 0.75rem;
   z-index: 40;
   display: inline-flex;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
   align-items: center;
   justify-content: center;
   border: 1px solid hsl(var(--border) / 0.8);
-  border-radius: 9999px;
+  border-radius: 0.5rem;
   background-color: hsl(var(--background) / 0.94);
   color: hsl(var(--foreground));
-  box-shadow: 0 12px 28px rgb(15 23 42 / 0.12);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.10);
   backdrop-filter: blur(12px);
   transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
@@ -97,7 +97,7 @@
     z-index: 30;
     width: min(380px, calc(100% - 1rem));
     transform: translateX(100%);
-    box-shadow: -20px 0 48px rgb(15 23 42 / 0.16);
+    box-shadow: -16px 0 32px rgb(15 23 42 / 0.12);
     transition: transform 220ms ease, opacity 160ms ease, visibility 0s linear 220ms;
   }
 

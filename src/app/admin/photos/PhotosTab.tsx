@@ -18,6 +18,7 @@ import {
   MAX_PHOTO_GRID_COLUMNS,
   MIN_PHOTO_GRID_COLUMNS,
   type PhotosSortOption,
+  type PhotosFilterPreference,
   useAdminPreferenceStore,
   useAdminSessionPreferenceStore,
 } from '@/lib/admin-preferences'
@@ -283,6 +284,7 @@ interface PhotosTabProps {
   t: (key: string) => string
   settings: AdminSettingsDto | null
   notify?: (message: string, type?: 'success' | 'error' | 'info') => void
+  initialFilters?: Partial<Pick<PhotosFilterPreference, 'categoryFilter' | 'photoTypeFilter' | 'albumFilter' | 'onlyFeatured'>>
 }
 
 export function PhotosTab({
@@ -303,6 +305,7 @@ export function PhotosTab({
   t,
   settings,
   notify,
+  initialFilters,
 }: PhotosTabProps) {
   const photosFilters = useAdminSessionPreferenceStore((state) => state.photosFilters)
   const setPhotosFilters = useAdminSessionPreferenceStore((state) => state.setPhotosFilters)
@@ -358,6 +361,17 @@ export function PhotosTab({
   const setOnlyFeatured = useCallback((value: boolean) => setPhotosFilters({ onlyFeatured: value }), [setPhotosFilters])
   const setSortBy = useCallback((value: PhotosSortOption) => setPhotosFilters({ sortBy: value }), [setPhotosFilters])
   const setShowFilters = useCallback((value: boolean) => setPhotosFilters({ showFilters: value }), [setPhotosFilters])
+
+  useEffect(() => {
+    if (!initialFilters) return
+
+    setPhotosFilters({
+      categoryFilter: initialFilters.categoryFilter ?? 'all',
+      photoTypeFilter: initialFilters.photoTypeFilter ?? 'all',
+      albumFilter: initialFilters.albumFilter ?? 'all',
+      onlyFeatured: initialFilters.onlyFeatured ?? false,
+    })
+  }, [initialFilters, setPhotosFilters])
 
   useEffect(() => {
     return () => {

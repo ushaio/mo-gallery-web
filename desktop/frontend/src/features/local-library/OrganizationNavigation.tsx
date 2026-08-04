@@ -11,6 +11,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
 
+import { useLibrarySections } from '@/store/preferences'
 import type { LocalLibraryCopy } from './copy'
 import type { OrganizationEditorTarget } from './OrganizationEditorDialog'
 import type { CollectionGroup, LocalCollection, LocalTag } from './types'
@@ -74,8 +75,9 @@ function OrganizationContextTarget({ label, editLabel, deleteLabel, onEdit, onDe
 }
 
 export function OrganizationNavigation({ copy, tags, groups, collections, selectedTagIds, selectedCollectionIds, onSelectTags, onSelectCollections, onEdit, onDelete, onDropAssets }: Props) {
-  const [collectionsOpen, setCollectionsOpen] = useState(true)
-  const [tagsOpen, setTagsOpen] = useState(true)
+  const collectionsOpen = useLibrarySections((state) => state.sections.localCollections)
+  const tagsOpen = useLibrarySections((state) => state.sections.localTags)
+  const toggleSection = useLibrarySections((state) => state.toggleSection)
   // 进入本地资源库时文件夹默认不展开（初始为空集合）
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
   const byParent = useMemo(() => {
@@ -180,7 +182,7 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
     <>
       <div className="mb-2 mt-5 flex items-center gap-1">
         <SectionContextTarget label={copy.collections} actionLabel={copy.newCollection} onAction={() => onEdit({ kind: 'collection' })}>
-          <button type="button" onClick={() => setCollectionsOpen((open) => !open)} className="flex min-w-0 flex-1 items-center gap-1 px-2 text-left text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <button type="button" onClick={() => toggleSection('localCollections')} className="flex min-w-0 flex-1 items-center gap-1 px-2 text-left text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             {collectionsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             {copy.collections}
           </button>
@@ -199,7 +201,7 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
 
       <div className="mb-2 mt-5 flex items-center gap-1">
         <SectionContextTarget label={copy.tags} actionLabel={copy.newTag} onAction={() => onEdit({ kind: 'tag' })}>
-          <button type="button" onClick={() => setTagsOpen((open) => !open)} className="flex min-w-0 flex-1 items-center gap-1 px-2 text-left text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <button type="button" onClick={() => toggleSection('localTags')} className="flex min-w-0 flex-1 items-center gap-1 px-2 text-left text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             {tagsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             {copy.tags}
           </button>

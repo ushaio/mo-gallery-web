@@ -8,6 +8,8 @@ import { SpreadCanvas } from './SpreadCanvas'
 import { ZineAiAssistant } from './ZineAiAssistant'
 import { ZineToolbar } from './ZineToolbar'
 
+import { getSlotPageSide } from '@/lib/zine/geometry'
+import { getProjectSpreadSize } from '@/lib/zine/page-sizes'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
@@ -72,7 +74,10 @@ export function ZineEditor() {
       const spread = state.project.spreads.find((item) => item.id === state.activeSpreadId)
       const slot = spread?.slots.find((item) => item.id === state.selectedSlotId)
       if (slot) {
-        state.updateSlot(state.activeSpreadId, state.selectedSlotId, { x: slot.x + nudge[0] * step, y: slot.y + nudge[1] * step })
+        const { pageW } = getProjectSpreadSize(state.project)
+        const x = slot.x + nudge[0] * step
+        const y = slot.y + nudge[1] * step
+        state.updateSlot(state.activeSpreadId, state.selectedSlotId, { x, y, page: getSlotPageSide({ ...slot, x, y }, pageW) })
       }
     }
 
@@ -105,12 +110,12 @@ export function ZineEditor() {
             <button
               type="button"
               onClick={() => setAssistantOpen(true)}
-              className="absolute right-3 top-3 z-10 flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-xs font-semibold text-foreground shadow-sm transition hover:bg-accent"
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-lg border bg-card text-foreground shadow-sm transition hover:bg-accent"
               style={{ borderColor: 'var(--border)' }}
               aria-label={t('admin.zine_ai', language)}
+              title={t('admin.zine_ai', language)}
             >
-              <Sparkles size={14} className="text-primary" />
-              {t('admin.zine_ai', language)}
+              <Sparkles size={16} className="text-primary" />
             </button>
           ) : null}
         </div>

@@ -1,10 +1,12 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
 
+import { ZINE_GEOMETRY_VERSION, migrateProjectGeometry } from '@/lib/zine/geometry'
 import { cloneSpreads } from '@/lib/zine/history'
 import { clampCustomSizeMm, getSpreadSize } from '@/lib/zine/page-sizes'
 import { DEFAULT_BLEED_MM, getProjectBleedMm, hasCoverSpread, isCoverSpread } from '@/lib/zine/print'
 import { getZineAssetBlob, getZineProject, saveZineProject } from '@/lib/zine/project'
+import { resolveZineSaveFailure, resolveZineSaveSuccess } from '@/lib/zine/save-state'
 import { buildSpreadFromTemplate, createImageSlot, createTextSlot, ZINE_COVER_TEMPLATE } from '@/lib/zine/templates'
 import type { Slot, SlotKind, Spread, ZineAsset, ZineCustomSizeMm, ZinePageNumberSettings, ZinePageOrientation, ZinePageSize, ZineProject } from '@/lib/zine/types'
 
@@ -33,7 +35,7 @@ function scheduleAutosave() {
 
 function markDirty() {
   scheduleAutosave()
-  return { dirty: true }
+  return { dirty: true, saveStatus: 'unsaved' as const }
 }
 
 function withUpdatedProject(project: ZineProject, patch: Partial<ZineProject>): ZineProject {
@@ -71,12 +73,15 @@ interface CreateProjectOptions {
   customSizeMm?: ZineCustomSizeMm
 }
 
+export type ZineSaveStatus = 'saved' | 'unsaved' | 'saving' | 'failed'
+
 export interface ZineState {
   project: ZineProject | null
   activeSpreadId: string | null
   selectedSlotId: string | null
   dirty: boolean
   saving: boolean
+  saveStatus: ZineSaveStatus
   aiTaskId: string | null
   undoStack: Spread[][]
   redoStack: Spread[][]
@@ -110,6 +115,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
   selectedSlotId: null,
   dirty: false,
   saving: false,
+  saveStatus: 'saved',
   aiTaskId: null,
   undoStack: [],
   redoStack: [],
@@ -126,6 +132,7 @@ export const useZineStore = create<ZineState>()((set, get) => ({
       title,
       pageSize,
       pageOrientation,
+      geometryVersion: ZINE_GEOMETRY_VERSION,
       ...(customSizeMm ? { customSizeMm } : {}),
       bleedMm: DEFAULT_BLEED_MM,
       createdBy: options.createdBy ?? 'local',
@@ -135,16 +142,24 @@ export const useZineStore = create<ZineState>()((set, get) => ({
       assets: [],
     }
 
-    set({ project, activeSpreadId: coverSpread.id, selectedSlotId: null, dirty: true, aiTaskId: null, undoStack: [], redoStack: [] })
+    set({ project, activeSpreadId: coverSpread.id, selectedSlotId: null, dirty: true, saveStatus: 'unsaved', aiTaskId: null, undoStack: [], redoStack: [] })
     scheduleAutosave()
     return project
   },
   loadProject: async (id) => {
     const project = await getZineProject(id)
-    const hydratedProject = project ? await hydrateLocalAssets(project) : null
-    set({ project: hydratedProject, activeSpreadId: hydratedProject?.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, aiTaskId: null, undoStack: [], redoStack: [] })
+    const migratedProject = project ? migrateProjectGeometry(project) : null
+    const hydratedProject = migratedProject ? await hydrateLocalAssets(migratedProject) : null
+    const migrated = Boolean(project && project.geometryVersion !== ZINE_GEOMETRY_VERSION)
+    set({ project: hydratedProject, activeSpreadId: hydratedProject?.spreads[0]?.id ?? null, selectedSlotId: null, dirty: migrated, saveStatus: migrated ? 'unsaved' : 'saved', aiTaskId: null, undoStack: [], redoStack: [] })
+    if (project && project.geometryVersion !== ZINE_GEOMETRY_VERSION) scheduleAutosave()
   },
-  setProject: (project) => set({ project, activeSpreadId: project.spreads[0]?.id ?? null, selectedSlotId: null, dirty: false, aiTaskId: null, undoStack: [], redoStack: [] }),
+  setProject: (project) => {
+    const migratedProject = migrateProjectGeometry(project)
+    const migrated = project.geometryVersion !== ZINE_GEOMETRY_VERSION
+    set({ project: migratedProject, activeSpreadId: migratedProject.spreads[0]?.id ?? null, selectedSlotId: null, dirty: migrated, saveStatus: migrated ? 'unsaved' : 'saved', aiTaskId: null, undoStack: [], redoStack: [] })
+    if (project.geometryVersion !== ZINE_GEOMETRY_VERSION) scheduleAutosave()
+  },
   setActiveSpread: (id) => {
     if (get().aiTaskId) return
     set({ activeSpreadId: id, selectedSlotId: null })
@@ -375,20 +390,21 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     return true
   },
   save: async () => {
-    const project = get().project
-    if (!project) return false
+    const state = get()
+    const project = state.project
+    if (!project || state.saving) return false
 
-    set({ saving: true })
+    set({ saving: true, saveStatus: 'saving' })
 
     try {
       await saveZineProject(project)
-      set((state) => ({
-        dirty: state.project?.id === project.id && state.project.updatedAt === project.updatedAt ? false : state.dirty,
+      set((current) => ({
+        ...resolveZineSaveSuccess(project, current.project, current.dirty),
         saving: false,
       }))
       return true
     } catch {
-      set({ saving: false })
+      set({ saving: false, ...resolveZineSaveFailure() })
       toast.error('Zine 草稿保存失败')
       return false
     }

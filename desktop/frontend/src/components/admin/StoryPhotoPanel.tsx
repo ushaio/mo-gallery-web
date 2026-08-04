@@ -217,7 +217,7 @@ export function StoryPhotoPanel({
       onDragLeave={onPhotoPanelDragLeave}
       onDrop={onPhotoPanelDrop}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-card px-4 py-2.5">
         <div className="flex items-center gap-2">
           <ImageIcon className="h-4 w-4 text-primary" />
           <span className="text-xs font-bold uppercase tracking-[0.24em] text-foreground">
@@ -300,7 +300,7 @@ export function StoryPhotoPanel({
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         {currentStory?.photos && currentStory.photos.length >= 2 ? (
-          <div className="mb-4 border border-border/70 bg-gradient-to-b from-card via-card/80 to-background p-3">
+          <div className="mb-4 rounded-md border border-border/70 bg-muted/30 p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
               {t('admin.insert_photo')}
             </div>

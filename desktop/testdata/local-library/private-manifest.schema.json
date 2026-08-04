@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mo.gallery/schemas/local-library/private-manifest.v1.json",
+  "title": "Local library private media manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "fixtureSet", "updatedAt", "samples"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "fixtureSet": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "format": "date" },
+    "samples": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sample" }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "enum": ["ready", "partial", "unavailable", "not_applicable", "not_verified"]
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "variant", "relativePath", "sha256", "byteSize", "format", "mimeType", "sourceClass", "cameraOrEncoder", "licenseNote", "expected", "verification", "verificationBasis"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+        "variant": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+        "relativePath": { "type": "string", "pattern": "^samples/[^\\\\]+$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "byteSize": { "type": "integer", "minimum": 1 },
+        "format": { "enum": ["jpeg", "png", "webp", "gif", "avif", "heif", "tiff", "cr2", "cr3", "nef", "arw", "dng", "raf", "rw2"] },
+        "mimeType": { "type": "string", "minLength": 1 },
+        "sourceClass": { "enum": ["self-created", "camera-original", "licensed-test-media", "private-local-sample"] },
+        "cameraOrEncoder": { "type": "string" },
+        "licenseNote": { "type": "string", "minLength": 1 },
+        "verificationBasis": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "orientation", "index", "metadata", "thumbnail", "preview", "originalView"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 0 },
+            "height": { "type": "integer", "minimum": 0 },
+            "orientation": { "type": "integer", "minimum": 0, "maximum": 8 },
+            "index": { "enum": ["supported", "unsupported", "not_verified"] },
+            "metadata": { "$ref": "#/$defs/capability" },
+            "thumbnail": { "$ref": "#/$defs/capability" },
+            "preview": { "$ref": "#/$defs/capability" },
+            "originalView": { "$ref": "#/$defs/capability" }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "windowsVersion", "appVersion", "verifiedAt", "notes"],
+          "properties": {
+            "status": { "enum": ["passed", "failed", "not_verified"] },
+            "windowsVersion": { "type": "string" },
+            "appVersion": { "type": "string" },
+            "verifiedAt": { "type": "string" },
+            "notes": { "type": "string" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verification": {
+                "properties": { "status": { "const": "passed" } },
+                "required": ["status"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cameraOrEncoder": { "minLength": 1 },
+              "verification": {
+                "properties": {
+                  "windowsVersion": { "minLength": 1 },
+                  "appVersion": { "minLength": 1 },
+                  "verifiedAt": { "type": "string", "format": "date" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "format": { "enum": ["cr2", "cr3", "nef", "arw", "dng", "raf", "rw2"] },
+              "variant": { "const": "camera_original" }
+            },
+            "required": ["format", "variant"]
+          },
+          "then": {
+            "properties": {
+              "sourceClass": { "const": "camera-original" },
+              "cameraOrEncoder": { "minLength": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1762,10 +1762,8 @@ func TestAssetMoveRejectsConflictInvalidNameAndUnavailableAssets(t *testing.T) {
 	} else {
 		assertAppErrorCode(t, err, ErrInvalidPath)
 	}
-	if _, err := manager.RenameAsset(sourceID, "not-media.txt"); err == nil {
-		t.Fatal("expected unsupported extension")
-	} else {
-		assertAppErrorCode(t, err, ErrUnsupportedFile)
+	if _, err := manager.RenameAsset(sourceID, "not-media.txt"); err != nil {
+		t.Fatalf("expected arbitrary extension rename to succeed: %v", err)
 	}
 	if _, err := manager.MoveAssets([]AssetID{sourceID}, "Missing folder"); err == nil {
 		t.Fatal("expected invalid destination")

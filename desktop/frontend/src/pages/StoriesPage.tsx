@@ -4,6 +4,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { resolveAssetUrl } from '@/lib/api'
+import { invalidateDesktopCache } from '@/lib/app-cache'
+import { loadPersistentResource } from '@/lib/persistent-cache'
 import type { Story, Photo } from '@/types'
 import { ListSkeleton } from '@/components/admin/Skeleton'
 import {
@@ -20,10 +22,10 @@ export function StoriesPage() {
   const [view, setView] = useState<View>('list')
   const [editingStory, setEditingStory] = useState<Story | null>(null)
 
-  const fetchStories = useCallback(async () => {
+  const fetchStories = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      const result = await (window as any).go.main.App.GetStories()
+      const result = await loadPersistentResource<Story[]>('stories', () => (window as any).go.main.App.GetStories(), { force })
       setStories(result || [])
     } catch (err: any) {
       console.error('加载叙事失败:', err)
@@ -51,7 +53,8 @@ export function StoriesPage() {
     try {
       await (window as any).go.main.App.DeleteStory(id)
       toast.success('已删除')
-      fetchStories()
+      await fetchStories(true)
+      invalidateDesktopCache(['overview', 'photos'])
     } catch (err: any) {
       toast.error(err?.message || '删除失败')
     }
@@ -62,7 +65,8 @@ export function StoriesPage() {
     try {
       await (window as any).go.main.App.UpdateStory(story.id, { isPublished: !story.isPublished })
       toast.success(story.isPublished ? '已取消发布' : '已发布')
-      fetchStories()
+      await fetchStories(true)
+      invalidateDesktopCache(['overview'])
     } catch (err: any) {
       toast.error(err?.message || '操作失败')
     }
@@ -72,7 +76,8 @@ export function StoriesPage() {
   const handleBack = () => {
     setView('list')
     setEditingStory(null)
-    fetchStories()
+    invalidateDesktopCache(['overview', 'photos'])
+    void fetchStories(true)
   }
 
   if (view === 'edit') {
@@ -124,7 +129,7 @@ export function StoriesPage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-medium truncate">{story.title}</h3>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-                    {story.photos?.length || 0} photos · {new Date(story.storyDate || story.createdAt).toLocaleDateString()}
+                    {story.photoCount ?? story.photos?.length ?? 0} photos · {new Date(story.storyDate || story.createdAt).toLocaleDateString()}
                   </p>
                 </div>
 
@@ -174,6 +179,8 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
     new Date().toISOString().split('T')[0]
   )
   const [photos, setPhotos] = useState<Photo[]>(story?.photos || [])
+  const [loadingDetail, setLoadingDetail] = useState(Boolean(story?.id))
+  const [detailLoadFailed, setDetailLoadFailed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showPhotoSelector, setShowPhotoSelector] = useState(false)
   const [availablePhotos, setAvailablePhotos] = useState<Photo[]>([])
@@ -187,15 +194,27 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
     if (story?.id) {
       (async () => {
         try {
-          const detail = await (window as any).go.main.App.GetStory(story.id)
-          if (detail?.photos) setPhotos(detail.photos)
-        } catch {}
+          const detail: Story = await (window as any).go.main.App.GetStory(story.id)
+          if (!detail) throw new Error('Story detail is empty')
+          setDetailLoadFailed(false)
+          setTitle(detail.title || '')
+          setContent(detail.content || '')
+          setIsPublished(detail.isPublished ?? false)
+          if (detail.storyDate) setStoryDate(new Date(detail.storyDate).toISOString().split('T')[0])
+          setPhotos(detail.photos || [])
+        } catch {
+          setDetailLoadFailed(true)
+          toast.error('加载故事详情失败，请返回列表后重试')
+        } finally {
+          setLoadingDetail(false)
+        }
       })()
     }
   }, [story?.id])
 
   // 保存故事
   const handleSave = async () => {
+    if (loadingDetail || detailLoadFailed) return
     if (!title.trim()) {
       toast.error('请输入标题')
       return
@@ -289,7 +308,7 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
               style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
               <ChevronLeft size={14} /> 返回
             </button>
-            <button onClick={handleSave} disabled={saving}
+            <button onClick={handleSave} disabled={saving || loadingDetail || detailLoadFailed}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md disabled:opacity-50"
               style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

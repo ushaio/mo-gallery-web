@@ -404,6 +404,59 @@ filmRolls.post('/admin/film-rolls/:id/reorder-frames', async (c) => {
   }
 })
 
+// Admin: set explicit frame order (drag & drop reorder)
+filmRolls.post('/admin/film-rolls/:id/frames/order', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const body = await c.req.json()
+    const schema = z.object({
+      filmPhotoIds: z.array(z.string().min(1)).min(1),
+    })
+    const { filmPhotoIds } = schema.parse(body)
+
+    const roll = await db.filmRoll.findUnique({
+      where: { id },
+      include: { filmPhotos: { select: { id: true } } },
+    })
+    if (!roll) return c.json({ error: 'Film roll not found' }, 404)
+    if (roll.filmPhotos.length === 0) return c.json({ error: 'Film roll has no frames' }, 400)
+
+    // 新顺序必须是当前帧集合的一个排列：不增删、不重复
+    const currentIds = roll.filmPhotos.map((fp) => fp.id)
+    if (filmPhotoIds.length !== currentIds.length || new Set(filmPhotoIds).size !== filmPhotoIds.length) {
+      return c.json({ error: 'Frame order must contain each frame exactly once' }, 400)
+    }
+    const currentSet = new Set(currentIds)
+    if (filmPhotoIds.some((frameId) => !currentSet.has(frameId))) {
+      return c.json({ error: 'Frame order contains unknown frame ids' }, 400)
+    }
+
+    const values = Prisma.join(
+      filmPhotoIds.map((frameId, index) => Prisma.sql`(${frameId}, ${index + 1})`),
+    )
+    await db.$executeRaw`
+      UPDATE "FilmPhoto" fp
+      SET "frameNumber" = data."frameNumber"::integer
+      FROM (VALUES ${values}) AS data(id, "frameNumber")
+      WHERE fp.id = data.id::text
+    `
+
+    const updated = await db.filmRoll.findUnique({
+      where: { id },
+      include: filmRollPhotoInclude,
+    })
+    if (!updated) return c.json({ error: 'Film roll not found' }, 404)
+
+    return c.json({ success: true, data: mapFilmRollWithPhotos(updated) })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    console.error('Set film frame order error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 // Admin: remove photo from film roll
 filmRolls.delete('/admin/film-rolls/:id/photos/:photoId', async (c) => {
   try {

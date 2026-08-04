@@ -157,6 +157,7 @@ export interface LocalAsset {
   extension: string
   format: string
   mimeType: string
+  mediaKind: string
   byteSize: number
   modifiedAtNs: number
   width: number
@@ -195,6 +196,7 @@ export interface AssetPage {
 }
 
 export interface AssetStructuredFilters {
+  photosOnly?: boolean
   ratingMin?: number
   ratingMax?: number
   colorLabels?: string[]
@@ -228,10 +230,21 @@ export interface AssetQuery extends AssetStructuredFilters {
   search?: string
   availability?: AssetAvailability
   favoritesOnly?: boolean
+  photosOnly?: boolean
   tagIds?: string[]
   collectionIds?: string[]
   sort?: AssetSort
   sortDirection?: AssetSortDirection
+}
+
+const PHOTO_FORMATS = new Set(['jpeg', 'png', 'gif', 'webp', 'tiff', 'heif', 'avif', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'rw2'])
+
+/** True when the asset is a photo that supports an image preview (vs. a generic file). */
+export function isPhotoAsset(asset: Pick<LocalAsset, 'mediaKind' | 'format'>): boolean {
+  if (asset.mediaKind === 'file') return false
+  if (asset.mediaKind === 'image') return true
+  // Fallback for assets reported by an older backend that does not emit mediaKind.
+  return PHOTO_FORMATS.has(asset.format.toLowerCase())
 }
 
 export interface BatchAssetOrganizationUpdate {

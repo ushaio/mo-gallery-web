@@ -3,6 +3,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { FriendLink } from '@/types'
+import { invalidateDesktopCache } from '@/lib/app-cache'
+import { loadPersistentResource } from '@/lib/persistent-cache'
 import { ListSkeleton } from '@/components/admin/Skeleton'
 import { toast } from 'sonner'
 import { Plus, Trash2, ExternalLink, Users } from 'lucide-react'
@@ -14,10 +16,10 @@ export function FriendsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ name: '', url: '', description: '', avatar: '' })
 
-  const fetchFriends = useCallback(async () => {
+  const fetchFriends = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      const result = await (window as any).go.main.App.GetFriends()
+      const result = await loadPersistentResource<FriendLink[]>('friends', () => (window as any).go.main.App.GetFriends(), { force })
       setFriends(result || [])
     } catch (err: any) {
       toast.error(err?.message || '获取友链列表失败')
@@ -35,7 +37,8 @@ export function FriendsPage() {
       await (window as any).go.main.App.CreateFriend({ ...form, featured: false, sortOrder: 0, isActive: true })
       setForm({ name: '', url: '', description: '', avatar: '' })
       setShowCreate(false)
-      fetchFriends()
+      await fetchFriends(true)
+      invalidateDesktopCache(['overview'])
       toast.success('友链已创建')
     } catch (err: any) {
       toast.error(err?.message || '创建友链失败')
@@ -46,7 +49,8 @@ export function FriendsPage() {
     if (!confirm('确定要删除此友链吗？')) return
     try {
       await (window as any).go.main.App.DeleteFriend(id)
-      fetchFriends()
+      await fetchFriends(true)
+      invalidateDesktopCache(['overview'])
       toast.success('友链已删除')
     } catch (err: any) {
       toast.error(err?.message || '删除友链失败')

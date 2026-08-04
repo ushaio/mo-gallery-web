@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { clearDesktopRuntimeCache } from '@/lib/app-cache'
+import { clearDesktopRuntimeCache, invalidateDesktopCacheForMutation } from '@/lib/app-cache'
+import { clearCurrentPersistentCache } from '@/lib/persistent-cache'
 import {
   AUTH_ERROR_MESSAGE_KEY,
   AUTH_FAILURE_EVENT,
@@ -55,6 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setUser(null)
     clearDesktopRuntimeCache()
+    // Scope lookup depends on the stored user, so remove that user's cache first.
+    clearCurrentPersistentCache()
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
   }, [])
@@ -76,40 +79,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [handleAuthFailure])
 
   useLayoutEffect(() => {
-    const app = (window as unknown as WailsRuntimeWindow).go?.main?.App
-    if (!app) return
-
     let active = true
-    const wrappedMethods: Array<{ key: string; original: WailsFunction; wrapped: WailsFunction }> = []
+    const wrappedMethods: Array<{
+      app: Record<string, WailsFunction>
+      key: string
+      original: WailsFunction
+      wrapped: WailsFunction
+    }> = []
 
-    for (const key of Object.keys(app)) {
-      if (AUTH_BOOTSTRAP_METHODS.has(key)) continue
+    const installWrappers = () => {
+      const app = (window as unknown as WailsRuntimeWindow).go?.main?.App
+      if (!app) return
 
-      const current = app[key] as unknown
-      if (typeof current !== 'function') continue
-      const currentFn = current as WailsFunction
-      if (currentFn.__authWrapped) continue
+      for (const key of Object.keys(app)) {
+        if (AUTH_BOOTSTRAP_METHODS.has(key)) continue
 
-      const wrapped: WailsFunction = (...args: unknown[]) => {
-        const suppressAuthFailure = authSyncPendingRef.current
-        const result = currentFn.apply(app, args)
-        if (!result || typeof (result as Promise<unknown>).catch !== 'function') return result
-        return (result as Promise<unknown>).catch((error: unknown) => {
-          if (active && !suppressAuthFailure && isAuthError(error)) handleAuthFailure(error)
-          throw error
-        })
+        const current = app[key] as unknown
+        if (typeof current !== 'function') continue
+        const currentFn = current as WailsFunction
+        if (currentFn.__authWrapped) continue
+
+        const wrapped: WailsFunction = (...args: unknown[]) => {
+          const suppressAuthFailure = authSyncPendingRef.current
+          const result = currentFn.apply(app, args)
+          if (!result || typeof (result as Promise<unknown>).catch !== 'function') return result
+          return (result as Promise<unknown>)
+            .then((value) => {
+              if (active) invalidateDesktopCacheForMutation(key)
+              return value
+            })
+            .catch((error: unknown) => {
+              if (active && !suppressAuthFailure && isAuthError(error)) handleAuthFailure(error)
+              throw error
+            })
+        }
+        wrapped.__authWrapped = true
+        wrapped.__authOriginal = currentFn
+        app[key] = wrapped
+        wrappedMethods.push({ app, key, original: currentFn, wrapped })
       }
-      wrapped.__authWrapped = true
-      wrapped.__authOriginal = currentFn
-      app[key] = wrapped
-      wrappedMethods.push({ key, original: currentFn, wrapped })
     }
 
-    // React StrictMode 和 Vite HMR 都会卸载再挂载 Provider。恢复原函数，避免
-    // window.go 上残留引用旧 Provider 状态的包装函数。
+    installWrappers()
+    const installTimer = window.setInterval(installWrappers, 500)
+
+    // The bridge may be injected after React mounts. Polling is cheap and also covers
+    // methods restored by Wails/HMR without leaving wrappers bound to an old Provider.
     return () => {
       active = false
-      for (const { key, original, wrapped } of wrappedMethods) {
+      window.clearInterval(installTimer)
+      for (const { app, key, original, wrapped } of wrappedMethods) {
         if (app[key] === wrapped) app[key] = original
       }
     }

@@ -35,6 +35,7 @@ import {
   type StoryDto,
   type FilmRollDto,
 } from '@/lib/api'
+import { normalizeDominantColors } from '@/lib/photoColors'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
@@ -121,7 +122,7 @@ export function PhotoDetailPanel({
         filmRollId: photo.filmRollId || '',
         filmRollName: photo.filmRollName || '',
       })
-      setDisplayColors(photo.dominantColors || [])
+      setDisplayColors(normalizeDominantColors(photo.dominantColors))
       setActiveTab(initialTab)
       setStory(null)
       setStoryLoaded(false)
@@ -671,7 +672,7 @@ export function PhotoDetailPanel({
                               setReanalyzing(true)
                               try {
                                 const updated = await reanalyzePhotoColors(token, photo.id)
-                                setDisplayColors(updated.dominantColors || [])
+                                setDisplayColors(normalizeDominantColors(updated.dominantColors))
                                 onSave(updated)
                                 notify(t('admin.notify_success'), 'success')
                               } catch (err) {
