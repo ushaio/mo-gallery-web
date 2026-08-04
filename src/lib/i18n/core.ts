@@ -5,6 +5,7 @@ export const coreMessages: LocaleDictionaryGroup = {
     common: {
       loading: '加载中...',
       loading_progress: '正在加载...',
+      all: '全部',
       error: '发生错误',
       expand: '展开',
       collapse: '收起',
@@ -59,6 +60,7 @@ export const coreMessages: LocaleDictionaryGroup = {
     common: {
       loading: 'Loading...',
       loading_progress: 'Loading...',
+      all: 'All',
       error: 'An error occurred',
       expand: 'Expand',
       collapse: 'Collapse',
