@@ -191,7 +191,7 @@ export function MasonryView({
       }
     }
 
-    if (shouldReset) {
+    if (shouldReset || !cache) {
       const next = createPositioner(columnCount, columnWidth, columnGutter, rowGutter)
       const heights: number[] = []
       const keys: string[] = []
