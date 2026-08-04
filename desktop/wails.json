@@ -19,6 +19,10 @@
     "copyright": "2026 ushaio",
     "comments": "MO Gallery 桌面管理端"
   },
+  "nsis": {
+    "installMode": "perUser",
+    "language": "2052"
+  },
   "dev": {
     "loglevel": "WARNING",
     "debounce": 1000,

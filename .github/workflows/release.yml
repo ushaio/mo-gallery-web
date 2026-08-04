@@ -106,7 +106,7 @@ jobs:
 
       - name: Build desktop app
         working-directory: desktop
-        run: wails build
+        run: wails build -nsis
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
