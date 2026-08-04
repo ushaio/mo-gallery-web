@@ -533,7 +533,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   const sidebarItems = getAdminSidebarItems(t)
   const activeSidebarItem = getActiveAdminSidebarItem(pathname)
-  const isLibraryWorkspace = pathname === '/admin/library'
+  const isLibraryWorkspace = pathname === '/admin/library' || pathname === '/admin/storage'
   const pageTitle = t(activeSidebarItem.labelKey)
 
   const contextValue: AdminContextType = {
