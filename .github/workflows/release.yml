@@ -115,45 +115,48 @@ jobs:
           path: desktop/build/bin/*.exe
           if-no-files-found: error
 
-  flutter-android-build:
-    needs: prepare
-    if: needs.prepare.outputs.tag_exists == 'false'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install Flutter dependencies
-        working-directory: flutter
-        run: flutter pub get
-
-      - name: Build Android APK
-        working-directory: flutter
-        run: flutter build apk --release
-
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mo-gallery-mobile-android-${{ needs.prepare.outputs.tag }}
-          path: flutter/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+  # TEMP-DISABLED flutter-android-build:
+  # Temporarily disabled to ship the desktop release (portable + NSIS).
+  # Re-enable by uncommenting this job and the publish references below.
+  # flutter-android-build:
+  #   needs: prepare
+  #   if: needs.prepare.outputs.tag_exists == 'false'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Setup Java
+  #       uses: actions/setup-java@v4
+  #       with:
+  #         distribution: temurin
+  #         java-version: '17'
+  #
+  #     - name: Setup Flutter
+  #       uses: subosito/flutter-action@v2
+  #       with:
+  #         channel: stable
+  #         cache: true
+  #
+  #     - name: Install Flutter dependencies
+  #       working-directory: flutter
+  #       run: flutter pub get
+  #
+  #     - name: Build Android APK
+  #       working-directory: flutter
+  #       run: flutter build apk --release
+  #
+  #     - name: Upload Android artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: mo-gallery-mobile-android-${{ needs.prepare.outputs.tag }}
+  #         path: flutter/build/app/outputs/flutter-apk/app-release.apk
+  #         if-no-files-found: error
 
   publish:
     needs:
       - prepare
       - desktop-build
-      - flutter-android-build
+      # - flutter-android-build
     if: needs.prepare.outputs.tag_exists == 'false'
     runs-on: ubuntu-latest
     permissions:
@@ -169,11 +172,11 @@ jobs:
           name: mo-gallery-desktop-windows-${{ needs.prepare.outputs.tag }}
           path: release-assets
 
-      - name: Download Android artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: mo-gallery-mobile-android-${{ needs.prepare.outputs.tag }}
-          path: release-assets
+      # - name: Download Android artifact
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: mo-gallery-mobile-android-${{ needs.prepare.outputs.tag }}
+      #     path: release-assets
 
       - name: Tag release
         run: |
@@ -189,7 +192,6 @@ jobs:
           body_path: RELEASE.md
           files: |
             release-assets/*.exe
-            release-assets/*.apk
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
