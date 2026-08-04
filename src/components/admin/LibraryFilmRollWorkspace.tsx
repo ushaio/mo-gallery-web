@@ -62,7 +62,7 @@ type PhotoFilter = 'all' | 'digital' | 'film'
 const VIEW_STORAGE_KEY = 'admin-resource-library-film-roll-list-view'
 const SORT_STORAGE_KEY = 'admin-resource-library-film-roll-sort'
 
-function formatFor(roll: FilmRollDto | null) {
+function formatFor(roll: FilmRollDto | null): FilmFormat {
   return roll?.format === '120' ? '120' : '135'
 }
 
