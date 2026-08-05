@@ -92,7 +92,16 @@ import type {
   LocalCollection,
   CollectionGroup,
   UploadAlbum,
+  ScanStatus,
 } from './types'
+
+type SnapshotSource = Partial<Omit<LibrarySnapshot, 'scan'>> & { scan?: Partial<ScanStatus> }
+type BackupSource = Partial<BackupInfo> & { createdAt?: unknown }
+type EntryStateSource = {
+  active?: unknown
+  snapshot?: SnapshotSource
+  recent?: Array<Record<string, unknown>>
+}
 
 function asIsoTime(value: unknown): string | undefined {
   if (typeof value === 'string') return value
@@ -100,7 +109,7 @@ function asIsoTime(value: unknown): string | undefined {
   return undefined
 }
 
-function normalizeSnapshot(source: any): LibrarySnapshot {
+function normalizeSnapshot(source: SnapshotSource): LibrarySnapshot {
   return {
     sessionId: String(source?.sessionId ?? ''),
     libraryId: String(source?.libraryId ?? ''),
@@ -122,7 +131,7 @@ function normalizeSnapshot(source: any): LibrarySnapshot {
   }
 }
 
-function normalizeBackup(source: any): BackupInfo {
+function normalizeBackup(source: BackupSource): BackupInfo {
   return {
     id: String(source?.id ?? ''),
     kind: String(source?.kind ?? ''),
@@ -154,23 +163,23 @@ export function parseLocalLibraryError(error: unknown): LocalLibraryError {
 
 export const localLibraryApi = {
   async entryState(): Promise<EntryState> {
-    const source = await GetLocalLibraryEntryState() as any
+    const source = await GetLocalLibraryEntryState() as EntryStateSource
     return {
       active: Boolean(source?.active),
       snapshot: source?.snapshot ? normalizeSnapshot(source.snapshot) : undefined,
-      recent: Array.isArray(source?.recent) ? source.recent.map((item: any) => ({
+      recent: Array.isArray(source?.recent) ? source.recent.map((item) => ({
         libraryId: String(item?.libraryId ?? ''),
         name: String(item?.name ?? ''),
         path: String(item?.path ?? ''),
         lastOpenedAt: asIsoTime(item?.lastOpenedAt),
         available: Boolean(item?.available),
-        reason: item?.reason || undefined,
+        reason: typeof item?.reason === 'string' ? item.reason : undefined,
       })) : [],
     }
   },
   async snapshot() { return normalizeSnapshot(await GetLocalLibrarySnapshot()) },
   async backups(): Promise<BackupOverview> {
-    const source = await GetLocalLibraryBackups() as any
+    const source = await GetLocalLibraryBackups()
     return {
       libraryName: String(source?.libraryName ?? ''),
       libraryRoot: String(source?.libraryRoot ?? ''),
@@ -182,12 +191,12 @@ export const localLibraryApi = {
   selectFolder: (title: string) => SelectLocalLibraryFolder(title),
   selectImportFiles: () => SelectLocalLibraryImportFiles(),
   async preferences(): Promise<LocalLibraryPreferences> {
-    const source = await GetLocalLibraryPreferences() as any
+    const source = await GetLocalLibraryPreferences()
     const importMode = source?.importMode
     return { importMode: importMode === 'copy' || importMode === 'move' ? importMode : undefined }
   },
   async setImportMode(importMode: LocalLibraryImportMode): Promise<LocalLibraryPreferences> {
-    const source = await SetLocalLibraryImportMode(importMode) as any
+    const source = await SetLocalLibraryImportMode(importMode)
     return { importMode: source?.importMode === 'copy' || source?.importMode === 'move' ? source.importMode : undefined }
   },
   async create(root: string, name: string) { return normalizeSnapshot(await CreateLocalLibrary(root, name)) },
@@ -196,9 +205,9 @@ export const localLibraryApi = {
   close: () => CloseLocalLibrary(),
   removeRecent: (root: string) => RemoveRecentLocalLibrary(root),
   async listAssets(query: AssetQuery): Promise<AssetPage> {
-    const source = await ListLocalAssets(query) as any
+    const source = await ListLocalAssets(query)
     return {
-      items: Array.isArray(source?.items) ? source.items.map((item: any) => ({
+      items: Array.isArray(source?.items) ? source.items.map((item) => ({
         ...item,
         id: String(item.id),
         byteSize: Number(item.byteSize ?? 0),
@@ -221,10 +230,10 @@ export const localLibraryApi = {
           latitude: item.exif.latitude == null ? undefined : Number(item.exif.latitude),
           longitude: item.exif.longitude == null ? undefined : Number(item.exif.longitude),
         } : undefined,
-        tags: Array.isArray(item.tags) ? item.tags.map((tag: Record<string, unknown>) => ({
+        tags: Array.isArray(item.tags) ? item.tags.map((tag) => ({
           id: String(tag.id ?? ''), name: String(tag.name ?? ''), color: tag.color ? String(tag.color) : undefined, assetCount: Number(tag.assetCount ?? 0),
         })) : [],
-        collections: Array.isArray(item.collections) ? item.collections.map((collection: Record<string, unknown>) => ({
+        collections: Array.isArray(item.collections) ? item.collections.map((collection) => ({
           id: String(collection.id ?? ''), name: String(collection.name ?? ''),
         })) : [],
         rating: Number(item.rating ?? 0),
@@ -240,12 +249,12 @@ export const localLibraryApi = {
   },
   batchUpdateAssetOrganization: (update: BatchAssetOrganizationUpdate) => BatchUpdateLocalAssetOrganization(update),
   async createAssetQueryToken(query: AssetQuery): Promise<AssetQueryToken> {
-    const source = await CreateLocalAssetQueryToken(query) as any
+    const source = await CreateLocalAssetQueryToken(query)
     return { token: String(source.token), total: Number(source.total ?? 0), expiresAt: asIsoTime(source.expiresAt) ?? '' }
   },
   batchUpdateAssetOrganizationByQuery: (token: string, update: Omit<BatchAssetOrganizationUpdate, 'assetIds'>) => BatchUpdateLocalAssetOrganizationByQuery(token, { assetIds: [], ...update }),
   async planAssetMove(assetIds: string[], destinationFolder: string, conflictPolicy: 'skip' | 'rename' = 'skip'): Promise<AssetFileOperationPlan> {
-    const source = await PlanLocalAssetMove(assetIds, destinationFolder, conflictPolicy) as any
+    const source = await PlanLocalAssetMove(assetIds, destinationFolder, conflictPolicy)
     return { ...source, conflictPolicy: source?.conflictPolicy === 'rename' ? 'rename' : 'skip', createdAt: asIsoTime(source?.createdAt) ?? '' }
   },
   executeAssetMovePlan: (planId: string): Promise<AssetFileOperationExecution> => ExecuteLocalAssetMovePlan(planId),
@@ -287,7 +296,7 @@ export const localLibraryApi = {
   deleteCollection: (id: string) => DeleteLocalLibraryCollection(id),
   setAssetCollections: (id: string, collectionIds: string[]) => SetLocalAssetCollections(id, collectionIds),
   async listFolders(): Promise<FolderItem[]> {
-    const source = await ListLocalFolders() as any[]
+    const source = await ListLocalFolders()
     return (source || []).map((item) => ({
       id: String(item.id),
       parentId: item.parentId || undefined,
@@ -297,7 +306,7 @@ export const localLibraryApi = {
     }))
   },
   async createFolder(parentRelative: string, name: string): Promise<FolderItem> {
-    const item = await CreateLocalLibraryFolder(parentRelative, name) as any
+    const item = await CreateLocalLibraryFolder(parentRelative, name)
     return {
       id: String(item.id),
       parentId: item.parentId || undefined,
@@ -308,7 +317,7 @@ export const localLibraryApi = {
   },
   async moveFolder(relative: string, destinationParent: string, topLevelName: string): Promise<FolderItem> {
     const plan = await localLibraryApi.planFolderMove(relative, destinationParent, topLevelName, 'skip')
-    const execution = await localLibraryApi.executeFolderMovePlan(plan.id) as any
+    const execution = await localLibraryApi.executeFolderMovePlan(plan.id)
     if (execution.status !== 'completed') throw new Error('目标位置存在同名文件夹，已跳过移动')
     const item = execution.folder
     return {
@@ -320,7 +329,7 @@ export const localLibraryApi = {
     }
   },
   async folderProperties(relative: string): Promise<FolderProperties> {
-    const item = await GetLocalLibraryFolderProperties(relative) as any
+    const item = await GetLocalLibraryFolderProperties(relative)
     return {
       relativePath: String(item.relativePath ?? ''),
       name: String(item.name ?? ''),
@@ -332,7 +341,7 @@ export const localLibraryApi = {
     }
   },
   async previewFolderDeletion(relative: string): Promise<FolderDeletionPreview> {
-    const item = await PreviewLocalLibraryFolderDeletion(relative) as any
+    const item = await PreviewLocalLibraryFolderDeletion(relative)
     return {
       relativePath: String(item.relativePath ?? ''),
       name: String(item.name ?? ''),
@@ -345,7 +354,7 @@ export const localLibraryApi = {
   deleteFolder: (relative: string) => DeleteLocalLibraryFolder(relative),
   permanentlyDeleteActiveFolder: (relative: string) => PermanentDeleteActiveLocalLibraryFolder(relative),
   async listTrashedFolders(): Promise<FolderTrashEntry[]> {
-    const source = await ListLocalLibraryTrashedFolders() as any[]
+    const source = await ListLocalLibraryTrashedFolders()
     return (source || []).map((item) => ({
       id: String(item.id ?? ''),
       originalPath: String(item.originalPath ?? ''),
@@ -363,7 +372,7 @@ export const localLibraryApi = {
   originalPaths: (ids: string[]) => GetLocalAssetOriginalPaths(ids) as Promise<string[]>,
   copyAssetsToClipboard: (ids: string[], cut: boolean) => CopyLocalAssetsToClipboard(ids, cut),
   async listUploadAlbums(): Promise<UploadAlbum[]> {
-    const source = await GetAlbums() as any[]
+    const source = await GetAlbums()
     return (source || []).map((item) => ({ id: String(item.id), name: String(item.name ?? '') }))
   },
   startScan: () => StartLocalLibraryScan(),
@@ -380,7 +389,7 @@ export const localLibraryApi = {
     return execution.results
   },
   async planFolderMove(relative: string, destinationParent: string, topLevelName: string, conflictPolicy: 'skip' | 'rename' = 'skip'): Promise<FolderFileOperationPlan> {
-    const source = await PlanLocalLibraryFolderMove(relative, destinationParent, topLevelName, conflictPolicy) as any
+    const source = await PlanLocalLibraryFolderMove(relative, destinationParent, topLevelName, conflictPolicy)
     return { ...source, conflictPolicy: source?.conflictPolicy === 'rename' ? 'rename' : 'skip', createdAt: asIsoTime(source?.createdAt) ?? '' }
   },
   executeFolderMovePlan: (planId: string) => ExecuteLocalLibraryFolderMovePlan(planId),

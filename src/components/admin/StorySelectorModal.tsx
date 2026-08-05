@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { BookOpen, X, Search, Check } from 'lucide-react'
 import type { StoryDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -38,11 +38,10 @@ export function StorySelectorModal({
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!isOpen) {
-      setSearch('')
-    }
-  }, [isOpen])
+  const handleClose = () => {
+    setSearch('')
+    onClose()
+  }
 
   const filteredStories = useMemo(() => {
     if (!search.trim()) return stories
@@ -52,7 +51,7 @@ export function StorySelectorModal({
 
   const handleSelect = (story: StoryDto | null) => {
     onSelect(story?.id || null, story?.title)
-    onClose()
+    handleClose()
   }
 
   if (!isOpen) return null
@@ -61,7 +60,7 @@ export function StorySelectorModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={handleClose}
       />
       <div className="relative bg-background border border-border shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col">
         {/* Header */}
@@ -71,7 +70,7 @@ export function StorySelectorModal({
             <h3 className="text-sm font-medium">{t('ui.photo_story')}</h3>
           </div>
           <AdminButton
-            onClick={onClose}
+            onClick={handleClose}
             adminVariant="icon"
             className="p-1.5 hover:bg-muted"
             aria-label="Close"

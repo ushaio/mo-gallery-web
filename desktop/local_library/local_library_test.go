@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
@@ -354,6 +355,39 @@ func TestRestoreLastLibraryUnlessManuallyClosed(t *testing.T) {
 		t.Fatalf("reopened restore snapshot=%+v restored=%v err=%v", snapshot, restored, err)
 	}
 	_ = finalRestart.Close()
+}
+
+// Concurrent entry-state calls (React StrictMode double effects) must all see the
+// restored session; a losing racer must not report "no library".
+func TestRestoreLastLibraryConcurrent(t *testing.T) {
+	root := t.TempDir()
+	config := t.TempDir()
+	manager := NewManager(config, nil)
+	if _, err := manager.Create(root, "Concurrent Restore", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewManager(config, nil)
+	defer restarted.Close()
+	const callers = 4
+	results := make(chan error, callers)
+	for i := 0; i < callers; i++ {
+		go func() {
+			snapshot, restored, err := restarted.RestoreLastLibrary()
+			if err == nil && (!restored || snapshot.Name != "Concurrent Restore") {
+				err = fmt.Errorf("restored=%v snapshot=%+v", restored, snapshot)
+			}
+			results <- err
+		}()
+	}
+	for i := 0; i < callers; i++ {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func writeTestJPEG(t *testing.T, path string) {

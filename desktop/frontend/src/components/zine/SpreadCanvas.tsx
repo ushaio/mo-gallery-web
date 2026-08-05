@@ -191,7 +191,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
     <div ref={containerRef} className="zine-desk zine-canvas relative min-h-0 min-w-0 flex-1 overflow-hidden">
       <div
         ref={viewportRef}
-        className={`flex h-full w-full items-center justify-center overflow-auto p-6 ${panning ? 'cursor-grabbing' : spacePressed ? 'cursor-grab' : ''}`}
+        className={`flex h-full w-full overflow-auto p-6 ${panning ? 'cursor-grabbing' : spacePressed ? 'cursor-grab' : ''}`}
         onWheel={handleWheel}
         onClick={() => {
           if (suppressClickRef.current) {
@@ -236,7 +236,8 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
           if (moved) event.stopPropagation()
         }}
       >
-        <div className="flex shrink-0 flex-col items-center gap-3">
+        {/* m-auto 而非父级 justify/items-center：放大超出视口时保证四边都可滚动到 */}
+        <div className="m-auto flex shrink-0 flex-col items-center gap-3">
           {/* 纸张 = 成品 + 出血：满版内容需延伸到纸边，裁切后才无白边 */}
           <div
             className="relative shrink-0 bg-white"
@@ -266,7 +267,14 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                 />
               ))}
 
-              {/* 出血环提示：裁切线外的浅红色区域即会被裁掉的部分 */}
+              {/* 空白跨页引导：无任何槽位时提示从工具栏或模板开始 */}
+              {(activeSpread?.slots.length ?? 0) === 0 && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+                  <p className="max-w-[75%] text-center text-xs leading-relaxed" style={{ color: 'rgba(113, 113, 122, 0.7)' }}>
+                    {t('admin.zine_canvas_empty_hint', language)}
+                  </p>
+                </div>
+              )}
               {bleedPx > 0 && (
                 <div className="pointer-events-none absolute inset-0 z-20" style={{ boxShadow: `0 0 0 ${bleedPx}px rgba(244, 63, 94, 0.05)` }} />
               )}

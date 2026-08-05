@@ -31,6 +31,7 @@ interface Props {
   copy: LocalLibraryCopy
   emptyTitle?: string
   emptyHint?: string
+  canUpload: boolean
   uploadAlbums: UploadAlbum[]
   uploadAlbumsLoading: boolean
   viewMode: 'crop' | 'fit' | 'masonry'
@@ -58,6 +59,7 @@ export interface AssetCardProps {
   dragIds: string[]
   selected: boolean
   copy: LocalLibraryCopy
+  canUpload: boolean
   uploadAlbums: UploadAlbum[]
   uploadAlbumsLoading: boolean
   viewMode: 'crop' | 'fit' | 'masonry'
@@ -76,14 +78,11 @@ export interface AssetCardProps {
 }
 
 const AssetCard = memo(function AssetCard({
-  asset, dragIds, selected, copy, uploadAlbums, uploadAlbumsLoading, viewMode,
+  asset, dragIds, selected, copy, canUpload, uploadAlbums, uploadAlbumsLoading, viewMode,
   onSelect, onOpen, onOpenInFileManager, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: AssetCardProps) {
-  const [imageFailed, setImageFailed] = useState(false)
-
-  useEffect(() => {
-    setImageFailed(false)
-  }, [asset.previewStatus, asset.thumbnailUrl])
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
+  const imageFailed = failedThumbnailUrl === asset.thumbnailUrl
 
   const label = asset.displayTitle || asset.fileName
   const isPhoto = isPhotoAsset(asset)
@@ -117,7 +116,7 @@ const AssetCard = memo(function AssetCard({
         >
           <span className={`relative overflow-hidden bg-secondary ${masonry ? 'w-full' : 'min-h-0 flex-1'}`} style={aspectRatio ? { aspectRatio } : undefined}>
             {isPhoto && !imageFailed && asset.previewStatus === 'ready' ? (
-              <img src={asset.thumbnailUrl} alt="" loading="lazy" draggable={false} onError={() => setImageFailed(true)} className={`w-full transition duration-300 ${viewMode === 'fit' ? 'object-contain p-1' : 'object-cover group-hover:scale-[1.025]'} ${masonry ? 'block' : 'h-full'}`} />
+              <img src={asset.thumbnailUrl} alt="" loading="lazy" draggable={false} onError={() => setFailedThumbnailUrl(asset.thumbnailUrl)} className={`w-full transition duration-300 ${viewMode === 'fit' ? 'object-contain p-1' : 'object-cover group-hover:scale-[1.025]'} ${masonry ? 'block' : 'h-full'}`} />
             ) : (
               <span className={`flex w-full flex-col items-center justify-center gap-2 ${masonry ? 'aspect-[4/3]' : 'h-full'}`} style={{ color: 'var(--muted-foreground)' }}>
                 {isPhoto ? <FileImage size={25} strokeWidth={1.4} /> : <File size={25} strokeWidth={1.4} />}
@@ -158,7 +157,7 @@ const AssetCard = memo(function AssetCard({
             <ContextMenuItem onSelect={() => onOpenInFileManager(asset)}><FolderSearch2 size={14} />{copy.openInFileManager}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onRename(asset)}><FilePenLine size={14} />{copy.renameAsset}</ContextMenuItem>
             <ContextMenuItem onSelect={() => onMove(asset)}><FolderInput size={14} />{copy.moveAssetsToFolder}</ContextMenuItem>
-            {isPhoto && (
+            {canUpload && isPhoto && (
             <ContextMenuSub>
               <ContextMenuSubTrigger><Upload size={14} />{copy.uploadTo}</ContextMenuSubTrigger>
               <ContextMenuSubContent>
@@ -252,7 +251,7 @@ function distributeMasonryEntries(entries: GridEntry[], columnCount: number, col
 }
 
 export function LocalAssetGrid({
-  assets, folders, selectedIds, loading, hasMore, total, copy, emptyTitle, emptyHint, uploadAlbums, uploadAlbumsLoading, viewMode, gridSize, pathSegments, resetKey,
+  assets, folders, selectedIds, loading, hasMore, total, copy, emptyTitle, emptyHint, canUpload, uploadAlbums, uploadAlbumsLoading, viewMode, gridSize, pathSegments, resetKey,
   onSelect, onOpen, onOpenFolder, onLoadMore, onOpenInFileManager, onClipboard, onUpload, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -347,7 +346,7 @@ export function LocalAssetGrid({
   const assetCard = (entry: GridEntry) => entry.kind === 'folder' ? (
     <FolderCard key={`folder-${entry.folder.id}`} folder={entry.folder} copy={copy} onOpen={onOpenFolder} masonry={masonry} />
   ) : (
-    <AssetCard key={entry.asset.id} asset={entry.asset} dragIds={selectedIds.includes(entry.asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [entry.asset.id]} selected={selectedIds.includes(entry.asset.id)} copy={copy} viewMode={viewMode}
+    <AssetCard key={entry.asset.id} asset={entry.asset} dragIds={selectedIds.includes(entry.asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [entry.asset.id]} selected={selectedIds.includes(entry.asset.id)} copy={copy} canUpload={canUpload} viewMode={viewMode}
       uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading}
       onSelect={onSelect} onOpen={onOpen} onOpenInFileManager={onOpenInFileManager} onClipboard={onClipboard} onUpload={onUpload} onDelete={onDelete} onRename={onRename} onMove={onMove} onRestore={onRestore}
       onRetryPreview={onRetryPreview} onRecheckMissing={onRecheckMissing} onRemoveMissing={onRemoveMissing} />

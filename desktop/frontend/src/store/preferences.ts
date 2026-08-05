@@ -9,11 +9,13 @@ interface AdminPreferences {
   photoViewMode: PhotoViewMode
   language: 'zh' | 'en'
   theme: 'light' | 'dark' | 'system'
+  zineStripWidth: number
   setPhotoColumns: (n: number) => void
   setPhotoGridSize: (n: number) => void
   setPhotoViewMode: (mode: PhotoViewMode) => void
   setLanguage: (lang: 'zh' | 'en') => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
+  setZineStripWidth: (n: number) => void
 }
 
 export const usePreferences = create<AdminPreferences>()(
@@ -24,11 +26,13 @@ export const usePreferences = create<AdminPreferences>()(
       photoViewMode: 'fit',
       language: 'zh',
       theme: 'system',
+      zineStripWidth: 176,
       setPhotoColumns: (n) => set({ photoColumns: n }),
       setPhotoGridSize: (n) => set({ photoGridSize: n }),
       setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
       setLanguage: (lang) => set({ language: lang }),
       setTheme: (theme) => set({ theme }),
+      setZineStripWidth: (n) => set({ zineStripWidth: n }),
     }),
     { name: 'mo-gallery-preferences' },
   ),

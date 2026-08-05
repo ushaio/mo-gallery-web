@@ -25,9 +25,9 @@ const montserrat = Montserrat({
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteTitle = process.env.SITE_TITLE || "MO GALLERY";
-  const siteDescription = "Capturing the unspoken moments of existence.";
+  const siteDescription = "A photography portfolio of quiet moments, visual stories, and film archives.";
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
-  const titleDefault = `${siteTitle} | 视界`;
+  const titleDefault = `${siteTitle} | Photography Portfolio`;
 
   return {
     metadataBase: new URL(siteUrl),

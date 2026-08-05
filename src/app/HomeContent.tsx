@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowRight, Sparkles } from 'lucide-react'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
@@ -23,7 +23,6 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
   const siteAuthor = envConfig.siteAuthor
 
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0)
-  const [isMounted, setIsMounted] = useState(false)
 
   const heroRef = useRef<HTMLElement>(null)
   const { scrollYProgress } = useScroll({
@@ -35,20 +34,13 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
   const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 1.1])
   const heroY = useTransform(scrollYProgress, [0, 0.5], [0, 100])
 
-  const particles = useMemo(() => {
-    if (!isMounted) return []
-    return Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
-      id: i,
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      duration: Math.random() * 10 + 10,
-      delay: Math.random() * 5,
-    }))
-  }, [isMounted])
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const particles = Array.from({ length: PARTICLE_COUNT }, (_, index) => ({
+    id: index,
+    left: `${(index * 47 + 13) % 100}%`,
+    top: `${(index * 71 + 19) % 100}%`,
+    duration: 10 + ((index * 37) % 10),
+    delay: (index * 23) % 5,
+  }))
 
   useEffect(() => {
     if (initialPhotos.length <= 1) return
@@ -102,19 +94,17 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
           )}
         </AnimatePresence>
 
-        {isMounted && (
-          <div className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 z-[1] overflow-hidden pointer-events-none">
             {particles.map((particle) => (
               <motion.div
                 key={particle.id}
                 className="absolute size-1 bg-white/20 rounded-full"
-                style={{ x: particle.x, y: particle.y }}
-                animate={{ y: particle.y - 100, opacity: [0, 1, 0] }}
+                style={{ left: particle.left, top: particle.top }}
+                animate={{ y: -100, opacity: [0, 1, 0] }}
                 transition={{ duration: particle.duration, repeat: Infinity, delay: particle.delay }}
               />
             ))}
-          </div>
-        )}
+        </div>
 
         <motion.div
           className="z-10 relative px-6 text-center text-white"

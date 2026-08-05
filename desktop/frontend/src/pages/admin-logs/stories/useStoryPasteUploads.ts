@@ -13,6 +13,7 @@ import {
 } from '@/lib/api'
 import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
+import { GetAllPhotos } from '../../../../wailsjs/go/main/App'
 
 interface UploadAndInsertParams {
   token: string
@@ -101,7 +102,7 @@ export function useStoryPasteUploads({
             allPhotos.find((photo) => photo.id === existingPhotoId)
 
           if (!existingPhoto) {
-            const photos = await (window as any).go.main.App.GetAllPhotos()
+            const photos = await GetAllPhotos() as unknown as PhotoDto[]
             existingPhoto = (photos || []).find((photo: PhotoDto) => photo.id === existingPhotoId)
             setAllPhotos(photos || [])
           }

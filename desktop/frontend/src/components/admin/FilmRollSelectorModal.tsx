@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Film, X, Search, Check } from 'lucide-react'
 import type { FilmRollDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -27,9 +27,10 @@ export function FilmRollSelectorModal({
   const [search, setSearch] = useState('')
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!isOpen) setSearch('')
-  }, [isOpen])
+  const handleClose = () => {
+    setSearch('')
+    onClose()
+  }
 
   const filtered = useMemo(() => {
     if (!search.trim()) return filmRolls
@@ -39,21 +40,21 @@ export function FilmRollSelectorModal({
 
   const handleSelect = (roll: FilmRollDto | null) => {
     onSelect(roll?.id || null, roll?.name)
-    onClose()
+    handleClose()
   }
 
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
       <div className="relative bg-background border border-border shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-3">
             <Film className="w-4 h-4 text-primary" />
             <h3 className="text-sm font-medium">{t('admin.film_roll_select')}</h3>
           </div>
-          <AdminButton onClick={onClose} adminVariant="icon" className="p-1.5 hover:bg-muted" aria-label="Close">
+          <AdminButton onClick={handleClose} adminVariant="icon" className="p-1.5 hover:bg-muted" aria-label="Close">
             <X className="w-4 h-4" />
           </AdminButton>
         </div>

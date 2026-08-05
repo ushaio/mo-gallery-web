@@ -4,6 +4,18 @@ const BUILD_ID = Date.now().toString();
 
 const nextConfig: NextConfig = {
   generateBuildId: async () => BUILD_ID,
+  async headers() {
+    return [
+      {
+        source: "/admin/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+      {
+        source: "/login/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+    ];
+  },
   env: {
     NEXT_PUBLIC_BUILD_ID: BUILD_ID,
   },

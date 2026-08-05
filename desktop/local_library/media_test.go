@@ -29,7 +29,7 @@ func TestDetectMediaHeaderRecognizesCommittedContainers(t *testing.T) {
 		{name: "tiff", ext: ".tiff", format: "tiff", mime: "image/tiff", header: []byte("II\x2a\x00\x08\x00\x00\x00\x00\x00\x00\x00")},
 		{name: "cr2", ext: ".cr2", format: "cr2", mime: "image/x-canon-cr2", header: []byte("II\x2a\x00\x10\x00\x00\x00CR\x02\x00")},
 		{name: "raf", ext: ".raf", format: "raf", mime: "image/x-fuji-raf", header: []byte("FUJIFILMCCD-RAW ")},
-		{name: "rw2", ext: ".rw2", format: "rw2", mime: "image/x-panasonic-rw2", header: []byte("II\x2a\x00\x08\x00\x00\x00")},
+		{name: "rw2", ext: ".rw2", format: "rw2", mime: "image/x-panasonic-rw2", header: []byte("II\x55\x00\x08\x00\x00\x00")},
 		{name: "avif", ext: ".avif", format: "avif", mime: "image/avif", header: isoBMFFHeader("avif")},
 		{name: "heif", ext: ".heic", format: "heif", mime: "image/heif", header: isoBMFFHeader("heic")},
 		{name: "cr3", ext: ".cr3", format: "cr3", mime: "image/x-canon-cr3", header: isoBMFFHeader("crx ")},

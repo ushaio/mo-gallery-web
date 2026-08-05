@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { useAuth } from '@/contexts/AuthContext'
 import { t } from '@/lib/i18n'
 import type { ImageSlot, ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
@@ -13,8 +14,10 @@ import { PhotoTrayLocalImport } from './PhotoTrayLocalImport'
 type PhotoTrayTab = 'library' | 'local'
 
 export function PhotoTray() {
+  const { isAuthenticated } = useAuth()
   const { language } = usePreferences()
-  const [activeTab, setActiveTab] = useState<PhotoTrayTab>('library')
+  const [activeTab, setActiveTab] = useState<PhotoTrayTab>(isAuthenticated ? 'library' : 'local')
+  const displayedTab = isAuthenticated ? activeTab : 'local'
   const [collapsed, setCollapsed] = useState(false)
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
@@ -64,19 +67,21 @@ export function PhotoTray() {
         </span>
 
         <div className="flex rounded-md bg-muted p-0.5 text-xs">
+          {isAuthenticated && (
+            <button
+              type="button"
+              className={`rounded px-2.5 py-0.5 transition ${displayedTab === 'library' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => {
+                setActiveTab('library')
+                setCollapsed(false)
+              }}
+            >
+              {t('admin.zine_library', language)}
+            </button>
+          )}
           <button
             type="button"
-            className={`rounded px-2.5 py-0.5 transition ${activeTab === 'library' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => {
-              setActiveTab('library')
-              setCollapsed(false)
-            }}
-          >
-            {t('admin.zine_library', language)}
-          </button>
-          <button
-            type="button"
-            className={`rounded px-2.5 py-0.5 transition ${activeTab === 'local' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`rounded px-2.5 py-0.5 transition ${displayedTab === 'local' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             onClick={() => {
               setActiveTab('local')
               setCollapsed(false)
@@ -104,7 +109,7 @@ export function PhotoTray() {
 
       {!collapsed && (
         <div className="h-32 px-3 pb-3">
-          {activeTab === 'library' ? (
+          {displayedTab === 'library' ? (
             <PhotoTrayLibrary onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
           ) : (
             <PhotoTrayLocalImport onPickAsset={onPickAsset} onDragAsset={onDragAsset} />

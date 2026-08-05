@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { BookMarked, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 
@@ -9,7 +9,15 @@ import { useZineStore } from '@/store/zine'
 
 import { PageThumb } from './PageThumb'
 
-const THUMB_WIDTH = 138
+const STRIP_MIN_WIDTH = 140
+const STRIP_MAX_WIDTH = 320
+const STRIP_DEFAULT_WIDTH = 176
+// 缩略图宽度 = 侧栏宽度 − 列表 p-3（24）− 卡片 p-1.5（12）− 卡片边框（2）
+const THUMB_INSET = 38
+
+function clampStripWidth(width: number) {
+  return Math.min(STRIP_MAX_WIDTH, Math.max(STRIP_MIN_WIDTH, width))
+}
 
 interface RailActionProps {
   label: string
@@ -38,6 +46,8 @@ function RailAction({ label, onClick, disabled, children }: RailActionProps) {
 
 export function PageStrip() {
   const { language } = usePreferences()
+  const storedWidth = usePreferences((state) => state.zineStripWidth)
+  const setStripWidth = usePreferences((state) => state.setZineStripWidth)
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const setActiveSpread = useZineStore((state) => state.setActiveSpread)
@@ -46,10 +56,28 @@ export function PageStrip() {
   const moveSpread = useZineStore((state) => state.moveSpread)
   const removeSpread = useZineStore((state) => state.removeSpread)
   const activeItemRef = useRef<HTMLDivElement | null>(null)
+  // 拖动中用本地宽度，松手才写入持久化 store，避免拖动时高频写 localStorage
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const resizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+  const stripWidth = dragWidth ?? clampStripWidth(storedWidth)
+  const thumbWidth = stripWidth - THUMB_INSET
 
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({ block: 'nearest' })
   }, [activeSpreadId])
+
+  useEffect(() => () => {
+    document.body.style.cursor = ''
+  }, [])
+
+  function commitResize(event: React.PointerEvent) {
+    const session = resizeRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+    resizeRef.current = null
+    document.body.style.cursor = ''
+    setStripWidth(clampStripWidth(session.startWidth + event.clientX - session.startX))
+    setDragWidth(null)
+  }
 
   if (!project) return null
 
@@ -58,7 +86,7 @@ export function PageStrip() {
   const firstContentIndex = project.spreads.findIndex((spread) => !isCoverSpread(spread))
 
   return (
-    <aside className="flex w-44 shrink-0 flex-col border-r bg-card" style={{ borderColor: 'var(--border)' }}>
+    <aside className="relative flex shrink-0 flex-col border-r bg-card" style={{ width: `${stripWidth}px`, borderColor: 'var(--border)' }}>
       <div className="flex items-baseline justify-between px-4 pb-1 pt-3">
         <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>
           {t('admin.zine_pages', language)}
@@ -104,7 +132,7 @@ export function PageStrip() {
                   boxShadow: active ? '0 0 0 1px var(--primary)' : undefined,
                 }}
               >
-                <PageThumb project={project} spread={spread} width={THUMB_WIDTH} />
+                <PageThumb project={project} spread={spread} width={thumbWidth} />
                 <span
                   className="mt-1.5 block text-center text-[11px] tabular-nums"
                   style={{ color: active ? 'var(--foreground)' : 'var(--muted-foreground)', fontWeight: active ? 600 : 400 }}
@@ -148,6 +176,41 @@ export function PageStrip() {
           {t('admin.zine_add_spread', language)}
         </button>
       </div>
+
+      {/* 右缘拖拽手柄：拖动调宽 · 双击复位 · 方向键微调 */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuenow={Math.round(stripWidth)}
+        aria-valuemin={STRIP_MIN_WIDTH}
+        aria-valuemax={STRIP_MAX_WIDTH}
+        aria-label={t('admin.zine_resize_pages', language)}
+        title={t('admin.zine_resize_pages', language)}
+        tabIndex={0}
+        className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none outline-none transition-colors hover:bg-primary/50 focus-visible:bg-primary/50"
+        style={dragWidth !== null ? { backgroundColor: 'var(--primary)' } : undefined}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return
+          event.preventDefault()
+          event.currentTarget.setPointerCapture(event.pointerId)
+          resizeRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: stripWidth }
+          setDragWidth(stripWidth)
+          document.body.style.cursor = 'col-resize'
+        }}
+        onPointerMove={(event) => {
+          const session = resizeRef.current
+          if (!session || session.pointerId !== event.pointerId) return
+          setDragWidth(clampStripWidth(session.startWidth + event.clientX - session.startX))
+        }}
+        onPointerUp={commitResize}
+        onPointerCancel={commitResize}
+        onDoubleClick={() => setStripWidth(STRIP_DEFAULT_WIDTH)}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+          event.preventDefault()
+          setStripWidth(clampStripWidth(stripWidth + (event.key === 'ArrowRight' ? 8 : -8)))
+        }}
+      />
     </aside>
   )
 }

@@ -265,6 +265,9 @@ func detectMediaHeader(header []byte, ext string) (string, string, bool) {
 	if len(header) >= 16 && string(header[:16]) == "FUJIFILMCCD-RAW " {
 		return "raf", "image/x-fuji-raf", true
 	}
+	if len(header) >= 4 && string(header[:4]) == "II\x55\x00" {
+		return "rw2", "image/x-panasonic-rw2", true
+	}
 	if len(header) >= 12 && isTIFFHeader(header) {
 		if string(header[8:12]) == "CR\x02\x00" {
 			return "cr2", "image/x-canon-cr2", true
@@ -613,6 +616,9 @@ func decodeMediaConfigContext(ctx context.Context, path, format string) (image.C
 }
 
 func decodeMediaConfigReaderContext(ctx context.Context, source io.Reader, format string) (image.Config, string, error) {
+	if err := ctx.Err(); err != nil {
+		return image.Config{}, "", err
+	}
 	reader := contextBoundReader{ctx: ctx, reader: source}
 	switch strings.ToLower(format) {
 	case "avif":

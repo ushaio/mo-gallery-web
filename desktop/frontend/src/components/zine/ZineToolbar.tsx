@@ -39,20 +39,27 @@ function ToolIconButton({ label, onClick, disabled, children }: ToolIconButtonPr
 }
 
 interface ToolTextButtonProps {
+  label: string
   onClick: () => void
   disabled?: boolean
-  children: ReactNode
+  icon: ReactNode
+  trailing?: ReactNode
 }
 
-function ToolTextButton({ onClick, disabled, children }: ToolTextButtonProps) {
+// 窄窗口只留图标（title 兜底），避免工具栏溢出把导出按钮挤出视口
+function ToolTextButton({ label, onClick, disabled, icon, trailing }: ToolTextButtonProps) {
   return (
     <button
       type="button"
+      title={label}
+      aria-label={label}
       onClick={onClick}
       disabled={disabled}
       className="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-foreground/75 transition hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
     >
-      {children}
+      {icon}
+      <span className="hidden lg:inline">{label}</span>
+      {trailing}
     </button>
   )
 }
@@ -192,23 +199,28 @@ export function ZineToolbar() {
 
       <ToolbarDivider />
 
-      <ToolTextButton onClick={() => spreadId && addSlot(spreadId, 'image')} disabled={!spreadId}>
-        <ImagePlus size={15} />
-        {t('admin.zine_add_image_slot', language)}
-      </ToolTextButton>
-      <ToolTextButton onClick={() => spreadId && addSlot(spreadId, 'text')} disabled={!spreadId}>
-        <Type size={15} />
-        {t('admin.zine_add_text_slot', language)}
-      </ToolTextButton>
+      <ToolTextButton
+        label={t('admin.zine_add_image_slot', language)}
+        icon={<ImagePlus size={15} />}
+        onClick={() => spreadId && addSlot(spreadId, 'image')}
+        disabled={!spreadId}
+      />
+      <ToolTextButton
+        label={t('admin.zine_add_text_slot', language)}
+        icon={<Type size={15} />}
+        onClick={() => spreadId && addSlot(spreadId, 'text')}
+        disabled={!spreadId}
+      />
 
       <ToolbarDivider />
 
       <div className="relative shrink-0">
-        <ToolTextButton onClick={() => setTemplatesOpen((open) => !open)}>
-          <LayoutTemplate size={15} />
-          {t('admin.zine_templates', language)}
-          <ChevronDown size={13} className={`transition-transform ${templatesOpen ? 'rotate-180' : ''}`} />
-        </ToolTextButton>
+        <ToolTextButton
+          label={t('admin.zine_templates', language)}
+          icon={<LayoutTemplate size={15} />}
+          trailing={<ChevronDown size={13} className={`transition-transform ${templatesOpen ? 'rotate-180' : ''}`} />}
+          onClick={() => setTemplatesOpen((open) => !open)}
+        />
         {templatesOpen && (
           <>
             <button
@@ -229,11 +241,12 @@ export function ZineToolbar() {
       </div>
 
       <div className="relative shrink-0">
-        <ToolTextButton onClick={() => setPageNumbersOpen((open) => !open)}>
-          <Hash size={15} />
-          {t('admin.zine_page_numbers', language)}
-          <ChevronDown size={13} className={`transition-transform ${pageNumbersOpen ? 'rotate-180' : ''}`} />
-        </ToolTextButton>
+        <ToolTextButton
+          label={t('admin.zine_page_numbers', language)}
+          icon={<Hash size={15} />}
+          trailing={<ChevronDown size={13} className={`transition-transform ${pageNumbersOpen ? 'rotate-180' : ''}`} />}
+          onClick={() => setPageNumbersOpen((open) => !open)}
+        />
         {pageNumbersOpen && (
           <>
             <button

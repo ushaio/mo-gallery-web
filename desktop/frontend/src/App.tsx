@@ -20,7 +20,17 @@ import { FriendsPage } from '@/pages/FriendsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import type { ReactNode } from 'react'
 
-function ProtectedRoute({ children }: { children: ReactNode }) {
+function AuthenticatedRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/library?source=local" replace />
+  }
+
+  return <>{children}</>
+}
+
+function AppRoutes() {
   const { isAuthenticated, isReady } = useAuth()
 
   if (!isReady) {
@@ -32,43 +42,29 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     )
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
-  return <>{children}</>
-}
-
-function AppRoutes() {
-  const { isAuthenticated, isReady } = useAuth()
-
   return (
     <Routes>
       <Route path="/login" element={
-        isReady && isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />
+        isAuthenticated ? <Navigate to="/overview" replace /> : <LoginPage />
       } />
-      <Route path="/" element={
-        <ProtectedRoute>
-          <AdminLayout />
-        </ProtectedRoute>
-      }>
-        <Route index element={<Navigate to="/overview" replace />} />
-        <Route path="overview" element={<OverviewPage />} />
+      <Route path="/" element={<AdminLayout />}>
+        <Route index element={<Navigate to={isAuthenticated ? '/overview' : '/library?source=local'} replace />} />
+        <Route path="overview" element={<AuthenticatedRoute><OverviewPage /></AuthenticatedRoute>} />
         <Route path="library" element={<ResourceLibraryPage />} />
-        <Route path="photos" element={<Navigate to="/library?source=cloud" replace />} />
+        <Route path="photos" element={<AuthenticatedRoute><Navigate to="/library?source=cloud" replace /></AuthenticatedRoute>} />
         <Route path="local-library" element={<Navigate to="/library?source=local" replace />} />
-        <Route path="albums" element={<Navigate to="/library?source=cloud&view=albums" replace />} />
-        <Route path="film-rolls" element={<Navigate to="/library?source=cloud&view=film-rolls" replace />} />
-        <Route path="upload" element={<UploadPage />} />
-        <Route path="photo-journal" element={<PhotoJournalPage />} />
+        <Route path="albums" element={<AuthenticatedRoute><Navigate to="/library?source=cloud&view=albums" replace /></AuthenticatedRoute>} />
+        <Route path="film-rolls" element={<AuthenticatedRoute><Navigate to="/library?source=cloud&view=film-rolls" replace /></AuthenticatedRoute>} />
+        <Route path="upload" element={<AuthenticatedRoute><UploadPage /></AuthenticatedRoute>} />
+        <Route path="photo-journal" element={<AuthenticatedRoute><PhotoJournalPage /></AuthenticatedRoute>} />
         <Route path="zine" element={<ZinePage />} />
         <Route path="zine/editor/:projectId" element={<ZineEditorPage />} />
-        <Route path="ai-assistant" element={<AiAssistantPage />} />
-        <Route path="storage" element={<StoragePage />} />
+        <Route path="ai-assistant" element={<AuthenticatedRoute><AiAssistantPage /></AuthenticatedRoute>} />
+        <Route path="storage" element={<AuthenticatedRoute><StoragePage /></AuthenticatedRoute>} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="friends" element={<FriendsPage />} />
+        <Route path="friends" element={<AuthenticatedRoute><FriendsPage /></AuthenticatedRoute>} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/overview' : '/library?source=local'} replace />} />
     </Routes>
   )
 }

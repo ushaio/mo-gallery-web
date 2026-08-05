@@ -5,6 +5,10 @@ import { addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
 import { getErrorMessage, isAuthError } from '@/lib/auth-errors'
 import { invalidateDesktopCache } from '@/lib/app-cache'
 import { useAuth } from '@/contexts/AuthContext'
+import { UploadFile, UploadLocalAsset } from '../../wailsjs/go/main/App'
+import { image } from '../../wailsjs/go/models'
+
+type UploadExifData = Omit<image.ExifData, 'convertValues'>
 
 export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
 
@@ -23,7 +27,7 @@ export interface UploadTask {
 interface UploadQueueContextType {
   tasks: UploadTask[]
   isUploading: boolean
-  addTasks: (files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => UploadTask[]
+  addTasks: (files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: UploadExifData }>, settings: UploadSettings) => UploadTask[]
   retryTask: (taskId: string) => void
   retryAllFailed: () => void
   removeTask: (taskId: string) => void
@@ -68,7 +72,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
   // 共用一个全局设置会让上一批还在排队的任务用新批次的设置上传。
   const taskSettingsRef = useRef<Map<string, UploadSettings>>(new Map())
   const hashesRef = useRef<Map<string, string>>(new Map())
-  const exifsRef = useRef<Map<string, any>>(new Map())
+  const exifsRef = useRef<Map<string, UploadExifData>>(new Map())
   const tokenRef = useRef('')
 
   useEffect(() => {
@@ -85,9 +89,8 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
   }, [patchTasks])
 
   const uploadSingleFile = useCallback(async (task: UploadTask, settings: UploadSettings) => {
-    let progressTimer: number | undefined
     updateTask(task.id, { status: 'uploading', progress: 5 })
-    progressTimer = window.setInterval(() => {
+    const progressTimer = window.setInterval(() => {
       patchTasks(prev => prev.map(t => {
         if (t.id !== task.id || t.status !== 'uploading') return t
         return { ...t, progress: Math.min(95, t.progress + Math.max(1, Math.round((95 - t.progress) * 0.08))) }
@@ -95,19 +98,19 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     }, 500)
     try {
       const hash = hashesRef.current.get(task.filePath) || ''
-      const exif = exifsRef.current.get(task.filePath) || null
-      const uploadMethod = task.assetId
-        ? (window as any).go.main.App.UploadLocalAsset
-        : (window as any).go.main.App.UploadFile
+      const exif = new image.ExifData(exifsRef.current.get(task.filePath) || {})
+      const uploadMethod = task.assetId ? UploadLocalAsset : UploadFile
       const source = task.assetId || task.filePath
       const result = await uploadMethod(
         source,
         {
           title: settings.title || task.fileName,
           categories: settings.categories,
-          filmRollId: settings.filmRollId || undefined,
+          filmRollId: settings.filmRollId || '',
           storageSourceId: settings.storageSourceId,
-          storagePath: settings.storagePath || undefined,
+          storageProvider: '',
+          storagePath: settings.storagePath || '',
+          storagePathFull: false,
           compressEnabled: settings.compressEnabled,
           maxSizeMB: settings.maxSizeMB,
           showFlag: settings.showFlag,
@@ -172,7 +175,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       }
       updateTask(task.id, { status: 'failed', progress: 0, error: getErrorMessage(err) })
     } finally {
-      if (progressTimer) window.clearInterval(progressTimer)
+      window.clearInterval(progressTimer)
       activeCountRef.current--
       processQueue()
     }
@@ -207,7 +210,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     }
   }, [uploadSingleFile, updateTask])
 
-  const addTasks = useCallback((files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: any }>, settings: UploadSettings) => {
+  const addTasks = useCallback((files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: UploadExifData }>, settings: UploadSettings) => {
     const newTasks: UploadTask[] = files.map(f => {
       hashesRef.current.set(f.filePath, f.hash)
       if (f.exif) exifsRef.current.set(f.filePath, f.exif)

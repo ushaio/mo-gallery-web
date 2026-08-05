@@ -536,6 +536,10 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const isLibraryWorkspace = pathname === '/admin/library' || pathname === '/admin/storage'
   const pageTitle = t(activeSidebarItem.labelKey)
 
+  useEffect(() => {
+    document.title = `${pageTitle} | ${siteTitle || 'MO GALLERY'}`
+  }, [pageTitle, siteTitle])
+
   const contextValue: AdminContextType = {
     token,
     photos,

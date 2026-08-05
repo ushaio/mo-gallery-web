@@ -8,6 +8,8 @@ import { loadPersistentResource } from '@/lib/persistent-cache'
 import { ListSkeleton } from '@/components/admin/Skeleton'
 import { toast } from 'sonner'
 import { Plus, Trash2, ExternalLink, Users } from 'lucide-react'
+import { CreateFriend, DeleteFriend, GetFriends } from '../../wailsjs/go/main/App'
+import { getErrorMessage } from '@/lib/auth-errors'
 
 export function FriendsPage() {
   const { language } = usePreferences()
@@ -19,10 +21,10 @@ export function FriendsPage() {
   const fetchFriends = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      const result = await loadPersistentResource<FriendLink[]>('friends', () => (window as any).go.main.App.GetFriends(), { force })
+      const result = await loadPersistentResource<FriendLink[]>('friends', GetFriends, { force })
       setFriends(result || [])
-    } catch (err: any) {
-      toast.error(err?.message || '获取友链列表失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '获取友链列表失败')
     } finally { setLoading(false) }
   }, [])
 
@@ -34,26 +36,26 @@ export function FriendsPage() {
       return
     }
     try {
-      await (window as any).go.main.App.CreateFriend({ ...form, featured: false, sortOrder: 0, isActive: true })
+      await CreateFriend({ ...form, featured: false, sortOrder: 0, isActive: true })
       setForm({ name: '', url: '', description: '', avatar: '' })
       setShowCreate(false)
       await fetchFriends(true)
       invalidateDesktopCache(['overview'])
       toast.success('友链已创建')
-    } catch (err: any) {
-      toast.error(err?.message || '创建友链失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '创建友链失败')
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除此友链吗？')) return
     try {
-      await (window as any).go.main.App.DeleteFriend(id)
+      await DeleteFriend(id)
       await fetchFriends(true)
       invalidateDesktopCache(['overview'])
       toast.success('友链已删除')
-    } catch (err: any) {
-      toast.error(err?.message || '删除友链失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '删除友链失败')
     }
   }
 

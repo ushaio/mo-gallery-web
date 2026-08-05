@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleAuthFailure = useCallback((error?: unknown) => {
     clearAuthState()
     sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage(error))
-    navigate('/login', { replace: true })
+    navigate('/library?source=local', { replace: true })
   }, [clearAuthState, navigate])
 
   useEffect(() => {

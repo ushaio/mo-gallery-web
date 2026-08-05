@@ -1,14 +1,19 @@
 import type { Metadata } from 'next'
 
+const siteTitle = process.env.SITE_TITLE || 'MO GALLERY'
+
 export const metadata: Metadata = {
-  title: 'Blog',
-  description: 'Stories, notes, and updates from the gallery.',
+  title: {
+    default: 'Photography Journal',
+    template: `%s | ${siteTitle}`,
+  },
+  description: 'Notes, essays, and updates on photography and the creative process.',
   alternates: {
     canonical: '/blog',
   },
   openGraph: {
-    title: 'Blog',
-    description: 'Stories, notes, and updates from the gallery.',
+    title: 'Photography Journal',
+    description: 'Notes, essays, and updates on photography and the creative process.',
     url: '/blog',
     type: 'website',
   },

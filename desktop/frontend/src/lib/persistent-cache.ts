@@ -296,8 +296,7 @@ export async function loadPersistentResource<T>(
     && existing.globalGeneration === capturedGlobalGeneration
   ) return existing.promise
 
-  let request: Promise<T>
-  request = loader()
+  const request = loader()
     .then((data) => {
       if (
         getGeneration(inFlightKey) === generation

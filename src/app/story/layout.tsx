@@ -1,15 +1,20 @@
 import type { Metadata } from 'next'
 
+const siteTitle = process.env.SITE_TITLE || 'MO GALLERY'
+
 // 故事页面 SEO 元数据配置
 export const metadata: Metadata = {
-  title: 'Story',
-  description: 'Photo stories and visual narratives.',
+  title: {
+    default: 'Photo Stories',
+    template: `%s | ${siteTitle}`,
+  },
+  description: 'Original photo essays and visual narratives told through images and words.',
   alternates: {
     canonical: '/story',
   },
   openGraph: {
-    title: 'Story',
-    description: 'Photo stories and visual narratives.',
+    title: 'Photo Stories',
+    description: 'Original photo essays and visual narratives told through images and words.',
     url: '/story',
     type: 'website',
   },

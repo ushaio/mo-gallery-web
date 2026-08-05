@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { AdminSettingsDto } from '@/lib/api/types'
 import type { CompressionMode } from '@/lib/image-compress'
@@ -49,8 +49,31 @@ function getInitialAlbumIds(initialSettings?: UploadSettings) {
   return []
 }
 
+function getInitialUploadSettings(initialSettings?: UploadSettings): PhotoUploadSettings {
+  const compressionMode = normalizeCompressionMode(initialSettings?.compressionMode ?? 'compress')
+  return {
+    title: '',
+    categories: getInitialCategories(initialSettings),
+    storyId: undefined,
+    albumIds: getInitialAlbumIds(initialSettings),
+    storageSourceId: initialSettings?.storageSourceId,
+    storagePath: initialSettings?.storagePath,
+    storagePathFull: initialSettings?.storagePathFull,
+    compressionEnabled: compressionMode !== 'none',
+    maxSizeMB: initialSettings?.maxSizeMB ?? 0,
+    showFlag: initialSettings?.showFlag ?? true,
+    privacyStripEnabled: Boolean(initialSettings?.stripGps),
+  }
+}
+
 export function ImageUploadSettingsModal({
-  isOpen,
+  ...props
+}: ImageUploadSettingsModalProps) {
+  if (!props.isOpen) return null
+  return <ImageUploadSettingsModalContent key={JSON.stringify(props.initialSettings ?? {})} {...props} />
+}
+
+function ImageUploadSettingsModalContent({
   onClose,
   onConfirm,
   pendingCount,
@@ -61,35 +84,7 @@ export function ImageUploadSettingsModal({
   categories = [],
   currentStoryId,
 }: ImageUploadSettingsModalProps) {
-  const [uploadSettings, setUploadSettings] = useState<PhotoUploadSettings>({
-    title: '',
-    categories: [],
-    compressionEnabled: true,
-    maxSizeMB: 0,
-    showFlag: true,
-    privacyStripEnabled: false,
-  })
-
-  // Initialize settings when modal opens
-  useEffect(() => {
-    if (!isOpen) return
-
-    const compressionMode = normalizeCompressionMode(initialSettings?.compressionMode ?? 'compress')
-
-    setUploadSettings({
-      title: '',
-      categories: getInitialCategories(initialSettings),
-      storyId: undefined,
-      albumIds: getInitialAlbumIds(initialSettings),
-      storageSourceId: initialSettings?.storageSourceId,
-      storagePath: initialSettings?.storagePath,
-      storagePathFull: initialSettings?.storagePathFull,
-      compressionEnabled: compressionMode !== 'none',
-      maxSizeMB: initialSettings?.maxSizeMB ?? 0,
-      showFlag: initialSettings?.showFlag ?? true,
-      privacyStripEnabled: Boolean(initialSettings?.stripGps),
-    })
-  }, [initialSettings, isOpen])
+  const [uploadSettings, setUploadSettings] = useState<PhotoUploadSettings>(() => getInitialUploadSettings(initialSettings))
 
   const handleConfirm = () => {
     const settingsToSave: UploadSettings = {
@@ -119,8 +114,6 @@ export function ImageUploadSettingsModal({
     onConfirm(settingsToSave)
     onClose()
   }
-
-  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

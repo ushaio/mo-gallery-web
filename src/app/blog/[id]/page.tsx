@@ -11,7 +11,12 @@ export async function generateMetadata({ params }: BlogDetailPageProps): Promise
   const { id } = await params
   const blog = await queryBlog(id)
 
-  if (!blog) return { title: 'Not Found' }
+  if (!blog) {
+    return {
+      title: 'Article Not Found',
+      robots: { index: false, follow: false },
+    }
+  }
 
   const description = blog.content
     .replace(/[#*`\[\]<>]/g, '')
@@ -21,9 +26,13 @@ export async function generateMetadata({ params }: BlogDetailPageProps): Promise
   return {
     title: blog.title,
     description,
+    alternates: {
+      canonical: `/blog/${id}`,
+    },
     openGraph: {
       title: blog.title,
       description,
+      url: `/blog/${id}`,
       type: 'article',
       publishedTime: blog.createdAt,
       modifiedTime: blog.updatedAt,

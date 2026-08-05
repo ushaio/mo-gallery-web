@@ -412,7 +412,7 @@ export function OverviewPage() {
       if (isAuthError(err)) {
         sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage(err))
         logout()
-        navigate('/login', { replace: true })
+        navigate('/library?source=local', { replace: true })
         return
       }
       setError(getErrorMessage(err))

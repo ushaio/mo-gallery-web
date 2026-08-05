@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   Globe,
+  HardDrive,
   Images,
   KeyRound,
   Loader2,
@@ -466,6 +467,22 @@ export function LoginPage() {
               )}
             </button>
           </form>
+
+          <div className="my-5 flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[10px] uppercase text-muted-foreground">{language === 'zh' ? '或' : 'or'}</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/library?source=local', { replace: true })}
+            disabled={loading}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <HardDrive className="h-4 w-4" />
+            {t('admin.use_offline', language)}
+          </button>
 
           <p className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
             <ShieldCheck className="h-3.5 w-3.5" />

@@ -22,6 +22,7 @@ import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal
 import { STORY_PASTE_UPLOAD_SETTINGS_KEY, STORY_UPLOAD_SETTINGS_KEY } from './constants'
 import type { UploadProgressState } from './types'
 import { useStoryPasteUploads } from './useStoryPasteUploads'
+import { GetAllPhotos } from '../../../../wailsjs/go/main/App'
 
 interface UseStoryEditorActionsParams {
   token: string | null
@@ -175,7 +176,7 @@ export function useStoryEditorActions({
       return cachedPhoto
     }
 
-    const photos = await (window as any).go.main.App.GetAllPhotos()
+    const photos = await GetAllPhotos() as unknown as PhotoDto[]
     setAllPhotos(photos || [])
     return (photos || []).find((photo: PhotoDto) => photo.id === photoId) ?? null
   }, [allPhotos, currentStory?.photos, setAllPhotos])

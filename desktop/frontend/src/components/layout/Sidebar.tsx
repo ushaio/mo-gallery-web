@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, LibraryBig, Upload, BookMarked,
   BookImage, Bot, HardDrive, Settings, Users, LogOut,
-  Sun, Moon, Monitor, Globe, Check, ChevronDown,
+  Sun, Moon, Monitor, Globe, Check, ChevronDown, LogIn,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences } from '@/store/preferences'
@@ -44,7 +44,7 @@ const languageOptions = [
 ]
 
 export function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, isAuthenticated } = useAuth()
   const { language, theme, setLanguage, setTheme } = usePreferences()
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
@@ -56,6 +56,8 @@ export function Sidebar() {
   // 站点标题 + 站点地址：标题与「系统设置-站点-站点信息」一致（来自服务端 SITE_TITLE），
   // 地址取桌面端连接的服务器 base_url，即网站入口
   useEffect(() => {
+    if (!isAuthenticated) return
+
     let cancelled = false
     Promise.allSettled([GetSettings(), GetApiConfig()]).then(([settingsRes, apiRes]) => {
       if (cancelled) return
@@ -70,7 +72,7 @@ export function Sidebar() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isAuthenticated])
 
   // 点击站点标题：浏览器打开网站
   const handleOpenSite = () => {
@@ -95,6 +97,8 @@ export function Sidebar() {
 
   const currentThemeLabel = t(themeOptions.find((o) => o.value === theme)?.label ?? 'common.system', language)
   const currentLanguageLabel = languageOptions.find((o) => o.value === language)?.label ?? '中文'
+  const visibleNavGroups = isAuthenticated ? navGroups : [navGroups[1].slice(0, 1), navGroups[2].slice(1, 2)]
+  const displayedSiteTitle = isAuthenticated ? siteTitle : 'MO Gallery'
 
   return (
     <aside
@@ -117,14 +121,14 @@ export function Sidebar() {
       >
         <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold font-serif shrink-0"
           style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-          {siteTitle.charAt(0).toUpperCase() || 'M'}
+          {displayedSiteTitle.charAt(0).toUpperCase() || 'M'}
         </div>
-        <span className="font-serif font-bold text-sm tracking-widest uppercase truncate">{siteTitle}</span>
+        <span className="font-serif font-bold text-sm tracking-widest uppercase truncate">{displayedSiteTitle}</span>
       </button>
 
       {/* 导航 */}
       <nav className="flex-1 overflow-y-auto px-2 py-2">
-        {navGroups.map((group, groupIndex) => (
+        {visibleNavGroups.map((group, groupIndex) => (
           <div key={group[0].path}>
             {groupIndex > 0 && (
               <div
@@ -256,47 +260,82 @@ export function Sidebar() {
 
       {/* 用户信息 */}
       <div className="border-t px-3 py-3" style={{ borderColor: 'var(--border)' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
-              style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
-              {user?.username?.[0]?.toUpperCase() || 'A'}
+        {isAuthenticated ? (
+          <div className="flex items-center justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
+                style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
+                {user?.username?.[0]?.toUpperCase() || 'A'}
+              </div>
+              <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                {user?.username || 'Admin'}
+              </span>
             </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <NavLink
+                to="/settings"
+                draggable={false}
+                title={t('admin.config', language)}
+                aria-label={t('admin.config', language)}
+                className={({ isActive }) =>
+                  `flex size-6 items-center justify-center rounded-md transition-colors ${
+                    isActive ? '' : 'hover:bg-secondary'
+                  }`
+                }
+                style={({ isActive }) => ({
+                  backgroundColor: isActive ? 'var(--accent)' : 'transparent',
+                  color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+                })}
+              >
+                <Settings size={15} />
+              </NavLink>
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
+                title={t('admin.logout', language)}
+              >
+                <LogOut size={15} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
             <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              {user?.username || 'Admin'}
+              {t('admin.offline_mode', language)}
             </span>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <NavLink
+                to="/settings"
+                draggable={false}
+                title={t('admin.config', language)}
+                aria-label={t('admin.config', language)}
+                className={({ isActive }) =>
+                  `flex size-7 items-center justify-center rounded-md transition-colors ${isActive ? '' : 'hover:bg-secondary'}`
+                }
+                style={({ isActive }) => ({
+                  backgroundColor: isActive ? 'var(--accent)' : 'transparent',
+                  color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+                })}
+              >
+                <Settings size={15} />
+              </NavLink>
+              <NavLink
+                to="/login"
+                draggable={false}
+                title={t('admin.login', language)}
+                aria-label={t('admin.login', language)}
+                className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                <LogIn size={15} />
+              </NavLink>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <NavLink
-              to="/settings"
-              draggable={false}
-              title={t('admin.config', language)}
-              aria-label={t('admin.config', language)}
-              className={({ isActive }) =>
-                `flex size-6 items-center justify-center rounded-md transition-colors ${
-                  isActive ? '' : 'hover:bg-secondary'
-                }`
-              }
-              style={({ isActive }) => ({
-                backgroundColor: isActive ? 'var(--accent)' : 'transparent',
-                color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-              })}
-            >
-              <Settings size={15} />
-            </NavLink>
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
-              style={{ color: 'var(--muted-foreground)' }}
-              title={t('admin.logout', language)}
-            >
-              <LogOut size={15} />
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {showLogoutConfirm && (
+      {isAuthenticated && showLogoutConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <button
             type="button"

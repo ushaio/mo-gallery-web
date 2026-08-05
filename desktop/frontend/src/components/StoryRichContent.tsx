@@ -14,7 +14,6 @@ interface StoryRichContentProps {
   photos?: PhotoDto[]
   cdnDomain?: string
   className?: string
-  components?: any
 }
 
 export const StoryRichContent = memo(function StoryRichContent({

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from 'react'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -12,59 +12,53 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
+const THEME_CHANGE_EVENT = 'mo-gallery-theme-change'
+
+function subscribeTheme(callback: () => void) {
+  window.addEventListener('storage', callback)
+  window.addEventListener(THEME_CHANGE_EVENT, callback)
+  return () => {
+    window.removeEventListener('storage', callback)
+    window.removeEventListener(THEME_CHANGE_EVENT, callback)
+  }
+}
+
+function getThemeSnapshot(): Theme {
+  const value = localStorage.getItem('theme')
+  return value === 'light' || value === 'dark' ? value : 'system'
+}
+
+function subscribeSystemTheme(callback: () => void) {
+  const media = window.matchMedia('(prefers-color-scheme: dark)')
+  media.addEventListener('change', callback)
+  return () => media.removeEventListener('change', callback)
+}
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false)
-  const [theme, setThemeState] = useState<Theme>('system')
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
-
-  // Load theme from localStorage after mount
-  useEffect(() => {
-    setMounted(true)
-    const savedTheme = localStorage.getItem('theme') as Theme | null
-    if (savedTheme) {
-      setThemeState(savedTheme)
-    }
-  }, [])
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => 'system')
+  const systemTheme = useSyncExternalStore(
+    subscribeSystemTheme,
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+    () => 'light',
+  )
+  const resolvedTheme = theme === 'system' ? systemTheme : theme
 
   useEffect(() => {
     const root = window.document.documentElement
     
-    // Skip theme application on first render if we're not mounted yet
-    // to let the blocking script in layout.tsx handle the initial state
     if (!mounted) return
 
-    const updateTheme = () => {
-      let activeTheme: 'light' | 'dark' = 'light'
-
-      if (theme === 'system') {
-        activeTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-      } else {
-        activeTheme = theme
-      }
-
-      setResolvedTheme(activeTheme)
-
-      if (activeTheme === 'dark') {
+      if (resolvedTheme === 'dark') {
         root.classList.add('dark')
       } else {
         root.classList.remove('dark')
       }
-    }
-
-    updateTheme()
-
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      const listener = () => updateTheme()
-      mediaQuery.addEventListener('change', listener)
-      return () => mediaQuery.removeEventListener('change', listener)
-    }
-  }, [theme, mounted])
+  }, [mounted, resolvedTheme])
 
   const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme)
     localStorage.setItem('theme', newTheme)
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT))
   }
 
   return (

@@ -11,6 +11,7 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { useAuth } from '@/contexts/AuthContext'
 import { useLibrarySections } from '@/store/preferences'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import { EventsOn, OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime'
@@ -83,6 +84,7 @@ interface FolderTarget {
 
 export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: Props) {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const foldersOpen = useLibrarySections((state) => state.sections.localFolders)
   const toggleSection = useLibrarySections((state) => state.toggleSection)
   const {
@@ -143,7 +145,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [assetMovePlan, setAssetMovePlan] = useState<AssetFileOperationPlan>()
   const [assetFileOperationBusy, setAssetFileOperationBusy] = useState(false)
   const [uploadAlbums, setUploadAlbums] = useState<UploadAlbum[]>([])
-  const [uploadAlbumsLoading, setUploadAlbumsLoading] = useState(true)
+  const [uploadAlbumsLoading, setUploadAlbumsLoading] = useState(isAuthenticated)
   const [tags, setTags] = useState<LocalTag[]>([])
   const [collections, setCollections] = useState<LocalCollection[]>([])
   const [collectionGroups, setCollectionGroups] = useState<CollectionGroup[]>([])
@@ -320,13 +322,20 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   }, [availability, refreshKey, reloadTrashedFolders])
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setUploadAlbums([])
+      setUploadAlbumsLoading(false)
+      return
+    }
+
     let disposed = false
+    setUploadAlbumsLoading(true)
     localLibraryApi.listUploadAlbums()
       .then((items) => { if (!disposed) setUploadAlbums(items) })
       .catch(() => { if (!disposed) setUploadAlbums([]) })
       .finally(() => { if (!disposed) setUploadAlbumsLoading(false) })
     return () => { disposed = true }
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (!propertiesFolder) {
@@ -768,11 +777,11 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   }, [copy.copiedToClipboard, copy.cutToClipboard])
 
   const uploadAsset = useCallback((asset: LocalAsset, albumId?: string) => {
-    if (asset.availability !== 'active' || !isPhotoAsset(asset)) return
+    if (!isAuthenticated || asset.availability !== 'active' || !isPhotoAsset(asset)) return
     useUploadIntentStore.getState().enqueue({ source: 'local-assets', assetIds: [asset.id], albumId })
     toast.success(copy.uploadPrepared)
     navigate('/upload')
-  }, [copy.uploadPrepared, navigate])
+  }, [copy.uploadPrepared, isAuthenticated, navigate])
 
   const openSystem = async (asset: LocalAsset) => {
     try { await localLibraryApi.openInDefaultApp(asset.id) }
@@ -1386,7 +1395,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
           {availability === 'trashed' && <FolderTrashSection entries={trashedFolders} copy={copy} loading={trashedFoldersLoading} busyId={trashFolderBusyId} onRestore={setRestoreFolderTarget} onPermanentDelete={setPermanentFolderTarget} />}
           <LocalAssetGrid assets={page.items} folders={currentChildFolders} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
             emptyTitle={availability === 'missing' ? copy.missingEmpty : undefined} emptyHint={availability === 'missing' ? copy.missingEmptyHint : undefined}
-            uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
+            canUpload={isAuthenticated} uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
             selectedIds={selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={(nextFolder) => { clearAssetSelection(); setFolder(nextFolder.relativePath) }} onLoadMore={loadMore}
             onOpenInFileManager={(asset) => void openAssetInFileManager(asset)}
             onClipboard={copyAssetToClipboard} onUpload={uploadAsset} onDelete={(asset) => { selectAsset(asset); setDeleteAsset(asset) }} onRename={openRenameAsset} onMove={openMoveAsset} onRestore={restoreAsset}

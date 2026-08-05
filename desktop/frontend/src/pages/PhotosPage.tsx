@@ -14,6 +14,18 @@ import { loadPersistentResource } from '@/lib/persistent-cache'
 import { getPhotosPageCache, getPhotosPageCacheGeneration, invalidateDesktopCache, setPhotosPageCache } from '@/lib/app-cache'
 import type { Album, Photo, PaginatedResponse } from '@/types'
 import { toast } from 'sonner'
+import {
+  BatchDeletePhotos,
+  BatchUpdateShowFlag,
+  DeletePhoto,
+  GetAlbum,
+  GetCategories,
+  GetPhotos,
+  ToggleFeatured,
+  ToggleShowFlag,
+} from '../../wailsjs/go/main/App'
+import type { services } from '../../wailsjs/go/models'
+import { getErrorMessage } from '@/lib/auth-errors'
 import { ThumbGridSkeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import {
@@ -357,7 +369,7 @@ export function PhotosPage() {
 
     try {
       if (filters.albumId) {
-        const album: Album = await (window as any).go.main.App.GetAlbum(filters.albumId)
+        const album = await GetAlbum(filters.albumId) as unknown as Album
         if (requestId !== fetchRequestIdRef.current) return
 
         const albumPhotos = filterAndSortAlbumPhotos(album?.photos || [], filters)
@@ -370,20 +382,22 @@ export function PhotosPage() {
         return
       }
 
-      const result: PaginatedResponse<Photo> = await (window as any).go.main.App.GetPhotos({
+      const result = await GetPhotos({
         category: filters.category === '全部' ? '' : filters.category,
         search: filters.search,
-        photoType: filters.photoType,
-        channel: filters.channel,
+        photoType: filters.photoType ?? undefined,
+        channel: filters.channel ?? undefined,
         albumId: '',
-        cameraId: filters.cameraId,
-        lensId: filters.lensId,
-        featured: filters.featured,
+        cameraId: filters.cameraId ?? '',
+        lensId: filters.lensId ?? '',
+        featured: filters.featured ?? undefined,
+        showFlag: undefined,
         sortBy: filters.sortBy,
         sortOrder: filters.sortOrder,
         page: pageNum,
         pageSize: PAGE_SIZE,
-      })
+        all: false,
+      } as unknown as services.ListPhotosParams) as unknown as PaginatedResponse<Photo>
       if (requestId !== fetchRequestIdRef.current) return
 
       const newData = result.data || []
@@ -395,13 +409,13 @@ export function PhotosPage() {
       pageRef.current = pageNum
       if (!append) hasLoadedInitialPageRef.current = true
       setLoadError(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (requestId !== fetchRequestIdRef.current) return
       console.error('获取照片失败:', err)
-      setLoadError(err?.message || '加载照片失败，请检查网络连接')
+      setLoadError(getErrorMessage(err) || '加载照片失败，请检查网络连接')
       if (append) {
         if (autoFillAttemptPageRef.current === pageNum) autoFillAttemptPageRef.current = null
-        toast.error(err?.message || '加载更多失败')
+        toast.error(getErrorMessage(err) || '加载更多失败')
       }
     } finally {
       if (requestId === fetchRequestIdRef.current) {
@@ -447,7 +461,7 @@ export function PhotosPage() {
     (async () => {
       try {
         const result = await loadPersistentResource('categories', async () => (
-          normalizePhotoCategories(await (window as any).go.main.App.GetCategories())
+          normalizePhotoCategories(await GetCategories())
         ))
         setCategories(result)
       } catch {}
@@ -610,22 +624,22 @@ export function PhotosPage() {
   const toggleFeatured = useCallback(async (id: string) => {
     setPhotos(prev => prev.map(p => p.id === id ? { ...p, isFeatured: !p.isFeatured } : p))
     try {
-      await (window as any).go.main.App.ToggleFeatured(id)
+      await ToggleFeatured(id)
       invalidateAfterLocalMutation(['overview', 'photos'])
-    } catch (err: any) {
+    } catch (err: unknown) {
       setPhotos(prev => prev.map(p => p.id === id ? { ...p, isFeatured: !p.isFeatured } : p))
-      toast.error(err?.message || '更新精选状态失败')
+      toast.error(getErrorMessage(err) || '更新精选状态失败')
     }
   }, [invalidateAfterLocalMutation])
 
   const toggleShowFlag = useCallback(async (id: string) => {
     setPhotos(prev => prev.map(p => p.id === id ? { ...p, showFlag: !p.showFlag } : p))
     try {
-      await (window as any).go.main.App.ToggleShowFlag(id)
+      await ToggleShowFlag(id)
       invalidateAfterLocalMutation(['overview', 'photos'])
-    } catch (err: any) {
+    } catch (err: unknown) {
       setPhotos(prev => prev.map(p => p.id === id ? { ...p, showFlag: !p.showFlag } : p))
-      toast.error(err?.message || '更新展示状态失败')
+      toast.error(getErrorMessage(err) || '更新展示状态失败')
     }
   }, [invalidateAfterLocalMutation])
 
@@ -642,7 +656,7 @@ export function PhotosPage() {
     const toastId = toast.loading('正在删除照片...')
     setDeletingIds(prev => new Set(prev).add(id))
     try {
-      await (window as any).go.main.App.DeletePhoto(id, { deleteOriginal: false, deleteThumbnail: true, force: false })
+      await DeletePhoto(id, { deleteOriginal: false, deleteThumbnail: true, force: false })
       setPhotos(prev => prev.filter(p => p.id !== id))
       setSelected(prev => { const next = new Set(prev); next.delete(id); return next })
       setDetailPhoto(prev => prev && prev.id === id ? null : prev)
@@ -651,8 +665,8 @@ export function PhotosPage() {
       setTotal(prev => prev - 1)
       invalidateAfterLocalMutation(['overview', 'equipment', 'photos', 'albums', 'film-rolls', 'stories'])
       toast.success('照片已删除', { id: toastId })
-    } catch (err: any) {
-      toast.error(err?.message || '删除失败', { id: toastId })
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '删除失败', { id: toastId })
     } finally {
       setDeletingIds(prev => { const next = new Set(prev); next.delete(id); return next })
     }
@@ -668,7 +682,7 @@ export function PhotosPage() {
     setBatchDeleting(true)
     setDeletingIds(prev => new Set([...prev, ...ids]))
     try {
-      await (window as any).go.main.App.BatchDeletePhotos({
+      await BatchDeletePhotos({
         photoIds: ids, deleteOriginal: false, deleteThumbnail: true, force: false,
       })
       setSelected(new Set())
@@ -676,8 +690,8 @@ export function PhotosPage() {
       await fetchPhotos(1, false)
       invalidateAfterLocalMutation(['overview', 'equipment', 'photos', 'albums', 'film-rolls', 'stories'])
       toast.success('照片已删除', { id: toastId })
-    } catch (err: any) {
-      toast.error(err?.message || '批量删除失败', { id: toastId })
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '批量删除失败', { id: toastId })
     } finally {
       setBatchDeleting(false)
       setDeletingIds(prev => {
@@ -693,12 +707,12 @@ export function PhotosPage() {
     const ids = Array.from(selected)
     setBatchUpdating(true)
     try {
-      await (window as any).go.main.App.BatchUpdateShowFlag(ids, show)
+      await BatchUpdateShowFlag(ids, show)
       setPhotos(prev => prev.map(p => selected.has(p.id) ? { ...p, showFlag: show } : p))
       invalidateAfterLocalMutation(['overview', 'photos'])
       toast.success(show ? `已将 ${ids.length} 张照片设为展示` : `已将 ${ids.length} 张照片设为隐藏`)
-    } catch (err: any) {
-      toast.error(err?.message || '批量更新失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '批量更新失败')
     } finally {
       setBatchUpdating(false)
     }

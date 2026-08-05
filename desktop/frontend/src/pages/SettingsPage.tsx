@@ -9,12 +9,40 @@ import {
   getDesktopCacheSnapshot,
 } from '@/lib/app-cache'
 import { clearCurrentPersistentCache, getCurrentPersistentCacheScope } from '@/lib/persistent-cache'
+import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { formatBytes } from '@/lib/utils'
 import { Skeleton } from '@/components/admin/Skeleton'
-import { ClearLocalLibraryPreviewCache, GetAiConfig, GetLocalLibraryCacheStats, GetLocalLibraryPreferences, GetStoryAiProviderModels, SetLocalLibraryImportMode, UpdateAiConfig } from '../../wailsjs/go/main/App'
-import { config as wailsConfig, local_library } from '../../wailsjs/go/models'
+import {
+  ClearLocalLibraryPreviewCache,
+  ClearLogs,
+  CreateStorageSource,
+  DeleteComment,
+  DeleteStorageSource,
+  GetAiConfig,
+  GetComments,
+  GetLinuxDoAuthUrl,
+  GetLinuxDoBinding,
+  GetLocalLibraryCacheStats,
+  GetLocalLibraryPreferences,
+  GetLogConfig,
+  GetLogs,
+  GetLogStats,
+  GetSettings,
+  GetStorageSources,
+  GetStoryAiProviderModels,
+  IsLinuxDoEnabled,
+  OpenLogDir,
+  SetLocalLibraryImportMode,
+  UnbindLinuxDoAccount,
+  UpdateAiConfig,
+  UpdateCommentStatus,
+  UpdateLogConfig,
+  UpdateSettings,
+  UpdateStorageSource,
+} from '../../wailsjs/go/main/App'
+import { config as wailsConfig, local_library, type services } from '../../wailsjs/go/models'
 import { version } from '../../package.json'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 import { getWindowAppearance, restartApplication, updateWindowStyle, type WindowAppearance, type WindowStyle } from '@/lib/window-appearance'
@@ -35,27 +63,37 @@ import { SelectDropdown } from '@/components/ui/SelectDropdown'
 type Tab = 'site' | 'appearance' | 'storage' | 'local-library' | 'comments' | 'account' | 'ai' | 'log' | 'cache' | 'about'
 type CommentsSubTab = 'manage' | 'config'
 
+const OFFLINE_SETTINGS_TABS = new Set<Tab>(['appearance', 'local-library', 'ai', 'log', 'cache', 'about'])
+
 export function SettingsPage() {
+  const { isAuthenticated } = useAuth()
   const { language } = usePreferences()
-  const [tab, setTab] = useState<Tab>('site')
+  const [tab, setTab] = useState<Tab>(() => isAuthenticated ? 'site' : 'appearance')
   const [config, setConfig] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const activeTab = isAuthenticated || OFFLINE_SETTINGS_TABS.has(tab) ? tab : 'appearance'
 
   const fetchSettings = useCallback(async () => {
+    if (!isAuthenticated) {
+      setConfig({})
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      const result = await (window as any).go.main.App.GetSettings()
+      const result = await GetSettings()
       setConfig(result || {})
     } catch (err) {
       console.error('获取设置失败:', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isAuthenticated])
 
-  useEffect(() => { fetchSettings() }, [fetchSettings])
+  useEffect(() => { void fetchSettings() }, [fetchSettings])
 
   const updateConfig = (key: string, value: string) => {
     setConfig(prev => ({ ...prev, [key]: value }))
@@ -63,9 +101,10 @@ export function SettingsPage() {
   }
 
   const handleSave = async () => {
+    if (!isAuthenticated) return
     setSaving(true)
     try {
-      const result = await (window as any).go.main.App.UpdateSettings(config)
+      const result = await UpdateSettings(config)
       setConfig(result || {})
       setDirty(false)
       toast.success('设置已保存')
@@ -76,7 +115,7 @@ export function SettingsPage() {
     }
   }
 
-  const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
+  const tabs = ([
     { key: 'site', label: '站点', icon: Server },
     { key: 'appearance', label: '外观', icon: Palette },
     { key: 'storage', label: '存储', icon: HardDrive },
@@ -87,10 +126,10 @@ export function SettingsPage() {
     { key: 'log', label: '日志', icon: FileText },
     { key: 'cache', label: '缓存', icon: Database },
     { key: 'about', label: '关于', icon: Info },
-  ]
+  ] satisfies { key: Tab; label: string; icon: typeof Settings }[]).filter(({ key }) => isAuthenticated || OFFLINE_SETTINGS_TABS.has(key))
 
   // site 与 comments/config 标签有保存按钮（其他标签要么只读要么有独立保存）
-  const showSaveButton = tab === 'comments' || tab === 'site'
+  const showSaveButton = isAuthenticated && (activeTab === 'comments' || activeTab === 'site')
 
   return (
     <>
@@ -114,8 +153,8 @@ export function SettingsPage() {
               <button key={key} onClick={() => setTab(key)}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-secondary"
                 style={{
-                  backgroundColor: tab === key ? 'var(--accent)' : 'transparent',
-                  color: tab === key ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
+                  backgroundColor: activeTab === key ? 'var(--accent)' : 'transparent',
+                  color: activeTab === key ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
                 }}>
                 <Icon size={16} />
                 {label}
@@ -126,7 +165,7 @@ export function SettingsPage() {
         </div>
 
         {/* 右侧内容 */}
-        <div className={tab === 'ai' || tab === 'cache' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-auto p-6'}>
+        <div className={activeTab === 'ai' || activeTab === 'cache' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-auto p-6'}>
           {loading ? (
             <div className="max-w-2xl space-y-6">
               <Skeleton className="h-4 w-20" />
@@ -136,24 +175,24 @@ export function SettingsPage() {
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-9 w-full" />
             </div>
-          ) : tab === 'ai' ? (
+          ) : activeTab === 'ai' ? (
             <div className="h-full min-h-0">
               <AiTab />
             </div>
-          ) : tab === 'cache' ? (
+          ) : activeTab === 'cache' ? (
             <div className="h-full min-h-0">
               <CacheTab />
             </div>
           ) : (
             <div className="max-w-2xl">
-              {tab === 'site' && <SiteTab config={config} updateConfig={updateConfig} />}
-              {tab === 'appearance' && <AppearanceTab />}
-              {tab === 'storage' && <StorageTab />}
-              {tab === 'local-library' && <LocalLibraryTab onManageCache={() => setTab('cache')} />}
-              {tab === 'comments' && <CommentsTab config={config} updateConfig={updateConfig} />}
-              {tab === 'account' && <AccountTab />}
-              {tab === 'log' && <LogTab />}
-              {tab === 'about' && <AboutTab />}
+              {activeTab === 'site' && <SiteTab config={config} updateConfig={updateConfig} />}
+              {activeTab === 'appearance' && <AppearanceTab />}
+              {activeTab === 'storage' && <StorageTab />}
+              {activeTab === 'local-library' && <LocalLibraryTab onManageCache={() => setTab('cache')} />}
+              {activeTab === 'comments' && <CommentsTab config={config} updateConfig={updateConfig} />}
+              {activeTab === 'account' && <AccountTab />}
+              {activeTab === 'log' && <LogTab />}
+              {activeTab === 'about' && <AboutTab />}
             </div>
           )}
         </div>
@@ -542,7 +581,7 @@ function StorageTab() {
   const fetchSources = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await (window as any).go.main.App.GetStorageSources()
+      const result = await GetStorageSources()
       setSources(result || [])
     } catch {} finally { setLoading(false) }
   }, [])
@@ -552,12 +591,12 @@ function StorageTab() {
   const confirmDelete = async () => {
     if (!deleteTarget) return
     try {
-      await (window as any).go.main.App.DeleteStorageSource(deleteTarget.id)
+      await DeleteStorageSource(deleteTarget.id)
       toast.success('已删除')
       setDeleteTarget(null)
       fetchSources()
-    } catch (err: any) {
-      toast.error(err?.message || '删除失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '删除失败')
     }
   }
 
@@ -706,15 +745,15 @@ function StorageSourceForm({ source, type, onCancel, onSaved }: {
     setSaving(true)
     try {
       if (source?.id) {
-        await (window as any).go.main.App.UpdateStorageSource(source.id, form)
+        await UpdateStorageSource(source.id, form)
         toast.success('已更新')
       } else {
-        await (window as any).go.main.App.CreateStorageSource(form)
+        await CreateStorageSource(form)
         toast.success('已创建')
       }
       onSaved()
-    } catch (err: any) {
-      toast.error(err?.message || '保存失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '保存失败')
     } finally {
       setSaving(false)
     }
@@ -915,18 +954,18 @@ function CommentsTab({ config, updateConfig }: {
 
 function CommentsManageTab() {
   const { language } = usePreferences()
-  const [comments, setComments] = useState<any[]>([])
+  const [comments, setComments] = useState<services.CommentDTO[]>([])
   const [loading, setLoading] = useState(false)
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<services.CommentDTO | null>(null)
 
   const fetchComments = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await (window as any).go.main.App.GetComments({
-        status: statusFilter, page, limit: 20,
+      const result = await GetComments({
+        status: statusFilter, photoId: '', page, limit: 20,
       })
       setComments(result?.data || [])
       setTotal(result?.meta?.total || 0)
@@ -937,7 +976,7 @@ function CommentsManageTab() {
 
   const updateStatus = async (id: string, status: string) => {
     try {
-      await (window as any).go.main.App.UpdateCommentStatus(id, status)
+      await UpdateCommentStatus(id, status)
       fetchComments()
     } catch {}
   }
@@ -945,7 +984,7 @@ function CommentsManageTab() {
   const deleteComment = async () => {
     if (!deleteTarget) return
     try {
-      await (window as any).go.main.App.DeleteComment(deleteTarget.id)
+      await DeleteComment(deleteTarget.id)
       setDeleteTarget(null)
       fetchComments()
     } catch {}
@@ -1124,7 +1163,7 @@ function CommentsConfigTab({ config, updateConfig }: {
 function AccountTab() {
   const { language } = usePreferences()
   const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
-  const [linuxDoBinding, setLinuxDoBinding] = useState<any>(null)
+  const [linuxDoBinding, setLinuxDoBinding] = useState<services.LinuxDoBindingDTO | null>(null)
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState(false)
@@ -1132,16 +1171,16 @@ function AccountTab() {
   const loadLinuxDoStatus = async () => {
     setLinuxDoLoading(true)
     try {
-      const enabled = await (window as any).go.main.App.IsLinuxDoEnabled()
+      const enabled = await IsLinuxDoEnabled()
       setLinuxDoEnabled(enabled)
       if (enabled) {
-        const binding = await (window as any).go.main.App.GetLinuxDoBinding()
+        const binding = await GetLinuxDoBinding()
         setLinuxDoBinding(binding)
       } else {
         setLinuxDoBinding(null)
       }
-    } catch (err: any) {
-      toast.error('加载 Linux DO 状态失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      toast.error('加载 Linux DO 状态失败: ' + getErrorMessage(err))
     } finally {
       setLinuxDoLoading(false)
     }
@@ -1152,26 +1191,26 @@ function AccountTab() {
   const handleLinuxDoBind = async () => {
     try {
       setLinuxDoBindLoading(true)
-      const { url, state } = await (window as any).go.main.App.GetLinuxDoAuthUrl()
+      const { url, state } = await GetLinuxDoAuthUrl()
       // 保存 state 和当前路径到 sessionStorage
       sessionStorage.setItem('linuxdo_oauth_state', state)
       sessionStorage.setItem('linuxdo_redirect', window.location.pathname)
       // 跳转到 Linux DO 授权页
       window.location.href = url
-    } catch (err: any) {
-      toast.error('获取授权 URL 失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      toast.error('获取授权 URL 失败: ' + getErrorMessage(err))
       setLinuxDoBindLoading(false)
     }
   }
 
   const handleLinuxDoUnbind = async () => {
     try {
-      await (window as any).go.main.App.UnbindLinuxDoAccount()
+      await UnbindLinuxDoAccount()
       toast.success('已解绑 Linux DO 账户')
       setDeleteDialog(false)
       loadLinuxDoStatus()
-    } catch (err: any) {
-      toast.error('解绑失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      toast.error('解绑失败: ' + getErrorMessage(err))
     }
   }
 
@@ -2698,45 +2737,48 @@ const LOG_LEVEL_COLORS: Record<string, { bg: string; text: string }> = {
   error: { bg: 'color-mix(in srgb, var(--destructive) 12%, transparent)', text: 'var(--destructive)' },
 }
 
+interface LogStats {
+  total?: number
+  enabled?: boolean
+  by_category?: Record<string, number>
+}
+
 function LogTab() {
   const { language } = usePreferences()
   const [logConfig, setLogConfig] = useState({ enabled: false, max_entries: 1000 })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [logs, setLogs] = useState<any[]>([])
+  const [logs, setLogs] = useState<services.LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<LogStats | null>(null)
   const [clearLogsDialog, setClearLogsDialog] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    try {
-      const result = (window as any).go?.main?.App?.GetLogConfig?.()
-      if (result && typeof result.then === 'function') {
-        result.then((r: any) => { if (r) setLogConfig(r) }).finally(() => setLoading(false))
-      } else if (result) {
-        setLogConfig(result)
-        setLoading(false)
-      } else {
-        setLoading(false)
-      }
-    } catch { setLoading(false) }
+    void GetLogConfig()
+      .then((result) => {
+        setLogConfig({
+          enabled: Boolean(result.enabled),
+          max_entries: Number(result.max_entries ?? 1000),
+        })
+      })
+      .finally(() => setLoading(false))
   }, [])
 
   const fetchLogs = useCallback(async () => {
     setLogsLoading(true)
     try {
-      const result = await (window as any).go.main.App.GetLogs(categoryFilter, levelFilter, 200)
+      const result = await GetLogs(categoryFilter, levelFilter, 200)
       setLogs(result || [])
     } catch {} finally { setLogsLoading(false) }
   }, [categoryFilter, levelFilter])
 
   const fetchStats = useCallback(async () => {
     try {
-      const result = await (window as any).go.main.App.GetLogStats()
-      setStats(result)
+      const result = await GetLogStats()
+      setStats(result as LogStats)
     } catch {}
   }, [])
 
@@ -2745,16 +2787,16 @@ function LogTab() {
   const handleSaveConfig = async () => {
     setSaving(true)
     try {
-      await (window as any).go.main.App.UpdateLogConfig(logConfig)
+      await UpdateLogConfig(logConfig)
       toast.success('日志配置已保存')
-    } catch (err: any) {
-      toast.error('保存失败: ' + (err?.message || '未知错误'))
+    } catch (err: unknown) {
+      toast.error('保存失败: ' + getErrorMessage(err))
     } finally { setSaving(false) }
   }
 
   const handleClearLogs = async () => {
     try {
-      await (window as any).go.main.App.ClearLogs()
+      await ClearLogs()
       toast.success('日志已清空')
       setClearLogsDialog(false)
       fetchLogs()
@@ -2849,7 +2891,7 @@ function LogTab() {
             className="w-36"
           />
           <div className="flex-1" />
-          <button onClick={() => (window as any).go.main.App.OpenLogDir()}
+          <button onClick={() => void OpenLogDir()}
             className={btnOutline}>
             <FolderOpen size={12} />
             打开目录

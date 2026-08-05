@@ -2,17 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  createPositioner,
   useContainerPosition,
   useMasonry,
+  usePositioner,
   useResizeObserver,
   useScroller,
-  type Positioner,
   type RenderComponentProps,
 } from 'masonic'
 
 import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
-import { MASONRY_CAPTION_HEIGHT, masonryImageHeight, photoAspectRatio } from './masonry-metrics'
+import { masonryImageHeight } from './masonry-metrics'
 import { PhotoCard } from './PhotoCard'
 import { useResponsiveColumnCount } from './useResponsiveColumnCount'
 
@@ -47,13 +46,6 @@ interface LoadingMasonryItem {
   aspectRatio: number
 }
 
-interface PositionerCache {
-  signature: string
-  positioner: Positioner
-  heights: number[]
-  keys: string[]
-}
-
 type MasonryItem = PhotoDto | LoadingMasonryItem
 
 function isLoadingItem(item: MasonryItem): item is LoadingMasonryItem {
@@ -66,12 +58,6 @@ function getItemKey(item: MasonryItem) {
 
 function getLoadingItemKey(index: number) {
   return `gallery-loading-${index}`
-}
-
-function computeItemHeight(item: MasonryItem, columnWidth: number, immersive: boolean) {
-  const aspectRatio = isLoadingItem(item) ? item.aspectRatio : photoAspectRatio(item)
-  const imageHeight = masonryImageHeight(columnWidth, aspectRatio)
-  return immersive ? imageHeight : imageHeight + MASONRY_CAPTION_HEIGHT
 }
 
 function useWindowSize(): [number, number] {
@@ -143,7 +129,6 @@ export function MasonryView({
 
   const [windowWidth, windowHeight] = useWindowSize()
   const containerRef = useRef<HTMLElement | null>(null)
-  const positionerCacheRef = useRef<PositionerCache | null>(null)
   const { offset, width } = useContainerPosition(containerRef, [windowWidth, windowHeight])
   const { scrollTop, isScrolling } = useScroller(offset, SCROLL_FPS)
 
@@ -164,80 +149,13 @@ export function MasonryView({
     Math.floor((width - columnGutter * (columnCount - 1)) / columnCount),
   )
 
-  // Every item height is known up front (photo dimensions or placeholder ratio),
-  // so the positioner can be seeded before masonic renders. Keep the same
-  // positioner across pagination appends; otherwise replacing a loading page
-  // rebuilds every cached position and causes the visible masonry grid to flash.
-  const positioner = useMemo(() => {
-    const signature = `${columnCount}:${columnWidth}:${columnGutter}:${rowGutter}:${immersive}`
-    const cache = positionerCacheRef.current
-
-    let shouldReset =
-      width <= 0 ||
-      !cache ||
-      cache.signature !== signature ||
-      items.length < cache.keys.length
-
-    if (!shouldReset && cache) {
-      for (let index = 0; index < cache.keys.length; index++) {
-        const previousKey = cache.keys[index]
-        const nextItem = items[index]
-        const nextKey = nextItem ? getItemKey(nextItem) : undefined
-
-        if (previousKey !== nextKey && previousKey !== getLoadingItemKey(index)) {
-          shouldReset = true
-          break
-        }
-      }
-    }
-
-    if (shouldReset || !cache) {
-      const next = createPositioner(columnCount, columnWidth, columnGutter, rowGutter)
-      const heights: number[] = []
-      const keys: string[] = []
-
-      if (width > 0) {
-        for (let index = 0; index < items.length; index++) {
-          const height = computeItemHeight(items[index], columnWidth, immersive)
-          next.set(index, height)
-          heights[index] = height
-          keys[index] = getItemKey(items[index])
-        }
-      }
-
-      positionerCacheRef.current = { signature, positioner: next, heights, keys }
-      return next
-    }
-
-    const updates: number[] = []
-    const seededItems = cache.positioner.size()
-    const existingItems = Math.min(seededItems, items.length)
-
-    for (let index = 0; index < existingItems; index++) {
-      const height = computeItemHeight(items[index], columnWidth, immersive)
-      const key = getItemKey(items[index])
-
-      if (cache.heights[index] !== height) {
-        updates.push(index, height)
-        cache.heights[index] = height
-      }
-
-      cache.keys[index] = key
-    }
-
-    if (updates.length > 0) {
-      cache.positioner.update(updates)
-    }
-
-    for (let index = seededItems; index < items.length; index++) {
-      const height = computeItemHeight(items[index], columnWidth, immersive)
-      cache.positioner.set(index, height)
-      cache.heights[index] = height
-      cache.keys[index] = getItemKey(items[index])
-    }
-
-    return cache.positioner
-  }, [columnCount, columnGutter, columnWidth, immersive, items, rowGutter, width])
+  const positioner = usePositioner({
+    width,
+    columnWidth,
+    columnGutter,
+    rowGutter,
+    columnCount,
+  }, [immersive])
 
   const resizeObserver = useResizeObserver(positioner)
 

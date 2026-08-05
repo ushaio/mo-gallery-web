@@ -67,6 +67,7 @@ type Manager struct {
 	folderMutationMu    sync.Mutex
 	assetFileMutationMu sync.RWMutex
 	backupMu            sync.Mutex
+	restoreMu           sync.Mutex
 	queryTokenMu        sync.Mutex
 	queryTokens         map[string]queryTokenRecord
 }
@@ -125,6 +126,12 @@ func (m *Manager) RecentLibraries() ([]RecentLibrary, error) { return m.registry
 func (m *Manager) RemoveRecent(path string) error            { return m.registry.Remove(path) }
 
 func (m *Manager) RestoreLastLibrary() (LibrarySnapshot, bool, error) {
+	// Concurrent entry-state calls (e.g. React StrictMode double effects) must not
+	// both attempt Open: the second one would fail on the library lock held by the
+	// first and report "no library". Serialize so late callers hit the Snapshot
+	// fast path below once the first restore has activated the session.
+	m.restoreMu.Lock()
+	defer m.restoreMu.Unlock()
 	if snapshot, err := m.Snapshot(); err == nil {
 		return snapshot, true, nil
 	}

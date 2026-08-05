@@ -8,6 +8,18 @@ import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import type { UploadTask } from '@/contexts/UploadQueueContext'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
+import {
+  CheckDuplicates,
+  GetAlbums,
+  GetFileThumbnail,
+  GetFilmRolls,
+  GetStorageSources,
+  GetStories,
+  PrepareLocalAssetUpload,
+  PrepareUpload,
+  SelectFiles,
+} from '../../wailsjs/go/main/App'
+import type { services, types as wailsTypes } from '../../wailsjs/go/models'
 import { toast } from 'sonner'
 import {
   Upload, X, CheckCircle, AlertCircle, Loader2, FileImage,
@@ -147,10 +159,10 @@ export function UploadPage() {
   }, [])
 
   // 关联数据
-  const [albums, setAlbums] = useState<any[]>([])
-  const [stories, setStories] = useState<any[]>([])
-  const [filmRolls, setFilmRolls] = useState<any[]>([])
-  const [storageSources, setStorageSources] = useState<any[]>([])
+  const [albums, setAlbums] = useState<services.AlbumDTO[]>([])
+  const [stories, setStories] = useState<services.StoryDTO[]>([])
+  const [filmRolls, setFilmRolls] = useState<services.FilmRollDTO[]>([])
+  const [storageSources, setStorageSources] = useState<wailsTypes.StorageSourceDTO[]>([])
 
   // 点击外部关闭下拉框
   useEffect(() => {
@@ -167,19 +179,19 @@ export function UploadPage() {
     (async () => {
       const failed: string[] = []
       try {
-        const r = await loadPersistentResource<any[]>('albums', () => (window as any).go.main.App.GetAlbums())
+        const r = await loadPersistentResource<services.AlbumDTO[]>('albums', GetAlbums)
         setAlbums(r || [])
       } catch { failed.push('相册') }
       try {
-        const r = await loadPersistentResource<any[]>('stories', () => (window as any).go.main.App.GetStories())
+        const r = await loadPersistentResource<services.StoryDTO[]>('stories', GetStories)
         setStories(r || [])
       } catch { failed.push('故事') }
       try {
-        const r = await loadPersistentResource<any[]>('film-rolls', () => (window as any).go.main.App.GetFilmRolls())
+        const r = await loadPersistentResource<services.FilmRollDTO[]>('film-rolls', GetFilmRolls)
         setFilmRolls(r || [])
       } catch { failed.push('胶卷') }
       try {
-        const r = await (window as any).go.main.App.GetStorageSources()
+        const r = await GetStorageSources()
         const sources = r || []
         setStorageSources(sources)
         // 自动选中第一个存储源
@@ -200,7 +212,7 @@ export function UploadPage() {
     if (!files || files.length === 0) return
     const paths: string[] = []
     for (let i = 0; i < files.length; i++) {
-      const f = files[i] as any
+      const f = files[i] as File & { path?: string }
       if (f.path) paths.push(f.path)
     }
     if (paths.length === 0) {
@@ -212,7 +224,7 @@ export function UploadPage() {
 
   const handleFileDialog = useCallback(async () => {
     try {
-      const paths: string[] = await (window as any).go.main.App.SelectFiles()
+      const paths = await SelectFiles()
       if (paths && paths.length > 0) {
         await processFiles(paths)
       }
@@ -223,10 +235,10 @@ export function UploadPage() {
 
   const appendPreparedFiles = async (prepared: PreparedFile[]) => {
     const hashes = prepared.filter(f => f.hash).map(f => f.hash)
-    let duplicates: Record<string, any> = {}
+    let duplicates: Record<string, services.DuplicateInfo> = {}
     if (hashes.length > 0) {
       try {
-        const dupResult = await (window as any).go.main.App.CheckDuplicates(hashes)
+        const dupResult = await CheckDuplicates(hashes)
         duplicates = dupResult?.duplicates || {}
       } catch {}
     }
@@ -242,7 +254,7 @@ export function UploadPage() {
   const processFiles = async (paths: string[]) => {
     setPreparing(true)
     try {
-      const prepared: PreparedFile[] = await (window as any).go.main.App.PrepareUpload(paths)
+      const prepared: PreparedFile[] = await PrepareUpload(paths)
       await appendPreparedFiles(prepared)
     } catch (err: unknown) {
       console.error('预处理失败:', err)
@@ -255,7 +267,7 @@ export function UploadPage() {
   const processLocalAssets = async (assetIds: string[]) => {
     setPreparing(true)
     try {
-      const prepared: PreparedFile[] = await (window as any).go.main.App.PrepareLocalAssetUpload(assetIds)
+      const prepared: PreparedFile[] = await PrepareLocalAssetUpload(assetIds)
       await appendPreparedFiles(prepared)
     } catch (err: unknown) {
       console.error('本地资源预处理失败:', err)
@@ -694,7 +706,7 @@ function PreviewModal({ filePath, fileName, onClose }: { filePath: string; fileN
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    ;(window as any).go.main.App.GetFileThumbnail(filePath)
+    void GetFileThumbnail(filePath)
       .then((dataUrl: string) => { if (!cancelled) { setSrc(dataUrl); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -745,7 +757,7 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
 
   useEffect(() => {
     let cancelled = false
-    ;(window as any).go.main.App.GetFileThumbnail(item.file.filePath)
+    void GetFileThumbnail(item.file.filePath)
       .then((dataUrl: string) => { if (!cancelled) setThumbnail(dataUrl) })
       .catch(() => {})
     return () => { cancelled = true }

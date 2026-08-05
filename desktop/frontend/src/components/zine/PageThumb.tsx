@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ImageOff } from 'lucide-react'
 
 import { getProjectSpreadSize } from '@/lib/zine/page-sizes'
@@ -12,11 +12,9 @@ interface PageThumbProps {
 }
 
 function PageThumbImage({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
 
-  useEffect(() => setFailed(false), [src])
-
-  if (failed) {
+  if (failedSrc === src) {
     return (
       <span className="flex h-full w-full items-center justify-center bg-zinc-200 text-zinc-400" aria-hidden>
         <ImageOff size={12} strokeWidth={1.5} />
@@ -24,7 +22,7 @@ function PageThumbImage({ src }: { src: string }) {
     )
   }
 
-  return <img src={src} alt="" className="h-full w-full object-cover" draggable={false} loading="lazy" onError={() => setFailed(true)} />
+  return <img src={src} alt="" className="h-full w-full object-cover" draggable={false} loading="lazy" onError={() => setFailedSrc(src)} />
 }
 
 export function PageThumb({ project, spread, width = 128 }: PageThumbProps) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Check, Filter, X } from 'lucide-react'
 import type { AssetStructuredFilters } from './types'
@@ -48,9 +48,10 @@ function toggleValue(values: string[] | undefined, value: string) {
 }
 
 function TextListInput({ value, placeholder, onCommit }: { value?: string[], placeholder: string, onCommit: (value: string[] | undefined) => void }) {
-  const [text, setText] = useState((value ?? []).join(', '))
-  useEffect(() => setText((value ?? []).join(', ')), [value])
-  return <input value={text} placeholder={placeholder} onChange={(event) => setText(event.target.value)} onBlur={() => {
+  const initialText = (value ?? []).join(', ')
+  const [draft, setDraft] = useState({ initialText, text: initialText })
+  const text = draft.initialText === initialText ? draft.text : initialText
+  return <input value={text} placeholder={placeholder} onChange={(event) => setDraft({ initialText, text: event.target.value })} onBlur={() => {
     const next = [...new Set(text.split(/[,?]/).map((item) => item.trim()).filter(Boolean))]
     onCommit(next.length ? next : undefined)
   }} className="h-8 w-full rounded-md border bg-input px-2 text-xs outline-none focus:ring-1" />
@@ -80,7 +81,7 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
     onChange(next)
   }
 
-  const chips = useMemo(() => {
+  const chips = (() => {
     const result: Array<{ key: string, label: string, remove: () => void }> = []
     const range = (key: string, label: string, minKey: FilterKey, maxKey: FilterKey, suffix = '') => {
       const min = filters[minKey] as number | undefined
@@ -96,7 +97,7 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
     if (filters.cameraModels?.length) result.push({ key: 'model', label: `${copy.filterCameraModel}: ${filters.cameraModels.join('/')}`, remove: () => update('cameraModels', undefined) })
     if (filters.lensModels?.length) result.push({ key: 'lens', label: `${copy.filterLens}: ${filters.lensModels.join('/')}`, remove: () => update('lensModels', undefined) })
     return result
-  }, [copy, filters]) // callback closures intentionally track current filters
+  })()
 
   return (
     <>

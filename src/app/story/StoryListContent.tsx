@@ -12,7 +12,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { buildStoryPreviewText } from '@/lib/story-rich-content'
 import { getStoryCoverImageStyle } from '@/lib/story-cover'
 
-const STORY_GRID_CLASSNAME = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-10 pl-4 md:pl-8'
+const STORY_GRID_CLASSNAME = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-8 pl-4 md:pl-8'
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 type StoryCardViewModel = StoryDto & {
@@ -38,7 +38,8 @@ type StoryYearGroup = {
 }
 
 function getStoryLayout(index: number) {
-  const isWide = index % 7 === 0 || index % 7 === 6
+  // ponytail: wide card moved off index 0 so the first viewport shows multiple stories instead of one full-width banner
+  const isWide = index % 7 === 3
   const isTall = index % 5 === 2
 
   return {
@@ -117,10 +118,10 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
   }, [settings?.cdn_domain, stories])
 
   return (
-    <div className="min-h-screen bg-background text-foreground pt-24 pb-16">
+    <div className="min-h-screen bg-background text-foreground pt-20 pb-16">
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
-          <header className="relative mb-12 md:mb-16">
+          <header className="relative mb-8 md:mb-10">
             <div className="flex flex-col gap-8">
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-3">
@@ -130,7 +131,7 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
                       Journal
                     </span>
                   </div>
-                  <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif font-light tracking-tight text-balance">
+                  <h1 className="text-3xl md:text-4xl lg:text-5xl font-serif font-light tracking-tight text-balance">
                     {t('nav.story')}
                   </h1>
                 </div>
@@ -160,7 +161,7 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
               <p className="text-muted-foreground font-serif italic text-sm">{t('story.empty') || 'No stories found yet.'}</p>
             </div>
           ) : (
-            <div className="space-y-16">
+            <div className="space-y-12">
               {storyTimeline.map(({ year, months }) => (
                 <section key={year} className="relative">
                   <motion.div
@@ -171,14 +172,14 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
                     transition={{ duration: 0.2 }}
                   >
                     <div className="flex items-center gap-4">
-                      <span className="text-4xl md:text-5xl font-mono font-black tracking-tighter text-foreground/10">
+                      <span className="text-3xl md:text-4xl font-mono font-black tracking-tighter text-foreground/10">
                         {year}
                       </span>
                       <div className="h-px flex-1 bg-border/30" />
                     </div>
                   </motion.div>
 
-                  <div className="space-y-12 mt-6">
+                  <div className="space-y-10 mt-4">
                     {months.map(({ key, label, stories: monthStories }) => (
                       <div key={key} className="relative">
                         <motion.div
@@ -201,7 +202,7 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
                           </div>
                         </motion.div>
 
-                        <div className={`${STORY_GRID_CLASSNAME} mt-8`} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 400px' }}>
+                        <div className={`${STORY_GRID_CLASSNAME} mt-6`} style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 400px' }}>
                           {monthStories.map((story) => (
                             <motion.div
                               key={story.id}
@@ -213,7 +214,7 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
                             >
                               <Link href={`/story/${story.id}`} className="block h-full">
                                 <div className="flex flex-col h-full">
-                                  <div className={`relative overflow-hidden bg-muted mb-5 group-hover:shadow-2xl transition-shadow duration-200 ease-out ${story.aspectClassName}`}>
+                                  <div className={`relative overflow-hidden bg-muted mb-4 group-hover:shadow-2xl transition-shadow duration-200 ease-out ${story.aspectClassName}`}>
                                     {story.coverUrl ? (
                                       <motion.div
                                         className="w-full h-full"
@@ -248,7 +249,7 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
 
                                   <div className="flex flex-col flex-1 min-h-0 relative px-1">
                                     <div className="flex items-start justify-between gap-4 mb-3">
-                                      <h3 className="text-2xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300 text-balance">
+                                      <h3 className="text-xl font-serif font-light tracking-tight leading-none group-hover:text-primary transition-colors duration-300 text-balance">
                                         {story.title}
                                       </h3>
                                       <div className="flex items-center gap-2 text-muted-foreground/40 mt-2.5 flex-shrink-0 text-[10px] font-mono tracking-widest uppercase">

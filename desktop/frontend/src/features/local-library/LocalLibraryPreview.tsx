@@ -22,7 +22,11 @@ function formatBytes(value: number) {
   return `${(value / 1024 ** 3).toFixed(2)} GB`
 }
 
-export function LocalLibraryPreview({ asset, copy, onClose, onOpenSystem, onPrevious, onNext, hasPrevious = false, hasNext = false }: Props) {
+export function LocalLibraryPreview(props: Props) {
+  return <LocalLibraryPreviewContent key={props.asset.id} {...props} />
+}
+
+function LocalLibraryPreviewContent({ asset, copy, onClose, onOpenSystem, onPrevious, onNext, hasPrevious = false, hasNext = false }: Props) {
   const [original, setOriginal] = useState(false)
   const [fitToWindow, setFitToWindow] = useState(true)
   const [zoom, setZoom] = useState(1)
@@ -59,17 +63,6 @@ export function LocalLibraryPreview({ asset, copy, onClose, onOpenSystem, onPrev
     setOffset({ x: 0, y: 0 })
     setZoom(1)
   }
-
-  useEffect(() => {
-    setOffset({ x: 0, y: 0 })
-    setZoom(1)
-    setOriginal(false)
-    setFitToWindow(true)
-    setOriginalFailed(false)
-    setOriginalLoading(false)
-    setOriginalRetry(0)
-    setPreviewFailed(false)
-  }, [asset.id])
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {

@@ -1,8 +1,23 @@
+import type { Metadata } from 'next'
 import { queryPhotosWithMeta, queryCategories } from '~/server/lib/queries'
 import { GalleryContent } from './GalleryContent'
 import type { GalleryView } from '@/components/gallery/GalleryHeader'
 
 const PAGE_SIZE = 40
+
+const description = 'Explore original photography organized by category, album, and visual theme.'
+
+export const metadata: Metadata = {
+  title: 'Photography Gallery',
+  description,
+  alternates: { canonical: '/gallery' },
+  openGraph: {
+    title: 'Photography Gallery',
+    description,
+    url: '/gallery',
+    type: 'website',
+  },
+}
 
 interface GalleryPageProps {
   searchParams: Promise<{ view?: string; photoId?: string }>

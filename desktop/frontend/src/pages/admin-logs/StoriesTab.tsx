@@ -33,6 +33,15 @@ import { useStoryDraftState } from './stories/useStoryDraftState'
 import { useStoryEditorActions } from './stories/useStoryEditorActions'
 import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
 import { applySavedOrder, savePhotoOrder } from './stories/utils'
+import {
+  CreateStory,
+  DeleteStory,
+  GetAllPhotos,
+  GetStories,
+  ReorderStoryPhotos,
+  UpdateStory,
+} from '../../../wailsjs/go/main/App'
+import type { services } from '../../../wailsjs/go/models'
 
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
@@ -84,7 +93,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const loadStories = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await (window as any).go.main.App.GetStories()
+      const data = await GetStories() as unknown as StoryDto[]
       setStories(applySavedOrder(data || []))
     } catch (error) {
       console.error('Failed to load stories:', error)
@@ -96,7 +105,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const loadAllPhotos = useCallback(async () => {
     try {
-      const data = await (window as any).go.main.App.GetAllPhotos()
+      const data = await GetAllPhotos() as unknown as PhotoDto[]
       setAllPhotos(data || [])
     } catch (error) {
       console.error('Failed to load photos:', error)
@@ -151,7 +160,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
       if (isNew) {
-        await (window as any).go.main.App.CreateStory({
+        await CreateStory({
           title: currentStory.title,
           content: currentStory.content,
           contentJson: currentStory.contentJson ?? null,
@@ -160,10 +169,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           coverPhotoId: currentStory.coverPhotoId,
           coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
-        })
+        } as unknown as services.CreateStoryParams)
         notify(t('story.created'), 'success')
       } else {
-        await (window as any).go.main.App.UpdateStory(currentStory.id, {
+        await UpdateStory(currentStory.id, {
           title: currentStory.title,
           content: currentStory.content,
           contentJson: currentStory.contentJson ?? null,
@@ -171,9 +180,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           coverPhotoId: currentStory.coverPhotoId ?? null,
           coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
-        })
+        } as unknown as services.UpdateStoryParams)
         if (photoIds.length > 0) {
-          await (window as any).go.main.App.ReorderStoryPhotos(currentStory.id, photoIds)
+          await ReorderStoryPhotos(currentStory.id, photoIds)
         }
         savePhotoOrder(currentStory.id, photoIds)
         notify(t('story.updated'), 'success')
@@ -409,7 +418,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const handleTogglePublish = useCallback(async (story: StoryDto) => {
     try {
-      await (window as any).go.main.App.UpdateStory(story.id, { isPublished: !story.isPublished })
+      await UpdateStory(story.id, { isPublished: !story.isPublished } as unknown as services.UpdateStoryParams)
       notify(story.isPublished ? t('story.unpublished') : t('story.published'), 'success')
       await loadStories()
     } catch (error) {
@@ -422,7 +431,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     if (!deleteStoryId) return
 
     try {
-      await (window as any).go.main.App.DeleteStory(deleteStoryId)
+      await DeleteStory(deleteStoryId)
       notify(t('story.deleted'), 'success')
       await loadStories()
     } catch (error) {

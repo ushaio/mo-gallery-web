@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    ".tmp-*",
     // Desktop (Wails) 前端构建产物与生成代码
     "desktop/frontend/dist/**",
     "desktop/frontend/wailsjs/**",

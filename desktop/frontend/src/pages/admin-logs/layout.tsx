@@ -7,6 +7,7 @@
 import React, { createContext, useContext, useCallback, useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { GetCategories, GetSettings } from '../../../wailsjs/go/main/App'
 
 interface AdminContextType {
   handleUnauthorized: () => void
@@ -41,17 +42,17 @@ export function AdminLogsProvider({ children }: { children: React.ReactNode }) {
 
   const handleUnauthorized = useCallback(() => {
     logout()
-    navigate('/login')
+    navigate('/library?source=local', { replace: true })
   }, [logout, navigate])
 
   useEffect(() => {
     ;(async () => {
       try {
-        const s = await (window as any).go.main.App.GetSettings()
+        const s = await GetSettings()
         setSettings(s || {})
       } catch {}
       try {
-        const c = await (window as any).go.main.App.GetCategories()
+        const c = await GetCategories()
         setCategories(c || [])
       } catch {}
     })()

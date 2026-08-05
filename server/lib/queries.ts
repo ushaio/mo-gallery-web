@@ -126,6 +126,27 @@ export async function queryCategories(): Promise<string[]> {
   return categories.map((c) => c.name)
 }
 
+export const queryAlbumMetadata = cache(async (id: string) => {
+  return db.album.findFirst({
+    where: { id, isPublished: true },
+    select: {
+      name: true,
+      description: true,
+      coverUrl: true,
+    },
+  })
+})
+
+export async function querySitemapContent() {
+  const select = { id: true, updatedAt: true } as const
+  const [albums, blogs, stories] = await Promise.all([
+    db.album.findMany({ where: { isPublished: true }, select }),
+    db.blog.findMany({ where: { isPublished: true }, select }),
+    db.story.findMany({ where: { isPublished: true }, select }),
+  ])
+  return { albums, blogs, stories }
+}
+
 // ---------------------------------------------------------------------------
 // Blog queries
 // ---------------------------------------------------------------------------

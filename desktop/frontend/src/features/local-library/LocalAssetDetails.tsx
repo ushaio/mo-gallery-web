@@ -50,29 +50,21 @@ function SectionLabel({ label }: { label: string }) {
   )
 }
 
-export function LocalAssetDetails({ asset, copy, saving, maintenanceBusy, tags, collections, organizationBusy, onSave, onPreview, onOpenSystem, onMove, onDelete, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing, onSetTags, onCreateTag, onSetCollections }: Props) {
-  const [title, setTitle] = useState('')
-  const [notes, setNotes] = useState('')
-  const [rating, setRating] = useState(0)
-  const [color, setColor] = useState('')
-  const [favorite, setFavorite] = useState(false)
+export function LocalAssetDetails(props: Props) {
+  return <LocalAssetDetailsContent key={props.asset?.id ?? 'none'} {...props} />
+}
+
+function LocalAssetDetailsContent({ asset, copy, saving, maintenanceBusy, tags, collections, organizationBusy, onSave, onPreview, onOpenSystem, onMove, onDelete, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing, onSetTags, onCreateTag, onSetCollections }: Props) {
+  const [title, setTitle] = useState(asset?.displayTitle || '')
+  const [notes, setNotes] = useState(asset?.notes || '')
+  const [rating, setRating] = useState(asset?.rating || 0)
+  const [color, setColor] = useState(asset?.colorLabel || '')
+  const [favorite, setFavorite] = useState(Boolean(asset?.isFavorite))
   const [editingInfo, setEditingInfo] = useState(false)
   const [tagQuery, setTagQuery] = useState('')
   const [tagMenuOpen, setTagMenuOpen] = useState(false)
-  const [assignedTagIds, setAssignedTagIds] = useState<string[]>([])
+  const [assignedTagIds, setAssignedTagIds] = useState<string[]>(() => asset?.tags.map((tag) => tag.id) || [])
   const infoEditorRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    setTitle(asset?.displayTitle || '')
-    setNotes(asset?.notes || '')
-    setRating(asset?.rating || 0)
-    setColor(asset?.colorLabel || '')
-    setFavorite(Boolean(asset?.isFavorite))
-    setAssignedTagIds(asset?.tags.map((tag) => tag.id) || [])
-    setEditingInfo(false)
-    setTagQuery('')
-    setTagMenuOpen(false)
-  }, [asset?.id])
 
   const saveCurrent = useCallback((overrides: Partial<Pick<LocalAsset, 'displayTitle' | 'notes' | 'rating' | 'colorLabel' | 'isFavorite'>> = {}) => {
     if (!asset) return Promise.resolve()

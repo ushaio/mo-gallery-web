@@ -1,10 +1,20 @@
+import type { Metadata } from 'next'
 import { queryFeaturedPhotos, queryPhotosWithMeta } from '~/server/lib/queries'
 import type { PhotoDto } from '@/lib/api/types'
 import { CuratedContent } from './CuratedContent'
 
-export const metadata = {
-  title: '精选 | Curated',
-  description: '一组安静的影像——光线、阴影，以及二者之间的对话。',
+const description = 'A considered edit of featured photographs exploring light, shadow, and quiet moments.'
+
+export const metadata: Metadata = {
+  title: 'Curated Photography',
+  description,
+  alternates: { canonical: '/curated' },
+  openGraph: {
+    title: 'Curated Photography',
+    description,
+    url: '/curated',
+    type: 'website',
+  },
 }
 
 export default async function CuratedPage() {

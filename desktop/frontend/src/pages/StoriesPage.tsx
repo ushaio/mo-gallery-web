@@ -12,6 +12,18 @@ import {
   Plus, Trash2, Eye, EyeOff, FileText, X, ChevronLeft,
   Save, Loader2, ImagePlus, GripVertical, Calendar,
 } from 'lucide-react'
+import {
+  AddStoryPhoto,
+  CreateStory,
+  DeleteStory,
+  GetPhotos,
+  GetStories,
+  GetStory,
+  RemoveStoryPhoto,
+  UpdateStory,
+} from '../../wailsjs/go/main/App'
+import { getErrorMessage } from '@/lib/auth-errors'
+import type { services } from '../../wailsjs/go/models'
 
 type View = 'list' | 'edit'
 
@@ -25,11 +37,11 @@ export function StoriesPage() {
   const fetchStories = useCallback(async (force = false) => {
     setLoading(true)
     try {
-      const result = await loadPersistentResource<Story[]>('stories', () => (window as any).go.main.App.GetStories(), { force })
+      const result = await loadPersistentResource<Story[]>('stories', async () => await GetStories() as unknown as Story[], { force })
       setStories(result || [])
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('加载叙事失败:', err)
-      toast.error(err?.message || '加载叙事失败')
+      toast.error(getErrorMessage(err) || '加载叙事失败')
     } finally { setLoading(false) }
   }, [])
 
@@ -51,24 +63,24 @@ export function StoriesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除此故事吗？')) return
     try {
-      await (window as any).go.main.App.DeleteStory(id)
+      await DeleteStory(id)
       toast.success('已删除')
       await fetchStories(true)
       invalidateDesktopCache(['overview', 'photos'])
-    } catch (err: any) {
-      toast.error(err?.message || '删除失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '删除失败')
     }
   }
 
   // 切换发布状态
   const togglePublished = async (story: Story) => {
     try {
-      await (window as any).go.main.App.UpdateStory(story.id, { isPublished: !story.isPublished })
+      await UpdateStory(story.id, { isPublished: !story.isPublished } as unknown as services.UpdateStoryParams)
       toast.success(story.isPublished ? '已取消发布' : '已发布')
       await fetchStories(true)
       invalidateDesktopCache(['overview'])
-    } catch (err: any) {
-      toast.error(err?.message || '操作失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '操作失败')
     }
   }
 
@@ -194,7 +206,7 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
     if (story?.id) {
       (async () => {
         try {
-          const detail: Story = await (window as any).go.main.App.GetStory(story.id)
+          const detail = await GetStory(story.id) as unknown as Story
           if (!detail) throw new Error('Story detail is empty')
           setDetailLoadFailed(false)
           setTitle(detail.title || '')
@@ -222,28 +234,28 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
     setSaving(true)
     try {
       if (isNew) {
-        const result = await (window as any).go.main.App.CreateStory({
+        const result = await CreateStory({
           title: title.trim(),
           content,
           isPublished,
           photoIds: photos.map(p => p.id),
-        })
+        } as unknown as services.CreateStoryParams)
         toast.success('故事已创建')
         // 切换到编辑模式
         if (result?.id) {
           window.history.replaceState(null, '', `/stories`)
         }
       } else {
-        await (window as any).go.main.App.UpdateStory(story!.id, {
+        await UpdateStory(story!.id, {
           title: title.trim(),
           content,
           isPublished,
           storyDate: new Date(storyDate).toISOString(),
-        })
+        } as unknown as services.UpdateStoryParams)
         toast.success('已保存')
       }
-    } catch (err: any) {
-      toast.error(err?.message || '保存失败')
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err) || '保存失败')
     } finally {
       setSaving(false)
     }
@@ -255,12 +267,23 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
     const page = reset ? 1 : photoPage
     setLoadingPhotos(true)
     try {
-      const result = await (window as any).go.main.App.GetPhotos({
+      const result = await GetPhotos({
+        category: '',
+        albumId: '',
+        cameraId: '',
+        lensId: '',
         search: photoSearch,
+        photoType: undefined,
+        channel: undefined,
+        featured: undefined,
+        showFlag: undefined,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
         page,
         pageSize: 30,
-      })
-      const newPhotos = result?.data || []
+        all: false,
+      } as unknown as services.ListPhotosParams)
+      const newPhotos = (result?.data || []) as unknown as Photo[]
       setAvailablePhotos(prev => reset ? newPhotos : [...prev, ...newPhotos])
       setPhotoHasMore(result?.meta?.hasMore ?? false)
       setPhotoPage(page + 1)
@@ -281,7 +304,7 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
     if (photos.some(p => p.id === photo.id)) return
     if (!isNew && story?.id) {
       try {
-        await (window as any).go.main.App.AddStoryPhoto(story.id, photo.id)
+        await AddStoryPhoto(story.id, photo.id)
       } catch {}
     }
     setPhotos(prev => [...prev, photo])
@@ -291,7 +314,7 @@ function StoryEditor({ story, onBack }: StoryEditorProps) {
   const removePhoto = async (photoId: string) => {
     if (!isNew && story?.id) {
       try {
-        await (window as any).go.main.App.RemoveStoryPhoto(story.id, photoId)
+        await RemoveStoryPhoto(story.id, photoId)
       } catch {}
     }
     setPhotos(prev => prev.filter(p => p.id !== photoId))
