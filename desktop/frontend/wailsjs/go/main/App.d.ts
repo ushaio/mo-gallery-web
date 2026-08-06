@@ -31,6 +31,8 @@ export function CleanupStorage(arg1:Array<string>,arg2:string):Promise<services.
 
 export function ClearEditorAiConversation(arg1:string):Promise<services.EditorAiConversationDTO>;
 
+export function ClearLocalAssetCloudLink(arg1:string):Promise<void>;
+
 export function ClearLocalLibraryPreviewCache():Promise<void>;
 
 export function ClearLogs():Promise<void>;
@@ -76,6 +78,10 @@ export function DeleteEditorAiConversation(arg1:string):Promise<void>;
 export function DeleteFilmRoll(arg1:string):Promise<void>;
 
 export function DeleteFriend(arg1:string):Promise<void>;
+
+export function DeleteLocalAssetCloud(arg1:string,arg2:boolean):Promise<void>;
+
+export function DeleteLocalAssetCloudAndLocal(arg1:string,arg2:boolean):Promise<void>;
 
 export function DeleteLocalLibraryCollection(arg1:string):Promise<void>;
 
@@ -292,6 +298,8 @@ export function SetAlbumCover(arg1:string,arg2:string):Promise<services.AlbumDTO
 export function SetAuth(arg1:string,arg2:string):Promise<services.UserInfo>;
 
 export function SetFilmRollFrameOrder(arg1:string,arg2:Array<string>):Promise<services.FilmRollDTO>;
+
+export function SetLocalAssetCloudLink(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SetLocalAssetCollections(arg1:string,arg2:Array<string>):Promise<void>;
 

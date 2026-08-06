@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { BookOpen } from 'lucide-react'
 import {
   getPhotos,
   type PhotoDto,
@@ -33,6 +34,9 @@ import { useStoryDraftState } from './stories/useStoryDraftState'
 import { useStoryEditorActions } from './stories/useStoryEditorActions'
 import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
 import { applySavedOrder, savePhotoOrder } from './stories/utils'
+import { EditorEmptyState } from './shared/EditorEmptyState'
+import { CollapsibleListPane } from './shared/CollapsibleListPane'
+import { useDirtyLeaveGuard, useSaveShortcut } from './shared/useDirtyLeaveGuard'
 import {
   CreateStory,
   DeleteStory,
@@ -63,7 +67,7 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   stripGps: false,
 }
 
-export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
+export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav }: StoriesTabProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { settings, categories, isImmersiveMode, setIsImmersiveMode } = useAdmin()
@@ -116,6 +120,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     draftSaved,
     lastSavedAt,
     initialStory,
+    isDirty,
     draftRestoreDialog,
     createStoryWithDraftCheck,
     editStoryWithDraftCheck,
@@ -123,6 +128,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleDraftDiscard,
     handleDraftCancel,
     clearDraft,
+    saveDraft,
     resetDraftState,
   } = useStoryDraftState({
     allPhotos,
@@ -274,8 +280,24 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setPendingImages,
   })
 
-  const resetEditorState = useCallback(() => {
-    pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+  // 文档内容修订号：整篇内容被替换（草稿恢复/跳转）时递增，驱动编辑器重挂载
+  const [editorRevision, setEditorRevision] = useState(0)
+
+  const handleDraftRestoreWithRevision = useCallback(() => {
+    setEditorRevision((r) => r + 1)
+    handleDraftRestore()
+  }, [handleDraftRestore])
+
+  const handleDraftDiscardWithRevision = useCallback(() => {
+    setEditorRevision((r) => r + 1)
+    handleDraftDiscard()
+  }, [handleDraftDiscard])
+
+  useEffect(() => {
+    if (editFromDraft) setEditorRevision((r) => r + 1)
+  }, [editFromDraft])
+
+  const resetEditorState = useCallback(() => {    pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
     setPendingImages([])
     setPendingCoverId(null)
     setUseCustomDate(false)
@@ -443,12 +465,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [deleteStoryId, loadStories, notify, t])
 
   const handleCreateStory = useCallback(async () => {
+    // 切换选中前先落盘当前草稿
+    if (isDirty) void saveDraft()
     await createStoryWithDraftCheck()
-  }, [createStoryWithDraftCheck])
+  }, [createStoryWithDraftCheck, isDirty, saveDraft])
 
   const handleEditStory = useCallback(async (story: StoryDto) => {
+    // 切换选中前先落盘当前草稿
+    if (isDirty) void saveDraft()
     await editStoryWithDraftCheck(story)
-  }, [editStoryWithDraftCheck])
+  }, [editStoryWithDraftCheck, isDirty, saveDraft])
 
   const currentPhotoIds = currentStory?.photos?.map((photo) => photo.id) || []
   const currentCoverPhoto = currentStory ? getStoryCoverPhoto(currentStory) : null
@@ -550,14 +576,26 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     })
   }, [])
 
+  // 离开保护 + Ctrl+S（仅编辑态生效）
+  useDirtyLeaveGuard(isDirty && storyEditMode === 'editor', storyEditMode === 'editor')
+  useSaveShortcut(() => void handleSaveStory(), storyEditMode === 'editor')
+
   return (
-    <div className="flex h-full flex-col gap-6 overflow-hidden">
-      {storyEditMode === 'list' || !currentStory ? (
+    <div className="flex h-full min-h-0 gap-5 overflow-hidden">
+      {/* 左栏：叙事列表（可折叠） */}
+      <CollapsibleListPane
+        collapsed={listPaneCollapsed}
+        onToggle={() => onToggleListPane?.()}
+        icon={BookOpen}
+        t={t}
+        header={subTabNav}
+      >
         <StoryListView
           stories={stories}
           loading={loading}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
+          selectedStoryId={currentStory?.id}
           onCreateStory={() => void handleCreateStory()}
           onEditStory={(story) => void handleEditStory(story)}
           onTogglePublish={(story) => void handleTogglePublish(story)}
@@ -565,9 +603,15 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           t={t}
           cdnDomain={settings?.cdn_domain}
           onRefresh={() => void loadStories()}
+          compact
         />
-      ) : (
-        <StoryEditorView
+      </CollapsibleListPane>
+
+      {/* 右栏：编辑器 / 空状态 */}
+      <main className="min-w-0 flex-1 overflow-hidden">
+        {storyEditMode === 'editor' && currentStory ? (
+          <StoryEditorView
+          key={`${currentStory.id}-${editorRevision}`}
           token={token}
           currentStory={currentStory}
           pendingImages={pendingImages}
@@ -591,7 +635,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           openMenuPhotoId={openMenuPhotoId}
           openMenuPendingId={openMenuPendingId}
           showPreview={() => setShowPreview(true)}
-          onBack={resetEditorState}
+          onClose={resetEditorState}
           onSave={() => void handleSaveStory()}
           onPasteFiles={handlePasteFiles}
           onOpenPhotoSelector={() => setShowPhotoSelector(true)}
@@ -623,7 +667,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           notify={notify}
           setCurrentStory={setCurrentStory}
         />
+      ) : (
+        <EditorEmptyState
+          icon={BookOpen}
+          title={t('ui.no_story')}
+          hint={t('admin.select_story_hint')}
+          actionLabel={t('ui.create_story')}
+          onAction={() => void handleCreateStory()}
+        />
       )}
+      </main>
 
       <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
       <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} currentStoryId={currentStory?.id} />
@@ -644,7 +697,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         currentStoryId={currentStory?.id}
       />
       <SimpleDeleteDialog isOpen={!!deleteStoryId} onConfirm={confirmDeleteStory} onCancel={() => setDeleteStoryId(null)} t={t} />
-      <DraftRestoreDialog isOpen={draftRestoreDialog.isOpen} draftTime={draftRestoreDialog.draft?.savedAt || 0} onRestore={handleDraftRestore} onDiscard={handleDraftDiscard} onCancel={handleDraftCancel} t={t} />
+      <DraftRestoreDialog isOpen={draftRestoreDialog.isOpen} draftTime={draftRestoreDialog.draft?.savedAt || 0} onRestore={handleDraftRestoreWithRevision} onDiscard={handleDraftDiscardWithRevision} onCancel={handleDraftCancel} t={t} />
       {showPreview && currentStory ? (
         <StoryPreviewModal
           story={currentStory}

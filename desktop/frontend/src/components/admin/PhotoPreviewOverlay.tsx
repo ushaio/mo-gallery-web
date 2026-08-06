@@ -22,6 +22,11 @@ export function PhotoPreviewOverlay({
   const dragStartRef = useRef<{ x: number, y: number, offsetX: number, offsetY: number } | null>(null)
 
   useEffect(() => {
+    document.body.classList.add('mo-fullscreen-preview')
+    return () => document.body.classList.remove('mo-fullscreen-preview')
+  }, [])
+
+  useEffect(() => {
     setOffset({ x: 0, y: 0 })
     setZoom(1)
   }, [photo.id])

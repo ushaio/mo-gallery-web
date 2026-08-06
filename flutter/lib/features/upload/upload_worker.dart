@@ -165,9 +165,14 @@ class UploadWorker {
       // compression_mode=compress is set on the multipart request.
       final uploadPath = task.localPath;
 
+      // Align with web admin: photo titles drop the file extension
+      // (UploadQueueContext fallbackTitle and the story editor both use
+      // name.replace(/\.[^/.]+$/, '')). The titlePrefix feature is a
+      // mobile-only enhancement and stays as-is.
+      final titleBase = _stripExtension(task.fileName);
       final title = settings.titlePrefix.isEmpty
-          ? task.fileName
-          : '${settings.titlePrefix}${task.fileName}';
+          ? titleBase
+          : '${settings.titlePrefix}$titleBase';
 
       final photo = await _photosApi.uploadPhoto(
         filePath: uploadPath,
@@ -178,6 +183,14 @@ class UploadWorker {
             ? settings.filmRollId
             : null,
         storageSourceId: settings.storageSourceId,
+        // Web admin pins storage_provider=local when no storage source is
+        // selected (UploadTab.tsx proceedWithUpload); without it the server
+        // falls back to the legacy global storage_provider setting, which may
+        // route default uploads to github/s3 instead of local.
+        storageProvider:
+            settings.storageSourceId == null || settings.storageSourceId!.isEmpty
+                ? 'local'
+                : null,
         storagePath: settings.storagePath.isEmpty ? null : settings.storagePath,
         storagePathFull: settings.storagePathFull,
         showFlag: settings.showFlag,
@@ -296,5 +309,13 @@ class UploadWorker {
         ),
       );
     }
+  }
+
+  /// Drops the final extension from a file name, mirroring the web admin's
+  /// `name.replace(/\.[^/.]+$/, '')` title rule. Dotfiles stay intact when
+  /// stripping would leave an empty title.
+  static String _stripExtension(String fileName) {
+    final stripped = fileName.replaceAll(RegExp(r'\.[^.]*$'), '');
+    return stripped.isEmpty ? fileName : stripped;
   }
 }

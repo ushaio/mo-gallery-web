@@ -105,11 +105,6 @@ export interface FolderTrashEntry {
   trashedAt: string
 }
 
-export interface UploadAlbum {
-  id: string
-  name: string
-}
-
 export interface LocalTag {
   id: string
   name: string
@@ -183,6 +178,9 @@ export interface LocalAsset {
   thumbnailUrl: string
   previewUrl: string
   originalUrl: string
+  cloudPhotoId?: string
+  cloudUrl?: string
+  isUploaded: boolean
   tags: LocalTag[]
   collections: AssetCollection[]
 }
@@ -196,6 +194,7 @@ export interface AssetPage {
 }
 
 export interface AssetStructuredFilters {
+  uploadStatus?: 'all' | 'uploaded' | 'not-uploaded'
   photosOnly?: boolean
   ratingMin?: number
   ratingMax?: number
@@ -229,6 +228,7 @@ export interface AssetQuery extends AssetStructuredFilters {
   directFolderOnly?: boolean
   search?: string
   availability?: AssetAvailability
+  uploadStatus?: 'all' | 'uploaded' | 'not-uploaded'
   favoritesOnly?: boolean
   photosOnly?: boolean
   tagIds?: string[]

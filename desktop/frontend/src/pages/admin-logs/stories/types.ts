@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import type { StoryDto } from '@/lib/api/types'
 import type { StoryEditorDraftData } from '@/lib/client-db'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
@@ -13,6 +14,9 @@ export interface StoriesTabProps {
   onDraftConsumed?: () => void
   refreshKey?: number
   onEditingChange?: (isEditing: boolean) => void
+  listPaneCollapsed?: boolean
+  onToggleListPane?: () => void
+  subTabNav?: ReactNode
 }
 
 export interface StorySnapshot {

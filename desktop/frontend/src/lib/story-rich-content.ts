@@ -176,6 +176,41 @@ export function hydrateStoryContentImages(content: string, photos: PhotoDto[], c
   })
 }
 
+/** 预览占位图：本地未上传/无法解析的图片显示灰色占位，避免破图图标 */
+const MISSING_IMAGE_PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22640%22%20height=%22480%22%3E%3Crect%20width=%22100%25%22%20height=%22100%25%22%20fill=%22%23e5e5e5%22/%3E%3C/svg%3E'
+
+/**
+ * 为只读预览准备正文内容：
+ * 1. 已上传图片：按 data-photo-id 从照片列表回填 src（含 CDN/服务器前缀）；
+ * 2. 其余 img：无 src（照片未命中/本地占位）→ 灰色占位；uploading: 本地待上传 → 灰色占位；
+ *    blob:/file:/http(s)/data: 保持原样（会话内 blob 仍可显示）；相对路径 → 服务器/CDN 前缀。
+ */
+export function prepareStoryContentForPreview(content: string, photos: PhotoDto[], cdnDomain?: string): string {
+  const hydrated = hydrateStoryContentImages(content, photos, cdnDomain)
+
+  return hydrated.replace(HTML_IMAGE_TAG_PATTERN, (tag) => {
+    const srcMatch = tag.match(HTML_IMAGE_SRC_PATTERN)
+    if (!srcMatch) {
+      return tag.replace(/<img/i, `<img src="${MISSING_IMAGE_PLACEHOLDER}"`)
+    }
+
+    const rawSrc = srcMatch[2]?.trim() || ''
+    if (!rawSrc) {
+      return tag.replace(/<img/i, `<img src="${MISSING_IMAGE_PLACEHOLDER}"`)
+    }
+
+    if (/^(https?:|data:|blob:|file:)/i.test(rawSrc)) {
+      return tag
+    }
+
+    if (/^uploading:/i.test(rawSrc)) {
+      return tag.replace(srcMatch[0], `src="${MISSING_IMAGE_PLACEHOLDER}"`)
+    }
+
+    return tag.replace(srcMatch[0], `src="${resolveAssetUrl(rawSrc, cdnDomain)}"`)
+  })
+}
+
 export function normalizeStoryContentJsonImages(
   contentJson: TiptapJsonContent | null | undefined,
 ): TiptapJsonContent | null {

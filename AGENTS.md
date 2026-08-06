@@ -1,5 +1,11 @@
 # Repository Guidelines
 
+## Progressive Project Context
+- For every new task, read `docs/PROJECT_CONTEXT.md` before scanning implementation files.
+- Use its task-to-file index to identify the smallest relevant code area.
+- Do not recursively inspect the entire repository unless the task genuinely crosses all application boundaries.
+- Treat current source code, configuration, tests, and schema as authoritative if the context document is stale.
+
 ## Project Structure & Module Organization
 - `src/app/`: Next.js App Router pages and admin screens.
 - `src/components/`: shared UI, gallery views, editors, comments, and admin widgets.

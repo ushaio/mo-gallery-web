@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Progressive Project Context
+
+Before investigating implementation files, read `docs/PROJECT_CONTEXT.md` and use its task-to-file index. Do not scan the entire repository unless the task genuinely crosses all application boundaries. Treat current source code, configuration, tests, and schema as authoritative if the context document is stale.
+
 ## Project Overview
 
 MO Gallery is a photography gallery and narrative blog platform built with **Next.js 16** (App Router), **Hono** API backend, **Prisma** ORM on PostgreSQL, and **Tailwind CSS 4**. React 19 with React Compiler enabled.

@@ -49,7 +49,7 @@ interface PreparedFile {
 
 interface UploadItem {
   file: PreparedFile
-  status: 'pending' | 'uploading' | 'done' | 'error' | 'duplicate'
+  status: 'pending' | 'checking' | 'compressing' | 'uploading' | 'done' | 'error' | 'duplicate'
   progress: number
   error?: string
   photoId?: string
@@ -111,6 +111,7 @@ export function UploadPage() {
   const [uploadType, setUploadType] = useState<UploadType>(() => uploadPageDraftState.uploadType)
   const [settings, setSettings] = useState<UploadSettings>(() => uploadPageDraftState.settings)
   const [preparing, setPreparing] = useState(false)
+  const [preparingLabel, setPreparingLabel] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(uploadPageDraftState.selectedIds))
   const [categoryInput, setCategoryInput] = useState(() => uploadPageDraftState.categoryInput)
@@ -236,6 +237,7 @@ export function UploadPage() {
   const appendPreparedFiles = async (prepared: PreparedFile[]) => {
     const hashes = prepared.filter(f => f.hash).map(f => f.hash)
     let duplicates: Record<string, services.DuplicateInfo> = {}
+    setPreparingLabel('查重中')
     if (hashes.length > 0) {
       try {
         const dupResult = await CheckDuplicates(hashes)
@@ -249,10 +251,12 @@ export function UploadPage() {
       error: f.error || (duplicates[f.hash] ? `已存在: ${duplicates[f.hash].title || ''}` : undefined),
     }))
     setItems(prev => [...prev, ...newItems])
+    setPreparingLabel('')
   }
 
   const processFiles = async (paths: string[]) => {
     setPreparing(true)
+    setPreparingLabel('文件处理中')
     try {
       const prepared: PreparedFile[] = await PrepareUpload(paths)
       await appendPreparedFiles(prepared)
@@ -261,11 +265,13 @@ export function UploadPage() {
       toast.error(err instanceof Error ? err.message : '文件预处理失败，请重试')
     } finally {
       setPreparing(false)
+      setPreparingLabel('')
     }
   }
 
   const processLocalAssets = async (assetIds: string[]) => {
     setPreparing(true)
+    setPreparingLabel('文件处理中')
     try {
       const prepared: PreparedFile[] = await PrepareLocalAssetUpload(assetIds)
       await appendPreparedFiles(prepared)
@@ -274,6 +280,7 @@ export function UploadPage() {
       toast.error(err instanceof Error ? err.message : '本地资源预处理失败，请重新检查资源库')
     } finally {
       setPreparing(false)
+      setPreparingLabel('')
     }
   }
 
@@ -647,7 +654,7 @@ export function UploadPage() {
                     style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
                     onClick={handleFileDialog}>
                     <Upload size={20} className="mx-auto mb-1.5 opacity-30" />
-                    <p className="text-xs">点击或拖拽追加文件</p>
+                    <p className="text-xs">{preparingLabel || '点击或拖拽追加文件'}</p>
                   </div>
                 </div>
               ) : (
@@ -664,7 +671,7 @@ export function UploadPage() {
                       </div>
                     )}
                   </div>
-                  <p className="text-sm font-medium mb-1.5">拖拽照片到此处，或点击选择文件</p>
+                  <p className="text-sm font-medium mb-1.5">{preparingLabel || '拖拽照片到此处，或点击选择文件'}</p>
                   <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>支持 JPG、PNG、WebP、AVIF、TIFF 格式</p>
                 </div>
               )}
@@ -745,6 +752,8 @@ function PreviewModal({ filePath, fileName, onClose }: { filePath: string; fileN
 function mapUploadTaskStatus(task: UploadTask): UploadItem['status'] {
   if (task.status === 'completed') return 'done'
   if (task.status === 'failed') return 'error'
+  if (task.status === 'checking') return 'checking'
+  if (task.status === 'compressing') return 'compressing'
   return task.status
 }
 
@@ -765,6 +774,8 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
 
   const statusIcon = {
     pending: <FileImage size={14} style={{ color: 'var(--muted-foreground)' }} />,
+    checking: <Loader2 size={14} className="animate-spin text-sky-500" />,
+    compressing: <Loader2 size={14} className="animate-spin text-amber-500" />,
     uploading: <Loader2 size={14} className="animate-spin" />,
     done: <CheckCircle size={14} className="text-green-500" />,
     error: <AlertCircle size={14} style={{ color: 'var(--destructive)' }} />,
@@ -774,6 +785,8 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
   const progress = Math.max(0, Math.min(100, item.progress ?? 0))
   const progressColor = {
     pending: 'transparent',
+    checking: 'color-mix(in srgb, #0ea5e9 18%, transparent)',
+    compressing: 'color-mix(in srgb, #f59e0b 18%, transparent)',
     uploading: 'color-mix(in srgb, var(--primary) 22%, transparent)',
     done: 'rgba(34, 197, 94, 0.18)',
     error: 'color-mix(in srgb, var(--destructive) 18%, transparent)',
@@ -803,7 +816,9 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
         <p className="text-sm truncate">{item.file.fileName}</p>
         <p className="text-[11px] font-mono" style={{ color: 'var(--muted-foreground)' }}>
           {formatSize(item.file.fileSize)}
-          {item.status === 'uploading' && ` · ${progress}%`}
+          {item.status === 'checking' && ' · 查重中'}
+          {item.status === 'compressing' && ' · 压缩中'}
+          {item.status === 'uploading' && ` · 上传中 ${progress}%`}
           {item.file.exif?.cameraModel && ` · ${item.file.exif.cameraModel}`}
           {item.file.exif?.focalLength && ` · ${item.file.exif.focalLength}`}
           {item.file.exif?.aperture && ` · ${item.file.exif.aperture}`}

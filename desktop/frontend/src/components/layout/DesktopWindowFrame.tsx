@@ -35,7 +35,7 @@ function DesktopTitleBar() {
 
   return (
     <header
-      className={`window-drag-region relative z-10 flex h-10 shrink-0 select-none items-center border-b bg-card transition-colors ${isFocused ? '' : 'opacity-80'}`}
+      className={`desktop-title-bar window-drag-region relative z-10 flex h-10 shrink-0 select-none items-center border-b bg-card transition-colors ${isFocused ? '' : 'opacity-80'}`}
       style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
       onDoubleClick={toggleMaximise}
     >

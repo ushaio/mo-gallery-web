@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 7
+const currentSchemaVersion = 8
 
 var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
 	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
@@ -196,7 +196,8 @@ func (s *store) migrate() error {
             dominant_colors TEXT NOT NULL DEFAULT '[]',
             is_favorite INTEGER NOT NULL DEFAULT 0, captured_at INTEGER,
             discovered_at INTEGER NOT NULL, technical_updated_at INTEGER NOT NULL,
-            scan_token TEXT NOT NULL DEFAULT '', trash_entry_id TEXT
+            scan_token TEXT NOT NULL DEFAULT '', trash_entry_id TEXT,
+            cloud_photo_id TEXT, cloud_url TEXT
         )`,
 		`CREATE TABLE IF NOT EXISTS exif_metadata (
             asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
@@ -282,6 +283,15 @@ func (s *store) migrate() error {
 	}
 	if err := addColumnIfMissing(tx, "assets", "dominant_colors", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return fmt.Errorf("migrate local library dominant colors: %w", err)
+	}
+	if err := addColumnIfMissing(tx, "assets", "cloud_photo_id", "TEXT"); err != nil {
+		return fmt.Errorf("migrate local library cloud photo id: %w", err)
+	}
+	if err := addColumnIfMissing(tx, "assets", "cloud_url", "TEXT"); err != nil {
+		return fmt.Errorf("migrate local library cloud url: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_assets_cloud_photo ON assets(cloud_photo_id)`); err != nil {
+		return fmt.Errorf("migrate local library cloud photo index: %w", err)
 	}
 	trashColumns := []struct{ name, definition string }{
 		{"folder_id", "TEXT REFERENCES folders(id) ON DELETE SET NULL"},
@@ -669,6 +679,15 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 	if query.FavoritesOnly {
 		where = append(where, "a.is_favorite=1")
 	}
+	switch query.UploadStatus {
+	case "uploaded":
+		where = append(where, "a.cloud_photo_id IS NOT NULL AND a.cloud_photo_id!=''")
+	case "not-uploaded":
+		where = append(where, "(a.cloud_photo_id IS NULL OR a.cloud_photo_id='')")
+	case "", "all":
+	default:
+		return nil, nil, newError(ErrInvalidPath, "不支持的上传状态筛选值", map[string]any{"uploadStatus": query.UploadStatus})
+	}
 	if query.PhotosOnly {
 		where = append(where, "a.media_kind='image'")
 	}
@@ -851,7 +870,7 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		return AssetPage{}, err
 	}
 	args = append(args, limit+1)
-	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,
+	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,a.cloud_url,
         e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
         FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
         WHERE ` + baseWhere + ` ORDER BY ` + sortExpr + ` ` + direction + `,a.id ` + direction + ` LIMIT ?`
@@ -877,11 +896,15 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		var aperture, shutterSeconds, focalLengthMM, latitude, longitude sql.NullFloat64
 		var sortValue any
 		var dominantColors string
-		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
+		var cloudPhotoID, cloudURL sql.NullString
+		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cloudPhotoID, &cloudURL, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
 			return AssetPage{}, err
 		}
 		item.IsAnimated = animated != 0
 		item.IsFavorite = favorite != 0
+		item.CloudPhotoID = cloudPhotoID.String
+		item.CloudURL = cloudURL.String
+		item.IsUploaded = cloudPhotoID.Valid && cloudPhotoID.String != ""
 		item.CapturedAt = timeFromMillis(captured)
 		_ = json.Unmarshal([]byte(dominantColors), &item.DominantColors)
 		if cameraMake.Valid || cameraModel.Valid || lensModel.Valid || iso.Valid || aperture.Valid || shutterSeconds.Valid || focalLengthMM.Valid || latitude.Valid || longitude.Valid {
@@ -1163,6 +1186,40 @@ func (s *store) setPreviewResult(ctx context.Context, id AssetID, status, previe
 func (s *store) setDominantColors(ctx context.Context, id AssetID, colors []string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE assets SET dominant_colors=?,technical_updated_at=? WHERE id=?`, encodeDominantColors(colors), time.Now().UnixMilli(), id)
 	return err
+}
+
+func (s *store) setAssetCloudLink(ctx context.Context, id AssetID, photoID, cloudURL string) error {
+	photoID = strings.TrimSpace(photoID)
+	if photoID == "" {
+		return newError(ErrInvalidPath, "云端照片 ID 不能为空", nil)
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE assets SET cloud_photo_id=?,cloud_url=? WHERE id=?`, photoID, strings.TrimSpace(cloudURL), id)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return newError(ErrAssetNotFound, "资产不存在", map[string]any{"id": id})
+	}
+	return nil
+}
+
+func (s *store) clearAssetCloudLink(ctx context.Context, id AssetID) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE assets SET cloud_photo_id=NULL,cloud_url=NULL WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return newError(ErrAssetNotFound, "资产不存在", map[string]any{"id": id})
+	}
+	return nil
+}
+
+func (s *store) assetCloudLink(ctx context.Context, id AssetID) (photoID, cloudURL string, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(cloud_photo_id,''),COALESCE(cloud_url,'') FROM assets WHERE id=?`, id).Scan(&photoID, &cloudURL)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = newError(ErrAssetNotFound, "资产不存在", map[string]any{"id": id})
+	}
+	return
 }
 
 func (s *store) updateAssetMetadata(ctx context.Context, id AssetID, title, notes string, rating int, color string, favorite bool) error {

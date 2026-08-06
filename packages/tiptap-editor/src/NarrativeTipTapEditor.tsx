@@ -803,27 +803,27 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     /* eslint-disable react-hooks/refs */
     const editorCommands = createEditorCommandRegistry([
       { id: 'bold', group: 'inline', label: t('editor.bold'), keywords: ['bold', 'strong'], icon: Bold, shortcut: 'Mod+B', surfaces: ['main', 'bubble'] },
-      { id: 'italic', group: 'inline', label: t('editor.italic'), keywords: ['italic', 'emphasis'], icon: Italic, shortcut: 'Mod+I', surfaces: ['main', 'bubble', 'format'] },
-      { id: 'underline', group: 'inline', label: t('editor.underline'), keywords: ['underline'], icon: UnderlineIcon, shortcut: 'Mod+U', surfaces: ['main', 'bubble', 'format'] },
-      { id: 'strike', group: 'inline', label: t('editor.strike'), keywords: ['strike', 'strikethrough'], icon: Strikethrough, surfaces: ['main', 'bubble', 'format'] },
-      { id: 'inlineCode', group: 'inline', label: t('editor.inline_code'), keywords: ['code', 'inline code'], icon: Code, surfaces: ['main', 'bubble', 'format'] },
+      { id: 'italic', group: 'inline', label: t('editor.italic'), keywords: ['italic', 'emphasis'], icon: Italic, shortcut: 'Mod+I', surfaces: ['main', 'bubble'] },
+      { id: 'underline', group: 'inline', label: t('editor.underline'), keywords: ['underline'], icon: UnderlineIcon, shortcut: 'Mod+U', surfaces: ['main', 'bubble'] },
+      { id: 'strike', group: 'inline', label: t('editor.strike'), keywords: ['strike', 'strikethrough'], icon: Strikethrough, surfaces: ['main', 'bubble'] },
+      { id: 'inlineCode', group: 'inline', label: t('editor.inline_code'), keywords: ['code', 'inline code'], icon: Code, surfaces: ['main', 'bubble'] },
       { id: 'link', group: 'inline', label: t('editor.link'), keywords: ['link', 'url'], icon: LinkIcon, shortcut: 'Mod+K', surfaces: ['bubble'] },
       { id: 'heading1', group: 'block', label: t('editor.heading_1'), keywords: ['h1', 'heading'], icon: Pilcrow, surfaces: ['floating', 'slash'] },
       { id: 'heading2', group: 'block', label: t('editor.heading_2'), keywords: ['h2', 'heading'], icon: Pilcrow, surfaces: ['floating', 'slash'] },
-      { id: 'bulletList', group: 'block', label: t('editor.bullet_list'), keywords: ['bullet', 'list'], icon: List, surfaces: ['main', 'floating', 'format', 'slash'] },
-      { id: 'orderedList', group: 'block', label: t('editor.ordered_list'), keywords: ['ordered', 'numbered', 'list'], icon: ListOrdered, surfaces: ['main', 'floating', 'format', 'slash'] },
-      { id: 'blockquote', group: 'block', label: t('editor.blockquote'), keywords: ['quote', 'blockquote'], icon: Quote, surfaces: ['main', 'floating', 'format', 'slash'] },
+      { id: 'bulletList', group: 'block', label: t('editor.bullet_list'), keywords: ['bullet', 'list'], icon: List, surfaces: ['main', 'floating', 'slash'] },
+      { id: 'orderedList', group: 'block', label: t('editor.ordered_list'), keywords: ['ordered', 'numbered', 'list'], icon: ListOrdered, surfaces: ['main', 'floating', 'slash'] },
+      { id: 'blockquote', group: 'block', label: t('editor.blockquote'), keywords: ['quote', 'blockquote'], icon: Quote, surfaces: ['main', 'floating', 'slash'] },
       { id: 'dropCap', group: 'format', label: t('editor.drop_cap'), keywords: ['drop cap'], icon: Pilcrow, surfaces: ['format'] },
-      { id: 'alignLeft', group: 'format', label: t('editor.align_left'), keywords: ['align left'], icon: AlignLeft, surfaces: ['main', 'format'] },
-      { id: 'alignCenter', group: 'format', label: t('editor.align_center'), keywords: ['align center'], icon: AlignCenter, surfaces: ['main', 'format'] },
-      { id: 'alignRight', group: 'format', label: t('editor.align_right'), keywords: ['align right'], icon: AlignRight, surfaces: ['main', 'format'] },
+      { id: 'alignLeft', group: 'format', label: t('editor.align_left'), keywords: ['align left'], icon: AlignLeft, surfaces: ['main'] },
+      { id: 'alignCenter', group: 'format', label: t('editor.align_center'), keywords: ['align center'], icon: AlignCenter, surfaces: ['main'] },
+      { id: 'alignRight', group: 'format', label: t('editor.align_right'), keywords: ['align right'], icon: AlignRight, surfaces: ['main'] },
       { id: 'textColor', group: 'format', label: t('editor.text_color'), keywords: ['text color'], icon: Palette, surfaces: ['format'] },
       { id: 'backgroundColor', group: 'format', label: t('editor.background_color'), keywords: ['highlight', 'background color'], icon: Highlighter, surfaces: ['format'] },
       { id: 'image', group: 'insert', label: t('editor.image'), keywords: ['image', 'photo'], icon: ImageIcon, surfaces: ['insert', 'slash'] },
       { id: 'table', group: 'insert', label: t('editor.table'), keywords: ['table', 'grid'], icon: TableIcon, surfaces: ['insert', 'slash'] },
-      { id: 'clearFormatting', group: 'format', label: t('editor.clear_formatting'), keywords: ['clear formatting'], icon: RemoveFormatting, surfaces: ['main', 'bubble', 'format'] },
+      { id: 'clearFormatting', group: 'format', label: t('editor.clear_formatting'), keywords: ['clear formatting'], icon: RemoveFormatting, surfaces: ['main', 'bubble'] },
       { id: 'undo', group: 'history', label: t('editor.undo'), keywords: ['undo'], icon: Undo, shortcut: 'Mod+Z', surfaces: ['main'] },
-      { id: 'redo', group: 'history', label: t('editor.redo'), keywords: ['redo'], icon: Redo, shortcut: 'Mod+Shift+Z', surfaces: ['main', 'format'] },
+      { id: 'redo', group: 'history', label: t('editor.redo'), keywords: ['redo'], icon: Redo, shortcut: 'Mod+Shift+Z', surfaces: ['main'] },
     ], {
       bold: { active: resolvedEditorUiState.isBold, disabled: isAiTaskLocked, execute: toggleBold },
       italic: { active: resolvedEditorUiState.isItalic, disabled: isAiTaskLocked, execute: toggleItalic },
@@ -1035,7 +1035,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           onKeyDown={handleToolbarKeyDown}
           className="relative z-20 flex min-w-0 items-center justify-between gap-1 overflow-visible border-0 border-b border-border/70 bg-background/96 px-2 py-1 shadow-[0_1px_0_rgba(15,23,42,0.03)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <div className="flex min-w-0 items-center gap-0.5">
+          {/* 命令条：空间不足时水平滚动；插入/格式/撤销重做固定常驻右侧 */}
+          <div className="tiptap-toolbar-scroll flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-clip overscroll-x-contain py-1 -my-1">
             <ToolbarSelect
               value={resolvedEditorUiState.headingLevel}
               onChange={setHeadingLevel}
@@ -1050,7 +1051,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               onMouseDown={preserveSelectionOnSelectMouseDown}
               title={t('editor.font_family')}
               options={fontFamilyOptions}
-              className="hidden max-w-[7rem] md:block"
+              className="max-w-[7rem]"
             />
             <ToolbarSelect
               value={resolvedEditorUiState.fontSize}
@@ -1058,18 +1059,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               onMouseDown={preserveSelectionOnSelectMouseDown}
               title={t('editor.font_size')}
               options={fontSizeOptions}
-              className="hidden max-w-[5.5rem] md:block"
+              className="max-w-[5.5rem]"
             />
-            <ToolbarDivider className="hidden sm:block" />
+            <ToolbarDivider />
             {mainInlineCommands.map((command) => {
               const Icon = command.icon
-              const responsiveClassName = command.id === 'italic'
-                ? 'max-[359px]:hidden'
-                : command.id === 'underline' || command.id === 'strike'
-                  ? 'hidden sm:flex'
-                  : command.id === 'inlineCode'
-                    ? 'hidden lg:flex'
-                    : ''
               return (
                 <ToolbarButton
                   key={command.id}
@@ -1077,13 +1071,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   isActive={command.active}
                   disabled={command.disabled}
                   title={command.label}
-                  className={responsiveClassName}
                 >
                   <Icon className="h-4 w-4" />
                 </ToolbarButton>
               )
             })}
-            <ToolbarDivider className="hidden sm:block" />
+            <ToolbarDivider />
             {mainListCommands.map((command) => {
               const Icon = command.icon
               return (
@@ -1093,13 +1086,12 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   isActive={command.active}
                   disabled={command.disabled}
                   title={command.label}
-                  className={command.id === 'blockquote' ? 'hidden lg:flex' : 'hidden sm:flex'}
                 >
                   <Icon className="h-4 w-4" />
                 </ToolbarButton>
               )
             })}
-            <ToolbarDivider className="hidden lg:block" />
+            <ToolbarDivider />
             {mainLayoutCommands.map((command) => {
               const Icon = command.icon
               return (
@@ -1109,7 +1101,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   isActive={command.active}
                   disabled={command.disabled}
                   title={command.label}
-                  className="hidden lg:flex"
                 >
                   <Icon className="h-4 w-4" />
                 </ToolbarButton>
@@ -1195,25 +1186,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               disabled={isAiTaskLocked}
               panelClassName="right-0 left-auto max-h-[calc(100vh-5rem)] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto"
             >
-              <div className="grid grid-cols-2 gap-1 p-1">
-                <ToolbarSelect
-                  value={resolvedEditorUiState.fontFamily}
-                  onChange={setFontFamily}
-                  onMouseDown={preserveSelectionOnSelectMouseDown}
-                  title={t('editor.font_family')}
-                  options={fontFamilyOptions}
-                  className="w-full max-w-none"
-                />
-                <ToolbarSelect
-                  value={resolvedEditorUiState.fontSize}
-                  onChange={setFontSize}
-                  onMouseDown={preserveSelectionOnSelectMouseDown}
-                  title={t('editor.font_size')}
-                  options={fontSizeOptions}
-                  className="w-full max-w-none"
-                />
-              </div>
-              <div className="my-1 h-px bg-border/70" />
+              {/* 仅保留工具栏没有的命令：首字下沉、文字颜色、背景颜色 */}
               {formatCommands.filter((command) => command.id !== 'textColor' && command.id !== 'backgroundColor').map((command) => (
                 <CommandMenuItem key={command.id} command={command} onSelect={() => setOpenToolbarMenu(null)} />
               ))}
@@ -1253,7 +1226,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   onClick={command.execute}
                   disabled={command.disabled}
                   title={command.label}
-                  className={command.id === 'redo' ? 'max-sm:hidden' : ''}
                 >
                   <Icon className="h-4 w-4" />
                 </ToolbarButton>

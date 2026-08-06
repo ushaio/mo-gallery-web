@@ -3,8 +3,8 @@ import type { DragEvent as ReactDragEvent, ReactElement, ReactNode } from 'react
 import { useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
 import {
-  ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleHelp, Columns3, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, FolderSearch2, Heart, Images, Info, LayoutGrid, Loader2,
-  Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, Square, Trash2, Upload, X,
+  ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleHelp, Columns3, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, FolderSearch2, Heart, Images, Info, LayoutGrid, Loader2, Palette, Star,
+  Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, Settings2, Square, Trash2, Upload, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -12,9 +12,13 @@ import {
 } from '@/components/ui/ContextMenu'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { useAuth } from '@/contexts/AuthContext'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { useLibrarySections } from '@/store/preferences'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import { EventsOn, OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime'
+import { GetStorageSources, PrepareLocalAssetUpload } from '../../../wailsjs/go/main/App'
+import type { types as wailsTypes } from '../../../wailsjs/go/models'
 import { localLibraryApi, parseLocalLibraryError } from './api'
 import { CreateFolderDialog } from './CreateFolderDialog'
 import { DeleteAssetDialog } from './DeleteAssetDialog'
@@ -26,6 +30,8 @@ import { LocalAssetBatchDetails } from './LocalAssetBatchDetails'
 import { LocalAssetDetails } from './LocalAssetDetails'
 import { LocalAssetFilters } from './LocalAssetFilters'
 import { LocalAssetGrid } from './LocalAssetGrid'
+import { LocalAssetSelectionToolbar } from './LocalAssetSelectionToolbar'
+import { DeleteAssetsDialog } from './DeleteAssetsDialog'
 import { LocalLibraryPreview } from './LocalLibraryPreview'
 import { LocalLibraryBackupDialog } from './LocalLibraryBackupDialog'
 import { LocalLibraryGuide, LOCAL_LIBRARY_GUIDE_SEEN_KEY } from './LocalLibraryGuide'
@@ -38,10 +44,12 @@ import type { OrganizationDeleteTarget } from './OrganizationNavigation'
 import { DeleteOrganizationDialog } from './DeleteOrganizationDialog'
 import { PermanentDeleteFolderDialog } from './PermanentDeleteFolderDialog'
 import { RemoveMissingAssetDialog } from './RemoveMissingAssetDialog'
+import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
+import { loadLocalLibraryUploadSettings, normalizeLocalLibraryUploadSettings, saveLocalLibraryUploadSettings } from './upload-settings-persistence'
 import { RestoreFolderDialog } from './RestoreFolderDialog'
 import { useLocalLibraryStore } from './store'
 import { isPhotoAsset } from './types'
-import type { AssetFileOperationPlan, AssetPage, BackupOverview, BatchAssetOrganizationUpdate, FolderDeletionPreview, FolderFileOperationPlan, FolderItem, FolderProperties, FolderTrashEntry, LibrarySnapshot, LocalAsset, LocalLibraryEvent, LocalLibraryImportMode, UploadAlbum, LocalTag, LocalCollection, CollectionGroup } from './types'
+import type { AssetFileOperationPlan, AssetPage, BackupOverview, BatchAssetOrganizationUpdate, FolderDeletionPreview, FolderFileOperationPlan, FolderItem, FolderProperties, FolderTrashEntry, LibrarySnapshot, LocalAsset, LocalLibraryEvent, LocalLibraryImportMode, LocalTag, LocalCollection, CollectionGroup } from './types'
 import type { LocalLibraryCopy } from './copy'
 
 interface Props {
@@ -57,6 +65,8 @@ const EMPTY_PAGE: AssetPage = {
 }
 
 const FOLDER_DRAG_TYPE = 'application/x-mo-gallery-folder-path'
+const SIDEBAR_COLORS = ['red', 'yellow', 'green', 'blue', 'purple'] as const
+const SIDEBAR_RATINGS = [5, 4, 3, 2, 1, 0] as const
 
 function scanLabel(snapshot: LibrarySnapshot, copy: LocalLibraryCopy) {
   if (snapshot.state === 'suspended' || snapshot.scan.state === 'suspended') return copy.librarySuspended
@@ -84,12 +94,16 @@ interface FolderTarget {
 
 export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: Props) {
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuth()
+  const { token, isAuthenticated } = useAuth()
+  const { t } = useLanguage()
+  const { addTasks } = useUploadQueue()
   const foldersOpen = useLibrarySections((state) => state.sections.localFolders)
+  const colorsOpen = useLibrarySections((state) => state.sections.localColors ?? true)
+  const ratingsOpen = useLibrarySections((state) => state.sections.localRatings ?? true)
   const toggleSection = useLibrarySections((state) => state.toggleSection)
   const {
     folder, folders, search, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, filters, selectedAsset, previewAsset, expandedFolderPaths,
-    setFolder, setFolders, setSearch, setSort, setSortDirection, setAvailability, setFavoritesOnly, setTagIds, setCollectionIds, setFilters, clearFilters, selectAsset, setPreviewAsset, toggleFolderExpanded,
+    setFolder, setFolders, setSearch, setSort, setSortDirection, setAvailability, setFavoritesOnly, setTagIds, setCollectionIds, setFilters, clearFilters, selectAsset, setPreviewAsset, toggleFolderExpanded, expandFolderPaths,
   } = useLocalLibraryStore()
   const deferredSearch = useDeferredValue(search.trim())
   const [page, setPage] = useState<AssetPage>(EMPTY_PAGE)
@@ -102,6 +116,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const pendingSaveCountRef = useRef(0)
   const [deleteAsset, setDeleteAsset] = useState<LocalAsset | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
+  const [batchDeleteBusy, setBatchDeleteBusy] = useState(false)
   const [missingMaintenanceBusy, setMissingMaintenanceBusy] = useState(false)
   const [previewMaintenanceBusy, setPreviewMaintenanceBusy] = useState(false)
   const [removeMissingAsset, setRemoveMissingAsset] = useState<LocalAsset | null>(null)
@@ -144,8 +160,17 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [assetFileOperation, setAssetFileOperation] = useState<{ mode: 'rename', asset: LocalAsset } | { mode: 'move', assetIds: string[] } | null>(null)
   const [assetMovePlan, setAssetMovePlan] = useState<AssetFileOperationPlan>()
   const [assetFileOperationBusy, setAssetFileOperationBusy] = useState(false)
-  const [uploadAlbums, setUploadAlbums] = useState<UploadAlbum[]>([])
-  const [uploadAlbumsLoading, setUploadAlbumsLoading] = useState(isAuthenticated)
+  const [storageSources, setStorageSources] = useState<wailsTypes.StorageSourceDTO[]>([])
+  const [storageSourcesLoading, setStorageSourcesLoading] = useState(isAuthenticated)
+  const storageSourcesLoadingRef = useRef(false)
+  const storageSourcesRequestVersionRef = useRef(0)
+  const [uploadSettingsAsset, setUploadSettingsAsset] = useState<LocalAsset | null>(null)
+  const [batchUploadSettingsOpen, setBatchUploadSettingsOpen] = useState(false)
+  const [uploadPreparing, setUploadPreparing] = useState(false)
+  const uploadPreparingRef = useRef(false)
+  const [quickUploadSettings, setQuickUploadSettings] = useState<UploadSettings>(() => (
+    loadLocalLibraryUploadSettings(typeof window === 'undefined' ? undefined : window.localStorage)
+  ))
   const [tags, setTags] = useState<LocalTag[]>([])
   const [collections, setCollections] = useState<LocalCollection[]>([])
   const [collectionGroups, setCollectionGroups] = useState<CollectionGroup[]>([])
@@ -157,6 +182,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [selectedQueryToken, setSelectedQueryToken] = useState<string | null>(null)
   const [selectedQueryTotal, setSelectedQueryTotal] = useState(0)
   const selectionAnchorRef = useRef<string | null>(null)
+  const folderTreeNodeRefs = useRef(new Map<string, HTMLDivElement>())
+  const pendingFolderTreeFocusRef = useRef<string | null>(null)
 
   const toggleFolderCollapsed = toggleFolderExpanded
 
@@ -176,6 +203,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     }
     return map
   }, [folders])
+
+  const foldersById = useMemo(() => new Map(folders.map((item) => [item.id, item])), [folders])
 
   const folderTreeAssetCounts = useMemo(() => {
     const byId = new Map(folders.map((item) => [item.id, item.assetCount]))
@@ -225,6 +254,39 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     selectionAnchorRef.current = null
     selectAsset(null)
   }, [selectAsset])
+
+  const openFolderFromContent = useCallback((nextFolder: FolderItem) => {
+    const ancestorPaths: string[] = []
+    const visitedIds = new Set<string>()
+    let parentId = nextFolder.parentId
+
+    while (parentId && !visitedIds.has(parentId)) {
+      visitedIds.add(parentId)
+      const parent = foldersById.get(parentId)
+      if (!parent) break
+      ancestorPaths.push(parent.relativePath)
+      parentId = parent.parentId
+    }
+
+    expandFolderPaths(ancestorPaths)
+    pendingFolderTreeFocusRef.current = nextFolder.relativePath
+    clearAssetSelection()
+    setFolder(nextFolder.relativePath)
+  }, [clearAssetSelection, expandFolderPaths, foldersById, setFolder])
+
+  useEffect(() => {
+    const targetPath = pendingFolderTreeFocusRef.current
+    if (!targetPath || targetPath !== folder || !foldersOpen) return
+
+    const frame = requestAnimationFrame(() => {
+      const targetNode = folderTreeNodeRefs.current.get(targetPath)
+      if (!targetNode) return
+      targetNode.scrollIntoView({ block: 'nearest' })
+      pendingFolderTreeFocusRef.current = null
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [expandedFolderPaths, folder, folders, foldersOpen])
 
   const selectGridAsset = useCallback((asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => {
     const ids = page.items.map((item) => item.id)
@@ -313,6 +375,28 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     }
   }, [page.items, query])
 
+  const selectedAssets = useMemo(() => {
+    const selectedIds = new Set(selectedAssetIds)
+    return page.items.filter((item) => selectedIds.has(item.id))
+  }, [page.items, selectedAssetIds])
+  const selectedCount = selectedQueryToken ? selectedQueryTotal : selectedAssetIds.length
+  const allLoadedSelected = page.items.length > 0 && page.items.every((item) => selectedAssetIds.includes(item.id))
+  const selectedUploadAssets = selectedAssets.filter((asset) => asset.availability === 'active' && isPhotoAsset(asset))
+  const selectedUploadedCount = selectedAssets.filter((asset) => asset.isUploaded).length
+  const selectedFolderBatchCount = new Set(selectedAssets.filter((asset) => asset.trashEntryKind === 'folder').map((asset) => asset.trashEntryId || asset.id)).size
+  const fileOperationsBlockedByQuery = Boolean(selectedQueryToken)
+
+  const toggleSelectAllLoaded = useCallback(() => {
+    if (selectedQueryToken || allLoadedSelected) {
+      clearAssetSelection()
+      return
+    }
+    const ids = page.items.map((item) => item.id)
+    setSelectedAssetIds(ids)
+    selectionAnchorRef.current = ids.at(-1) ?? null
+    selectAsset(page.items.at(-1) ?? null)
+  }, [allLoadedSelected, clearAssetSelection, page.items, selectAsset, selectedQueryToken])
+
   useEffect(() => { reloadFolders() }, [reloadFolders, refreshKey])
   useEffect(() => { void reloadFavoriteCount() }, [reloadFavoriteCount, refreshKey])
   useEffect(() => { void reloadOrganization() }, [reloadOrganization])
@@ -321,21 +405,40 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     if (availability === 'trashed') void reloadTrashedFolders()
   }, [availability, refreshKey, reloadTrashedFolders])
 
+  const reloadStorageSources = useCallback(async () => {
+    if (!isAuthenticated || storageSourcesLoadingRef.current) return
+
+    const requestVersion = storageSourcesRequestVersionRef.current
+    storageSourcesLoadingRef.current = true
+    setStorageSourcesLoading(true)
+    try {
+      const items = await GetStorageSources()
+      if (requestVersion === storageSourcesRequestVersionRef.current) setStorageSources(items || [])
+    } catch {
+      if (requestVersion === storageSourcesRequestVersionRef.current) setStorageSources([])
+    } finally {
+      if (requestVersion === storageSourcesRequestVersionRef.current) {
+        storageSourcesLoadingRef.current = false
+        setStorageSourcesLoading(false)
+      }
+    }
+  }, [isAuthenticated])
+
   useEffect(() => {
     if (!isAuthenticated) {
-      setUploadAlbums([])
-      setUploadAlbumsLoading(false)
+      storageSourcesRequestVersionRef.current += 1
+      storageSourcesLoadingRef.current = false
+      setStorageSources([])
+      setStorageSourcesLoading(false)
       return
     }
 
-    let disposed = false
-    setUploadAlbumsLoading(true)
-    localLibraryApi.listUploadAlbums()
-      .then((items) => { if (!disposed) setUploadAlbums(items) })
-      .catch(() => { if (!disposed) setUploadAlbums([]) })
-      .finally(() => { if (!disposed) setUploadAlbumsLoading(false) })
-    return () => { disposed = true }
-  }, [isAuthenticated])
+    void reloadStorageSources()
+    return () => {
+      storageSourcesRequestVersionRef.current += 1
+      storageSourcesLoadingRef.current = false
+    }
+  }, [isAuthenticated, reloadStorageSources])
 
   useEffect(() => {
     if (!propertiesFolder) {
@@ -776,12 +879,139 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     }
   }, [copy.copiedToClipboard, copy.cutToClipboard])
 
-  const uploadAsset = useCallback((asset: LocalAsset, albumId?: string) => {
+  const uploadAsset = useCallback((asset: LocalAsset) => {
     if (!isAuthenticated || asset.availability !== 'active' || !isPhotoAsset(asset)) return
-    useUploadIntentStore.getState().enqueue({ source: 'local-assets', assetIds: [asset.id], albumId })
+    useUploadIntentStore.getState().enqueue({ source: 'local-assets', assetIds: [asset.id] })
     toast.success(copy.uploadPrepared)
     navigate('/upload')
   }, [copy.uploadPrepared, isAuthenticated, navigate])
+
+  const queueSelectedAssetUpload = useCallback(async (settings: UploadSettings) => {
+    if (fileOperationsBlockedByQuery || !isAuthenticated || uploadPreparingRef.current || selectedUploadAssets.length === 0) return
+    if (!settings.storageSourceId) {
+      toast.error(copy.noStorageSources)
+      return
+    }
+
+    uploadPreparingRef.current = true
+    setUploadPreparing(true)
+    try {
+      const prepared = await PrepareLocalAssetUpload(selectedUploadAssets.map((asset) => asset.id))
+      const ready = (prepared || []).filter((file) => file && !file.error)
+      const failedCount = Math.max(0, selectedUploadAssets.length - ready.length)
+      if (ready.length === 0) {
+        toast.error(copy.batchUploadFailed)
+        return
+      }
+      addTasks(ready.map((file) => ({
+        filePath: file.filePath,
+        assetId: file.assetId,
+        fileName: file.fileName,
+        fileSize: file.fileSize,
+        hash: file.hash,
+        exif: file.exif,
+        checkDuplicate: true,
+      })), {
+        title: settings.title || '',
+        categories: settings.categories || [],
+        albumIds: settings.albumIds,
+        storyId: settings.storyId,
+        storageSourceId: settings.storageSourceId,
+        storagePath: settings.storagePath || '',
+        storagePathFull: settings.storagePathFull,
+        compressEnabled: settings.compressionMode !== 'none',
+        maxSizeMB: settings.maxSizeMB || 0,
+        showFlag: settings.showFlag ?? true,
+        stripGPS: Boolean(settings.stripGps),
+      })
+      if (failedCount > 0) toast.warning(copy.batchUploadPartial.replace('{success}', ready.length.toLocaleString()).replace('{failed}', failedCount.toLocaleString()))
+      else toast.success(`${copy.uploadQueued} (${ready.length})`)
+      clearAssetSelection()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : copy.batchUploadFailed)
+    } finally {
+      uploadPreparingRef.current = false
+      setUploadPreparing(false)
+    }
+  }, [addTasks, clearAssetSelection, copy.batchUploadFailed, copy.batchUploadPartial, copy.noStorageSources, copy.uploadQueued, fileOperationsBlockedByQuery, isAuthenticated, selectedUploadAssets])
+
+  const uploadSelectedToStorage = useCallback((storageSourceId: string) => {
+    void queueSelectedAssetUpload({ ...quickUploadSettings, storageSourceId })
+  }, [queueSelectedAssetUpload, quickUploadSettings])
+
+  const openSelectedUploadSettings = useCallback(() => {
+    if (!uploadPreparing && selectedUploadAssets.length > 0) setBatchUploadSettingsOpen(true)
+  }, [selectedUploadAssets.length, uploadPreparing])
+
+  const confirmSelectedUploadSettings = useCallback((settings: UploadSettings) => {
+    const normalizedSettings = normalizeLocalLibraryUploadSettings(settings)
+    setQuickUploadSettings(normalizedSettings)
+    saveLocalLibraryUploadSettings(typeof window === 'undefined' ? undefined : window.localStorage, normalizedSettings)
+    void queueSelectedAssetUpload(normalizedSettings)
+  }, [queueSelectedAssetUpload])
+
+  const queueLocalAssetUpload = useCallback(async (asset: LocalAsset, settings: UploadSettings) => {
+    if (!isAuthenticated || uploadPreparingRef.current || asset.availability !== 'active' || !isPhotoAsset(asset)) return
+    if (!settings.storageSourceId) {
+      toast.error(copy.noStorageSources)
+      return
+    }
+
+    uploadPreparingRef.current = true
+    setUploadPreparing(true)
+    try {
+      const prepared = await PrepareLocalAssetUpload([asset.id])
+      const file = prepared?.[0]
+      if (!file || file.error) {
+        toast.error(file?.error || copy.uploadPrepareFailed)
+        return
+      }
+      addTasks([{
+        filePath: file.filePath,
+        assetId: file.assetId,
+        fileName: file.fileName,
+        fileSize: file.fileSize,
+        hash: file.hash,
+        exif: file.exif,
+        checkDuplicate: true,
+      }], {
+        title: settings.title || '',
+        categories: settings.categories || [],
+        albumIds: settings.albumIds,
+        storyId: settings.storyId,
+        storageSourceId: settings.storageSourceId,
+        storagePath: settings.storagePath || '',
+        storagePathFull: settings.storagePathFull,
+        compressEnabled: settings.compressionMode !== 'none',
+        maxSizeMB: settings.maxSizeMB || 0,
+        showFlag: settings.showFlag ?? true,
+        stripGPS: Boolean(settings.stripGps),
+      })
+      toast.success(copy.uploadQueued)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : copy.uploadPrepareFailed)
+    } finally {
+      uploadPreparingRef.current = false
+      setUploadPreparing(false)
+    }
+  }, [addTasks, copy.noStorageSources, copy.uploadPrepareFailed, copy.uploadQueued, isAuthenticated])
+
+  const openUploadSettings = useCallback((asset: LocalAsset) => {
+    if (!uploadPreparing && asset.availability === 'active' && isPhotoAsset(asset)) setUploadSettingsAsset(asset)
+  }, [uploadPreparing])
+
+  const confirmUploadSettings = useCallback((settings: UploadSettings) => {
+    const asset = uploadSettingsAsset
+    if (!asset) return
+    const normalizedSettings = normalizeLocalLibraryUploadSettings(settings)
+    setQuickUploadSettings(normalizedSettings)
+    saveLocalLibraryUploadSettings(typeof window === 'undefined' ? undefined : window.localStorage, normalizedSettings)
+    void queueLocalAssetUpload(asset, normalizedSettings)
+  }, [queueLocalAssetUpload, uploadSettingsAsset])
+
+  const uploadAssetToStorage = useCallback((asset: LocalAsset, storageSourceId: string) => {
+    void queueLocalAssetUpload(asset, { ...quickUploadSettings, storageSourceId })
+  }, [queueLocalAssetUpload, quickUploadSettings])
 
   const openSystem = async (asset: LocalAsset) => {
     try { await localLibraryApi.openInDefaultApp(asset.id) }
@@ -1008,6 +1238,10 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
             <FolderContextTarget target={target} copy={copy}
               onCreate={setCreateFolderParent} onOpenInFileManager={(next) => void openFolderInFileManager(next)} onRename={(next) => setOrganizeFolderTarget({ target: next, mode: 'rename' })} onMove={(next) => setOrganizeFolderTarget({ target: next, mode: 'move' })} onProperties={setPropertiesFolder} onDelete={setDeleteFolderTarget}>
               <div
+                ref={(node) => {
+                  if (node) folderTreeNodeRefs.current.set(item.relativePath, node)
+                  else folderTreeNodeRefs.current.delete(item.relativePath)
+                }}
                 className="mb-0.5 flex w-full items-center rounded-md py-1.5 pr-2 text-xs hover:bg-secondary"
                 style={{
                   paddingLeft: `${7 + Math.min(5, depth) * 12}px`,
@@ -1060,6 +1294,33 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     finally { setDeleteBusy(false) }
   }
 
+  const executeBatchDelete = async () => {
+    if (fileOperationsBlockedByQuery || selectedAssetIds.length === 0 || batchDeleteBusy) return
+    const ids = [...selectedAssetIds]
+    setBatchDeleteBusy(true)
+    try {
+      const results = availability === 'trashed'
+        ? await localLibraryApi.permanentlyDeleteAssets(ids)
+        : availability === 'missing'
+          ? await localLibraryApi.removeMissingAssets(ids)
+          : await localLibraryApi.trashAssets(ids)
+      runResultsMessage(
+        results,
+        availability === 'trashed' ? copy.batchPermanentDeleted : availability === 'missing' ? copy.batchMissingRemoved : copy.batchTrashed,
+        copy.batchDeletePartial,
+      )
+      const failedIds = results.filter((result) => result.status === 'failed').map((result) => result.assetId)
+      setBatchDeleteDialogOpen(false)
+      if (failedIds.length === 0) clearAssetSelection()
+      else setSelectedAssetIds(failedIds)
+      await Promise.all([refreshAssets(), refreshSnapshot()])
+    } catch (error) {
+      toast.error(parseLocalLibraryError(error).message)
+    } finally {
+      setBatchDeleteBusy(false)
+    }
+  }
+
   const permanentlyDelete = async () => {
     if (!deleteAsset) return
     setDeleteBusy(true)
@@ -1071,7 +1332,30 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     finally { setDeleteBusy(false) }
   }
 
+  const deleteCloud = async () => {
+    if (!deleteAsset) return
+    setDeleteBusy(true)
+    try {
+      await localLibraryApi.deleteAssetCloud(deleteAsset.id)
+      toast.success(copy.cloudDeleted)
+      setDeleteAsset(null); selectAsset(null); refreshAssets()
+    } catch (error) { toast.error(parseLocalLibraryError(error).message || copy.cloudDeleteFailed) }
+    finally { setDeleteBusy(false) }
+  }
+
+  const deleteCloudAndLocal = async () => {
+    if (!deleteAsset) return
+    setDeleteBusy(true)
+    try {
+      await localLibraryApi.deleteAssetCloudAndLocal(deleteAsset.id)
+      toast.success(copy.cloudAndLocalDeleted)
+      setDeleteAsset(null); selectAsset(null); refreshAssets(); refreshSnapshot()
+    } catch (error) { toast.error(parseLocalLibraryError(error).message || copy.cloudDeleteFailed) }
+    finally { setDeleteBusy(false) }
+  }
+
   const restoreAsset = async (asset: LocalAsset) => {
+    setDeleteBusy(true)
     try {
       await localLibraryApi.restoreAsset(asset.id)
       toast.success(asset.trashEntryKind === 'folder' ? copy.restoredFolder : copy.restore)
@@ -1080,6 +1364,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       refreshAssets()
       void refreshSnapshot()
     } catch (error) { toast.error(parseLocalLibraryError(error).message) }
+    finally { setDeleteBusy(false) }
   }
 
 
@@ -1186,7 +1471,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     finally { setOrganizationBusy(false) }
   }
 
-  const batchUpdateOrganization = async (update: Omit<BatchAssetOrganizationUpdate, 'assetIds'>) => {
+  const batchUpdateOrganization = useCallback(async (update: Omit<BatchAssetOrganizationUpdate, 'assetIds'>) => {
     if (selectedAssetIds.length < 2 && !selectedQueryToken) return
     setOrganizationBusy(true)
     try {
@@ -1198,7 +1483,60 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       await reloadOrganization()
     } catch (error) { toast.error(parseLocalLibraryError(error).message) }
     finally { setOrganizationBusy(false) }
-  }
+  }, [clearAssetSelection, copy.batchUpdated, refreshAssets, reloadOrganization, selectedAssetIds, selectedQueryToken])
+
+  useEffect(() => {
+    if (selectedCount === 0) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      if (backupDialogOpen || batchDeleteDialogOpen || batchUploadSettingsOpen || createFolderParent || deleteAsset || deleteFolderTarget || guideOpen || organizeFolderTarget || organizationDelete || organizationEditor || pendingImportPaths || permanentFolderTarget || previewAsset || propertiesFolder || removeMissingAsset || restoreFolderTarget || assetFileOperation || uploadSettingsAsset) return
+
+      if (event.key === 'Escape') {
+        clearAssetSelection()
+        return
+      }
+
+      if (/^[1-5]$/.test(event.key)) {
+        const rating = Number(event.key)
+        if (selectedQueryToken) {
+          event.preventDefault()
+          void batchUpdateOrganization({ rating })
+          return
+        }
+        if (selectedAssets.length !== selectedAssetIds.length || selectedAssets.length === 0) return
+        event.preventDefault()
+        if (selectedAssets.length === 1) {
+          const asset = selectedAssets[0]
+          void saveAsset(asset.id, {
+            displayTitle: asset.displayTitle,
+            notes: asset.notes,
+            rating,
+            colorLabel: asset.colorLabel,
+            isFavorite: asset.isFavorite,
+          })
+        } else {
+          void batchUpdateOrganization({ rating })
+        }
+        return
+      }
+
+      if (event.key !== 'Delete' || event.defaultPrevented || fileOperationsBlockedByQuery) return
+      if (selectedAssets.length !== selectedAssetIds.length || selectedAssets.length === 0) return
+      event.preventDefault()
+
+      if (selectedAssets.length === 1) {
+        const asset = selectedAssets[0]
+        selectAsset(asset)
+        if (asset.availability === 'missing') setRemoveMissingAsset(asset)
+        else setDeleteAsset(asset)
+      } else {
+        setBatchDeleteDialogOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [assetFileOperation, backupDialogOpen, batchDeleteDialogOpen, batchUpdateOrganization, batchUploadSettingsOpen, clearAssetSelection, createFolderParent, deleteAsset, deleteFolderTarget, fileOperationsBlockedByQuery, guideOpen, organizeFolderTarget, organizationDelete, organizationEditor, pendingImportPaths, permanentFolderTarget, previewAsset, propertiesFolder, removeMissingAsset, restoreFolderTarget, saveAsset, selectedAssetIds, selectedAssets, selectedCount, selectedQueryToken, selectAsset, uploadSettingsAsset])
 
   const setAssetTags = async (assetId: string, ids: string[]) => {
     setOrganizationBusy(true)
@@ -1299,6 +1637,14 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     return foldersByParentId.get(parentId || '') || []
   }, [canBrowsePhysicalFolders, folder, folders, foldersByParentId])
   const canImportIntoCurrentView = canBrowsePhysicalFolders
+  const applySidebarFilter = (patch: Partial<typeof filters>) => {
+    setAvailability('active')
+    setFavoritesOnly(false)
+    setFolder('')
+    setTagIds([])
+    setCollectionIds([])
+    setFilters({ ...filters, ...patch })
+  }
 
   return (
     <div className="relative grid h-full min-h-0 grid-cols-[218px_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] bg-background" onDragEnd={() => { setAssetDropTargetFolder(null); setDraggedFolderPath(null); setFolderDropTarget(null) }}>
@@ -1352,6 +1698,30 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
             <OrganizationNavigation copy={copy} tags={tags} groups={collectionGroups} collections={collections} selectedTagIds={tagIds} selectedCollectionIds={collectionIds}
               onSelectTags={(ids) => { setAvailability('active'); setFavoritesOnly(false); setTagIds(ids) }} onSelectCollections={(ids) => { setAvailability('active'); setFavoritesOnly(false); setCollectionIds(ids) }}
               onEdit={setOrganizationEditor} onDelete={setOrganizationDelete} onDropAssets={(ids, target) => void applyOrganizationDrop(ids, target)} />
+            <SidebarFilterSection title={copy.colors} icon={Palette} open={colorsOpen} onToggle={() => toggleSection('localColors')}>
+              <div className="space-y-0.5">
+                {SIDEBAR_COLORS.map((color) => {
+                  const active = filters.colorLabels?.includes(color) ?? false
+                  return <button key={color} type="button" onClick={() => applySidebarFilter({ colorLabels: active ? undefined : [color] })} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition hover:bg-secondary" style={{ backgroundColor: active ? 'var(--accent)' : undefined }}>
+                    <span className="size-3 rounded-full border" style={{ backgroundColor: color, borderColor: active ? 'var(--foreground)' : 'var(--border)' }} />
+                    <span className="min-w-0 flex-1 truncate">{copy[color]}</span>
+                  </button>
+                })}
+              </div>
+            </SidebarFilterSection>
+            <SidebarFilterSection title={copy.ratings} icon={Star} open={ratingsOpen} onToggle={() => toggleSection('localRatings')}>
+              <div className="space-y-0.5">
+                {SIDEBAR_RATINGS.map((rating) => {
+                  const active = filters.ratingMin === rating && (rating === 0 ? filters.ratingMax === 0 : filters.ratingMax === undefined)
+                  return <button key={rating} type="button" onClick={() => applySidebarFilter(active ? { ratingMin: undefined, ratingMax: undefined } : { ratingMin: rating, ratingMax: rating === 0 ? 0 : undefined })} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition hover:bg-secondary" style={{ backgroundColor: active ? 'var(--accent)' : undefined }}>
+                    <span className="flex min-w-0 flex-1 items-center gap-0.5" aria-label={`${rating} ${copy.rating}`}>
+                      {rating === 0 ? <span className="text-[10px] text-muted-foreground">{copy.unrated}</span> : Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < rating ? 'currentColor' : 'none'} className={index < rating ? 'text-amber-500' : 'text-muted-foreground'} />)}
+                    </span>
+                    {rating > 0 && <span className="text-[9px] text-muted-foreground">{rating}+</span>}
+                  </button>
+                })}
+              </div>
+            </SidebarFilterSection>
           </div>
           <div className="mt-3 shrink-0 rounded-lg border p-3 text-[10px] leading-4" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
             <div className="grid grid-cols-3 gap-1 text-center">
@@ -1362,7 +1732,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
           </div>
         </aside>
 
-        <main data-local-library-import-folder={canImportIntoCurrentView ? folder : undefined} style={canImportIntoCurrentView ? { '--wails-drop-target': 'drop' } as CSSProperties : undefined} className="col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col overflow-hidden">
+        <main data-local-library-import-folder={canImportIntoCurrentView ? folder : undefined} style={canImportIntoCurrentView ? { '--wails-drop-target': 'drop' } as CSSProperties : undefined} className="relative col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col overflow-hidden">
           <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }} data-local-library-guide="toolbar">
             <div className="relative min-w-0 flex-1"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1" />{search && <button type="button" onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1"><X size={13} /></button>}</div>
             <LocalAssetFilters copy={copy} filters={filters} onChange={setFilters} onClear={clearFilters} />
@@ -1395,11 +1765,35 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
           {availability === 'trashed' && <FolderTrashSection entries={trashedFolders} copy={copy} loading={trashedFoldersLoading} busyId={trashFolderBusyId} onRestore={setRestoreFolderTarget} onPermanentDelete={setPermanentFolderTarget} />}
           <LocalAssetGrid assets={page.items} folders={currentChildFolders} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
             emptyTitle={availability === 'missing' ? copy.missingEmpty : undefined} emptyHint={availability === 'missing' ? copy.missingEmptyHint : undefined}
-            canUpload={isAuthenticated} uploadAlbums={uploadAlbums} uploadAlbumsLoading={uploadAlbumsLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
-            selectedIds={selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={(nextFolder) => { clearAssetSelection(); setFolder(nextFolder.relativePath) }} onLoadMore={loadMore}
+            canUpload={isAuthenticated} storageSources={storageSources} storageSourcesLoading={storageSourcesLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
+            selectedIds={selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={openFolderFromContent} onLoadMore={loadMore}
             onOpenInFileManager={(asset) => void openAssetInFileManager(asset)}
-            onClipboard={copyAssetToClipboard} onUpload={uploadAsset} onDelete={(asset) => { selectAsset(asset); setDeleteAsset(asset) }} onRename={openRenameAsset} onMove={openMoveAsset} onRestore={restoreAsset}
+            onClipboard={copyAssetToClipboard} onUpload={uploadAsset} onUploadSettings={openUploadSettings} onUploadToStorage={uploadAssetToStorage} onRefreshStorageSources={() => void reloadStorageSources()} onDelete={(asset) => { selectAsset(asset); setDeleteAsset(asset) }} onRename={openRenameAsset} onMove={openMoveAsset} onRestore={restoreAsset}
             onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => { selectAsset(asset); setRemoveMissingAsset(asset) }} />
+          {selectedCount > 0 && (
+            <LocalAssetSelectionToolbar
+              copy={copy}
+              selectedCount={selectedCount}
+              allLoadedSelected={allLoadedSelected}
+              busy={batchDeleteBusy || assetFileOperationBusy || uploadPreparing}
+              canSelectLoaded={page.items.length > 0}
+              canUpload={!fileOperationsBlockedByQuery && isAuthenticated && selectedUploadAssets.length > 0 && selectedUploadAssets.length === selectedAssetIds.length}
+              canMove={!fileOperationsBlockedByQuery && selectedAssets.length > 0 && selectedAssets.length === selectedAssetIds.length && selectedAssets.every((asset) => asset.availability === 'active')}
+              canDelete={!fileOperationsBlockedByQuery && selectedAssets.length > 0 && selectedAssets.length === selectedAssetIds.length}
+              uploadHint={fileOperationsBlockedByQuery ? copy.uploadSelectedUnavailable : undefined}
+              moveHint={fileOperationsBlockedByQuery ? copy.moveSelectedUnavailable : undefined}
+              deleteHint={fileOperationsBlockedByQuery ? copy.deleteSelectedUnavailable : undefined}
+              storageSources={storageSources}
+              storageSourcesLoading={storageSourcesLoading}
+              onRefreshStorageSources={() => void reloadStorageSources()}
+              onUploadSettings={openSelectedUploadSettings}
+              onUploadToStorage={uploadSelectedToStorage}
+              onToggleSelectLoaded={toggleSelectAllLoaded}
+              onMove={openMoveSelectedAssets}
+              onDelete={() => setBatchDeleteDialogOpen(true)}
+              onClear={clearAssetSelection}
+            />
+          )}
           <div className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }} data-local-library-guide="statusbar">
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"><span className={`shrink-0 ${isScanning ? 'animate-pulse' : ''}`} style={{ color: isScanning ? 'var(--primary)' : 'var(--muted-foreground)' }}>{scanLabel(snapshot, copy)}</span><span className="min-w-0 flex-1 truncate" style={{ color: 'var(--muted-foreground)' }}>{snapshot.scan.lastPath || currentLocation}</span></div>
             {snapshot.scan.state === 'running' && <><button disabled={scanBusy} onClick={() => runScanAction('pause')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Pause size={11} />{copy.pause}</button><button disabled={scanBusy} onClick={() => runScanAction('cancel')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Square size={10} />{copy.cancel}</button></>}
@@ -1430,7 +1824,18 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       {organizationDelete && <DeleteOrganizationDialog copy={copy} busy={organizationBusy} title={organizationDelete.kind === 'tag' ? copy.deleteTagTitle : organizationDelete.kind === 'collection' ? copy.deleteCollectionTitle : copy.deleteCollectionGroupTitle} body={organizationDelete.kind === 'tag' ? copy.deleteTagBody : organizationDelete.kind === 'collection' ? copy.deleteCollectionBody : organizationDelete.nonEmpty ? copy.deleteCollectionGroupBody : copy.deleteEmptyCollectionGroupBody} dangerousLabel={organizationDelete.kind === 'group' && organizationDelete.nonEmpty ? copy.deleteGroupContents : copy.confirmPermanent} onClose={() => setOrganizationDelete(null)} onConfirm={() => void deleteOrganization(Boolean(organizationDelete.nonEmpty))} />}
       {pendingImportPaths && <ImportModeDialog copy={copy} busy={importBusy} onClose={() => { setPendingImportPaths(null); setPendingImportDestination(null) }} onChoose={chooseImportMode} />}
       {removeMissingAsset && <RemoveMissingAssetDialog asset={removeMissingAsset} copy={copy} busy={missingMaintenanceBusy} onClose={() => setRemoveMissingAsset(null)} onConfirm={removeMissingRecord} />}
-      {deleteAsset && <DeleteAssetDialog asset={deleteAsset} copy={copy} busy={deleteBusy} onClose={() => setDeleteAsset(null)} onTrash={trashSelected} onRestore={() => void restoreAsset(deleteAsset)} onPermanent={permanentlyDelete} />}
+      {deleteAsset && <DeleteAssetDialog asset={deleteAsset} copy={copy} busy={deleteBusy} onClose={() => setDeleteAsset(null)} onTrash={trashSelected} onRestore={() => void restoreAsset(deleteAsset)} onPermanent={permanentlyDelete} onDeleteCloud={deleteCloud} onDeleteCloudAndLocal={deleteCloudAndLocal} />}
+      <DeleteAssetsDialog
+        open={batchDeleteDialogOpen}
+        availability={availability}
+        selectedCount={selectedCount}
+        uploadedCount={selectedUploadedCount}
+        folderBatchCount={selectedFolderBatchCount}
+        busy={batchDeleteBusy}
+        copy={copy}
+        onClose={() => setBatchDeleteDialogOpen(false)}
+        onConfirm={() => void executeBatchDelete()}
+      />
       {createFolderParent && <CreateFolderDialog parentName={createFolderParent.name} copy={copy} busy={folderOperationBusy} onClose={() => setCreateFolderParent(null)} onCreate={createFolder} />}
       {organizeFolderTarget && <MoveFolderDialog mode={organizeFolderTarget.mode} relativePath={organizeFolderTarget.target.relativePath} currentName={organizeFolderTarget.target.name} folders={folders} copy={copy} busy={folderOperationBusy} plan={folderMovePlan} onClose={() => { setFolderMovePlan(undefined); setOrganizeFolderTarget(null) }} onConfirm={organizeFolder} onExecute={() => void executeFolderMovePlan()} />}
       {assetFileOperation && <AssetFileOperationDialog mode={assetFileOperation.mode} asset={assetFileOperation.mode === 'rename' ? assetFileOperation.asset : undefined} selectedCount={assetFileOperation.mode === 'move' ? assetFileOperation.assetIds.length : 1} folders={folders} copy={copy} busy={assetFileOperationBusy} plan={assetMovePlan} onClose={() => { setAssetMovePlan(undefined); setAssetFileOperation(null) }} onRename={renameAsset} onMove={moveAssets} onConfirmPlan={() => void executeAssetMovePlan()} />}
@@ -1438,6 +1843,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       {deleteFolderTarget && <DeleteFolderDialog name={deleteFolderTarget.name} copy={copy} preview={folderDeletionPreview} loading={folderDeletionPreviewLoading} error={folderDeletionPreviewError} busy={folderOperationBusy} onClose={() => setDeleteFolderTarget(null)} onTrash={() => void finishActiveFolderRemoval(false)} onPermanent={() => void finishActiveFolderRemoval(true)} />}
       {restoreFolderTarget && <RestoreFolderDialog entry={restoreFolderTarget} folders={folders} copy={copy} busy={trashFolderBusyId === restoreFolderTarget.id} onClose={() => setRestoreFolderTarget(null)} onConfirm={restoreFolderBatch} />}
       {permanentFolderTarget && <PermanentDeleteFolderDialog entry={permanentFolderTarget} copy={copy} busy={trashFolderBusyId === permanentFolderTarget.id} onClose={() => setPermanentFolderTarget(null)} onConfirm={permanentlyDeleteFolderBatch} />}
+      {uploadSettingsAsset && <ImageUploadSettingsModal isOpen onClose={() => setUploadSettingsAsset(null)} onConfirm={confirmUploadSettings} pendingCount={1} t={t} token={token} initialSettings={quickUploadSettings} confirmLabel={copy.uploadNow} />}
+      {batchUploadSettingsOpen && <ImageUploadSettingsModal isOpen onClose={() => setBatchUploadSettingsOpen(false)} onConfirm={confirmSelectedUploadSettings} pendingCount={selectedUploadAssets.length} t={t} token={token} initialSettings={quickUploadSettings} confirmLabel={copy.uploadNow} />}
       {guideOpen && <LocalLibraryGuide copy={copy} onClose={closeGuide} />}
     </div>
   )
@@ -1473,6 +1880,17 @@ function FolderContextTarget({ target, copy, children, onCreate, onOpenInFileMan
       </ContextMenuContent>
     </ContextMenu>
   )
+}
+
+function SidebarFilterSection({ title, icon: Icon, open, onToggle, children }: { title: string; icon: typeof Images; open: boolean; onToggle: () => void; children: ReactNode }) {
+  return <section className="mt-5">
+    <button type="button" onClick={onToggle} aria-expanded={open} className="mb-2 flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[10px] font-medium uppercase tracking-[0.16em] transition hover:bg-secondary" style={{ color: 'var(--muted-foreground)' }}>
+      {open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+      <Icon size={12} className="shrink-0" />
+      <span className="truncate">{title}</span>
+    </button>
+    {open && children}
+  </section>
 }
 
 function NavButton({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Images; label: string; count?: number; onClick: () => void }) {

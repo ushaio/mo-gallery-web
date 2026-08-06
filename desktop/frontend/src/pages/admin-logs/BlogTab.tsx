@@ -1,32 +1,14 @@
 /**
- * 博客管理标签页 - 博客文章的创建、编辑、删除及草稿恢复
+ * 博客管理（master-detail）：左栏列表 + 右栏编辑器。
+ * 选中行即编辑；切换/退出前先落盘草稿（IndexedDB 自动保存兜底）；
+ * 保存后留在编辑态并清除草稿。草稿恢复/删除对话框与自动保存逻辑沿用原实现。
  */
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import {
-  BookText,
-  Plus,
-  History,
-  FileText,
-  Edit3,
-  Trash2,
-  ChevronLeft,
-  Save,
-  ImageIcon,
-  X,
-  Loader2,
-  Check,
-  Clock,
-  Search,
-} from 'lucide-react'
+import React, { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import type { PhotoDto, BlogDto } from '@/lib/api/types'
-import { resolveAssetUrl } from '@/lib/api/core'
-import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
-import { formatRelativeTimeLabel } from '@/lib/utils'
 import { createBlogDraftDocumentId, resolveBlogDocumentId, rotateBlogDraftDocumentId } from '@/lib/blog-draft-document'
 import { persistDesktopBlog, type DesktopBlogSaveApi } from '@/lib/desktop-blog-save'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   saveBlogDraftToDB,
@@ -36,12 +18,12 @@ import {
 } from '@/lib/client-db'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
-import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminLoading } from '@/components/admin/AdminLoading'
-import type { SelectOption } from '@/components/admin/AdminFormControls'
-import { SelectDropdown } from '@/components/ui/SelectDropdown'
-
-import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
+import { BlogListView } from './BlogListView'
+import { BlogEditorView, type BlogFormData } from './BlogEditorView'
+import { EditorEmptyState } from './shared/EditorEmptyState'
+import { CollapsibleListPane } from './shared/CollapsibleListPane'
+import { useDirtyLeaveGuard, useSaveShortcut } from './shared/useDirtyLeaveGuard'
+import { BookText } from 'lucide-react'
 
 const AUTO_SAVE_DELAY = 2000 // 自动保存防抖延迟（毫秒）
 
@@ -51,16 +33,12 @@ interface BlogTabProps {
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   refreshKey?: number
-}
-
-interface BlogFormData {
-  id?: string
-  title: string
-  content: string
-  contentJson?: BlogDto['contentJson']
-  category: string
-  tags: string
-  isPublished: boolean
+  editBlogFromDraft?: BlogDraftData | null
+  onDraftConsumed?: () => void
+  onEditingChange?: (editing: boolean) => void
+  listPaneCollapsed?: boolean
+  onToggleListPane?: () => void
+  subTabNav?: ReactNode
 }
 
 interface DesktopBlogApp extends DesktopBlogSaveApi {
@@ -72,23 +50,20 @@ function getDesktopBlogApp() {
   return (window as unknown as { go: { main: { App: DesktopBlogApp } } }).go.main.App
 }
 
-export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProps) {
+export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromDraft, onDraftConsumed, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav }: BlogTabProps) {
   const { token } = useAuth()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentBlog, setCurrentBlog] = useState<BlogFormData | null>(null)
-  const [editMode, setEditMode] = useState<'list' | 'editor'>('list')
-  const [isInsertingPhoto, setIsInsertingPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
   const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
   const [draftDocumentId, setDraftDocumentId] = useState(createBlogDraftDocumentId)
-  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
-  
+
   // 自动保存状态
   const [draftSaved, setDraftSaved] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   // 记录初始状态，用于脏检查
   const [isDirty, setIsDirty] = useState(false)
   const initialBlogRef = useRef<{
@@ -99,15 +74,16 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     tags: string
     isPublished: boolean
   } | null>(null)
-  
+
   // 删除确认对话框状态
   const [deleteBlogId, setDeleteBlogId] = useState<string | null>(null)
-  
+
   // 发布状态筛选
   const [statusFilter, setStatusFilter] = useState('')
-  // 搜索关键字
-  const [blogSearchQuery, setBlogSearchQuery] = useState('')
-  
+
+  // 文档内容修订号：整篇内容被替换（草稿恢复/跳转）时递增，驱动编辑器重挂载
+  const [editorRevision, setEditorRevision] = useState(0)
+
   // 草稿恢复对话框状态
   const [draftRestoreDialog, setDraftRestoreDialog] = useState<{
     isOpen: boolean
@@ -115,6 +91,17 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     blog: BlogDto | null
     isNew: boolean
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
+
+  const editing = currentBlog !== null
+
+  // 通知父级编辑状态（用于隐藏页面级 chrome）
+  useEffect(() => {
+    onEditingChange?.(editing)
+  }, [editing, onEditingChange])
+
+  // 离开保护 + Ctrl+S
+  useDirtyLeaveGuard(isDirty && editing, editing)
+  useSaveShortcut(() => handleSaveBlog(), editing && !isAiTaskLocked)
 
   const fetchBlogs = useCallback(async () => {
     setLoading(true)
@@ -128,11 +115,11 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setLoading(false)
     }
   }, [notify, t])
-  
+
   useEffect(() => {
     void fetchBlogs()
   }, [fetchBlogs])
-  
+
   useEffect(() => {
     if (refreshKey && refreshKey > 0) {
       void fetchBlogs()
@@ -186,19 +173,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
   }, [])
 
-  // 格式化相对时间
-  const formatRelativeTime = useMemo(() => {
-    if (!lastSavedAt) return null
-    return formatRelativeTimeLabel(lastSavedAt, t)
-  }, [lastSavedAt, t])
-
   // 检查内容是否变更（脏检查）
   useEffect(() => {
-    if (editMode !== 'editor' || !currentBlog || !initialBlogRef.current) {
+    if (!currentBlog || !initialBlogRef.current) {
       setIsDirty(false)
       return
     }
-    
+
     const initial = initialBlogRef.current
     const hasChanged =
       currentBlog.title !== initial.title ||
@@ -207,9 +188,9 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       currentBlog.category !== initial.category ||
       currentBlog.tags !== initial.tags ||
       currentBlog.isPublished !== initial.isPublished
-    
+
     setIsDirty(hasChanged)
-  }, [editMode, currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished])
+  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished])
 
   // 内容变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
@@ -235,7 +216,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
 
   // 将草稿应用到当前博客
   const applyDraft = useCallback((draft: BlogDraftData, blogId?: string) => {
-    setCurrentBlog({
+    const normalized: BlogFormData = {
       id: blogId,
       title: draft.title,
       content: draft.content,
@@ -243,31 +224,33 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       category: draft.category || t('blog.uncategorized'),
       tags: draft.tags || '',
       isPublished: draft.isPublished,
-    })
+    }
+    setCurrentBlog(normalized)
     setLastSavedAt(draft.savedAt)
     // 更新初始引用以匹配恢复的草稿（不视为脏数据）
     initialBlogRef.current = {
-      title: draft.title,
-      content: draft.content,
-      contentJson: draft.contentJson ?? null,
-      category: draft.category || t('blog.uncategorized'),
-      tags: draft.tags || '',
-      isPublished: draft.isPublished,
+      title: normalized.title,
+      content: normalized.content,
+      contentJson: normalized.contentJson,
+      category: normalized.category,
+      tags: normalized.tags,
+      isPublished: normalized.isPublished,
     }
     notify(t('admin.restored_from_draft'), 'info')
   }, [t, notify])
 
   // 草稿恢复对话框 - 确认恢复
   const handleDraftRestore = useCallback(() => {
+    setEditorRevision((r) => r + 1)
     if (draftRestoreDialog.draft) {
       applyDraft(draftRestoreDialog.draft, draftRestoreDialog.blog?.id)
     }
     setDraftRestoreDialog({ isOpen: false, draft: null, blog: null, isNew: false })
-    setEditMode('editor')
   }, [draftRestoreDialog, applyDraft])
 
   // 草稿恢复对话框 - 丢弃草稿
   const handleDraftDiscard = useCallback(() => {
+    setEditorRevision((r) => r + 1)
     if (draftRestoreDialog.isNew) {
       setCurrentBlog({
         title: '',
@@ -290,17 +273,24 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
     setLastSavedAt(null)
     setDraftRestoreDialog({ isOpen: false, draft: null, blog: null, isNew: false })
-    setEditMode('editor')
   }, [draftRestoreDialog, t])
 
-  // 草稿恢复对话框 - 取消（关闭不操作）
+  // 草稿恢复对话框 - 取消（关闭不操作，回到空选择态）
   const handleDraftCancel = useCallback(() => {
     setDraftRestoreDialog({ isOpen: false, draft: null, blog: null, isNew: false })
     setCurrentBlog(null)
   }, [])
 
+  // 切换选中前先落盘当前草稿（毫秒级，无感）
+  const flushCurrentDraft = useCallback(() => {
+    if (currentBlog && isDirty) {
+      void saveDraft()
+    }
+  }, [currentBlog, isDirty, saveDraft])
+
   const handleCreateBlog = async () => {
     setDraftDocumentId(rotateBlogDraftDocumentId)
+    flushCurrentDraft()
     // 设置脏检查的初始状态
     initialBlogRef.current = {
       title: '',
@@ -310,7 +300,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       tags: '',
       isPublished: false,
     }
-    
+
     // 检查是否存在新博客的草稿
     const draft = await loadDraftForBlog(undefined)
     if (draft && (draft.title || draft.content)) {
@@ -326,7 +316,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setDraftRestoreDialog({ isOpen: true, draft, blog: null, isNew: true })
       return
     }
-    
+
     setCurrentBlog({
       title: '',
       content: '',
@@ -335,10 +325,10 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       tags: '',
       isPublished: false,
     })
-    setEditMode('editor')
   }
 
   const handleEditBlog = async (blog: BlogDto) => {
+    flushCurrentDraft()
     // 设置脏检查的初始状态
     initialBlogRef.current = {
       title: blog.title,
@@ -348,7 +338,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       tags: blog.tags || '',
       isPublished: blog.isPublished,
     }
-    
+
     // 检查是否存在该博客的草稿
     const draft = await loadDraftForBlog(blog.id)
     if (draft && draft.savedAt > new Date(blog.updatedAt).getTime()) {
@@ -365,7 +355,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       setDraftRestoreDialog({ isOpen: true, draft, blog, isNew: false })
       return
     }
-    
+
     setCurrentBlog({
       id: blog.id,
       title: blog.title,
@@ -376,13 +366,18 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       isPublished: blog.isPublished,
     })
     setLastSavedAt(null)
-    setEditMode('editor')
   }
 
   const confirmDeleteBlog = async () => {
     if (!deleteBlogId) return
     try {
       await getDesktopBlogApp().DeleteBlog(deleteBlogId)
+      // 若删除的是当前编辑中的文章，回到空选择态
+      if (currentBlog?.id === deleteBlogId) {
+        setCurrentBlog(null)
+        setLastSavedAt(null)
+        initialBlogRef.current = null
+      }
       await fetchBlogs()
       notify(t('admin.notify_log_deleted'))
     } catch (error) {
@@ -406,6 +401,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
 
     setSaving(true)
     try {
+      const savedId = currentBlog.id
       await persistDesktopBlog({
         api: getDesktopBlogApp(),
         blogId: currentBlog.id,
@@ -421,12 +417,20 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
           setCurrentBlog((blog) => (blog ? { ...blog, id: blogId } : blog))
         },
       })
-      await clearDraft(currentBlog.id)
-      
+      await clearDraft(savedId || currentBlog.id)
+
       await fetchBlogs()
-      setEditMode('list')
-      setCurrentBlog(null)
-      setLastSavedAt(null)
+      // 保存后保持编辑态：以当前内容重置初始引用，标记为已清洁
+      const saved = currentBlog
+      initialBlogRef.current = {
+        title: saved.title,
+        content: saved.content,
+        contentJson: saved.contentJson ?? null,
+        category: saved.category,
+        tags: saved.tags,
+        isPublished: saved.isPublished,
+      }
+      setIsDirty(false)
       notify(t('admin.notify_log_saved'))
     } catch (error) {
       notify(t('common.error'), 'error')
@@ -436,401 +440,106 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     }
   }
 
-  const insertPhotoIntoBlog = (photo: PhotoDto) => {
-    if (isAiTaskLocked) return
-    const markdown = buildStoryMarkdownImage({
-      url: resolveAssetUrl(photo.url, settings?.cdn_domain),
-      alt: photo.title,
+  const handleCloseEditor = useCallback(() => {
+    flushCurrentDraft()
+    setCurrentBlog(null)
+    setLastSavedAt(null)
+    initialBlogRef.current = null
+    setIsDirty(false)
+  }, [flushCurrentDraft])
+
+  const handleBlogChange = useCallback((patch: Partial<BlogFormData>) => {
+    setCurrentBlog((prev) => (prev ? { ...prev, ...patch } : prev))
+  }, [])
+
+  // 从草稿页签跳转并应用博客草稿（对齐叙事 editFromDraft 流程）
+  useEffect(() => {
+    if (!editBlogFromDraft) return
+    setEditorRevision((r) => r + 1)
+
+    queueMicrotask(() => {
+      const normalized: BlogFormData = {
+        id: editBlogFromDraft.blogId,
+        title: editBlogFromDraft.title,
+        content: editBlogFromDraft.content,
+        contentJson: editBlogFromDraft.contentJson ?? null,
+        category: editBlogFromDraft.category || t('blog.uncategorized'),
+        tags: editBlogFromDraft.tags || '',
+        isPublished: editBlogFromDraft.isPublished,
+      }
+      initialBlogRef.current = {
+        title: normalized.title,
+        content: normalized.content,
+        contentJson: normalized.contentJson,
+        category: normalized.category,
+        tags: normalized.tags,
+        isPublished: normalized.isPublished,
+      }
+      setCurrentBlog(normalized)
+      setLastSavedAt(editBlogFromDraft.savedAt)
+      notify(t('admin.restored_from_draft'), 'info')
+      onDraftConsumed?.()
     })
-    if (editorRef.current) {
-      editorRef.current.insertMarkdown(markdown)
-      const nextValue = editorRef.current.getValue()
-      const nextJsonValue = editorRef.current.getJsonValue()
-      setCurrentBlog((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
-    } else if (currentBlog) {
-      setCurrentBlog({ ...currentBlog, content: currentBlog.content + markdown })
-    }
-    setIsInsertingPhoto(false)
-    notify(t('admin.notify_photo_inserted'), 'info')
-  }
-
-  const handleContentChange = (content: string) => {
-    setCurrentBlog((prev) => (prev ? { ...prev, content } : prev))
-  }
-
-  const handleJsonContentChange = (contentJson: NonNullable<BlogDto['contentJson']>) => {
-    setCurrentBlog((prev) => (prev ? { ...prev, contentJson } : prev))
-  }
+  }, [editBlogFromDraft, notify, onDraftConsumed, t])
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
   const blogDocumentId = resolveBlogDocumentId(currentBlog?.id, draftDocumentId)
 
-
-  // 博客发布状态筛选选项
-  const statusOptions: SelectOption[] = [
-    { value: '', label: t('admin.all_status') || '全部状态' },
-    { value: 'published', label: t('admin.published') || '已发布' },
-    { value: 'draft', label: t('admin.draft') || '草稿' },
-  ]
-
-  const filteredBlogs = useMemo(() => {
-    const query = blogSearchQuery.trim().toLowerCase()
-    return blogs.filter((blog) => {
-      const matchesStatus =
-        !statusFilter ||
-        (statusFilter === 'published' ? blog.isPublished : !blog.isPublished)
-      const matchesQuery =
-        !query ||
-        [blog.title, blog.content, blog.category, blog.tags].some((value) =>
-          value?.toLowerCase().includes(query),
-        )
-      return matchesStatus && matchesQuery
-    })
-  }, [blogs, blogSearchQuery, statusFilter])
-
-  const hasActiveFilters = !!blogSearchQuery.trim() || !!statusFilter
-
   return (
-    <div className="h-full flex flex-col gap-6 overflow-hidden">
-      {editMode === 'list' ? (
-        <div className="flex flex-1 flex-col gap-4 overflow-hidden">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className="relative">
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
-                  style={{ color: 'var(--muted-foreground)' }}
-                />
-                <input
-                  type="text"
-                  value={blogSearchQuery}
-                  onChange={(e) => setBlogSearchQuery(e.target.value)}
-                  placeholder={t('admin.search_placeholder') || '搜索...'}
-                  className="w-56 rounded-md border py-1.5 pl-8 pr-3 text-xs outline-none transition-colors focus:border-primary"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
-                />
-              </div>
-              <SelectDropdown
-                value={statusFilter}
-                options={statusOptions}
-                onChange={(value) => setStatusFilter(value as string)}
-                placeholder={t('admin.all_status') || '全部状态'}
-                className="w-32"
-              />
-            </div>
-            <AdminButton
-              onClick={handleCreateBlog}
-              adminVariant="primary"
-              size="sm"
-              className="flex items-center rounded-md px-3 py-1.5"
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              {t('ui.create_blog')}
-            </AdminButton>
-          </div>
-          <div className="custom-scrollbar flex-1 overflow-y-auto">
-            {loading ? (
-              <AdminLoading text={t('common.loading')} className="min-h-[320px]" />
-            ) : filteredBlogs.length > 0 ? (
-              <div className="space-y-2">
-                {filteredBlogs.map((blog) => (
-                  <div
-                    key={blog.id}
-                    className="group flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors hover:border-primary/50"
-                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
-                  >
-                    <div
-                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md"
-                      style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)' }}
-                    >
-                      <BookText className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
-                    </div>
-                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => handleEditBlog(blog)}>
-                      <div className="mb-1 flex items-center gap-3">
-                        <h4 className="truncate font-serif text-lg transition-colors group-hover:text-primary">
-                          {blog.title || t('admin.untitled')}
-                        </h4>
-                        <span
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
-                          style={
-                            blog.isPublished
-                              ? { backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }
-                              : { backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }
-                          }
-                        >
-                          {blog.isPublished ? t('admin.published') : t('admin.draft')}
-                        </span>
-                      </div>
-                      <div
-                        className="flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[10px] uppercase tracking-wide"
-                        style={{ color: 'var(--muted-foreground)' }}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <History className="h-3 w-3" />
-                          {new Date(blog.updatedAt).toLocaleString()}
-                        </span>
-                        {blog.category && <span>{blog.category}</span>}
-                        <span className="flex items-center gap-1.5">
-                          <FileText className="h-3 w-3" />
-                          {blog.content.length} {t('admin.characters')}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ml-auto flex shrink-0 items-center gap-1.5 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                      <AdminButton onClick={() => handleEditBlog(blog)} adminVariant="iconPrimary">
-                        <Edit3 className="h-4 w-4" />
-                      </AdminButton>
-                      <AdminButton onClick={() => setDeleteBlogId(blog.id)} adminVariant="iconDestructive">
-                        <Trash2 className="h-4 w-4" />
-                      </AdminButton>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : blogs.length === 0 ? (
-              <div
-                className="flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-20 text-center"
-                style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--card) 50%, transparent)' }}
-              >
-                <div
-                  className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}
-                >
-                  <BookText className="h-6 w-6" style={{ color: 'var(--muted-foreground)' }} />
-                </div>
-                <h3 className="mb-4 text-sm font-semibold">{t('ui.no_blog')}</h3>
-              </div>
-            ) : (
-              <div
-                className="flex flex-col items-center justify-center rounded-lg border border-dashed px-4 py-20 text-center"
-                style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--card) 50%, transparent)' }}
-              >
-                <div
-                  className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}
-                >
-                  <Search className="h-6 w-6" style={{ color: 'var(--muted-foreground)' }} />
-                </div>
-                <h3 className="mb-2 text-sm font-semibold">{t('common.search')}</h3>
-                <p className="mb-4 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  {t('admin.no_albums_match_filters') || 'No blogs match the current filters'}
-                </p>
-                {hasActiveFilters && (
-                  <div className="flex items-center gap-2">
-                    {!!blogSearchQuery.trim() && (
-                      <button
-                        onClick={() => setBlogSearchQuery('')}
-                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
-                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        {t('common.search')}
-                      </button>
-                    )}
-                    {!!statusFilter && (
-                      <button
-                        onClick={() => setStatusFilter('')}
-                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
-                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        {t('admin.filter') || 'Filter'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border pb-4 flex-shrink-0">
-            <div className="flex items-center gap-4">
-              <AdminButton
-                disabled={isAiTaskLocked}
-                onClick={() => {
-                  setEditMode('list')
-                  setCurrentBlog(null)
-                  setLastSavedAt(null)
-                  initialBlogRef.current = null
-                  setIsDirty(false)
-                }}
-                adminVariant="link"
-                className="flex items-center gap-2 hover:no-underline"
-              >
-                <ChevronLeft className="w-4 h-4" /> {t('admin.back_list')}
-              </AdminButton>
-              {/* 草稿状态指示器 */}
-              {draftSaved && (
-                <div className="flex items-center gap-1 text-[10px] text-green-500">
-                  <Check className="w-3 h-3" />
-                  <span>{t('story.draft_saved') || '已保存'}</span>
-                </div>
-              )}
-              {!draftSaved && lastSavedAt && (
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                  <Clock className="w-3 h-3" />
-                  <span>{formatRelativeTime}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  disabled={isAiTaskLocked}
-                  checked={currentBlog?.isPublished || false}
-                  onChange={(e) =>
-                    setCurrentBlog((prev) => ({
-                      ...prev!,
-                      isPublished: e.target.checked,
-                    }))
-                  }
-                  className="w-4 h-4"
-                />
-                <span className="font-bold uppercase tracking-widest">{t('admin.publish')}</span>
-              </label>
-              <AdminButton
-                onClick={handleSaveBlog}
-                disabled={saving || isAiTaskLocked}
-                adminVariant="primary"
-                size="lg"
-                className="flex items-center gap-2"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span>{t('admin.save')}</span>
-              </AdminButton>
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col gap-4 overflow-hidden relative">
-            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-              <input
-                type="text"
-                disabled={isAiTaskLocked}
-                value={currentBlog?.title || ''}
-                onChange={(e) =>
-                  setCurrentBlog((prev) => ({
-                    ...prev!,
-                    title: e.target.value,
-                  }))
-                }
-                placeholder={t('blog.title_placeholder')}
-                className="w-full p-6 bg-transparent border border-border focus:border-primary outline-none text-2xl font-serif rounded-none"
-              />
-              <div className="flex gap-4">
-                <input
-                  type="text"
-                  disabled={isAiTaskLocked}
-                  value={currentBlog?.category || ''}
-                  onChange={(e) =>
-                    setCurrentBlog((prev) => ({
-                      ...prev!,
-                      category: e.target.value,
-                    }))
-                  }
-                  placeholder={t('ui.category_filter')}
-                  className="flex-1 p-3 bg-transparent border border-border focus:border-primary outline-none text-sm rounded-none"
-                />
-                <input
-                  type="text"
-                  disabled={isAiTaskLocked}
-                  value={currentBlog?.tags || ''}
-                  onChange={(e) =>
-                    setCurrentBlog((prev) => ({
-                      ...prev!,
-                      tags: e.target.value,
-                    }))
-                  }
-                  placeholder="Tags"
-                  className="flex-1 p-3 bg-transparent border border-border focus:border-primary outline-none text-sm rounded-none"
-                />
-              </div>
-              <div className="flex-1 relative border border-border bg-card/30 overflow-visible">
-                {currentBlog && (
-                  <NarrativeTipTapEditor
-                    key={blogDocumentId}
-                    ref={editorRef}
-                    value={currentBlog.content}
-                    jsonValue={currentBlog.contentJson ?? null}
-                    onChange={handleContentChange}
-                    onJsonChange={handleJsonContentChange}
-                    placeholder={t('ui.markdown_placeholder')}
-                    className="overflow-hidden bg-background"
-                    documentId={blogDocumentId}
-                    documentKind="blog"
-                    onAiTaskLockChange={setIsAiTaskLocked}
-                    aiOptions={{
-                      enabled: Boolean(token),
-                      token,
-                      scopeId: blogDocumentId,
-                      title: currentBlog.title,
-                    }}
-                  />
-                )}
-                <AdminButton
-                  disabled={isAiTaskLocked}
-                  onClick={() => setIsInsertingPhoto(true)}
-                  adminVariant="unstyled"
-                  className="absolute bottom-6 right-6 p-4 bg-background border border-border hover:border-primary text-primary transition-all shadow-2xl z-10"
-                  title={t('blog.insert_photo')}
-                >
-                  <ImageIcon className="w-6 h-6" />
-                </AdminButton>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+    <div className="flex h-full min-h-0 gap-5 overflow-hidden">
+      {/* 左栏：博客列表（可折叠） */}
+      <CollapsibleListPane
+        collapsed={listPaneCollapsed}
+        onToggle={() => onToggleListPane?.()}
+        icon={BookText}
+        t={t}
+        header={subTabNav}
+      >
+        <BlogListView
+          blogs={blogs}
+          loading={loading}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          selectedBlogId={currentBlog?.id}
+          onCreateBlog={() => void handleCreateBlog()}
+          onSelectBlog={(blog) => void handleEditBlog(blog)}
+          onRequestDelete={setDeleteBlogId}
+          onRefresh={() => void fetchBlogs()}
+          t={t}
+        />
+      </CollapsibleListPane>
 
-      {/* 插入照片弹窗 */}
-      {isInsertingPhoto && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 md:p-12 bg-background/95 backdrop-blur-sm">
-          <div className="w-full h-full max-w-6xl bg-background border border-border flex flex-col overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-border flex items-center justify-between">
-              <h3 className="font-serif text-2xl uppercase tracking-tight">
-                {t('blog.insert_photo')}
-              </h3>
-              <AdminButton
-                onClick={() => setIsInsertingPhoto(false)}
-                adminVariant="icon"
-              >
-                <X className="w-6 h-6" />
-              </AdminButton>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                {photos.map((photo) => (
-                  <button
-                    type="button"
-                    key={photo.id}
-                    disabled={isAiTaskLocked}
-                    onClick={() => insertPhotoIntoBlog(photo)}
-                    className="group relative aspect-square bg-muted cursor-pointer overflow-hidden border border-transparent hover:border-primary transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <img
-                      src={resolveAssetUrl(
-                        photo.thumbnailUrl || photo.url,
-                        resolvedCdnDomain
-                      )}
-                      alt=""
-                      className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
-                    />
-                    <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                      <Plus className="w-8 h-8 text-white" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 右栏：编辑器 / 空状态 */}
+      <main className="min-w-0 flex-1 overflow-hidden">
+        {currentBlog ? (
+          <BlogEditorView
+            key={`${blogDocumentId}-${editorRevision}`}
+            blog={currentBlog}
+            onChange={handleBlogChange}
+            saving={saving}
+            draftSaved={draftSaved}
+            lastSavedAt={lastSavedAt}
+            isAiTaskLocked={isAiTaskLocked}
+            onAiTaskLockChange={setIsAiTaskLocked}
+            onSave={() => void handleSaveBlog()}
+            onClose={handleCloseEditor}
+            photos={photos}
+            cdnDomain={resolvedCdnDomain}
+            token={token}
+            documentId={blogDocumentId}
+            t={t}
+            notify={notify}
+          />
+        ) : (
+          <EditorEmptyState
+            icon={BookText}
+            title={t('ui.no_blog')}
+            hint={t('admin.select_article_hint')}
+            actionLabel={t('ui.create_blog')}
+            onAction={() => void handleCreateBlog()}
+          />
+        )}
+      </main>
 
       <SimpleDeleteDialog isOpen={!!deleteBlogId} onConfirm={confirmDeleteBlog} onCancel={() => setDeleteBlogId(null)} t={t} />
       <DraftRestoreDialog

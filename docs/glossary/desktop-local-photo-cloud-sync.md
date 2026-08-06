@@ -13,7 +13,7 @@
 | 已上传 | Uploaded | 本地 asset 的 `cloud_photo_id` 非空的状态，表示该照片已上传到云端。 |
 | 未上传 | Not Uploaded | 本地 asset 的 `cloud_photo_id` 为空的状态，可进行上传。 |
 | 上传回写 | Upload Write-back | 云端上传成功后，把 `cloud_photo_id` / `cloud_url` 写回本地 `assets` 表。 |
-| 待同步补齐 | Sync Reconciliation | 单次回写失败后，通过异步对账（按 `fileHash`）补齐缺失关联的机制。 |
+| 补偿对账（规划项） | Sync Reconciliation (Planned) | 未来可按 `fileHash` 补齐缺失关联的后台机制；当前版本未实现，现阶段写回失败会同步返回错误。 |
 | 文件哈希 | File Hash | 本地 asset 的 `fileHash`，用于上传去重与对账匹配。 |
 
 ## 删除能力

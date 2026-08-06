@@ -9,12 +9,14 @@ interface AdminPreferences {
   photoViewMode: PhotoViewMode
   language: 'zh' | 'en'
   theme: 'light' | 'dark' | 'system'
+  sidebarCollapsed: boolean
   zineStripWidth: number
   setPhotoColumns: (n: number) => void
   setPhotoGridSize: (n: number) => void
   setPhotoViewMode: (mode: PhotoViewMode) => void
   setLanguage: (lang: 'zh' | 'en') => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   setZineStripWidth: (n: number) => void
 }
 
@@ -26,12 +28,14 @@ export const usePreferences = create<AdminPreferences>()(
       photoViewMode: 'fit',
       language: 'zh',
       theme: 'system',
+      sidebarCollapsed: false,
       zineStripWidth: 176,
       setPhotoColumns: (n) => set({ photoColumns: n }),
       setPhotoGridSize: (n) => set({ photoGridSize: n }),
       setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
       setLanguage: (lang) => set({ language: lang }),
       setTheme: (theme) => set({ theme }),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setZineStripWidth: (n) => set({ zineStripWidth: n }),
     }),
     { name: 'mo-gallery-preferences' },
@@ -99,6 +103,8 @@ export type LibrarySectionKey =
   | 'localFolders'
   | 'localCollections'
   | 'localTags'
+  | 'localColors'
+  | 'localRatings'
 
 interface LibrarySectionsState {
   sections: Record<LibrarySectionKey, boolean>
@@ -112,6 +118,8 @@ const defaultSections: Record<LibrarySectionKey, boolean> = {
   localFolders: true,
   localCollections: true,
   localTags: true,
+  localColors: true,
+  localRatings: true,
 }
 
 export const useLibrarySections = create<LibrarySectionsState>()(

@@ -295,14 +295,10 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		"file": filePath,
 	}
 
-	var apiResp struct {
-		Success bool     `json:"success"`
-		Data    PhotoDTO `json:"data"`
-		Error   string   `json:"error"`
-		Message string   `json:"message"`
-	}
-
-	if err := s.proxy.POSTMultipart("/admin/photos", fields, files, &apiResp); err != nil {
+	// POSTMultipart already unwraps the Web API's { data: ... } envelope.
+	// Decode the inner photo directly so the desktop queue receives its ID.
+	var photo PhotoDTO
+	if err := s.proxy.POSTMultipart("/admin/photos", fields, files, &photo); err != nil {
 		// 服务端结构化错误：409 去重走友好分支，其余取可读 message
 		var apiErr *APIError
 		if errors.As(err, &apiErr) {
@@ -318,18 +314,13 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		return result, nil
 	}
 
-	if apiResp.Error != "" {
-		if apiResp.Error == "DUPLICATE_PHOTO" {
-			result.IsDuplicate = true
-			result.Existing = &DuplicateInfo{Title: apiResp.Message}
-			return result, nil
-		}
-		result.Error = apiResp.Message
+	if photo.ID == "" {
+		result.Error = "上传失败：服务端未返回照片信息"
 		return result, nil
 	}
 
 	result.Success = true
-	result.Photo = &apiResp.Data
+	result.Photo = &photo
 	return result, nil
 }
 

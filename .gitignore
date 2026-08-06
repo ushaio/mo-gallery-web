@@ -66,6 +66,9 @@ public/uploads
 .kilo
 .kilocode
 
+# zcode tooling
+.zcode/
+
 # desktop client build artifacts
 /desktop/testdata/local-library/manifest.local.json
 /desktop/testdata/local-library/samples/

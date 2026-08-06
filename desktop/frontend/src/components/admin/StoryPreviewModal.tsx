@@ -1,19 +1,27 @@
 'use client'
 
+/**
+ * 叙事预览弹窗：只读复刻发布页（web src/app/story/[id]/page.tsx）的浏览效果。
+ * 深色头图（标签胶囊 + 标题 + 摘要 + 元信息）+ 正文 + 画廊，点击照片进入预览灯箱。
+ * 地图与评论区为发布页的站点级能力，预览中不渲染。
+ */
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   X,
   Calendar,
   Clock,
-  MousePointer2,
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
+import { buildStoryPreviewText, prepareStoryContentForPreview, stripStoryContentToPlainText } from '@/lib/story-rich-content'
 
 interface StoryPreviewModalProps {
   story: StoryDto
@@ -38,12 +46,47 @@ export function StoryPreviewModal({
   onNextPhoto,
   t,
 }: StoryPreviewModalProps) {
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0)
+  // 故事切换时在渲染期重置当前照片（React 官方推荐的派生状态重置模式）
+  const [prevStoryId, setPrevStoryId] = useState<string | undefined>(story.id)
+  if (prevStoryId !== story.id) {
+    setPrevStoryId(story.id)
+    setActivePhotoIndex(0)
+  }
+
   const getPhotoUrl = (photo: PhotoDto, thumbnail = false): string => {
     const url = thumbnail ? (photo.thumbnailUrl || photo.url) : photo.url
     return resolveAssetUrl(url, cdnDomain)
   }
 
   const coverPhoto = getStoryCoverPhoto(story)
+  const coverUrl = coverPhoto ? getPhotoUrl(coverPhoto) : null
+  const photos = story.photos || []
+  const hasMultiplePhotos = photos.length > 1
+  const activePhoto = photos[activePhotoIndex] || null
+  const activePhotoThumbnailUrl = activePhoto ? getPhotoUrl(activePhoto, true) : null
+  const activePhotoFullUrl = activePhoto ? getPhotoUrl(activePhoto) : null
+  const previewText = story.content ? buildStoryPreviewText(story.content, 200) : ''
+  const readingMinutes = Math.max(1, Math.ceil((stripStoryContentToPlainText(story.content || '') || '').length / 500))
+  // 预览正文：回填已上传图片（data-photo-id → 照片记录），本地/未解析图片给灰色占位
+  const previewContent = useMemo(
+    () => prepareStoryContentForPreview(story.content || '', story.photos || [], cdnDomain),
+    [story.content, story.photos, cdnDomain],
+  )
+  const storyDateLabel = new Date(story.createdAt).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+
+  const goToPreviousPhoto = () => {
+    if (photos.length <= 1) return
+    setActivePhotoIndex((prev) => (prev > 0 ? prev - 1 : photos.length - 1))
+  }
+  const goToNextPhoto = () => {
+    if (photos.length <= 1) return
+    setActivePhotoIndex((prev) => (prev < photos.length - 1 ? prev + 1 : 0))
+  }
 
   return (
     <motion.div
@@ -61,57 +104,78 @@ export function StoryPreviewModal({
         <X className="w-5 h-5" />
       </AdminButton>
 
-      {/* Hero Section */}
-      <section className="relative h-screen w-full overflow-hidden bg-black">
+      {/* Hero — 对齐发布页：深色头图 + 底部左对齐内容 */}
+      <header className="relative isolate overflow-hidden bg-zinc-950 text-white">
         <div className="absolute inset-0">
-          {coverPhoto ? (
+          {coverUrl ? (
             <img
-              src={getPhotoUrl(coverPhoto)}
+              src={coverUrl}
               alt={story.title}
-              className="absolute inset-0 w-full h-full object-cover opacity-60"
+              className="absolute inset-0 h-full w-full object-cover opacity-40"
               style={getStoryCoverImageStyle(story)}
             />
           ) : (
-            <div className="w-full h-full bg-muted/10" />
+            <div className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-background" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.7)_100%)]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent" />
         </div>
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+        <div className="relative z-20 mx-auto flex min-h-[80svh] max-w-7xl flex-col justify-end px-6 pb-16 sm:px-8 lg:px-12">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex items-center gap-3 mb-8"
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            className="max-w-4xl"
           >
-            <div className="h-px w-8 bg-primary/50" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-primary/80">{t('admin.narrative')}</span>
-            <div className="h-px w-8 bg-primary/50" />
-          </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              className="mb-6"
+            >
+              <span className="inline-flex items-center gap-2.5 rounded-full bg-white/10 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/80 backdrop-blur-sm">
+                <span className="size-1.5 rounded-full bg-rose-500" />
+                {t('story.detail_tag')}
+              </span>
+            </motion.div>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.8 }}
-            className="text-5xl md:text-7xl lg:text-8xl font-serif font-light tracking-tighter text-white leading-[0.9] max-w-5xl"
-          >
-            {story.title || t('story.untitled')}
-          </motion.h1>
+            <h1 className="max-w-5xl font-serif text-4xl font-medium leading-[1.1] tracking-[-0.02em] text-white sm:text-5xl md:text-6xl lg:text-7xl">
+              {story.title || t('story.untitled')}
+            </h1>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-12 flex items-center gap-8 text-[10px] font-mono uppercase tracking-[0.3em] text-white/60"
-          >
-            <div className="flex items-center gap-2">
-              <Calendar className="w-3 h-3" />
-              {new Date(story.createdAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="w-3 h-3" />
-              {Math.ceil((story.content?.length || 0) / 500)} {t('admin.min_read')}
-            </div>
+            {story.content ? (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="mt-6 max-w-2xl text-lg leading-relaxed text-white/60 font-light line-clamp-3"
+              >
+                {previewText}
+              </motion.p>
+            ) : null}
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="mt-10 flex flex-wrap items-center gap-8 text-[11px] font-medium uppercase tracking-[0.2em] text-white/50"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="size-3.5" />
+                <time dateTime={story.createdAt}>{storyDateLabel}</time>
+              </div>
+              <div className="h-3 w-px bg-white/20" aria-hidden="true" />
+              <div className="flex items-center gap-2">
+                <Clock className="size-3.5" />
+                <span>{readingMinutes} {t('story.detail_read_minutes')}</span>
+              </div>
+              <div className="h-3 w-px bg-white/20" aria-hidden="true" />
+              <div className="flex items-center gap-2">
+                <ImageIcon className="size-3.5" />
+                <span>{photos.length} {t('story.detail_photographs')}</span>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
 
@@ -119,118 +183,157 @@ export function StoryPreviewModal({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.2, duration: 1 }}
-          className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4"
+          transition={{ delay: 1, duration: 0.5 }}
+          className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2"
         >
-          <span className="text-[9px] font-bold uppercase tracking-[0.4em] text-white/40">{t('admin.scroll')}</span>
-          <div className="w-px h-12 bg-gradient-to-b from-primary/50 to-transparent" />
+          <motion.div
+            animate={{ y: [0, 8, 0] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="flex flex-col items-center gap-2"
+          >
+            <span className="text-[9px] uppercase tracking-[0.3em] text-white/40">{t('story.detail_scroll')}</span>
+            <div className="h-8 w-px bg-gradient-to-b from-white/40 to-transparent" />
+          </motion.div>
         </motion.div>
-      </section>
+      </header>
 
-      {/* Content Section */}
-      <div className="px-6 md:px-12 lg:px-24 py-24 md:py-40">
-        <div className="max-w-screen-md mx-auto">
-          {/* Intro Text / Meta */}
-          <div className="mb-20 space-y-6">
-            <div className="flex items-center gap-4 text-primary/40">
-              <span className="text-xs font-mono">01</span>
-              <div className="h-px flex-1 bg-border/50" />
-            </div>
-            <p className="text-xl md:text-2xl font-serif italic text-muted-foreground leading-relaxed">
-              {t('admin.narrative')} · {story.photos?.length || 0} {t('story.detail_photographs')}
-            </p>
+      {/* Body — 对齐发布页：正文 + 返回 + 画廊 */}
+      <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 lg:px-12 lg:py-24">
+        <main>
+          <article className="mb-16">
+            <StoryRichContent content={previewContent} className="story-rich-content--article" />
+          </article>
+
+          {/* 返回入口：预览中点击关闭预览 */}
+          <div className="mb-16 flex flex-col items-center gap-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="group inline-flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.15em] text-zinc-400 transition-colors hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300 cursor-pointer"
+            >
+              <ArrowLeft className="size-3 transition-transform group-hover:-translate-x-1" />
+              {t('story.detail_back_to_all')}
+              <span className="h-px w-8 bg-zinc-300 transition-all group-hover:w-12 dark:bg-zinc-600" />
+            </button>
           </div>
 
-          {/* Main Article */}
-          <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="story-rich-content--article"
-          >
-            <StoryRichContent
-              content={story.content || ''}
-              photos={story.photos || []}
-              cdnDomain={cdnDomain}
-            />
-          </motion.article>
-
-          {/* Large Featured Photo */}
-          {story.photos && story.photos.length > 1 && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              className="relative my-32 -mx-6 md:-mx-24 lg:-mx-48 aspect-[21/9] overflow-hidden bg-muted"
-            >
-              <img
-                src={getPhotoUrl(story.photos[1])}
-                alt={t('admin.featured_visual')}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            </motion.div>
-          )}
-
-          {/* Final Gallery */}
-          {story.photos && story.photos.length > 0 && (
-            <section className="mt-40">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16">
-                <div className="space-y-4">
-                  <span className="text-[10px] font-mono text-primary uppercase tracking-[0.4em]">{t('story.detail_visual_archive')}</span>
-                  <h2 className="text-4xl md:text-5xl font-serif font-light tracking-tight">{t('story.detail_gallery')}</h2>
+          {photos.length > 0 ? (
+            <section className="border-t border-zinc-200 pt-12 dark:border-zinc-800">
+              <div className="mb-10 flex items-end justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-400 dark:text-zinc-500">
+                    {t('story.detail_visual_archive')}
+                  </span>
+                  <h2 className="mt-3 font-serif text-3xl font-medium tracking-tight text-zinc-900 dark:text-zinc-100 md:text-4xl">
+                    {t('story.detail_gallery')}
+                  </h2>
+                  <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                    {photos.length} {t('story.detail_collection_suffix')}
+                  </p>
                 </div>
-                <p className="text-sm text-muted-foreground font-serif italic max-w-xs">
-                  {t('admin.complete_collection_hint')}
-                </p>
+                {hasMultiplePhotos ? (
+                  <div className="hidden items-center gap-2 sm:flex">
+                    <button
+                      type="button"
+                      onClick={goToPreviousPhoto}
+                      className="flex size-10 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
+                      aria-label={t('story.detail_previous_photo')}
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToNextPhoto}
+                      className="flex size-10 items-center justify-center rounded-full border border-zinc-200 text-zinc-400 transition-all hover:border-zinc-300 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:text-zinc-400 cursor-pointer"
+                      aria-label={t('story.detail_next_photo')}
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-8">
-                {story.photos.map((photo, index) => (
-                  <motion.div
-                    key={photo.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`relative group cursor-pointer overflow-hidden bg-muted
-                      ${index % 5 === 0 ? 'md:col-span-2 aspect-[16/10]' : 'aspect-square'}
-                    `}
-                    onClick={() => onPhotoClick(index)}
-                  >
+              {activePhoto ? (
+                <div className="relative mb-8 aspect-[16/10] w-full overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-900">
+                  <div
+                    className="absolute inset-0 bg-cover bg-center opacity-30 blur-2xl scale-110"
+                    style={activePhotoThumbnailUrl ? { backgroundImage: `url(${activePhotoThumbnailUrl})` } : undefined}
+                  />
+
+                  <div className="absolute inset-0 flex items-center justify-center p-6 sm:p-10">
                     <img
-                      src={getPhotoUrl(photo, true)}
-                      alt={photo.title}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      src={activePhotoFullUrl || ''}
+                      alt={activePhoto.title}
+                      className="relative z-10 max-h-full w-auto max-w-full cursor-zoom-in object-contain shadow-2xl"
+                      onClick={() => onPhotoClick(activePhotoIndex)}
                     />
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <MousePointer2 className="w-6 h-6 text-white" />
+
+                    {hasMultiplePhotos ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={goToPreviousPhoto}
+                          className="absolute left-4 top-1/2 z-20 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-zinc-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white hover:shadow-xl sm:hidden cursor-pointer"
+                          aria-label={t('story.detail_previous_photo')}
+                        >
+                          <ChevronLeft className="size-5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={goToNextPhoto}
+                          className="absolute right-4 top-1/2 z-20 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-zinc-700 shadow-lg backdrop-blur-sm transition-all hover:bg-white hover:shadow-xl sm:hidden cursor-pointer"
+                          aria-label={t('story.detail_next_photo')}
+                        >
+                          <ChevronRight className="size-5" />
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+
+                  <div className="absolute inset-x-0 bottom-0 z-20 p-6 sm:p-8">
+                    <div className="flex items-end justify-end gap-4">
+                      <span className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm">
+                        {activePhotoIndex + 1} / {photos.length}
+                      </span>
                     </div>
-                  </motion.div>
-                ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-4 gap-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7">
+                {photos.map((photo, index) => {
+                  const isActive = index === activePhotoIndex
+                  return (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      onClick={() => setActivePhotoIndex(index)}
+                      onDoubleClick={() => onPhotoClick(index)}
+                      className={`group relative aspect-square cursor-pointer overflow-hidden rounded-xl border-2 transition-all duration-300 ${
+                        isActive
+                          ? 'border-zinc-900 ring-4 ring-zinc-900/20 dark:border-zinc-100 dark:ring-zinc-100/20'
+                          : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
+                      aria-label={`${t('story.detail_view_photo_prefix')} ${photo.title}`}
+                    >
+                      <img
+                        src={getPhotoUrl(photo, true)}
+                        alt={photo.title}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                      />
+                      {isActive ? (
+                        <div className="absolute inset-0 bg-zinc-900/10 dark:bg-zinc-100/10" />
+                      ) : null}
+                    </button>
+                  )
+                })}
               </div>
             </section>
-          )}
-
-          {/* Footer */}
-          <div className="mt-40 pt-24 border-t border-border/50 text-center">
-            <AdminButton
-              onClick={onClose}
-              adminVariant="link"
-              className="group inline-flex flex-col items-center gap-6"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-muted-foreground group-hover:text-primary transition-colors">
-                杩斿洖缂栬緫
-              </span>
-              <span className="text-4xl md:text-6xl font-serif font-light italic tracking-tight hover:text-primary transition-colors">
-                {t('admin.close_preview')}
-              </span>
-            </AdminButton>
-          </div>
-        </div>
+          ) : null}
+        </main>
       </div>
 
-      {/* Photo Lightbox */}
+      {/* Photo Lightbox — 预览专用灯箱 */}
       {previewPhotoIndex !== null && story.photos?.[previewPhotoIndex] && (
         <motion.div
           initial={{ opacity: 0 }}

@@ -188,6 +188,7 @@ class PhotosApi {
     List<String> categories = const [],
     String? filmRollId,
     String? storageSourceId,
+    String? storageProvider,
     String? storagePath,
     bool storagePathFull = false,
     bool showFlag = true,
@@ -216,6 +217,9 @@ class PhotosApi {
     }
     if (storageSourceId != null && storageSourceId.isNotEmpty) {
       form.fields.add(MapEntry('storage_source_id', storageSourceId));
+    }
+    if (storageProvider != null && storageProvider.isNotEmpty) {
+      form.fields.add(MapEntry('storage_provider', storageProvider));
     }
     if (storagePath != null && storagePath.isNotEmpty) {
       form.fields.add(MapEntry('storage_path', storagePath));

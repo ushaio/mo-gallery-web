@@ -5,12 +5,12 @@ import { addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
 import { getErrorMessage, isAuthError } from '@/lib/auth-errors'
 import { invalidateDesktopCache } from '@/lib/app-cache'
 import { useAuth } from '@/contexts/AuthContext'
-import { UploadFile, UploadLocalAsset } from '../../wailsjs/go/main/App'
+import { CheckDuplicates, UploadFile, UploadLocalAsset } from '../../wailsjs/go/main/App'
 import { image } from '../../wailsjs/go/models'
 
 type UploadExifData = Omit<image.ExifData, 'convertValues'>
 
-export type UploadTaskStatus = 'pending' | 'uploading' | 'completed' | 'failed'
+export type UploadTaskStatus = 'pending' | 'checking' | 'compressing' | 'uploading' | 'completed' | 'failed'
 
 export interface UploadTask {
   id: string
@@ -18,6 +18,7 @@ export interface UploadTask {
   assetId?: string
   fileName: string
   fileSize: number
+  checkDuplicate?: boolean
   status: UploadTaskStatus
   progress: number
   error?: string
@@ -27,7 +28,7 @@ export interface UploadTask {
 interface UploadQueueContextType {
   tasks: UploadTask[]
   isUploading: boolean
-  addTasks: (files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: UploadExifData }>, settings: UploadSettings) => UploadTask[]
+  addTasks: (files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: UploadExifData; checkDuplicate?: boolean }>, settings: UploadSettings) => UploadTask[]
   retryTask: (taskId: string) => void
   retryAllFailed: () => void
   removeTask: (taskId: string) => void
@@ -46,6 +47,7 @@ interface UploadSettings {
   maxSizeMB: number
   showFlag: boolean
   stripGPS: boolean
+  storagePathFull?: boolean
 }
 
 const CONCURRENCY = 3
@@ -89,7 +91,44 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
   }, [patchTasks])
 
   const uploadSingleFile = useCallback(async (task: UploadTask, settings: UploadSettings) => {
-    updateTask(task.id, { status: 'uploading', progress: 5 })
+    const hash = hashesRef.current.get(task.filePath) || ''
+    try {
+      if (task.checkDuplicate && hash) {
+        updateTask(task.id, { status: 'checking', progress: 0, error: undefined })
+        const duplicateResult = await CheckDuplicates([hash])
+        const duplicate = duplicateResult?.duplicates?.[hash]
+        if (duplicate) {
+          updateTask(task.id, {
+            status: 'completed',
+            progress: 100,
+            error: `已存在: ${duplicate.title || ''}`,
+          })
+          activeCountRef.current--
+          processQueue()
+          return
+        }
+      }
+
+      if (settings.compressEnabled) {
+        updateTask(task.id, { status: 'compressing', progress: 0, error: undefined })
+        await new Promise(resolve => window.setTimeout(resolve, 0))
+      }
+      updateTask(task.id, { status: 'uploading', progress: 5 })
+    } catch (err: unknown) {
+      if (isAuthError(err)) {
+        tokenRef.current = ''
+        startedIdsRef.current.delete(task.id)
+        updateTask(task.id, { status: 'pending', progress: 0, error: undefined })
+        activeCountRef.current--
+        processQueue()
+        return
+      }
+      updateTask(task.id, { status: 'failed', progress: 0, error: getErrorMessage(err) })
+      activeCountRef.current--
+      processQueue()
+      return
+    }
+
     const progressTimer = window.setInterval(() => {
       patchTasks(prev => prev.map(t => {
         if (t.id !== task.id || t.status !== 'uploading') return t
@@ -97,7 +136,6 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       }))
     }, 500)
     try {
-      const hash = hashesRef.current.get(task.filePath) || ''
       const exif = new image.ExifData(exifsRef.current.get(task.filePath) || {})
       const uploadMethod = task.assetId ? UploadLocalAsset : UploadFile
       const source = task.assetId || task.filePath
@@ -110,7 +148,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
           storageSourceId: settings.storageSourceId,
           storageProvider: '',
           storagePath: settings.storagePath || '',
-          storagePathFull: false,
+          storagePathFull: Boolean(settings.storagePathFull),
           compressEnabled: settings.compressEnabled,
           maxSizeMB: settings.maxSizeMB,
           showFlag: settings.showFlag,
@@ -210,7 +248,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     }
   }, [uploadSingleFile, updateTask])
 
-  const addTasks = useCallback((files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: UploadExifData }>, settings: UploadSettings) => {
+  const addTasks = useCallback((files: Array<{ filePath: string; assetId?: string; fileName: string; fileSize: number; hash: string; exif?: UploadExifData; checkDuplicate?: boolean }>, settings: UploadSettings) => {
     const newTasks: UploadTask[] = files.map(f => {
       hashesRef.current.set(f.filePath, f.hash)
       if (f.exif) exifsRef.current.set(f.filePath, f.exif)
@@ -220,6 +258,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
         assetId: f.assetId,
         fileName: f.fileName,
         fileSize: f.fileSize,
+        checkDuplicate: f.checkDuplicate,
         status: 'pending' as const,
         progress: 0,
       }

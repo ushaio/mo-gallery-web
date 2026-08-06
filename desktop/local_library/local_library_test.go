@@ -603,6 +603,57 @@ func TestTrashRestoreAndPermanentDelete(t *testing.T) {
 	}
 }
 
+func TestPermanentDeleteRollsBackFileWhenDatabaseDeleteFails(t *testing.T) {
+	manager, root := openTestManager(t)
+	assetPath := filepath.Join(root, "rollback.jpg")
+	writeTestJPEG(t, assetPath)
+	assetID := indexTestFile(t, manager, root, "rollback.jpg")
+	session, err := manager.currentSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	trigger := fmt.Sprintf(`CREATE TRIGGER fail_asset_delete BEFORE DELETE ON assets WHEN OLD.id='%s' BEGIN SELECT RAISE(ABORT, 'forced asset delete failure'); END`, assetID)
+	if _, err := session.store.db.ExecContext(context.Background(), trigger); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := manager.PermanentDeleteAssets([]AssetID{assetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "failed" || !strings.Contains(results[0].Error, "forced asset delete failure") {
+		t.Fatalf("unexpected permanent delete result: %+v", results)
+	}
+	if _, err := os.Stat(assetPath); err != nil {
+		t.Fatalf("original file was not restored after database failure: %v", err)
+	}
+	if _, _, _, err := session.store.assetPath(context.Background(), assetID); err != nil {
+		t.Fatalf("asset record was lost after database failure: %v", err)
+	}
+	staged, err := filepath.Glob(filepath.Join(internalPath(root, "permanent-delete"), "*", "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(staged) != 0 {
+		t.Fatalf("permanent delete staging files remained after rollback: %v", staged)
+	}
+	if _, err := os.Stat(internalPath(root, "permanent-delete")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("permanent delete staging directory remained after rollback: %v", err)
+	}
+
+	if _, err := session.store.db.ExecContext(context.Background(), `DROP TRIGGER fail_asset_delete`); err != nil {
+		t.Fatal(err)
+	}
+	results, err = manager.PermanentDeleteAssets([]AssetID{assetID})
+	if err != nil || len(results) != 1 || results[0].Status != "deleted" {
+		t.Fatalf("permanent delete after rollback results=%+v err=%v", results, err)
+	}
+	if _, err := os.Stat(assetPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("file remained after successful retry: %v", err)
+	}
+}
+
 func TestGIFThumbnailAndPreviewHandler(t *testing.T) {
 	manager, root := openTestManager(t)
 	gifPath := filepath.Join(root, "animated.gif")
@@ -1595,6 +1646,23 @@ func TestListAssetsStructuredFiltersAndSort(t *testing.T) {
 	apertureMin, apertureMax := 3.5, 4.5
 	focalMin, focalMax := 80.0, 90.0
 	widthMin, widthMax, heightMin, heightMax := 2500, 3500, 3500, 4500
+
+	if err := manager.SetAssetCloudLink(ids[0], "cloud-photo-1", "https://example.com/photo-1.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	assertIDs(AssetQuery{UploadStatus: "uploaded"}, ids[0])
+	assertIDs(AssetQuery{UploadStatus: "not-uploaded"}, ids[1], ids[2])
+	uploadedPage, err := manager.ListAssets(AssetQuery{UploadStatus: "uploaded", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uploadedPage.Items) != 1 || !uploadedPage.Items[0].IsUploaded || uploadedPage.Items[0].CloudPhotoID != "cloud-photo-1" || uploadedPage.Items[0].CloudURL != "https://example.com/photo-1.jpg" {
+		t.Fatalf("unexpected uploaded asset: %+v", uploadedPage.Items)
+	}
+	if err := manager.ClearAssetCloudLink(ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	assertIDs(AssetQuery{UploadStatus: "not-uploaded"}, ids[0], ids[1], ids[2])
 
 	assertIDs(AssetQuery{RatingMin: &minRating, RatingMax: &maxRating}, ids[0], ids[1])
 	assertIDs(AssetQuery{ColorLabels: []string{"red", "blue"}}, ids[0], ids[1])

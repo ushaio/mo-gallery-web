@@ -189,6 +189,9 @@ type AssetDTO struct {
 	ThumbnailURL   string               `json:"thumbnailUrl"`
 	PreviewURL     string               `json:"previewUrl"`
 	OriginalURL    string               `json:"originalUrl"`
+	CloudPhotoID   string               `json:"cloudPhotoId,omitempty"`
+	CloudURL       string               `json:"cloudUrl,omitempty"`
+	IsUploaded     bool                 `json:"isUploaded"`
 	Tags           []TagDTO             `json:"tags"`
 	Collections    []AssetCollectionDTO `json:"collections"`
 }
@@ -208,6 +211,7 @@ type AssetQuery struct {
 	DirectFolderOnly bool     `json:"directFolderOnly,omitempty"`
 	Search           string   `json:"search,omitempty"`
 	Availability     string   `json:"availability,omitempty"`
+	UploadStatus     string   `json:"uploadStatus,omitempty"`
 	FavoritesOnly    bool     `json:"favoritesOnly,omitempty"`
 	PhotosOnly       bool     `json:"photosOnly,omitempty"`
 	TagIDs           []string `json:"tagIds,omitempty"`

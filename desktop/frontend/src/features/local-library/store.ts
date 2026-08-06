@@ -31,6 +31,7 @@ interface LocalLibraryState {
   selectAsset: (asset: LocalAsset | null) => void
   setPreviewAsset: (asset: LocalAsset | null) => void
   toggleFolderExpanded: (relativePath: string) => void
+  expandFolderPaths: (relativePaths: string[]) => void
   resetNavigation: () => void
 }
 
@@ -71,6 +72,11 @@ export const useLocalLibraryStore = create<LocalLibraryState>()((set) => ({
     const next = new Set(state.expandedFolderPaths)
     if (next.has(relativePath)) next.delete(relativePath)
     else next.add(relativePath)
+    return { expandedFolderPaths: next }
+  }),
+  expandFolderPaths: (relativePaths) => set((state) => {
+    const next = new Set(state.expandedFolderPaths)
+    relativePaths.forEach((relativePath) => next.add(relativePath))
     return { expandedFolderPaths: next }
   }),
   resetNavigation: () => set({

@@ -7,13 +7,14 @@ import {
   CreateLocalLibraryCollection,
   CreateLocalLibraryTag,
   CopyLocalAssetsToClipboard,
+  DeleteLocalAssetCloud,
+  DeleteLocalAssetCloudAndLocal,
   CreateLocalLibrary,
   CreateLocalLibraryFolder,
   DeleteLocalLibraryFolder,
   DeleteLocalLibraryCollection,
   DeleteLocalLibraryCollectionGroup,
   DeleteLocalLibraryTag,
-  GetAlbums,
   GetLocalAssetOriginalPaths,
   GetLocalLibraryEntryState,
   GetLocalLibraryBackups,
@@ -91,7 +92,6 @@ import type {
   LocalTag,
   LocalCollection,
   CollectionGroup,
-  UploadAlbum,
   ScanStatus,
 } from './types'
 
@@ -218,6 +218,9 @@ export const localLibraryApi = {
         orientation: Number(item.orientation ?? 1),
         trashEntryId: item.trashEntryId || undefined,
         trashEntryKind: item.trashEntryKind || undefined,
+        cloudPhotoId: item.cloudPhotoId || undefined,
+        cloudUrl: item.cloudUrl || undefined,
+        isUploaded: Boolean(item.isUploaded || item.cloudPhotoId),
         previewError: item.previewError || undefined,
         exif: item.exif ? {
           cameraMake: item.exif.cameraMake || undefined,
@@ -371,10 +374,6 @@ export const localLibraryApi = {
   permanentlyDeleteFolder: (trashId: string) => PermanentDeleteLocalLibraryFolder(trashId),
   originalPaths: (ids: string[]) => GetLocalAssetOriginalPaths(ids) as Promise<string[]>,
   copyAssetsToClipboard: (ids: string[], cut: boolean) => CopyLocalAssetsToClipboard(ids, cut),
-  async listUploadAlbums(): Promise<UploadAlbum[]> {
-    const source = await GetAlbums()
-    return (source || []).map((item) => ({ id: String(item.id), name: String(item.name ?? '') }))
-  },
   startScan: () => StartLocalLibraryScan(),
   pauseScan: () => PauseLocalLibraryScan(),
   resumeScan: () => ResumeLocalLibraryScan(),
@@ -395,6 +394,8 @@ export const localLibraryApi = {
   executeFolderMovePlan: (planId: string) => ExecuteLocalLibraryFolderMovePlan(planId),
   trashAssets: (ids: string[]) => TrashLocalAssets(ids) as Promise<AssetOperationResult[]>,
   permanentlyDeleteAssets: (ids: string[]) => PermanentDeleteLocalAssets(ids) as Promise<AssetOperationResult[]>,
+  deleteAssetCloud: (id: string, force = false) => DeleteLocalAssetCloud(id, force),
+  deleteAssetCloudAndLocal: (id: string, force = false) => DeleteLocalAssetCloudAndLocal(id, force),
   recheckMissingAssets: (ids: string[]) => RecheckMissingLocalAssets(ids) as Promise<AssetMaintenanceResult[]>,
   retryAssetPreviews: (ids: string[]) => RetryLocalAssetPreviews(ids) as Promise<AssetMaintenanceResult[]>,
   removeMissingAssets: (ids: string[]) => RemoveMissingLocalAssets(ids) as Promise<AssetMaintenanceResult[]>,

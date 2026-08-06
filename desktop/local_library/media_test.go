@@ -227,14 +227,16 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "7" {
-		t.Fatalf("schema version=%q, want 7", version)
+	if version != "8" {
+		t.Fatalf("schema version=%q, want 8", version)
 	}
 	columns, err := store.db.Query(`PRAGMA table_info(assets)`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	foundPreviewError := false
+	foundCloudPhotoID := false
+	foundCloudURL := false
 	for columns.Next() {
 		var cid int
 		var name, dataType string
@@ -244,10 +246,15 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 			t.Fatal(err)
 		}
 		foundPreviewError = foundPreviewError || name == "preview_error"
+		foundCloudPhotoID = foundCloudPhotoID || name == "cloud_photo_id"
+		foundCloudURL = foundCloudURL || name == "cloud_url"
 	}
 	_ = columns.Close()
 	if !foundPreviewError {
 		t.Fatal("preview_error column was not added")
+	}
+	if !foundCloudPhotoID || !foundCloudURL {
+		t.Fatalf("cloud link columns missing: cloud_photo_id=%v cloud_url=%v", foundCloudPhotoID, foundCloudURL)
 	}
 	var table string
 	if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='exif_metadata'`).Scan(&table); err != nil {

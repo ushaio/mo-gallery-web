@@ -8,17 +8,26 @@ function readSource(relativePath: string) {
 const editorSource = readSource('src/NarrativeTipTapEditor.tsx')
 const toolbarSource = readSource('src/tiptap-editor/EditorToolbar.tsx')
 const colorPickerSource = readSource('src/tiptap-editor/ColorPickerMenu.tsx')
+const cssSource = readSource('src/tiptap-editor.css')
 
 assert.match(editorSource, /createEditorCommandRegistry/, 'editor surfaces share the command registry')
 assert.match(editorSource, /event\.altKey[\s\S]*event\.key !== 'F10'/, 'Alt+F10 moves focus into the main toolbar')
 assert.match(editorSource, /aria-label=\{t\('editor\.main_toolbar'\)\}/, 'main toolbar has an accessible name')
 assert.match(editorSource, /openToolbarMenu === 'insert'/, 'insert commands use a dedicated menu')
 assert.match(editorSource, /openToolbarMenu === 'format'/, 'secondary formatting uses a dedicated menu')
-assert.doesNotMatch(
+assert.match(
   editorSource,
-  /<fieldset[\s\S]{0,300}overflow-x-auto/,
-  'the main toolbar no longer relies on horizontal scrolling',
+  /flex min-w-0 flex-1 items-center gap-0\.5 overflow-x-auto overflow-y-clip/,
+  'the main toolbar command strip scrolls horizontally when space runs out',
 )
+assert.match(
+  editorSource,
+  /className="relative z-20 flex min-w-0 items-center justify-between gap-1 overflow-visible/,
+  'the toolbar container stays overflow-visible so pinned menus are never clipped',
+)
+assert.match(editorSource, /tiptap-toolbar-scroll/, 'the scrolling command strip hides its scrollbar while keeping scroll behavior')
+assert.match(cssSource, /scrollbar-width:\s*none/, 'the command strip hides its scrollbar (Firefox)')
+assert.match(cssSource, /::-webkit-scrollbar\s*\{\s*display:\s*none/, 'the command strip hides its scrollbar (WebKit)')
 assert.match(toolbarSource, /aria-haspopup=\{ariaHasPopup\}/, 'popover triggers expose menu semantics')
 assert.match(toolbarSource, /requestAnimationFrame/, 'opening a toolbar menu moves focus into its first action')
 assert.match(toolbarSource, /\}, \[open\]\)/, 'menu focus runs only when the open state changes')
@@ -31,17 +40,24 @@ assert.match(
 assert.match(toolbarSource, /event\.stopPropagation\(\)/, 'Escape is consumed by the active toolbar menu')
 assert.match(editorSource, /!currentEditor\.isActive\('mediaEmbed'\)/, 'selection toolbar excludes media embeds')
 assert.match(editorSource, /\$from\.depth === 1/, 'floating menu is restricted to top-level empty paragraphs')
-assert.match(editorSource, /command\.id === 'redo' \? 'max-sm:hidden'/, 'redo moves into the format menu on mobile')
-assert.match(editorSource, /command\.id === 'italic'[\s\S]*'max-\[359px\]:hidden'/, 'italic remains available through the format menu on very narrow screens')
+assert.doesNotMatch(editorSource, /max-sm:hidden/, 'redo stays visible in the pinned toolbar group on all widths')
+assert.doesNotMatch(editorSource, /max-\[359px\]:hidden/, 'inline formats stay visible and scroll instead of hiding on narrow screens')
 assert.match(editorSource, /const mainInlineCommands = mainCommands\.filter/, 'desktop toolbar exposes a dedicated inline-format group')
 assert.match(editorSource, /const mainListCommands = mainCommands\.filter/, 'desktop toolbar exposes common list commands')
 assert.match(editorSource, /const mainLayoutCommands = mainCommands\.filter/, 'wide toolbar exposes alignment and cleanup commands')
-assert.match(editorSource, /command\.id === 'underline' \|\| command\.id === 'strike'/, 'underline and strike are promoted on desktop')
-assert.match(editorSource, /value=\{resolvedEditorUiState\.fontFamily\}[\s\S]*className="hidden max-w-\[7rem\] md:block"/, 'font family is promoted from the format menu on desktop')
-assert.match(editorSource, /value=\{resolvedEditorUiState\.fontSize\}[\s\S]*className="hidden max-w-\[5\.5rem\] md:block"/, 'font size is promoted from the format menu on desktop')
-assert.match(editorSource, /command\.id === 'blockquote' \? 'hidden lg:flex'/, 'wide toolbar includes the common quote command')
-assert.match(editorSource, /className="hidden lg:flex"/, 'wide-only commands remain collapsed below their responsive breakpoint')
-assert.match(editorSource, /'hidden sm:flex'/, 'promoted desktop commands remain collapsed on narrow screens')
+assert.doesNotMatch(
+  editorSource,
+  /command\.id === 'underline' \|\| command\.id === 'strike'/,
+  'underline and strike stay visible in the scrolling strip — no breakpoint promotion needed',
+)
+assert.match(editorSource, /value=\{resolvedEditorUiState\.fontFamily\}[\s\S]*className="max-w-\[7rem\]"/, 'font family select stays in the scrolling command strip')
+assert.match(editorSource, /value=\{resolvedEditorUiState\.fontSize\}[\s\S]*className="max-w-\[5\.5rem\]"/, 'font size select stays in the scrolling command strip')
+assert.doesNotMatch(editorSource, /surfaces: \['main', 'bubble', 'format'\]/, 'inline formats are not duplicated into the format menu')
+assert.doesNotMatch(editorSource, /surfaces: \['main', 'format'\]/, 'align, redo and clear-formatting are not duplicated into the format menu')
+assert.match(editorSource, /surfaces: \['format'\]/, 'format menu keeps only commands absent from the toolbar: drop cap and colors')
+assert.doesNotMatch(editorSource, /command\.id === 'blockquote' \? 'hidden lg:flex'/, 'quote command stays in the scrolling command strip')
+assert.doesNotMatch(editorSource, /className="hidden lg:flex"/, 'layout commands no longer collapse below a breakpoint; the strip scrolls')
+assert.doesNotMatch(editorSource, /'hidden sm:flex'/, 'promoted desktop commands no longer collapse; the strip scrolls')
 assert.match(editorSource, /tiptap-editor relative z-0 isolate/, 'editor creates a local stacking context below host dialogs')
 assert.doesNotMatch(editorSource, /z-\[(?:6[0-9]|7[0-9]|8[0-9])\]/, 'editor surfaces do not escape above host modal layers')
 assert.match(toolbarSource, /top-\[calc\(100%\+6px\)\] z-30/, 'toolbar popovers stay within the editor layer scale')

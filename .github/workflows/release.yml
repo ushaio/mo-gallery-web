@@ -28,8 +28,8 @@ jobs:
             echo "Could not find a release heading like '## v1.2.3' in RELEASE.md" >&2
             exit 1
           fi
-          echo "TAG=$VERSION" >> $GITHUB_OUTPUT
-          echo "VERSION=${VERSION#v}" >> $GITHUB_OUTPUT
+          echo "TAG=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: Validate release versions
         env:
@@ -65,15 +65,25 @@ jobs:
         id: check_tag
         run: |
           if git rev-parse "${{ steps.version.outputs.TAG }}" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-  desktop-build:
+  desktop-windows-build:
     needs: prepare
     if: needs.prepare.outputs.tag_exists == 'false'
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: windows/amd64
+            runner: windows-2025
+          - arch: arm64
+            platform: windows/arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -87,15 +97,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.x'
+          go-version: '1.25.x'
           cache-dependency-path: desktop/go.sum
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          $goBin = Join-Path (go env GOPATH) 'bin'
+          $goBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $goBin 'wails.exe') version
 
       - name: Install desktop frontend dependencies
         run: pnpm --filter mo-gallery-desktop-frontend install --no-frozen-lockfile --config.production=false
@@ -104,25 +121,221 @@ jobs:
         working-directory: desktop/frontend
         run: pnpm list react-router-dom sonner
 
-      - name: Install NSIS (for installer packaging)
+      - name: Ensure NSIS is available
         shell: pwsh
         run: |
-          choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $makensis = Get-Command makensis.exe -ErrorAction SilentlyContinue
+          if (-not $makensis) {
+            choco install nsis -y --no-progress
+          }
 
-      - name: Build desktop app
+          $candidatePaths = @(
+            'C:\Program Files (x86)\NSIS',
+            'C:\Program Files\NSIS'
+          )
+          $makensis = Get-Command makensis.exe -ErrorAction SilentlyContinue
+          if ($makensis) {
+            $candidatePaths += Split-Path $makensis.Source
+          }
+
+          $nsisPath = $candidatePaths |
+            Select-Object -Unique |
+            Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } |
+            Select-Object -First 1
+          if (-not $nsisPath) {
+            throw 'makensis.exe was not found on the Windows runner.'
+          }
+          $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build portable executable and NSIS installer
         working-directory: desktop
-        run: wails build -nsis
+        shell: pwsh
+        run: wails build -clean -nsis -platform ${{ matrix.platform }}
 
-      - name: Upload desktop artifact
+      - name: Normalize Windows artifact names
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $destination = Join-Path $PWD 'release-assets'
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+
+          $installer = Get-ChildItem 'build/bin' -File -Filter '*-installer.exe' | Select-Object -First 1
+          $portable = Get-ChildItem 'build/bin' -File -Filter '*.exe' |
+            Where-Object { -not $installer -or $_.FullName -ne $installer.FullName } |
+            Select-Object -First 1
+
+          if (-not $portable -or -not $installer) {
+            Get-ChildItem 'build/bin' -Recurse | Select-Object FullName
+            throw 'Expected both a portable executable and an NSIS installer.'
+          }
+
+          $baseName = 'mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}'
+          Copy-Item $portable.FullName (Join-Path $destination "$baseName-portable.exe")
+          Copy-Item $installer.FullName (Join-Path $destination "$baseName-setup.exe")
+
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mo-gallery-desktop-windows-${{ needs.prepare.outputs.tag }}
-          path: desktop/build/bin/*.exe
+          name: mo-gallery-desktop-windows-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
+          path: desktop/release-assets/*.exe
+          if-no-files-found: error
+
+  desktop-macos-build:
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: darwin/amd64
+            runner: macos-15-intel
+          - arch: arm64
+            platform: darwin/arm64
+            runner: macos-15
+          - arch: universal
+            platform: darwin/universal
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: desktop/go.sum
+
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/wails" version
+
+      - name: Install desktop frontend dependencies
+        run: pnpm --filter mo-gallery-desktop-frontend install --no-frozen-lockfile --config.production=false
+
+      - name: Verify desktop frontend dependencies
+        working-directory: desktop/frontend
+        run: pnpm list react-router-dom sonner
+
+      - name: Build macOS application
+        working-directory: desktop
+        run: wails build -clean -platform ${{ matrix.platform }}
+
+      - name: Archive macOS application bundle
+        working-directory: desktop
+        run: |
+          APP_PATH='build/bin/mo-gallery-desktop.app'
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected application bundle not found: $APP_PATH" >&2
+            exit 1
+          fi
+          mkdir -p release-assets
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
+            "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.zip"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mo-gallery-desktop-macos-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
+          path: desktop/release-assets/*.zip
+          if-no-files-found: error
+
+  desktop-linux-build:
+    needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: desktop/go.sum
+
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/wails" version
+
+      - name: Install desktop frontend dependencies
+        run: pnpm --filter mo-gallery-desktop-frontend install --no-frozen-lockfile --config.production=false
+
+      - name: Verify desktop frontend dependencies
+        working-directory: desktop/frontend
+        run: pnpm list react-router-dom sonner
+
+      - name: Build Linux application
+        working-directory: desktop
+        run: wails build -clean -platform ${{ matrix.platform }} -tags webkit2_41
+
+      - name: Archive Linux executable
+        working-directory: desktop
+        run: |
+          BINARY_PATH='build/bin/mo-gallery-desktop'
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "Expected executable not found: $BINARY_PATH" >&2
+            exit 1
+          fi
+          mkdir -p release-assets/package
+          install -m 0755 "$BINARY_PATH" release-assets/package/mo-gallery-desktop
+          tar -C release-assets/package -czf \
+            "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.tar.gz" \
+            mo-gallery-desktop
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mo-gallery-desktop-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
+          path: desktop/release-assets/*.tar.gz
           if-no-files-found: error
 
   # TEMP-DISABLED flutter-android-build:
-  # Temporarily disabled to ship the desktop release (portable + NSIS).
+  # Temporarily disabled while the desktop release publishes all Wails targets.
   # Re-enable by uncommenting this job and the publish references below.
   # flutter-android-build:
   #   needs: prepare
@@ -161,7 +374,9 @@ jobs:
   publish:
     needs:
       - prepare
-      - desktop-build
+      - desktop-windows-build
+      - desktop-macos-build
+      - desktop-linux-build
       # - flutter-android-build
     if: needs.prepare.outputs.tag_exists == 'false'
     runs-on: ubuntu-latest
@@ -172,11 +387,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download desktop artifact
+      - name: Download desktop artifacts
         uses: actions/download-artifact@v4
         with:
-          name: mo-gallery-desktop-windows-${{ needs.prepare.outputs.tag }}
+          pattern: mo-gallery-desktop-*-${{ needs.prepare.outputs.tag }}
           path: release-assets
+          merge-multiple: true
 
       # - name: Download Android artifact
       #   uses: actions/download-artifact@v4
@@ -184,20 +400,39 @@ jobs:
       #     name: mo-gallery-mobile-android-${{ needs.prepare.outputs.tag }}
       #     path: release-assets
 
+      - name: Verify release assets
+        run: |
+          expected_assets=(
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-portable.exe"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-setup.exe"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-arm64-portable.exe"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-arm64-setup.exe"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.zip"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.zip"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.zip"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.tar.gz"
+          )
+          for asset in "${expected_assets[@]}"; do
+            if [ ! -f "release-assets/$asset" ]; then
+              echo "Missing release asset: $asset" >&2
+              exit 1
+            fi
+          done
+
       - name: Tag release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ needs.prepare.outputs.tag }}
-          git push origin ${{ needs.prepare.outputs.tag }}
+          git tag "${{ needs.prepare.outputs.tag }}"
+          git push origin "${{ needs.prepare.outputs.tag }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           body_path: RELEASE.md
-          files: |
-            release-assets/*.exe
+          files: release-assets/*
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

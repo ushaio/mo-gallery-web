@@ -90,6 +90,7 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
     }
     range('rating', copy.filterRating, 'ratingMin', 'ratingMax')
     if (filters.colorLabels?.length) result.push({ key: 'colors', label: `${copy.filterColor}: ${filters.colorLabels.join('/')}`, remove: () => update('colorLabels', undefined) })
+    if (filters.uploadStatus && filters.uploadStatus !== 'all') result.push({ key: 'uploadStatus', label: filters.uploadStatus === 'uploaded' ? copy.filterUploaded : copy.filterNotUploaded, remove: () => update('uploadStatus', undefined) })
     if (filters.formats?.length) result.push({ key: 'formats', label: `${copy.filterFormat}: ${filters.formats.join('/')}`, remove: () => update('formats', undefined) })
     if (filters.capturedFromMs !== undefined || filters.capturedToMs !== undefined) result.push({ key: 'captured', label: copy.filterCapturedDate, remove: () => removeMany('capturedFromMs', 'capturedToMs') })
     if (filters.discoveredFromMs !== undefined || filters.discoveredToMs !== undefined) result.push({ key: 'discovered', label: copy.filterDiscoveredDate, remove: () => removeMany('discoveredFromMs', 'discoveredToMs') })
@@ -138,6 +139,13 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
               <input type="checkbox" checked={filters.photosOnly !== false} onChange={(event) => update('photosOnly', event.target.checked)} />
               {copy.photosOnly}
             </label>
+            <FilterSection title={copy.filterUploadStatus}>
+              <div className="flex flex-wrap gap-1">
+                <Toggle active={!filters.uploadStatus || filters.uploadStatus === 'all'} onClick={() => update('uploadStatus', undefined)}>{copy.any}</Toggle>
+                <Toggle active={filters.uploadStatus === 'uploaded'} onClick={() => update('uploadStatus', 'uploaded')}>{copy.filterUploaded}</Toggle>
+                <Toggle active={filters.uploadStatus === 'not-uploaded'} onClick={() => update('uploadStatus', 'not-uploaded')}>{copy.filterNotUploaded}</Toggle>
+              </div>
+            </FilterSection>
             <FilterSection title={copy.filterRating}>
               <RangeInputs min={filters.ratingMin} max={filters.ratingMax} minLimit={0} maxLimit={5} onMin={(value) => update('ratingMin', value)} onMax={(value) => update('ratingMax', value)} />
             </FilterSection>

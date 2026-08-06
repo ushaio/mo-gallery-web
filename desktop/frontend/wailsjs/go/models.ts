@@ -242,6 +242,9 @@ export namespace local_library {
 	    thumbnailUrl: string;
 	    previewUrl: string;
 	    originalUrl: string;
+	    cloudPhotoId?: string;
+	    cloudUrl?: string;
+	    isUploaded: boolean;
 	    tags: TagDTO[];
 	    collections: AssetCollectionDTO[];
 	
@@ -283,6 +286,9 @@ export namespace local_library {
 	        this.thumbnailUrl = source["thumbnailUrl"];
 	        this.previewUrl = source["previewUrl"];
 	        this.originalUrl = source["originalUrl"];
+	        this.cloudPhotoId = source["cloudPhotoId"];
+	        this.cloudUrl = source["cloudUrl"];
+	        this.isUploaded = source["isUploaded"];
 	        this.tags = this.convertValues(source["tags"], TagDTO);
 	        this.collections = this.convertValues(source["collections"], AssetCollectionDTO);
 	    }
@@ -532,6 +538,7 @@ export namespace local_library {
 	    directFolderOnly?: boolean;
 	    search?: string;
 	    availability?: string;
+	    uploadStatus?: string;
 	    favoritesOnly?: boolean;
 	    photosOnly?: boolean;
 	    tagIds?: string[];
@@ -574,6 +581,7 @@ export namespace local_library {
 	        this.directFolderOnly = source["directFolderOnly"];
 	        this.search = source["search"];
 	        this.availability = source["availability"];
+	        this.uploadStatus = source["uploadStatus"];
 	        this.favoritesOnly = source["favoritesOnly"];
 	        this.photosOnly = source["photosOnly"];
 	        this.tagIds = source["tagIds"];

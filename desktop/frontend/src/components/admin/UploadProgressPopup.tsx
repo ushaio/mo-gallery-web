@@ -16,7 +16,7 @@ function formatFileSize(bytes: number): string {
 function StatusIcon({ status, progress }: { status: UploadTaskStatus; progress: number }) {
   if (status === 'completed') return <Check size={14} className="text-green-500" />
   if (status === 'failed') return <AlertCircle size={14} className="text-red-500" />
-  if (status === 'uploading') {
+  if (status === 'checking' || status === 'compressing' || status === 'uploading') {
     const r = 6
     const c = 2 * Math.PI * r
     const offset = c * (1 - progress / 100)
@@ -32,7 +32,19 @@ function StatusIcon({ status, progress }: { status: UploadTaskStatus; progress: 
   return <Upload size={14} style={{ color: 'var(--muted-foreground)' }} />
 }
 
+function getTaskStatusLabel(task: UploadTask): string {
+  if (task.status === 'checking') return '查重中'
+  if (task.status === 'compressing') return '压缩中'
+  if (task.status === 'uploading') return `上传中 · ${task.progress}%`
+  if (task.status === 'pending') return '等待中'
+  if (task.status === 'completed') return task.error ? '已存在' : '已完成'
+  return '上传失败'
+}
+
 function TaskRow({ task, onRetry }: { task: UploadTask; onRetry: (id: string) => void }) {
+  const errorMessage = task.error || '上传失败'
+  const statusLabel = getTaskStatusLabel(task)
+
   return (
     <div className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0"
       style={{ borderColor: 'var(--border)' }}>
@@ -47,16 +59,27 @@ function TaskRow({ task, onRetry }: { task: UploadTask; onRetry: (id: string) =>
         <p className="text-xs truncate" style={{ color: 'var(--foreground)' }}>{task.fileName}</p>
         <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
           {formatFileSize(task.fileSize)}
-          {task.status === 'uploading' && ` · ${task.progress}%`}
+          <span className="ml-1">· {statusLabel}</span>
           {task.status === 'completed' && task.error && (
-            <span className="text-amber-500 ml-1">{task.error}</span>
+            <span className="text-amber-500 ml-1" title={task.error}>{task.error}</span>
           )}
         </p>
+        {task.status === 'failed' && (
+          <p className="text-[10px] mt-0.5 truncate text-red-500" title={errorMessage}>
+            {errorMessage}
+          </p>
+        )}
       </div>
 
       {/* 状态 */}
       <div className="flex items-center gap-1.5 shrink-0">
-        <StatusIcon status={task.status} progress={task.progress} />
+        {task.status === 'failed' ? (
+          <span title={errorMessage} aria-label={errorMessage} className="flex cursor-help">
+            <StatusIcon status={task.status} progress={task.progress} />
+          </span>
+        ) : (
+          <StatusIcon status={task.status} progress={task.progress} />
+        )}
         {task.status === 'failed' && (
           <button onClick={() => onRetry(task.id)}
             className="p-1 rounded hover:opacity-80"
@@ -81,6 +104,15 @@ export function UploadProgressPopup() {
   const totalCount = tasks.length
   const allDone = !isUploading && failedCount === 0
   const hasFailed = failedCount > 0 && !isUploading
+  const activeLabel = tasks.some(t => t.status === 'checking')
+    ? '查重中'
+    : tasks.some(t => t.status === 'compressing')
+      ? '压缩中'
+      : isUploading
+        ? '上传中'
+        : allDone
+          ? '上传完成'
+          : '上传队列'
 
   const overallProgress = totalCount > 0
     ? Math.round(tasks.reduce((sum, t) => sum + (t.status === 'completed' ? 100 : t.progress), 0) / totalCount)
@@ -95,7 +127,7 @@ export function UploadProgressPopup() {
         onClick={() => setMinimized(!minimized)}>
         <Upload size={14} style={{ color: 'var(--foreground)' }} />
         <span className="text-xs font-medium flex-1" style={{ color: 'var(--foreground)' }}>
-          上传中 {completedCount}/{totalCount}
+          {activeLabel} {completedCount}/{totalCount}
           {failedCount > 0 && <span className="text-red-500 ml-1">({failedCount} 失败)</span>}
         </span>
         <button onClick={(e) => { e.stopPropagation(); setMinimized(!minimized) }}

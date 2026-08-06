@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -33,22 +34,22 @@ type App struct {
 	ctx               context.Context
 	cfg               *config.Config
 	activeWindowStyle string
-	Proxy        *services.ProxyClient
-	Auth         *services.AuthService
-	Photo        *services.PhotoService
-	Album        *services.AlbumService
-	Story        *services.StoryService
-	Blog         *services.BlogService
-	FilmRoll     *services.FilmRollService
-	Friend       *services.FriendService
-	Comment      *services.CommentService
-	Upload       *services.UploadService
-	Storage      *services.StorageService
-	Settings     *services.SettingsService
-	EditorAi     *services.EditorAiService
-	Logger       *services.Logger
-	Overview     *services.OverviewService
-	LocalLibrary *local_library.Manager
+	Proxy             *services.ProxyClient
+	Auth              *services.AuthService
+	Photo             *services.PhotoService
+	Album             *services.AlbumService
+	Story             *services.StoryService
+	Blog              *services.BlogService
+	FilmRoll          *services.FilmRollService
+	Friend            *services.FriendService
+	Comment           *services.CommentService
+	Upload            *services.UploadService
+	Storage           *services.StorageService
+	Settings          *services.SettingsService
+	EditorAi          *services.EditorAiService
+	Logger            *services.Logger
+	Overview          *services.OverviewService
+	LocalLibrary      *local_library.Manager
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -482,6 +483,18 @@ func (a *App) PrepareLocalAssetUpload(ids []string) ([]services.PreparedFile, er
 	return prepared, nil
 }
 
+func (a *App) setLocalAssetCloudLink(id, photoID, cloudURL string) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID, cloudURL)
+		if err == nil {
+			return nil
+		}
+		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+	}
+	return err
+}
+
 func (a *App) UploadLocalAsset(id string, settings services.UploadSettings, hash string, exifData *image.ExifData) (*services.UploadResult, error) {
 	var result *services.UploadResult
 	err := a.LocalLibrary.WithOriginalPaths([]local_library.AssetID{local_library.AssetID(id)}, func(paths []string) error {
@@ -494,6 +507,31 @@ func (a *App) UploadLocalAsset(id string, settings services.UploadSettings, hash
 	}
 	if result != nil && result.Success {
 		a.Logger.Info(services.LogCategoryUpload, "upload_success", "上传成功: "+filepath.Base(result.FilePath), "")
+		if result.Photo == nil || result.Photo.ID == "" {
+			linkErr := errors.New("云端上传成功，但服务端未返回可关联的照片 ID")
+			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端上传成功，但本地关联写回失败", linkErr.Error())
+			return result, linkErr
+		}
+		if linkErr := a.setLocalAssetCloudLink(id, result.Photo.ID, result.Photo.URL); linkErr != nil {
+			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端上传成功，但本地关联写回失败", linkErr.Error())
+			return result, fmt.Errorf("云端上传成功，但本地关联写回失败: %w", linkErr)
+		}
+	} else if result != nil && result.IsDuplicate && result.Existing != nil && result.Existing.ID != "" {
+		if a.Photo == nil {
+			return result, errors.New("云端照片已存在，但云端服务尚未就绪，无法写回本地关联")
+		}
+		existingPhoto, getErr := a.Photo.GetByID(result.Existing.ID)
+		if getErr != nil {
+			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端照片已存在，但读取云端详情失败", getErr.Error())
+			return result, fmt.Errorf("云端照片已存在，但读取云端详情失败: %w", getErr)
+		}
+		if existingPhoto == nil || existingPhoto.ID == "" {
+			return result, errors.New("云端照片已存在，但服务端未返回可关联的照片详情")
+		}
+		if linkErr := a.setLocalAssetCloudLink(id, existingPhoto.ID, existingPhoto.URL); linkErr != nil {
+			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端照片已存在，但本地关联写回失败", linkErr.Error())
+			return result, fmt.Errorf("云端照片已存在，但本地关联写回失败: %w", linkErr)
+		}
 	}
 	return result, nil
 }
@@ -962,6 +1000,47 @@ func (a *App) ImportLocalLibraryFiles(paths []string, destination string) ([]loc
 }
 func (a *App) UpdateLocalAsset(id, title, notes string, rating int, color string, favorite bool) error {
 	return a.LocalLibrary.UpdateAsset(local_library.AssetID(id), title, notes, rating, color, favorite)
+}
+func (a *App) SetLocalAssetCloudLink(id, photoID, cloudURL string) error {
+	return a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID, cloudURL)
+}
+func (a *App) ClearLocalAssetCloudLink(id string) error {
+	return a.LocalLibrary.ClearAssetCloudLink(local_library.AssetID(id))
+}
+func (a *App) DeleteLocalAssetCloud(id string, force bool) error {
+	photoID, _, err := a.LocalLibrary.AssetCloudLink(local_library.AssetID(id))
+	if err != nil {
+		return err
+	}
+	if photoID == "" {
+		return a.LocalLibrary.ClearAssetCloudLink(local_library.AssetID(id))
+	}
+	if a.Photo == nil {
+		return errors.New("云端服务尚未就绪")
+	}
+	if err := a.Photo.Delete(photoID, services.DeletePhotoParams{DeleteOriginal: true, DeleteThumbnail: true, Force: force}); err != nil {
+		return err
+	}
+	return a.LocalLibrary.ClearAssetCloudLink(local_library.AssetID(id))
+}
+func (a *App) DeleteLocalAssetCloudAndLocal(id string, force bool) error {
+	if err := a.DeleteLocalAssetCloud(id, force); err != nil {
+		return err
+	}
+	results, err := a.LocalLibrary.PermanentDeleteAssets([]local_library.AssetID{local_library.AssetID(id)})
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		return errors.New("本地照片删除未返回结果")
+	}
+	if results[0].Status != "deleted" {
+		if results[0].Error != "" {
+			return errors.New(results[0].Error)
+		}
+		return errors.New("本地照片删除失败")
+	}
+	return nil
 }
 func (a *App) RenameLocalAsset(id, fileName string) (local_library.AssetMoveResult, error) {
 	return a.LocalLibrary.RenameAsset(local_library.AssetID(id), fileName)

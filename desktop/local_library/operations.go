@@ -15,6 +15,38 @@ import (
 	"time"
 )
 
+func (m *Manager) SetAssetCloudLink(id AssetID, photoID, cloudURL string) error {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return err
+	}
+	if err := session.store.setAssetCloudLink(session.ctx, id, photoID, cloudURL); err != nil {
+		return err
+	}
+	m.emitEvent("asset_cloud_link_updated")
+	return nil
+}
+
+func (m *Manager) ClearAssetCloudLink(id AssetID) error {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return err
+	}
+	if err := session.store.clearAssetCloudLink(session.ctx, id); err != nil {
+		return err
+	}
+	m.emitEvent("asset_cloud_link_cleared")
+	return nil
+}
+
+func (m *Manager) AssetCloudLink(id AssetID) (photoID, cloudURL string, err error) {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return "", "", err
+	}
+	return session.store.assetCloudLink(session.ctx, id)
+}
+
 func (m *Manager) UpdateAsset(id AssetID, title, notes string, rating int, color string, favorite bool) error {
 	session, err := m.requireAvailableSession()
 	if err != nil {
@@ -323,15 +355,42 @@ func (m *Manager) PermanentDeleteAssets(ids []AssetID) ([]TrashResult, error) {
 				continue
 			}
 		}
-		if removeErr := os.Remove(target); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-			result.Error = removeErr.Error()
+		stagingDir := ""
+		stagedTarget := ""
+		if _, statErr := os.Stat(target); statErr == nil {
+			stagingDir = internalPath(session.root, "permanent-delete", newID())
+			stagedTarget = filepath.Join(stagingDir, filepath.Base(target))
+			session.ignoreWatcherPath(target, 10*time.Second)
+			if moveErr := moveFileSafely(target, stagedTarget); moveErr != nil {
+				result.Error = moveErr.Error()
+				results = append(results, result)
+				continue
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			result.Error = statErr.Error()
 			results = append(results, result)
 			continue
 		}
 		if deleteErr := session.store.finishPermanentDelete(session.ctx, id); deleteErr != nil {
+			if stagedTarget != "" {
+				if rollbackErr := moveFileSafely(stagedTarget, target); rollbackErr != nil {
+					m.markRepairRequired(session, "permanent delete database failure and disk rollback failure")
+					result.Error = newError(ErrInvalidLibrary, "数据库删除失败，磁盘回滚也失败", map[string]any{"cause": deleteErr.Error(), "rollback": rollbackErr.Error(), "assetId": id}).Error()
+					results = append(results, result)
+					continue
+				}
+				_ = os.RemoveAll(stagingDir)
+				_ = os.Remove(internalPath(session.root, "permanent-delete"))
+			}
 			result.Error = deleteErr.Error()
 			results = append(results, result)
 			continue
+		}
+		if stagedTarget != "" {
+			if removeErr := os.RemoveAll(stagingDir); removeErr != nil {
+				result.Error = fmt.Errorf("资产已删除，但暂存文件清理失败: %w", removeErr).Error()
+			}
+			_ = os.Remove(internalPath(session.root, "permanent-delete"))
 		}
 		removeAssetDerivativeFiles(session.root, id)
 		if trashEntryDir != "" {

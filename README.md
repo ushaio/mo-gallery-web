@@ -309,24 +309,40 @@ flutter run
 
 ## Desktop 构建与配置
 
-### Windows 构建
+### 本地构建
 
 ```bash
 cd desktop
 
-# Portable EXE
+# 当前主机平台的 Portable 构建
 wails build
 
-# NSIS 安装包
+# Windows NSIS 安装包（仅 Windows）
 wails build -nsis
+
+# 指定 Wails 目标平台
+wails build -platform windows/amd64
+wails build -platform darwin/arm64
+wails build -platform linux/amd64 -tags webkit2_41
 ```
 
 构建产物位于 `desktop/build/bin/`。Desktop 前端资源通过 Go `embed` 内置到可执行文件中，不需要额外携带前端静态目录。
 
+### Release 自动产物
+
+GitHub Release 会使用原生 runner 构建 Wails 支持的桌面目标：
+
+- Windows AMD64/ARM64：Portable EXE 与 NSIS Setup 安装包
+- macOS AMD64/ARM64/Universal：`.app` ZIP 分发包
+- Linux AMD64/ARM64：`.tar.gz` 可执行文件归档
+
+NSIS 是 Windows 专用安装器格式；macOS 和 Linux 使用各自平台的标准可分发归档。Linux 用户仍需要系统提供 GTK3/WebKitGTK 运行库。
+
 | 发布方式 | 适用场景 | 特点 |
 |----------|----------|------|
 | **Portable** | Beta 测试、内部使用、无管理员权限环境 | 下载后直接运行，更新时替换 EXE |
-| **Setup** | 稳定发布、普通用户、需要系统集成 | 提供安装路径、快捷方式和卸载入口 |
+| **Setup** | Windows 稳定发布、普通用户、需要系统集成 | 提供安装路径、快捷方式和卸载入口 |
+| **macOS/Linux archive** | macOS/Linux 用户 | 解压后运行平台对应的 `.app` 或可执行文件 |
 
 ### Desktop 配置目录
 
@@ -457,8 +473,10 @@ pnpm run start
 | 命令 | 说明 |
 |------|------|
 | `cd desktop && wails dev` | 启动 Desktop 开发模式 |
-| `cd desktop && wails build` | 构建 Desktop Portable EXE |
-| `cd desktop && wails build -nsis` | 构建 Desktop NSIS 安装包 |
+| `cd desktop && wails build` | 构建当前主机平台的 Desktop Portable 包 |
+| `cd desktop && wails build -nsis` | 构建 Windows Desktop NSIS 安装包 |
+| `cd desktop && wails build -platform <os>/<arch>` | 构建指定 Wails 平台/架构 |
+| `cd desktop && wails build -platform linux/amd64 -tags webkit2_41` | 构建 Linux AMD64 包 |
 | `cd desktop/frontend && pnpm build` | 单独验证 Desktop 前端构建 |
 | `cd desktop/frontend && pnpm test:zine` | 运行 Zine 编辑器测试 |
 | `cd desktop && go test ./...` | 运行 Desktop Go 测试和本地资源库测试 |

@@ -13,6 +13,7 @@ import { useAdmin, AdminLogsProvider } from '@/pages/admin-logs/layout'
 import { type PhotoDto } from '@/lib/api'
 import { StoriesTab } from '@/pages/admin-logs/StoriesTab'
 import { BlogTab } from '@/pages/admin-logs/BlogTab'
+import { CollapsibleListPane, LIST_PANE_COLLAPSED_KEY } from '@/pages/admin-logs/shared/CollapsibleListPane'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
   getAllDraftsFromDB,
@@ -50,6 +51,23 @@ interface StoryDraftWithPreviews extends Omit<StoryDraftData, 'files'> {
   files: { id: string; file: File; preview: string }[]
 }
 
+type DraftTone = 'default' | 'primary' | 'amber'
+
+const DRAFT_TONE_STYLES: Record<DraftTone, { backgroundColor: string; color: string }> = {
+  default: {
+    backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)',
+    color: 'var(--muted-foreground)',
+  },
+  primary: {
+    backgroundColor: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+    color: 'var(--primary)',
+  },
+  amber: {
+    backgroundColor: 'color-mix(in srgb, #f59e0b 14%, transparent)',
+    color: '#d97706',
+  },
+}
+
 interface DraftCardProps {
   icon: LucideIcon
   title: string
@@ -57,19 +75,32 @@ interface DraftCardProps {
   badge?: ReactNode
   meta: ReactNode
   actions: ReactNode
+  tone?: DraftTone
+  onOpen?: () => void
 }
 
-function DraftCard({ icon: Icon, title, snippet, badge, meta, actions }: DraftCardProps) {
+function DraftCard({ icon: Icon, title, snippet, badge, meta, actions, tone = 'default', onOpen }: DraftCardProps) {
+  const toneStyle = DRAFT_TONE_STYLES[tone]
   return (
     <div
-      className="group flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors hover:border-primary/50"
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (!onOpen) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      }}
+      className={`group flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors hover:border-primary/50 ${onOpen ? 'cursor-pointer' : ''}`}
       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
     >
       <div
         className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md"
-        style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)' }}
+        style={{ backgroundColor: toneStyle.backgroundColor }}
       >
-        <Icon className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
+        <Icon className="h-5 w-5" style={{ color: toneStyle.color }} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -103,6 +134,73 @@ function DraftSectionLabel({ icon: Icon, label, count }: { icon: LucideIcon; lab
   )
 }
 
+type JournalSubTab = 'blog' | 'stories' | 'drafts'
+
+/**
+ * 左栏面板头内的子页签导航（叙事/博客/草稿），紧凑分段控件，双击刷新。
+ */
+function JournalSubTabNav({
+  activeSubTab,
+  onTabClick,
+  totalDrafts,
+  t,
+}: {
+  activeSubTab: JournalSubTab
+  onTabClick: (tab: JournalSubTab) => void
+  totalDrafts: number
+  t: (key: string) => string
+}) {
+  return (
+    <div
+      className="inline-flex min-w-0 flex-1 items-center gap-0.5 rounded-md border p-0.5"
+      style={{
+        borderColor: 'var(--border)',
+        backgroundColor: 'color-mix(in srgb, var(--muted) 45%, transparent)',
+      }}
+    >
+      {([
+        { key: 'stories' as const, icon: BookOpen, label: t('nav.story') },
+        { key: 'blog' as const, icon: BookText, label: t('admin.blog') },
+        { key: 'drafts' as const, icon: FileArchive, label: t('admin.drafts') },
+      ]).map(({ key, icon: Icon, label }) => {
+        const active = activeSubTab === key
+        return (
+          <button
+            key={key}
+            onClick={() => onTabClick(key)}
+            title={t('admin.double_click_refresh')}
+            className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded border px-1.5 py-1 text-[10px] transition-colors"
+            style={
+              active
+                ? {
+                    borderColor: 'var(--border)',
+                    backgroundColor: 'var(--card)',
+                    color: 'var(--foreground)',
+                    boxShadow: '0 1px 2px rgb(0 0 0 / 0.06)',
+                  }
+                : { borderColor: 'transparent', color: 'var(--muted-foreground)' }
+            }
+          >
+            <Icon size={12} className="shrink-0" />
+            <span className="truncate">{label}</span>
+            {key === 'drafts' && totalDrafts > 0 && (
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[9px] leading-none"
+                style={{
+                  backgroundColor: active ? 'var(--primary)' : 'var(--accent)',
+                  color: active ? 'var(--primary-foreground)' : 'var(--accent-foreground)',
+                }}
+              >
+                {totalDrafts}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function PhotoJournalPage() {
   return (
     <AdminLogsProvider>
@@ -126,6 +224,7 @@ function PhotoJournalContent() {
   const [selectedDraft, setSelectedDraft] = useState<StoryDraftWithPreviews | BlogDraftData | StoryEditorDraftData | null>(null)
 
   const [editFromDraft, setEditFromDraft] = useState<StoryEditorDraftData | null>(null)
+  const [editBlogFromDraft, setEditBlogFromDraft] = useState<BlogDraftData | null>(null)
 
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean
@@ -139,6 +238,28 @@ function PhotoJournalContent() {
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0)
   const [blogRefreshKey, setBlogRefreshKey] = useState(0)
   const [isStoriesEditing, setIsStoriesEditing] = useState(false)
+  const [isBlogEditing, setIsBlogEditing] = useState(false)
+
+  // 左栏列表折叠状态（叙事/博客共用，跨页面保留）
+  const [listPaneCollapsed, setListPaneCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(LIST_PANE_COLLAPSED_KEY) === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleListPane = useCallback(() => {
+    setListPaneCollapsed((prev) => {
+      const next = !prev
+      try {
+        window.localStorage.setItem(LIST_PANE_COLLAPSED_KEY, String(next))
+      } catch {
+        // ignore quota / privacy mode errors
+      }
+      return next
+    })
+  }, [])
 
   const [draftTypeFilter, setDraftTypeFilter] = useState('')
   const [draftSearchQuery, setDraftSearchQuery] = useState('')
@@ -257,6 +378,11 @@ function PhotoJournalContent() {
     setActiveSubTab('stories')
   }
 
+  function handleEditBlogFromDraft(draft: BlogDraftData) {
+    setEditBlogFromDraft(draft)
+    setActiveSubTab('blog')
+  }
+
   function formatRelativeTime(timestamp: number): string {
     return formatRelativeTimeLabel(timestamp, t, 'datetime')
   }
@@ -319,9 +445,21 @@ function PhotoJournalContent() {
     setActiveSubTab(tab)
   }
 
-  const chromeVisible = !((isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode)
+  const chromeVisible = !((isStoriesEditing && activeSubTab === 'stories') || (isBlogEditing && activeSubTab === 'blog') || isImmersiveMode)
   const contentPadding =
-    (isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'pt-0' : 'px-6 pb-6 pt-3'
+    (isStoriesEditing && activeSubTab === 'stories') || (isBlogEditing && activeSubTab === 'blog') || isImmersiveMode
+      ? 'pt-0'
+      : 'px-6 pb-6 pt-3'
+
+  // 左栏面板头内的子页签导航（叙事/博客/草稿）
+  const subTabNav = (
+    <JournalSubTabNav
+      activeSubTab={activeSubTab}
+      onTabClick={handleTabClick}
+      totalDrafts={totalDrafts}
+      t={t}
+    />
+  )
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -332,47 +470,22 @@ function PhotoJournalContent() {
         />
       </div>
 
-      {/* 子页签导航：下划线样式，双击刷新 */}
-      <div className={`${chromeVisible ? 'flex' : 'hidden'} shrink-0 items-center gap-7 px-6`}>
-        {([
-          { key: 'stories' as const, icon: BookOpen, label: t('nav.story') },
-          { key: 'blog' as const, icon: BookText, label: t('admin.blog') },
-          { key: 'drafts' as const, icon: FileArchive, label: t('admin.drafts') },
-        ]).map(({ key, icon: Icon, label }) => {
-          const active = activeSubTab === key
-          return (
-            <button
-              key={key}
-              onClick={() => handleTabClick(key)}
-              title={t('admin.double_click_refresh')}
-              className="relative flex items-center gap-2 py-2.5 text-sm transition-colors hover:opacity-80"
-              style={{ color: active ? 'var(--foreground)' : 'var(--muted-foreground)' }}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-              {key === 'drafts' && totalDrafts > 0 && (
-                <span
-                  className="rounded-full px-1.5 py-0.5 text-[10px] leading-none"
-                  style={{
-                    backgroundColor: active ? 'var(--primary)' : 'var(--accent)',
-                    color: active ? 'var(--primary-foreground)' : 'var(--accent-foreground)',
-                  }}
-                >
-                  {totalDrafts}
-                </span>
-              )}
-              {active && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--primary)' }} />
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* 子页签内容 */}
+      {/* 子页签内容（导航已并入左栏面板头） */}
       <div className={`flex-1 overflow-hidden ${contentPadding}`}>
         <div className={activeSubTab === 'blog' ? 'h-full' : 'hidden'}>
-          <BlogTab photos={photos} settings={settings} t={t} notify={notify} refreshKey={blogRefreshKey} />
+          <BlogTab
+            photos={photos}
+            settings={settings}
+            t={t}
+            notify={notify}
+            refreshKey={blogRefreshKey}
+            editBlogFromDraft={editBlogFromDraft}
+            onDraftConsumed={() => setEditBlogFromDraft(null)}
+            onEditingChange={setIsBlogEditing}
+            listPaneCollapsed={listPaneCollapsed}
+            onToggleListPane={toggleListPane}
+            subTabNav={subTabNav}
+          />
         </div>
         <div className={activeSubTab === 'stories' ? 'h-full' : 'hidden'}>
           <StoriesTab
@@ -383,16 +496,30 @@ function PhotoJournalContent() {
             onDraftConsumed={() => setEditFromDraft(null)}
             refreshKey={storiesRefreshKey}
             onEditingChange={setIsStoriesEditing}
+            listPaneCollapsed={listPaneCollapsed}
+            onToggleListPane={toggleListPane}
+            subTabNav={subTabNav}
           />
         </div>
         {activeSubTab === 'drafts' ? (
-          <div className="flex h-full flex-col gap-5 overflow-hidden">
-            <div
-              className="flex shrink-0 items-center justify-between border-b pb-4"
-              style={{ borderColor: 'var(--border)' }}
+          <div className="flex h-full min-h-0 gap-5 overflow-hidden">
+            <CollapsibleListPane
+              collapsed={listPaneCollapsed}
+              onToggle={toggleListPane}
+              icon={FileArchive}
+              t={t}
+              header={subTabNav}
             >
-              <div className="flex items-center gap-3">
-                <div className="relative">
+              <div />
+            </CollapsibleListPane>
+            <main className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex h-full flex-col gap-5 overflow-hidden px-3">
+              <div
+                className="flex shrink-0 items-center justify-between border-b pb-4"
+                style={{ borderColor: 'var(--border)' }}
+              >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="relative min-w-0 flex-1">
                   <Search
                     size={14}
                     className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -417,23 +544,26 @@ function PhotoJournalContent() {
               </div>
               <div className="flex items-center gap-2">
                 {totalDrafts > 0 && (
-                  <button
+                  <AdminButton
                     onClick={() => setDeleteDialog({ isOpen: true, type: 'all' })}
-                    className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
-                    style={{ borderColor: 'color-mix(in srgb, var(--destructive) 35%, transparent)', color: 'var(--destructive)' }}
+                    adminVariant="destructiveOutline"
+                    size="sm"
+                    className="flex items-center gap-1.5 rounded-md"
                   >
                     <Trash2 size={13} />
                     {t('admin.delete_all')}
-                  </button>
+                  </AdminButton>
                 )}
-                <button
+                <AdminButton
                   onClick={loadDrafts}
-                  className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-opacity hover:opacity-80"
-                  style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                  adminVariant="outline"
+                  size="sm"
+                  className="flex items-center gap-1.5 rounded-md"
+                  title={t('common.refresh')}
                 >
                   <RefreshCw size={13} />
                   {t('common.refresh')}
-                </button>
+                </AdminButton>
               </div>
             </div>
 
@@ -453,6 +583,8 @@ function PhotoJournalContent() {
                       />
                       <DraftCard
                         icon={BookOpen}
+                        tone="amber"
+                        onOpen={() => setSelectedDraft(filteredStoryDraft)}
                         title={filteredStoryDraft.title || t('story.untitled')}
                         snippet={`${filteredStoryDraft.content?.substring(0, 150) || t('admin.no_content')}${
                           (filteredStoryDraft.content?.length || 0) > 150 ? '...' : ''
@@ -483,7 +615,10 @@ function PhotoJournalContent() {
                         actions={
                           <>
                             <AdminButton
-                              onClick={() => setSelectedDraft(filteredStoryDraft)}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setSelectedDraft(filteredStoryDraft)
+                              }}
                               adminVariant="icon"
                               size="xs"
                               className="rounded-md p-2"
@@ -492,7 +627,10 @@ function PhotoJournalContent() {
                               <Eye className="h-4 w-4" />
                             </AdminButton>
                             <AdminButton
-                              onClick={() => setDeleteDialog({ isOpen: true, type: 'story' })}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setDeleteDialog({ isOpen: true, type: 'story' })
+                              }}
                               adminVariant="iconDestructive"
                               size="xs"
                               className="rounded-md p-2"
@@ -518,6 +656,8 @@ function PhotoJournalContent() {
                         <DraftCard
                           key={draft.id}
                           icon={Edit3}
+                          tone="primary"
+                          onOpen={() => handleEditStoryFromDraft(draft)}
                           title={draft.title || t('story.untitled')}
                           snippet={`${draft.content?.substring(0, 150) || t('admin.no_content')}${
                             (draft.content?.length || 0) > 150 ? '...' : ''
@@ -554,7 +694,10 @@ function PhotoJournalContent() {
                           actions={
                             <>
                               <AdminButton
-                                onClick={() => handleEditStoryFromDraft(draft)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleEditStoryFromDraft(draft)
+                                }}
                                 adminVariant="icon"
                                 size="xs"
                                 className="flex items-center gap-1 rounded-md p-2"
@@ -563,7 +706,10 @@ function PhotoJournalContent() {
                                 <ArrowRight className="h-4 w-4" />
                               </AdminButton>
                               <AdminButton
-                                onClick={() => setSelectedDraft(draft)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSelectedDraft(draft)
+                                }}
                                 adminVariant="icon"
                                 size="xs"
                                 className="rounded-md p-2"
@@ -572,7 +718,10 @@ function PhotoJournalContent() {
                                 <Eye className="h-4 w-4" />
                               </AdminButton>
                               <AdminButton
-                                onClick={() => setDeleteDialog({ isOpen: true, type: 'storyEditor', id: draft.id })}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setDeleteDialog({ isOpen: true, type: 'storyEditor', id: draft.id })
+                                }}
                                 adminVariant="iconDestructive"
                                 size="xs"
                                 className="rounded-md p-2"
@@ -599,6 +748,7 @@ function PhotoJournalContent() {
                         <DraftCard
                           key={draft.id}
                           icon={BookText}
+                          onOpen={() => handleEditBlogFromDraft(draft)}
                           title={draft.title || t('admin.untitled')}
                           snippet={`${draft.content?.substring(0, 150) || t('admin.no_content')}${
                             (draft.content?.length || 0) > 150 ? '...' : ''
@@ -631,7 +781,22 @@ function PhotoJournalContent() {
                           actions={
                             <>
                               <AdminButton
-                                onClick={() => setSelectedDraft(draft)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleEditBlogFromDraft(draft)
+                                }}
+                                adminVariant="icon"
+                                size="xs"
+                                className="flex items-center gap-1 rounded-md p-2"
+                                title={t('common.edit')}
+                              >
+                                <ArrowRight className="h-4 w-4" />
+                              </AdminButton>
+                              <AdminButton
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setSelectedDraft(draft)
+                                }}
                                 adminVariant="icon"
                                 size="xs"
                                 className="rounded-md p-2"
@@ -640,7 +805,10 @@ function PhotoJournalContent() {
                                 <Eye className="h-4 w-4" />
                               </AdminButton>
                               <AdminButton
-                                onClick={() => setDeleteDialog({ isOpen: true, type: 'blog', id: draft.blogId })}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setDeleteDialog({ isOpen: true, type: 'blog', id: draft.blogId })
+                                }}
                                 adminVariant="iconDestructive"
                                 size="xs"
                                 className="rounded-md p-2"
@@ -676,6 +844,8 @@ function PhotoJournalContent() {
                 </>
               )}
             </div>
+          </div>
+            </main>
           </div>
         ) : null}
       </div>

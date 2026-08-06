@@ -245,26 +245,40 @@ Database, Web API, JWT, storage, and AI settings can be managed from the Desktop
 
 ## 🖥️ Desktop Builds and Distribution
 
-### Windows Builds
+### Local Builds
 
 ```bash
 cd desktop
 
-# Portable: build an EXE that runs without installation
+# Portable build for the current host platform
 wails build
 
-# Setup: build an NSIS installer with a setup wizard
+# Windows NSIS installer (Windows only)
 wails build -nsis
+
+# Build a specific Wails target
+wails build -platform windows/amd64
+wails build -platform darwin/arm64
+wails build -platform linux/amd64 -tags webkit2_41
 ```
 
-Artifacts are written to `desktop/build/bin/`.
+Artifacts are written to `desktop/build/bin/`. The React/Vite frontend is bundled into the executable with Go `embed`, so no separate static asset directory is required.
+
+### Release Artifacts
+
+GitHub Releases use native runners to build the Wails desktop targets:
+
+- Windows AMD64/ARM64: Portable EXE and NSIS Setup installers
+- macOS AMD64/ARM64/Universal: `.app` ZIP archives
+- Linux AMD64/ARM64: `.tar.gz` executable archives
+
+NSIS is a Windows-only installer format; macOS and Linux use their standard distributable archives. Linux users still need GTK3/WebKitGTK runtime libraries supplied by their distribution.
 
 | Distribution | Recommended for | Characteristics |
 |--------------|-----------------|-----------------|
-| **Portable** | Beta testing, internal or temporary use, and environments without administrator access | Runs immediately after download; updates require replacing the EXE manually; no Start menu shortcut or uninstall entry is created automatically |
-| **Setup** | Stable releases, general users, frequent updates, and system integration | Supports an installation directory, shortcuts, an uninstall entry, and dependency handling such as WebView2 during setup |
-
-The current GitHub Release workflow runs `wails build`, so it publishes the portable EXE by default. The React/Vite frontend is bundled into the executable with Go `embed`, so no separate static asset directory is required.
+| **Portable** | Beta testing, internal or temporary use, and environments without administrator access | Runs immediately after download; updates require replacing the executable manually |
+| **Setup** | Stable Windows releases, general users, frequent updates, and system integration | Supports an installation directory, shortcuts, an uninstall entry, and WebView2 dependency handling |
+| **macOS/Linux archive** | macOS/Linux users | Extract and run the platform-specific `.app` or executable |
 
 ### Desktop Configuration Locations
 
@@ -384,8 +398,10 @@ Configure a reverse proxy, HTTPS, process supervision, and backups according to 
 | `pnpm run prisma:deploy` | Apply production migrations |
 | `pnpm run prisma:seed` | Seed the database |
 | `cd desktop && wails dev` | Start Desktop development mode |
-| `cd desktop && wails build` | Build the Desktop Portable EXE |
-| `cd desktop && wails build -nsis` | Build the Desktop NSIS installer |
+| `cd desktop && wails build` | Build the Desktop package for the current host platform |
+| `cd desktop && wails build -nsis` | Build the Windows Desktop NSIS installer |
+| `cd desktop && wails build -platform <os>/<arch>` | Build a specific Wails platform/architecture |
+| `cd desktop && wails build -platform linux/amd64 -tags webkit2_41` | Build the Linux AMD64 package |
 | `cd desktop/frontend && pnpm build` | Validate the Desktop frontend build |
 
 Baseline verification:

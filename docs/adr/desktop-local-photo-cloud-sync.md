@@ -1,7 +1,7 @@
 # ADR-0007: 桌面端本地照片库「云端关联 + 上传状态 + 删除能力」
 
 - 状态：已接受
-- 日期：2026-08-04
+- 日期：2026-08-05
 - 决策者：产品 + 桌面端开发
 - 关联技能：`grill-with-docs`（访谈打磨 + 文档沉淀）
 
@@ -34,12 +34,13 @@
 不引入独立 `upload_status` 枚举列，避免冗余状态与不同步的漂移风险。
 「已上传」状态由 `cloud_photo_id IS NOT NULL` 判定，筛选直接查该列。
 
-### 3. 上传回写：即时回写 + 待同步补齐
+### 3. 上传回写：同步重试并显式报告失败
 
-- 云端上传成功后，immediately 把 `cloud_photo_id` / `cloud_url` 写回本地 `assets` 表。
-- 若单次回写失败（如本地库被占用），不阻塞上传结果，但记录待同步标记。
-- 下一次扫描 / 同步时按 `fileHash` 对账，补齐缺失的关联。
-- 最终一致性由「异步对账」保证，不强依赖单次写回成功。
+- 云端上传成功后，立即把 `cloud_photo_id` / `cloud_url` 写回本地 `assets` 表。
+- SQLite 写回最多尝试 3 次，并采用 50/100/150ms 的递增等待，降低短暂写锁造成的失败概率。
+- 三次写回均失败时，记录 `local_cloud_link_failed` 日志，并让 `UploadLocalAsset` 返回错误；前端不得把该任务显示为完整成功。
+- 重复照片也必须查询已有云端照片详情，并经过同一重试路径写回 ID 与 URL。
+- 当前版本不实现后台对账任务；后续可按 `fileHash` 增加补偿机制，但不能以尚未实现的对账替代本次同步写回要求。
 
 ### 4. 删除云端：走 proxy 代理调用
 
@@ -67,7 +68,7 @@ desktop 通过 `ProxyClient` 调用云端 `DELETE /photos/:id`，复用现有 pr
 | 方案 | 理由 | 结论 |
 |------|------|------|
 | 一对多（本地对应多个云端） | 灵活但状态机复杂 | 否决 |
-| 以 fileHash 为准做强校验 | 可作为对账手段，但作为唯一关联键复杂度高 | 否决为关联键，仅用于对账补齐 |
+| 以 fileHash 为准做强校验 | 可作为未来补偿对账手段，但作为唯一关联键复杂度高 | 否决为关联键，本次不实现对账 |
 | 删除云端时保留关联但标记已删除 | 保留审计痕迹，但状态机更复杂 | 否决 |
 | 删除云端直连存储+DB | 绕过 proxy，需独立凭据，风险高 | 否决 |
 | 加独立 upload_status 枚举列 | 状态明确但冗余 | 否决 |
@@ -76,9 +77,8 @@ desktop 通过 `ProxyClient` 调用云端 `DELETE /photos/:id`，复用现有 pr
 ## 影响
 
 - **本地库 schema**：`currentSchemaVersion` 7 → 8，`assets` 表新增
-  `cloud_photo_id`、`cloud_url` 两列，并加索引（如 `idx_assets_cloud`）。
-- **local_library 包**：新增写回 API（如 `SetCloudLink`）、清除 API（`ClearCloudLink`）、
-  按 `fileHash` 对账补齐的同步逻辑。
+  `cloud_photo_id`、`cloud_url` 两列，并增加 `idx_assets_cloud_photo` 索引。
+- **local_library 包**：新增写回 API（`SetAssetCloudLink`）、清除 API（`ClearAssetCloudLink`）和关联读取 API（`AssetCloudLink`）。
 - **app.go 绑定**：新增按本地 asset 删除云端、按 asset 状态筛选等绑定方法。
 - **前端**：`LocalAssetFilters` 增加「已上传 / 未上传」筛选；删除弹窗提供三选项；
   `AssetDTO` 增加 `cloudPhotoId` / `cloudUrl` 字段。
@@ -87,8 +87,9 @@ desktop 通过 `ProxyClient` 调用云端 `DELETE /photos/:id`，复用现有 pr
 
 ## 风险与缓解
 
-- **回写失败**：以异步对账（按 fileHash）兜底，保证最终一致。
+- **回写失败**：同步重试 3 次；仍失败则向前端返回错误并记录日志，避免把未建立关联的上传误报为完整成功。
 - **云端删除失败**：向用户提示失败并保留本地关联，不误清。
+- **本地永久删除提交失败**：原文件先移动到 `.mo-gallery/permanent-delete` 内部暂存区；SQLite 删除失败时自动移回原路径，回滚也失败则将资源库标记为 `repair_required`。
 - **重复上传**：覆盖式关联，避免多份关联导致状态混乱。
 
 ## 后续建议

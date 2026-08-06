@@ -7,7 +7,7 @@ import { CustomSelect, type SelectOption } from '@/components/ui/CustomSelect'
 
 type CustomInputProps = React.ComponentPropsWithoutRef<typeof CustomInput>
 type AdminSelectProps = Omit<React.ComponentPropsWithoutRef<typeof CustomSelect>, 'uiVariant'>
-type AdminMultiSelectProps = Omit<React.ComponentPropsWithoutRef<typeof CustomMultiSelect>, 'uiVariant'>
+type AdminMultiSelectProps = React.ComponentPropsWithoutRef<typeof CustomMultiSelect>
 
 export type { SelectOption, MultiSelectOption }
 
@@ -19,6 +19,6 @@ export function AdminSelect(props: AdminSelectProps) {
   return <CustomSelect uiVariant="admin" {...props} />
 }
 
-export function AdminMultiSelect(props: AdminMultiSelectProps) {
-  return <CustomMultiSelect uiVariant="admin" {...props} />
+export function AdminMultiSelect({ uiVariant = 'admin', ...props }: AdminMultiSelectProps) {
+  return <CustomMultiSelect uiVariant={uiVariant} {...props} />
 }

@@ -157,6 +157,7 @@
   --ring: #111111;
   --radius: 0.5rem;
   --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
 }
 
 .dark {
@@ -376,3 +377,12 @@
 }
 .ai-markdown strong { font-weight: 600; }
 .ai-markdown em { font-style: italic; }
+
+/* ── 沉浸模式：编辑器全屏时隐藏一体化窗口标题栏 ──────────────
+   沉浸层 fixed z-[45] 位于 DesktopWindowFrame 的 children 容器
+   （relative z-0 stacking context）内部，无法压过标题栏 z-10；
+   因此进入沉浸时通过 body 标记隐藏标题栏。 */
+body.mo-immersive .desktop-title-bar,
+body.mo-fullscreen-preview .desktop-title-bar {
+  display: none;
+}

@@ -9,7 +9,7 @@ export interface MultiSelectOption {
   suffix?: string
 }
 
-type UiVariant = 'admin' | 'site'
+type UiVariant = 'admin' | 'site' | 'desktop'
 
 interface CustomMultiSelectProps {
   values: string[]
@@ -113,6 +113,25 @@ export function CustomMultiSelect({
         create:
           'w-full text-left px-3 py-2 text-sm text-primary hover:bg-muted flex items-center justify-between transition-colors',
         hint: 'px-3 py-2 text-sm text-muted-foreground text-center',
+      }
+    }
+
+    if (uiVariant === 'desktop') {
+      return {
+        container:
+          'bg-background border border-border rounded-lg transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-ring',
+        trigger: 'min-h-9 p-2.5 flex flex-wrap gap-1.5 items-center cursor-text',
+        chip: 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary text-[11px] font-medium',
+        chipRemove: 'p-0 rounded hover:text-destructive transition-colors',
+        input: 'flex-1 min-w-[60px] outline-none bg-transparent text-xs',
+        dropdown:
+          'absolute z-20 w-full mt-1.5 bg-background border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto',
+        option:
+          'w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 flex items-center justify-between transition-colors group',
+        optionActive: 'bg-primary/10 text-primary',
+        create:
+          'w-full text-left px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted/50 flex items-center justify-between transition-colors',
+        hint: 'px-3 py-2 text-[11px] text-muted-foreground text-center',
       }
     }
 
@@ -275,7 +294,9 @@ function PlusIcon({ uiVariant }: { uiVariant: UiVariant }) {
       className={
         uiVariant === 'site'
           ? 'text-muted-foreground'
-          : 'text-primary-foreground/80'
+          : uiVariant === 'desktop'
+            ? 'text-primary'
+            : 'text-primary-foreground/80'
       }
     >
       +

@@ -277,6 +277,8 @@ function LocalAssetDetailsContent({ asset, copy, saving, maintenanceBusy, tags, 
           <dt style={{ color: 'var(--muted-foreground)' }}>{copy.fileSize}</dt><dd>{formatBytes(asset.byteSize)}</dd>
           {isPhoto && <><dt style={{ color: 'var(--muted-foreground)' }}>{copy.captured}</dt><dd>{formatDate(asset.capturedAt)}</dd></>}
           <dt style={{ color: 'var(--muted-foreground)' }}>{copy.modified}</dt><dd>{formatDate(asset.modifiedAtNs)}</dd>
+          <dt style={{ color: 'var(--muted-foreground)' }}>{copy.filterUploadStatus}</dt><dd>{asset.isUploaded ? copy.filterUploaded : copy.filterNotUploaded}</dd>
+          {asset.cloudUrl && <><dt style={{ color: 'var(--muted-foreground)' }}>{copy.cloudAddress}</dt><dd className="break-all font-mono text-[10px]">{asset.cloudUrl}</dd></>}
           <dt style={{ color: 'var(--muted-foreground)' }}>{copy.originalPath}</dt><dd className="break-all font-mono text-[10px]">{asset.relativePath}</dd>
         </dl>
 

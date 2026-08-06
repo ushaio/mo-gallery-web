@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, LibraryBig, Upload, BookMarked,
   BookImage, Bot, HardDrive, Settings, Users, LogOut,
-  Sun, Moon, Monitor, Globe, Check, ChevronDown, LogIn,
+  Sun, Moon, Monitor, Globe, Check, ChevronDown, LogIn, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences } from '@/store/preferences'
@@ -45,7 +45,7 @@ const languageOptions = [
 
 export function Sidebar() {
   const { user, logout, isAuthenticated } = useAuth()
-  const { language, theme, setLanguage, setTheme } = usePreferences()
+  const { language, theme, sidebarCollapsed, setLanguage, setTheme, setSidebarCollapsed } = usePreferences()
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -95,8 +95,13 @@ export function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openMenu])
 
+  useEffect(() => {
+    if (sidebarCollapsed) setOpenMenu(null)
+  }, [sidebarCollapsed])
+
   const currentThemeLabel = t(themeOptions.find((o) => o.value === theme)?.label ?? 'common.system', language)
   const currentLanguageLabel = languageOptions.find((o) => o.value === language)?.label ?? '中文'
+  const collapseLabel = t(sidebarCollapsed ? 'admin.expand_sidebar' : 'admin.collapse_sidebar', language)
   const visibleNavGroups = isAuthenticated ? navGroups : [navGroups[1].slice(0, 1), navGroups[2].slice(1, 2)]
   const displayedSiteTitle = isAuthenticated ? siteTitle : 'MO Gallery'
 
@@ -105,26 +110,47 @@ export function Sidebar() {
       className="flex h-full flex-col select-none border-r"
       onDragStartCapture={(event) => event.preventDefault()}
       style={{
-        width: 'var(--sidebar-width)',
+        width: sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
         backgroundColor: 'var(--card)',
         borderColor: 'var(--border)',
+        transition: 'width 180ms ease',
       }}
     >
-      {/* Logo（点击站点标题 → 浏览器打开网站） */}
-      <button
-        type="button"
-        onClick={handleOpenSite}
-        title={siteUrl ? `打开网站：${siteUrl}` : undefined}
-        disabled={!siteUrl}
-        className="flex h-16 w-full items-center gap-3 border-b px-5 min-w-0 text-left transition-opacity hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100"
-        style={{ borderColor: 'var(--border)', backgroundColor: 'transparent', color: 'var(--foreground)' }}
-      >
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold font-serif shrink-0"
-          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-          {displayedSiteTitle.charAt(0).toUpperCase() || 'M'}
-        </div>
-        <span className="font-serif font-bold text-sm tracking-widest uppercase truncate">{displayedSiteTitle}</span>
-      </button>
+      {/* Logo（点击站点标题 → 浏览器打开网站）+ 侧栏折叠入口 */}
+      <div className="relative h-16 shrink-0 border-b" style={{ borderColor: 'var(--border)' }}>
+        <button
+          type="button"
+          onClick={handleOpenSite}
+          title={siteUrl ? `打开网站：${siteUrl}` : undefined}
+          disabled={!siteUrl}
+          className={`flex h-full w-full min-w-0 items-center text-left transition-[padding,gap,opacity] hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-5 pr-10'}`}
+          style={{ backgroundColor: 'transparent', color: 'var(--foreground)' }}
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-serif text-sm font-bold"
+            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+            {displayedSiteTitle.charAt(0).toUpperCase() || 'M'}
+          </div>
+          {!sidebarCollapsed && <span className="truncate font-serif text-sm font-bold uppercase tracking-widest">{displayedSiteTitle}</span>}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOpenMenu(null)
+            setSidebarCollapsed(!sidebarCollapsed)
+          }}
+          className="absolute -right-3 top-1/2 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border shadow-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          style={{
+            backgroundColor: 'var(--card)',
+            borderColor: 'var(--border)',
+            color: 'var(--muted-foreground)',
+          }}
+          title={collapseLabel}
+          aria-label={collapseLabel}
+          aria-pressed={sidebarCollapsed}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+        </button>
+      </div>
 
       {/* 导航 */}
       <nav className="flex-1 overflow-y-auto px-2 py-2">
@@ -144,8 +170,9 @@ export function Sidebar() {
                 key={path}
                 to={path}
                 draggable={false}
+                title={sidebarCollapsed ? t(key, language) : undefined}
                 className={({ isActive }) =>
-                  `mb-0.5 flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                  `mb-0.5 flex items-center rounded-md py-2 text-sm transition-colors ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'} ${
                     isActive
                       ? 'font-medium'
                       : 'hover:opacity-80'
@@ -157,7 +184,7 @@ export function Sidebar() {
                 })}
               >
                 <Icon size={18} />
-                <span>{t(key, language)}</span>
+                {!sidebarCollapsed && <span>{t(key, language)}</span>}
               </NavLink>
             ))}
           </div>
@@ -171,28 +198,35 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => setOpenMenu(openMenu === 'theme' ? null : 'theme')}
-            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
+            className={`w-full flex items-center rounded-md py-1.5 text-xs transition-colors hover:opacity-80 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-3'}`}
             style={{ color: 'var(--muted-foreground)' }}
+            title={sidebarCollapsed ? currentThemeLabel : undefined}
+            aria-label={currentThemeLabel}
+            aria-expanded={openMenu === 'theme'}
+            aria-haspopup="menu"
           >
             {theme === 'dark' ? <Moon size={14} /> : theme === 'light' ? <Sun size={14} /> : <Monitor size={14} />}
-            <span className="flex-1 text-left">{currentThemeLabel}</span>
-            <ChevronDown
+            {!sidebarCollapsed && <span className="flex-1 text-left">{currentThemeLabel}</span>}
+            {!sidebarCollapsed && <ChevronDown
               size={12}
               style={{
                 transform: openMenu === 'theme' ? 'rotate(180deg)' : 'rotate(0deg)',
                 transition: 'transform 200ms',
               }}
-            />
+            />}
           </button>
           {openMenu === 'theme' && (
             <div
-              className="absolute bottom-full left-0 right-0 mb-1 rounded-md border shadow-lg overflow-hidden"
+              role="menu"
+              className={`absolute z-30 mb-1 overflow-hidden rounded-md border shadow-lg ${sidebarCollapsed ? 'bottom-0 left-full ml-2 w-40' : 'bottom-full left-0 right-0'}`}
               style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
             >
               {themeOptions.map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"
+                  role="menuitemradio"
+                  aria-checked={theme === value}
                   onClick={() => {
                     setTheme(value)
                     setOpenMenu(null)
@@ -217,28 +251,35 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => setOpenMenu(openMenu === 'language' ? null : 'language')}
-            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
+            className={`w-full flex items-center rounded-md py-1.5 text-xs transition-colors hover:opacity-80 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-3'}`}
             style={{ color: 'var(--muted-foreground)' }}
+            title={sidebarCollapsed ? currentLanguageLabel : undefined}
+            aria-label={currentLanguageLabel}
+            aria-expanded={openMenu === 'language'}
+            aria-haspopup="menu"
           >
             <Globe size={14} />
-            <span className="flex-1 text-left">{currentLanguageLabel}</span>
-            <ChevronDown
+            {!sidebarCollapsed && <span className="flex-1 text-left">{currentLanguageLabel}</span>}
+            {!sidebarCollapsed && <ChevronDown
               size={12}
               style={{
                 transform: openMenu === 'language' ? 'rotate(180deg)' : 'rotate(0deg)',
                 transition: 'transform 200ms',
               }}
-            />
+            />}
           </button>
           {openMenu === 'language' && (
             <div
-              className="absolute bottom-full left-0 right-0 mb-1 rounded-md border shadow-lg overflow-hidden"
+              role="menu"
+              className={`absolute z-30 mb-1 overflow-hidden rounded-md border shadow-lg ${sidebarCollapsed ? 'bottom-0 left-full ml-2 w-40' : 'bottom-full left-0 right-0'}`}
               style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
             >
               {languageOptions.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
+                  role="menuitemradio"
+                  aria-checked={language === value}
                   onClick={() => {
                     setLanguage(value)
                     setOpenMenu(null)
@@ -259,17 +300,17 @@ export function Sidebar() {
       </div>
 
       {/* 用户信息 */}
-      <div className="border-t px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+      <div className={`border-t py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`} style={{ borderColor: 'var(--border)' }}>
         {isAuthenticated ? (
-          <div className="flex items-center justify-between">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? '' : 'gap-2'}`}>
+              {!sidebarCollapsed && <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
                 style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
                 {user?.username?.[0]?.toUpperCase() || 'A'}
-              </div>
-              <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              </div>}
+              {!sidebarCollapsed && <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
                 {user?.username || 'Admin'}
-              </span>
+              </span>}
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
               <NavLink
@@ -300,10 +341,10 @@ export function Sidebar() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between">
-            <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+            {!sidebarCollapsed && <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
               {t('admin.offline_mode', language)}
-            </span>
+            </span>}
             <div className="flex shrink-0 items-center gap-0.5">
               <NavLink
                 to="/settings"

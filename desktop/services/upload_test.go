@@ -118,3 +118,53 @@ func TestUploadFileRevalidatesSourceBeforeServerConnection(t *testing.T) {
 		t.Fatalf("UploadFile() result = %+v", result)
 	}
 }
+
+func TestUploadFileReturnsPhotoFromWrappedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/photos" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer desktop-token" {
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm() error = %v", err)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("FormFile() error = %v", err)
+		}
+		_ = file.Close()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"data": map[string]any{
+				"id":    "photo-123",
+				"title": "Uploaded photo",
+				"url":   "/uploads/photo-123.jpg",
+			},
+		})
+	}))
+	defer server.Close()
+
+	path := filepath.Join(t.TempDir(), "upload.jpg")
+	jpegData := []byte{0xff, 0xd8, 0xff, 0xdb, 0x00, 0x04, 0x00, 0x00, 0xff, 0xd9}
+	if err := os.WriteFile(path, jpegData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	proxy := NewProxyClient()
+	proxy.SetServer(server.URL)
+	proxy.SetToken("desktop-token")
+	service := NewUploadService(proxy)
+
+	result, err := service.UploadFile(path, UploadSettings{}, "", nil)
+	if err != nil {
+		t.Fatalf("UploadFile() error = %v", err)
+	}
+	if result == nil || !result.Success || result.Photo == nil || result.Photo.ID != "photo-123" {
+		t.Fatalf("UploadFile() result = %+v", result)
+	}
+}

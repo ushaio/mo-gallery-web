@@ -50,6 +50,10 @@ export function ClearEditorAiConversation(arg1) {
   return window['go']['main']['App']['ClearEditorAiConversation'](arg1);
 }
 
+export function ClearLocalAssetCloudLink(arg1) {
+  return window['go']['main']['App']['ClearLocalAssetCloudLink'](arg1);
+}
+
 export function ClearLocalLibraryPreviewCache() {
   return window['go']['main']['App']['ClearLocalLibraryPreviewCache']();
 }
@@ -140,6 +144,14 @@ export function DeleteFilmRoll(arg1) {
 
 export function DeleteFriend(arg1) {
   return window['go']['main']['App']['DeleteFriend'](arg1);
+}
+
+export function DeleteLocalAssetCloud(arg1, arg2) {
+  return window['go']['main']['App']['DeleteLocalAssetCloud'](arg1, arg2);
+}
+
+export function DeleteLocalAssetCloudAndLocal(arg1, arg2) {
+  return window['go']['main']['App']['DeleteLocalAssetCloudAndLocal'](arg1, arg2);
 }
 
 export function DeleteLocalLibraryCollection(arg1) {
@@ -572,6 +584,10 @@ export function SetAuth(arg1, arg2) {
 
 export function SetFilmRollFrameOrder(arg1, arg2) {
   return window['go']['main']['App']['SetFilmRollFrameOrder'](arg1, arg2);
+}
+
+export function SetLocalAssetCloudLink(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetLocalAssetCloudLink'](arg1, arg2, arg3);
 }
 
 export function SetLocalAssetCollections(arg1, arg2) {

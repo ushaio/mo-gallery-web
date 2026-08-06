@@ -40,6 +40,11 @@ function LocalLibraryPreviewContent({ asset, copy, onClose, onOpenSystem, onPrev
   const dragStartRef = useRef<{ x: number, y: number, offsetX: number, offsetY: number } | null>(null)
   const previewPending = asset.previewStatus === 'pending' || asset.previewStatus === 'generating'
   const canPreview = (asset.previewStatus === 'ready' || asset.mimeType === 'image/gif') && !previewFailed
+
+  useEffect(() => {
+    document.body.classList.add('mo-fullscreen-preview')
+    return () => document.body.classList.remove('mo-fullscreen-preview')
+  }, [])
   const setZoomLevel = (value: number) => setZoom(Math.min(5, Math.max(0.25, value)))
   const toggleOriginal = () => {
     const nextOriginal = originalFailed || !original

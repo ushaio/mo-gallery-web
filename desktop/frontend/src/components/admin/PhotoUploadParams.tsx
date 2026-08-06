@@ -3,15 +3,18 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import {
   BookOpen,
+  Check,
+  ChevronDown,
+  Film,
   FolderOpen,
+  HardDrive,
+  Loader2,
   MapPinOff,
   Minimize2,
-  Settings2,
+  ShieldCheck,
+  Tag,
   Upload,
-  Loader2,
-  ChevronDown,
-  Check,
-  Film,
+  type LucideIcon,
 } from 'lucide-react'
 import type { StorageSourceDto, StoryDto, AlbumDto, FilmRollDto } from '@/lib/api/types'
 import { getAdminStories } from '@/lib/api/stories'
@@ -53,8 +56,11 @@ interface PhotoUploadParamsProps {
   onUploadClick: () => void
   uploading?: boolean
   uploadError?: string
+  initialSettings?: Partial<PhotoUploadSettings>
   hideStorySelector?: boolean
   initialStoryId?: string
+  /** 嵌入弹窗使用：隐藏内置“上传参数”标题与底部上传按钮（由弹窗页脚承接） */
+  embedded?: boolean
 }
 
 // Inline Prefix Dropdown
@@ -86,7 +92,7 @@ function PrefixDropdown({
   return (
     <div ref={containerRef} className="relative self-stretch">
       <div
-        className="h-full px-3 bg-muted/50 border border-r-0 border-border text-[10px] text-muted-foreground font-mono flex items-center gap-0.5 cursor-pointer hover:bg-muted/80 transition-colors select-none"
+        className="h-full px-3 bg-muted/50 border border-r-0 border-border rounded-l-md text-[10px] text-muted-foreground font-mono flex items-center gap-0.5 cursor-pointer hover:bg-muted/80 transition-colors select-none"
         onClick={() => setIsOpen(!isOpen)}
         title={displayLabel}
       >
@@ -116,6 +122,16 @@ function PrefixDropdown({
   )
 }
 
+// Desktop section header (matches PhotoInfoSidebar / settings-page section labels)
+function SectionHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <div className="mb-3 flex items-center gap-1.5">
+      <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
+      <span className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
+    </div>
+  )
+}
+
 export function PhotoUploadParams({
   mode,
   token,
@@ -131,17 +147,19 @@ export function PhotoUploadParams({
   uploadError,
   hideStorySelector = false,
   initialStoryId,
+  initialSettings,
+  embedded = false,
 }: PhotoUploadParamsProps) {
-  const [uploadTitle, setUploadTitle] = useState('')
-  const [uploadCategories, setUploadCategories] = useState<string[]>([])
+  const [uploadTitle, setUploadTitle] = useState(initialSettings?.title ?? '')
+  const [uploadCategories, setUploadCategories] = useState<string[]>(initialSettings?.categories ?? [])
 
-  const [uploadStoryId, setUploadStoryId] = useState('')
+  const [uploadStoryId, setUploadStoryId] = useState(initialSettings?.storyId ?? '')
   const [uploadStoryTitle, setUploadStoryTitle] = useState('')
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loadingStories, setLoadingStories] = useState(false)
   const [showStorySelector, setShowStorySelector] = useState(false)
 
-  const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>([])
+  const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>(initialSettings?.albumIds ?? [])
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
@@ -152,18 +170,18 @@ export function PhotoUploadParams({
   const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
   const [showFilmRollSelector, setShowFilmRollSelector] = useState(false)
 
-  const [uploadSourceId, setUploadSourceId] = useState<string>('')
+  const [uploadSourceId, setUploadSourceId] = useState<string>(initialSettings?.storageSourceId ?? '')
   const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
-  const [useCustomPrefix, setUseCustomPrefix] = useState(false)
-  const [uploadPath, setUploadPath] = useState('')
+  const [useCustomPrefix, setUseCustomPrefix] = useState(Boolean(initialSettings?.storagePathFull))
+  const [uploadPath, setUploadPath] = useState(initialSettings?.storagePath ?? '')
   const [isInitialized, setIsInitialized] = useState(false)
 
-  const [compressionEnabled, setCompressionEnabled] = useState(true)
-  const [maxSizeMB, setMaxSizeMB] = useState(0)
-  const [sliderValue, setSliderValue] = useState(0)
-  const [showFlag, setShowFlag] = useState(true)
+  const [compressionEnabled, setCompressionEnabled] = useState(initialSettings?.compressionEnabled ?? true)
+  const [maxSizeMB, setMaxSizeMB] = useState(initialSettings?.maxSizeMB ?? 0)
+  const [sliderValue, setSliderValue] = useState(initialSettings?.maxSizeMB ?? 0)
+  const [showFlag, setShowFlag] = useState(initialSettings?.showFlag ?? true)
 
-  const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
+  const [privacyStripEnabled, setPrivacyStripEnabled] = useState(initialSettings?.privacyStripEnabled ?? false)
 
   // Initialize storyId from prop
   useEffect(() => {
@@ -184,17 +202,13 @@ export function PhotoUploadParams({
     if (!token || isInitialized) return
     getStorageSources(token).then(sources => {
       setStorageSources(sources)
-      if (sources.length > 0) setUploadSourceId(sources[0].id)
+      const nextSourceId = sources.some((source) => source.id === uploadSourceId)
+        ? uploadSourceId
+        : sources[0]?.id || ''
+      setUploadSourceId(nextSourceId)
       setIsInitialized(true)
     }).catch(() => setIsInitialized(true))
   }, [token, isInitialized])
-
-  // Reset custom prefix when storage source changes
-  useEffect(() => {
-    if (!isInitialized) return
-    setUseCustomPrefix(false)
-    setUploadPath('')
-  }, [uploadSourceId, isInitialized])
 
   const selectedSource = storageSources.find(s => s.id === uploadSourceId)
   const configPrefix = selectedSource?.basePath || undefined
@@ -296,28 +310,27 @@ export function PhotoUploadParams({
 
   return (
     <>
-      <div className="sticky top-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Settings2 className="w-4 h-4 text-muted-foreground" />
-          <h2 className="text-xs font-medium tracking-wide uppercase text-muted-foreground">{t('admin.upload_params')}</h2>
-        </div>
-
-        <div className="space-y-4">
+      <div className="space-y-6">
+        {/* Section: Basic Info */}
+        <section>
+          <SectionHeader icon={Tag} label={t('admin.upload_section_basic')} />
+          <div className="space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.photo_title')}</label>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">{t('admin.photo_title')}</label>
             <AdminInput
               value={uploadTitle}
               onChange={e => setUploadTitle(e.target.value)}
               disabled={fileCount > 1}
               placeholder={fileCount > 1 ? t('admin.title_hint_multi') : t('admin.title_hint_single')}
+              className="h-9 py-0 rounded-md"
             />
           </div>
 
           {/* Categories & Albums - 2 column grid */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.categories')}</label>
+              <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">{t('admin.categories')}</label>
               <AdminMultiSelect
                 values={uploadCategories}
                 options={categoryOptions}
@@ -325,10 +338,11 @@ export function PhotoUploadParams({
                 placeholder={t('admin.search_create')}
                 inputPlaceholder={t('admin.search_create')}
                 allowCreate
+                uiVariant="desktop"
               />
             </div>
             <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground mb-1.5">
                 <FolderOpen className="w-3 h-3" />
                 {t('admin.album_select')}
               </label>
@@ -339,6 +353,7 @@ export function PhotoUploadParams({
                 placeholder={t('admin.search_album')}
                 inputPlaceholder={t('admin.search_album')}
                 disabled={loadingAlbums}
+                uiVariant="desktop"
               />
             </div>
           </div>
@@ -346,7 +361,7 @@ export function PhotoUploadParams({
           {/* Story - conditionally hidden */}
           {!hideStorySelector && (
             <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground mb-1.5">
                 <BookOpen className="w-3 h-3" />
                 {t('ui.photo_story')}
               </label>
@@ -354,7 +369,7 @@ export function PhotoUploadParams({
                 type="button"
                 onClick={() => setShowStorySelector(true)}
                 disabled={loadingStories}
-                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-between h-9 px-3 bg-background border border-border text-xs text-left rounded-md hover:border-primary/50 transition-colors disabled:opacity-50"
               >
                 <span className={uploadStoryTitle ? 'text-foreground' : 'text-muted-foreground'}>
                   {uploadStoryTitle || t('ui.no_association')}
@@ -367,7 +382,7 @@ export function PhotoUploadParams({
           {/* Film Roll - only in film mode */}
           {mode === 'film' && (
             <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground mb-1.5">
                 <Film className="w-3 h-3" />
                 {t('admin.film_roll_select')}
               </label>
@@ -375,7 +390,7 @@ export function PhotoUploadParams({
                 type="button"
                 onClick={() => setShowFilmRollSelector(true)}
                 disabled={loadingFilmRolls}
-                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-between h-9 px-3 bg-background border border-border text-xs text-left rounded-md hover:border-primary/50 transition-colors disabled:opacity-50"
               >
                 <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
                   {uploadFilmRollName || t('admin.no_film_roll')}
@@ -385,19 +400,28 @@ export function PhotoUploadParams({
             </div>
           )}
 
-          {/* Storage - compact layout */}
-          <div className="pt-3 border-t border-border/50">
-            <div className="grid grid-cols-2 gap-3">
+        </div>
+        </section>
+
+        {/* Section: Storage */}
+        <section className="border-t border-border/60 pt-5">
+          <SectionHeader icon={HardDrive} label={t('admin.upload_section_storage')} />
+          <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">{t('admin.storage_provider')}</label>
                 <SelectDropdown
                   value={uploadSourceId}
-                  onChange={(value) => setUploadSourceId(value as string)}
+                  onChange={(value) => {
+                    setUploadSourceId(value as string)
+                    setUseCustomPrefix(false)
+                    setUploadPath('')
+                  }}
                   options={storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` }))}
+                  size="md"
                 />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">{t('admin.path_prefix')}</label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">{t('admin.path_prefix')}</label>
                 <div className="flex items-stretch">
                   {configPrefix ? (
                     <PrefixDropdown
@@ -412,7 +436,7 @@ export function PhotoUploadParams({
                       }}
                     />
                   ) : (
-                    <div className="self-stretch px-3 bg-muted/50 border border-r-0 border-border text-[10px] text-muted-foreground font-mono flex items-center">
+                    <div className="self-stretch px-3 bg-muted/50 border border-r-0 border-border rounded-l-md text-[10px] text-muted-foreground font-mono flex items-center">
                       <span>/</span>
                     </div>
                   )}
@@ -420,18 +444,20 @@ export function PhotoUploadParams({
                     value={uploadPath}
                     onChange={e => setUploadPath(e.target.value)}
                     placeholder="path"
-                    className="flex-1 rounded-l-none border-l-0"
+                    className="flex-1 h-9 py-0 rounded-l-none border-l-0 rounded-r-md"
                   />
                 </div>
               </div>
             </div>
-          </div>
+        </section>
 
-          {/* Privacy & Compression - inline toggles */}
-          <div className="pt-3 border-t border-border/50 space-y-3">
+        {/* Section: Privacy & Compression */}
+        <section className="border-t border-border/60 pt-5">
+          <SectionHeader icon={ShieldCheck} label={t('admin.upload_section_privacy')} />
+          <div className="space-y-3">
             {/* Gallery Visibility */}
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
                 <BookOpen className="w-3 h-3" />
                 {t('admin.show_in_gallery')}
               </label>
@@ -452,7 +478,7 @@ export function PhotoUploadParams({
 
             {/* Privacy Strip */}
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
                 <MapPinOff className="w-3 h-3" />
                 {t('admin.strip_gps') || '移除地理位置'}
               </label>
@@ -473,7 +499,7 @@ export function PhotoUploadParams({
 
             {/* Compression */}
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
                 <Minimize2 className="w-3 h-3" />
                 {t('admin.image_compression')}
               </label>
@@ -527,28 +553,33 @@ export function PhotoUploadParams({
             )}
           </div>
 
-          {/* Upload Button */}
-          <AdminButton
-            onClick={onUploadClick}
-            disabled={uploading || fileCount === 0}
-            adminVariant="primary"
-            size="lg"
-            className="w-full py-3 mt-2 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {t('admin.uploading')}
-              </>
-            ) : (
-              <>
-                <Upload className="w-4 h-4" />
-                {t('admin.start_upload')}
-              </>
-            )}
-          </AdminButton>
-          {uploadError && <p className="text-xs text-destructive text-center mt-1">{uploadError}</p>}
-        </div>
+        </section>
+
+        {/* Standalone upload actions (hidden when embedded in a modal with footer actions) */}
+        {!embedded && (
+          <>
+            <AdminButton
+              onClick={onUploadClick}
+              disabled={uploading || fileCount === 0}
+              adminVariant="primary"
+              size="lg"
+              className="w-full py-3 mt-2 bg-foreground text-background text-sm font-medium tracking-wide hover:bg-primary hover:text-primary-foreground disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {t('admin.uploading')}
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  {t('admin.start_upload')}
+                </>
+              )}
+            </AdminButton>
+            {uploadError && <p className="text-xs text-destructive text-center mt-1">{uploadError}</p>}
+          </>
+        )}
       </div>
 
       <StorySelectorModal

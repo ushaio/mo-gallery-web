@@ -32,6 +32,7 @@ interface UseStoryDraftStateResult {
   draftSaved: boolean
   lastSavedAt: number | null
   initialStory: StorySnapshot | null
+  isDirty: boolean
   draftRestoreDialog: DraftRestoreDialogState
   createStoryWithDraftCheck: () => Promise<void>
   editStoryWithDraftCheck: (story: StoryDto) => Promise<void>
@@ -39,6 +40,7 @@ interface UseStoryDraftStateResult {
   handleDraftDiscard: () => void
   handleDraftCancel: () => void
   clearDraft: (storyId?: string) => Promise<void>
+  saveDraft: () => Promise<void>
   resetDraftState: () => void
 }
 
@@ -237,7 +239,8 @@ export function useStoryDraftState({
   const handleDraftCancel = useCallback(() => {
     setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
     setCurrentStory(null)
-  }, [setCurrentStory])
+    setStoryEditMode('list')
+  }, [setCurrentStory, setStoryEditMode])
 
   useEffect(() => {
     if (editFromDraft && allPhotos.length === 0) {
@@ -307,6 +310,7 @@ export function useStoryDraftState({
     draftSaved,
     lastSavedAt,
     initialStory,
+    isDirty,
     draftRestoreDialog,
     createStoryWithDraftCheck,
     editStoryWithDraftCheck,
@@ -314,6 +318,7 @@ export function useStoryDraftState({
     handleDraftDiscard,
     handleDraftCancel,
     clearDraft,
+    saveDraft,
     resetDraftState,
   }
 }
