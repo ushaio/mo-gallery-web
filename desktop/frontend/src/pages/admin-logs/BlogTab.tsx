@@ -23,6 +23,7 @@ import { BlogEditorView, type BlogFormData } from './BlogEditorView'
 import { EditorEmptyState } from './shared/EditorEmptyState'
 import { CollapsibleListPane } from './shared/CollapsibleListPane'
 import { useDirtyLeaveGuard, useSaveShortcut } from './shared/useDirtyLeaveGuard'
+import { cn } from '@/lib/utils'
 import { BookText } from 'lucide-react'
 
 const AUTO_SAVE_DELAY = 2000 // 自动保存防抖延迟（毫秒）
@@ -98,6 +99,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
   useEffect(() => {
     onEditingChange?.(editing)
   }, [editing, onEditingChange])
+
+  // 沉浸模式状态（博客编辑器本地管理，退出编辑时复位）
+  const [isImmersiveMode, setIsImmersiveMode] = useState(false)
+
+  useEffect(() => {
+    if (!currentBlog) setIsImmersiveMode(false)
+  }, [currentBlog, setIsImmersiveMode])
 
   // 离开保护 + Ctrl+S
   useDirtyLeaveGuard(isDirty && editing, editing)
@@ -490,7 +498,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
   const blogDocumentId = resolveBlogDocumentId(currentBlog?.id, draftDocumentId)
 
   return (
-    <div className="flex h-full min-h-0 gap-5 overflow-hidden">
+    <div className={cn('flex h-full min-h-0 overflow-hidden', isImmersiveMode ? 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4' : 'gap-5')}>
       {/* 左栏：博客列表（可折叠） */}
       <CollapsibleListPane
         collapsed={listPaneCollapsed}
@@ -535,6 +543,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
             notify={notify}
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={() => onToggleListPane?.()}
+            isImmersiveMode={isImmersiveMode}
+            setIsImmersiveMode={setIsImmersiveMode}
           />
         ) : (
           <EditorEmptyState

@@ -1,13 +1,13 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { FileText } from 'lucide-react'
 import type { BlogDto, PhotoDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
-import { cn } from '@/lib/utils'
 import { EditorShell } from './shared/EditorShell'
 import { BlogPhotoPanel, BLOG_PHOTO_PANEL_COLLAPSED_KEY } from './shared/BlogPhotoPanel'
 import { BlogPreviewModal } from './shared/BlogPreviewModal'
@@ -41,6 +41,8 @@ interface BlogEditorViewProps {
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   listPaneCollapsed?: boolean
   onToggleListPane?: () => void
+  isImmersiveMode: boolean
+  setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
 }
 
 /**
@@ -64,10 +66,11 @@ export function BlogEditorView({
   notify,
   listPaneCollapsed,
   onToggleListPane,
+  isImmersiveMode,
+  setIsImmersiveMode,
 }: BlogEditorViewProps) {
   const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   const [showPreview, setShowPreview] = useState(false)
-  const [isImmersiveMode, setIsImmersiveMode] = useState(false)
   const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem(BLOG_PHOTO_PANEL_COLLAPSED_KEY) === 'true'
@@ -108,12 +111,7 @@ export function BlogEditorView({
   }
 
   return (
-    <div
-      className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden',
-        isImmersiveMode && 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4',
-      )}
-    >
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <EditorShell
         title={blog.title}
         onTitleChange={(value) => onChange({ title: value })}

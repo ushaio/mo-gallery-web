@@ -21,6 +21,7 @@ import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { normalizeCompressionMode } from '@/lib/image-compress'
+import { cn } from '@/lib/utils'
 import { useAdmin } from './layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
@@ -585,7 +586,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   useSaveShortcut(() => void handleSaveStory(), storyEditMode === 'editor')
 
   return (
-    <div className="flex h-full min-h-0 gap-5 overflow-hidden">
+    <div className={cn('flex h-full min-h-0 overflow-hidden', isImmersiveMode ? 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4' : 'gap-5')}>
       {/* 左栏：叙事列表（可折叠） */}
       <CollapsibleListPane
         collapsed={listPaneCollapsed}

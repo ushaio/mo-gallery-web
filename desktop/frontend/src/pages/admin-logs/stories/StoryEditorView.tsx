@@ -10,7 +10,6 @@ import {
   Image as ImageIcon,
 } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
-import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
@@ -149,12 +148,7 @@ export function StoryEditorView({
   useImmersiveMode(isImmersiveMode, () => setIsImmersiveMode(false))
 
   return (
-    <div
-      className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden',
-        isImmersiveMode && 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4',
-      )}
-    >
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <EditorShell
         title={currentStory.title || ''}
         onTitleChange={(value) => setCurrentStory((prev) => (prev ? { ...prev, title: value } : prev))}
