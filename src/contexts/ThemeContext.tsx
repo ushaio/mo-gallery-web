@@ -36,8 +36,8 @@ function subscribeSystemTheme(callback: () => void) {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
-  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => 'system')
-  const systemTheme = useSyncExternalStore(
+  const theme = useSyncExternalStore<Theme>(subscribeTheme, getThemeSnapshot, () => 'system')
+  const systemTheme = useSyncExternalStore<'light' | 'dark'>(
     subscribeSystemTheme,
     () => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     () => 'light',
