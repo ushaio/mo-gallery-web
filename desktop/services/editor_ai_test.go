@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,20 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+const testEditorAiUserID = "test-user"
+
+func TestPersistableImageReferencesDropsInlineImageData(t *testing.T) {
+	result := persistableImageReferences([]string{
+		" data:image/png;base64,AAAA ",
+		"DATA:IMAGE/jpeg;base64,BBBB",
+		" https://example.com/reference.jpg ",
+		"",
+	})
+	if len(result) != 1 || result[0] != "https://example.com/reference.jpg" {
+		t.Fatalf("persistableImageReferences() = %#v", result)
+	}
+}
 
 func TestMetadataValidation(t *testing.T) {
 	t.Run("accepts absent and inert URLs and paths", func(t *testing.T) {
@@ -186,7 +201,7 @@ func TestAppendMessageValidatesMetadataBeforePersistence(t *testing.T) {
 	for name, metadata := range cases {
 		t.Run(name, func(t *testing.T) {
 			service, createCalls := newDryRunEditorAiService(t)
-			_, err := service.AppendMessage(EditorAiMessageAppendInput{
+			_, err := service.AppendMessage(testEditorAiUserID, EditorAiMessageAppendInput{
 				ConversationID: "conversation-1",
 				Role:           "user",
 				Content:        "hello",
@@ -204,7 +219,7 @@ func TestAppendMessageValidatesMetadataBeforePersistence(t *testing.T) {
 
 func TestAppendMessageAcceptsMaximumMetadataDepth(t *testing.T) {
 	service, createCalls := newDryRunEditorAiService(t)
-	if _, err := service.AppendMessage(EditorAiMessageAppendInput{
+	if _, err := service.AppendMessage(testEditorAiUserID, EditorAiMessageAppendInput{
 		ConversationID: "conversation-1",
 		Role:           "user",
 		Content:        "hello",
@@ -224,7 +239,7 @@ func TestAppendMessageRejectsInvalidRoleAndStatusBeforePersistence(t *testing.T)
 	}
 	for _, input := range tests {
 		service, createCalls := newDryRunEditorAiService(t)
-		if _, err := service.AppendMessage(input); err == nil {
+		if _, err := service.AppendMessage(testEditorAiUserID, input); err == nil {
 			t.Fatalf("expected append role/status validation error for %#v", input)
 		}
 		if *createCalls != 0 {
@@ -293,9 +308,98 @@ func newEditorAiPersistenceTest(t *testing.T) (*EditorAiService, *gorm.DB, strin
 	return &EditorAiService{database: tx}, tx, conversationID, messageID
 }
 
+func TestCreateConversationDoesNotPersistRemoteUserID(t *testing.T) {
+	service, database, conversationID, _ := newEditorAiPersistenceTest(t)
+	scopeID := "created-scope-" + conversationID
+
+	created, err := service.CreateConversation("remote-user-not-in-local-db-"+conversationID, EditorAiConversationCreateInput{
+		ScopeID: scopeID,
+		Title:   strPtr("Local conversation"),
+	})
+	if err != nil {
+		t.Fatalf("create ownerless conversation: %v", err)
+	}
+
+	var persisted db.AiConversation
+	if err := database.Where("id = ?", created.ID).First(&persisted).Error; err != nil {
+		t.Fatalf("load created conversation: %v", err)
+	}
+	if persisted.UserID != nil {
+		t.Fatalf("created conversation userId = %q, want NULL", *persisted.UserID)
+	}
+
+	listed, err := service.ListConversations("different-remote-user", scopeID)
+	if err != nil {
+		t.Fatalf("list local conversations: %v", err)
+	}
+	if len(listed) != 1 || listed[0].ID != created.ID {
+		t.Fatalf("local conversations = %#v", listed)
+	}
+}
+
+func TestEditorAiPagingLoadsLocalConversationsAndEarlierMessages(t *testing.T) {
+	service, database, conversationID, _ := newEditorAiPersistenceTest(t)
+
+	var conversation db.AiConversation
+	if err := database.Where("id = ?", conversationID).First(&conversation).Error; err != nil {
+		t.Fatalf("load seeded conversation: %v", err)
+	}
+	for index := 0; index < 3; index++ {
+		message := db.AiMessage{
+			ID:             fmt.Sprintf("paging-message-%d-%s", index, conversationID),
+			ConversationID: conversationID,
+			Role:           "user",
+			Content:        fmt.Sprintf("message %d", index),
+			Status:         "completed",
+			CreatedAt:      conversation.CreatedAt.Add(time.Duration(index+1) * time.Second),
+		}
+		if err := database.Create(&message).Error; err != nil {
+			t.Fatalf("create paging message: %v", err)
+		}
+	}
+	otherConversation := db.AiConversation{
+		ID:        "other-local-conversation-" + conversationID,
+		ScopeID:   conversation.ScopeID,
+		CreatedAt: conversation.CreatedAt.Add(time.Second),
+		UpdatedAt: conversation.UpdatedAt.Add(time.Second),
+	}
+	if err := database.Create(&otherConversation).Error; err != nil {
+		t.Fatalf("create other local conversation: %v", err)
+	}
+
+	conversationPage, err := service.ListConversationPage("unrelated-remote-user", conversation.ScopeID, 0, 1)
+	if err != nil {
+		t.Fatalf("list conversation page: %v", err)
+	}
+	if len(conversationPage.Items) != 1 || conversationPage.Items[0].ID != otherConversation.ID || !conversationPage.HasMore {
+		t.Fatalf("conversation page = %#v", conversationPage)
+	}
+
+	messagePage, err := service.GetConversationPage(testEditorAiUserID, conversationID, "", "", 2)
+	if err != nil {
+		t.Fatalf("load message page: %v", err)
+	}
+	if len(messagePage.Messages) != 2 || !messagePage.HasMoreMessages {
+		t.Fatalf("message page = %#v", messagePage)
+	}
+	earlierPage, err := service.GetConversationPage(
+		testEditorAiUserID,
+		conversationID,
+		messagePage.Messages[0].CreatedAt,
+		messagePage.Messages[0].ID,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("load earlier message page: %v", err)
+	}
+	if len(earlierPage.Messages) == 0 || earlierPage.Messages[len(earlierPage.Messages)-1].CreatedAt >= messagePage.Messages[0].CreatedAt {
+		t.Fatalf("earlier page = %#v", earlierPage)
+	}
+}
+
 func TestAppendMessagePersistsFailedMessageError(t *testing.T) {
 	service, database, conversationID, _ := newEditorAiPersistenceTest(t)
-	result, err := service.AppendMessage(EditorAiMessageAppendInput{
+	result, err := service.AppendMessage(testEditorAiUserID, EditorAiMessageAppendInput{
 		ConversationID: conversationID,
 		Role:           "assistant",
 		Content:        "partial",
@@ -325,7 +429,7 @@ func TestAppendMessageMetadataValidationAndRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := service.AppendMessage(EditorAiMessageAppendInput{
+	_, err := service.AppendMessage(testEditorAiUserID, EditorAiMessageAppendInput{
 		ConversationID: conversationID,
 		Role:           "user",
 		Content:        "unsafe",
@@ -343,7 +447,7 @@ func TestAppendMessageMetadataValidationAndRoundTrip(t *testing.T) {
 	}
 
 	metadata := EditorAiRawMetadata(`{"url":"https://example.com/photo.jpg","path":"C:/photos/a.jpg","object":{"values":[1,true,null]}}`)
-	result, err := service.AppendMessage(EditorAiMessageAppendInput{
+	result, err := service.AppendMessage(testEditorAiUserID, EditorAiMessageAppendInput{
 		ConversationID: conversationID,
 		Role:           "assistant",
 		Content:        "partial",
@@ -386,7 +490,7 @@ func TestFinishMessageCommitsStatusMetadataAndConversationTogether(t *testing.T)
 		t.Fatal(err)
 	}
 	metadata := EditorAiRawMetadata(`{"type":"editor_ai_task","task":{"taskId":"task-1","status":"completed","changeSet":{"state":"applied"}}}`)
-	result, err := service.FinishMessage(EditorAiMessageFinishInput{
+	result, err := service.FinishMessage(testEditorAiUserID, EditorAiMessageFinishInput{
 		MessageID: messageID, Status: "completed", Content: "done", Model: "openai:gpt-5.6", Metadata: metadata,
 	})
 	if err != nil {
@@ -408,7 +512,7 @@ func TestFinishMessageTerminalSemantics(t *testing.T) {
 	for _, status := range []string{"failed", "stopped"} {
 		t.Run(status, func(t *testing.T) {
 			service, database, conversationID, messageID := newEditorAiPersistenceTest(t)
-			result, err := service.FinishMessage(EditorAiMessageFinishInput{MessageID: messageID, Status: status, Content: "partial final", Model: "new:model", Error: "required error"})
+			result, err := service.FinishMessage(testEditorAiUserID, EditorAiMessageFinishInput{MessageID: messageID, Status: status, Content: "partial final", Model: "new:model", Error: "required error"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -427,7 +531,7 @@ func TestFinishMessageTerminalSemantics(t *testing.T) {
 
 	t.Run("completed writes empty content", func(t *testing.T) {
 		service, _, _, messageID := newEditorAiPersistenceTest(t)
-		result, err := service.FinishMessage(EditorAiMessageFinishInput{MessageID: messageID, Status: "completed"})
+		result, err := service.FinishMessage(testEditorAiUserID, EditorAiMessageFinishInput{MessageID: messageID, Status: "completed"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -440,7 +544,7 @@ func TestFinishMessageTerminalSemantics(t *testing.T) {
 		for _, input := range []EditorAiMessageFinishInput{{Status: "streaming"}, {Status: "failed"}, {Status: "stopped"}} {
 			service, database, _, messageID := newEditorAiPersistenceTest(t)
 			input.MessageID = messageID
-			if _, err := service.FinishMessage(input); err == nil {
+			if _, err := service.FinishMessage(testEditorAiUserID, input); err == nil {
 				t.Fatalf("expected error for status %q", input.Status)
 			}
 			var message db.AiMessage
@@ -456,7 +560,7 @@ func TestFinishMessageTerminalSemantics(t *testing.T) {
 
 func TestFinishMessageRejectsMetadataWithoutMutation(t *testing.T) {
 	service, database, _, messageID := newEditorAiPersistenceTest(t)
-	_, err := service.FinishMessage(EditorAiMessageFinishInput{MessageID: messageID, Status: "completed", Content: "changed", Metadata: EditorAiRawMetadata(`{"image":" data:image/png;base64,AAAA"}`)})
+	_, err := service.FinishMessage(testEditorAiUserID, EditorAiMessageFinishInput{MessageID: messageID, Status: "completed", Content: "changed", Metadata: EditorAiRawMetadata(`{"image":" data:image/png;base64,AAAA"}`)})
 	if err == nil {
 		t.Fatal("expected metadata error")
 	}
@@ -479,7 +583,7 @@ func TestFinishMessageRollsBackOnLateTransactionFailures(t *testing.T) {
 				}
 				return nil
 			}
-			if _, err := service.FinishMessage(EditorAiMessageFinishInput{
+			if _, err := service.FinishMessage(testEditorAiUserID, EditorAiMessageFinishInput{
 				MessageID: messageID, Status: "completed", Content: "must roll back", Model: "new:model",
 			}); err == nil {
 				t.Fatal("expected injected transaction failure")
@@ -512,7 +616,7 @@ func seedTaskMetadata(t *testing.T, database *gorm.DB, messageID string, metadat
 func TestUpdateTaskStatePreservesUnrelatedMetadata(t *testing.T) {
 	service, database, _, messageID := newEditorAiPersistenceTest(t)
 	seedTaskMetadata(t, database, messageID, `{"type":"editor_ai_task","extension":{"keep":true},"unknownInteger":9007199254740993,"task":{"taskId":"task-1","status":"completed","summary":["kept"],"entries":[{"x":1}],"warnings":["w"],"extra":"yes","changeSet":{"state":"applied","steps":[1]}}}`)
-	result, err := service.UpdateTaskState(EditorAiTaskStateUpdateInput{MessageID: messageID, State: "undone"})
+	result, err := service.UpdateTaskState(testEditorAiUserID, EditorAiTaskStateUpdateInput{MessageID: messageID, State: "undone"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +639,7 @@ func TestUpdateTaskStateAcceptsLegacyAndRejectsMalformed(t *testing.T) {
 	t.Run("normalizes legacy bare task", func(t *testing.T) {
 		service, database, _, messageID := newEditorAiPersistenceTest(t)
 		seedTaskMetadata(t, database, messageID, `{"taskId":"legacy","status":"completed","unknown":7,"changeSet":{"state":"applied"}}`)
-		result, err := service.UpdateTaskState(EditorAiTaskStateUpdateInput{MessageID: messageID, State: "redone"})
+		result, err := service.UpdateTaskState(testEditorAiUserID, EditorAiTaskStateUpdateInput{MessageID: messageID, State: "redone"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -558,7 +662,7 @@ func TestUpdateTaskStateAcceptsLegacyAndRejectsMalformed(t *testing.T) {
 			if err := database.First(&before, "id = ?", messageID).Error; err != nil {
 				t.Fatal(err)
 			}
-			if _, err := service.UpdateTaskState(EditorAiTaskStateUpdateInput{MessageID: messageID, State: "undone"}); err == nil {
+			if _, err := service.UpdateTaskState(testEditorAiUserID, EditorAiTaskStateUpdateInput{MessageID: messageID, State: "undone"}); err == nil {
 				t.Fatal("expected task metadata error")
 			}
 			var after db.AiMessage
@@ -574,7 +678,7 @@ func TestUpdateTaskStateAcceptsLegacyAndRejectsMalformed(t *testing.T) {
 	t.Run("invalid state", func(t *testing.T) {
 		service, database, _, messageID := newEditorAiPersistenceTest(t)
 		seedTaskMetadata(t, database, messageID, `{"type":"editor_ai_task","task":{"status":"completed","changeSet":{"state":"applied"}}}`)
-		if _, err := service.UpdateTaskState(EditorAiTaskStateUpdateInput{MessageID: messageID, State: "pending"}); err == nil {
+		if _, err := service.UpdateTaskState(testEditorAiUserID, EditorAiTaskStateUpdateInput{MessageID: messageID, State: "pending"}); err == nil {
 			t.Fatal("expected invalid state error")
 		}
 	})
@@ -742,5 +846,28 @@ func TestGetModelsFetchesSpecificProviderModels(t *testing.T) {
 	}
 	if strings.Contains(logs[0].Details, "deepseek-key") || strings.Contains(logs[1].Details, "deepseek-key") {
 		t.Fatalf("model fetch logs exposed API key: %#v", logs)
+	}
+}
+
+func TestExecuteImageRequestAcceptsDataURLBase64(t *testing.T) {
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{{"b64_json": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)}},
+		})
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, mimeType, _, err := executeImageRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, png) || mimeType != "image/png" {
+		t.Fatalf("decoded image = %x (%s)", data, mimeType)
 	}
 }

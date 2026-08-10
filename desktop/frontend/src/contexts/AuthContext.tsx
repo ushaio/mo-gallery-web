@@ -9,7 +9,7 @@ import {
   isAuthError,
 } from '@/lib/auth-errors'
 import type { UserInfo } from '@/types'
-import { SetAuth } from '../../wailsjs/go/main/App'
+import { ClearAuth, SetAuth } from '../../wailsjs/go/main/App'
 
 interface AuthContextType {
   token: string | null
@@ -220,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     authSyncPendingRef.current = false
+    void ClearAuth().catch(() => undefined)
     clearAuthState()
   }, [clearAuthState])
 

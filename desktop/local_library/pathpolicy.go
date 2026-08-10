@@ -52,6 +52,15 @@ func cleanRoot(root string) (string, error) {
 	return absolute, nil
 }
 
+func sameLibraryRoot(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
 func normalizeRelative(relative string) (RelativePath, string, error) {
 	relative = strings.ReplaceAll(strings.TrimSpace(relative), "\\", "/")
 	if relative == "" || relative == "." {

@@ -262,6 +262,7 @@ func (FriendLink) TableName() string { return "FriendLink" }
 
 type AiConversation struct {
 	ID           string    `gorm:"column:id;type:text;primaryKey" json:"id"`
+	UserID       *string   `gorm:"column:userId;type:text" json:"userId,omitempty"`
 	ScopeID      string    `gorm:"column:scopeId;type:text" json:"scopeId"`
 	Title        *string   `gorm:"column:title;type:text" json:"title,omitempty"`
 	Summary      *string   `gorm:"column:summary;type:text" json:"summary,omitempty"`

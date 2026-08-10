@@ -26,6 +26,8 @@ interface SelectDropdownProps {
   disabled?: boolean
   ariaLabel?: string
   className?: string
+  /** 下拉列表展开方向；侧栏底部控件使用 top 避免被容器裁切 */
+  placement?: 'top' | 'bottom'
 }
 
 /**
@@ -45,6 +47,7 @@ export function SelectDropdown({
   disabled = false,
   ariaLabel,
   className = '',
+  placement = 'bottom',
 }: SelectDropdownProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -127,7 +130,7 @@ export function SelectDropdown({
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 top-full z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border shadow-lg"
+          className={`absolute left-0 z-20 max-h-56 w-full overflow-y-auto rounded-lg border shadow-lg ${placement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
           style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
           onClick={(event) => event.stopPropagation()}
         >

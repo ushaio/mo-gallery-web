@@ -15,6 +15,8 @@ import { StoriesTab } from '@/pages/admin-logs/StoriesTab'
 import { BlogTab } from '@/pages/admin-logs/BlogTab'
 import { CollapsibleListPane, LIST_PANE_COLLAPSED_KEY } from '@/pages/admin-logs/shared/CollapsibleListPane'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import {
   getAllDraftsFromDB,
   clearDraftFromDB,
@@ -233,6 +235,7 @@ function PhotoJournalContent() {
   }>({ isOpen: false, type: 'story' })
 
   const previewUrlsRef = useRef<string[]>([])
+  const photosRevision = useDataRevision('photos')
 
   const lastClickRef = useRef<{ tab: string; time: number }>({ tab: '', time: 0 })
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0)
@@ -271,41 +274,35 @@ function PhotoJournalContent() {
   }, [])
 
   // 博客插入照片需要全部照片
-  useEffect(() => {
+  useCachedPageEffect(() => {
     if (activeSubTab !== 'blog') return
-    let cancelled = false
     ;(async () => {
       try {
         const data = await (
           window as unknown as { go: { main: { App: { GetAllPhotos: () => Promise<PhotoDto[]> } } } }
         ).go.main.App.GetAllPhotos()
-        if (!cancelled) setPhotos(data || [])
+        setPhotos(data || [])
       } catch (err) {
         console.error('Failed to load photos:', err)
       }
     })()
-    return () => {
-      cancelled = true
-    }
-  }, [activeSubTab])
+  }, [activeSubTab, photosRevision])
 
-  useEffect(() => {
+  useCachedPageEffect(() => {
     if (activeSubTab === 'drafts') {
-      loadDrafts()
+      void loadDrafts()
     }
   }, [activeSubTab])
 
-  useEffect(() => {
-    return () => {
-      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
-    }
-  }, [])
+  function revokeDraftPreviewUrls() {
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+    previewUrlsRef.current = []
+  }
 
   async function loadDrafts() {
     setLoadingDrafts(true)
 
-    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
-    previewUrlsRef.current = []
+    revokeDraftPreviewUrls()
 
     try {
       const { storyDraft: rawStoryDraft, blogDrafts, storyEditorDrafts } = await getAllDraftsFromDB()
@@ -351,11 +348,13 @@ function PhotoJournalContent() {
     try {
       if (deleteDialog.type === 'all') {
         await clearAllDraftsFromDB()
+        revokeDraftPreviewUrls()
         setStoryDraft(null)
         setBlogDrafts([])
         setStoryEditorDrafts([])
       } else if (deleteDialog.type === 'story') {
         await clearDraftFromDB()
+        revokeDraftPreviewUrls()
         setStoryDraft(null)
       } else if (deleteDialog.type === 'blog') {
         await clearBlogDraftFromDB(deleteDialog.id)

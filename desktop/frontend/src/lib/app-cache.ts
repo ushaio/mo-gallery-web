@@ -1,5 +1,4 @@
-import type { Photo } from '@/types'
-import type { services } from '../../wailsjs/go/models'
+import { bumpDataRevision, type DataRevisionKey } from '@/lib/data-revision'
 import {
   clearPersistentCache,
   getPersistentCache,
@@ -8,6 +7,8 @@ import {
   setPersistentCache,
   type PersistentCacheResource,
 } from '@/lib/persistent-cache'
+import type { Photo } from '@/types'
+import type { services } from '../../wailsjs/go/models'
 
 type OverviewDTO = services.OverviewDTO
 export type EquipmentKind = 'camera' | 'lens'
@@ -22,7 +23,17 @@ export interface PhotosPageCache {
   loaded: boolean
 }
 
-export type DesktopCacheDomain = 'overview' | 'equipment' | 'photos' | 'albums' | 'categories' | 'film-rolls' | 'stories' | 'friends'
+export type DesktopCacheDomain =
+  | 'overview'
+  | 'equipment'
+  | 'photos'
+  | 'albums'
+  | 'categories'
+  | 'film-rolls'
+  | 'stories'
+  | 'friends'
+  | 'storage-sources'
+  | 'settings'
 
 let overviewCache: OverviewDTO | null = null
 let overviewCachedAt = 0
@@ -110,6 +121,7 @@ export function clearOverviewPageCache() {
   overviewCache = null
   overviewCachedAt = 0
   clearPersistentCache(['overview'])
+  bumpDataRevision('overview')
 }
 
 export function clearEquipmentCache() {
@@ -120,22 +132,34 @@ export function clearEquipmentCache() {
   equipmentCachedAt.camera = 0
   equipmentCachedAt.lens = 0
   clearPersistentCache(['equipment-camera', 'equipment-lens'])
+  bumpDataRevision('equipment')
 }
 
 export function clearCloudLibraryPageCache() {
   photosPageCacheGeneration += 1
   photosPageCache = null
+  bumpDataRevision('photos')
 }
 
 export function invalidateDesktopCache(domains: DesktopCacheDomain[]) {
   const persistentResources: PersistentCacheResource[] = []
+  const revisionKeys: DataRevisionKey[] = []
   for (const domain of domains) {
     if (domain === 'overview') clearOverviewPageCache()
     else if (domain === 'equipment') clearEquipmentCache()
     else if (domain === 'photos') clearCloudLibraryPageCache()
-    else persistentResources.push(domain)
+    else if (domain === 'storage-sources' || domain === 'settings') {
+      revisionKeys.push(domain)
+    } else {
+      persistentResources.push(domain)
+      revisionKeys.push(domain)
+    }
   }
-  if (persistentResources.length > 0) clearPersistentCache(persistentResources)
+  if (persistentResources.length > 0) {
+    clearPersistentCache(persistentResources)
+  }
+  // 菜单页常驻缓存后不会因重新显示而重新加载，用失效计数通知它们下次显示时重新加载一次
+  if (revisionKeys.length > 0) bumpDataRevision(...revisionKeys)
 }
 
 export function invalidateDesktopCacheForMutation(methodName: string) {
@@ -161,7 +185,15 @@ export function invalidateDesktopCacheForMutation(methodName: string) {
     invalidateDesktopCache(['overview', 'friends'])
     return
   }
-  if (/Blog|Comment|StorageSource|Settings/.test(methodName)) {
+  if (/StorageSource/.test(methodName)) {
+    invalidateDesktopCache(['overview', 'storage-sources'])
+    return
+  }
+  if (/Settings/.test(methodName)) {
+    invalidateDesktopCache(['overview', 'settings'])
+    return
+  }
+  if (/Blog|Comment/.test(methodName)) {
     invalidateDesktopCache(['overview'])
   }
 }
@@ -190,7 +222,15 @@ export function invalidateDesktopCacheForApiRequest(path: string, method = 'GET'
     invalidateDesktopCache(['overview', 'friends'])
     return
   }
-  if (/\/blogs(?:\/|$)|\/comments(?:\/|$)|\/storage-sources(?:\/|$)|\/settings(?:\/|$)/.test(path)) {
+  if (/\/storage-sources(?:\/|$)/.test(path)) {
+    invalidateDesktopCache(['overview', 'storage-sources'])
+    return
+  }
+  if (/\/settings(?:\/|$)/.test(path)) {
+    invalidateDesktopCache(['overview', 'settings'])
+    return
+  }
+  if (/\/blogs(?:\/|$)|\/comments(?:\/|$)/.test(path)) {
     invalidateDesktopCache(['overview'])
   }
 }
@@ -234,6 +274,7 @@ export function clearDesktopRuntimeCache() {
   equipmentCachedAt.camera = 0
   equipmentCachedAt.lens = 0
   clearCloudLibraryPageCache()
+  bumpDataRevision('overview', 'equipment', 'albums', 'categories', 'film-rolls', 'stories', 'friends', 'storage-sources', 'settings')
 }
 
 function estimateBytes(value: unknown) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { CSSProperties, ElementType, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import {
   getEquipmentItemsCache,
   getOverviewCache,
@@ -377,6 +379,7 @@ export function OverviewPage() {
   const { language } = usePreferences()
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const overviewRevision = useDataRevision('overview')
   const cachedOverview = getOverviewCache()
   const [data, setData] = useState<OverviewDTO | null>(cachedOverview)
   const [loading, setLoading] = useState(!cachedOverview)
@@ -421,7 +424,8 @@ export function OverviewPage() {
     }
   }, [logout, navigate])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  // 菜单页常驻缓存：切回本页不重新加载，只有概览数据被写操作失效后才重新拉取
+  useCachedPageEffect(() => { void fetchData() }, [fetchData, overviewRevision])
 
   const fetchEquipment = useCallback(async (kind: EquipmentKind) => {
     if (equipmentLoading[kind]) return

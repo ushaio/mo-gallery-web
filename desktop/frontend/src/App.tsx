@@ -76,7 +76,16 @@ export default function App() {
         <DesktopWindowFrame>
           <AuthProvider>
             <UploadQueueProvider>
-              <Toaster position="top-right" richColors closeButton />
+              <Toaster
+                position="top-right"
+                className="desktop-toaster"
+                closeButton
+                duration={4000}
+                gap={8}
+                visibleToasts={3}
+                expand={false}
+                toastOptions={{ classNames: { toast: 'desktop-toast' } }}
+              />
               <AppRoutes />
               <UploadProgressPopup />
             </UploadQueueProvider>

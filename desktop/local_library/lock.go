@@ -58,7 +58,15 @@ func acquireLibraryLock(root string) (*libraryLock, error) {
 		}
 	}
 
-	return nil, newError(ErrLibraryLocked, "资源库正在被另一个进程使用", map[string]any{"path": filepath.Dir(path)})
+	details := map[string]any{"path": filepath.Dir(path)}
+	if readErr == nil {
+		var record lockRecord
+		if json.Unmarshal(data, &record) == nil && record.PID > 0 {
+			details["ownerPid"] = record.PID
+			details["ownerCreatedAt"] = record.CreatedAt
+		}
+	}
+	return nil, newError(ErrLibraryLocked, "资源库正在被另一个 MO Gallery 进程使用。请关闭该实例后重试。", details)
 }
 
 func (l *libraryLock) Release() error {

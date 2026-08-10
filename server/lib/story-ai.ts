@@ -330,6 +330,13 @@ function detectGeneratedImageContentType(buffer: Buffer): string | null {
   return null
 }
 
+function decodeGeneratedImageBase64(value: string): Buffer {
+  // OpenAI returns raw base64, while some compatible providers wrap it in a
+  // data URL. Accept both forms without weakening the binary signature check.
+  const encoded = value.trim().replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '')
+  return Buffer.from(encoded, 'base64')
+}
+
 async function parseGeneratedImageResponse(response: Response, model: string): Promise<StoryAiGeneratedImage> {
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
@@ -342,7 +349,7 @@ async function parseGeneratedImageResponse(response: Response, model: string): P
   if (!item) throw new Error('Image generation response is empty')
 
   if (item.b64_json) {
-    const buffer = Buffer.from(item.b64_json, 'base64')
+    const buffer = decodeGeneratedImageBase64(item.b64_json)
     if (buffer.length === 0 || buffer.length > MAX_GENERATED_IMAGE_BYTES) {
       throw new Error('Generated image is empty or exceeds 30MB')
     }

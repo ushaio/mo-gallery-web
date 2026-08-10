@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePreferences } from '@/store/preferences'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { localLibraryApi, parseLocalLibraryError } from '@/features/local-library/api'
 import { localLibraryCopy } from '@/features/local-library/copy'
 import { LocalLibraryWelcome } from '@/features/local-library/LocalLibraryWelcome'
@@ -35,7 +36,7 @@ export function LocalLibraryPage() {
     }
   }, [setSnapshot])
 
-  useEffect(() => { void loadEntry() }, [loadEntry])
+  useCachedPageEffect(() => { void loadEntry() }, [loadEntry])
 
   const handleOpened = (next: LibrarySnapshot) => {
     resetNavigation()
@@ -49,7 +50,7 @@ export function LocalLibraryPage() {
     void loadEntry()
   }
 
-  if (loading) {
+  if (loading && !snapshot) {
     return <div className="flex h-full items-center justify-center gap-2 text-sm" style={{ color: 'var(--muted-foreground)' }}><Loader2 size={17} className="animate-spin" />{copy.preparing}</div>
   }
 

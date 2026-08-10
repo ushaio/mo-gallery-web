@@ -34,6 +34,8 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
 import { resolveAssetUrl } from '@/lib/api'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import { normalizePhotoCategories } from '@/lib/photoCategories'
 import { invalidateDesktopCache } from '@/lib/app-cache'
 import { loadPersistentResource } from '@/lib/persistent-cache'
@@ -112,6 +114,7 @@ export function CloudLibraryPage() {
   const setFeatured = usePhotoFilters((state) => state.setFeatured)
   const [searchParams, setSearchParams] = useSearchParams()
   const [albums, setAlbums] = useState<Album[]>([])
+  const albumsRevision = useDataRevision('albums', 'categories')
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [albumsLoaded, setAlbumsLoaded] = useState(false)
@@ -146,9 +149,9 @@ export function CloudLibraryPage() {
     }
   }, [language])
 
-  useEffect(() => {
+  useCachedPageEffect(() => {
     void fetchAlbums()
-  }, [fetchAlbums])
+  }, [fetchAlbums, albumsRevision])
 
   useEffect(() => {
     if (albumsLoaded && !loading && albumId && !albums.some((album) => album.id === albumId)) setAlbumId(null)

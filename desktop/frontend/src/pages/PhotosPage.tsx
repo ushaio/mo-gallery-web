@@ -12,6 +12,7 @@ import { resolveAssetUrl, type PhotoDto } from '@/lib/api'
 import { normalizePhotoCategories } from '@/lib/photoCategories'
 import { loadPersistentResource } from '@/lib/persistent-cache'
 import { getPhotosPageCache, getPhotosPageCacheGeneration, invalidateDesktopCache, setPhotosPageCache } from '@/lib/app-cache'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import type { Album, Photo, PaginatedResponse } from '@/types'
 import { toast } from 'sonner'
 import {
@@ -295,6 +296,7 @@ export function PhotosPage() {
   const fetchingRef = useRef(false)
   const fetchRequestIdRef = useRef(0)
   const hasLoadedInitialPageRef = useRef(cacheHitRef.current)
+  const appliedFilterKeyRef = useRef(cacheHitRef.current ? filterKey : null)
   const lastScrollTopRef = useRef(0)
   const scrollRafPendingRef = useRef(false)
   // Shift 范围选择的锚点（最近一次勾选的照片）
@@ -339,11 +341,8 @@ export function PhotosPage() {
   }, [])
 
   useEffect(() => () => {
-    // 让卸载前尚未完成的请求失效，避免 StrictMode/HMR 的旧闭包继续参与状态判断。
-    fetchRequestIdRef.current += 1
-    fetchingRef.current = false
-
-    // 只缓存已完成的首屏结果；请求中的空数组不能成为下一次挂载的“有效缓存”。
+    // Activity 隐藏页面时也会执行 cleanup，不能在这里作废在途请求；否则切回时
+    // cached effect 不会重跑，而首屏请求也永远无法完成。只缓存已经完成的结果。
     if (!hasLoadedInitialPageRef.current) return
     setPhotosPageCache({
       filterKey: latestRef.current.filterKey,
@@ -441,10 +440,11 @@ export function PhotosPage() {
 
   // 筛选变化时重置列表；命中模块缓存的首次挂载跳过（沿用缓存数据）
   useEffect(() => {
-    if (cacheHitRef.current) {
+    if (appliedFilterKeyRef.current === filterKey) {
       cacheHitRef.current = false
       return
     }
+    appliedFilterKeyRef.current = filterKey
     pageRef.current = 1
     autoFillAttemptPageRef.current = null
     setHasMore(true)
@@ -457,7 +457,7 @@ export function PhotosPage() {
   }, [filterKey])
 
   // 加载分类
-  useEffect(() => {
+  useCachedPageEffect(() => {
     (async () => {
       try {
         const result = await loadPersistentResource('categories', async () => (

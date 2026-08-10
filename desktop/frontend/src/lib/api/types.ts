@@ -183,6 +183,11 @@ export interface StoryAiGenerateInput {
   contextBefore?: string
   contextAfter?: string
   images?: string[]
+  useAgentExtensions?: boolean
+  selectedAgentSkillIds?: string[]
+  disabledAgentSkillIds?: string[]
+  useAgentMcpTools?: boolean
+  enabledAgentMcpServerIds?: string[]
 }
 
 export interface AiImageUploadResult {

@@ -299,6 +299,7 @@ export const localLibraryApi = {
   deleteCollection: (id: string) => DeleteLocalLibraryCollection(id),
   setAssetCollections: (id: string, collectionIds: string[]) => SetLocalAssetCollections(id, collectionIds),
   async listFolders(): Promise<FolderItem[]> {
+    await GetLocalLibraryEntryState()
     const source = await ListLocalFolders()
     return (source || []).map((item) => ({
       id: String(item.id),

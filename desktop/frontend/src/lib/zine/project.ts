@@ -1,3 +1,4 @@
+import { bumpDataRevision } from '@/lib/data-revision'
 import { migrateProjectGeometry } from './geometry'
 import type { ZineProject } from './types'
 
@@ -65,10 +66,12 @@ export async function getZineProject(id: string): Promise<ZineProject | null> {
 
 export async function saveZineProject(project: ZineProject): Promise<void> {
   await withStore<IDBValidKey>(PROJECTS_STORE, 'readwrite', (store) => store.put(project))
+  bumpDataRevision('zine-projects')
 }
 
 export async function deleteZineProject(id: string): Promise<void> {
   await withStore<undefined>(PROJECTS_STORE, 'readwrite', (store) => store.delete(id))
+  bumpDataRevision('zine-projects')
 }
 
 export async function saveZineAssetBlob(id: string, blob: Blob): Promise<void> {

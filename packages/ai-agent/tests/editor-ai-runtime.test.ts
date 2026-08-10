@@ -10,6 +10,11 @@ import { getTextReplacementOperation } from '../src/domain/proposals'
 import { VercelAiEditorAgentRuntime } from '../src/runtime/vercel-ai/editor-agent'
 import { toVercelAiModelInput } from '../src/runtime/vercel-ai/messages'
 import { streamVercelAiText } from '../src/runtime/vercel-ai/text'
+import {
+  reduceEditorAiTrace,
+  type EditorAiStreamEvent,
+  type EditorAiTraceBlock,
+} from '../src/stream'
 
 type MockStreamPart = Awaited<ReturnType<MockLanguageModelV4['doStream']>>['stream'] extends ReadableStream<infer Part>
   ? Part
@@ -239,6 +244,49 @@ await test('streams text through the project-owned generation API', async () => 
 
   assert.equal(text, 'Hello world')
   assert.deepEqual(chunks, ['Hello', ' world'])
+})
+
+await test('exposes reasoning and tool lifecycle events without replacing text streaming', async () => {
+  const model = mockModel([[
+    { type: 'reasoning-start', id: 'reason-1' },
+    { type: 'reasoning-delta', id: 'reason-1', delta: '先检查工具' },
+    { type: 'tool-input-start', id: 'tool-1', toolName: 'lookup' },
+    { type: 'tool-input-delta', id: 'tool-1', delta: '{"q":"x"}' },
+    { type: 'tool-input-end', id: 'tool-1' },
+    { type: 'tool-call', toolCallId: 'tool-1', toolName: 'lookup', input: '{"q":"x"}', dynamic: true },
+    { type: 'tool-result', toolCallId: 'tool-1', toolName: 'lookup', result: 'ok', dynamic: true },
+    { type: 'text-start', id: 'text-1' },
+    { type: 'text-delta', id: 'text-1', delta: '完成' },
+    { type: 'text-end', id: 'text-1' },
+    finish('stop'),
+  ]])
+  const events: EditorAiStreamEvent[] = []
+  const text = await streamVercelAiText({
+    endpoint: { baseURL: 'http://localhost/v1' },
+    model: 'mock-model',
+    messages: [{ role: 'user', text: 'hello' }],
+    temperature: 0.2,
+    languageModel: model,
+    onChunk: () => {},
+    onEvent: event => events.push(event),
+  })
+
+  assert.equal(text, '完成')
+  assert.deepEqual(events.map(event => event.type), [
+    'reasoning-delta', 'tool-input-start', 'tool-input-delta', 'tool-call', 'tool-error', 'tool-result', 'text-delta',
+  ])
+  const trace = events.reduce<EditorAiTraceBlock[]>(
+    (blocks, event) => reduceEditorAiTrace(blocks, event),
+    [],
+  )
+  assert.deepEqual(trace, [
+    { type: 'reasoning', id: 'reason-1', text: '先检查工具' },
+    {
+      type: 'tool', id: 'tool-1', name: 'lookup', status: 'completed',
+      inputText: '{"q":"x"}', input: { q: 'x' }, output: 'ok',
+    },
+    { type: 'text', id: 'text-1', text: '完成' },
+  ])
 })
 
 await test('legacy proposal runtime emits proposals and approval requests', async () => {

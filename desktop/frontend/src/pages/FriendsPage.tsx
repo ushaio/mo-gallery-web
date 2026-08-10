@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { FriendLink } from '@/types'
@@ -13,6 +15,7 @@ import { getErrorMessage } from '@/lib/auth-errors'
 
 export function FriendsPage() {
   const { language } = usePreferences()
+  const friendsRevision = useDataRevision('friends')
   const [friends, setFriends] = useState<FriendLink[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
@@ -28,7 +31,8 @@ export function FriendsPage() {
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { fetchFriends() }, [fetchFriends])
+  // 菜单页常驻缓存：切回本页不重新加载，只有友链被写操作失效后才重新拉取
+  useCachedPageEffect(() => { void fetchFriends() }, [fetchFriends, friendsRevision])
 
   const handleCreate = async () => {
     if (!form.name.trim() || !form.url.trim()) {

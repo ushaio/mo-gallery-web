@@ -54,4 +54,10 @@ func TestAcquireLibraryLockKeepsCurrentWindowsOwner(t *testing.T) {
 	if !errors.As(err, &appErr) || appErr.Code != ErrLibraryLocked {
 		t.Fatalf("expected active owner to keep lock, got %v", err)
 	}
+	if ownerPID, ok := appErr.Details["ownerPid"].(int); !ok || ownerPID != os.Getpid() {
+		t.Fatalf("expected lock owner pid %d, got %#v", os.Getpid(), appErr.Details["ownerPid"])
+	}
+	if _, ok := appErr.Details["ownerCreatedAt"].(time.Time); !ok {
+		t.Fatalf("expected lock creation time, got %#v", appErr.Details["ownerCreatedAt"])
+	}
 }

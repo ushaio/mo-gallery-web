@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
@@ -53,7 +52,13 @@ type EditorAiMessageDTO struct {
 
 type EditorAiConversationWithMessagesDTO struct {
 	EditorAiConversationDTO
-	Messages []EditorAiMessageDTO `json:"messages"`
+	Messages        []EditorAiMessageDTO `json:"messages"`
+	HasMoreMessages bool                 `json:"hasMoreMessages"`
+}
+
+type EditorAiConversationPageDTO struct {
+	Items   []EditorAiConversationDTO `json:"items"`
+	HasMore bool                      `json:"hasMore"`
 }
 
 type StoryAiModelOption struct {
@@ -143,13 +148,12 @@ type EditorAiConversationUpdateInput struct {
 type EditorAiGenerateInput struct {
 	ConversationID string   `json:"conversationId"`
 	Action         string   `json:"action,omitempty"`
-	Model          string   `json:"model,omitempty"`
 	ImageModel     string   `json:"imageModel,omitempty"`
 	ImageSize      string   `json:"imageSize,omitempty"`
 	GenerateImage  bool     `json:"generateImage,omitempty"`
 	Prompt         string   `json:"prompt,omitempty"`
+	UserPrompt     string   `json:"userPrompt,omitempty"`
 	Title          string   `json:"title,omitempty"`
-	SelectedText   string   `json:"selectedText,omitempty"`
 	Images         []string `json:"images,omitempty"`
 }
 
@@ -168,20 +172,6 @@ type AiImageMetadata struct {
 	GeneratedAt   string  `json:"generatedAt"`
 	Source        string  `json:"source"`
 }
-
-// ─── 常量（与 web 端一致）────────────────────────────
-
-var actionInstructions = map[string]string{
-	"rewrite":   "润色并优化表达，保留原意和叙事节奏。",
-	"expand":    "在不偏离原意的前提下扩写内容，增强画面感和细节。",
-	"shorten":   "压缩内容，让表达更凝练，但保留关键信息和情绪。",
-	"continue":  "基于已有内容自然续写下一段，不重复前文。",
-	"summarize": "总结成一段适合作为故事摘要的文字。",
-	"custom":    "严格按用户指令完成改写或生成。",
-}
-
-const systemPrompt = "你是一名中文叙事编辑助手，帮助用户编辑摄影故事。只输出最终可直接放进正文的内容，不要解释，不要加引号，不要用\"修改如下\"之类的前缀。"
-const chatSystemPrompt = "你是一名友善的AI写作助手，与用户协作进行摄影叙事创作。请用自然对话的方式回复，可以给建议、讨论想法、回答问题。不要假装成编辑工具——你是聊天伙伴，不是文本处理器。用中文回复。"
 
 // ─── Service ──────────────────────────────────────────
 
@@ -214,9 +204,26 @@ func (s *EditorAiService) GetHTTPPort() int {
 
 // ─── 对话 CRUD（直接操作数据库）────────────────────────
 
-func (s *EditorAiService) ListConversations(scopeId string) ([]EditorAiConversationDTO, error) {
+const (
+	defaultEditorAiConversationPageSize = 50
+	maxEditorAiConversationPageSize     = 100
+	defaultEditorAiMessagePageSize      = 50
+	maxEditorAiMessagePageSize          = 100
+)
+
+func normalizeEditorAiPageSize(value, fallback, maximum int) int {
+	if value <= 0 {
+		return fallback
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func (s *EditorAiService) ListConversations(_ string, scopeId string) ([]EditorAiConversationDTO, error) {
 	var conversations []db.AiConversation
-	q := db.DB.Order(`"updatedAt" DESC, "createdAt" DESC`)
+	q := s.persistenceDB().Order(`"updatedAt" DESC, "createdAt" DESC`)
 	if scopeId != "" {
 		q = q.Where(db.AiConversation{ScopeID: scopeId})
 	}
@@ -230,7 +237,31 @@ func (s *EditorAiService) ListConversations(scopeId string) ([]EditorAiConversat
 	return result, nil
 }
 
-func (s *EditorAiService) CreateConversation(input EditorAiConversationCreateInput) (*EditorAiConversationDTO, error) {
+func (s *EditorAiService) ListConversationPage(_ string, scopeId string, offset, limit int) (*EditorAiConversationPageDTO, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	limit = normalizeEditorAiPageSize(limit, defaultEditorAiConversationPageSize, maxEditorAiConversationPageSize)
+	var conversations []db.AiConversation
+	q := s.persistenceDB().Order(`"updatedAt" DESC, "createdAt" DESC`).Offset(offset).Limit(limit + 1)
+	if scopeId != "" {
+		q = q.Where(db.AiConversation{ScopeID: scopeId})
+	}
+	if err := q.Find(&conversations).Error; err != nil {
+		return nil, fmt.Errorf("查询对话列表失败: %w", err)
+	}
+	hasMore := len(conversations) > limit
+	if hasMore {
+		conversations = conversations[:limit]
+	}
+	items := make([]EditorAiConversationDTO, len(conversations))
+	for index, conversation := range conversations {
+		items[index] = toConversationDTO(conversation)
+	}
+	return &EditorAiConversationPageDTO{Items: items, HasMore: hasMore}, nil
+}
+
+func (s *EditorAiService) CreateConversation(_ string, input EditorAiConversationCreateInput) (*EditorAiConversationDTO, error) {
 	if input.ScopeID == "" {
 		return nil, errors.New("scopeId 不能为空")
 	}
@@ -240,17 +271,23 @@ func (s *EditorAiService) CreateConversation(input EditorAiConversationCreateInp
 		Title:        input.Title,
 		SystemPrompt: input.SystemPrompt,
 	}
-	if err := db.DB.Create(&conversation).Error; err != nil {
+	if err := s.persistenceDB().Create(&conversation).Error; err != nil {
 		return nil, fmt.Errorf("创建对话失败: %w", err)
 	}
 	dto := toConversationDTO(conversation)
 	return &dto, nil
 }
 
-func (s *EditorAiService) GetConversation(conversationId string) (*EditorAiConversationWithMessagesDTO, error) {
+const editorAiMessageProjection = `"id", "conversationId", "role", "content", "status", "model", "action", "error", "createdAt", CASE WHEN "metadata" IS NULL OR pg_column_size("metadata") <= ? THEN "metadata" ELSE NULL END AS "metadata"`
+
+func (s *EditorAiService) GetConversation(_ string, conversationId string) (*EditorAiConversationWithMessagesDTO, error) {
 	var conversation db.AiConversation
-	if err := db.DB.Preload("Messages", func(db2 *gorm.DB) *gorm.DB {
-		return db2.Order(`"createdAt" ASC`)
+	// Legacy image-edit messages may contain an entire data:image Base64 payload
+	// in user metadata. Do not transfer oversized metadata through GORM/Wails;
+	// generated-image metadata is small and remains available.
+	if err := s.persistenceDB().Preload("Messages", func(db2 *gorm.DB) *gorm.DB {
+		return db2.Select(editorAiMessageProjection, maxEditorAiMetadataBytes).
+			Order(`"createdAt" ASC`)
 	}).Where("id = ?", conversationId).First(&conversation).Error; err != nil {
 		return nil, fmt.Errorf("查询对话失败: %w", err)
 	}
@@ -260,6 +297,47 @@ func (s *EditorAiService) GetConversation(conversationId string) (*EditorAiConve
 	}
 	for i, m := range conversation.Messages {
 		dto.Messages[i] = toMessageDTO(m)
+	}
+	return &dto, nil
+}
+
+func (s *EditorAiService) GetConversationPage(_ string, conversationID, beforeCreatedAt, beforeID string, limit int) (*EditorAiConversationWithMessagesDTO, error) {
+	var conversation db.AiConversation
+	if err := s.persistenceDB().Where("id = ?", conversationID).First(&conversation).Error; err != nil {
+		return nil, fmt.Errorf("查询对话失败: %w", err)
+	}
+
+	limit = normalizeEditorAiPageSize(limit, defaultEditorAiMessagePageSize, maxEditorAiMessagePageSize)
+	query := s.persistenceDB().Model(&db.AiMessage{}).
+		Select(editorAiMessageProjection, maxEditorAiMetadataBytes).
+		Where(`"conversationId" = ?`, conversationID)
+	if beforeCreatedAt != "" || beforeID != "" {
+		cursorTime, err := time.Parse(time.RFC3339Nano, beforeCreatedAt)
+		if err != nil || beforeID == "" {
+			return nil, errors.New("消息分页游标无效")
+		}
+		query = query.Where(`("createdAt" < ?) OR ("createdAt" = ? AND "id" < ?)`, cursorTime, cursorTime, beforeID)
+	}
+
+	var messages []db.AiMessage
+	if err := query.Order(`"createdAt" DESC, "id" DESC`).Limit(limit + 1).Find(&messages).Error; err != nil {
+		return nil, fmt.Errorf("查询对话消息失败: %w", err)
+	}
+	hasMore := len(messages) > limit
+	if hasMore {
+		messages = messages[:limit]
+	}
+	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
+		messages[left], messages[right] = messages[right], messages[left]
+	}
+
+	dto := EditorAiConversationWithMessagesDTO{
+		EditorAiConversationDTO: toConversationDTO(conversation),
+		Messages:                make([]EditorAiMessageDTO, len(messages)),
+		HasMoreMessages:         hasMore,
+	}
+	for index, message := range messages {
+		dto.Messages[index] = toMessageDTO(message)
 	}
 	return &dto, nil
 }
@@ -288,7 +366,7 @@ type EditorAiMessageAppendInput struct {
 
 // AppendMessage 追加一条消息（编辑器 AI 的编排在前端共享包里进行，
 // 用户消息与 assistant 流式占位由前端经此写入本地库）
-func (s *EditorAiService) AppendMessage(input EditorAiMessageAppendInput) (*EditorAiMessageDTO, error) {
+func (s *EditorAiService) AppendMessage(_ string, input EditorAiMessageAppendInput) (*EditorAiMessageDTO, error) {
 	if input.ConversationID == "" || input.Role == "" {
 		return nil, errors.New("conversationId 和 role 必填")
 	}
@@ -305,6 +383,10 @@ func (s *EditorAiService) AppendMessage(input EditorAiMessageAppendInput) (*Edit
 	metadata, err := validateEditorAiMetadata(input.Metadata)
 	if err != nil {
 		return nil, err
+	}
+	var existingConversation db.AiConversation
+	if err := s.persistenceDB().Select("id").Where("id = ?", input.ConversationID).First(&existingConversation).Error; err != nil {
+		return nil, errors.New("对话不存在")
 	}
 	msg := db.AiMessage{
 		ID:             cuid(),
@@ -470,7 +552,7 @@ func rejectEditorAiVisualMetadata(value interface{}, depth int) error {
 }
 
 // FinishMessage atomically finalizes a streaming message and its conversation.
-func (s *EditorAiService) FinishMessage(input EditorAiMessageFinishInput) (*EditorAiMessageDTO, error) {
+func (s *EditorAiService) FinishMessage(_ string, input EditorAiMessageFinishInput) (*EditorAiMessageDTO, error) {
 	if input.MessageID == "" {
 		return nil, errors.New("messageId 必填")
 	}
@@ -542,7 +624,7 @@ func (s *EditorAiService) FinishMessage(input EditorAiMessageFinishInput) (*Edit
 }
 
 // UpdateTaskState mutates only the persisted task change-set state.
-func (s *EditorAiService) UpdateTaskState(input EditorAiTaskStateUpdateInput) (*EditorAiMessageDTO, error) {
+func (s *EditorAiService) UpdateTaskState(_ string, input EditorAiTaskStateUpdateInput) (*EditorAiMessageDTO, error) {
 	if input.MessageID == "" {
 		return nil, errors.New("messageId 必填")
 	}
@@ -700,7 +782,7 @@ func (s *EditorAiService) ProxyChatCompletions(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func (s *EditorAiService) UpdateConversation(conversationId string, input EditorAiConversationUpdateInput) (*EditorAiConversationDTO, error) {
+func (s *EditorAiService) UpdateConversation(_ string, conversationId string, input EditorAiConversationUpdateInput) (*EditorAiConversationDTO, error) {
 	updates := map[string]interface{}{}
 	if input.Title != nil {
 		updates["title"] = *input.Title
@@ -711,38 +793,50 @@ func (s *EditorAiService) UpdateConversation(conversationId string, input Editor
 	if len(updates) == 0 {
 		return nil, errors.New("没有要更新的字段")
 	}
-	if err := db.DB.Model(&db.AiConversation{}).Where("id = ?", conversationId).Updates(updates).Error; err != nil {
-		return nil, fmt.Errorf("更新对话失败: %w", err)
+	result := s.persistenceDB().Model(&db.AiConversation{}).Where("id = ?", conversationId).Updates(updates)
+	if result.Error != nil {
+		return nil, fmt.Errorf("更新对话失败: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return nil, errors.New("对话不存在")
 	}
 	var conversation db.AiConversation
-	if err := db.DB.Where("id = ?", conversationId).First(&conversation).Error; err != nil {
+	if err := s.persistenceDB().Where("id = ?", conversationId).First(&conversation).Error; err != nil {
 		return nil, err
 	}
 	dto := toConversationDTO(conversation)
 	return &dto, nil
 }
 
-func (s *EditorAiService) DeleteConversation(conversationId string) error {
-	// 先删除消息
-	if err := db.DB.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiMessage{}).Error; err != nil {
-		return fmt.Errorf("删除消息失败: %w", err)
-	}
-	if err := db.DB.Where("id = ?", conversationId).Delete(&db.AiConversation{}).Error; err != nil {
-		return fmt.Errorf("删除对话失败: %w", err)
-	}
-	return nil
+func (s *EditorAiService) DeleteConversation(_ string, conversationId string) error {
+	return s.persistenceDB().Transaction(func(tx *gorm.DB) error {
+		var conversation db.AiConversation
+		if err := tx.Select("id").Where("id = ?", conversationId).First(&conversation).Error; err != nil {
+			return errors.New("对话不存在")
+		}
+		if err := tx.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiMessage{}).Error; err != nil {
+			return fmt.Errorf("删除消息失败: %w", err)
+		}
+		if err := tx.Where("id = ?", conversationId).Delete(&db.AiConversation{}).Error; err != nil {
+			return fmt.Errorf("删除对话失败: %w", err)
+		}
+		return nil
+	})
 }
 
-func (s *EditorAiService) ClearConversation(conversationId string) (*EditorAiConversationDTO, error) {
-	if err := db.DB.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiMessage{}).Error; err != nil {
-		return nil, fmt.Errorf("清空消息失败: %w", err)
-	}
-	updates := map[string]interface{}{"summary": nil, "lastModel": nil}
-	if err := db.DB.Model(&db.AiConversation{}).Where("id = ?", conversationId).Updates(updates).Error; err != nil {
-		return nil, fmt.Errorf("重置对话失败: %w", err)
-	}
+func (s *EditorAiService) ClearConversation(_ string, conversationId string) (*EditorAiConversationDTO, error) {
 	var conversation db.AiConversation
-	if err := db.DB.Where("id = ?", conversationId).First(&conversation).Error; err != nil {
+	err := s.persistenceDB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ?", conversationId).First(&conversation).Error; err != nil {
+			return errors.New("对话不存在")
+		}
+		if err := tx.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiMessage{}).Error; err != nil {
+			return fmt.Errorf("清空消息失败: %w", err)
+		}
+		updates := map[string]interface{}{"summary": nil, "lastModel": nil}
+		return tx.Model(&conversation).Updates(updates).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	dto := toConversationDTO(conversation)
@@ -913,203 +1007,44 @@ func (s *EditorAiService) GetProviderModels(providerID string) (*StoryAiModelsRe
 	}, nil
 }
 
-// ─── 生成（流式，供本地 HTTP 服务调用）───────────────
-
-func (s *EditorAiService) GenerateStream(input EditorAiGenerateInput, w http.ResponseWriter) error {
-	if input.GenerateImage {
-		return s.handleImageGeneration(input, w)
+// GenerateImageStream serves the local image-generation endpoint. Text generation
+// is orchestrated exclusively by the desktop frontend through @mo-gallery/ai-agent.
+func (s *EditorAiService) GenerateImageStream(input EditorAiGenerateInput, w http.ResponseWriter) error {
+	if !input.GenerateImage {
+		return errors.New("文本生成已迁移到桌面前端 AI 编排层")
 	}
-
-	aiCfg := s.cfg.AI
-	aiCfg.Normalize()
-	_, provider, activeModel, err := aiCfg.ResolveModel(input.Model)
-	if err != nil {
-		return err
-	}
-
-	// 加载历史消息
-	history, err := s.buildHistoryMessages(input.ConversationID, 8)
-	if err != nil {
-		return err
-	}
-
-	// 构建系统提示词
-	var conversation db.AiConversation
-	db.DB.Where("id = ?", input.ConversationID).First(&conversation)
-	sysPrompt := conversation.SystemPrompt
-	if sysPrompt == nil || *sysPrompt == "" {
-		if input.SelectedText == "" {
-			sysPrompt = strPtr(chatSystemPrompt)
-		} else {
-			sysPrompt = strPtr(systemPrompt)
-		}
-	}
-
-	// 构建消息
-	messages := []map[string]interface{}{
-		{"role": "system", "content": *sysPrompt},
-	}
-	for _, h := range history {
-		content := h.Content
-		if h.Role == "assistant" && len(h.Metadata) > 0 {
-			var imageMeta AiImageMetadata
-			if json.Unmarshal(h.Metadata, &imageMeta) == nil && imageMeta.Type == "image" {
-				content = "[已生成图片：" + imageMeta.Prompt + "]"
-			}
-		}
-		messages = append(messages, map[string]interface{}{"role": h.Role, "content": content})
-	}
-
-	// 构建用户消息
-	userPrompt := s.buildUserPrompt(input)
-	if len(input.Images) > 0 {
-		parts := []interface{}{
-			map[string]interface{}{"type": "text", "text": userPrompt},
-		}
-		for _, img := range input.Images {
-			parts = append(parts, map[string]interface{}{
-				"type":      "image_url",
-				"image_url": map[string]interface{}{"url": img, "detail": "auto"},
-			})
-		}
-		messages = append(messages, map[string]interface{}{"role": "user", "content": parts})
-	} else {
-		messages = append(messages, map[string]interface{}{"role": "user", "content": userPrompt})
-	}
-
-	// 创建用户消息记录
-	userMsg := db.AiMessage{
-		ID:             cuid(),
-		ConversationID: input.ConversationID,
-		Role:           "user",
-		Content:        userPrompt,
-		Status:         "completed",
-	}
-	if input.Action != "" {
-		userMsg.Action = &input.Action
-	}
-	if len(input.Images) > 0 {
-		metadata, _ := json.Marshal(map[string]interface{}{"images": input.Images})
-		userMsg.Metadata = datatypes.JSON(metadata)
-	}
-	db.DB.Create(&userMsg)
-
-	// 创建 assistant 消息占位
-	assistantMsg := db.AiMessage{
-		ID:             cuid(),
-		ConversationID: input.ConversationID,
-		Role:           "assistant",
-		Content:        "",
-		Status:         "streaming",
-		Model:          &activeModel,
-	}
-	if input.Action != "" {
-		assistantMsg.Action = &input.Action
-	}
-	db.DB.Create(&assistantMsg)
-
-	// 调用上游 AI API
-	upstreamURL := strings.TrimRight(provider.BaseURL, "/") + "/chat/completions"
-	body, _ := json.Marshal(map[string]interface{}{
-		"model":       activeModel,
-		"stream":      true,
-		"temperature": 0.7,
-		"messages":    messages,
-	})
-
-	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
-	if err != nil {
-		s.markMessageFailed(assistantMsg.ID, err.Error())
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
-
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		s.markMessageFailed(assistantMsg.ID, err.Error())
-		return fmt.Errorf("AI 请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		errBody, _ := io.ReadAll(resp.Body)
-		errMsg := fmt.Sprintf("AI API 错误 (%d): %s", resp.StatusCode, string(errBody))
-		s.markMessageFailed(assistantMsg.ID, errMsg)
-		return errors.New(errMsg)
-	}
-
-	// 流式读取并转发
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, canFlush := w.(http.Flusher)
-	fullContent := ""
-
-	// 流式读取并转发（ReadString 无行长上限；bufio.Scanner 默认 64KB
-	// 会静默截断超长 SSE 行，见共享包迁移审计 P1-1）
-	reader := bufio.NewReader(resp.Body)
-	for {
-		line, readErr := reader.ReadString('\n')
-		line = strings.TrimRight(line, "\r\n")
-		if strings.HasPrefix(line, "data:") {
-			data := strings.TrimSpace(line[5:])
-			if data != "" && data != "[DONE]" {
-				var chunk struct {
-					Choices []struct {
-						Delta struct {
-							Content string `json:"content"`
-						} `json:"delta"`
-					} `json:"choices"`
-				}
-				if err := json.Unmarshal([]byte(data), &chunk); err == nil &&
-					len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-					content := chunk.Choices[0].Delta.Content
-					fullContent += content
-
-					// SSE 格式输出
-					sseData, _ := json.Marshal(content)
-					fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", sseData)
-					if canFlush {
-						flusher.Flush()
-					}
-				}
-			}
-		}
-		if readErr != nil {
-			break
-		}
-	}
-
-	// 完成
-	sseDone, _ := json.Marshal(fullContent)
-	fmt.Fprintf(w, "event: done\ndata: %s\n\n", sseDone)
-	if canFlush {
-		flusher.Flush()
-	}
-
-	// 更新 assistant 消息
-	db.DB.Model(&db.AiMessage{}).Where("id = ?", assistantMsg.ID).Updates(map[string]interface{}{
-		"content": fullContent,
-		"status":  "completed",
-	})
-
-	// 更新对话
-	conversationUpdates := map[string]interface{}{
-		"lastModel": activeModel,
-		"updatedAt": time.Now(),
-	}
-	if title := strings.TrimSpace(input.Title); title != "" {
-		conversationUpdates["title"] = truncateString(title, 200)
-	}
-	db.DB.Model(&db.AiConversation{}).Where("id = ?", input.ConversationID).Updates(conversationUpdates)
-
-	return nil
+	return s.handleImageGeneration(input, w)
 }
 
 func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w http.ResponseWriter) error {
+	// Validate and resolve the model before committing the SSE response headers.
+	// Otherwise an early error is written after a 200 response and the frontend
+	// sees an empty stream, leaving its optimistic assistant bubble "streaming".
+	if input.ConversationID == "" {
+		return errors.New("conversationId 不能为空")
+	}
+	var conversation db.AiConversation
+	if err := s.persistenceDB().Select("id").Where("id = ?", input.ConversationID).First(&conversation).Error; err != nil {
+		return errors.New("对话不存在")
+	}
+	imagePrompt := strings.TrimSpace(input.Prompt)
+	if imagePrompt == "" {
+		return errors.New("提示词不能为空")
+	}
+	userPrompt := strings.TrimSpace(input.UserPrompt)
+	if userPrompt == "" {
+		userPrompt = imagePrompt
+	}
+	size := normalizeImageSize(input.ImageSize)
+
+	aiCfg := s.cfg.AI
+	aiCfg.Normalize()
+	providerID, provider, activeModel, err := aiCfg.ResolveImageModel(input.ImageModel)
+	if err != nil {
+		return err
+	}
+	selectedImageModel := providerID + ":" + activeModel
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -1122,35 +1057,18 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 		}
 	}
 
-	if input.ConversationID == "" {
-		return errors.New("conversationId 不能为空")
-	}
-	prompt := strings.TrimSpace(input.Prompt)
-	if prompt == "" {
-		return errors.New("提示词不能为空")
-	}
-	size := normalizeImageSize(input.ImageSize)
-
-	aiCfg := s.cfg.AI
-	aiCfg.Normalize()
-	providerID, provider, activeModel, err := aiCfg.ResolveImageModel(input.ImageModel)
-	if err != nil {
-		return err
-	}
-	selectedImageModel := providerID + ":" + activeModel
-
 	userMsg := db.AiMessage{
 		ID:             cuid(),
 		ConversationID: input.ConversationID,
 		Role:           "user",
-		Content:        prompt,
+		Content:        userPrompt,
 		Status:         "completed",
 	}
 	if input.Action != "" {
 		userMsg.Action = &input.Action
 	}
-	if len(input.Images) > 0 {
-		metadata, _ := json.Marshal(map[string]interface{}{"images": input.Images})
+	if persistedImages := persistableImageReferences(input.Images); len(persistedImages) > 0 {
+		metadata, _ := json.Marshal(map[string]interface{}{"images": persistedImages})
 		userMsg.Metadata = datatypes.JSON(metadata)
 	}
 	if err := db.DB.Create(&userMsg).Error; err != nil {
@@ -1172,15 +1090,20 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 		return fmt.Errorf("创建助手消息失败: %w", err)
 	}
 
-	sendEvent("status", "正在生成图片...")
-	imageData, mimeType, revisedPrompt, err := s.generateImage(provider, prompt, activeModel, size, input.Images)
+	updateStatus := func(status string) {
+		db.DB.Model(&db.AiMessage{}).Where("id = ?", assistantMsg.ID).Update("content", status)
+		sendEvent("status", status)
+	}
+
+	updateStatus("正在生成图片...")
+	imageData, mimeType, revisedPrompt, err := s.generateImage(provider, imagePrompt, activeModel, size, input.Images)
 	if err != nil {
 		s.markMessageFailed(assistantMsg.ID, err.Error())
 		sendEvent("error", err.Error())
 		return nil
 	}
 
-	sendEvent("status", "正在保存本地文件...")
+	updateStatus("正在保存本地文件...")
 	localPath, err := s.saveImageToTemp(assistantMsg.ID, imageData, mimeType)
 	if err != nil {
 		s.markMessageFailed(assistantMsg.ID, err.Error())
@@ -1191,7 +1114,7 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	metadata := AiImageMetadata{
 		Type:          "image",
 		LocalPath:     localPath,
-		Prompt:        prompt,
+		Prompt:        imagePrompt,
 		Provider:      providerID,
 		Model:         activeModel,
 		Size:          size,
@@ -1202,14 +1125,14 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	}
 
 	if s.uploadService != nil {
-		sendEvent("status", "正在同步图片到共享存储...")
+		updateStatus("正在同步图片到共享存储...")
 		if uploadResult, uploadErr := s.uploadService.UploadAiImage(localPath); uploadErr == nil {
 			metadata.UploadedURL = &uploadResult.URL
 			metadata.StorageKey = &uploadResult.Key
 		} else {
 			// Keep the local file as a fallback. Image generation itself succeeded,
 			// so a temporary storage outage must not fail the completed message.
-			sendEvent("status", "共享存储上传失败，图片已保存在本机")
+			updateStatus("共享存储上传失败，图片已保存在本机")
 		}
 	}
 	metadataJSON, err := json.Marshal(metadata)
@@ -1345,7 +1268,13 @@ func executeImageRequest(req *http.Request) ([]byte, string, string, error) {
 	}
 	item := payload.Data[0]
 	if item.B64JSON != "" {
-		data, err := base64.StdEncoding.DecodeString(item.B64JSON)
+		encoded := strings.TrimSpace(item.B64JSON)
+		if strings.HasPrefix(strings.ToLower(encoded), "data:image/") {
+			if comma := strings.IndexByte(encoded, ','); comma >= 0 {
+				encoded = encoded[comma+1:]
+			}
+		}
+		data, err := base64.StdEncoding.DecodeString(encoded)
 		if err != nil {
 			return nil, "", "", fmt.Errorf("decode generated image: %w", err)
 		}
@@ -1389,6 +1318,18 @@ func readImageInput(source string) ([]byte, string, error) {
 		return data, strings.ToLower(mimeType), nil
 	}
 	return downloadImage(source)
+}
+
+func persistableImageReferences(images []string) []string {
+	result := make([]string, 0, len(images))
+	for _, image := range images {
+		normalized := strings.TrimSpace(image)
+		if normalized == "" || strings.HasPrefix(strings.ToLower(normalized), "data:image/") {
+			continue
+		}
+		result = append(result, normalized)
+	}
+	return result
 }
 
 func isSupportedImageEditMime(mimeType string) bool {
@@ -1457,8 +1398,8 @@ func (s *EditorAiService) saveImageToTemp(messageId string, imageData []byte, mi
 	return filePath, nil
 }
 
-func (s *EditorAiService) GetImageDataURL(messageId string) (string, error) {
-	metadata, err := s.getImageMetadata(messageId)
+func (s *EditorAiService) GetImageDataURL(userID, messageId string) (string, error) {
+	metadata, err := s.getImageMetadata(userID, messageId)
 	if err != nil {
 		return "", err
 	}
@@ -1482,8 +1423,8 @@ func (s *EditorAiService) GetImageDataURL(messageId string) (string, error) {
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
-func (s *EditorAiService) SaveImageToAlbum(messageId string, uploadService *UploadService) (*PhotoDTO, error) {
-	metadata, err := s.getImageMetadata(messageId)
+func (s *EditorAiService) SaveImageToAlbum(userID, messageId string, uploadService *UploadService) (*PhotoDTO, error) {
+	metadata, err := s.getImageMetadata(userID, messageId)
 	if err != nil {
 		return nil, err
 	}
@@ -1530,9 +1471,9 @@ func (s *EditorAiService) SaveImageToAlbum(messageId string, uploadService *Uplo
 	return result.Photo, nil
 }
 
-func (s *EditorAiService) SaveMessageImageToAlbum(messageId string, imageURL string, uploadService *UploadService) (*PhotoDTO, error) {
+func (s *EditorAiService) SaveMessageImageToAlbum(userID, messageId string, imageURL string, uploadService *UploadService) (*PhotoDTO, error) {
 	var message db.AiMessage
-	if err := db.DB.Where("id = ?", messageId).First(&message).Error; err != nil {
+	if err := s.persistenceDB().Where("id = ?", messageId).First(&message).Error; err != nil {
 		return nil, fmt.Errorf("查询消息失败: %w", err)
 	}
 	if len(message.Metadata) == 0 {
@@ -1544,7 +1485,7 @@ func (s *EditorAiService) SaveMessageImageToAlbum(messageId string, imageURL str
 		return nil, errors.New("消息图片元数据无效")
 	}
 	if metadataType, _ := metadata["type"].(string); metadataType == "image" {
-		return s.SaveImageToAlbum(messageId, uploadService)
+		return s.SaveImageToAlbum(userID, messageId, uploadService)
 	}
 
 	images, ok := metadata["images"].([]interface{})
@@ -1682,9 +1623,9 @@ func (s *EditorAiService) ensureLocalImageFile(messageId string, metadata *AiIma
 	return localPath, nil
 }
 
-func (s *EditorAiService) getImageMetadata(messageId string) (*AiImageMetadata, error) {
+func (s *EditorAiService) getImageMetadata(_ string, messageId string) (*AiImageMetadata, error) {
 	var message db.AiMessage
-	if err := db.DB.Where("id = ?", messageId).First(&message).Error; err != nil {
+	if err := s.persistenceDB().Where("id = ?", messageId).First(&message).Error; err != nil {
 		return nil, fmt.Errorf("查询消息失败: %w", err)
 	}
 	var metadata AiImageMetadata
@@ -1775,47 +1716,6 @@ func truncateString(value string, maxLen int) string {
 	return string(runes[:maxLen])
 }
 
-// ─── 辅助方法 ─────────────────────────────────────────
-
-func (s *EditorAiService) buildHistoryMessages(conversationId string, limit int) ([]db.AiMessage, error) {
-	var messages []db.AiMessage
-	err := db.DB.Where(`"conversationId" = ? AND role IN ('user','assistant') AND status IN ('completed','streaming')`, conversationId).
-		Order(`"createdAt" DESC`).
-		Limit(limit).
-		Find(&messages).Error
-	if err != nil {
-		return nil, err
-	}
-	// 反转为时间正序
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-	return messages, nil
-}
-
-func (s *EditorAiService) buildUserPrompt(input EditorAiGenerateInput) string {
-	if input.SelectedText == "" {
-		// 对话模式
-		return input.Prompt
-	}
-	// 编辑模式
-	sections := []string{}
-	if input.Title != "" {
-		sections = append(sections, "标题："+input.Title)
-	}
-	if input.SelectedText != "" {
-		sections = append(sections, "选中文本：\n"+input.SelectedText)
-	}
-	if instruction, ok := actionInstructions[input.Action]; ok {
-		sections = append(sections, "任务："+instruction)
-	}
-	if input.Prompt != "" {
-		sections = append(sections, "用户补充要求（必须尽量满足，作为生成约束和参考）：\n"+input.Prompt)
-	}
-	sections = append(sections, "输出要求：只输出最终正文内容，不解释你的修改过程，不添加标题或前缀。")
-	return strings.Join(sections, "\n\n")
-}
-
 func (s *EditorAiService) markMessageFailed(messageId, errMsg string) {
 	db.DB.Model(&db.AiMessage{}).Where("id = ?", messageId).Updates(map[string]interface{}{
 		"status": "failed",
@@ -1847,7 +1747,7 @@ func toMessageDTO(m db.AiMessage) EditorAiMessageDTO {
 		Model:          m.Model,
 		Action:         m.Action,
 		Error:          m.Error,
-		CreatedAt:      m.CreatedAt.Format(time.RFC3339),
+		CreatedAt:      m.CreatedAt.Format(time.RFC3339Nano),
 	}
 	if len(m.Metadata) > 0 {
 		var meta interface{}

@@ -34,6 +34,14 @@ export function BatchUpdateShowFlag(arg1, arg2) {
   return window['go']['main']['App']['BatchUpdateShowFlag'](arg1, arg2);
 }
 
+export function CallAgentMCPTool(arg1) {
+  return window['go']['main']['App']['CallAgentMCPTool'](arg1);
+}
+
+export function CancelAgentMCPTool(arg1) {
+  return window['go']['main']['App']['CancelAgentMCPTool'](arg1);
+}
+
 export function CancelLocalLibraryScan() {
   return window['go']['main']['App']['CancelLocalLibraryScan']();
 }
@@ -44,6 +52,10 @@ export function CheckDuplicates(arg1) {
 
 export function CleanupStorage(arg1, arg2) {
   return window['go']['main']['App']['CleanupStorage'](arg1, arg2);
+}
+
+export function ClearAuth() {
+  return window['go']['main']['App']['ClearAuth']();
 }
 
 export function ClearEditorAiConversation(arg1) {
@@ -182,6 +194,10 @@ export function DeleteStory(arg1) {
   return window['go']['main']['App']['DeleteStory'](arg1);
 }
 
+export function DiscoverAgentMCPServerTools(arg1) {
+  return window['go']['main']['App']['DiscoverAgentMCPServerTools'](arg1);
+}
+
 export function DownloadMessageImageToLocal(arg1) {
   return window['go']['main']['App']['DownloadMessageImageToLocal'](arg1);
 }
@@ -204,6 +220,10 @@ export function FixMissingPhotos(arg1) {
 
 export function GenerateThumbnail(arg1) {
   return window['go']['main']['App']['GenerateThumbnail'](arg1);
+}
+
+export function GetAgentExtensionSnapshot() {
+  return window['go']['main']['App']['GetAgentExtensionSnapshot']();
 }
 
 export function GetAiConfig() {
@@ -256,6 +276,14 @@ export function GetComments(arg1) {
 
 export function GetEditorAiConversation(arg1) {
   return window['go']['main']['App']['GetEditorAiConversation'](arg1);
+}
+
+export function GetEditorAiConversationMessagesPage(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GetEditorAiConversationMessagesPage'](arg1, arg2, arg3, arg4);
+}
+
+export function GetEditorAiConversationPage(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetEditorAiConversationPage'](arg1, arg2, arg3);
 }
 
 export function GetEditorAiConversations(arg1) {
@@ -382,6 +410,10 @@ export function GetZineImageDataURL(arg1) {
   return window['go']['main']['App']['GetZineImageDataURL'](arg1);
 }
 
+export function ImportAgentMCPServers(arg1) {
+  return window['go']['main']['App']['ImportAgentMCPServers'](arg1);
+}
+
 export function ImportLocalLibraryFiles(arg1, arg2) {
   return window['go']['main']['App']['ImportLocalLibraryFiles'](arg1, arg2);
 }
@@ -486,8 +518,24 @@ export function PreviewLocalLibraryFolderDeletion(arg1) {
   return window['go']['main']['App']['PreviewLocalLibraryFolderDeletion'](arg1);
 }
 
+export function ReadAgentSkill(arg1) {
+  return window['go']['main']['App']['ReadAgentSkill'](arg1);
+}
+
+export function ReadAgentSkillResource(arg1, arg2) {
+  return window['go']['main']['App']['ReadAgentSkillResource'](arg1, arg2);
+}
+
 export function RecheckMissingLocalAssets(arg1) {
   return window['go']['main']['App']['RecheckMissingLocalAssets'](arg1);
+}
+
+export function RemoveAgentMCPServer(arg1) {
+  return window['go']['main']['App']['RemoveAgentMCPServer'](arg1);
+}
+
+export function RemoveAgentSkill(arg1) {
+  return window['go']['main']['App']['RemoveAgentSkill'](arg1);
 }
 
 export function RemoveMissingLocalAssets(arg1) {
@@ -546,6 +594,14 @@ export function RetryLocalAssetPreviews(arg1) {
   return window['go']['main']['App']['RetryLocalAssetPreviews'](arg1);
 }
 
+export function RevokeAgentAuthorization(arg1) {
+  return window['go']['main']['App']['RevokeAgentAuthorization'](arg1);
+}
+
+export function SaveAgentMCPServer(arg1) {
+  return window['go']['main']['App']['SaveAgentMCPServer'](arg1);
+}
+
 export function SaveAiImageToAlbum(arg1) {
   return window['go']['main']['App']['SaveAiImageToAlbum'](arg1);
 }
@@ -554,8 +610,20 @@ export function SaveMessageImageToAlbum(arg1, arg2) {
   return window['go']['main']['App']['SaveMessageImageToAlbum'](arg1, arg2);
 }
 
+export function SaveMessageImageToLocalLibrary(arg1, arg2) {
+  return window['go']['main']['App']['SaveMessageImageToLocalLibrary'](arg1, arg2);
+}
+
 export function ScanStorage(arg1) {
   return window['go']['main']['App']['ScanStorage'](arg1);
+}
+
+export function SelectAndImportSkillArchive() {
+  return window['go']['main']['App']['SelectAndImportSkillArchive']();
+}
+
+export function SelectAndImportSkillDirectory() {
+  return window['go']['main']['App']['SelectAndImportSkillDirectory']();
 }
 
 export function SelectFiles() {
@@ -572,6 +640,18 @@ export function SelectLocalLibraryFolder(arg1) {
 
 export function SelectLocalLibraryImportFiles() {
   return window['go']['main']['App']['SelectLocalLibraryImportFiles']();
+}
+
+export function SetAgentMCPServerEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentMCPServerEnabled'](arg1, arg2);
+}
+
+export function SetAgentSkillEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentSkillEnabled'](arg1, arg2);
+}
+
+export function SetAgentSkillScriptExecution(arg1, arg2) {
+  return window['go']['main']['App']['SetAgentSkillScriptExecution'](arg1, arg2);
 }
 
 export function SetAlbumCover(arg1, arg2) {
@@ -604,6 +684,10 @@ export function SetLocalLibraryImportMode(arg1) {
 
 export function StartLocalLibraryScan() {
   return window['go']['main']['App']['StartLocalLibraryScan']();
+}
+
+export function TestAgentMCPServer(arg1) {
+  return window['go']['main']['App']['TestAgentMCPServer'](arg1);
 }
 
 export function ToggleFeatured(arg1) {

@@ -13,10 +13,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	agent_extensions "mo-gallery-desktop/agent_extensions"
 	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/db"
 	"mo-gallery-desktop/image"
@@ -31,25 +33,28 @@ type WindowAppearance struct {
 }
 
 type App struct {
-	ctx               context.Context
-	cfg               *config.Config
-	activeWindowStyle string
-	Proxy             *services.ProxyClient
-	Auth              *services.AuthService
-	Photo             *services.PhotoService
-	Album             *services.AlbumService
-	Story             *services.StoryService
-	Blog              *services.BlogService
-	FilmRoll          *services.FilmRollService
-	Friend            *services.FriendService
-	Comment           *services.CommentService
-	Upload            *services.UploadService
-	Storage           *services.StorageService
-	Settings          *services.SettingsService
-	EditorAi          *services.EditorAiService
-	Logger            *services.Logger
-	Overview          *services.OverviewService
-	LocalLibrary      *local_library.Manager
+	ctx                 context.Context
+	cfg                 *config.Config
+	authMu              sync.RWMutex
+	authenticatedUserID string
+	activeWindowStyle   string
+	Proxy               *services.ProxyClient
+	Auth                *services.AuthService
+	Photo               *services.PhotoService
+	Album               *services.AlbumService
+	Story               *services.StoryService
+	Blog                *services.BlogService
+	FilmRoll            *services.FilmRollService
+	Friend              *services.FriendService
+	Comment             *services.CommentService
+	Upload              *services.UploadService
+	Storage             *services.StorageService
+	Settings            *services.SettingsService
+	EditorAi            *services.EditorAiService
+	Logger              *services.Logger
+	Overview            *services.OverviewService
+	LocalLibrary        *local_library.Manager
+	AgentExtensions     *agent_extensions.Manager
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -85,6 +90,11 @@ func (a *App) startup(ctx context.Context) {
 	a.EditorAi = services.NewEditorAiService(a.cfg, a.Upload)
 	a.EditorAi.SetLogger(a.Logger)
 	a.Overview = services.NewOverviewService()
+	var extensionErr error
+	a.AgentExtensions, extensionErr = agent_extensions.NewManager(config.ConfigDir())
+	if extensionErr != nil {
+		a.Logger.Error(services.LogCategorySystem, "agent_extensions_init_failed", "Agent 扩展初始化失败", extensionErr.Error())
+	}
 
 	// 加载日志
 	a.Logger.Load()
@@ -150,7 +160,11 @@ func (a *App) startAiHTTPServer() {
 			return
 		}
 
-		if err := a.EditorAi.GenerateStream(input, w); err != nil {
+		if _, err := a.requireAuthenticatedUserID(); err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		if err := a.EditorAi.GenerateImageStream(input, w); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -172,6 +186,9 @@ func (a *App) startAiHTTPServer() {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.AgentExtensions != nil {
+		a.AgentExtensions.StopAll()
+	}
 	if a.LocalLibrary != nil {
 		_ = a.LocalLibrary.Close()
 	}
@@ -229,6 +246,7 @@ func (a *App) Login(serverURL, username, password, jwtSecret string, rememberLog
 	}
 	a.Proxy.SetServer(result.Server)
 	a.Proxy.SetToken(result.Token)
+	a.setAuthenticatedUser(result.User.ID)
 	a.Logger.Info(services.LogCategoryAuth, "login_success", "登录成功", "用户: "+username+", 服务器: "+serverURL)
 	return result, nil
 }
@@ -237,13 +255,36 @@ func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
 	user, err := a.Auth.ValidateToken(token)
 	if err != nil {
 		a.Proxy.SetToken("")
+		a.setAuthenticatedUser("")
 		a.Logger.Warn(services.LogCategoryAuth, "restore_auth_failed", "恢复登录态失败", err.Error())
 		return nil, err
 	}
 
 	a.Proxy.SetServer(serverURL)
 	a.Proxy.SetToken(token)
+	a.setAuthenticatedUser(user.ID)
 	return user, nil
+}
+
+func (a *App) ClearAuth() {
+	a.Proxy.SetToken("")
+	a.setAuthenticatedUser("")
+}
+
+func (a *App) setAuthenticatedUser(userID string) {
+	a.authMu.Lock()
+	a.authenticatedUserID = strings.TrimSpace(userID)
+	a.authMu.Unlock()
+}
+
+func (a *App) requireAuthenticatedUserID() (string, error) {
+	a.authMu.RLock()
+	userID := a.authenticatedUserID
+	a.authMu.RUnlock()
+	if userID == "" {
+		return "", errors.New("未登录或登录状态已失效")
+	}
+	return userID, nil
 }
 
 func (a *App) ValidateToken(token string) (*services.UserInfo, error) {
@@ -654,31 +695,81 @@ func (a *App) UpdateAiConfig(data config.AIConfig) error {
 }
 
 func (a *App) GetEditorAiConversations(scopeId string) ([]services.EditorAiConversationDTO, error) {
-	return a.EditorAi.ListConversations(scopeId)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.ListConversations(userID, scopeId)
+}
+func (a *App) GetEditorAiConversationPage(scopeId string, offset int, limit int) (*services.EditorAiConversationPageDTO, error) {
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.ListConversationPage(userID, scopeId, offset, limit)
 }
 func (a *App) CreateEditorAiConversation(input services.EditorAiConversationCreateInput) (*services.EditorAiConversationDTO, error) {
-	return a.EditorAi.CreateConversation(input)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.CreateConversation(userID, input)
 }
 func (a *App) GetEditorAiConversation(conversationId string) (*services.EditorAiConversationWithMessagesDTO, error) {
-	return a.EditorAi.GetConversation(conversationId)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.GetConversation(userID, conversationId)
+}
+func (a *App) GetEditorAiConversationMessagesPage(conversationId string, beforeCreatedAt string, beforeId string, limit int) (*services.EditorAiConversationWithMessagesDTO, error) {
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.GetConversationPage(userID, conversationId, beforeCreatedAt, beforeId, limit)
 }
 func (a *App) UpdateEditorAiConversation(conversationId string, input services.EditorAiConversationUpdateInput) (*services.EditorAiConversationDTO, error) {
-	return a.EditorAi.UpdateConversation(conversationId, input)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.UpdateConversation(userID, conversationId, input)
 }
 func (a *App) DeleteEditorAiConversation(conversationId string) error {
-	return a.EditorAi.DeleteConversation(conversationId)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return err
+	}
+	return a.EditorAi.DeleteConversation(userID, conversationId)
 }
 func (a *App) ClearEditorAiConversation(conversationId string) (*services.EditorAiConversationDTO, error) {
-	return a.EditorAi.ClearConversation(conversationId)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.ClearConversation(userID, conversationId)
 }
 func (a *App) AppendEditorAiMessage(input services.EditorAiMessageAppendInput) (*services.EditorAiMessageDTO, error) {
-	return a.EditorAi.AppendMessage(input)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.AppendMessage(userID, input)
 }
 func (a *App) FinishEditorAiMessage(input services.EditorAiMessageFinishInput) (*services.EditorAiMessageDTO, error) {
-	return a.EditorAi.FinishMessage(input)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.FinishMessage(userID, input)
 }
 func (a *App) UpdateEditorAiTaskState(input services.EditorAiTaskStateUpdateInput) (*services.EditorAiMessageDTO, error) {
-	return a.EditorAi.UpdateTaskState(input)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.UpdateTaskState(userID, input)
 }
 func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetModels()
@@ -687,13 +778,25 @@ func (a *App) GetStoryAiProviderModels(providerID string) (*services.StoryAiMode
 	return a.EditorAi.GetProviderModels(providerID)
 }
 func (a *App) GetAiImageDataURL(messageId string) (string, error) {
-	return a.EditorAi.GetImageDataURL(messageId)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return "", err
+	}
+	return a.EditorAi.GetImageDataURL(userID, messageId)
 }
 func (a *App) SaveAiImageToAlbum(messageId string) (*services.PhotoDTO, error) {
-	return a.EditorAi.SaveImageToAlbum(messageId, a.Upload)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.SaveImageToAlbum(userID, messageId, a.Upload)
 }
 func (a *App) SaveMessageImageToAlbum(messageId string, imageURL string) (*services.PhotoDTO, error) {
-	return a.EditorAi.SaveMessageImageToAlbum(messageId, imageURL, a.Upload)
+	userID, err := a.requireAuthenticatedUserID()
+	if err != nil {
+		return nil, err
+	}
+	return a.EditorAi.SaveMessageImageToAlbum(userID, messageId, imageURL, a.Upload)
 }
 
 func suggestedAiImageExtension(imageURL string) string {
@@ -742,6 +845,24 @@ func (a *App) DownloadMessageImageToLocal(imageURL string) (string, error) {
 		return "", err
 	}
 	return filePath, nil
+}
+
+func (a *App) SaveMessageImageToLocalLibrary(imageURL string, destination string) ([]local_library.ImportResult, error) {
+	extension := suggestedAiImageExtension(imageURL)
+	tempFile, err := os.CreateTemp("", "mo-gallery-ai-*"+extension)
+	if err != nil {
+		return nil, err
+	}
+	tempPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempPath)
+		return nil, err
+	}
+	defer os.Remove(tempPath)
+	if err := a.EditorAi.DownloadMessageImageToFile(imageURL, tempPath); err != nil {
+		return nil, err
+	}
+	return a.LocalLibrary.ImportFiles([]string{tempPath}, destination)
 }
 
 // ─── Zine ─────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, LibraryBig, Upload, BookMarked,
   BookImage, Bot, HardDrive, Settings, Users, LogOut,
@@ -32,6 +32,11 @@ const navGroups = [
   ],
 ]
 
+export const SIDEBAR_PAGE_PATHS: ReadonlySet<string> = new Set([
+  ...navGroups.flatMap((group) => group.map(({ path }) => path)),
+  '/settings',
+])
+
 const themeOptions = [
   { value: 'light' as const, label: 'common.light', icon: Sun },
   { value: 'dark' as const, label: 'common.dark', icon: Moon },
@@ -46,12 +51,23 @@ const languageOptions = [
 export function Sidebar() {
   const { user, logout, isAuthenticated } = useAuth()
   const { language, theme, sidebarCollapsed, setLanguage, setTheme, setSidebarCollapsed } = usePreferences()
+  const location = useLocation()
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [siteTitle, setSiteTitle] = useState('MO Gallery')
   const [siteUrl, setSiteUrl] = useState('')
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const lastMenuLocationsRef = useRef(new Map<string, string>())
+
+  if (SIDEBAR_PAGE_PATHS.has(location.pathname)) {
+    lastMenuLocationsRef.current.set(
+      location.pathname,
+      location.pathname + location.search + location.hash,
+    )
+  }
+
+  const getMenuDestination = (path: string) => lastMenuLocationsRef.current.get(path) ?? path
 
   // 站点标题 + 站点地址：标题与「系统设置-站点-站点信息」一致（来自服务端 SITE_TITLE），
   // 地址取桌面端连接的服务器 base_url，即网站入口
@@ -168,7 +184,7 @@ export function Sidebar() {
             {group.map(({ path, icon: Icon, key }) => (
               <NavLink
                 key={path}
-                to={path}
+                to={getMenuDestination(path)}
                 draggable={false}
                 title={sidebarCollapsed ? t(key, language) : undefined}
                 className={({ isActive }) =>
@@ -314,7 +330,7 @@ export function Sidebar() {
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
               <NavLink
-                to="/settings"
+                to={getMenuDestination('/settings')}
                 draggable={false}
                 title={t('admin.config', language)}
                 aria-label={t('admin.config', language)}
@@ -347,7 +363,7 @@ export function Sidebar() {
             </span>}
             <div className="flex shrink-0 items-center gap-0.5">
               <NavLink
-                to="/settings"
+                to={getMenuDestination('/settings')}
                 draggable={false}
                 title={t('admin.config', language)}
                 aria-label={t('admin.config', language)}

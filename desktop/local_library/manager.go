@@ -70,6 +70,7 @@ type Manager struct {
 	restoreMu           sync.Mutex
 	queryTokenMu        sync.Mutex
 	queryTokens         map[string]queryTokenRecord
+	openMu              sync.Mutex
 }
 
 func NewManager(configDir string, emit func(LocalLibraryEvent)) *Manager {
@@ -218,6 +219,9 @@ func (m *Manager) Create(root, name string, adoptExisting bool) (LibrarySnapshot
 }
 
 func (m *Manager) Open(root string) (LibrarySnapshot, error) {
+	m.openMu.Lock()
+	defer m.openMu.Unlock()
+
 	clean, err := cleanRoot(root)
 	if err != nil {
 		return LibrarySnapshot{}, err
@@ -229,7 +233,7 @@ func (m *Manager) Open(root string) (LibrarySnapshot, error) {
 	m.mu.RLock()
 	current := m.current
 	m.mu.RUnlock()
-	if current != nil && current.root == clean {
+	if current != nil && sameLibraryRoot(current.root, clean) {
 		return m.Snapshot()
 	}
 	if current != nil {

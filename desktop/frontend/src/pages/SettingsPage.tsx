@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import {
   clearCloudLibraryPageCache,
   clearDesktopRuntimeCache,
@@ -52,22 +54,24 @@ import {
   Pencil, Trash2, Plus, X, Check, Cloud,
   Unlink, Link, Sparkles, Eye, EyeOff,
   FileText, Trash, Filter, FolderOpen, FolderInput, Copy, Database, Image as ImageIcon,
-  Github, ExternalLink, LayoutDashboard, Images, ChevronRight,
+  Github, ExternalLink, LayoutDashboard, Images, ChevronRight, Puzzle,
   AppWindow, Monitor, Moon, Palette, Sun,
 } from 'lucide-react'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { AgentExtensionsTab } from '@/components/settings/AgentExtensionsTab'
 
 // ─── 与 Web 端一致的 5 个标签 ────────────────────────
 
-type Tab = 'site' | 'appearance' | 'storage' | 'local-library' | 'comments' | 'account' | 'ai' | 'log' | 'cache' | 'about'
+type Tab = 'site' | 'appearance' | 'storage' | 'local-library' | 'comments' | 'account' | 'ai' | 'agent-extensions' | 'log' | 'cache' | 'about'
 type CommentsSubTab = 'manage' | 'config'
 
-const OFFLINE_SETTINGS_TABS = new Set<Tab>(['appearance', 'local-library', 'ai', 'log', 'cache', 'about'])
+const OFFLINE_SETTINGS_TABS = new Set<Tab>(['appearance', 'local-library', 'ai', 'agent-extensions', 'log', 'cache', 'about'])
 
 export function SettingsPage() {
   const { isAuthenticated } = useAuth()
   const { language } = usePreferences()
+  const settingsRevision = useDataRevision('settings')
   const [tab, setTab] = useState<Tab>(() => isAuthenticated ? 'site' : 'appearance')
   const [config, setConfig] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
@@ -93,7 +97,7 @@ export function SettingsPage() {
     }
   }, [isAuthenticated])
 
-  useEffect(() => { void fetchSettings() }, [fetchSettings])
+  useCachedPageEffect(() => { void fetchSettings() }, [fetchSettings, settingsRevision])
 
   const updateConfig = (key: string, value: string) => {
     setConfig(prev => ({ ...prev, [key]: value }))
@@ -123,6 +127,7 @@ export function SettingsPage() {
     { key: 'comments', label: '评论', icon: MessageSquare },
     { key: 'account', label: '账户', icon: User },
     { key: 'ai', label: '模型配置', icon: Sparkles },
+    { key: 'agent-extensions', label: 'Agent 扩展', icon: Puzzle },
     { key: 'log', label: '日志', icon: FileText },
     { key: 'cache', label: '缓存', icon: Database },
     { key: 'about', label: '关于', icon: Info },
@@ -165,7 +170,7 @@ export function SettingsPage() {
         </div>
 
         {/* 右侧内容 */}
-        <div className={activeTab === 'ai' || activeTab === 'cache' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-auto p-6'}>
+        <div className={activeTab === 'ai' || activeTab === 'agent-extensions' || activeTab === 'cache' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-auto p-6'}>
           {loading ? (
             <div className="max-w-2xl space-y-6">
               <Skeleton className="h-4 w-20" />
@@ -178,6 +183,10 @@ export function SettingsPage() {
           ) : activeTab === 'ai' ? (
             <div className="h-full min-h-0">
               <AiTab />
+            </div>
+          ) : activeTab === 'agent-extensions' ? (
+            <div className="h-full min-h-0">
+              <AgentExtensionsTab />
             </div>
           ) : activeTab === 'cache' ? (
             <div className="h-full min-h-0">
@@ -245,19 +254,11 @@ function AppearanceTab() {
   const [savingStyle, setSavingStyle] = useState<WindowStyle | null>(null)
   const [restartDialogOpen, setRestartDialogOpen] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    getWindowAppearance()
-      .then((result) => {
-        if (!cancelled) setAppearance(result)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) toast.error('读取窗口外观失败: ' + getErrorMessage(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
+  useCachedPageEffect(() => {
+    void getWindowAppearance()
+      .then((result) => setAppearance(result))
+      .catch((error: unknown) => toast.error('读取窗口外观失败: ' + getErrorMessage(error)))
+      .finally(() => setLoading(false))
   }, [])
 
   const handleWindowStyleChange = async (style: WindowStyle) => {
@@ -412,10 +413,7 @@ function useLocalLibraryCacheInfo() {
     }
   }, [])
 
-  useEffect(() => {
-    void refresh()
-    return () => { requestIdRef.current += 1 }
-  }, [refresh])
+  useCachedPageEffect(() => { void refresh() }, [refresh])
   return { ...cacheInfo, refresh }
 }
 
@@ -425,16 +423,11 @@ function LocalLibraryTab({ onManageCache }: { onManageCache: () => void }) {
   const [saving, setSaving] = useState(false)
   const localCacheInfo = useLocalLibraryCacheInfo()
 
-  useEffect(() => {
-    let active = true
-    GetLocalLibraryPreferences()
-      .then((result) => {
-        if (!active) return
-        setImportMode(result?.importMode === 'copy' || result?.importMode === 'move' ? result.importMode : undefined)
-      })
+  useCachedPageEffect(() => {
+    void GetLocalLibraryPreferences()
+      .then((result) => setImportMode(result?.importMode === 'copy' || result?.importMode === 'move' ? result.importMode : undefined))
       .catch((error) => toast.error('读取本地资源库设置失败: ' + getErrorMessage(error)))
-      .finally(() => { if (active) setPreferencesLoading(false) })
-    return () => { active = false }
+      .finally(() => setPreferencesLoading(false))
   }, [])
 
   const chooseMode = async (mode: 'copy' | 'move') => {
@@ -586,7 +579,8 @@ function StorageTab() {
     } catch {} finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { fetchSources() }, [fetchSources])
+  const storageSourcesRevision = useDataRevision('storage-sources')
+  useCachedPageEffect(() => { void fetchSources() }, [fetchSources, storageSourcesRevision])
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
@@ -972,7 +966,7 @@ function CommentsManageTab() {
     } catch {} finally { setLoading(false) }
   }, [statusFilter, page])
 
-  useEffect(() => { fetchComments() }, [fetchComments])
+  useCachedPageEffect(() => { void fetchComments() }, [fetchComments])
 
   const updateStatus = async (id: string, status: string) => {
     try {
@@ -1186,7 +1180,7 @@ function AccountTab() {
     }
   }
 
-  useEffect(() => { loadLinuxDoStatus() }, [])
+  useCachedPageEffect(() => { void loadLinuxDoStatus() }, [])
 
   const handleLinuxDoBind = async () => {
     try {
@@ -1394,10 +1388,7 @@ function CacheTab() {
     }
   }, [])
 
-  useEffect(() => {
-    void refreshCacheStorageInfo()
-    return () => { cacheStorageRequestIdRef.current += 1 }
-  }, [refreshCacheStorageInfo])
+  useCachedPageEffect(() => { void refreshCacheStorageInfo() }, [refreshCacheStorageInfo])
 
   const refreshAll = () => {
     refreshSnapshot()
@@ -2066,15 +2057,14 @@ function AiTab() {
   const [idDraft, setIdDraft] = useState('')
   const cancelEditRef = useRef(false)
 
-  useEffect(() => {
-    let cancelled = false
+  const aiConfigRevision = useDataRevision('settings')
+  useCachedPageEffect(() => {
     setLoading(true)
     void GetAiConfig()
-      .then(result => { if (!cancelled) setAiConfig(normalizeAiConfig(result)) })
+      .then(result => setAiConfig(normalizeAiConfig(result)))
       .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [])
+      .finally(() => setLoading(false))
+  }, [aiConfigRevision])
 
   const providerIds = Object.keys(aiConfig.providers).sort()
   // 选中项跟随数据变化：删除/重命名后自动回退到第一个可用模型源
@@ -2421,7 +2411,35 @@ function AiTab() {
           )}
         </div>
 
-        <div className="shrink-0 border-t p-2" style={{ borderColor: 'var(--border)' }}>
+        <div className="shrink-0 space-y-3 border-t p-3" style={{ borderColor: 'var(--border)' }}>
+          <div className="space-y-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>默认对话模型</label>
+              <SelectDropdown
+                value={aiConfig.default_model}
+                options={defaultOptions}
+                onChange={value => setAiConfig(prev => ({ ...prev, default_model: String(value) }))}
+                placeholder="请选择对话模型"
+                clearLabel="未设置默认模型"
+                emptyText="请先添加模型"
+                ariaLabel="默认对话模型"
+                placement="top"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>默认图片模型</label>
+              <SelectDropdown
+                value={aiConfig.default_image_model}
+                options={defaultImageOptions}
+                onChange={value => setAiConfig(prev => ({ ...prev, default_image_model: String(value) }))}
+                placeholder="请选择图片模型"
+                clearLabel="未设置默认图片模型"
+                emptyText="请先标记图片生成模型"
+                ariaLabel="默认图片生成模型"
+                placement="top"
+              />
+            </div>
+          </div>
           <button onClick={addProvider} className={`${btnOutline} w-full justify-center`}>
             <Plus size={14} /> 添加模型源
           </button>
@@ -2611,30 +2629,6 @@ function AiTab() {
                   </div>
                 </Section>
 
-                <Section title="默认模型" description="未指定模型时使用的回退值，仅显示已配置的模型。">
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <Field label="默认对话模型">
-                      <SelectDropdown
-                        value={aiConfig.default_model}
-                        options={defaultOptions}
-                        onChange={value => setAiConfig(prev => ({ ...prev, default_model: String(value) }))}
-                        placeholder="请选择默认对话模型"
-                        clearLabel="请选择默认对话模型"
-                        ariaLabel="默认对话模型"
-                      />
-                    </Field>
-                    <Field label="默认图片生成模型" description="仅显示已标记图片生成能力的模型。">
-                      <SelectDropdown
-                        value={aiConfig.default_image_model}
-                        options={defaultImageOptions}
-                        onChange={value => setAiConfig(prev => ({ ...prev, default_image_model: String(value) }))}
-                        placeholder="请选择默认图片生成模型"
-                        clearLabel="请选择默认图片生成模型"
-                        ariaLabel="默认图片生成模型"
-                      />
-                    </Field>
-                  </div>
-                </Section>
               </div>
             </div>
           </>
@@ -2755,7 +2749,7 @@ function LogTab() {
   const [stats, setStats] = useState<LogStats | null>(null)
   const [clearLogsDialog, setClearLogsDialog] = useState(false)
 
-  useEffect(() => {
+  useCachedPageEffect(() => {
     setLoading(true)
     void GetLogConfig()
       .then((result) => {
@@ -2782,7 +2776,7 @@ function LogTab() {
     } catch {}
   }, [])
 
-  useEffect(() => { fetchLogs(); fetchStats() }, [fetchLogs, fetchStats])
+  useCachedPageEffect(() => { void fetchLogs(); void fetchStats() }, [fetchLogs, fetchStats])
 
   const handleSaveConfig = async () => {
     setSaving(true)

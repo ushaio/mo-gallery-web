@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BookImage, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageThumb } from '@/components/zine/PageThumb'
 import { ZineCreateDialog, type ZineCreateOptions } from '@/components/zine/ZineCreateDialog'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import { t } from '@/lib/i18n'
 import { getPageSizeLabel, getProjectSpreadSize } from '@/lib/zine/page-sizes'
 import { deleteZineProject, listZineProjects } from '@/lib/zine/project'
@@ -40,6 +42,7 @@ function ProjectCover({ project }: { project: ZineProject }) {
 export function ZinePage() {
   const navigate = useNavigate()
   const { language } = usePreferences()
+  const projectsRevision = useDataRevision('zine-projects')
   const [projects, setProjects] = useState<ZineProject[]>([])
   const [loading, setLoading] = useState(true)
   const [busyProjectId, setBusyProjectId] = useState<string | null>(null)
@@ -55,9 +58,11 @@ export function ZinePage() {
     }
   }
 
-  useEffect(() => {
+  // 菜单页常驻缓存：切回本页不重新加载；从编辑器保存/删除项目后才重新读取列表
+  useCachedPageEffect(() => {
     void refreshProjects()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsRevision])
 
   async function handleCreateProject(options: ZineCreateOptions) {
     if (creating) return

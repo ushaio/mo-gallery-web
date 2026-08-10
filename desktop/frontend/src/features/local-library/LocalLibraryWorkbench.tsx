@@ -14,6 +14,8 @@ import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import { useLibrarySections } from '@/store/preferences'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import { EventsOn, OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime'
@@ -134,6 +136,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [pendingImportPaths, setPendingImportPaths] = useState<string[] | null>(null)
   const [pendingImportDestination, setPendingImportDestination] = useState<string | null>(null)
   const activeAssetRequestsRef = useRef(0)
+  const assetQueryRequestIdRef = useRef(0)
   const paginationRequestIdRef = useRef(0)
   const previewStatusOverridesRef = useRef(new Map<string, string>())
   const [scanBusy, setScanBusy] = useState(false)
@@ -161,6 +164,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [assetMovePlan, setAssetMovePlan] = useState<AssetFileOperationPlan>()
   const [assetFileOperationBusy, setAssetFileOperationBusy] = useState(false)
   const [storageSources, setStorageSources] = useState<wailsTypes.StorageSourceDTO[]>([])
+  const storageSourcesRevision = useDataRevision('storage-sources')
   const [storageSourcesLoading, setStorageSourcesLoading] = useState(isAuthenticated)
   const storageSourcesLoadingRef = useRef(false)
   const storageSourcesRequestVersionRef = useRef(0)
@@ -193,6 +197,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const queryKey = useMemo(() => JSON.stringify(query), [query])
   const activeQueryKeyRef = useRef(queryKey)
   const requestedQueryKeyRef = useRef(queryKey)
+  const selectionQueryKeyRef = useRef(queryKey)
   activeQueryKeyRef.current = queryKey
 
   const foldersByParentId = useMemo(() => {
@@ -324,8 +329,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     finally { setTrashedFoldersLoading(false) }
   }, [])
 
-  useEffect(() => {
-    let disposed = false
+  useCachedPageEffect(() => {
+    const requestId = ++assetQueryRequestIdRef.current
     const queryChanged = requestedQueryKeyRef.current !== queryKey
     requestedQueryKeyRef.current = queryKey
     paginationRequestIdRef.current += 1
@@ -334,7 +339,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     setLoading(true)
     activeAssetRequestsRef.current += 1
     localLibraryApi.listAssets(query).then((result) => {
-      if (disposed) return
+      if (requestId !== assetQueryRequestIdRef.current) return
       const overrides = previewStatusOverridesRef.current
       const items = overrides.size === 0 ? result.items : result.items.map((asset) => {
         const previewStatus = overrides.get(asset.id)
@@ -347,21 +352,22 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
         currentStore.selectAsset(items.find((item) => item.id === currentSelection.id) ?? null)
       }
     }).catch((error) => {
-      if (!disposed) toast.error(parseLocalLibraryError(error).message)
+      if (requestId === assetQueryRequestIdRef.current) toast.error(parseLocalLibraryError(error).message)
     }).finally(() => {
       activeAssetRequestsRef.current = Math.max(0, activeAssetRequestsRef.current - 1)
       if (activeAssetRequestsRef.current === 0) previewStatusOverridesRef.current.clear()
-      if (!disposed) setLoading(false)
+      if (requestId === assetQueryRequestIdRef.current) setLoading(false)
     })
-    return () => { disposed = true }
   }, [query, refreshKey]) // selection is intentionally reconciled against each fresh page
 
   useEffect(() => {
+    if (selectionQueryKeyRef.current === queryKey) return
+    selectionQueryKeyRef.current = queryKey
     setSelectedAssetIds([])
     setSelectedQueryToken(null)
     setSelectedQueryTotal(0)
     selectionAnchorRef.current = null
-  }, [availability, collectionIds, deferredSearch, directFolderOnly, favoritesOnly, filters, folder, sort, sortDirection, tagIds])
+  }, [queryKey])
 
   const selectAllQueryResults = useCallback(async () => {
     try {
@@ -397,9 +403,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     selectAsset(page.items.at(-1) ?? null)
   }, [allLoadedSelected, clearAssetSelection, page.items, selectAsset, selectedQueryToken])
 
-  useEffect(() => { reloadFolders() }, [reloadFolders, refreshKey])
-  useEffect(() => { void reloadFavoriteCount() }, [reloadFavoriteCount, refreshKey])
-  useEffect(() => { void reloadOrganization() }, [reloadOrganization])
+  useCachedPageEffect(() => { void reloadFolders() }, [reloadFolders, refreshKey])
+  useCachedPageEffect(() => { void reloadFavoriteCount() }, [reloadFavoriteCount, refreshKey])
+  useCachedPageEffect(() => { void reloadOrganization() }, [reloadOrganization])
 
   useEffect(() => {
     if (availability === 'trashed') void reloadTrashedFolders()
@@ -424,7 +430,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     }
   }, [isAuthenticated])
 
-  useEffect(() => {
+  useCachedPageEffect(() => {
     if (!isAuthenticated) {
       storageSourcesRequestVersionRef.current += 1
       storageSourcesLoadingRef.current = false
@@ -433,12 +439,10 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
       return
     }
 
+    storageSourcesRequestVersionRef.current += 1
+    storageSourcesLoadingRef.current = false
     void reloadStorageSources()
-    return () => {
-      storageSourcesRequestVersionRef.current += 1
-      storageSourcesLoadingRef.current = false
-    }
-  }, [isAuthenticated, reloadStorageSources])
+  }, [isAuthenticated, reloadStorageSources, storageSourcesRevision])
 
   useEffect(() => {
     if (!propertiesFolder) {

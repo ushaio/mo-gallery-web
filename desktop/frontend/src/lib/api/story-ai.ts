@@ -5,13 +5,18 @@ import type {
   EditorAiConversationDto,
   EditorAiConversationUpdateInput,
   EditorAiConversationWithMessagesDto,
+  EditorAiMessageAppendInput,
+  EditorAiMessageDto,
   EditorAiGenerateInput,
   StoryAiGenerateInput,
   StoryAiModelsResponse,
 } from './types'
+import type { EditorAiStreamEvent } from '@mo-gallery/ai-agent'
 
 export interface StoryAiStreamHandlers {
   onChunk: (chunk: string) => void
+  onEvent?: (event: EditorAiStreamEvent) => void
+  onPersisted?: (messageIds: { userMessageId: string; assistantMessageId: string }) => void
   onDone?: () => void
   signal?: AbortSignal
 }
@@ -150,6 +155,46 @@ export async function createEditorAiConversation(token: string, input: EditorAiC
 
 export async function getEditorAiConversation(token: string, conversationId: string): Promise<EditorAiConversationWithMessagesDto> {
   return apiRequestData<EditorAiConversationWithMessagesDto>(`/api/admin/editor-ai/conversations/${conversationId}`, {}, token)
+}
+
+export async function appendEditorAiMessage(
+  token: string,
+  conversationId: string,
+  input: Omit<EditorAiMessageAppendInput, 'conversationId'>,
+): Promise<EditorAiMessageDto> {
+  return apiRequestData<EditorAiMessageDto>(`/api/admin/editor-ai/conversations/${encodeURIComponent(conversationId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }, token)
+}
+
+export async function uploadEditorAiConversation(
+  token: string,
+  conversation: EditorAiConversationWithMessagesDto,
+): Promise<EditorAiConversationDto> {
+  const remote = await createEditorAiConversation(token, {
+    scopeId: conversation.scopeId || 'ai-assistant',
+    title: conversation.title,
+    systemPrompt: conversation.systemPrompt,
+  })
+
+  try {
+    for (const message of conversation.messages ?? []) {
+      await appendEditorAiMessage(token, remote.id, {
+        role: message.role,
+        content: message.content,
+        status: message.status,
+        model: message.model,
+        action: message.action,
+        metadata: message.metadata,
+        error: message.error,
+      })
+    }
+    return remote
+  } catch (error) {
+    await deleteEditorAiConversation(token, remote.id).catch(() => {})
+    throw error
+  }
 }
 
 export async function updateEditorAiConversation(token: string, conversationId: string, input: EditorAiConversationUpdateInput): Promise<EditorAiConversationDto> {

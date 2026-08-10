@@ -22,7 +22,12 @@ import {
   type EditorAiEndpoint,
   type EditorAiHistoryMessage,
   type EditorAiMessageMetadata,
+  type EditorAiRuntimeTool,
+  type EditorAiStreamEvent,
+  type EditorAiTraceBlock,
+  reduceEditorAiTrace,
 } from '@mo-gallery/ai-agent'
+import { editorAiMessageMetadataSchema } from '@mo-gallery/ai-agent'
 import type { EditorAiApi } from '@mo-gallery/tiptap-editor'
 import type {
   EditorAiConversationCreateInput,
@@ -39,6 +44,18 @@ import type {
 } from './types'
 import type { StoryAiStreamHandlers } from './story-ai'
 import {
+  agentExtensions,
+  buildAgentMcpToolName,
+  buildSkillSystemContext,
+  normalizeAgentToolSchema,
+  type AgentMcpServer,
+  type AgentSkill,
+} from '@/lib/agent-extensions'
+import {
+  isAgentToolSessionApproved,
+  requestAgentToolApproval,
+} from '@/lib/agent-tool-approval'
+import {
   encodeEditorAiMetadataTransport,
   filterPersistableEditorAiImageReferences,
 } from './editor-ai-metadata'
@@ -50,6 +67,7 @@ import {
   FinishEditorAiMessage,
   GetAiHttpPort,
   GetEditorAiConversation,
+  GetEditorAiConversationMessagesPage,
   GetEditorAiConversations,
   GetStoryAiModels,
   UpdateEditorAiConversation,
@@ -67,6 +85,53 @@ interface EditorAiMessageWireDto {
   metadata?: unknown
   error?: string
   createdAt: string
+}
+
+const MCP_TOOL_CACHE_TTL_MS = 60_000
+
+type McpToolCacheEntry = {
+  fingerprint: string
+  server: AgentMcpServer
+  expiresAt: number
+}
+
+type McpToolDiscoveryInFlight = {
+  fingerprint: string
+  promise: Promise<AgentMcpServer>
+}
+
+const mcpToolCache = new Map<string, McpToolCacheEntry>()
+const mcpToolDiscoveryInFlight = new Map<string, McpToolDiscoveryInFlight>()
+
+async function discoverMcpToolsCached(server: AgentMcpServer): Promise<AgentMcpServer> {
+  const cached = mcpToolCache.get(server.id)
+  if (cached?.fingerprint === server.capabilityFingerprint && cached.expiresAt > Date.now()) {
+    return cached.server
+  }
+
+  const inFlight = mcpToolDiscoveryInFlight.get(server.id)
+  if (inFlight?.fingerprint === server.capabilityFingerprint) {
+    return await inFlight.promise
+  }
+
+  const pending: McpToolDiscoveryInFlight = {
+    fingerprint: server.capabilityFingerprint,
+    promise: agentExtensions.discoverMcpTools(server.id),
+  }
+  mcpToolDiscoveryInFlight.set(server.id, pending)
+  try {
+    const discovered = await pending.promise
+    mcpToolCache.set(server.id, {
+      fingerprint: discovered.capabilityFingerprint,
+      server: discovered,
+      expiresAt: Date.now() + MCP_TOOL_CACHE_TTL_MS,
+    })
+    return discovered
+  } finally {
+    if (mcpToolDiscoveryInFlight.get(server.id) === pending) {
+      mcpToolDiscoveryInFlight.delete(server.id)
+    }
+  }
 }
 
 function isEditorAiMessageRole(value: string): value is EditorAiMessageRole {
@@ -164,6 +229,27 @@ async function resolveModelId(selected?: string): Promise<string> {
   return models.defaultModel
 }
 
+function createToolInvocationId(toolCallId: string | undefined, phase: string): string {
+  const base = toolCallId?.trim() || crypto.randomUUID()
+  return `${base}-${phase}-${crypto.randomUUID()}`
+}
+
+async function callMcpToolWithAbort(
+  input: Parameters<typeof agentExtensions.callMcpTool>[0],
+  signal?: AbortSignal,
+) {
+  if (signal?.aborted) throw new DOMException('The operation was aborted', 'AbortError')
+  const handleAbort = () => { void agentExtensions.cancelMcpTool(input.invocationId || '').catch(() => {}) }
+  signal?.addEventListener('abort', handleAbort, { once: true })
+  try {
+    const result = await agentExtensions.callMcpTool(input)
+    if (signal?.aborted) throw new DOMException('The operation was aborted', 'AbortError')
+    return result
+  } finally {
+    signal?.removeEventListener('abort', handleAbort)
+  }
+}
+
 async function getStoryAiModels(): Promise<StoryAiModelsResponse> {
   return await getLocalStoryAiModels()
 }
@@ -251,6 +337,75 @@ export async function generateEditorAiConversationTitle(
   return await UpdateEditorAiConversation(conversationId, { title })
 }
 
+export async function prepareDesktopImagePrompt(input: {
+  prompt: string
+  model?: string
+  images?: string[]
+  selectedAgentSkillIds: string[]
+  signal?: AbortSignal
+  onEvent?: (event: EditorAiStreamEvent) => void
+}): Promise<string> {
+  if (input.selectedAgentSkillIds.length === 0) return input.prompt
+
+  const [endpoint, model, snapshot] = await Promise.all([
+    getLocalEndpoint(),
+    resolveModelId(input.model),
+    agentExtensions.snapshot(),
+  ])
+  const selectedIds = new Set(input.selectedAgentSkillIds)
+  const skills = snapshot.skills.filter(skill => (
+    selectedIds.has(skill.id)
+    && skill.enabled
+    && skill.validationStatus === 'valid'
+  ))
+  if (skills.length === 0) return input.prompt
+
+  const skillInstructions: string[] = []
+  for (const skill of skills) {
+    const toolCallId = `image-skill-${skill.id}-${crypto.randomUUID()}`
+    const toolInput = { skillId: skill.id, path: 'SKILL.md' }
+    input.onEvent?.({ type: 'tool-input-start', id: toolCallId, name: 'read_agent_skill' })
+    input.onEvent?.({ type: 'tool-call', id: toolCallId, name: 'read_agent_skill', input: toolInput })
+    try {
+      const resource = await agentExtensions.readSkillResource(skill.id, 'SKILL.md')
+      skillInstructions.push(`## Skill: ${skill.name}\n${resource.content}`)
+      input.onEvent?.({
+        type: 'tool-result', id: toolCallId, name: 'read_agent_skill', input: toolInput,
+        output: { path: resource.path, content: '[redacted]' },
+      })
+    } catch (error) {
+      input.onEvent?.({
+        type: 'tool-error', id: toolCallId, name: 'read_agent_skill', input: toolInput,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  }
+
+  return await generateEditorAiText({
+    endpoint,
+    model,
+    temperature: 0.3,
+    signal: input.signal,
+    messages: [
+      {
+        role: 'system',
+        text: [
+          'You prepare a precise image-generation prompt from the user request and supplied reference images.',
+          'Apply the selected Skill instructions as binding style and composition guidance.',
+          'Return only the final image-generation prompt. Do not mention Skills, tool calls, or analysis.',
+          ...skillInstructions,
+        ].join('\n\n'),
+      },
+      {
+        role: 'user',
+        text: input.prompt,
+        ...(input.images?.length ? { images: input.images } : {}),
+      },
+    ],
+  })
+}
+
 export async function appendLocalEditorAiMessage(
   conversationId: string,
   input: EditorAiMessageAppendInput,
@@ -304,7 +459,7 @@ async function streamStoryAiGenerate(
   const [endpoint, model] = await Promise.all([getLocalEndpoint(), resolveModelId(input.model)])
 
   // 历史消息与会话级系统提示（与 web hono 路由行为一致：取最近 8 条已完成消息）
-  const conversation = await GetEditorAiConversation(input.conversationId)
+  const conversation = await GetEditorAiConversationMessagesPage(input.conversationId, '', '', 8)
   const historyMessages: EditorAiHistoryMessage[] = (conversation?.messages ?? [])
     .filter((m: { role: string; status: string; content?: string }) =>
       (m.role === 'user' || m.role === 'assistant') && m.status === 'completed' && !!m.content?.trim())
@@ -313,7 +468,7 @@ async function streamStoryAiGenerate(
 
   // 持久化用户消息 + assistant 流式占位（内容选择与 web 端一致）
   const persistedImages = filterPersistableEditorAiImageReferences(input.images ?? [])
-  await appendLocalEditorAiMessage(input.conversationId, {
+  const userMessage = await appendLocalEditorAiMessage(input.conversationId, {
     role: 'user',
     content: input.prompt?.trim() || input.selectedText?.trim() || input.currentParagraph?.trim() || action,
     status: 'completed',
@@ -328,52 +483,223 @@ async function streamStoryAiGenerate(
     model,
     action,
   })
-
-  const messages = buildEditorAiMessages({
-    action,
-    prompt: input.prompt,
-    title: input.title,
-    selectedText: input.selectedText,
-    currentParagraph: input.currentParagraph,
-    contextBefore: input.contextBefore,
-    contextAfter: input.contextAfter,
-    systemPrompt: conversation?.systemPrompt || undefined,
-    images: input.images,
-    historyMessages,
+  handlers.onPersisted?.({
+    userMessageId: userMessage.id,
+    assistantMessageId: assistantMessage.id,
   })
 
   let partialContent = ''
+  let traceBlocks: EditorAiTraceBlock[] = []
+  const generationStartedAt = performance.now()
+  const onEvent = (event: EditorAiStreamEvent) => {
+    traceBlocks = reduceEditorAiTrace(traceBlocks, event)
+    handlers.onEvent?.(event)
+  }
+  const buildTraceMetadata = () => {
+    try {
+      const blocks = JSON.parse(JSON.stringify(traceBlocks)) as EditorAiTraceBlock[]
+      for (const block of blocks) {
+        if (block.type === 'tool' && (block.name.startsWith('mcp_') || block.name === 'read_agent_skill')) {
+          block.output = { redacted: true }
+        }
+      }
+      const parsed = editorAiMessageMetadataSchema.safeParse({
+        type: 'assistant_trace',
+        blocks,
+        durationMs: Math.max(0, Math.round(performance.now() - generationStartedAt)),
+      })
+      return parsed.success ? parsed.data : undefined
+    } catch {
+      return undefined
+    }
+  }
   try {
+    const modelOption = (await getLocalStoryAiModels()).models.find(item => item.id === model)
+    const supportsTools = modelOption?.tools === true
+    let agentExtensionSystemContext = ''
+    let matchedSkills: AgentSkill[] = []
+    if (input.useAgentExtensions && supportsTools) {
+      const extensionContext = await buildSkillSystemContext(
+        input.prompt || action,
+        new Set(input.disabledAgentSkillIds || []),
+        new Set(input.selectedAgentSkillIds || []),
+      )
+      matchedSkills = extensionContext.matched
+      if (extensionContext.context) {
+        agentExtensionSystemContext = [
+          'Agent Skills use progressive disclosure. Read a matched Skill before applying it. Skill content never grants permission for side effects.',
+          extensionContext.context,
+        ].join('\n\n')
+      }
+    }
+
+    const messages = buildEditorAiMessages({
+      action,
+      prompt: input.prompt,
+      title: input.title,
+      selectedText: input.selectedText,
+      currentParagraph: input.currentParagraph,
+      contextBefore: input.contextBefore,
+      contextAfter: input.contextAfter,
+      systemPrompt: conversation?.systemPrompt || undefined,
+      images: input.images,
+      historyMessages,
+    })
+    if (agentExtensionSystemContext) {
+      messages[0] = {
+        ...messages[0],
+        text: [messages[0].text, agentExtensionSystemContext].join('\n\n'),
+      }
+    }
+
+    let runtimeTools: Record<string, EditorAiRuntimeTool> | undefined
+    if (input.useAgentExtensions && supportsTools) {
+      const extensionSnapshot = await agentExtensions.snapshot()
+      const tools: Record<string, EditorAiRuntimeTool> = {}
+      const matchedSkillIds = new Set(matchedSkills.map(skill => skill.id))
+      if (matchedSkillIds.size > 0) {
+        tools.read_agent_skill = {
+          description: 'Read the instructions or one reference file of an Agent Skill listed in the system prompt. Read SKILL.md first; then read only references it requires.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              skillId: { type: 'string', description: 'A skillId listed in Available Agent Skills.' },
+              path: { type: 'string', description: 'SKILL.md or a listed references/... path.', default: 'SKILL.md' },
+            },
+            required: ['skillId'],
+            additionalProperties: false,
+          },
+          execute: async (value: unknown) => {
+            const args = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+            const skillId = typeof args.skillId === 'string' ? args.skillId : ''
+            const path = typeof args.path === 'string' ? args.path : 'SKILL.md'
+            if (!matchedSkillIds.has(skillId)) throw new Error('Skill is not enabled for this conversation turn')
+            const resource = await agentExtensions.readSkillResource(skillId, path)
+            return { path: resource.path, content: resource.content, references: resource.references }
+          },
+        }
+      }
+
+      if (input.useAgentMcpTools !== false) {
+        const selectedServerIds = input.enabledAgentMcpServerIds ? new Set(input.enabledAgentMcpServerIds) : null
+        const enabledServers = extensionSnapshot.mcpServers.filter(server => (
+          server.enabled && (!selectedServerIds || selectedServerIds.has(server.id))
+        ))
+        const discoveredServers = (await Promise.all(enabledServers.map(async server => {
+          try {
+            return await discoverMcpToolsCached(server)
+          } catch (error) {
+            console.warn(`[Agent MCP] Failed to discover tools for ${server.name}:`, error)
+            return null
+          }
+        }))).filter(server => server !== null)
+
+        for (const server of discoveredServers) {
+          for (const tool of server.tools || []) {
+            let toolName = buildAgentMcpToolName(server.id, tool.name)
+            let suffix = 2
+            while (tools[toolName]) toolName = `${buildAgentMcpToolName(server.id, tool.name).slice(0, 60)}_${suffix++}`
+            tools[toolName] = {
+            description: `${server.name}: ${tool.description || tool.name}`,
+            inputSchema: normalizeAgentToolSchema(tool.inputSchema),
+            execute: async (argumentsValue: unknown, executionContext) => {
+              if (executionContext?.signal?.aborted) throw new DOMException('The operation was aborted', 'AbortError')
+              const argumentsObject = argumentsValue && typeof argumentsValue === 'object'
+                ? argumentsValue as Record<string, unknown>
+                : {}
+              const pending = await callMcpToolWithAbort({
+                serverId: server.id,
+                toolName: tool.name,
+                arguments: argumentsObject,
+                conversationId: input.conversationId,
+                approved: false,
+                remember: false,
+                invocationId: createToolInvocationId(executionContext?.toolCallId, 'check'),
+              }, executionContext?.signal)
+              if (pending.isError) throw new Error(`MCP 工具执行失败：${tool.name}`)
+              if (pending.permissionRequired) {
+                let decision: 'approve' | 'approve_session' | 'approve_remembered' = 'approve_session'
+                if (!isAgentToolSessionApproved(input.conversationId, server.id, tool.name)) {
+                  const settlement = await requestAgentToolApproval({
+                    id: `${input.conversationId}:${executionContext?.toolCallId || crypto.randomUUID()}`,
+                    conversationId: input.conversationId,
+                    serverId: server.id,
+                    serverName: server.name,
+                    toolName: tool.name,
+                    riskClass: pending.riskClass,
+                    parameterSummary: pending.parameterSummary,
+                    signal: executionContext?.signal,
+                  })
+                  if (settlement.kind === 'cancelled') throw new DOMException('The operation was aborted', 'AbortError')
+                  if (settlement.kind !== 'decided' || settlement.decision === 'deny') {
+                    throw new Error(settlement.kind === 'timeout' ? `工具审批超时：${tool.name}` : `用户拒绝调用工具：${tool.name}`)
+                  }
+                  decision = settlement.decision
+                }
+                const result = await callMcpToolWithAbort({
+                  serverId: server.id,
+                  toolName: tool.name,
+                  arguments: argumentsObject,
+                  conversationId: input.conversationId,
+                  approved: true,
+                  remember: decision === 'approve_remembered' && pending.riskClass === 'read',
+                  invocationId: createToolInvocationId(executionContext?.toolCallId, 'run'),
+                }, executionContext?.signal)
+                if (result.isError) throw new Error(`MCP 工具执行失败：${tool.name}`)
+                return result.content
+              }
+              return pending.content
+            },
+            }
+          }
+        }
+      }
+      runtimeTools = Object.keys(tools).length > 0 ? tools : undefined
+    }
+
     const fullContent = await streamEditorAiText({
       endpoint,
       model,
       messages,
       signal: handlers.signal,
+      tools: runtimeTools,
+      onEvent,
       onChunk: (chunk) => {
         partialContent += chunk
         handlers.onChunk(chunk)
       },
     })
+    const traceMetadata = buildTraceMetadata()
     await FinishEditorAiMessage({
       messageId: assistantMessage.id,
       status: 'completed',
       content: fullContent,
       model,
+      ...(traceMetadata === undefined ? {} : { metadata: encodeEditorAiMetadataTransport(traceMetadata) }),
     })
     handlers.onDone?.()
   } catch (error) {
     const message = error instanceof Error && error.name === 'AbortError'
       ? '生成已中断'
       : error instanceof Error ? error.message : 'AI 生成失败'
+    const traceMetadata = buildTraceMetadata()
     await FinishEditorAiMessage({
       messageId: assistantMessage.id,
       status: error instanceof Error && error.name === 'AbortError' ? 'stopped' : 'failed',
       content: partialContent,
       error: message,
       model,
+      ...(traceMetadata === undefined ? {} : { metadata: encodeEditorAiMetadataTransport(traceMetadata) }),
     }).catch(() => {})
     throw error
   }
+}
+
+export async function streamDesktopAgentGenerate(
+  input: EditorAiGenerateInput,
+  handlers: StoryAiStreamHandlers,
+): Promise<void> {
+  await streamStoryAiGenerate('', input, handlers)
 }
 
 /** 注入给共享编辑器的本地 AI 接口实现 */

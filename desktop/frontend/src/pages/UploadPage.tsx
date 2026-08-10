@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
+import { useDataRevision } from '@/hooks/useDataRevision'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { loadPersistentResource } from '@/lib/persistent-cache'
@@ -106,6 +108,7 @@ let uploadPageDraftState: UploadPageDraftState = {
 
 export function UploadPage() {
   const { language } = usePreferences()
+  const relatedDataRevision = useDataRevision('albums', 'stories', 'film-rolls', 'storage-sources')
   const { tasks, addTasks } = useUploadQueue()
   const [items, setItems] = useState<UploadItem[]>(() => uploadPageDraftState.items)
   const [uploadType, setUploadType] = useState<UploadType>(() => uploadPageDraftState.uploadType)
@@ -176,7 +179,7 @@ export function UploadPage() {
   }, [showPrefixDropdown])
 
   // 加载关联数据
-  useEffect(() => {
+  useCachedPageEffect(() => {
     (async () => {
       const failed: string[] = []
       try {
@@ -196,9 +199,7 @@ export function UploadPage() {
         const sources = r || []
         setStorageSources(sources)
         // 自动选中第一个存储源
-        if (sources.length > 0 && !settings.storageSourceId) {
-          setSettings(s => ({ ...s, storageSourceId: sources[0].id }))
-        }
+        if (sources.length > 0) setSettings(s => s.storageSourceId ? s : ({ ...s, storageSourceId: sources[0].id }))
       } catch {
         // 存储源加载失败会导致上传按钮一直不可用，必须显式提示
         toast.error('存储源加载失败，无法上传。请检查服务器连接后重新进入本页')
@@ -207,7 +208,7 @@ export function UploadPage() {
         toast.error(`${failed.join('、')}列表加载失败，相关选项暂不可用`)
       }
     })()
-  }, [])
+  }, [relatedDataRevision])
 
   const handleSelectFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -710,13 +711,11 @@ function PreviewModal({ filePath, fileName, onClose }: { filePath: string; fileN
   const [src, setSrc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
+  useCachedPageEffect(() => {
     setLoading(true)
     void GetFileThumbnail(filePath)
-      .then((dataUrl: string) => { if (!cancelled) { setSrc(dataUrl); setLoading(false) } })
-      .catch(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .then((dataUrl: string) => { setSrc(dataUrl); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [filePath])
 
   useEffect(() => {
@@ -764,12 +763,10 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
 }) {
   const [thumbnail, setThumbnail] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
+  useCachedPageEffect(() => {
     void GetFileThumbnail(item.file.filePath)
-      .then((dataUrl: string) => { if (!cancelled) setThumbnail(dataUrl) })
+      .then((dataUrl: string) => setThumbnail(dataUrl))
       .catch(() => {})
-    return () => { cancelled = true }
   }, [item.file.filePath])
 
   const statusIcon = {

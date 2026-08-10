@@ -1,3 +1,489 @@
+export namespace agent_extensions {
+	
+	export class ToolInvocationAudit {
+	    id: string;
+	    conversationId?: string;
+	    sourceId: string;
+	    capabilityName: string;
+	    parameterSummary: string;
+	    authorizationDecision: string;
+	    riskClass: string;
+	    // Go type: time
+	    startedAt: any;
+	    durationMs: number;
+	    resultStatus: string;
+	    errorCode?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ToolInvocationAudit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.conversationId = source["conversationId"];
+	        this.sourceId = source["sourceId"];
+	        this.capabilityName = source["capabilityName"];
+	        this.parameterSummary = source["parameterSummary"];
+	        this.authorizationDecision = source["authorizationDecision"];
+	        this.riskClass = source["riskClass"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.durationMs = source["durationMs"];
+	        this.resultStatus = source["resultStatus"];
+	        this.errorCode = source["errorCode"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AuthorizationGrant {
+	    id: string;
+	    sourceId: string;
+	    sourceType: string;
+	    capabilityName: string;
+	    parameterScope: string;
+	    decision: string;
+	    mode: string;
+	    fingerprint: string;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    expiresAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuthorizationGrant(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.sourceId = source["sourceId"];
+	        this.sourceType = source["sourceType"];
+	        this.capabilityName = source["capabilityName"];
+	        this.parameterScope = source["parameterScope"];
+	        this.decision = source["decision"];
+	        this.mode = source["mode"];
+	        this.fingerprint = source["fingerprint"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.expiresAt = this.convertValues(source["expiresAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MCPTool {
+	    name: string;
+	    description?: string;
+	    inputSchema?: Record<string, any>;
+	    riskClass: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPTool(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.inputSchema = source["inputSchema"];
+	        this.riskClass = source["riskClass"];
+	    }
+	}
+	export class MCPEnvironmentVariable {
+	    name: string;
+	    value?: string;
+	    secret: boolean;
+	    configured: boolean;
+	    credentialRef?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPEnvironmentVariable(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.secret = source["secret"];
+	        this.configured = source["configured"];
+	        this.credentialRef = source["credentialRef"];
+	    }
+	}
+	export class MCPServer {
+	    id: string;
+	    name: string;
+	    description?: string;
+	    command: string;
+	    args: string[];
+	    env: MCPEnvironmentVariable[];
+	    enabled: boolean;
+	    capabilityFingerprint: string;
+	    runtimeStatus: string;
+	    lastError?: string;
+	    // Go type: time
+	    lastStartedAt?: any;
+	    // Go type: time
+	    lastUsedAt?: any;
+	    idleTimeoutSeconds: number;
+	    requestTimeoutSeconds: number;
+	    tools?: MCPTool[];
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPServer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	        this.env = this.convertValues(source["env"], MCPEnvironmentVariable);
+	        this.enabled = source["enabled"];
+	        this.capabilityFingerprint = source["capabilityFingerprint"];
+	        this.runtimeStatus = source["runtimeStatus"];
+	        this.lastError = source["lastError"];
+	        this.lastStartedAt = this.convertValues(source["lastStartedAt"], null);
+	        this.lastUsedAt = this.convertValues(source["lastUsedAt"], null);
+	        this.idleTimeoutSeconds = source["idleTimeoutSeconds"];
+	        this.requestTimeoutSeconds = source["requestTimeoutSeconds"];
+	        this.tools = this.convertValues(source["tools"], MCPTool);
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Skill {
+	    id: string;
+	    name: string;
+	    description: string;
+	    version?: string;
+	    sourceType: string;
+	    sourcePath: string;
+	    installPath: string;
+	    contentHash: string;
+	    enabled: boolean;
+	    scriptExecutionEnabled: boolean;
+	    validationStatus: string;
+	    validationError?: string;
+	    // Go type: time
+	    installedAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Skill(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.version = source["version"];
+	        this.sourceType = source["sourceType"];
+	        this.sourcePath = source["sourcePath"];
+	        this.installPath = source["installPath"];
+	        this.contentHash = source["contentHash"];
+	        this.enabled = source["enabled"];
+	        this.scriptExecutionEnabled = source["scriptExecutionEnabled"];
+	        this.validationStatus = source["validationStatus"];
+	        this.validationError = source["validationError"];
+	        this.installedAt = this.convertValues(source["installedAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AgentExtensionSnapshot {
+	    skills: Skill[];
+	    mcpServers: MCPServer[];
+	    authorizations: AuthorizationGrant[];
+	    audits: ToolInvocationAudit[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentExtensionSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.skills = this.convertValues(source["skills"], Skill);
+	        this.mcpServers = this.convertValues(source["mcpServers"], MCPServer);
+	        this.authorizations = this.convertValues(source["authorizations"], AuthorizationGrant);
+	        this.audits = this.convertValues(source["audits"], ToolInvocationAudit);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	export class MCPServerInput {
+	    id?: string;
+	    name: string;
+	    description?: string;
+	    command: string;
+	    args: string[];
+	    env: MCPEnvironmentVariable[];
+	    enabled: boolean;
+	    idleTimeoutSeconds: number;
+	    requestTimeoutSeconds: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPServerInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	        this.env = this.convertValues(source["env"], MCPEnvironmentVariable);
+	        this.enabled = source["enabled"];
+	        this.idleTimeoutSeconds = source["idleTimeoutSeconds"];
+	        this.requestTimeoutSeconds = source["requestTimeoutSeconds"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class MCPToolCallInput {
+	    serverId: string;
+	    toolName: string;
+	    arguments: Record<string, any>;
+	    conversationId?: string;
+	    approved: boolean;
+	    remember: boolean;
+	    parameterScope?: string;
+	    invocationId?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPToolCallInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.toolName = source["toolName"];
+	        this.arguments = source["arguments"];
+	        this.conversationId = source["conversationId"];
+	        this.approved = source["approved"];
+	        this.remember = source["remember"];
+	        this.parameterScope = source["parameterScope"];
+	        this.invocationId = source["invocationId"];
+	    }
+	}
+	export class MCPToolCallResult {
+	    content?: any;
+	    isError: boolean;
+	    permissionRequired: boolean;
+	    riskClass: string;
+	    parameterSummary: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MCPToolCallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.content = source["content"];
+	        this.isError = source["isError"];
+	        this.permissionRequired = source["permissionRequired"];
+	        this.riskClass = source["riskClass"];
+	        this.parameterSummary = source["parameterSummary"];
+	    }
+	}
+	
+	export class SkillReference {
+	    path: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillReference(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	    }
+	}
+	export class SkillContent {
+	    skill: Skill;
+	    instructions: string;
+	    references: SkillReference[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillContent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.skill = this.convertValues(source["skill"], Skill);
+	        this.instructions = source["instructions"];
+	        this.references = this.convertValues(source["references"], SkillReference);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class SkillResource {
+	    skill: Skill;
+	    path: string;
+	    content: string;
+	    references: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillResource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.skill = this.convertValues(source["skill"], Skill);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.references = source["references"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace config {
 	
 	export class AIProviderConfig {
@@ -1780,6 +2266,38 @@ export namespace services {
 	        this.updatedAt = source["updatedAt"];
 	    }
 	}
+	export class EditorAiConversationPageDTO {
+	    items: EditorAiConversationDTO[];
+	    hasMore: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAiConversationPageDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], EditorAiConversationDTO);
+	        this.hasMore = source["hasMore"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class EditorAiConversationUpdateInput {
 	    title?: string;
 	    systemPrompt?: string;
@@ -1834,6 +2352,7 @@ export namespace services {
 	    createdAt: string;
 	    updatedAt: string;
 	    messages: EditorAiMessageDTO[];
+	    hasMoreMessages: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new EditorAiConversationWithMessagesDTO(source);
@@ -1850,6 +2369,7 @@ export namespace services {
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	        this.messages = this.convertValues(source["messages"], EditorAiMessageDTO);
+	        this.hasMoreMessages = source["hasMoreMessages"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

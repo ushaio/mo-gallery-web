@@ -27,6 +27,7 @@ import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { getErrorMessage } from '@/lib/auth-errors'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
@@ -360,8 +361,9 @@ export function StoragePage() {
     }
   }, [provider, statusFilter, search])
 
-  // 首次进入自动扫描
-  useEffect(() => {
+  // 首次进入自动扫描；菜单页常驻缓存后，切回本页不再重复扫描，
+  // 需要最新结果时使用工具栏的「扫描 / 刷新」按钮（切换存储源或筛选条件仍会自动重扫）
+  useCachedPageEffect(() => {
     void loadFiles()
   }, [loadFiles])
 
