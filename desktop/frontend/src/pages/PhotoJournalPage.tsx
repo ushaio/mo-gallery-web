@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAdmin, AdminLogsProvider } from '@/pages/admin-logs/layout'
@@ -214,7 +215,8 @@ export function PhotoJournalPage() {
 function PhotoJournalContent() {
   const { t } = useLanguage()
   const { token } = useAuth()
-  const { settings, isImmersiveMode } = useAdmin()
+  const { settings } = useAdmin()
+  const location = useLocation()
   const [photos, setPhotos] = useState<PhotoDto[]>([])
 
   const [activeSubTab, setActiveSubTab] = useState<'blog' | 'stories' | 'drafts'>('stories')
@@ -242,6 +244,19 @@ function PhotoJournalContent() {
   const [blogRefreshKey, setBlogRefreshKey] = useState(0)
   const [isStoriesEditing, setIsStoriesEditing] = useState(false)
   const [isBlogEditing, setIsBlogEditing] = useState(false)
+
+  // 沉浸模式由叙事/博客两个编辑器各自维护（互不影响），任一沉浸时隐藏页面级 chrome
+  const [isStoriesImmersive, setIsStoriesImmersive] = useState(false)
+  const [isBlogImmersive, setIsBlogImmersive] = useState(false)
+  const isImmersiveMode = isStoriesImmersive || isBlogImmersive
+
+  // 切到其他菜单页（离开 /photo-journal，编辑器不再显示）时退出沉浸模式
+  useEffect(() => {
+    if (location.pathname !== '/photo-journal') {
+      setIsStoriesImmersive(false)
+      setIsBlogImmersive(false)
+    }
+  }, [location.pathname])
 
   // 左栏列表折叠状态（叙事/博客共用，跨页面保留）
   const [listPaneCollapsed, setListPaneCollapsed] = useState(() => {
@@ -484,6 +499,9 @@ function PhotoJournalContent() {
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={toggleListPane}
             subTabNav={subTabNav}
+            active={activeSubTab === 'blog'}
+            isImmersiveMode={isBlogImmersive}
+            setIsImmersiveMode={setIsBlogImmersive}
           />
         </div>
         <div className={activeSubTab === 'stories' ? 'h-full' : 'hidden'}>
@@ -498,6 +516,9 @@ function PhotoJournalContent() {
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={toggleListPane}
             subTabNav={subTabNav}
+            active={activeSubTab === 'stories'}
+            isImmersiveMode={isStoriesImmersive}
+            setIsImmersiveMode={setIsStoriesImmersive}
           />
         </div>
         {activeSubTab === 'drafts' ? (

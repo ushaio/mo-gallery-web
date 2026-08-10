@@ -18,11 +18,11 @@ import { cn } from '@/lib/utils'
 import { NarrativeTipTapEditor } from './constants'
 import type { UploadProgressState } from './types'
 import { EditorShell } from '../shared/EditorShell'
-import { useImmersiveMode } from '../shared/useImmersiveMode'
 
 interface StoryEditorViewProps {
   token: string | null
   currentStory: StoryDto
+  editorRevision?: number
   pendingImages: PendingImage[]
   pendingCoverId: string | null
   saving: boolean
@@ -81,6 +81,7 @@ interface StoryEditorViewProps {
 export function StoryEditorView({
   token,
   currentStory,
+  editorRevision,
   pendingImages,
   pendingCoverId,
   saving,
@@ -144,8 +145,6 @@ export function StoryEditorView({
     () => hydrateStoryContentJsonImages(currentStory.contentJson, currentStory.photos || [], settingsCdnDomain),
     [currentStory.contentJson, currentStory.photos, settingsCdnDomain],
   )
-
-  useImmersiveMode(isImmersiveMode, () => setIsImmersiveMode(false))
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -231,7 +230,7 @@ export function StoryEditorView({
           <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
             <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
               <NarrativeTipTapEditor
-                key={currentStory.id}
+                contentVersion={`${currentStory.id}-${editorRevision ?? 0}`}
                 ref={editorRef}
                 value={hydratedEditorContent}
                 jsonValue={hydratedEditorJsonContent}

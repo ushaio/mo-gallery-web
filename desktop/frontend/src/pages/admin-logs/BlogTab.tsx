@@ -23,6 +23,7 @@ import { BlogEditorView, type BlogFormData } from './BlogEditorView'
 import { EditorEmptyState } from './shared/EditorEmptyState'
 import { CollapsibleListPane } from './shared/CollapsibleListPane'
 import { useDirtyLeaveGuard, useSaveShortcut } from './shared/useDirtyLeaveGuard'
+import { useImmersiveMode } from './shared/useImmersiveMode'
 import { cn } from '@/lib/utils'
 import { BookText } from 'lucide-react'
 
@@ -40,6 +41,10 @@ interface BlogTabProps {
   listPaneCollapsed?: boolean
   onToggleListPane?: () => void
   subTabNav?: ReactNode
+  /** 当前子页签是否可见（沉浸模式仅在编辑器可见时保持） */
+  active?: boolean
+  isImmersiveMode: boolean
+  setIsImmersiveMode: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 interface DesktopBlogApp extends DesktopBlogSaveApi {
@@ -51,7 +56,7 @@ function getDesktopBlogApp() {
   return (window as unknown as { go: { main: { App: DesktopBlogApp } } }).go.main.App
 }
 
-export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromDraft, onDraftConsumed, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav }: BlogTabProps) {
+export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromDraft, onDraftConsumed, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: BlogTabProps) {
   const { token } = useAuth()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -100,12 +105,13 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
     onEditingChange?.(editing)
   }, [editing, onEditingChange])
 
-  // 沉浸模式状态（博客编辑器本地管理，退出编辑时复位）
-  const [isImmersiveMode, setIsImmersiveMode] = useState(false)
+  // 沉浸全屏/Esc 放在稳定的页签层持有：切换文章时编辑器不再重挂载
+  // （内容经 contentVersion 原地重置），若放在编辑器内会反复退/进全屏，表现为页面刷新。
+  useImmersiveMode(isImmersiveMode, () => setIsImmersiveMode(false))
 
   useEffect(() => {
-    if (!currentBlog) setIsImmersiveMode(false)
-  }, [currentBlog, setIsImmersiveMode])
+    if (!currentBlog || !active) setIsImmersiveMode(false)
+  }, [active, currentBlog, setIsImmersiveMode])
 
   // 离开保护 + Ctrl+S
   useDirtyLeaveGuard(isDirty && editing, editing)
@@ -525,9 +531,9 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
       <main className="min-w-0 flex-1 overflow-hidden">
         {currentBlog ? (
           <BlogEditorView
-            key={`${blogDocumentId}-${editorRevision}`}
             blog={currentBlog}
             onChange={handleBlogChange}
+            editorRevision={editorRevision}
             saving={saving}
             draftSaved={draftSaved}
             lastSavedAt={lastSavedAt}

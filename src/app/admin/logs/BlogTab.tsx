@@ -713,7 +713,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               <div className="flex-1 relative border border-border bg-card/30 overflow-visible">
                 {currentBlog && (
                   <NarrativeTipTapEditor
-                    key={blogDocumentId}
+                    contentVersion={blogDocumentId}
                     ref={editorRef}
                     value={currentBlog.content}
                     jsonValue={currentBlog.contentJson ?? null}

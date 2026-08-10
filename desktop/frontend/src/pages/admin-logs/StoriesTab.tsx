@@ -23,6 +23,7 @@ import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStory
 import { normalizeCompressionMode } from '@/lib/image-compress'
 import { cn } from '@/lib/utils'
 import { useAdmin } from './layout'
+import { useImmersiveMode } from './shared/useImmersiveMode'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
   STORY_UPLOAD_SETTINGS_KEY,
@@ -68,10 +69,14 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   stripGps: false,
 }
 
-export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav }: StoriesTabProps) {
+export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: StoriesTabProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { settings, categories, isImmersiveMode, setIsImmersiveMode } = useAdmin()
+  const { settings, categories } = useAdmin()
+
+  // 沉浸全屏/Esc 放在稳定的页签层持有：切换文章时编辑器不再重挂载
+  // （内容经 contentVersion 原地重置），若放在编辑器内会反复退/进全屏，表现为页面刷新。
+  useImmersiveMode(isImmersiveMode, () => setIsImmersiveMode(false))
 
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -507,10 +512,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [onEditingChange, storyEditMode])
 
   useEffect(() => {
-    if (storyEditMode !== 'editor') {
+    if (storyEditMode !== 'editor' || !active) {
       setIsImmersiveMode(false)
     }
-  }, [setIsImmersiveMode, storyEditMode])
+  }, [active, setIsImmersiveMode, storyEditMode])
 
   useEffect(() => () => setIsImmersiveMode(false), [setIsImmersiveMode])
 
@@ -616,9 +621,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       <main className="min-w-0 flex-1 overflow-hidden">
         {storyEditMode === 'editor' && currentStory ? (
           <StoryEditorView
-          key={`${currentStory.id}-${editorRevision}`}
           token={token}
           currentStory={currentStory}
+          editorRevision={editorRevision}
           pendingImages={pendingImages}
           pendingCoverId={pendingCoverId}
           saving={saving}

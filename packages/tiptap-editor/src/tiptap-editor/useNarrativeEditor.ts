@@ -61,6 +61,9 @@ interface UseNarrativeEditorOptions {
   t: (key: string) => string
   getAdminStory: NarrativeEditorRuntime['getAdminStory']
   isAiTaskLocked: boolean
+  /** 文档内容版本号：宿主在「整篇内容替换」（切换文章 / 草稿恢复）时递增，
+   *  驱动编辑器原地重置内容，避免通过 key 重挂载造成占位闪烁（沉浸模式下表现像页面刷新） */
+  contentVersion?: string | number
 }
 
 export function useNarrativeEditor({
@@ -74,6 +77,7 @@ export function useNarrativeEditor({
   t,
   getAdminStory,
   isAiTaskLocked,
+  contentVersion,
 }: UseNarrativeEditorOptions) {
   const currentValueRef = useRef(value)
   const onPasteFilesRef = useRef(onPasteFiles)
@@ -101,6 +105,9 @@ export function useNarrativeEditor({
   useEffect(() => {
     isAiTaskLockedRef.current = isAiTaskLocked
   }, [isAiTaskLocked])
+
+  // 记录最近一次已应用的内容版本，仅在版本号变化时原地替换文档
+  const lastContentVersionRef = useRef<string | number | undefined>(contentVersion)
 
   const processedContent = useCallback(() => {
     if (jsonValue) return jsonValue
@@ -291,6 +298,25 @@ export function useNarrativeEditor({
     // 会让宿主在「未修改内容」时也收到 onChange/onJsonChange，从而误触发自动保存。
     editor?.setEditable(!isAiTaskLocked, false)
   }, [editor, isAiTaskLocked])
+
+  useEffect(() => {
+    if (!editor) return
+    if (lastContentVersionRef.current === contentVersion) return
+    lastContentVersionRef.current = contentVersion
+
+    const nextContent = processedContent()
+    try {
+      // emitUpdate:false —— 重置是「切换到另一篇文档」而非用户编辑，
+      // 不向上游广播，避免宿主误判当前文档已被修改。
+      editor.commands.setContent(nextContent || '', { emitUpdate: false })
+    } catch (error) {
+      console.error('Failed to reset editor content:', error)
+    }
+    currentValueRef.current = editor.getHTML()
+    // 新文档从顶部开始
+    editor.commands.setTextSelection(1)
+    editor.commands.scrollIntoView()
+  }, [contentVersion, editor, processedContent])
 
 
   return {

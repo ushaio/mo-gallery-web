@@ -193,7 +193,7 @@ export function StoryEditorView({
 
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
             <NarrativeTipTapEditor
-              key={currentStory.id}
+              contentVersion={currentStory.id}
               ref={editorRef}
               value={hydratedEditorContent}
               jsonValue={hydratedEditorJsonContent}

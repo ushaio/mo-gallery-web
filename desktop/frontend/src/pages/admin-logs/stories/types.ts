@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type { StoryDto } from '@/lib/api/types'
 import type { StoryEditorDraftData } from '@/lib/client-db'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
@@ -17,6 +17,10 @@ export interface StoriesTabProps {
   listPaneCollapsed?: boolean
   onToggleListPane?: () => void
   subTabNav?: ReactNode
+  /** 当前子页签是否可见（沉浸模式仅在编辑器可见时保持） */
+  active?: boolean
+  isImmersiveMode: boolean
+  setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
 }
 
 export interface StorySnapshot {

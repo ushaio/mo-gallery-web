@@ -109,6 +109,8 @@ export interface NarrativeTipTapEditorProps {
   runtime: NarrativeEditorRuntime
   documentId?: string
   documentKind?: 'story' | 'blog'
+  /** 文档内容版本号：变化时原地重置编辑器内容（见 useNarrativeEditor） */
+  contentVersion?: string | number
   onAiTaskLockChange?: (locked: boolean) => void
   aiOptions?: {
     enabled: boolean
@@ -135,6 +137,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     runtime,
     documentId,
     documentKind,
+    contentVersion,
     onAiTaskLockChange,
     aiOptions,
   }, ref) => {
@@ -202,6 +205,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       t,
       getAdminStory: runtime.getAdminStory,
       isAiTaskLocked,
+      contentVersion,
     })
 
     const headingOptions = useMemo(() => [

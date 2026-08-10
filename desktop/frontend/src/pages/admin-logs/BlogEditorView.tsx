@@ -11,7 +11,6 @@ import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
 import { EditorShell } from './shared/EditorShell'
 import { BlogPhotoPanel, BLOG_PHOTO_PANEL_COLLAPSED_KEY } from './shared/BlogPhotoPanel'
 import { BlogPreviewModal } from './shared/BlogPreviewModal'
-import { useImmersiveMode } from './shared/useImmersiveMode'
 
 export interface BlogFormData {
   id?: string
@@ -26,6 +25,7 @@ export interface BlogFormData {
 interface BlogEditorViewProps {
   blog: BlogFormData
   onChange: (patch: Partial<BlogFormData>) => void
+  editorRevision?: number
   saving: boolean
   draftSaved: boolean
   lastSavedAt: number | null
@@ -51,6 +51,7 @@ interface BlogEditorViewProps {
 export function BlogEditorView({
   blog,
   onChange,
+  editorRevision,
   saving,
   draftSaved,
   lastSavedAt,
@@ -78,8 +79,6 @@ export function BlogEditorView({
       return false
     }
   })
-
-  useImmersiveMode(isImmersiveMode, () => setIsImmersiveMode(false))
 
   const togglePhotoPanelCollapse = () => {
     setIsPhotoPanelCollapsed((prev) => {
@@ -169,7 +168,7 @@ export function BlogEditorView({
         <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]">
             <NarrativeTipTapEditor
-              key={documentId}
+              contentVersion={`${documentId}-${editorRevision ?? 0}`}
               ref={editorRef}
               value={blog.content}
               jsonValue={blog.contentJson ?? null}
