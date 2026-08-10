@@ -69,7 +69,7 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   stripGps: false,
 }
 
-export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: StoriesTabProps) {
+export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: StoriesTabProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { settings, categories } = useAdmin()
@@ -506,10 +506,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       initialLoadRef.current = true
     }
   }, [loadStories])
-
-  useEffect(() => {
-    onEditingChange?.(storyEditMode === 'editor')
-  }, [onEditingChange, storyEditMode])
 
   useEffect(() => {
     if (storyEditMode !== 'editor' || !active) {

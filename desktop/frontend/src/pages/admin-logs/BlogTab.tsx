@@ -37,7 +37,6 @@ interface BlogTabProps {
   refreshKey?: number
   editBlogFromDraft?: BlogDraftData | null
   onDraftConsumed?: () => void
-  onEditingChange?: (editing: boolean) => void
   listPaneCollapsed?: boolean
   onToggleListPane?: () => void
   subTabNav?: ReactNode
@@ -56,7 +55,7 @@ function getDesktopBlogApp() {
   return (window as unknown as { go: { main: { App: DesktopBlogApp } } }).go.main.App
 }
 
-export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromDraft, onDraftConsumed, onEditingChange, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: BlogTabProps) {
+export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromDraft, onDraftConsumed, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: BlogTabProps) {
   const { token } = useAuth()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,11 +98,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
 
   const editing = currentBlog !== null
-
-  // 通知父级编辑状态（用于内容区 padding 切换）
-  useEffect(() => {
-    onEditingChange?.(editing)
-  }, [editing, onEditingChange])
 
   // 沉浸全屏/Esc 放在稳定的页签层持有：切换文章时编辑器不再重挂载
   // （内容经 contentVersion 原地重置），若放在编辑器内会反复退/进全屏，表现为页面刷新。

@@ -13,7 +13,6 @@ export interface StoriesTabProps {
   editFromDraft?: StoryEditorDraftData | null
   onDraftConsumed?: () => void
   refreshKey?: number
-  onEditingChange?: (isEditing: boolean) => void
   listPaneCollapsed?: boolean
   onToggleListPane?: () => void
   subTabNav?: ReactNode

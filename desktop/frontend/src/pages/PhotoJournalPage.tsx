@@ -242,8 +242,6 @@ function PhotoJournalContent() {
   const lastClickRef = useRef<{ tab: string; time: number }>({ tab: '', time: 0 })
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0)
   const [blogRefreshKey, setBlogRefreshKey] = useState(0)
-  const [isStoriesEditing, setIsStoriesEditing] = useState(false)
-  const [isBlogEditing, setIsBlogEditing] = useState(false)
 
   // 沉浸模式由叙事/博客两个编辑器各自维护（互不影响），任一沉浸时隐藏页面级 chrome
   const [isStoriesImmersive, setIsStoriesImmersive] = useState(false)
@@ -460,10 +458,9 @@ function PhotoJournalContent() {
   }
 
   // 顶栏始终显示「照片日志」标题（包括编辑态），仅沉浸全屏时隐藏。
-  // 内容区在编辑态仍用 pt-0，让编辑器紧贴顶栏下方。
-  const isEditing = isStoriesEditing || isBlogEditing
+  // 内容区内边距恒定（不随编辑态切换），确保打开/关闭文章时左栏列表不产生位移。
   const chromeVisible = !isImmersiveMode
-  const contentPadding = isEditing || isImmersiveMode ? 'pt-0' : 'px-6 pb-6 pt-3'
+  const contentPadding = 'pt-0'
 
   // 左栏面板头内的子页签导航（叙事/博客/草稿）
   const subTabNav = (
@@ -495,7 +492,6 @@ function PhotoJournalContent() {
             refreshKey={blogRefreshKey}
             editBlogFromDraft={editBlogFromDraft}
             onDraftConsumed={() => setEditBlogFromDraft(null)}
-            onEditingChange={setIsBlogEditing}
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={toggleListPane}
             subTabNav={subTabNav}
@@ -512,7 +508,6 @@ function PhotoJournalContent() {
             editFromDraft={editFromDraft}
             onDraftConsumed={() => setEditFromDraft(null)}
             refreshKey={storiesRefreshKey}
-            onEditingChange={setIsStoriesEditing}
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={toggleListPane}
             subTabNav={subTabNav}
