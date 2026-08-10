@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../app/ui.dart';
+
 /// Shared network image with disk + memory cache.
 ///
 /// [memCacheWidth] / [memCacheHeight] limit decoded bitmap size so gallery
@@ -64,13 +66,10 @@ class AppNetworkImage extends StatelessWidget {
       return ColoredBox(
         color: placeholderColor,
         child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: progressColor,
-            ),
+          child: AppSpinner(
+            size: 18,
+            stroke: 2,
+            color: progressColor,
           ),
         ),
       );

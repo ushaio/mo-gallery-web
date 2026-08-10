@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/auth/login_page.dart';
 import '../features/gallery/gallery_page.dart';
+import '../features/gallery/photo_viewer_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/shell/home_shell.dart';
 import '../features/stories/story_pages.dart';
@@ -23,12 +24,23 @@ CustomTransitionPage<void> _fadePage({
   return CustomTransitionPage<void>(
     key: key,
     child: child,
-    transitionDuration: const Duration(milliseconds: 180),
-    reverseTransitionDuration: const Duration(milliseconds: 140),
+    transitionDuration: const Duration(milliseconds: 250),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
       return FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-        child: child,
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.02),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
       );
     },
   );
@@ -103,9 +115,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                       return CustomTransitionPage<void>(
                         key: state.pageKey,
                         opaque: true,
-                        transitionDuration: const Duration(milliseconds: 220),
+                        transitionDuration: const Duration(milliseconds: 250),
                         reverseTransitionDuration:
-                            const Duration(milliseconds: 180),
+                            const Duration(milliseconds: 200),
                         transitionsBuilder: (
                           context,
                           animation,

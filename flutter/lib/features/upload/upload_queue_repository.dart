@@ -28,7 +28,7 @@ class UploadQueueRepository {
       'upload_tasks',
       where: 'environment_id = ?',
       whereArgs: [environmentId],
-      orderBy: 'sort_order ASC, created_at ASC',
+      orderBy: 'sort_order DESC, created_at DESC',
     );
     return rows.map(UploadTask.fromMap).toList();
   }
@@ -39,7 +39,7 @@ class UploadQueueRepository {
       'upload_tasks',
       where: 'environment_id = ? AND status = ?',
       whereArgs: [environmentId, status.name],
-      orderBy: 'sort_order ASC, created_at ASC',
+      orderBy: 'sort_order DESC, created_at DESC',
     );
     return rows.map(UploadTask.fromMap).toList();
   }
@@ -116,7 +116,7 @@ class UploadQueueRepository {
       final task = UploadTask.fromMap(rows.first);
       final now = DateTime.now().millisecondsSinceEpoch;
       final claimed = task.copyWith(
-        status: UploadTaskStatus.uploading,
+        status: UploadTaskStatus.checking,
         progress: task.progress.clamp(0, 99),
         updatedAt: now,
         clearError: true,
@@ -162,8 +162,15 @@ class UploadQueueRepository {
     final db = await _db.database;
     final deleted = await db.delete(
       'upload_tasks',
-      where: 'id = ? AND environment_id = ? AND status != ?',
-      whereArgs: [id, environmentId, UploadTaskStatus.uploading.name],
+      where:
+          'id = ? AND environment_id = ? AND status NOT IN (?, ?, ?)',
+      whereArgs: [
+        id,
+        environmentId,
+        UploadTaskStatus.checking.name,
+        UploadTaskStatus.compressing.name,
+        UploadTaskStatus.uploading.name,
+      ],
     );
     if (deleted > 0) await _emit();
     return deleted > 0;
@@ -193,8 +200,13 @@ class UploadQueueRepository {
         'status': UploadTaskStatus.pending.name,
         'updated_at': now,
       },
-      where: 'environment_id = ? AND status = ?',
-      whereArgs: [environmentId, UploadTaskStatus.uploading.name],
+      where: 'environment_id = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        environmentId,
+        UploadTaskStatus.checking.name,
+        UploadTaskStatus.compressing.name,
+        UploadTaskStatus.uploading.name,
+      ],
     );
     await _emit();
   }
@@ -212,6 +224,24 @@ class UploadQueueRepository {
       },
       where: 'environment_id = ? AND status = ?',
       whereArgs: [environmentId, UploadTaskStatus.error.name],
+    );
+    await _emit();
+  }
+
+  /// Re-queue a single failed task so the worker picks it up again.
+  Future<void> retryTask(String taskId) async {
+    final db = await _db.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'upload_tasks',
+      {
+        'status': UploadTaskStatus.pending.name,
+        'error_message': null,
+        'progress': 0,
+        'updated_at': now,
+      },
+      where: 'id = ? AND environment_id = ? AND status = ?',
+      whereArgs: [taskId, environmentId, UploadTaskStatus.error.name],
     );
     await _emit();
   }

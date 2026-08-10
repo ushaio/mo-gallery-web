@@ -31,6 +31,53 @@ void main() {
     expect(result['abc']?.title, 'Existing');
   });
 
+  test('uploadPhoto sends client EXIF without server compression mode', () async {
+    final file = File(
+      '${Directory.systemTemp.path}/mo_gallery_upload_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await file.writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
+
+    final dio = Dio(BaseOptions(baseUrl: 'https://example.com/api'));
+    FormData? captured;
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          captured = options.data as FormData;
+          handler.next(options);
+        },
+      ),
+    );
+    final adapter = DioAdapter(dio: dio);
+    adapter.onPost(
+      '/admin/photos',
+      (server) => server.reply(200, {
+        'success': true,
+        'data': {'id': 'p1', 'title': 'photo'},
+      }),
+      data: Matchers.any,
+    );
+
+    final api = PhotosApi(ApiClient(baseUrl: 'https://example.com', dio: dio));
+    try {
+      await api.uploadPhoto(
+        filePath: file.path,
+        title: 'photo',
+        fileHash: 'hash',
+        exifJson: '{"cameraMake":"MO"}',
+        compressEnabled: false,
+      );
+      final fields = Map<String, String>.fromEntries(captured!.fields);
+      expect(fields['exif_json'], '{"cameraMake":"MO"}');
+      expect(fields.containsKey('compression_mode'), isFalse);
+      expect(captured!.files.single.value.filename, endsWith('.jpg'));
+      expect(captured!.files.single.value.contentType.toString(), 'image/jpeg');
+    } finally {
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+  });
+
   test('uploadPhoto maps 409 duplicate', () async {
     final file = File(
       '${Directory.systemTemp.path}/mo_gallery_upload_${DateTime.now().microsecondsSinceEpoch}.jpg',

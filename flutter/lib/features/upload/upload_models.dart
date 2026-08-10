@@ -7,6 +7,8 @@ abstract final class UploadPhotoType {
 
 enum UploadTaskStatus {
   pending,
+  checking,
+  compressing,
   uploading,
   done,
   error,

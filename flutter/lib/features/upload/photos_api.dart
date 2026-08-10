@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
 
 import '../../core/api/api_client.dart';
 import '../../core/api/api_exception.dart';
@@ -155,6 +156,25 @@ class PhotosApi {
 
   final ApiClient client;
 
+  static DioMediaType? _contentTypeForPath(String filePath) {
+    switch (p.extension(filePath).toLowerCase()) {
+      case '.jpg':
+      case '.jpeg':
+        return DioMediaType('image', 'jpeg');
+      case '.png':
+        return DioMediaType('image', 'png');
+      case '.webp':
+        return DioMediaType('image', 'webp');
+      case '.avif':
+        return DioMediaType('image', 'avif');
+      case '.tif':
+      case '.tiff':
+        return DioMediaType('image', 'tiff');
+      default:
+        return null;
+    }
+  }
+
   Future<Map<String, DuplicateInfo>> checkDuplicates(
       List<String> fileHashes) async {
     if (fileHashes.isEmpty) return {};
@@ -190,6 +210,7 @@ class PhotosApi {
     String? storageSourceId,
     String? storageProvider,
     String? storagePath,
+    String? exifJson,
     bool storagePathFull = false,
     bool showFlag = true,
     bool compressEnabled = false,
@@ -201,7 +222,11 @@ class PhotosApi {
     form.files.add(
       MapEntry(
         'file',
-        await MultipartFile.fromFile(filePath, filename: title),
+        await MultipartFile.fromFile(
+          filePath,
+          filename: p.basename(filePath),
+          contentType: _contentTypeForPath(filePath),
+        ),
       ),
     );
     form.fields.addAll([
@@ -223,6 +248,9 @@ class PhotosApi {
     }
     if (storagePath != null && storagePath.isNotEmpty) {
       form.fields.add(MapEntry('storage_path', storagePath));
+    }
+    if (exifJson != null && exifJson.isNotEmpty) {
+      form.fields.add(MapEntry('exif_json', exifJson));
     }
     if (storagePathFull) {
       form.fields.add(const MapEntry('storage_path_full', 'true'));

@@ -42,7 +42,7 @@ void main() {
 
     final claimed = await repo.claimNextPending();
     expect(claimed, isNotNull);
-    expect(claimed!.status, UploadTaskStatus.uploading);
+    expect(claimed!.status, UploadTaskStatus.checking);
     expect(claimed.fileName, 'a.jpg');
     expect(claimed.sortOrder, lessThan(2));
 
@@ -53,7 +53,7 @@ void main() {
 
     final all = await repo.listAll();
     expect(all.length, 2);
-    expect(all.map((task) => task.id), ['t1', 't2']);
+    expect(all.map((task) => task.id), ['t2', 't1']);
     expect(all.firstWhere((t) => t.id == 't1').status, UploadTaskStatus.done);
 
     final next = await repo.claimNextPending();

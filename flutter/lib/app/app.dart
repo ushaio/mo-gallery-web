@@ -14,6 +14,8 @@ class MoGalleryApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final lang = ref.watch(languageProvider);
+    final scheme = buildLightTheme().colorScheme; // ensure background
+
     return MaterialApp.router(
       title: AppStrings.t('app.title', lang: lang),
       theme: buildLightTheme(),
@@ -22,8 +24,15 @@ class MoGalleryApp extends ConsumerWidget {
       locale: Locale(lang),
       supportedLocales: const [Locale('zh'), Locale('en')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      scrollBehavior: const AppScrollBehavior(),
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        return ColoredBox(
+          color: scheme.surface,
+          child: child!,
+        );
+      },
     );
   }
 }

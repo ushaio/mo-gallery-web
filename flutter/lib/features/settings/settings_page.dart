@@ -4,9 +4,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme.dart';
+import '../../app/ui.dart';
 import '../../core/auth/session.dart';
 import '../../core/error/error_messages.dart';
 import '../../l10n/strings.dart';
+
+String _serverHost(String? serverUrl) {
+  if (serverUrl == null || serverUrl.isEmpty) return '—';
+  final host = Uri.tryParse(serverUrl)?.host;
+  return host?.isNotEmpty == true ? host! : serverUrl;
+}
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -15,36 +22,29 @@ class SettingsPage extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (context) => const _EnvironmentSwitcherSheet(),
     );
   }
 
   Future<void> _logout(BuildContext context, WidgetRef ref, String lang) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          AppStrings.t('settings.logoutConfirmTitle', lang: lang),
-        ),
-        content: Text(
-          AppStrings.t('settings.logoutConfirmBody', lang: lang),
-        ),
+      builder: (dialogContext) => AppDialog(
+        title: AppStrings.t('settings.logoutConfirmTitle', lang: lang),
+        icon: Icons.logout,
+        content: Text(AppStrings.t('settings.logoutConfirmBody', lang: lang)),
         actions: [
-          TextButton(
+          AppButton(
+            tone: AppButtonTone.secondary,
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(AppStrings.t('common.cancel', lang: lang)),
+            label: AppStrings.t('common.cancel', lang: lang),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
+          AppButton(
+            tone: AppButtonTone.danger,
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(AppStrings.t('settings.logout', lang: lang)),
+            label: AppStrings.t('settings.logout', lang: lang),
           ),
         ],
       ),
@@ -60,142 +60,225 @@ class SettingsPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Scaffold(
+    return AppScreen(
       body: SafeArea(
         bottom: false,
         child: ListView(
           padding: const EdgeInsets.only(bottom: AppChrome.bottomInset),
           children: [
-            // Identity plate
-            Container(
-              width: double.infinity,
-              color: scheme.surfaceContainerLow,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    AppStrings.t('nav.settings', lang: lang).toUpperCase(),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.primary,
-                      letterSpacing: 2.4,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    session?.username ?? '—',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.8,
-                      height: 1.05,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    session?.displayName ??
-                        AppStrings.t('settings.environment', lang: lang),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.tonalIcon(
-                          onPressed: () =>
-                              _showEnvironmentSwitcher(context, ref),
-                          icon: const Icon(Icons.hub_outlined, size: 18),
-                          label: Text(
-                            AppStrings.t('settings.environment', lang: lang),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: session == null
-                            ? null
-                            : () => _logout(context, ref, lang),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: scheme.error,
-                          side: BorderSide(
-                            color: scheme.error.withValues(alpha: 0.45),
-                          ),
-                          minimumSize: const Size(0, 48),
-                        ),
-                        icon: const Icon(Icons.logout, size: 18),
-                        label: Text(
-                          AppStrings.t('settings.logout', lang: lang),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // Spec sheet rows
-            _SpecRow(
-              label: AppStrings.t('settings.server', lang: lang),
-              value: session?.serverUrl ?? '—',
-            ),
-            Divider(
-              height: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-            _SpecRow(
-              label: AppStrings.t('settings.account', lang: lang),
-              value: session?.username ?? '—',
-            ),
-            Divider(
-              height: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-            _SpecRow(
-              label: AppStrings.t('settings.environment', lang: lang),
-              value: session?.displayName ?? '—',
-              trailing: const Icon(Icons.chevron_right, size: 18),
-              onTap: () => _showEnvironmentSwitcher(context, ref),
-            ),
-            const SizedBox(height: 20),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                AppStrings.t('settings.preferenceSection', lang: lang)
-                    .toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  letterSpacing: 1.4,
-                  fontWeight: FontWeight.w800,
-                  color: scheme.onSurfaceVariant,
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: AppPageHeader(
+                eyebrow: 'MO GALLERY / REGISTRY',
+                title: AppStrings.t('nav.settings', lang: lang),
+                trailing: AppCountStamp(
+                  value: lang.toUpperCase(),
+                  label: AppStrings.t('settings.language', lang: lang),
+                  icon: Icons.tune_rounded,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            // Identity card
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SegmentedButton<String>(
-                segments: [
-                  ButtonSegment(
-                    value: 'zh',
-                    label: Text(AppStrings.t('settings.lang.zh', lang: lang)),
-                  ),
-                  ButtonSegment(
-                    value: 'en',
-                    label: Text(AppStrings.t('settings.lang.en', lang: lang)),
-                  ),
-                ],
-                selected: {lang},
-                showSelectedIcon: false,
-                onSelectionChanged: (values) {
-                  ref.read(languageProvider.notifier).state = values.first;
-                },
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 112),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: scheme.inverseSurface,
+                  borderRadius: BorderRadius.circular(AppRadius.large),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 58,
+                      height: 58,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: scheme.tertiary,
+                        borderRadius: BorderRadius.circular(AppRadius.large),
+                      ),
+                      child: Text(
+                        (session?.username.isNotEmpty == true
+                                ? session!.username
+                                : '?')
+                            .characters
+                            .first
+                            .toUpperCase(),
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: scheme.onInverseSurface,
+                          fontFamily: 'serif',
+                          fontSize: 25,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            session?.displayName ?? '—',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: scheme.onInverseSurface,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            session?.serverUrl ?? '—',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onInverseSurface
+                                  .withValues(alpha: 0.7),
+                              fontSize: 10,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Row(
+                            children: [
+                              const DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: AppColors.success,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: SizedBox(width: 7, height: 7),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                AppStrings.t('settings.connected', lang: lang),
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: scheme.onInverseSurface
+                                      .withValues(alpha: 0.8),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: AppCard(
+                tone: AppCardTone.accent,
+                outlined: true,
+                radius: 14,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                onTap: () => _showEnvironmentSwitcher(context, ref),
+                semanticLabel: AppStrings.t('settings.environment', lang: lang),
+                child: Row(
+                  children: [
+                    Icon(Icons.hub_outlined, size: 18, color: scheme.tertiary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        AppStrings.t('settings.environment', lang: lang),
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.onTertiaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Flexible(
+                      child: Text(
+                        session?.displayName ?? '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.onTertiaryContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: scheme.onTertiaryContainer,
+                    ),
+                  ],
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  _SettingRow(
+                    icon: Icons.dns_outlined,
+                    label: AppStrings.t('settings.server', lang: lang),
+                    value: _serverHost(session?.serverUrl),
+                  ),
+                  const AppDivider(),
+                  _SettingRow(
+                    icon: Icons.person_outline,
+                    label: AppStrings.t('settings.account', lang: lang),
+                    value: session?.username ?? '—',
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: SizedBox(
+                height: 62,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        AppStrings.t('settings.language', lang: lang),
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 220,
+                      child: _LanguageControl(
+                        language: lang,
+                        onChanged: (value) {
+                          ref.read(languageProvider.notifier).state = value;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Sign out
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: AppButton(
+                onPressed:
+                    session == null ? null : () => _logout(context, ref, lang),
+                tone: AppButtonTone.danger,
+                outlined: true,
+                expand: true,
+                icon: Icons.logout,
+                label: AppStrings.t('settings.logout', lang: lang),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Text(
                 AppStrings.t('settings.logoutDescription', lang: lang),
+                textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                   height: 1.4,
@@ -209,57 +292,131 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-class _SpecRow extends StatelessWidget {
-  const _SpecRow({
-    required this.label,
-    required this.value,
-    this.trailing,
-    this.onTap,
+class _LanguageControl extends StatelessWidget {
+  const _LanguageControl({
+    required this.language,
+    required this.onChanged,
   });
 
+  final String language;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final labels = <(String, String)>[
+      ('zh', AppStrings.t('settings.lang.zh', lang: language)),
+      ('en', AppStrings.t('settings.lang.en', lang: language)),
+    ];
+
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          for (final item in labels)
+            Expanded(
+              child: AppPressable(
+                onTap: () => onChanged(item.$1),
+                semanticLabel: item.$2,
+                scale: 0.96,
+                child: AnimatedContainer(
+                  duration: AppMotion.medium,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: item.$1 == language
+                        ? scheme.surfaceContainerLow
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(7),
+                    border: item.$1 == language
+                        ? Border.all(color: scheme.outlineVariant)
+                        : null,
+                  ),
+                  child: Text(
+                    item.$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: item.$1 == language
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                          fontWeight: item.$1 == language
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingRow extends StatelessWidget {
+  const _SettingRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
   final String label;
   final String value;
-  final Widget? trailing;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 88,
-              child: Text(
-                label.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  letterSpacing: 0.8,
-                  fontWeight: FontWeight.w800,
-                ),
+    final content = Container(
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(AppRadius.small),
+            ),
+            child: Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            Expanded(
-              child: Text(
-                value,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
-            if (trailing != null)
-              IconTheme(
-                data: IconThemeData(color: scheme.onSurfaceVariant),
-                child: trailing!,
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
+    );
+
+    return Semantics(
+      container: true,
+      label: '$label, $value',
+      child: content,
     );
   }
 }
@@ -307,7 +464,7 @@ class _EnvironmentSwitcherSheetState
 
   Future<void> _addEnvironment() async {
     if (_switchingId != null) return;
-    final profile = await showDialog<_EnvironmentDraft>(
+    final profile = await showAppDialog<_EnvironmentDraft>(
       context: context,
       builder: (context) => const _AddEnvironmentDialog(),
     );
@@ -346,28 +503,25 @@ class _EnvironmentSwitcherSheetState
   Future<void> _deleteEnvironment(Session target) async {
     if (_switchingId != null) return;
     final lang = ref.read(languageProvider);
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          AppStrings.t('settings.environmentDeleteTitle', lang: lang),
-        ),
+      builder: (dialogContext) => AppDialog(
+        title: AppStrings.t('settings.environmentDeleteTitle', lang: lang),
+        icon: Icons.delete_forever_outlined,
         content: Text(
           '${target.displayName}\n\n'
           '${AppStrings.t('settings.environmentDeleteBody', lang: lang)}',
         ),
         actions: [
-          TextButton(
+          AppButton(
+            tone: AppButtonTone.secondary,
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(AppStrings.t('common.cancel', lang: lang)),
+            label: AppStrings.t('common.cancel', lang: lang),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
+          AppButton(
+            tone: AppButtonTone.danger,
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(AppStrings.t('common.delete', lang: lang)),
+            label: AppStrings.t('common.delete', lang: lang),
           ),
         ],
       ),
@@ -429,24 +583,20 @@ class _EnvironmentSwitcherSheetState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                AppStrings.t('settings.environmentTitle', lang: lang),
-                style: theme.textTheme.titleLarge,
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                AppStrings.t('settings.environmentDescription', lang: lang),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  AppStrings.t('settings.environmentTitle', lang: lang),
+                  style: theme.textTheme.titleLarge,
                 ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: AppSpacing.md),
-                Text(
-                  _error!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.error,
-                  ),
+                AppNotice(
+                  message: _error!,
+                  icon: Icons.error_outline,
+                  isError: true,
+                  onDismiss: () => setState(() => _error = null),
                 ),
               ],
               const SizedBox(height: AppSpacing.md),
@@ -455,7 +605,7 @@ class _EnvironmentSwitcherSheetState
                   loading: () => const Center(
                     child: Padding(
                       padding: EdgeInsets.all(AppSpacing.xl),
-                      child: CircularProgressIndicator(),
+                      child: AppSpinner(),
                     ),
                   ),
                   error: (error, stackTrace) => Center(
@@ -464,86 +614,62 @@ class _EnvironmentSwitcherSheetState
                   data: (items) => ListView.separated(
                     shrinkWrap: true,
                     itemCount: items.length,
-                    separatorBuilder: (context, index) => Divider(
-                      color: scheme.outlineVariant,
-                      height: 1,
-                    ),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 6),
                     itemBuilder: (context, index) {
                       final item = items[index];
                       final isActive = item.environmentId == activeId;
                       final switching = _switchingId == item.environmentId;
-                      return ListTile(
-                        minTileHeight: 64,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.sm,
-                          vertical: AppSpacing.xs,
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: isActive
-                              ? scheme.primaryContainer
-                              : scheme.surfaceContainerHighest,
-                          child: Icon(
-                            Icons.dns_outlined,
-                            color: isActive
-                                ? scheme.onPrimaryContainer
-                                : scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        title: Text(item.displayName),
-                        subtitle: Text(
-                          item.isAuthenticated
-                              ? item.serverUrl
-                              : AppStrings.t(
-                                  'settings.environmentNeedsLogin',
-                                  lang: lang,
-                                ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      return AppChoiceRow(
+                        label: item.displayName,
+                        subtitle: item.isAuthenticated
+                            ? item.serverUrl
+                            : AppStrings.t(
+                                'settings.environmentNeedsLogin',
+                                lang: lang,
+                              ),
+                        icon: Icons.dns_outlined,
+                        selected: isActive,
+                        onTap: isActive || _switchingId != null
+                            ? null
+                            : () => _switch(item),
                         trailing: switching
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
+                            ? const AppSpinner(size: 20)
                             : Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (isActive)
+                                  if (!isActive)
                                     Icon(
-                                      Icons.check_circle,
-                                      color: scheme.primary,
-                                    )
-                                  else
-                                    const Icon(Icons.chevron_right),
-                                  IconButton(
-                                    tooltip: AppStrings.t(
+                                      Icons.chevron_right,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  const SizedBox(width: 4),
+                                  AppIconButton(
+                                    semanticLabel: AppStrings.t(
                                       'settings.environmentDelete',
                                       lang: lang,
                                     ),
+                                    danger: true,
+                                    size: 38,
+                                    iconSize: 18,
                                     onPressed: _switchingId == null
                                         ? () => _deleteEnvironment(item)
                                         : null,
-                                    icon: const Icon(Icons.delete_outline),
+                                    icon: Icons.delete_outline,
                                   ),
                                 ],
                               ),
-                        enabled: _switchingId == null,
-                        onTap: isActive ? null : () => _switch(item),
                       );
                     },
                   ),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              FilledButton.icon(
+              AppButton(
                 onPressed: _switchingId == null ? _addEnvironment : null,
-                icon: const Icon(Icons.add),
-                label: Text(
-                  AppStrings.t('settings.environmentAdd', lang: lang),
-                ),
+                icon: Icons.add,
+                expand: true,
+                label: AppStrings.t('settings.environmentAdd', lang: lang),
               ),
             ],
           ),
@@ -577,7 +703,6 @@ class _AddEnvironmentDialog extends StatefulWidget {
 }
 
 class _AddEnvironmentDialogState extends State<_AddEnvironmentDialog> {
-  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _serverController = TextEditingController();
   final _secretController = TextEditingController();
@@ -585,6 +710,7 @@ class _AddEnvironmentDialogState extends State<_AddEnvironmentDialog> {
   final _passwordController = TextEditingController();
   bool _obscureSecret = true;
   bool _obscurePassword = true;
+  String? _validationError;
 
   @override
   void dispose() {
@@ -596,17 +722,24 @@ class _AddEnvironmentDialogState extends State<_AddEnvironmentDialog> {
     super.dispose();
   }
 
-  String? _required(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      final lang =
-          Localizations.localeOf(context).languageCode == 'en' ? 'en' : 'zh';
-      return AppStrings.t('settings.environmentRequired', lang: lang);
-    }
-    return null;
-  }
-
   void _submit() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final lang =
+        Localizations.localeOf(context).languageCode == 'en' ? 'en' : 'zh';
+    final fields = [
+      _nameController,
+      _serverController,
+      _secretController,
+      _usernameController,
+      _passwordController,
+    ];
+    if (fields.any((controller) => controller.text.trim().isEmpty)) {
+      setState(() {
+        _validationError =
+            AppStrings.t('settings.environmentRequired', lang: lang);
+      });
+      return;
+    }
+    setState(() => _validationError = null);
     Navigator.of(context).pop(
       _EnvironmentDraft(
         name: _nameController.text.trim(),
@@ -622,109 +755,98 @@ class _AddEnvironmentDialogState extends State<_AddEnvironmentDialog> {
   Widget build(BuildContext context) {
     final lang =
         Localizations.localeOf(context).languageCode == 'en' ? 'en' : 'zh';
-    return AlertDialog(
-      title: Text(AppStrings.t('settings.environmentAdd', lang: lang)),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
+    return AppDialog(
+      title: AppStrings.t('settings.environmentAdd', lang: lang),
+      icon: Icons.hub_outlined,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 520),
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
+              AppTextField(
                 controller: _nameController,
                 autofocus: true,
                 textInputAction: TextInputAction.next,
-                validator: _required,
-                decoration: InputDecoration(
-                  labelText: AppStrings.t(
-                    'settings.environmentName',
-                    lang: lang,
-                  ),
-                ),
+                label: AppStrings.t('settings.environmentName', lang: lang),
               ),
               const SizedBox(height: AppSpacing.md),
-              TextFormField(
+              AppTextField(
                 controller: _serverController,
                 keyboardType: TextInputType.url,
                 textInputAction: TextInputAction.next,
-                autocorrect: false,
-                validator: _required,
-                decoration: InputDecoration(
-                  labelText: AppStrings.t('login.server', lang: lang),
-                ),
+                label: AppStrings.t('login.server', lang: lang),
               ),
               const SizedBox(height: AppSpacing.md),
-              TextFormField(
+              AppTextField(
                 controller: _secretController,
                 obscureText: _obscureSecret,
                 textInputAction: TextInputAction.next,
-                autocorrect: false,
-                enableSuggestions: false,
-                validator: _required,
-                decoration: InputDecoration(
-                  labelText: AppStrings.t('login.jwtSecret', lang: lang),
-                  suffixIcon: IconButton(
-                    onPressed: () => setState(
-                      () => _obscureSecret = !_obscureSecret,
-                    ),
-                    icon: Icon(
-                      _obscureSecret
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
+                label: AppStrings.t('login.jwtSecret', lang: lang),
+                trailing: AppIconButton(
+                  onPressed: () => setState(
+                    () => _obscureSecret = !_obscureSecret,
                   ),
+                  icon: _obscureSecret
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  filled: false,
+                  size: 36,
+                  iconSize: 18,
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              TextFormField(
+              AppTextField(
                 controller: _usernameController,
                 textInputAction: TextInputAction.next,
-                validator: _required,
-                decoration: InputDecoration(
-                  labelText: AppStrings.t('login.username', lang: lang),
-                ),
+                label: AppStrings.t('login.username', lang: lang),
               ),
               const SizedBox(height: AppSpacing.md),
-              TextFormField(
+              AppTextField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
                 textInputAction: TextInputAction.done,
-                autocorrect: false,
-                enableSuggestions: false,
-                validator: _required,
-                onFieldSubmitted: (_) => _submit(),
-                decoration: InputDecoration(
-                  labelText: AppStrings.t('login.password', lang: lang),
-                  suffixIcon: IconButton(
-                    tooltip: AppStrings.t(
-                      _obscurePassword
-                          ? 'login.showPassword'
-                          : 'login.hidePassword',
-                      lang: lang,
-                    ),
-                    onPressed: () => setState(
-                      () => _obscurePassword = !_obscurePassword,
-                    ),
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
+                onSubmitted: (_) => _submit(),
+                label: AppStrings.t('login.password', lang: lang),
+                trailing: AppIconButton(
+                  semanticLabel: AppStrings.t(
+                    _obscurePassword
+                        ? 'login.showPassword'
+                        : 'login.hidePassword',
+                    lang: lang,
                   ),
+                  onPressed: () => setState(
+                    () => _obscurePassword = !_obscurePassword,
+                  ),
+                  icon: _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  filled: false,
+                  size: 36,
+                  iconSize: 18,
                 ),
               ),
+              if (_validationError != null) ...[
+                const SizedBox(height: AppSpacing.md),
+                AppNotice(
+                  message: _validationError!,
+                  icon: Icons.error_outline,
+                  isError: true,
+                ),
+              ],
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(
+        AppButton(
+          tone: AppButtonTone.secondary,
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(AppStrings.t('common.cancel', lang: lang)),
+          label: AppStrings.t('common.cancel', lang: lang),
         ),
-        FilledButton(
+        AppButton(
           onPressed: _submit,
-          child: Text(AppStrings.t('common.confirm', lang: lang)),
+          label: AppStrings.t('common.confirm', lang: lang),
         ),
       ],
     );

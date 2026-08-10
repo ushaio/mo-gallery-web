@@ -5,6 +5,8 @@ import '../../core/api/api_exception.dart';
 import '../../core/error/error_messages.dart';
 import '../../core/files/file_hash.dart';
 import '../catalog/catalog_api.dart';
+import 'exif_json.dart';
+import 'image_compressor.dart';
 import 'photos_api.dart';
 import 'recent_targets_store.dart';
 import 'upload_models.dart';
@@ -101,14 +103,25 @@ class UploadWorker {
     _loopActive = true;
     try {
       while (_running) {
+        // Install the wake signal before querying the queue. If enqueue/kick
+        // happens during the query, the completed signal is still observed
+        // below instead of being lost in the old query-then-create window.
+        final wake = Completer<void>();
+        _wake = wake;
         final task = await _queue.claimNextPending();
         if (task == null) {
           await onForeground?.call(active: false, detail: '');
           if (!_running) break;
-          _wake = Completer<void>();
-          await _wake!.future;
+          // Poll infrequently as a lifecycle-safe fallback. A missed UI kick
+          // (for example while restoring a session) must never leave durable
+          // pending work asleep forever.
+          await Future.any<void>([
+            wake.future,
+            Future<void>.delayed(const Duration(seconds: 2)),
+          ]);
           continue;
         }
+        if (identical(_wake, wake)) _wake = null;
         if (!_running) {
           await _pauseForAuthenticationFailure(task);
           break;
@@ -145,6 +158,8 @@ class UploadWorker {
         await _queue.updateTask(task);
       }
 
+      // The queue claim marks the task as checking, so the UI can distinguish
+      // duplicate detection from the later upload phase.
       final duplicates = await _photosApi.checkDuplicates([hash]);
       final existing = duplicates[hash];
       if (existing != null) {
@@ -161,9 +176,33 @@ class UploadWorker {
       }
 
       final settings = task.settings;
-      // Client-side re-encode is optional; server handles compression when
-      // compression_mode=compress is set on the multipart request.
-      final uploadPath = task.localPath;
+      if (settings.compressEnabled) {
+        await _queue.updateTask(
+          task.copyWith(status: UploadTaskStatus.compressing, progress: 0),
+        );
+      }
+      final exifJson = await extractExifJson(
+        task.localPath,
+        stripGps: settings.stripGps,
+      );
+
+      var uploadPath = task.localPath;
+      if (settings.compressEnabled) {
+        final compressedPath = '${task.localPath}.compressed.jpg';
+        try {
+          uploadPath = await compressImageForUpload(
+            sourcePath: task.localPath,
+            outputPath: compressedPath,
+            maxSizeMb: settings.maxSizeMb,
+          );
+        } catch (_) {
+          // Match web fallback behavior: compression failure must not lose the
+          // upload. The original file remains the upload source.
+          uploadPath = task.localPath;
+        }
+      }
+      task = task.copyWith(status: UploadTaskStatus.uploading, progress: 0);
+      await _queue.updateTask(task);
 
       // Align with web admin: photo titles drop the file extension
       // (UploadQueueContext fallbackTitle and the story editor both use
@@ -174,37 +213,50 @@ class UploadWorker {
           ? titleBase
           : '${settings.titlePrefix}$titleBase';
 
-      final photo = await _photosApi.uploadPhoto(
-        filePath: uploadPath,
-        title: title,
-        fileHash: hash,
-        categories: settings.categories,
-        filmRollId: settings.photoType == UploadPhotoType.film
-            ? settings.filmRollId
-            : null,
-        storageSourceId: settings.storageSourceId,
-        // Web admin pins storage_provider=local when no storage source is
-        // selected (UploadTab.tsx proceedWithUpload); without it the server
-        // falls back to the legacy global storage_provider setting, which may
-        // route default uploads to github/s3 instead of local.
-        storageProvider:
-            settings.storageSourceId == null || settings.storageSourceId!.isEmpty
-                ? 'local'
-                : null,
-        storagePath: settings.storagePath.isEmpty ? null : settings.storagePath,
-        storagePathFull: settings.storagePathFull,
-        showFlag: settings.showFlag,
-        compressEnabled: settings.compressEnabled,
-        maxSizeMb: settings.maxSizeMb,
-        stripGps: settings.stripGps,
-        onSendProgress: (sent, total) async {
-          if (total <= 0) return;
-          final pct = ((sent / total) * 100).floor().clamp(0, 99);
-          await _queue.updateTask(task.copyWith(progress: pct));
-        },
-      );
+      late final PhotoDto photo;
+      try {
+        photo = await _photosApi.uploadPhoto(
+          filePath: uploadPath,
+          title: title,
+          fileHash: hash,
+          categories: settings.categories,
+          filmRollId: settings.photoType == UploadPhotoType.film
+              ? settings.filmRollId
+              : null,
+          storageSourceId: settings.storageSourceId,
+          // Web admin pins storage_provider=local when no storage source is
+          // selected (UploadTab.tsx proceedWithUpload); without it the server
+          // falls back to the legacy global storage_provider setting, which may
+          // route default uploads to github/s3 instead of local.
+          storageProvider: settings.storageSourceId == null ||
+                  settings.storageSourceId!.isEmpty
+              ? 'local'
+              : null,
+          storagePath:
+              settings.storagePath.isEmpty ? null : settings.storagePath,
+          storagePathFull: settings.storagePathFull,
+          showFlag: settings.showFlag,
+          exifJson: exifJson,
+          // Compression is completed on the Flutter device. Do not ask Hono to
+          // perform a second compression pass.
+          compressEnabled: false,
+          stripGps: settings.stripGps,
+          onSendProgress: (sent, total) async {
+            if (total <= 0) return;
+            final pct = ((sent / total) * 100).floor().clamp(0, 99);
+            await _queue.updateTask(task.copyWith(progress: pct));
+          },
+        );
+      } finally {
+        if (uploadPath != task.localPath) {
+          try {
+            final temporary = File(uploadPath);
+            if (await temporary.exists()) await temporary.delete();
+          } catch (_) {}
+        }
+      }
 
-      task = task.copyWith(photoId: photo.id, progress: 95);
+      task = task.copyWith(photoId: photo.id, progress: 99);
       await _queue.updateTask(task);
 
       try {

@@ -16,7 +16,9 @@ import '../features/catalog/catalog_api.dart';
 import '../features/upload/foreground_upload_service.dart';
 import '../features/upload/photos_api.dart';
 import '../features/upload/recent_targets_store.dart';
+import '../features/upload/upload_models.dart';
 import '../features/upload/upload_queue_repository.dart';
+import '../features/upload/upload_targets_cache.dart';
 import '../features/upload/upload_worker.dart';
 
 final languageProvider = StateProvider<String>((ref) => 'zh');
@@ -26,6 +28,19 @@ final authFailureProvider = StateProvider<ApiException?>((ref) => null);
 /// Bumped when the user double-taps the active bottom/rail tab.
 /// Values: 'upload' | 'gallery' | 'stories' | 'settings'
 final tabRefreshProvider = StateProvider<String?>((ref) => null);
+
+/// Working copy of the upload batch settings, shared by the dock's add action
+/// and the upload page so a batch started from anywhere reuses the same
+/// targets. Seeded from [recentTargetsProvider] on first use and reset when the
+/// active environment changes.
+final uploadSettingsProvider = StateProvider<UploadBatchSettings?>((ref) {
+  ref.watch(
+    authControllerProvider.select(
+      (auth) => auth.valueOrNull?.environmentId,
+    ),
+  );
+  return null;
+});
 
 final sessionStoreProvider = Provider<SessionStore>((ref) {
   return SecureSessionStore();
@@ -60,6 +75,20 @@ final recentTargetsProvider = Provider<RecentTargetsStore>((ref) {
   return RecentTargetsStore(environmentId: environmentId);
 });
 
+/// In-memory cache of the upload target picker catalogs (albums, stories,
+/// film rolls, storage sources, categories). Filled on the first picker open
+/// so later opens skip the network entirely. Never persisted: restarting the
+/// app discards it, and switching environments resets it to null so one
+/// server's catalog never leaks into another.
+final uploadTargetsCacheProvider = StateProvider<UploadTargetsCache?>((ref) {
+  ref.watch(
+    authControllerProvider.select(
+      (auth) => auth.valueOrNull?.environmentId,
+    ),
+  );
+  return null;
+});
+
 final environmentsProvider = FutureProvider<List<Session>>((ref) async {
   return ref.watch(sessionStoreProvider).list();
 });
@@ -72,7 +101,6 @@ class AuthController extends StateNotifier<AsyncValue<Session?>> {
   final Ref _ref;
   ApiClient? _client;
   UploadWorker? _worker;
-  UploadQueueRepository? _workerQueue;
   bool _switching = false;
 
   ApiClient get client {
@@ -321,15 +349,25 @@ class AuthController extends StateNotifier<AsyncValue<Session?>> {
   Future<void> _stopWorkerAndClient() async {
     final worker = _worker;
     _worker = null;
-    final workerQueue = _workerQueue;
-    _workerQueue = null;
     final oldClient = _client;
     _client = null;
     final stopFuture = worker?.stop();
     oldClient?.cancel();
     await stopFuture;
     await worker?.waitUntilStopped();
-    await workerQueue?.dispose();
+  }
+
+  Future<void> kickUploadWorker() async {
+    final existing = _worker;
+    if (existing != null) {
+      await existing.kick();
+      return;
+    }
+    final session = state.valueOrNull;
+    if (session == null) {
+      throw StateError('Cannot start uploads without an active session');
+    }
+    await _ensureWorkerStarted(session);
   }
 
   Future<void> _ensureWorkerStarted(Session session) async {
@@ -338,10 +376,11 @@ class AuthController extends StateNotifier<AsyncValue<Session?>> {
       await existing.kick();
       return;
     }
-    final queue = UploadQueueRepository(
-      _ref.read(appDatabaseProvider),
-      environmentId: session.environmentId,
-    );
+    // Share the provider-owned repository with the upload page. Repository
+    // change streams are instance-local, so creating a second worker-only
+    // repository leaves the visible queue stuck at the claimed `checking`
+    // state even though the database upload completes successfully.
+    final queue = _ref.read(uploadQueueProvider);
     final worker = UploadWorker(
       queue: queue,
       photosApi: PhotosApi(client),
@@ -355,7 +394,6 @@ class AuthController extends StateNotifier<AsyncValue<Session?>> {
       onForeground: ({required active, required detail}) =>
           ForegroundUploadService.sync(active: active, detail: detail),
     );
-    _workerQueue = queue;
     _worker = worker;
     await worker.start();
   }
