@@ -76,6 +76,15 @@ TipTap v3 with extensions (table, image, link, text-align, underline). The edito
 
 AI orchestration lives in the shared package `packages/ai-agent` (`@mo-gallery/ai-agent`, Vercel AI SDK): prompt building is the single implementation for both ends. Web server (`server/lib/story-ai.ts`) uses its prompt builders and streams from the upstream OpenAI-compatible API directly. Desktop runs the same orchestration in the frontend (`desktop/frontend/src/lib/api/editor-ai-local.ts`) against a local Go proxy (`/v1/chat/completions`, key injection in Go — see `desktop/services/editor-ai.go ProxyChatCompletions`) with conversations persisted locally via Wails bindings; it works fully offline from the web server. Never add prompt logic to Go — extend `packages/ai-agent` instead.
 
+#### Agent Extensions (Desktop only)
+
+Desktop extensions are enabled only when the request opts in and the selected model supports tools. The shared prompt builder always resolves the base system prompt first: a non-empty conversation prompt takes priority; otherwise it selects the shared chat or editor prompt from the complete editor context. Agent extension context is appended after that base prompt.
+
+- **Skills**: prompt tokens are matched against enabled, valid Skill names and descriptions; the top three automatic matches are combined with explicitly selected Skills, while disabled Skill IDs always win. Only metadata is injected into the system prompt. The model must call `read_agent_skill` to load `SKILL.md`, then only the references it requires; Skill content never grants side-effect permission.
+- **MCP servers**: enabled servers, optionally narrowed by explicit mentions, contribute runtime tools. Tool discovery is cached in the desktop frontend for 60 seconds per server capability fingerprint, and concurrent generations share an in-flight discovery request. A changed fingerprint bypasses the cache.
+- **Permission**: MCP calls first run an unapproved permission check. Calls requiring permission pause for a user decision, then run with explicit approval; only approved read operations may be remembered.
+- **Limits**: the Vercel AI text runtime stops tool-enabled turns after six steps (`stepCountIs(6)`).
+
 ### Comments
 
 Dual system: local DB comments or Waline (LeanCloud). Controlled by `COMMENTS_STORAGE` env var. When `LEANCLOUD` without external `WALINE_SERVER_URL`, a local Waline handler is registered in the Hono router.
