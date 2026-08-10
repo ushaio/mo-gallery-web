@@ -10,6 +10,7 @@
     "start": "next start",
     "test:editor-ai-routes": "node --conditions=react-server --import tsx hono/editor-ai.test.ts",
     "test:editor-ai-images": "node --conditions=react-server --import tsx server/lib/editor-ai-images.test.ts",
+    "test:story-ai-images": "node --conditions=react-server --import tsx server/lib/story-ai.test.ts",
     "lint": "eslint",
     "prisma:generate": "npx prisma generate",
     "prisma:dev": "npx prisma migrate dev",
