@@ -1,20 +1,17 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import type {
-  AiImageMetadata,
   EditorAiConversationDto,
-  EditorAiMessageDto,
   EditorAiMessageAppendInput,
+  EditorAiMessageDto,
   EditorAiMessageStatus,
-  StoryAiModelOption,
   StoryAiModelsResponse,
 } from '@/lib/api/types'
 import {
   editorAiMessageMetadataSchema,
-  readEditorAiAssistantTrace,
   reduceEditorAiTrace,
   type EditorAiStreamEvent,
   type EditorAiTraceBlock,
@@ -22,39 +19,43 @@ import {
 // Text chat shares the editor AI pipeline (agent package, local proxy, and conversation database).
 // Image generation continues to use the local /ai/generate endpoint.
 import {
+  appendLocalEditorAiMessage,
   generateEditorAiConversationTitle,
   getLocalStoryAiModels,
   mapEditorAiMessageDto,
-  appendLocalEditorAiMessage,
   prepareDesktopImagePrompt,
   streamDesktopAgentGenerate,
 } from '@/lib/api/editor-ai-local'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { AgentMentionMenu } from '@/components/ai/AgentMentionMenu'
+import { AgentToolApprovalBar } from '@/components/ai/AgentToolApprovalBar'
+import { ConversationSidebar } from '@/components/ai/ConversationSidebar'
+import { DesktopEmptyState } from '@/components/ai/EmptyState'
+import { DesktopMessageBubble } from '@/components/ai/message/MessageBubble'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import {
   ClearEditorAiConversation,
   CreateEditorAiConversation,
   DeleteEditorAiConversation,
-  DownloadMessageImageToLocal,
-  SaveMessageImageToLocalLibrary,
-  GetAiHttpPort,
-  GetAiImageDataURL,
   GetEditorAiConversationMessagesPage,
   GetEditorAiConversationPage,
-  SaveMessageImageToAlbum,
   UpdateEditorAiConversation,
 } from '../../wailsjs/go/main/App'
-import { localLibraryApi, parseLocalLibraryError } from '@/features/local-library/api'
-import type { FolderItem, RecentLibrary } from '@/features/local-library/types'
 import {
-  Plus, Send, MessageSquare, X, ChevronLeft, ChevronDown,
-  Copy, Check, Eraser, Sparkles, Search, Quote, StopCircle,
-  Settings2, RotateCcw, Paperclip, Loader2, Image as ImageIcon, Pencil, Trash2, Download, FolderOpen, ChevronRight, ShieldAlert, GitBranch, PanelLeftClose, PanelLeft, Square,
+  Eraser,
+  Image as ImageIcon,
+  Loader2,
+  PanelLeft,
+  PanelLeftClose,
+  Paperclip,
+  Pencil,
+  Quote,
+  Send,
+  Settings2,
+  Sparkles,
+  Square,
+  X,
 } from 'lucide-react'
-import { answerAgentToolApproval, useAgentToolApprovals } from '@/lib/agent-tool-approval'
 import {
   buildAgentMentionCandidates,
   filterAgentMentionCandidates,
@@ -64,435 +65,32 @@ import {
   type AgentMentionCandidate,
   type AgentMentionContext,
 } from '@/lib/agent-composer-mentions'
-import { agentExtensions, type AgentExtensionSnapshot, type AgentSkill } from '@/lib/agent-extensions'
-
-// Local AI HTTP service port
-let aiHttpPort = 0
-
-async function ensureAiPort() {
-  if (!aiHttpPort) {
-    aiHttpPort = await GetAiHttpPort()
-  }
-  return aiHttpPort
-}
-
-const SCOPE_ID = 'ai-assistant'
-const CONVERSATION_PAGE_SIZE = 50
-const MESSAGE_PAGE_SIZE = 50
-const MAX_ATTACHED_IMAGES = 10
-const MAX_IMAGE_SIZE = 20 * 1024 * 1024
-const IMAGE_EDIT_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const DELETE_ARM_TIMEOUT_MS = 3000
-
-type SendOverrides = {
-  input?: string
-  images?: string[]
-}
-
-type AttachedImage = {
-  id: string
-  url: string
-  status: 'loading' | 'ready'
-}
-
-type ConversationRenameTarget = {
-  id: string
-  surface: 'sidebar' | 'header'
-}
-
-type ConversationRuntimeCache = {
-  messages: EditorAiMessageDto[]
-  hasMoreMessages: boolean
-  systemPrompt: string
-}
-
-function createLocalMessageId(role: 'user' | 'assistant'): string {
-  return `local-${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function deriveConversationTitle(prompt: string): string {
-  return prompt.replace(/\s+/g, ' ').trim().slice(0, 40)
-}
-
-function supportsChat(model: StoryAiModelOption): boolean {
-  return !model.capabilities || model.capabilities.includes('chat')
-}
-
-function supportsImageGeneration(model: StoryAiModelOption): boolean {
-  return model.capabilities?.includes('image') === true
-}
-
-function selectAvailableModel(models: StoryAiModelOption[], preferred: string | undefined): string {
-  return models.some(model => model.id === preferred) ? preferred ?? '' : models[0]?.id ?? ''
-}
-
-type MessageImageRef = {
-  url: string
-  photoId?: string
-}
-
-function getMessageImages(metadata: unknown): MessageImageRef[] {
-  if (!metadata || typeof metadata !== 'object' || !('images' in metadata)) return []
-  const images = (metadata as { images?: unknown }).images
-  if (!Array.isArray(images)) return []
-  return images.flatMap((image) => {
-    if (typeof image === 'string') return image ? [{ url: image }] : []
-    if (image && typeof image === 'object' && 'url' in image && typeof image.url === 'string' && image.url) {
-      return [{
-        url: image.url,
-        ...('photoId' in image && typeof image.photoId === 'string' ? { photoId: image.photoId } : {}),
-      }]
-    }
-    return []
-  })
-}
-
-async function downloadMessageImageToLocal(imageUrl: string, t: (key: string) => string): Promise<void> {
-  try {
-    const filePath = await DownloadMessageImageToLocal(imageUrl)
-    if (filePath) toast.success(t('admin.ai_downloaded_to_local'))
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : t('admin.ai_download_to_local_failed'))
-    throw error
-  }
-}
-
-function useImageContextMenu(
-  savedInitially: boolean,
-  onSave: () => Promise<void>,
-  onDownload: () => Promise<void>,
-) {
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-  const [saved, setSaved] = useState(savedInitially)
-
-  useEffect(() => {
-    if (savedInitially) setSaved(true)
-  }, [savedInitially])
-
-  useEffect(() => {
-    if (!contextMenu) return
-    const closeMenu = () => setContextMenu(null)
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeMenu()
-    }
-    window.addEventListener('pointerdown', closeMenu)
-    window.addEventListener('blur', closeMenu)
-    window.addEventListener('scroll', closeMenu, true)
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('pointerdown', closeMenu)
-      window.removeEventListener('blur', closeMenu)
-      window.removeEventListener('scroll', closeMenu, true)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [contextMenu])
-
-  const handleContextMenu = (event: React.MouseEvent<HTMLImageElement>) => {
-    event.preventDefault()
-    const menuWidth = 176
-    const menuHeight = 84
-    setContextMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
-    })
-  }
-
-  const handleSave = async () => {
-    if (saving || saved) return
-    setContextMenu(null)
-    setSaving(true)
-    try {
-      await onSave()
-      setSaved(true)
-    } catch {
-      // The save callback reports the user-facing error.
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDownload = async () => {
-    if (downloading) return
-    setContextMenu(null)
-    setDownloading(true)
-    try {
-      await onDownload()
-    } catch {
-      // The download callback reports the user-facing error.
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  return { contextMenu, saving, downloading, saved, handleContextMenu, handleSave, handleDownload }
-}
-
-function ImageContextMenu({
-  position,
-  saving,
-  downloading,
-  saved,
-  onSave,
-  onDownload,
-  onSelectLibrary,
-  t,
-}: {
-  position: { x: number; y: number } | null
-  saving: boolean
-  downloading: boolean
-  saved: boolean
-  onSave: () => Promise<void>
-  onDownload: () => Promise<void>
-  onSelectLibrary: (library: RecentLibrary) => Promise<void>
-  t: (key: string) => string
-}) {
-  const [libraryMenuOpen, setLibraryMenuOpen] = useState(false)
-  const [libraries, setLibraries] = useState<RecentLibrary[]>([])
-  const [librariesLoading, setLibrariesLoading] = useState(false)
-  const [librariesError, setLibrariesError] = useState('')
-  useEffect(() => {
-    if (!position) setLibraryMenuOpen(false)
-  }, [position])
-  const loadLibraries = async () => {
-    if (librariesLoading) return
-    setLibrariesLoading(true)
-    setLibrariesError('')
-    try {
-      setLibraries((await localLibraryApi.entryState()).recent)
-    } catch (cause) {
-      setLibrariesError(parseLocalLibraryError(cause).message)
-    } finally {
-      setLibrariesLoading(false)
-    }
-  }
-  if (!position || typeof document === 'undefined') return null
-  return createPortal(
-    <div
-      role="menu"
-      className="fixed z-50 min-w-44 rounded-md border p-1 shadow-xl"
-      style={{
-        left: position.x,
-        top: position.y,
-        borderColor: 'var(--border)',
-        backgroundColor: 'var(--background)',
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        disabled={saving || saved}
-        onClick={() => void onSave()}
-        className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:opacity-50"
-        style={{ color: 'var(--foreground)' }}
-      >
-        {saving ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
-        {saved ? t('admin.ai_saved_to_album') : t('admin.ai_save_to_album')}
-      </button>
-      <div className="relative" onMouseEnter={() => { if (!libraryMenuOpen) { setLibraryMenuOpen(true); void loadLibraries() } }}>
-        <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={libraryMenuOpen} onClick={() => { setLibraryMenuOpen((open) => !open); if (!libraryMenuOpen) void loadLibraries() }} className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-2 text-left text-xs hover:bg-accent" style={{ color: 'var(--foreground)' }}>
-          <span className="flex items-center gap-2"><FolderOpen size={13} />{t('admin.ai_save_to_library')}</span><ChevronRight size={13} />
-        </button>
-        {libraryMenuOpen && <div role="menu" className="absolute left-full top-0 ml-1 min-w-52 rounded-md border p-1 shadow-xl" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }} onPointerDown={(event) => event.stopPropagation()}>
-          {librariesLoading ? <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-muted-foreground"><Loader2 size={13} className="animate-spin" />{t('admin.loading')}</div> : librariesError ? <div className="max-w-56 px-2.5 py-2 text-xs text-destructive">{librariesError}</div> : libraries.length === 0 ? <div className="px-2.5 py-2 text-xs text-muted-foreground">{t('admin.ai_no_local_libraries')}</div> : libraries.map((library) => <button key={library.path} type="button" role="menuitem" disabled={!library.available} onClick={() => void onSelectLibrary(library)} className="flex w-full flex-col rounded px-2.5 py-2 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"><span className="truncate">{library.name}</span><span className="truncate text-[10px] text-muted-foreground">{library.available ? library.path : t('admin.ai_library_unavailable')}</span></button>)}
-        </div>}
-      </div>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={downloading}
-        onClick={() => void onDownload()}
-        className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:opacity-50"
-        style={{ color: 'var(--foreground)' }}
-      >
-        {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-        {t('admin.ai_download_to_local')}
-      </button>
-    </div>,
-    document.body,
-  )
-}
-
-function LocalLibraryFolderTree({ folders, value, onChange, disabled, rootLabel, t }: { folders: FolderItem[]; value: string; onChange: (path: string) => void; disabled: boolean; rootLabel: string; t: (key: string) => string }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [query, setQuery] = useState('')
-  const sorted = folders.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
-  const normalizedQuery = query.trim().toLocaleLowerCase()
-  const matchesQuery = (folder: FolderItem) => !normalizedQuery || `${folder.name} ${folder.relativePath}`.toLocaleLowerCase().includes(normalizedQuery)
-  const matchesOrContainsMatch = (folder: FolderItem) => matchesQuery(folder) || sorted.some((candidate) => candidate.relativePath.startsWith(`${folder.relativePath}/`) && matchesQuery(candidate))
-  const hasChildren = (path: string) => sorted.some((folder) => folder.relativePath.startsWith(`${path}/`))
-  const isVisible = (path: string) => {
-    if (normalizedQuery) return matchesOrContainsMatch(sorted.find((folder) => folder.relativePath === path)!)
-    const parts = path.split('/')
-    for (let index = 1; index < parts.length; index += 1) {
-      if (!expanded.has(parts.slice(0, index).join('/'))) return false
-    }
-    return true
-  }
-  const toggle = (path: string) => setExpanded((current) => {
-    const next = new Set(current)
-    if (next.has(path)) next.delete(path)
-    else next.add(path)
-    return next
-  })
-  return <>
-    <div className="relative mt-2"><Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} disabled={disabled} placeholder={t('admin.ai_search_folder_path')} className="h-8 w-full rounded-md border bg-input pl-8 pr-2 text-xs outline-none focus:ring-1 focus:ring-primary" style={{ borderColor: 'var(--border)' }} /></div>
-    <div className="mt-2 min-h-40 max-h-80 overflow-y-auto rounded-md border p-1" style={{ borderColor: 'var(--border)' }}>
-    <button type="button" disabled={disabled} onClick={() => onChange('')} className={`flex w-full items-center rounded px-2 py-1.5 text-left text-xs hover:bg-accent ${value === '' ? 'bg-accent font-medium' : ''}`}><FolderOpen size={13} className="mr-2 shrink-0" /><span className="truncate">{rootLabel}</span></button>
-    {sorted.filter((folder) => isVisible(folder.relativePath)).map((folder) => {
-      const depth = folder.relativePath.split('/').length - 1
-      const children = hasChildren(folder.relativePath)
-      return <div key={folder.id} className="flex items-center" style={{ paddingLeft: `${depth * 16}px` }}><button type="button" disabled={disabled || !children} aria-label={children ? (expanded.has(folder.relativePath) ? t('admin.ai_collapse_folder') : t('admin.ai_expand_folder')) : undefined} onClick={() => toggle(folder.relativePath)} className="flex h-7 w-6 shrink-0 items-center justify-center rounded hover:bg-accent disabled:opacity-40">{children && <ChevronDown size={13} className={`transition-transform ${expanded.has(folder.relativePath) ? '' : '-rotate-90'}`} />}</button><button type="button" disabled={disabled} onClick={() => onChange(folder.relativePath)} className={`min-w-0 flex-1 rounded px-2 py-1.5 text-left text-xs hover:bg-accent ${value === folder.relativePath ? 'bg-accent font-medium' : ''}`}><span className="truncate">{folder.name || folder.relativePath}</span></button></div>
-    })}
-    {normalizedQuery && sorted.every((folder) => !matchesQuery(folder)) && <div className="px-2 py-2 text-xs text-muted-foreground">{t('admin.ai_no_matching_folders')}</div>}
-  </div></>
-}
-
-function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved }: { imageUrl: string; t: (key: string) => string; onClose: () => void; onSaved: () => void }) {
-  const [folders, setFolders] = useState<FolderItem[]>([])
-  const [destination, setDestination] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    let cancelled = false
-    void localLibraryApi.listFolders().then((items) => { if (!cancelled) setFolders(items) }).catch((cause) => { if (!cancelled) setError(parseLocalLibraryError(cause).message) }).finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [])
-  const submit = async () => {
-    if (saving || loading || error) return
-    setSaving(true); setError('')
-    try {
-      const results = await SaveMessageImageToLocalLibrary(imageUrl, destination)
-      const failed = results.filter((result) => result.status === 'failed')
-      if (failed.length > 0) throw new Error(failed[0]?.error || t('admin.ai_save_to_library_failed'))
-      toast.success(t('admin.ai_saved_to_library')); onSaved(); onClose()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t('admin.ai_save_to_library_failed')) } finally { setSaving(false) }
-  }
-  return <div className="fixed inset-0 z-[70] flex items-center justify-center p-5"><button type="button" aria-label={t('admin.cancel')} onClick={onClose} className="absolute inset-0 bg-black/60" /><div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-lg border bg-popover p-5 shadow-2xl" style={{ borderColor: 'var(--border)' }}><button type="button" aria-label={t('admin.cancel')} onClick={onClose} disabled={saving} className="absolute right-3 top-3 rounded p-2 hover:bg-secondary disabled:opacity-50"><X size={16} /></button><h2 className="pr-8 text-sm font-semibold">{t('admin.ai_save_to_library')}</h2><p className="mt-1 text-xs text-muted-foreground">{t('admin.ai_save_to_library_hint')}</p>{loading ? <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground"><Loader2 size={14} className="animate-spin" />{t('admin.loading')}</div> : error && !folders.length ? <p className="mt-5 rounded-md border border-destructive/40 p-3 text-xs text-destructive">{error}</p> : <><label className="mt-5 block text-xs font-medium">{t('admin.ai_save_location')}</label><LocalLibraryFolderTree folders={folders} value={destination} onChange={setDestination} disabled={saving} rootLabel={t('admin.ai_library_root')} t={t} />{error && <p className="mt-3 text-xs text-destructive">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} disabled={saving} className="rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:opacity-50">{t('admin.cancel')}</button><button type="button" onClick={() => void submit()} disabled={saving} className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">{saving && <Loader2 size={13} className="animate-spin" />}{t('admin.ai_save_to_library')}</button></div></>}</div></div>
-}
-function MessageImage({
-  messageId,
-  image,
-  t,
-}: {
-  messageId: string
-  image: MessageImageRef
-  t: (key: string) => string
-}) {
-  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false)
-  const saveState = useImageContextMenu(
-    Boolean(image.photoId),
-    async () => {
-      try {
-        await SaveMessageImageToAlbum(messageId, image.url)
-        toast.success(t('admin.ai_saved_to_album'))
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : t('admin.ai_save_to_album_failed'))
-        throw error
-      }
-    },
-    () => downloadMessageImageToLocal(image.url, t),
-  )
-  const selectLibrary = async (library: RecentLibrary) => {
-    try {
-      await localLibraryApi.open(library.path)
-      setLibraryDialogOpen(true)
-    } catch (cause) {
-      toast.error(formatAiLibraryError(cause))
-    }
-  }
-
-  return (
-    <div className="relative max-w-[200px] rounded-md overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-      <img
-        src={image.url}
-        alt=""
-        className="max-h-[200px] object-contain"
-        loading="lazy"
-        onContextMenu={saveState.handleContextMenu}
-      />
-      <ImageContextMenu
-        position={saveState.contextMenu}
-        saving={saveState.saving}
-        downloading={saveState.downloading}
-        saved={saveState.saved}
-        onSave={saveState.handleSave}
-        onDownload={saveState.handleDownload}
-        onSelectLibrary={selectLibrary}
-        t={t}
-      />
-      {libraryDialogOpen && <LocalLibrarySaveDialog imageUrl={image.url} t={t} onClose={() => setLibraryDialogOpen(false)} onSaved={() => setLibraryDialogOpen(false)} />}
-    </div>
-  )
-}
-
-function formatAiLibraryError(cause: unknown): string {
-  const error = parseLocalLibraryError(cause)
-  if (error.code !== 'LIBRARY_LOCKED') return error.message
-  const ownerPID = typeof error.details?.ownerPid === 'number' ? error.details.ownerPid : null
-  return ownerPID === null
-    ? error.message
-    : `${error.message}(占用进程 PID:${ownerPID})`
-}
-
-function readImageAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => typeof reader.result === 'string'
-      ? resolve(reader.result)
-      : reject(new Error('图片读取失败'))
-    reader.onerror = () => reject(reader.error || new Error('图片读取失败'))
-    reader.readAsDataURL(file)
-  })
-}
-
-function formatConversationDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return ''
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-function AgentToolApprovalBar({ conversationId }: { conversationId: string | null }) {
-  const approvals = useAgentToolApprovals(conversationId)
-  if (approvals.length === 0) return null
-  return (
-    <div className="border-b px-5 py-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)/10' }}>
-      <div className="mx-auto max-w-[44rem] space-y-2">
-        {approvals.map((approval) => {
-          const canRemember = approval.riskClass === 'read'
-          return (
-            <div key={approval.id} className="rounded-md border p-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
-              <div className="flex items-start gap-2">
-                <ShieldAlert size={15} className="mt-0.5 shrink-0 text-amber-500" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium">需要批准:{approval.serverName} / {approval.toolName}</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">风险:{approval.riskClass} · 参数:{approval.parameterSummary}</div>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => answerAgentToolApproval(approval.id, 'deny')} className="rounded-md border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-                  拒绝
-                </button>
-                <button type="button" onClick={() => answerAgentToolApproval(approval.id, canRemember ? 'approve_remembered' : 'approve')} className="rounded-md border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-                  {canRemember ? '允许并记住' : '允许本次'}
-                </button>
-                {canRemember && (
-                  <button type="button" onClick={() => answerAgentToolApproval(approval.id, 'approve_session')} className="rounded-md px-2.5 py-1.5 text-[11px]" style={{ backgroundColor: 'var(--foreground)', color: 'var(--background)' }}>
-                    本会话允许
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+import { agentExtensions, type AgentExtensionSnapshot } from '@/lib/agent-extensions'
+import {
+  CONVERSATION_PAGE_SIZE,
+  DELETE_ARM_TIMEOUT_MS,
+  IMAGE_EDIT_MIME_TYPES,
+  MAX_ATTACHED_IMAGES,
+  MAX_IMAGE_SIZE,
+  MESSAGE_PAGE_SIZE,
+  SCOPE_ID,
+} from '@/lib/ai-assistant/constants'
+import type {
+  AttachedImage,
+  ConversationRenameTarget,
+  ConversationRuntimeCache,
+  SendOverrides,
+} from '@/lib/ai-assistant/types'
+import {
+  createLocalMessageId,
+  deriveConversationTitle,
+  ensureAiPort,
+  selectAvailableModel,
+  supportsChat,
+  supportsImageGeneration,
+  withGenerationDuration,
+} from '@/lib/ai-assistant/utils'
+import { getMessageImages, readImageAsDataUrl } from '@/lib/ai-assistant/images'
 
 export function AiAssistantPage() {
   const { t } = useLanguage()
@@ -1482,139 +1080,28 @@ export function AiAssistantPage() {
 
       {/* ── Conversation Sidebar (desktop-style: fixed, scrollable, no animations) ── */}
       {showSidebar && (
-        <aside
-          className="flex-shrink-0 flex flex-col overflow-hidden border-r"
-          style={{ borderColor: 'var(--border)', width: 260 }}
-        >
-          {/* Sidebar header: compact title + new button */}
-          <div className="flex items-center justify-between px-3 h-11 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
-              {t('admin.ai_conversations')}
-              <span className="ml-2 font-normal opacity-50">{conversations.length}</span>
-            </span>
-            <button
-              onClick={handleNewConversation}
-              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent"
-              style={{ color: 'var(--foreground)' }}
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-
-          {/* Conversation list: compact, flat, no animations */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
-            {conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-                <MessageSquare size={20} className="mb-2 opacity-20" />
-                <p className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.ai_no_conversations')}</p>
-              </div>
-            ) : (
-              <div>
-                {conversations.map((convo) => {
-                  const isActive = activeConversation === convo.id
-                  const isDeleting = deletingConversationId === convo.id
-                  const isDeletePending = pendingDeleteId === convo.id
-                  return (
-                    <div
-                      key={convo.id}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={e => { if (e.key === 'Enter') switchConversation(convo.id) }}
-                      onClick={() => switchConversation(convo.id)}
-                      onContextMenu={event => {
-                        event.preventDefault()
-                        setConversationMenu({
-                          id: convo.id,
-                          x: Math.max(8, Math.min(event.clientX, window.innerWidth - 168)),
-                          y: Math.max(8, Math.min(event.clientY, window.innerHeight - 82)),
-                        })
-                      }}
-                      className="group flex items-center gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors"
-                      style={{
-                        borderLeftColor: isActive ? 'var(--foreground)' : 'transparent',
-                        backgroundColor: isActive ? 'var(--accent)' : 'transparent',
-                      }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        {renameTarget?.id === convo.id && renameTarget.surface === 'sidebar' ? (
-                          <input
-                            autoFocus
-                            value={conversationTitleDraft}
-                            onChange={event => setConversationTitleDraft(event.target.value)}
-                            onFocus={event => event.currentTarget.select()}
-                            onClick={event => event.stopPropagation()}
-                            onPointerDown={event => event.stopPropagation()}
-                            onBlur={() => void commitConversationTitle(convo.id)}
-                            onKeyDown={event => {
-                              event.stopPropagation()
-                              if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
-                              else if (event.key === 'Escape') { event.preventDefault(); setRenameTarget(null) }
-                            }}
-                            maxLength={200}
-                            className="h-6 w-full rounded border px-2 text-xs outline-none"
-                            style={{ borderColor: 'var(--border)', color: 'var(--foreground)', backgroundColor: 'var(--background)' }}
-                            aria-label={t('admin.ai_rename_conversation')}
-                          />
-                        ) : (
-                          <>
-                            <div className="text-[12px] leading-tight truncate" style={{ color: isActive ? 'var(--accent-foreground)' : 'var(--foreground)' }}>
-                              {convo.title || t('admin.ai_new_chat')}
-                            </div>
-                            <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: 'var(--muted-foreground)', opacity: 0.6 }}>
-                              {formatConversationDate(convo.updatedAt)}
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Sidebar actions: show on hover */}
-                      <div className={`flex items-center gap-0.5 shrink-0 ${isDeletePending ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <button
-                          disabled={generatingTitleId === convo.id || deletingConversationId !== null}
-                          onClick={e => { e.stopPropagation(); startRenamingConversation(convo.id, 'sidebar') }}
-                          className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-background/80"
-                          style={{ color: 'var(--muted-foreground)' }}
-                          aria-label={t('admin.ai_rename_conversation')}
-                          title={t('admin.ai_rename_conversation')}
-                        >
-                          <Pencil size={11} />
-                        </button>
-                        <button
-                          disabled={deletingConversationId !== null}
-                          onClick={e => { e.stopPropagation(); handleDeleteClick(convo.id) }}
-                          className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-background/80"
-                          style={{ color: isDeletePending ? 'var(--destructive)' : 'var(--muted-foreground)' }}
-                          aria-label={isDeletePending ? t('admin.ai_delete_confirm_again') : t('common.delete')}
-                          title={isDeletePending ? t('admin.ai_delete_confirm_again') : t('common.delete')}
-                        >
-                          {isDeleting ? <Loader2 size={11} className="animate-spin" /> : isDeletePending ? <Trash2 size={11} /> : <X size={11} />}
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {hasMoreConversations && (
-                  <button
-                    type="button"
-                    disabled={loadingMoreConversations}
-                    onClick={() => void loadMoreConversations()}
-                    className="flex h-8 w-full items-center justify-center gap-1.5 text-[11px] hover:bg-accent disabled:opacity-50"
-                    style={{ color: 'var(--muted-foreground)' }}
-                  >
-                    {loadingMoreConversations && <Loader2 size={12} className="animate-spin" />}
-                    {t('admin.ai_load_more_conversations')}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar footer: model indicator */}
-          <div className="px-4 py-2 border-t flex items-center gap-2 shrink-0" style={{ borderColor: 'var(--border)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500/50" />
-            <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>{activeModelLabel}</span>
-          </div>
-        </aside>
+        <ConversationSidebar
+          conversations={conversations}
+          hasMoreConversations={hasMoreConversations}
+          loadingMoreConversations={loadingMoreConversations}
+          activeConversation={activeConversation}
+          deletingConversationId={deletingConversationId}
+          pendingDeleteId={pendingDeleteId}
+          renameTarget={renameTarget}
+          conversationTitleDraft={conversationTitleDraft}
+          generatingTitleId={generatingTitleId}
+          activeModelLabel={activeModelLabel}
+          t={t}
+          onNew={handleNewConversation}
+          onSwitch={switchConversation}
+          onLoadMore={loadMoreConversations}
+          onStartRename={startRenamingConversation}
+          onCommitTitle={commitConversationTitle}
+          onTitleDraftChange={setConversationTitleDraft}
+          onCancelRename={() => setRenameTarget(null)}
+          onDeleteClick={handleDeleteClick}
+          onConversationMenu={setConversationMenu}
+        />
       )}
 
       {/* ── Main Chat Area ── */}
@@ -1984,399 +1471,6 @@ export function AiAssistantPage() {
         </div>,
         document.body,
       )}
-    </div>
-  )
-}
-
-/* ── Desktop Empty State: clean, minimal ── */
-function DesktopEmptyState({ t, textareaRef, setInput }: {
-  t: (key: string) => string
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>
-  setInput: (value: string) => void
-}) {
-  const prompts = [
-    { text: t('admin.ai_prompt_narrative'), index: 1 },
-    { text: t('admin.ai_prompt_describe'), index: 2 },
-    { text: t('admin.ai_prompt_title'), index: 3 },
-  ]
-
-  return (
-    <div className="h-full flex flex-col items-center justify-center px-6 pb-16 select-none">
-      <div className="text-center max-w-sm">
-        <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl"
-          style={{ backgroundColor: 'var(--muted)', border: '1px solid var(--border)' }}>
-          <Sparkles size={24} style={{ color: 'var(--muted-foreground)', opacity: 0.5 }} />
-        </div>
-        <h2 className="font-serif text-xl tracking-tight mb-2" style={{ color: 'var(--foreground)' }}>{t('admin.ai_assistant')}</h2>
-        <p className="text-xs leading-relaxed mb-8 max-w-xs mx-auto" style={{ color: 'var(--muted-foreground)' }}>{t('admin.ai_welcome')}</p>
-
-        <div className="space-y-1.5">
-          {prompts.map((p) => (
-            <button
-              key={p.index}
-              onClick={() => { setInput(p.text); textareaRef.current?.focus() }}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border text-left transition-colors hover:bg-accent"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              <span className="text-[10px] font-mono w-5 text-right" style={{ color: 'var(--muted-foreground)', opacity: 0.5 }}>0{p.index}</span>
-              <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{p.text}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── Desktop Message Bubble: flat timeline style ── */
-function isAiImageMetadata(value: unknown): value is AiImageMetadata {
-  return Boolean(value && typeof value === 'object' && (value as AiImageMetadata).type === 'image')
-}
-
-function ReasoningTraceBlock({ block, active }: {
-  block: Extract<EditorAiTraceBlock, { type: 'reasoning' }>
-  active: boolean
-}) {
-  const [open, setOpen] = useState(active)
-  const [userInteracted, setUserInteracted] = useState(false)
-  const effectiveOpen = userInteracted ? open : active
-  return (
-    <div className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-      <button
-        type="button"
-        aria-expanded={effectiveOpen}
-        onClick={() => { setUserInteracted(true); setOpen(previous => !previous) }}
-        className="flex w-full items-center gap-2 py-1 text-left"
-      >
-        <Sparkles size={11} />
-        <span>{active ? '思考中...' : '思考过程'}</span>
-        <ChevronRight size={11} className={`ml-auto transition-transform ${effectiveOpen ? 'rotate-90' : ''}`} />
-      </button>
-      {effectiveOpen && <div className="whitespace-pre-wrap break-words pl-5 pt-1 leading-relaxed">{block.text}</div>}
-    </div>
-  )
-}
-
-function formatTraceValue(value: unknown): string {
-  if (typeof value === 'string') return value
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value)
-  } catch {
-    return String(value)
-  }
-}
-
-function getSkillIdFromTool(tool: Extract<EditorAiTraceBlock, { type: 'tool' }>): string | null {
-  if (tool.name !== 'read_agent_skill') return null
-  const input = tool.input && typeof tool.input === 'object' && !Array.isArray(tool.input)
-    ? tool.input as Record<string, unknown>
-    : null
-  if (typeof input?.skillId === 'string' && input.skillId.trim()) return input.skillId
-  if (tool.inputText) {
-    try {
-      const parsed = JSON.parse(tool.inputText) as unknown
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const skillId = (parsed as Record<string, unknown>).skillId
-        return typeof skillId === 'string' && skillId.trim() ? skillId : null
-      }
-    } catch { /* input is still streaming */ }
-  }
-  return null
-}
-
-function ToolTraceBlock({ tool, skills }: {
-  tool: Extract<EditorAiTraceBlock, { type: 'tool' }>
-  skills: AgentSkill[]
-}) {
-  const skillId = getSkillIdFromTool(tool)
-  const skill = skillId ? skills.find(item => item.id === skillId) : undefined
-  const label = skill ? `Skill: ${skill.name}` : skillId ? `Skill: ${skillId}` : tool.name || 'tool'
-  const status = tool.status === 'preparing' ? 'preparing'
-    : tool.status === 'running' ? 'running'
-      : tool.status === 'completed' ? 'completed' : 'failed'
-  return (
-    <details className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-      <summary className="cursor-pointer select-none py-1">{label} · {status}</summary>
-      <div className="space-y-1.5 pl-4 pt-1">
-        {(tool.inputText || tool.input !== undefined) && (
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black/5 p-2 text-[10px] dark:bg-white/5">
-            {tool.input !== undefined ? formatTraceValue(tool.input) : tool.inputText}
-          </pre>
-        )}
-        {tool.output !== undefined && <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-black/5 p-2 text-[10px] dark:bg-white/5">{formatTraceValue(tool.output)}</pre>}
-        {tool.error && <div className="text-destructive">{tool.error}</div>}
-      </div>
-    </details>
-  )
-}
-
-function AssistantTrace({ blocks, streaming, skills }: {
-  blocks: EditorAiTraceBlock[]
-  streaming: boolean
-  skills: AgentSkill[]
-}) {
-  if (blocks.length === 0) return null
-  const activeReasoningId = streaming && blocks.at(-1)?.type === 'reasoning' ? blocks.at(-1)?.id : null
-  return (
-    <div className="space-y-2">
-      {blocks.map(block => block.type === 'reasoning' ? (
-        <ReasoningTraceBlock key={block.id} block={block} active={block.id === activeReasoningId} />
-      ) : block.type === 'tool' ? (
-        <ToolTraceBlock key={block.id} tool={block} skills={skills} />
-      ) : block.text ? (
-        <div key={block.id} className="ai-markdown text-sm leading-relaxed break-words" style={{ color: 'var(--foreground)' }}>
-          <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>
-          {streaming && blocks.at(-1)?.id === block.id && (
-            <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse rounded-sm align-middle" style={{ backgroundColor: 'var(--foreground)' }} />
-          )}
-        </div>
-      ) : null)}
-    </div>
-  )
-}
-
-function getGenerationDurationMs(metadata: unknown): number | null {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
-  const durationMs = (metadata as { durationMs?: unknown }).durationMs
-  return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null
-}
-
-function withGenerationDuration(metadata: EditorAiMessageDto['metadata'], durationMs: number): EditorAiMessageDto['metadata'] {
-  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-    return { ...metadata, durationMs }
-  }
-  return { durationMs }
-}
-
-function formatGenerationDuration(durationMs: number): string {
-  return durationMs < 1000 ? `${Math.round(durationMs)} ms` : `${(durationMs / 1000).toFixed(1)} s`
-}
-
-function DesktopMessageBubble({ message, persistedMessageId, trace, copiedId, onCopy, onQuote, onRetry, onBranch, branching, skills, t }: {
-  message: EditorAiMessageDto
-  persistedMessageId?: string
-  trace?: EditorAiTraceBlock[]
-  copiedId: string | null
-  onCopy: (content: string, id: string) => void
-  onQuote: (msg: EditorAiMessageDto) => void
-  onRetry: (msg: EditorAiMessageDto) => void
-  onBranch: (msg: EditorAiMessageDto) => void | Promise<void>
-  branching: boolean
-  skills: AgentSkill[]
-  t: (key: string) => string
-}) {
-  const isUser = message.role === 'user'
-  const imageMetadata = isAiImageMetadata(message.metadata) ? message.metadata : null
-  const messageImages = getMessageImages(message.metadata)
-  const saveMessageId = persistedMessageId || message.id
-  const traceBlocks = trace ?? readEditorAiAssistantTrace(message.metadata)
-  const hasTraceText = traceBlocks.some(block => block.type === 'text' && block.text)
-  const generationDurationMs = getGenerationDurationMs(message.metadata)
-
-  return (
-    <div className={`group mb-3 ${isUser ? 'flex flex-row-reverse gap-2' : 'flex gap-2'}`}>
-      {/* Avatar */}
-      <div className="shrink-0 mt-1">
-        {isUser ? (
-          <div className="flex h-7 w-7 items-center justify-center rounded-md text-[9px] font-semibold"
-            style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
-            Me
-          </div>
-        ) : (
-          <div className="flex h-7 w-7 items-center justify-center rounded-md"
-            style={{ backgroundColor: '#f59e0b/10' }}>
-            <Sparkles size={12} style={{ color: '#f59e0b' }} />
-          </div>
-        )}
-      </div>
-
-      {/* Message content */}
-      <div className={`min-w-0 ${isUser ? 'max-w-[75%]' : 'max-w-[75%]'}`}>
-        <div
-          className="px-3.5 py-2.5 rounded-lg text-sm leading-relaxed"
-          style={{
-            backgroundColor: isUser ? 'var(--muted)' : 'var(--muted)/10',
-            border: `1px solid var(--border)`,
-          }}
-        >
-          {isUser ? (
-            <>
-              <div className="whitespace-pre-wrap break-words" style={{ color: 'var(--foreground)' }}>{message.content}</div>
-              {messageImages.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {messageImages.map((image, index) => (
-                    <MessageImage key={`${image.url}-${index}`} messageId={saveMessageId} image={image} t={t} />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {!imageMetadata && <AssistantTrace blocks={traceBlocks} streaming={message.status === 'streaming'} skills={skills} />}
-              {imageMetadata ? (
-                <ImagePreview message={message} messageId={saveMessageId} metadata={imageMetadata} t={t} />
-              ) : message.status === 'streaming' && !message.content && traceBlocks.length === 0 ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.ai_thinking')}</span>
-                  <span className="flex gap-1">
-                    {[0, 1, 2].map(i => (
-                      <span key={i} className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: 'var(--muted-foreground)', opacity: 0.45, animationDelay: `${i * 150}ms` }} />
-                    ))}
-                  </span>
-                </div>
-              ) : message.content && !hasTraceText ? (
-                <div className="ai-markdown text-sm leading-relaxed break-words" style={{ color: 'var(--foreground)' }}>
-                  <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
-                  {message.status === 'streaming' && (
-                    <span className="inline-block w-[2px] h-4 rounded-sm animate-pulse ml-0.5 align-middle" style={{ backgroundColor: 'var(--foreground)' }} />
-                  )}
-                </div>
-              ) : null}
-              {messageImages.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {messageImages.map((image, index) => (
-                    <MessageImage key={`${image.url}-${index}`} messageId={saveMessageId} image={image} t={t} />
-                  ))}
-                </div>
-              )}
-              {message.status === 'failed' && message.error && (
-                <div className="mt-2 rounded border px-2.5 py-1.5 text-[11px]"
-                  style={{ borderColor: 'var(--destructive)/20', color: 'var(--destructive)', backgroundColor: 'var(--destructive)/5' }}>
-                  {message.error}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Message actions: show on hover */}
-        {message.content && !isUser && (
-          <div className="flex items-center gap-0.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={() => onCopy(message.content, message.id)}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-accent"
-              style={{ color: 'var(--muted-foreground)' }}>
-              {copiedId === message.id ? <Check size={9} className="text-green-500" /> : <Copy size={9} />}
-            </button>
-            <button onClick={() => onQuote(message)}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-accent"
-              style={{ color: 'var(--muted-foreground)' }}>
-              <Quote size={9} />
-            </button>
-            {generationDurationMs !== null && (
-              <span className="px-1.5 py-0.5 text-[9px] tabular-nums" style={{ color: 'var(--muted-foreground)', opacity: 0.6 }}>
-                {formatGenerationDuration(generationDurationMs)}
-              </span>
-            )}
-            <button onClick={() => onRetry(message)} disabled={branching || message.status === 'streaming'}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-accent disabled:opacity-40"
-              style={{ color: 'var(--muted-foreground)' }}>
-              <RotateCcw size={9} />
-            </button>
-            <button onClick={() => void onBranch(message)} disabled={branching || message.status === 'streaming'}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-accent disabled:opacity-40"
-              style={{ color: 'var(--muted-foreground)' }}>
-              {branching ? <Loader2 size={9} className="animate-spin" /> : <GitBranch size={9} />}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ── Image Preview ── */
-function ImagePreview({ message, messageId, metadata, t }: {
-  message: EditorAiMessageDto
-  messageId: string
-  metadata: AiImageMetadata
-  t: (key: string) => string
-}) {
-  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false)
-  const [imageSrc, setImageSrc] = useState(metadata.uploadedUrl || '')
-  const [loadingImage, setLoadingImage] = useState(!metadata.uploadedUrl)
-  const [loadError, setLoadError] = useState('')
-  const saveState = useImageContextMenu(
-    Boolean(metadata.photoId),
-    async () => {
-      try {
-        await SaveMessageImageToAlbum(messageId, imageSrc)
-        toast.success(t('admin.ai_saved_to_album'))
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : t('admin.ai_save_to_album_failed'))
-        throw error
-      }
-    },
-    () => downloadMessageImageToLocal(imageSrc, t),
-  )
-  const selectLibrary = async (library: RecentLibrary) => {
-    try {
-      await localLibraryApi.open(library.path)
-      setLibraryDialogOpen(true)
-    } catch (cause) {
-      toast.error(formatAiLibraryError(cause))
-    }
-  }
-
-  useCachedPageEffect(() => {
-    async function loadImage() {
-      setLoadError('')
-      if (metadata.uploadedUrl) {
-        setImageSrc(metadata.uploadedUrl)
-        setLoadingImage(false)
-        return
-      }
-      setLoadingImage(true)
-      try {
-        const dataUrl = await GetAiImageDataURL(messageId)
-        setImageSrc(dataUrl)
-      } catch (error) {
-        setLoadError(error instanceof Error ? error.message : '图片加载失败')
-      } finally {
-        setLoadingImage(false)
-      }
-    }
-    void loadImage()
-  }, [messageId, metadata.uploadedUrl])
-
-  return (
-    <div className="space-y-3">
-      <p className="text-sm" style={{ color: 'var(--foreground)' }}>{message.content || '已生成图片'}</p>
-      <div className="rounded-lg border overflow-hidden max-w-md" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)/10' }}>
-        {loadingImage ? (
-          <div className="h-56 flex items-center justify-center gap-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-            <Loader2 size={16} className="animate-spin" /> 加载中...
-          </div>
-        ) : loadError ? (
-          <div className="h-32 flex items-center justify-center px-4 text-xs text-center" style={{ color: 'var(--destructive)' }}>{loadError}</div>
-        ) : (
-          <img
-            src={imageSrc}
-            alt="AI generated image"
-            className="w-full max-h-[420px] object-contain"
-            loading="lazy"
-            onContextMenu={saveState.handleContextMenu}
-          />
-        )}
-      </div>
-      <ImageContextMenu
-        position={saveState.contextMenu}
-        saving={saveState.saving}
-        downloading={saveState.downloading}
-        saved={saveState.saved}
-        onSave={saveState.handleSave}
-        onDownload={saveState.handleDownload}
-        onSelectLibrary={selectLibrary}
-        t={t}
-      />
-      {libraryDialogOpen && <LocalLibrarySaveDialog imageUrl={imageSrc} t={t} onClose={() => setLibraryDialogOpen(false)} onSaved={() => setLibraryDialogOpen(false)} />}
-      <details className="text-[10px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-        <summary className="cursor-pointer select-none py-1">生成信息</summary>
-        <div className="space-y-1.5 pt-1">
-          <p className="whitespace-pre-wrap break-words">提示词: {metadata.prompt}</p>
-          {metadata.revisedPrompt && <p className="whitespace-pre-wrap break-words">优化后: {metadata.revisedPrompt}</p>}
-          {(metadata.provider || metadata.model || metadata.size) && <p>{[metadata.provider, metadata.model, metadata.size].filter(Boolean).join(' · ')}</p>}
-        </div>
-      </details>
     </div>
   )
 }
