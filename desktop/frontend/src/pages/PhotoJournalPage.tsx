@@ -444,11 +444,11 @@ function PhotoJournalContent() {
     setActiveSubTab(tab)
   }
 
-  const chromeVisible = !((isStoriesEditing && activeSubTab === 'stories') || (isBlogEditing && activeSubTab === 'blog') || isImmersiveMode)
-  const contentPadding =
-    (isStoriesEditing && activeSubTab === 'stories') || (isBlogEditing && activeSubTab === 'blog') || isImmersiveMode
-      ? 'pt-0'
-      : 'px-6 pb-6 pt-3'
+  // 顶栏始终显示「照片日志」标题（包括编辑态），仅沉浸全屏时隐藏。
+  // 内容区在编辑态仍用 pt-0，让编辑器紧贴顶栏下方。
+  const isEditing = isStoriesEditing || isBlogEditing
+  const chromeVisible = !isImmersiveMode
+  const contentPadding = isEditing || isImmersiveMode ? 'pt-0' : 'px-6 pb-6 pt-3'
 
   // 左栏面板头内的子页签导航（叙事/博客/草稿）
   const subTabNav = (
@@ -505,7 +505,6 @@ function PhotoJournalContent() {
             <CollapsibleListPane
               collapsed={listPaneCollapsed}
               onToggle={toggleListPane}
-              icon={FileArchive}
               t={t}
               header={subTabNav}
             >

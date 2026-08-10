@@ -39,6 +39,8 @@ interface BlogEditorViewProps {
   documentId: string
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
+  listPaneCollapsed?: boolean
+  onToggleListPane?: () => void
 }
 
 /**
@@ -60,6 +62,8 @@ export function BlogEditorView({
   documentId,
   t,
   notify,
+  listPaneCollapsed,
+  onToggleListPane,
 }: BlogEditorViewProps) {
   const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   const [showPreview, setShowPreview] = useState(false)
@@ -132,6 +136,8 @@ export function BlogEditorView({
         isImmersiveMode={isImmersiveMode}
         onToggleImmersive={() => setIsImmersiveMode((prev) => !prev)}
         immersiveLabel={t('ui.immersive')}
+        listPaneCollapsed={listPaneCollapsed}
+        onToggleListPane={onToggleListPane}
         metaLeft={
           <div className="flex flex-wrap items-center gap-3">
             <input

@@ -94,7 +94,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
 
   const editing = currentBlog !== null
 
-  // 通知父级编辑状态（用于隐藏页面级 chrome）
+  // 通知父级编辑状态（用于内容区 padding 切换）
   useEffect(() => {
     onEditingChange?.(editing)
   }, [editing, onEditingChange])
@@ -377,6 +377,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
         setCurrentBlog(null)
         setLastSavedAt(null)
         initialBlogRef.current = null
+        // 删除当前编辑项即退出编辑，自动展开左栏
+        if (listPaneCollapsed) onToggleListPane?.()
       }
       await fetchBlogs()
       notify(t('admin.notify_log_deleted'))
@@ -446,7 +448,9 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
     setLastSavedAt(null)
     initialBlogRef.current = null
     setIsDirty(false)
-  }, [flushCurrentDraft])
+    // 退出编辑时自动展开左栏列表（编辑态可能已收起）
+    if (listPaneCollapsed) onToggleListPane?.()
+  }, [flushCurrentDraft, listPaneCollapsed, onToggleListPane])
 
   const handleBlogChange = useCallback((patch: Partial<BlogFormData>) => {
     setCurrentBlog((prev) => (prev ? { ...prev, ...patch } : prev))
@@ -491,9 +495,9 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
       <CollapsibleListPane
         collapsed={listPaneCollapsed}
         onToggle={() => onToggleListPane?.()}
-        icon={BookText}
         t={t}
         header={subTabNav}
+        showCollapsedRail={!currentBlog}
       >
         <BlogListView
           blogs={blogs}
@@ -529,6 +533,8 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
             documentId={blogDocumentId}
             t={t}
             notify={notify}
+            listPaneCollapsed={listPaneCollapsed}
+            onToggleListPane={() => onToggleListPane?.()}
           />
         ) : (
           <EditorEmptyState

@@ -32,6 +32,8 @@ interface StoryEditorViewProps {
   editorRef: React.RefObject<NarrativeTipTapEditorHandle | null>
   isImmersiveMode: boolean
   setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
+  listPaneCollapsed?: boolean
+  onToggleListPane?: () => void
   useCustomDate: boolean
   setUseCustomDate: Dispatch<SetStateAction<boolean>>
   isPhotoPanelCollapsed: boolean
@@ -88,6 +90,8 @@ export function StoryEditorView({
   editorRef,
   isImmersiveMode,
   setIsImmersiveMode,
+  listPaneCollapsed,
+  onToggleListPane,
   useCustomDate,
   setUseCustomDate,
   isPhotoPanelCollapsed,
@@ -173,6 +177,8 @@ export function StoryEditorView({
         isImmersiveMode={isImmersiveMode}
         onToggleImmersive={() => setIsImmersiveMode((prev) => !prev)}
         immersiveLabel={t('ui.immersive')}
+        listPaneCollapsed={listPaneCollapsed}
+        onToggleListPane={onToggleListPane}
         metaLeft={
           <div className="flex items-center gap-2">
             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />

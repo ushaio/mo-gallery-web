@@ -204,6 +204,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       resetDraftState()
       setStoryEditMode('list')
       setCurrentStory(null)
+      // 保存后回到列表视图，自动展开左栏（编辑态可能已收起）
+      if (listPaneCollapsed) onToggleListPane?.()
       await loadStories()
       if (location.search.includes('editStory=')) {
         navigate('/photo-journal', { replace: true })
@@ -215,7 +217,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = false
       setSaving(false)
     }
-  }, [clearDraft, currentStory, initialStory, loadStories, location.search, notify, pendingImages, resetDraftState, navigate, stories, t])
+  }, [clearDraft, currentStory, initialStory, listPaneCollapsed, loadStories, location.search, notify, onToggleListPane, pendingImages, resetDraftState, navigate, stories, t])
 
   const {
     editorRef,
@@ -307,10 +309,12 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     setCurrentStory(null)
     resetDraftState()
     setIsDraggingOver(false)
+    // 退出编辑时自动展开左栏列表（编辑态可能已收起）
+    if (listPaneCollapsed) onToggleListPane?.()
     if (location.search.includes('editStory=')) {
       navigate('/photo-journal', { replace: true })
     }
-  }, [location.search, pendingImages, resetDraftState, navigate, setIsDraggingOver])
+  }, [listPaneCollapsed, location.search, onToggleListPane, pendingImages, resetDraftState, navigate, setIsDraggingOver])
 
   const handleSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
@@ -586,9 +590,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       <CollapsibleListPane
         collapsed={listPaneCollapsed}
         onToggle={() => onToggleListPane?.()}
-        icon={BookOpen}
         t={t}
         header={subTabNav}
+        showCollapsedRail={storyEditMode !== 'editor'}
       >
         <StoryListView
           stories={stories}
@@ -621,6 +625,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           lastSavedAt={lastSavedAt}
           isImmersiveMode={isImmersiveMode}
           setIsImmersiveMode={setIsImmersiveMode}
+          listPaneCollapsed={listPaneCollapsed}
+          onToggleListPane={() => onToggleListPane?.()}
           useCustomDate={useCustomDate}
           setUseCustomDate={setUseCustomDate}
           isPhotoPanelCollapsed={isPhotoPanelCollapsed}

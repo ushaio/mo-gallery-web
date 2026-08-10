@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Check, Clock, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Clock, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -42,6 +42,10 @@ export interface EditorShellProps {
   onToggleImmersive?: () => void
   immersiveLabel?: string
 
+  // 左栏列表收起/展开（编辑态内嵌控制）
+  listPaneCollapsed?: boolean
+  onToggleListPane?: () => void
+
   // 元信息条
   metaLeft?: ReactNode
   metaRight?: ReactNode
@@ -75,6 +79,8 @@ export function EditorShell({
   isImmersiveMode,
   onToggleImmersive,
   immersiveLabel,
+  listPaneCollapsed,
+  onToggleListPane,
   metaLeft,
   metaRight,
   disabled,
@@ -90,6 +96,18 @@ export function EditorShell({
         className="flex shrink-0 items-center justify-between gap-4 border-0 border-b border-border px-3 py-2.5"
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
+          {onToggleListPane ? (
+            <AdminButton
+              onClick={onToggleListPane}
+              adminVariant="outlineMuted"
+              size="sm"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+              title={listPaneCollapsed ? t('admin.expand_list') : t('admin.collapse_list')}
+              aria-label={listPaneCollapsed ? t('admin.expand_list') : t('admin.collapse_list')}
+            >
+              {listPaneCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+            </AdminButton>
+          ) : null}
           <AdminButton
             onClick={onClose}
             disabled={closeDisabled}
@@ -192,7 +210,7 @@ export function EditorShell({
       ) : null}
 
       {/* 内容区：编辑器 + 素材面板 */}
-      <div className="relative min-h-0 flex-1 overflow-hidden">{children}</div>
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
     </div>
   )
 }

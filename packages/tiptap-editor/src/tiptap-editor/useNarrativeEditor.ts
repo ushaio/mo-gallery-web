@@ -171,6 +171,8 @@ export function useNarrativeEditor({
     shouldRerenderOnTransaction: true,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML()
+      // 内容未变化时（例如扩展合成的空事务）不向上游广播，避免宿主误判为「已修改」。
+      if (html === currentValueRef.current) return
       currentValueRef.current = html
       onChange(html)
       onJsonChange?.(editor.getJSON())
@@ -285,7 +287,9 @@ export function useNarrativeEditor({
   })
 
   useEffect(() => {
-    editor?.setEditable(!isAiTaskLocked)
+    // emitUpdate=false：setEditable 默认会合成一个空事务的 update 事件，
+    // 会让宿主在「未修改内容」时也收到 onChange/onJsonChange，从而误触发自动保存。
+    editor?.setEditable(!isAiTaskLocked, false)
   }, [editor, isAiTaskLocked])
 
 
