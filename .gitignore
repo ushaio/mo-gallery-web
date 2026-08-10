@@ -101,3 +101,5 @@ public/uploads
 
 # workspace package dependency links
 /packages/*/node_modules/
+.pencil-ui/
+docs/
