@@ -1,11 +1,11 @@
 # 更新日志
 
-## v0.8.0 - 2026-08-04
+## v0.8.1
 
 ### 📱 移动端首发（Flutter / Android）
 - 新增基于 Flutter 的 Android-first 移动上传客户端：登录、上传、照片浏览核心流程。
 - 扩展移动端画廊浏览体验。
-- 本次随 v0.8.0 发布首个 Android APK 安装包，后续将随 GitHub Release 自动产出。
+- 本次随 v0.8.1 发布首个 Android APK 安装包，后续将随 GitHub Release 自动产出。
 
 ### 📓 Zine 画册编辑器（桌面端）
 - 新增 Zine 领域模型与本地草稿存储，支持自动保存与脏状态守护。
