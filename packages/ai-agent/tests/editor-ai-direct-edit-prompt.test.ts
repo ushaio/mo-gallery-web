@@ -335,7 +335,7 @@ test('Zine vision order and policy keep one spread writable and project assets a
   const text = allText(messages)
 
   assert.match(text, /targetSpreadId[\s\S]*spread-current[\s\S]*only writable spread/i)
-  assert.match(text, /project and adjacent spreads.*read-only design references/i)
+  assert.match(text, /project-level settings and adjacent spreads.*read-only design references/i)
   assert.match(text, /every Zine write operation includes the exact field\/value spreadId: "spread-current"/i)
   assert.match(text, /assetCandidates[\s\S]*project asset allowlist[\s\S]*asset-a[\s\S]*asset-b/i)
   assert.match(text, /no filesystem[\s\S]*external gallery[\s\S]*generation[\s\S]*import[\s\S]*delete[\s\S]*project assets/i)
@@ -348,6 +348,51 @@ test('Zine vision order and policy keep one spread writable and project assets a
     { dataUrl: 'data:image/webp;base64,ASSETA', mediaType: 'image/webp', labelIds: ['thumb-a', 'asset-a'] },
     { dataUrl: 'data:image/png;base64,ASSETB', mediaType: 'image/png', labelIds: ['thumb-b', 'asset-b'] },
   ])
+})
+
+test('Zine photo copy uses grounded visuals and prior answers before editing', () => {
+  const task: DirectEditAgentTask<ZineDocumentSnapshot> = {
+    ...zineTask('instruction'),
+    instruction: 'Write the final caption into the current spread.',
+    conversationHistory: [
+      { role: 'user', content: 'Give this photo suitable copy.' },
+      { role: 'assistant', content: 'What moment is this, and what tone should the copy use?' },
+      { role: 'user', content: 'It was a rainy night in Shanghai. Keep it restrained.' },
+    ],
+  }
+  const messages = buildZineDirectEditMessages({ task, capabilities: VISION })
+  const system = messages[0]?.text ?? ''
+
+  assert.deepEqual(messages.map((message) => message.role), [
+    'system',
+    'user',
+    'assistant',
+    'user',
+    'user',
+  ])
+  assert.deepEqual(messages.slice(1, 4).map((message) => message.text), [
+    'Give this photo suitable copy.',
+    'What moment is this, and what tone should the copy use?',
+    'It was a rainy night in Shanghai. Keep it restrained.',
+  ])
+  assert.match(messages.at(-1)?.text ?? '', /<DIRECT_EDIT_CONTEXT_JSON>/)
+  assert.match(system, /first inspect the current writable preview, relevant asset thumbnails, and supplied metadata/i)
+  assert.match(system, /never invent a location, time, event, identity, relationship, or personal meaning/i)
+  assert.match(system, /ask at most three concise, high-information questions/i)
+  assert.match(system, /do not ask for details already visible or supplied/i)
+  assert.match(system, /combine it with grounded visual observations/i)
+  assert.match(system, /current spread is writable when Agent execution mode is active/i)
+  assert.match(system, /do not describe the environment as suggestion-only/i)
+  assert.doesNotMatch(system, /Suggestion-only execution mode/i)
+
+  const structureOnlySystem = buildZineDirectEditMessages({
+    task,
+    capabilities: STRUCTURE_ONLY,
+  })[0]?.text ?? ''
+  assert.match(structureOnlySystem, /image pixels are unavailable in structure-only mode/i)
+  assert.match(structureOnlySystem, /do not imply that you saw the photo/i)
+  assert.match(structureOnlySystem, /ask the user to describe any visual detail needed/i)
+  assert.doesNotMatch(structureOnlySystem, /first inspect the current writable preview/i)
 })
 
 test('vision builder output survives both adapters exactly once and in order', () => {

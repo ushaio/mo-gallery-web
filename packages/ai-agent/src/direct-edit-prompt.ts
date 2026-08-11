@@ -74,6 +74,13 @@ function capabilityJson(capabilities: ResolvedEditorAiCapabilities): JsonValue {
   }
 }
 
+function conversationMessages(task: DirectEditAgentTask): EditorAiChatMessage[] {
+  return (task.conversationHistory ?? []).map((message) => ({
+    role: message.role,
+    text: message.content,
+  }))
+}
+
 function narrativeContext(input: BuildDirectEditPromptInput<NarrativeDocumentSnapshot>): JsonValue {
   const { task, capabilities } = input
   const { snapshot } = task
@@ -166,6 +173,8 @@ function commonPolicy(capabilities: ResolvedEditorAiCapabilities): string[] {
   }
   if (capabilities.executionMode === 'suggestion_only') {
     lines.push('Suggestion-only execution mode: return advice only. Do not output operations or tool calls.')
+  } else {
+    lines.push('Agent execution mode: the user has authorized direct edits. Use the supplied tools to submit one validated operation batch when the instruction requests a change; do not describe the environment as suggestion-only.')
   }
   return lines
 }
@@ -219,7 +228,7 @@ export function buildZineDirectEditMessages(
   const system = [
     'You are a project-neutral Zine direct-edit agent.',
     `targetSpreadId ${JSON.stringify(snapshot.targetSpreadId)}, the current spread, is the only writable spread.`,
-    'The project and adjacent spreads are read-only design references.',
+    'Project-level settings and adjacent spreads are read-only design references; the current spread is writable when Agent execution mode is active.',
     `Every Zine write operation includes the exact field/value spreadId: ${JSON.stringify(snapshot.targetSpreadId)}.`,
     `Assets may come only from the provided project assetCandidates and project asset allowlist: ${JSON.stringify(projectAssets)}.`,
     'When explicit user intent asks to write copy, update an existing text slot by its exact snapshot ID when suitable.',
@@ -227,6 +236,12 @@ export function buildZineDirectEditMessages(
     'The insert_zine_text_slot tool supplies valid text-slot defaults. Choose a unique slotId and an insertion index no greater than the current slot count.',
     'Use no filesystem, external gallery, asset generation, asset import, or delete of project assets.',
     'Use no arbitrary CSS and no whole-project replacement.',
+    capabilities.visualMode === 'vision'
+      ? 'For photo copywriting requests, first inspect the current writable preview, relevant asset thumbnails, and supplied metadata. Distinguish grounded visual observations from story context that remains unknown.'
+      : 'For photo copywriting requests, image pixels are unavailable in structure-only mode. Do not imply that you saw the photo; use only supplied metadata and conversation, and ask the user to describe any visual detail needed for the copy.',
+    'Never invent a location, time, event, identity, relationship, or personal meaning that is not visible in the supplied image context or stated in the conversation.',
+    'If missing context would materially change the copy, ask at most three concise, high-information questions about the moment, intended meaning, audience, tone, or length. Do not ask for details already visible or supplied, and do not submit an operation batch in that turn.',
+    'Use the conversation history to continue an unresolved copy request. Once the user has supplied enough context, combine it with grounded visual observations and complete the requested copy or authorized write without asking the same questions again.',
     ...commonPolicy(capabilities),
     deletePolicy(task.authorization, 'slot IDs'),
   ].join('\n')
@@ -241,7 +256,11 @@ export function buildZineDirectEditMessages(
       if (candidate.thumbnail) content.push(...visualParts(`Project asset candidate thumbnail; asset ID ${JSON.stringify(candidate.assetId)}; thumbnail image ID ${JSON.stringify(candidate.thumbnail.id)}.`, candidate.thumbnail))
     }
   }
-  return [{ role: 'system', text: system }, { role: 'user', text, ...(content.length ? { content } : {}) }]
+  return [
+    { role: 'system', text: system },
+    ...conversationMessages(task),
+    { role: 'user', text, ...(content.length ? { content } : {}) },
+  ]
 }
 
 export function buildDirectEditMessages(input: BuildDirectEditPromptInput<NarrativeDocumentSnapshot>): EditorAiChatMessage[]

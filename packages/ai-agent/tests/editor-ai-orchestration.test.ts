@@ -204,6 +204,31 @@ const options = (host: Host) => ({
   taskId: 'task-1',
 })
 
+await test('passes conversation history into the direct-edit runtime task', async () => {
+  const host = new Host()
+  const conversationHistory = [
+    { role: 'user' as const, content: 'Give this photo suitable copy.' },
+    { role: 'assistant' as const, content: 'What moment is this, and what tone should it use?' },
+    { role: 'user' as const, content: 'A rainy night in Shanghai, with a restrained tone.' },
+  ]
+  let observedTask: DirectEditAgentTask<NarrativeDocumentSnapshot> | undefined
+  const capturingRuntime: DirectEditAgentRuntime<NarrativeDocumentSnapshot> = {
+    async *run(task) {
+      observedTask = task
+      yield { type: 'text_delta', text: 'I have enough context to continue.' }
+    },
+  }
+
+  const result = await runDirectEditAgentWithRuntime(
+    { ...options(host), conversationHistory },
+    capturingRuntime,
+  )
+
+  assert.equal(result.mode, 'suggestion_only')
+  assert.deepEqual(observedTask?.conversationHistory, conversationHistory)
+  assert.deepEqual(host.calls, ['lock', 'capture', 'unlock'])
+})
+
 await test('commits one authoritative batch after simulation and validation', async () => {
   const host = new Host()
   const observed: string[] = []

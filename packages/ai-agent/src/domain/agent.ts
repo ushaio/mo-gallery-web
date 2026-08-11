@@ -18,6 +18,7 @@ import type {
 import type { JsonValue } from './json'
 import type { EditorOperationAuthorization } from './operations'
 import type { EditorProposal } from './proposals'
+import type { EditorAiHistoryMessage } from '../types'
 
 export type EditorAgentStatus =
   | 'starting'
@@ -92,6 +93,7 @@ export interface DirectEditAgentTask<
   readonly id: string
   readonly taskType: DirectEditTaskType
   readonly instruction: string
+  readonly conversationHistory?: readonly DeepReadonly<EditorAiHistoryMessage>[]
   readonly snapshot: DeepReadonly<Snapshot>
   readonly authorization: DeepReadonly<EditorOperationAuthorization>
   readonly modelCapabilities: DeepReadonly<EditorAiModelCapabilities>

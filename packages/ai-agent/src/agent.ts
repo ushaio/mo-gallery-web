@@ -61,7 +61,7 @@ import type { EditorProposal } from './domain/proposals'
 import { VercelAiDirectEditAgentRuntime } from './runtime/vercel-ai/direct-edit-agent'
 import { VercelAiEditorAgentRuntime } from './runtime/vercel-ai/editor-agent'
 import { createAbortError } from './runtime/vercel-ai/errors'
-import type { EditorAiEndpoint } from './types'
+import type { EditorAiEndpoint, EditorAiHistoryMessage } from './types'
 
 export interface RunEditorAgentOptions {
   endpoint: EditorAiEndpoint
@@ -134,6 +134,7 @@ export interface RunDirectEditAgentOptions<
   readonly endpoint: EditorAiEndpoint
   readonly model: string
   readonly instruction: string
+  readonly conversationHistory?: readonly DeepReadonly<EditorAiHistoryMessage>[]
   readonly taskType: DirectEditAgentTask['taskType']
   readonly host: AiDocumentHost<C>
   readonly modelCapabilities: DeepReadonly<EditorAiModelCapabilities>
@@ -349,6 +350,9 @@ export async function runDirectEditAgentWithRuntime<
       id: taskId,
       taskType: options.taskType,
       instruction: options.instruction,
+      ...(options.conversationHistory?.length
+        ? { conversationHistory: options.conversationHistory }
+        : {}),
       snapshot: budgetResult.snapshot as DeepReadonly<EditorAiSnapshotByCapability[C]>,
       authorization: options.authorization,
       modelCapabilities: options.modelCapabilities,
