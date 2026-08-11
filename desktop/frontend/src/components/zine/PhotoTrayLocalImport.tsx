@@ -13,6 +13,7 @@ import { TrayThumb } from './TrayThumb'
 interface PhotoTrayLocalImportProps {
   onPickAsset: (asset: ZineAsset) => void
   onDragAsset: (asset: ZineAsset) => void
+  controlsOnly?: boolean
 }
 
 function createLocalAssetId() {
@@ -34,7 +35,7 @@ export function selectZineProjectAssets(project: { assets: ZineAsset[] } | null 
   return project?.assets ?? EMPTY_ZINE_ASSETS
 }
 
-export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLocalImportProps) {
+export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = false }: PhotoTrayLocalImportProps) {
   const { language } = usePreferences()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [importing, setImporting] = useState(false)
@@ -75,9 +76,8 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
     }
   }
 
-  return (
-    <div className="flex h-full min-w-0 flex-col gap-3">
-      <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+  const importControls = (
+    <div className="flex shrink-0 flex-col items-stretch gap-1.5">
         <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void importFiles(event.target.files)} />
         <button
           type="button"
@@ -92,7 +92,14 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
         <span className="px-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
           {t('admin.zine_local_hint', language)}
         </span>
-      </div>
+    </div>
+  )
+
+  if (controlsOnly) return importControls
+
+  return (
+    <div className="flex h-full min-w-0 flex-col gap-3">
+      {importControls}
 
       {assets.length === 0 ? (
         <div

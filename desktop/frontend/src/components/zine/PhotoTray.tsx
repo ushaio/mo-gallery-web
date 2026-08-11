@@ -11,15 +11,14 @@ import { useZineStore } from '@/store/zine'
 
 import { PhotoTrayLibrary } from './PhotoTrayLibrary'
 import { PhotoTrayCurrent } from './PhotoTrayCurrent'
-import { PhotoTrayLocalImport } from './PhotoTrayLocalImport'
 
-type PhotoTrayTab = 'current' | 'library' | 'local'
+type PhotoTrayTab = 'current' | 'library'
 
 export function PhotoTray() {
   const { isAuthenticated } = useAuth()
   const { language } = usePreferences()
-  const [activeTab, setActiveTab] = useState<PhotoTrayTab>(isAuthenticated ? 'library' : 'local')
-  const displayedTab = !isAuthenticated && activeTab === 'library' ? 'local' : activeTab
+  const [activeTab, setActiveTab] = useState<PhotoTrayTab>(isAuthenticated ? 'library' : 'current')
+  const displayedTab = !isAuthenticated && activeTab === 'library' ? 'current' : activeTab
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
@@ -106,7 +105,7 @@ export function PhotoTray() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b p-2" style={{ borderColor: 'var(--border)' }}>
-        <div className="grid grid-cols-3 rounded-md bg-muted p-0.5 text-[10px]">
+        <div className={`grid rounded-md bg-muted p-0.5 text-[10px] ${isAuthenticated ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <button
             type="button"
             className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'current' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
@@ -123,13 +122,6 @@ export function PhotoTray() {
               {t('admin.zine_library', language)}
             </button>
           )}
-          <button
-            type="button"
-            className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'local' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => setActiveTab('local')}
-          >
-            {t('admin.zine_local', language)}
-          </button>
         </div>
 
       </div>
@@ -144,9 +136,7 @@ export function PhotoTray() {
             />
           ) : displayedTab === 'library' ? (
             <PhotoTrayLibrary onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
-          ) : (
-            <PhotoTrayLocalImport onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
-          )}
+          ) : null}
       </div>
     </div>
   )

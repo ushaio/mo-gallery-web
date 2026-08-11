@@ -5,6 +5,7 @@ import type { Spread, ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 
 import { TrayThumb } from './TrayThumb'
+import { PhotoTrayLocalImport } from './PhotoTrayLocalImport'
 
 interface PhotoTrayCurrentProps {
   assets: ZineAsset[]
@@ -33,18 +34,22 @@ export function PhotoTrayCurrent({ assets, spreads, onPickAsset, onDragAsset }: 
 
   if (assets.length === 0) {
     return (
-      <div
-        className="flex h-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-dashed text-xs"
-        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-      >
-        <ImageOff size={14} />
-        {t('admin.zine_current_empty', language)}
+      <div className="flex h-full min-w-0 flex-1 flex-col gap-3">
+        <PhotoTrayLocalImport onPickAsset={onPickAsset} onDragAsset={onDragAsset} controlsOnly />
+        <div
+          className="flex min-h-0 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-dashed text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+        >
+          <ImageOff size={14} />
+          {t('admin.zine_current_empty', language)}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col gap-2">
+    <div className="flex h-full min-w-0 flex-1 flex-col gap-3">
+      <PhotoTrayLocalImport onPickAsset={onPickAsset} onDragAsset={onDragAsset} controlsOnly />
       <div className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
         <Check size={12} className="text-emerald-600" aria-hidden="true" />
         {t('admin.zine_asset_used', language)}
