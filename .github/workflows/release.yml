@@ -77,14 +77,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # 386 and arm64 are temporarily excluded until their Go/CGO dependency toolchains are supported.
           - arch: amd64
             platform: windows/amd64
-            runner: windows-2025
-          - arch: arm64
-            platform: windows/arm64
-            runner: windows-11-arm
-          - arch: x86
-            platform: windows/386
             runner: windows-2025
     runs-on: ${{ matrix.runner }}
     steps:
@@ -568,10 +563,6 @@ jobs:
           expected_assets=(
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-portable.exe"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-setup.exe"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-arm64-portable.exe"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-arm64-setup.exe"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-x86-portable.exe"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-x86-setup.exe"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.zip"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.dmg"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.pkg"
