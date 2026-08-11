@@ -9,6 +9,7 @@ interface PageThumbProps {
   project: ZineProject
   spread: Spread
   width?: number
+  fluid?: boolean
 }
 
 function PageThumbImage({ src }: { src: string }) {
@@ -25,19 +26,21 @@ function PageThumbImage({ src }: { src: string }) {
   return <img src={src} alt="" className="h-full w-full object-cover" draggable={false} loading="lazy" onError={() => setFailedSrc(src)} />
 }
 
-export function PageThumb({ project, spread, width = 128 }: PageThumbProps) {
+export function PageThumb({ project, spread, width = 128, fluid = false }: PageThumbProps) {
   const { pageW, spreadW, spreadH } = getProjectSpreadSize(project)
-  const scale = width / spreadW
 
   return (
-    <div className="relative overflow-hidden bg-white shadow-sm ring-1 ring-black/10" style={{ width, height: spreadH * scale }}>
-      <div className="absolute inset-y-0 z-10 w-px bg-zinc-300/80" style={{ left: pageW * scale }} />
+    <div
+      className="relative overflow-hidden bg-white shadow-sm ring-1 ring-black/10"
+      style={fluid ? { width: '100%', aspectRatio: `${spreadW} / ${spreadH}` } : { width, height: spreadH * (width / spreadW) }}
+    >
+      <div className="absolute inset-y-0 z-10 w-px bg-zinc-300/80" style={{ left: `${(pageW / spreadW) * 100}%` }} />
       {spread.slots.map((slot) => {
         const style = {
-          left: slot.x * scale,
-          top: slot.y * scale,
-          width: slot.w * scale,
-          height: slot.h * scale,
+          left: `${(slot.x / spreadW) * 100}%`,
+          top: `${(slot.y / spreadH) * 100}%`,
+          width: `${(slot.w / spreadW) * 100}%`,
+          height: `${(slot.h / spreadH) * 100}%`,
           transform: `rotate(${slot.rotation}deg)`,
         }
 

@@ -13,8 +13,6 @@ import { PhotoTray } from './PhotoTray'
 const STRIP_MIN_WIDTH = 140
 const STRIP_MAX_WIDTH = 320
 const STRIP_DEFAULT_WIDTH = 176
-// 缩略图宽度 = 侧栏宽度 − 列表 p-3（24）− 卡片 p-1.5（12）− 卡片边框（2）
-const THUMB_INSET = 38
 
 function clampStripWidth(width: number) {
   return Math.min(STRIP_MAX_WIDTH, Math.max(STRIP_MIN_WIDTH, width))
@@ -62,7 +60,6 @@ export function PageStrip() {
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const resizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
   const stripWidth = dragWidth ?? clampStripWidth(storedWidth)
-  const thumbWidth = stripWidth - THUMB_INSET
 
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({ block: 'nearest' })
@@ -152,14 +149,14 @@ export function PageStrip() {
                 type="button"
                 onClick={() => setActiveSpread(spread.id)}
                 aria-current={active ? 'true' : undefined}
-                className="block w-full rounded-lg border p-1.5 text-left transition"
+                className="block w-full rounded-lg border p-1.5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                 style={{
-                  borderColor: active ? 'var(--primary)' : 'var(--border)',
+                  borderColor: active ? 'var(--primary)' : 'transparent',
                   backgroundColor: active ? 'var(--accent)' : 'transparent',
                   boxShadow: active ? '0 0 0 1px var(--primary)' : undefined,
                 }}
               >
-                <PageThumb project={project} spread={spread} width={thumbWidth} />
+                <PageThumb project={project} spread={spread} fluid />
                 <span
                   className="mt-1.5 block text-center text-[11px] tabular-nums"
                   style={{ color: active ? 'var(--foreground)' : 'var(--muted-foreground)', fontWeight: active ? 600 : 400 }}
