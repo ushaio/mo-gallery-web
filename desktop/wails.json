@@ -17,7 +17,7 @@
     "productName": "MO Gallery Desktop",
     "productVersion": "0.8.1",
     "copyright": "2026 ushaio",
-    "comments": "MO Gallery 桌面管理端"
+    "comments": "MO Gallery Desktop application"
   },
   "nsis": {
     "installMode": "perUser",
