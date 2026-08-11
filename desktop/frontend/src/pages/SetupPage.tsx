@@ -318,8 +318,8 @@ export function SetupPage({ initialState, onComplete }: Props) {
           </div>
 
           <form onSubmit={submit} className="my-auto">
-            <div className="flex items-start justify-between gap-4 sm:min-h-[72px]">
-              <div className="flex items-start gap-3.5">
+            <div className="flex items-center justify-between gap-4 sm:min-h-[72px]">
+              <div className="flex items-center gap-3.5">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <StepIcon className="h-5 w-5" />
                 </div>
