@@ -278,15 +278,22 @@ func (s *EditorAiService) CreateConversation(_ string, input EditorAiConversatio
 	return &dto, nil
 }
 
-const editorAiMessageProjection = `"id", "conversationId", "role", "content", "status", "model", "action", "error", "createdAt", CASE WHEN "metadata" IS NULL OR pg_column_size("metadata") <= ? THEN "metadata" ELSE NULL END AS "metadata"`
+func editorAiMessageProjection(database *gorm.DB) string {
+	metadataSize := `length(CAST("metadata" AS BLOB))`
+	if database.Dialector.Name() == "postgres" {
+		metadataSize = `pg_column_size("metadata")`
+	}
+	return `"id", "conversationId", "role", "content", "status", "model", "action", "error", "createdAt", CASE WHEN "metadata" IS NULL OR ` + metadataSize + ` <= ? THEN "metadata" ELSE NULL END AS "metadata"`
+}
 
 func (s *EditorAiService) GetConversation(_ string, conversationId string) (*EditorAiConversationWithMessagesDTO, error) {
 	var conversation db.AiConversation
 	// Legacy image-edit messages may contain an entire data:image Base64 payload
 	// in user metadata. Do not transfer oversized metadata through GORM/Wails;
 	// generated-image metadata is small and remains available.
-	if err := s.persistenceDB().Preload("Messages", func(db2 *gorm.DB) *gorm.DB {
-		return db2.Select(editorAiMessageProjection, maxEditorAiMetadataBytes).
+	database := s.persistenceDB()
+	if err := database.Preload("Messages", func(db2 *gorm.DB) *gorm.DB {
+		return db2.Select(editorAiMessageProjection(database), maxEditorAiMetadataBytes).
 			Order(`"createdAt" ASC`)
 	}).Where("id = ?", conversationId).First(&conversation).Error; err != nil {
 		return nil, fmt.Errorf("查询对话失败: %w", err)
@@ -308,8 +315,9 @@ func (s *EditorAiService) GetConversationPage(_ string, conversationID, beforeCr
 	}
 
 	limit = normalizeEditorAiPageSize(limit, defaultEditorAiMessagePageSize, maxEditorAiMessagePageSize)
-	query := s.persistenceDB().Model(&db.AiMessage{}).
-		Select(editorAiMessageProjection, maxEditorAiMetadataBytes).
+	database := s.persistenceDB()
+	query := database.Model(&db.AiMessage{}).
+		Select(editorAiMessageProjection(database), maxEditorAiMetadataBytes).
 		Where(`"conversationId" = ?`, conversationID)
 	if beforeCreatedAt != "" || beforeID != "" {
 		cursorTime, err := time.Parse(time.RFC3339Nano, beforeCreatedAt)
@@ -345,7 +353,7 @@ func (s *EditorAiService) GetConversationPage(_ string, conversationID, beforeCr
 // RecoverInterruptedMessages 应用启动时把遗留的 streaming 状态消息标记为
 // failed（应用崩溃/关闭导致的脏状态），避免残缺内容混入后续对话历史
 func (s *EditorAiService) RecoverInterruptedMessages() {
-	db.DB.Model(&db.AiMessage{}).Where("status = 'streaming'").Updates(map[string]interface{}{
+	s.persistenceDB().Model(&db.AiMessage{}).Where("status = 'streaming'").Updates(map[string]interface{}{
 		"status": "failed",
 		"error":  "生成中断（应用重启）",
 	})
@@ -485,7 +493,7 @@ func (s *EditorAiService) persistenceDB() *gorm.DB {
 	if s.database != nil {
 		return s.database
 	}
-	return db.DB
+	return db.AiDB
 }
 
 func validateEditorAiMetadata(raw []byte) ([]byte, error) {
@@ -1071,7 +1079,7 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 		metadata, _ := json.Marshal(map[string]interface{}{"images": persistedImages})
 		userMsg.Metadata = datatypes.JSON(metadata)
 	}
-	if err := db.DB.Create(&userMsg).Error; err != nil {
+	if err := s.persistenceDB().Create(&userMsg).Error; err != nil {
 		return fmt.Errorf("保存用户消息失败: %w", err)
 	}
 
@@ -1086,12 +1094,12 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	if input.Action != "" {
 		assistantMsg.Action = &input.Action
 	}
-	if err := db.DB.Create(&assistantMsg).Error; err != nil {
+	if err := s.persistenceDB().Create(&assistantMsg).Error; err != nil {
 		return fmt.Errorf("创建助手消息失败: %w", err)
 	}
 
 	updateStatus := func(status string) {
-		db.DB.Model(&db.AiMessage{}).Where("id = ?", assistantMsg.ID).Update("content", status)
+		s.persistenceDB().Model(&db.AiMessage{}).Where("id = ?", assistantMsg.ID).Update("content", status)
 		sendEvent("status", status)
 	}
 
@@ -1143,7 +1151,7 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	}
 
 	content := "已生成图片"
-	if err := db.DB.Model(&db.AiMessage{}).Where("id = ?", assistantMsg.ID).Updates(map[string]interface{}{
+	if err := s.persistenceDB().Model(&db.AiMessage{}).Where("id = ?", assistantMsg.ID).Updates(map[string]interface{}{
 		"content":  content,
 		"status":   "completed",
 		"metadata": datatypes.JSON(metadataJSON),
@@ -1160,7 +1168,7 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	if title := strings.TrimSpace(input.Title); title != "" {
 		conversationUpdates["title"] = truncateString(title, 200)
 	}
-	db.DB.Model(&db.AiConversation{}).Where("id = ?", input.ConversationID).Updates(conversationUpdates)
+	s.persistenceDB().Model(&db.AiConversation{}).Where("id = ?", input.ConversationID).Updates(conversationUpdates)
 
 	sendEvent("done", map[string]string{"messageId": assistantMsg.ID, "content": content})
 	return nil
@@ -1465,7 +1473,7 @@ func (s *EditorAiService) SaveImageToAlbum(userID, messageId string, uploadServi
 	if err != nil {
 		return nil, err
 	}
-	if err := db.DB.Model(&db.AiMessage{}).Where("id = ?", messageId).Update("metadata", datatypes.JSON(metadataJSON)).Error; err != nil {
+	if err := s.persistenceDB().Model(&db.AiMessage{}).Where("id = ?", messageId).Update("metadata", datatypes.JSON(metadataJSON)).Error; err != nil {
 		return nil, fmt.Errorf("更新消息元数据失败: %w", err)
 	}
 	return result.Photo, nil
@@ -1562,7 +1570,7 @@ func (s *EditorAiService) SaveMessageImageToAlbum(userID, messageId string, imag
 	if err != nil {
 		return nil, err
 	}
-	if err := db.DB.Model(&db.AiMessage{}).Where("id = ?", messageId).Update("metadata", datatypes.JSON(metadataJSON)).Error; err != nil {
+	if err := s.persistenceDB().Model(&db.AiMessage{}).Where("id = ?", messageId).Update("metadata", datatypes.JSON(metadataJSON)).Error; err != nil {
 		return nil, fmt.Errorf("更新消息元数据失败: %w", err)
 	}
 	return result.Photo, nil
@@ -1717,7 +1725,7 @@ func truncateString(value string, maxLen int) string {
 }
 
 func (s *EditorAiService) markMessageFailed(messageId, errMsg string) {
-	db.DB.Model(&db.AiMessage{}).Where("id = ?", messageId).Updates(map[string]interface{}{
+	s.persistenceDB().Model(&db.AiMessage{}).Where("id = ?", messageId).Updates(map[string]interface{}{
 		"status": "failed",
 		"error":  errMsg,
 	})
@@ -1751,7 +1759,9 @@ func toMessageDTO(m db.AiMessage) EditorAiMessageDTO {
 	}
 	if len(m.Metadata) > 0 {
 		var meta interface{}
-		json.Unmarshal(m.Metadata, &meta)
+		decoder := json.NewDecoder(bytes.NewReader(m.Metadata))
+		decoder.UseNumber()
+		_ = decoder.Decode(&meta)
 		dto.Metadata = meta
 	}
 	return dto

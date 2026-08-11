@@ -35,6 +35,12 @@ func main() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
+	// Editor AI conversations are local and remain available when PostgreSQL
+	// is offline. Failure here would make conversation persistence unsafe.
+	if err := db.ConnectLocalAI(config.ConfigDir()); err != nil {
+		log.Fatalf("初始化本地 AI 会话数据库失败: %v", err)
+	}
+
 	// 初始化数据库连接
 	if cfg.Database.DSN() != "" {
 		if err := db.Connect(cfg.Database.DSN()); err != nil {
@@ -82,7 +88,7 @@ func main() {
 		EnableDefaultContextMenu: false,
 		OnStartup:                app.startup,
 		OnShutdown:               app.shutdown,
-		SingleInstanceLock: singleInstanceLock,
+		SingleInstanceLock:       singleInstanceLock,
 		DragAndDrop: &options.DragAndDrop{
 			EnableFileDrop: true,
 		},

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -275,19 +274,16 @@ func TestMetadataTaskDecodePreservesLargeIntegers(t *testing.T) {
 
 func newEditorAiPersistenceTest(t *testing.T) (*EditorAiService, *gorm.DB, string, string) {
 	t.Helper()
-	dsn := os.Getenv("EDITOR_AI_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("EDITOR_AI_TEST_DATABASE_URL is required for GORM persistence tests")
-	}
-	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	database, err := db.OpenLocalAI(filepath.Join(t.TempDir(), "editor-ai.db"))
 	if err != nil {
 		t.Fatalf("open persistence test database: %v", err)
 	}
-	tx := database.Begin()
-	if tx.Error != nil {
-		t.Fatalf("begin persistence test transaction: %v", tx.Error)
-	}
-	t.Cleanup(func() { _ = tx.Rollback().Error })
+	t.Cleanup(func() {
+		sqlDB, sqlErr := database.DB()
+		if sqlErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	conversationID := "test-conversation-" + suffix
@@ -299,13 +295,13 @@ func newEditorAiPersistenceTest(t *testing.T) (*EditorAiService, *gorm.DB, strin
 		ID: messageID, ConversationID: conversationID, Role: "assistant", Content: "partial",
 		Status: "streaming", Error: &oldError, Metadata: datatypes.JSON(`{"preserved":true}`),
 	}
-	if err := tx.Create(&conversation).Error; err != nil {
+	if err := database.Create(&conversation).Error; err != nil {
 		t.Fatalf("seed conversation: %v", err)
 	}
-	if err := tx.Create(&message).Error; err != nil {
+	if err := database.Create(&message).Error; err != nil {
 		t.Fatalf("seed message: %v", err)
 	}
-	return &EditorAiService{database: tx}, tx, conversationID, messageID
+	return &EditorAiService{database: database}, database, conversationID, messageID
 }
 
 func TestCreateConversationDoesNotPersistRemoteUserID(t *testing.T) {

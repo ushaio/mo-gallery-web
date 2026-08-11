@@ -195,6 +195,7 @@ func (a *App) shutdown(ctx context.Context) {
 		_ = a.LocalLibrary.Close()
 	}
 	db.Close()
+	db.CloseLocalAI()
 }
 
 func (a *App) GetWindowAppearance() WindowAppearance {
@@ -826,82 +827,42 @@ func (a *App) UpdateAiConfig(data config.AIConfig) error {
 	return a.cfg.Save("")
 }
 
+// Local AI conversations live in the desktop profile's SQLite database and
+// must remain available when the app is used without a cloud login.
+const localEditorAiUserID = "desktop-local"
+
 func (a *App) GetEditorAiConversations(scopeId string) ([]services.EditorAiConversationDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.ListConversations(userID, scopeId)
+	return a.EditorAi.ListConversations(localEditorAiUserID, scopeId)
 }
 func (a *App) GetEditorAiConversationPage(scopeId string, offset int, limit int) (*services.EditorAiConversationPageDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.ListConversationPage(userID, scopeId, offset, limit)
+	return a.EditorAi.ListConversationPage(localEditorAiUserID, scopeId, offset, limit)
 }
 func (a *App) CreateEditorAiConversation(input services.EditorAiConversationCreateInput) (*services.EditorAiConversationDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.CreateConversation(userID, input)
+	return a.EditorAi.CreateConversation(localEditorAiUserID, input)
 }
 func (a *App) GetEditorAiConversation(conversationId string) (*services.EditorAiConversationWithMessagesDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.GetConversation(userID, conversationId)
+	return a.EditorAi.GetConversation(localEditorAiUserID, conversationId)
 }
 func (a *App) GetEditorAiConversationMessagesPage(conversationId string, beforeCreatedAt string, beforeId string, limit int) (*services.EditorAiConversationWithMessagesDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.GetConversationPage(userID, conversationId, beforeCreatedAt, beforeId, limit)
+	return a.EditorAi.GetConversationPage(localEditorAiUserID, conversationId, beforeCreatedAt, beforeId, limit)
 }
 func (a *App) UpdateEditorAiConversation(conversationId string, input services.EditorAiConversationUpdateInput) (*services.EditorAiConversationDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.UpdateConversation(userID, conversationId, input)
+	return a.EditorAi.UpdateConversation(localEditorAiUserID, conversationId, input)
 }
 func (a *App) DeleteEditorAiConversation(conversationId string) error {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return err
-	}
-	return a.EditorAi.DeleteConversation(userID, conversationId)
+	return a.EditorAi.DeleteConversation(localEditorAiUserID, conversationId)
 }
 func (a *App) ClearEditorAiConversation(conversationId string) (*services.EditorAiConversationDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.ClearConversation(userID, conversationId)
+	return a.EditorAi.ClearConversation(localEditorAiUserID, conversationId)
 }
 func (a *App) AppendEditorAiMessage(input services.EditorAiMessageAppendInput) (*services.EditorAiMessageDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.AppendMessage(userID, input)
+	return a.EditorAi.AppendMessage(localEditorAiUserID, input)
 }
 func (a *App) FinishEditorAiMessage(input services.EditorAiMessageFinishInput) (*services.EditorAiMessageDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.FinishMessage(userID, input)
+	return a.EditorAi.FinishMessage(localEditorAiUserID, input)
 }
 func (a *App) UpdateEditorAiTaskState(input services.EditorAiTaskStateUpdateInput) (*services.EditorAiMessageDTO, error) {
-	userID, err := a.requireAuthenticatedUserID()
-	if err != nil {
-		return nil, err
-	}
-	return a.EditorAi.UpdateTaskState(userID, input)
+	return a.EditorAi.UpdateTaskState(localEditorAiUserID, input)
 }
 func (a *App) GetStoryAiModels() (*services.StoryAiModelsResponseDTO, error) {
 	return a.EditorAi.GetModels()

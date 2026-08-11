@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"mo-gallery-desktop/config"
+	"mo-gallery-desktop/db"
 	"mo-gallery-desktop/services"
 )
 
@@ -95,5 +96,33 @@ func TestSetAiCORSHeadersAllowsOpenAIClientHeaders(t *testing.T) {
 	}
 	if got := recorder.Header().Get("Access-Control-Allow-Methods"); got != "POST, OPTIONS" {
 		t.Fatalf("Access-Control-Allow-Methods = %q, want POST, OPTIONS", got)
+	}
+}
+
+func TestEditorAiConversationsRemainAvailableWithoutCloudAuthentication(t *testing.T) {
+	db.CloseLocalAI()
+	if err := db.ConnectLocalAI(t.TempDir()); err != nil {
+		t.Fatalf("connect local AI database: %v", err)
+	}
+	t.Cleanup(db.CloseLocalAI)
+
+	cfg := &config.Config{}
+	app := NewApp(cfg)
+	app.EditorAi = services.NewEditorAiService(cfg, nil)
+	title := "Offline Zine"
+	created, err := app.CreateEditorAiConversation(services.EditorAiConversationCreateInput{
+		ScopeID: "zine:project-1",
+		Title:   &title,
+	})
+	if err != nil {
+		t.Fatalf("create offline Zine conversation: %v", err)
+	}
+
+	conversations, err := app.GetEditorAiConversations("zine:project-1")
+	if err != nil {
+		t.Fatalf("list offline Zine conversations: %v", err)
+	}
+	if len(conversations) != 1 || conversations[0].ID != created.ID {
+		t.Fatalf("offline Zine conversations = %#v, want created conversation %q", conversations, created.ID)
 	}
 }
