@@ -319,13 +319,16 @@ func (a *App) GetSetupState() map[string]interface{} {
 			"host": a.cfg.Database.Host,
 			"port": a.cfg.Database.Port,
 			"user": a.cfg.Database.User,
+			"password_configured": a.cfg.Database.Password != "",
 			"dbname": a.cfg.Database.DBName,
 			"sslmode": a.cfg.Database.SSLMode,
 		},
 		"api": map[string]interface{}{
 			"base_url": a.cfg.API.BaseURL,
 			"login_url": a.cfg.API.LoginURL,
-			"jwt_secret": a.cfg.API.JWTSecret,
+			"jwt_secret": "",
+			"jwt_configured": a.cfg.API.JWTSecret != "",
+			"password_configured": a.cfg.API.SavedPassword != "",
 			"remember_login": a.cfg.API.RememberLogin,
 			"saved_username": a.cfg.API.SavedUsername,
 		},
@@ -349,7 +352,7 @@ func (a *App) CompleteSetup(data map[string]interface{}) error {
 	if value, ok := database["user"].(string); ok {
 		a.cfg.Database.User = strings.TrimSpace(value)
 	}
-	if value, ok := database["password"].(string); ok {
+	if value, ok := database["password"].(string); ok && value != "" {
 		a.cfg.Database.Password = value
 	}
 	if value, ok := database["dbname"].(string); ok {
@@ -365,7 +368,7 @@ func (a *App) CompleteSetup(data map[string]interface{}) error {
 	if value, ok := api["login_url"].(string); ok {
 		a.cfg.API.LoginURL = strings.TrimRight(strings.TrimSpace(value), "/")
 	}
-	if value, ok := api["jwt_secret"].(string); ok {
+	if value, ok := api["jwt_secret"].(string); ok && strings.TrimSpace(value) != "" {
 		a.cfg.API.JWTSecret = strings.TrimSpace(value)
 	}
 	if value, ok := api["remember_login"].(bool); ok {
@@ -375,9 +378,9 @@ func (a *App) CompleteSetup(data map[string]interface{}) error {
 		a.cfg.API.SavedUsername = strings.TrimSpace(value)
 	}
 	if value, ok := api["password"].(string); ok {
-		if value == "" || !a.cfg.API.RememberLogin {
+		if !a.cfg.API.RememberLogin {
 			a.cfg.API.SavedPassword = ""
-		} else {
+		} else if value != "" {
 			encrypted, err := config.EncryptPassword(value)
 			if err != nil {
 				return err

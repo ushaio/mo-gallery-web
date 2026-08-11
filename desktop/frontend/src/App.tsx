@@ -32,23 +32,36 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+function hasLoginConfiguration(setupState: SetupState) {
+  const serverUrl = setupState.api.login_url?.trim() || setupState.api.base_url?.trim()
+  const hasJwtSecret = setupState.api.jwt_configured || Boolean(setupState.api.jwt_secret?.trim())
+  return Boolean(serverUrl && hasJwtSecret)
+}
+
 function AppRoutes() {
   const { isAuthenticated, isReady } = useAuth()
   const location = useLocation()
   const [setupState, setSetupState] = useState<SetupState | null>(null)
+  const [setupStateAvailable, setSetupStateAvailable] = useState(true)
 
   useEffect(() => {
     let active = true
     void GetSetupState()
       .then((state) => {
-        if (active) setSetupState(state as unknown as SetupState)
+        if (active) {
+          setSetupState(state as unknown as SetupState)
+          setSetupStateAvailable(true)
+        }
       })
       .catch(() => {
         // Browser development mode has no Wails bridge; keep the normal app usable.
-        if (active) setSetupState({ completed: true, database: {} as SetupState['database'], api: {} as SetupState['api'] })
+        if (active) {
+          setSetupState({ completed: true, database: {} as SetupState['database'], api: {} as SetupState['api'] })
+          setSetupStateAvailable(false)
+        }
       })
     return () => { active = false }
-  }, [])
+  }, [location.pathname])
 
   if (!isReady || !setupState) {
     return (
@@ -63,10 +76,20 @@ function AppRoutes() {
     return <Navigate to="/setup" replace />
   }
 
+  if (setupStateAvailable && !isAuthenticated && location.pathname === '/login' && !hasLoginConfiguration(setupState)) {
+    return <Navigate to="/setup" replace />
+  }
+
   return (
     <Routes>
       <Route path="/setup" element={
-        <SetupPage initialState={setupState} onComplete={() => setSetupState((current) => current ? { ...current, completed: true } : current)} />
+        <SetupPage
+          initialState={setupState}
+          onComplete={(state) => {
+            setSetupState(state)
+            setSetupStateAvailable(true)
+          }}
+        />
       } />
       <Route path="/login" element={
         isAuthenticated ? <Navigate to="/overview" replace /> : <LoginPage />
