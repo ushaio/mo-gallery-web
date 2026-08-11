@@ -584,9 +584,17 @@ Vercel 函数文件系统不用于持久化用户上传。请使用 S3、Cloudfl
 
 ---
 
+## 支持项目
+
+如果 MO Gallery 对你有帮助，欢迎通过赞赏支持项目持续开发。
+
+<img src="public/donate_weixin.png" alt="赞赏码" width="320" />
+
+---
+
 ## 友情链接
 
-- LINUX DO — 新的理想型社区
+- [LINUX DO](https://linux.do) — 新的理想型社区
 
 ---
 
