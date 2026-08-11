@@ -18,6 +18,10 @@ export function AppendEditorAiMessage(arg1) {
   return window['go']['main']['App']['AppendEditorAiMessage'](arg1);
 }
 
+export function AppendZineLogs(arg1) {
+  return window['go']['main']['App']['AppendZineLogs'](arg1);
+}
+
 export function BatchDeletePhotos(arg1) {
   return window['go']['main']['App']['BatchDeletePhotos'](arg1);
 }
@@ -416,6 +420,10 @@ export function GetZineCJKFontInfo() {
 
 export function GetZineImageDataURL(arg1) {
   return window['go']['main']['App']['GetZineImageDataURL'](arg1);
+}
+
+export function GetZineLogPath() {
+  return window['go']['main']['App']['GetZineLogPath']();
 }
 
 export function ImportAgentMCPServers(arg1) {

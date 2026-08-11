@@ -11,7 +11,7 @@ import {
   SAFE_MARGIN_MM,
 } from './print'
 import { getZineAssetBlob } from './project'
-import { getZineAssetImageSource } from './slot-render'
+import { calculateImagePlacement, getZineAssetImageSource } from './slot-render'
 import type { ImageSlot, Spread, TextSlot, ZineAsset, ZineProject } from './types'
 
 export type ZineRasterFormat = 'jpeg' | 'png'
@@ -223,16 +223,11 @@ function drawImageSlot(
     return
   }
 
-  const coverScale = Math.max(width / image.width, height / image.height)
-  const userScale = Math.max(0.01, slot.imageTransform.scale)
-  const drawWidth = image.width * coverScale * userScale
-  const drawHeight = image.height * coverScale * userScale
-  const offsetX = slot.imageTransform.offsetX / 100 * width
-  const offsetY = slot.imageTransform.offsetY / 100 * height
+  const placement = calculateImagePlacement(width, height, image.width, image.height, slot.imageTransform)
 
-  context.translate(offsetX, offsetY)
-  context.rotate(slot.imageTransform.rotation * Math.PI / 180)
-  context.drawImage(image.source, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+  context.translate(placement.left + placement.width / 2 - width / 2, placement.top + placement.height / 2 - height / 2)
+  context.rotate(placement.rotation * Math.PI / 180)
+  context.drawImage(image.source, -placement.width / 2, -placement.height / 2, placement.width, placement.height)
   context.restore()
 }
 

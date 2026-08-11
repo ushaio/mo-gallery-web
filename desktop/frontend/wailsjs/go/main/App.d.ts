@@ -16,6 +16,8 @@ export function AddStoryPhoto(arg1:string,arg2:string):Promise<void>;
 
 export function AppendEditorAiMessage(arg1:services.EditorAiMessageAppendInput):Promise<services.EditorAiMessageDTO>;
 
+export function AppendZineLogs(arg1:Array<string>):Promise<void>;
+
 export function BatchDeletePhotos(arg1:services.BatchDeleteParams):Promise<services.BatchResult>;
 
 export function BatchUpdateLocalAssetOrganization(arg1:local_library.BatchAssetOrganizationUpdate):Promise<void>;
@@ -215,6 +217,8 @@ export function GetWindowAppearance():Promise<main.WindowAppearance>;
 export function GetZineCJKFontInfo():Promise<services.ZineCJKFontInfo>;
 
 export function GetZineImageDataURL(arg1:string):Promise<string>;
+
+export function GetZineLogPath():Promise<string>;
 
 export function ImportAgentMCPServers(arg1:string):Promise<Array<agent_extensions.MCPServer>>;
 

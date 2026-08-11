@@ -9,6 +9,7 @@ import { ZineAiAssistant } from './ZineAiAssistant'
 import { ZineToolbar } from './ZineToolbar'
 
 import { getSlotPageSide } from '@/lib/zine/geometry'
+import { flushZineOperations, recordZineOperation } from '@/lib/zine/operation-log'
 import { getProjectSpreadSize } from '@/lib/zine/page-sizes'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
@@ -19,6 +20,11 @@ function isEditableTarget(target: EventTarget | null) {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }
 
+function describeError(value: unknown) {
+  if (value instanceof Error) return { name: value.name, message: value.message, stack: value.stack }
+  return { message: String(value) }
+}
+
 export function ZineEditor() {
   const [canvasZoom, setCanvasZoom] = useState(1)
   const [assistantOpen, setAssistantOpen] = useState(false)
@@ -27,6 +33,59 @@ export function ZineEditor() {
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
   const selectSlot = useZineStore((state) => state.selectSlot)
+  const projectId = project?.id
+
+  useEffect(() => {
+    if (!projectId) return
+    const sessionProject = useZineStore.getState().project
+
+    recordZineOperation('editor_session_started', {
+      projectId,
+      spreadCount: sessionProject?.spreads.length ?? 0,
+      assetCount: sessionProject?.assets.length ?? 0,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      devicePixelRatio: window.devicePixelRatio,
+      userAgent: navigator.userAgent,
+    }, { flush: true })
+
+    function onError(event: ErrorEvent) {
+      recordZineOperation('window_error', {
+        message: event.message,
+        filename: event.filename,
+        line: event.lineno,
+        column: event.colno,
+        error: describeError(event.error),
+      }, { flush: true })
+    }
+
+    function onUnhandledRejection(event: PromiseRejectionEvent) {
+      recordZineOperation('unhandled_rejection', describeError(event.reason), { flush: true })
+    }
+
+    let longTaskObserver: PerformanceObserver | null = null
+    if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes.includes('longtask')) {
+      longTaskObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          recordZineOperation('long_task', {
+            name: entry.name,
+            startTime: Math.round(entry.startTime),
+            duration: Math.round(entry.duration),
+          }, { flush: true })
+        }
+      })
+      longTaskObserver.observe({ entryTypes: ['longtask'] })
+    }
+
+    window.addEventListener('error', onError)
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
+    return () => {
+      window.removeEventListener('error', onError)
+      window.removeEventListener('unhandledrejection', onUnhandledRejection)
+      longTaskObserver?.disconnect()
+      recordZineOperation('editor_session_ended', { projectId }, { flush: true })
+      void flushZineOperations()
+    }
+  }, [projectId])
 
   // 键盘快捷键：Ctrl+Z/Y 撤销重做 · Delete 删除选中槽位 · 方向键微调（Shift ×10）· Esc 取消选择
   useEffect(() => {

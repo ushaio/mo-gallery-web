@@ -1,15 +1,19 @@
 import { useEffect, useReducer } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, Ref } from 'react'
 import { ImageOff, ImagePlus, RefreshCw, Replace } from 'lucide-react'
 
 import { getZineAssetImageSource } from '@/lib/zine/slot-render'
+import { recordZineOperation } from '@/lib/zine/operation-log'
 import type { ZineAsset } from '@/lib/zine/types'
 
-import { imageLoadReducer, initialImageLoadState } from './image-load-state'
+import { getImageLoadInstanceKey, imageLoadReducer, initialImageLoadState } from './image-load-state'
 
 interface SlotImageContentProps {
   asset?: ZineAsset
+  imageRef?: Ref<HTMLImageElement>
+  transformRef?: Ref<HTMLDivElement>
   innerStyle?: CSSProperties
+  imageStyle?: CSSProperties
   compact?: boolean
   hintText?: string
   failedText?: string
@@ -18,31 +22,32 @@ interface SlotImageContentProps {
   onReplace?: () => void
 }
 
-export function SlotImageContent({
-  asset,
+interface LoadedSlotImageProps extends Omit<SlotImageContentProps, 'asset' | 'hintText'> {
+  assetId: string
+  src: string
+  fileName: string
+}
+
+function LoadedSlotImage({
+  assetId,
+  src,
+  fileName,
+  imageRef,
+  transformRef,
   innerStyle,
+  imageStyle,
   compact,
-  hintText,
   failedText,
   retryText,
   replaceText,
   onReplace,
-}: SlotImageContentProps) {
-  const src = getZineAssetImageSource(asset, 'preview')
+}: LoadedSlotImageProps) {
   const [loadState, dispatchLoad] = useReducer(imageLoadReducer, initialImageLoadState)
 
   useEffect(() => {
-    dispatchLoad({ type: 'source-changed' })
-  }, [asset?.id, src])
-
-  if (!src) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-zinc-100 text-zinc-400">
-        <ImagePlus size={compact ? 14 : 20} strokeWidth={1.5} />
-        {!compact && hintText && <span className="text-[10px] font-medium">{hintText}</span>}
-      </div>
-    )
-  }
+    recordZineOperation('image_instance_mounted', { assetId }, { flush: true })
+    return () => recordZineOperation('image_instance_unmounted', { assetId })
+  }, [assetId])
 
   if (loadState.status === 'failed') {
     return (
@@ -50,7 +55,7 @@ export function SlotImageContent({
         <ImageOff size={compact ? 14 : 20} strokeWidth={1.5} />
         {!compact && (
           <>
-            <span className="max-w-full truncate text-[10px] font-medium" title={asset?.fileName}>{asset?.fileName || failedText}</span>
+            <span className="max-w-full truncate text-[10px] font-medium" title={fileName}>{fileName || failedText}</span>
             {failedText && <span className="text-[9px] text-zinc-400">{failedText}</span>}
             <div className="flex items-center gap-1">
               <button
@@ -87,14 +92,70 @@ export function SlotImageContent({
   }
 
   return (
-    <img
-      key={loadState.retryKey}
+    <div ref={transformRef} style={innerStyle}>
+      <img
+        ref={imageRef}
+        key={loadState.retryKey}
+        src={src}
+        alt={fileName}
+        style={imageStyle}
+        draggable={false}
+        decoding="async"
+        onLoad={(event) => {
+          recordZineOperation('image_loaded', {
+            assetId,
+            naturalWidth: event.currentTarget.naturalWidth,
+            naturalHeight: event.currentTarget.naturalHeight,
+          }, { flush: true })
+        }}
+        onError={() => {
+          recordZineOperation('image_load_failed', { assetId }, { flush: true })
+          dispatchLoad({ type: 'failed' })
+        }}
+      />
+    </div>
+  )
+}
+
+export function SlotImageContent({
+  asset,
+  imageRef,
+  transformRef,
+  innerStyle,
+  imageStyle,
+  compact,
+  hintText,
+  failedText,
+  retryText,
+  replaceText,
+  onReplace,
+}: SlotImageContentProps) {
+  const src = getZineAssetImageSource(asset, 'preview')
+
+  if (!src) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-zinc-100 text-zinc-400">
+        <ImagePlus size={compact ? 14 : 20} strokeWidth={1.5} />
+        {!compact && hintText && <span className="text-[10px] font-medium">{hintText}</span>}
+      </div>
+    )
+  }
+
+  return (
+    <LoadedSlotImage
+      key={getImageLoadInstanceKey(asset?.id, src)}
+      assetId={asset?.id ?? ''}
       src={src}
-      alt={asset?.fileName ?? ''}
-      className="h-full w-full"
-      style={innerStyle}
-      draggable={false}
-      onError={() => dispatchLoad({ type: 'failed' })}
+      fileName={asset?.fileName ?? ''}
+      imageRef={imageRef}
+      transformRef={transformRef}
+      innerStyle={innerStyle}
+      imageStyle={imageStyle}
+      compact={compact}
+      failedText={failedText}
+      retryText={retryText}
+      replaceText={replaceText}
+      onReplace={onReplace}
     />
   )
 }

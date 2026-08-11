@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { useAuth } from '@/contexts/AuthContext'
 import { t } from '@/lib/i18n'
+import { recordZineOperation } from '@/lib/zine/operation-log'
 import type { ImageSlot, ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
@@ -30,8 +31,23 @@ export function PhotoTray() {
   const selectedSlot = activeSpread?.slots.find((slot) => slot.id === selectedSlotId)
 
   function onPickAsset(asset: ZineAsset) {
-    if (!project?.assets.some((item) => item.id === asset.id)) {
+    const assetAlreadyInProject = Boolean(project?.assets.some((item) => item.id === asset.id))
+    recordZineOperation('asset_pick_received', {
+      projectId: project?.id,
+      spreadId: activeSpread?.id,
+      selectedSlotId,
+      selectedAssetId: selectedSlot?.kind === 'image' ? selectedSlot.assetId : null,
+      nextAssetId: asset.id,
+      assetSource: asset.source,
+      assetAlreadyInProject,
+    }, { flush: true })
+
+    if (!assetAlreadyInProject) {
       addAsset(asset)
+      recordZineOperation('asset_added_to_project', {
+        projectId: project?.id,
+        assetId: asset.id,
+      }, { flush: true })
     }
 
     if (!activeSpread) return
@@ -49,8 +65,32 @@ export function PhotoTray() {
       return
     }
 
+    recordZineOperation('asset_replace_requested', {
+      projectId: project?.id,
+      spreadId: activeSpread.id,
+      slotId: target.id,
+      previousAssetId: target.assetId,
+      nextAssetId: asset.id,
+      assetSource: asset.source,
+      assetAlreadyInProject,
+      slotSize: { width: target.w, height: target.h },
+      imageTransform: target.imageTransform,
+    }, { flush: true })
+
     updateSlot(activeSpread.id, target.id, { assetId: asset.id } satisfies Partial<ImageSlot>)
     selectSlot(target.id)
+
+    const committed = useZineStore.getState()
+    const committedSlot = committed.project?.spreads
+      .find((spread) => spread.id === activeSpread.id)?.slots
+      .find((slot) => slot.id === target.id)
+    recordZineOperation('asset_replace_committed', {
+      projectId: committed.project?.id,
+      spreadId: activeSpread.id,
+      slotId: target.id,
+      assetId: committedSlot?.kind === 'image' ? committedSlot.assetId : null,
+      undoDepth: committed.undoStack.length,
+    }, { flush: true })
   }
 
   function onDragAsset(asset: ZineAsset) {

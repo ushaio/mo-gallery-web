@@ -8,6 +8,7 @@ import { CropSession } from '@/lib/zine/crop-session'
 import { buildGestureGuides, GestureSession, snapGestureRotation, type GestureGuide, type GestureKind } from '@/lib/zine/gesture-session'
 import { t } from '@/lib/i18n'
 import { calculateEffectiveDpi, MIN_PRINT_DPI, SAFE_MARGIN_MM } from '@/lib/zine/print'
+import { recordZineOperation } from '@/lib/zine/operation-log'
 import { renderSlot } from '@/lib/zine/slot-render'
 import type { Slot, Spread, ZineAsset, ZineImageTransform } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
@@ -20,6 +21,8 @@ const PT_TO_MM = 25.4 / 72
 const ASSET_DRAG_TYPE = 'application/x-zine-asset-id'
 const MIN_SLOT_MM = 5
 const CROP_SCALE_STEP = 1.08
+const SNAP_ROTATION_DEGREES = [0, 45, 90, 135, 180, 225, 270, 315]
+const SNAP_DIRECTIONS = { left: true, top: true, right: true, bottom: true, center: true, middle: true } as const
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -44,26 +47,40 @@ function toScreenPx(valueMm: number, scale: number) {
 }
 
 function cropTransformStyle(transform: ZineImageTransform) {
-  return `scale(${transform.scale}) translate(${transform.offsetX}%, ${transform.offsetY}%) rotate(${transform.rotation}deg)`
+  return `translate(${transform.offsetX}%, ${transform.offsetY}%) rotate(${transform.rotation}deg) scale(${transform.scale})`
+}
+
+function gestureGuideKey(guide: GestureGuide) {
+  return `${guide.axis}:${guide.position}:${guide.kind}`
 }
 
 export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, selected, scale, onSelect }: SlotViewProps) {
   const { language } = usePreferences()
+  const slotAssetId = slot.kind === 'image' ? slot.assetId : null
   const slotRef = useRef<HTMLDivElement | null>(null)
   const moveableRef = useRef<Moveable | null>(null)
   const geometryRef = useRef<SlotGeometry>(toSlotGeometry(slot))
   const gestureSessionRef = useRef<GestureSession | null>(null)
   const cropSessionRef = useRef<CropSession | null>(null)
+  const cropImageRef = useRef<HTMLImageElement | null>(null)
+  const cropTransformRef = useRef<HTMLDivElement | null>(null)
   const cropPointerRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
+  const cropPreviewFrameRef = useRef<number | null>(null)
+  const pendingCropPreviewRef = useRef<ZineImageTransform | null>(null)
+  const previousAssetIdRef = useRef(slotAssetId)
+  const activeGuideKeysRef = useRef('')
+  const frameDragLogRef = useRef({ moveCount: 0, lastLoggedAt: 0 })
+  const cropDragLogRef = useRef({ moveCount: 0, lastLoggedAt: 0 })
   const dragDepthRef = useRef(0)
   const [dragOver, setDragOver] = useState(false)
   const [editingText, setEditingText] = useState(false)
   const [cropEditing, setCropEditing] = useState(false)
-  const [cropDraft, setCropDraft] = useState<ZineImageTransform | null>(null)
   const [activeGuides, setActiveGuides] = useState<GestureGuide[]>([])
   const [rotationSnap, setRotationSnap] = useState<number | null>(null)
   const updateSlot = useZineStore((state) => state.updateSlot)
   const gestureGuides = useMemo(() => buildGestureGuides(pageW, pageH, SAFE_MARGIN_MM), [pageH, pageW])
+  const verticalGuidelines = useMemo(() => gestureGuides.filter((guide) => guide.axis === 'x').map((guide) => guide.position * scale), [gestureGuides, scale])
+  const horizontalGuidelines = useMemo(() => gestureGuides.filter((guide) => guide.axis === 'y').map((guide) => guide.position * scale), [gestureGuides, scale])
 
   const rendered = renderSlot(slot, pageW, assets)
   const asset = slot.kind === 'image' ? assets.find((item) => item.id === slot.assetId) : undefined
@@ -82,9 +99,6 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     width: `${toScreenPx(Number(rendered.htmlStyle.width), scale)}px`,
     height: `${toScreenPx(Number(rendered.htmlStyle.height), scale)}px`,
   }
-  const imageInnerStyle = cropEditing && cropDraft
-    ? { ...rendered.imageInner?.htmlStyle, transform: cropTransformStyle(cropDraft) }
-    : rendered.imageInner?.htmlStyle
   const textStyle = rendered.text
     ? { ...rendered.text.htmlStyle, fontSize: `${Number(rendered.text.htmlStyle.fontSize) * PT_TO_MM * scale}px` }
     : undefined
@@ -105,6 +119,20 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   }, [slot.x, slot.y, slot.w, slot.h, slot.rotation, scale, selected])
 
   useEffect(() => {
+    const previousAssetId = previousAssetIdRef.current
+    previousAssetIdRef.current = slotAssetId
+    if (previousAssetId === slotAssetId) return
+    recordZineOperation('slot_asset_changed', {
+      spreadId: spread.id,
+      slotId: slot.id,
+      previousAssetId,
+      nextAssetId: slotAssetId,
+      selected,
+      geometry: toSlotGeometry(slot),
+    }, { flush: true })
+  }, [selected, slot, slotAssetId, spread.id])
+
+  useEffect(() => {
     if (!selected) {
       setEditingText(false)
       if (cropEditing) commitCrop()
@@ -118,10 +146,12 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
       if (event.key !== 'Escape' || isEditableTarget(event.target)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      cropSessionRef.current?.cancel()
+      const initialTransform = cropSessionRef.current?.cancel()
       cropSessionRef.current = null
+      cancelCropPreview()
+      if (initialTransform) applyCropPreview(initialTransform)
+      releaseCropPointer()
       setCropEditing(false)
-      setCropDraft(null)
     }
 
     function onPointerDown(event: PointerEvent) {
@@ -138,27 +168,91 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     }
   }, [cropEditing, slot])
 
+  useEffect(() => () => {
+    cancelCropPreview()
+    releaseCropPointer()
+  }, [])
+
+  function applyCropPreview(transform: ZineImageTransform) {
+    const transformLayer = cropTransformRef.current
+    if (transformLayer) transformLayer.style.transform = cropTransformStyle(transform)
+  }
+
+  function cancelCropPreview() {
+    if (cropPreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(cropPreviewFrameRef.current)
+      cropPreviewFrameRef.current = null
+    }
+    pendingCropPreviewRef.current = null
+  }
+
+  function scheduleCropPreview(transform: ZineImageTransform) {
+    pendingCropPreviewRef.current = transform
+    if (cropPreviewFrameRef.current !== null) return
+
+    cropPreviewFrameRef.current = window.requestAnimationFrame(() => {
+      cropPreviewFrameRef.current = null
+      const pending = pendingCropPreviewRef.current
+      pendingCropPreviewRef.current = null
+      if (pending) applyCropPreview(pending)
+    })
+  }
+
+  function releaseCropPointer() {
+    const pointer = cropPointerRef.current
+    const element = slotRef.current
+    cropPointerRef.current = null
+    if (pointer && element?.hasPointerCapture(pointer.pointerId)) {
+      element.releasePointerCapture(pointer.pointerId)
+    }
+  }
+
+  function endCropPointer(element: HTMLDivElement, pointerId: number) {
+    if (cropPointerRef.current?.pointerId !== pointerId) return
+    cropPointerRef.current = null
+    if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId)
+  }
+
   function commitCrop() {
     const session = cropSessionRef.current
     if (slot.kind !== 'image' || !session) return
-    if (session.changed()) updateSlot(spread.id, slot.id, { imageTransform: session.commit() })
+    const changed = session.changed()
+    const transform = session.commit()
     cropSessionRef.current = null
+    cancelCropPreview()
+    applyCropPreview(transform)
+    releaseCropPointer()
     setCropEditing(false)
-    setCropDraft(null)
+    recordZineOperation('crop_edit_committed', {
+      spreadId: spread.id,
+      slotId: slot.id,
+      assetId: slotAssetId,
+      changed,
+      moveCount: cropDragLogRef.current.moveCount,
+      imageTransform: transform,
+    }, { flush: true })
+    if (changed) updateSlot(spread.id, slot.id, { imageTransform: transform })
   }
 
   function beginCrop() {
     if (slot.kind !== 'image') return
     const session = new CropSession(slot.imageTransform)
     cropSessionRef.current = session
-    setCropDraft(session.getDraft())
+    cropDragLogRef.current = { moveCount: 0, lastLoggedAt: 0 }
+    applyCropPreview(session.getDraft())
     setCropEditing(true)
     onSelect?.(slot.id)
+    recordZineOperation('crop_edit_started', {
+      spreadId: spread.id,
+      slotId: slot.id,
+      assetId: slot.assetId,
+      imageTransform: slot.imageTransform,
+    }, { flush: true })
   }
 
   function updateCrop(next: ZineImageTransform) {
     cropSessionRef.current?.update(next)
-    setCropDraft(next)
+    scheduleCropPreview(next)
   }
 
   function commitGeometry() {
@@ -166,7 +260,8 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     if (!session) return
     const result = session.commit(slot)
     gestureSessionRef.current = null
-    setActiveGuides([])
+    activeGuideKeysRef.current = ''
+    setActiveGuides((current) => current.length === 0 ? current : [])
     setRotationSnap(null)
     geometryRef.current = result.geometry
     commitLiveGeometry(result.geometry)
@@ -198,10 +293,11 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
       snapThreshold: 4 / scale,
       boundary: { bleed, pageH, spreadW },
       resizeDirection,
-      rotationSnapDegrees: [0, 45, 90, 135, 180, 225, 270, 315],
+      rotationSnapDegrees: SNAP_ROTATION_DEGREES,
       rotationSnapThreshold: 3,
     })
-    setActiveGuides([])
+    activeGuideKeysRef.current = ''
+    setActiveGuides((current) => current.length === 0 ? current : [])
     setRotationSnap(null)
   }
 
@@ -242,6 +338,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         style={{
           ...slotStyle,
           cursor: cropEditing ? 'crosshair' : selected ? 'move' : 'pointer',
+          touchAction: cropEditing ? 'none' : undefined,
           willChange: selected ? 'transform' : undefined,
         }}
         onClick={(event) => {
@@ -268,7 +365,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           onSelect?.(slot.id)
         }}
         onPointerDown={(event) => {
-          if (!cropEditing || slot.kind !== 'image') return
+          if (!cropEditing || slot.kind !== 'image' || event.button !== 0 || !event.isPrimary) return
           event.preventDefault()
           event.stopPropagation()
           cropPointerRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
@@ -277,11 +374,33 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         onPointerMove={(event) => {
           const pointer = cropPointerRef.current
           if (!pointer || pointer.pointerId !== event.pointerId || slot.kind !== 'image') return
-          const next = cropSessionRef.current?.pan(event.clientX - pointer.x, event.clientY - pointer.y, slot.w * scale, slot.h * scale)
+          event.preventDefault()
+          const deltaX = event.clientX - pointer.x
+          const deltaY = event.clientY - pointer.y
+          const next = cropSessionRef.current?.pan(deltaX, deltaY, slot.w * scale, slot.h * scale)
           if (next) updateCrop(next)
           cropPointerRef.current = { ...pointer, x: event.clientX, y: event.clientY }
+          const now = performance.now()
+          const logState = cropDragLogRef.current
+          logState.moveCount += 1
+          if (logState.moveCount === 1 || now - logState.lastLoggedAt >= 250) {
+            logState.lastLoggedAt = now
+            recordZineOperation('crop_drag_sample', {
+              spreadId: spread.id,
+              slotId: slot.id,
+              assetId: slot.assetId,
+              moveCount: logState.moveCount,
+              deltaX,
+              deltaY,
+              imageTransform: next,
+            }, { flush: logState.moveCount === 1 })
+          }
         }}
         onPointerUp={(event) => {
+          endCropPointer(event.currentTarget, event.pointerId)
+        }}
+        onPointerCancel={(event) => endCropPointer(event.currentTarget, event.pointerId)}
+        onLostPointerCapture={(event) => {
           if (cropPointerRef.current?.pointerId === event.pointerId) cropPointerRef.current = null
         }}
         onWheel={(event) => {
@@ -323,7 +442,10 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         {slot.kind === 'image' && (
           <SlotImageContent
             asset={asset}
-            innerStyle={imageInnerStyle}
+            imageRef={cropImageRef}
+            transformRef={cropTransformRef}
+            innerStyle={rendered.imageInner?.htmlStyle}
+            imageStyle={rendered.imageInner?.imageStyle}
             compact={slotHeightPx < 56}
             hintText={t('admin.zine_empty_slot_hint', language)}
             failedText={t('admin.zine_image_load_failed', language)}
@@ -379,10 +501,10 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           rotatable
           snappable
           snapThreshold={4}
-          snapDirections={{ left: true, top: true, right: true, bottom: true, center: true, middle: true }}
-          verticalGuidelines={gestureGuides.filter((guide) => guide.axis === 'x').map((guide) => guide.position * scale)}
-          horizontalGuidelines={gestureGuides.filter((guide) => guide.axis === 'y').map((guide) => guide.position * scale)}
-          snapRotationDegrees={[0, 45, 90, 135, 180, 225, 270, 315]}
+          snapDirections={SNAP_DIRECTIONS}
+          verticalGuidelines={verticalGuidelines}
+          horizontalGuidelines={horizontalGuidelines}
+          snapRotationDegrees={SNAP_ROTATION_DEGREES}
           snapRotationThreshold={3}
           checkInput
           onSnap={({ guidelines }) => {
@@ -392,11 +514,35 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
               const guide = gestureGuides.find((candidate) => candidate.axis === axis && Math.abs(candidate.position - position) < 0.25)
               return guide ? [guide] : []
             })
-            setActiveGuides(Array.from(new Map(matched.map((guide) => [`${guide.axis}:${guide.position}:${guide.kind}`, guide])).values()))
+            const nextGuides = Array.from(new Map(matched.map((guide) => [gestureGuideKey(guide), guide])).values())
+              .sort((a, b) => gestureGuideKey(a).localeCompare(gestureGuideKey(b)))
+            const nextKeys = nextGuides.map(gestureGuideKey).join('|')
+            if (activeGuideKeysRef.current === nextKeys) return
+            activeGuideKeysRef.current = nextKeys
+            setActiveGuides(nextGuides)
+            recordZineOperation('frame_snap_changed', {
+              spreadId: spread.id,
+              slotId: slot.id,
+              guideKeys: nextKeys,
+            })
           }}
           onDragStart={({ set }) => {
             beginGeometryGesture('drag')
+            frameDragLogRef.current = { moveCount: 0, lastLoggedAt: 0 }
             set([0, 0])
+            const image = cropImageRef.current
+            recordZineOperation('frame_drag_started', {
+              spreadId: spread.id,
+              slotId: slot.id,
+              assetId: slotAssetId,
+              geometry: toSlotGeometry(slot),
+              scale,
+              image: image ? {
+                complete: image.complete,
+                naturalWidth: image.naturalWidth,
+                naturalHeight: image.naturalHeight,
+              } : null,
+            }, { flush: true })
           }}
           onDrag={({ target, beforeTranslate }) => {
             const initial = gestureSessionRef.current?.initial ?? toSlotGeometry(slot)
@@ -405,8 +551,31 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
             target.style.left = `${toScreenPx(next.x, scale)}px`
             target.style.top = `${toScreenPx(next.y, scale)}px`
             target.style.transform = `rotate(${next.rotation}deg)`
+            const now = performance.now()
+            const logState = frameDragLogRef.current
+            logState.moveCount += 1
+            if (logState.moveCount === 1 || now - logState.lastLoggedAt >= 250) {
+              logState.lastLoggedAt = now
+              recordZineOperation('frame_drag_sample', {
+                spreadId: spread.id,
+                slotId: slot.id,
+                assetId: slotAssetId,
+                moveCount: logState.moveCount,
+                beforeTranslate,
+                geometry: next,
+              }, { flush: logState.moveCount === 1 })
+            }
           }}
-          onDragEnd={commitGeometry}
+          onDragEnd={() => {
+            recordZineOperation('frame_drag_ended', {
+              spreadId: spread.id,
+              slotId: slot.id,
+              assetId: slotAssetId,
+              moveCount: frameDragLogRef.current.moveCount,
+              geometry: geometryRef.current,
+            }, { flush: true })
+            commitGeometry()
+          }}
           onResizeStart={({ dragStart, direction }) => {
             beginGeometryGesture('resize', direction as [number, number])
             if (dragStart) dragStart.set([0, 0])
@@ -435,7 +604,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           onRotate={({ target, beforeRotate }) => {
             const initial = gestureSessionRef.current?.initial ?? toSlotGeometry(slot)
             const next = { ...initial, rotation: beforeRotate }
-            const rotationFeedback = snapGestureRotation(beforeRotate, [0, 45, 90, 135, 180, 225, 270, 315], 3)
+            const rotationFeedback = snapGestureRotation(beforeRotate, SNAP_ROTATION_DEGREES, 3)
             setRotationSnap(rotationFeedback.snapped ? rotationFeedback.rotation : null)
             updateGeometryDraft(next)
             target.style.transform = `rotate(${beforeRotate}deg)`

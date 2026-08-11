@@ -13,9 +13,9 @@ import {
   SAFE_MARGIN_MM,
 } from '@/lib/zine/print'
 import { getZineAssetBlob } from '@/lib/zine/project'
-import { renderSlot } from '@/lib/zine/slot-render'
+import { calculateImagePlacement, renderSlot } from '@/lib/zine/slot-render'
 import type { PrintPageRef } from '@/lib/zine/print'
-import type { RenderedSlot, Slot, ZineAsset, ZinePageNumberSettings, ZineProject } from '@/lib/zine/types'
+import type { RenderedSlot, Slot, ZineAsset, ZineImageTransform, ZinePageNumberSettings, ZineProject } from '@/lib/zine/types'
 
 const POINTS_PER_MM = 72 / 25.4
 
@@ -206,8 +206,20 @@ function validateZinePdfTextFonts(project: ZineProject, cjkFontFamily: string | 
   }
 }
 
-export function createPdfImageStyle(slotStyle: PdfMeasuredStyle) {
-  return { width: mmToPt(slotStyle.width), height: mmToPt(slotStyle.height), objectFit: 'cover' as const }
+export function createPdfImageStyle(slotStyle: PdfMeasuredStyle, asset?: ZineAsset, transform?: ZineImageTransform) {
+  if (!asset || !transform) {
+    return { width: mmToPt(slotStyle.width), height: mmToPt(slotStyle.height), objectFit: 'cover' as const }
+  }
+
+  const placement = calculateImagePlacement(slotStyle.width, slotStyle.height, asset.width, asset.height, transform)
+  return {
+    position: 'absolute' as const,
+    left: mmToPt(placement.left),
+    top: mmToPt(placement.top),
+    width: mmToPt(placement.width),
+    height: mmToPt(placement.height),
+    transform: `rotate(${placement.rotation}deg)`,
+  }
 }
 
 async function blobToDataUrl(blob: Blob) {
@@ -418,10 +430,11 @@ function renderPdfSlot(slot: Slot, pageW: number, assets: ZineAsset[], cjkFontFa
   if (slot.kind === 'image') {
     const src = rendered.imageInner?.src
     const slotStyle = rendered.pdfStyle as PdfMeasuredStyle
+    const asset = assets.find((item) => item.id === slot.assetId)
     return (
       <View key={slot.id} style={createPdfSlotStyle(slotStyle)}>
         {src ? (
-          <PdfImage src={src} style={createPdfImageStyle(slotStyle)} />
+          <PdfImage src={src} style={createPdfImageStyle(slotStyle, asset, slot.imageTransform)} />
         ) : (
           <View style={{ width: '100%', height: '100%', backgroundColor: '#e5e7eb' }} />
         )}

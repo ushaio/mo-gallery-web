@@ -52,6 +52,7 @@ type App struct {
 	Settings            *services.SettingsService
 	EditorAi            *services.EditorAiService
 	Logger              *services.Logger
+	ZineOperationLogger *services.ZineOperationLogger
 	Overview            *services.OverviewService
 	LocalLibrary        *local_library.Manager
 	AgentExtensions     *agent_extensions.Manager
@@ -59,10 +60,11 @@ type App struct {
 
 func NewApp(cfg *config.Config) *App {
 	app := &App{
-		cfg:               cfg,
-		activeWindowStyle: config.NormalizeWindowStyle(cfg.UI.WindowStyle),
-		Proxy:             services.NewProxyClient(),
-		Logger:            services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
+		cfg:                 cfg,
+		activeWindowStyle:   config.NormalizeWindowStyle(cfg.UI.WindowStyle),
+		Proxy:               services.NewProxyClient(),
+		Logger:              services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
+		ZineOperationLogger: services.NewZineOperationLogger(config.ConfigDir()),
 	}
 	app.LocalLibrary = local_library.NewManager(config.ConfigDir(), func(event local_library.LocalLibraryEvent) {
 		if app.ctx != nil {
@@ -1007,6 +1009,14 @@ func (a *App) GetZineCJKFontInfo() services.ZineCJKFontInfo {
 // inspect it without WebView CORS or development-server routing limitations.
 func (a *App) GetZineImageDataURL(src string) (string, error) {
 	return services.GetZineImageDataURL(a.ctx, a.Proxy, src)
+}
+
+func (a *App) AppendZineLogs(lines []string) error {
+	return a.ZineOperationLogger.Append(lines)
+}
+
+func (a *App) GetZineLogPath() string {
+	return a.ZineOperationLogger.FilePath()
 }
 
 // ─── Overview ─────────────────────────────────────────
