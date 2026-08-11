@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { flushSync } from 'react-dom'
 import Moveable from 'react-moveable'
@@ -137,7 +137,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     ? { ...rendered.text.htmlStyle, fontSize: `${Number(rendered.text.htmlStyle.fontSize) * PT_TO_MM * scale}px` }
     : undefined
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     geometryRef.current = toSlotGeometry(slot)
     const element = slotRef.current
     if (element) {
@@ -203,6 +203,23 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         event.preventDefault()
         event.stopImmediatePropagation()
         commitCrop()
+        return
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        cropSessionRef.current = null
+        cropResizePointerRef.current = null
+        cancelCropPreview()
+        releaseCropPointer()
+        setCropEditing(false)
+        if (slot.kind === 'image') {
+          updateSlot(spread.id, slot.id, {
+            assetId: null,
+            imageTransform: createDefaultImageTransform(),
+          })
+        }
         return
       }
 

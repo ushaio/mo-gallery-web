@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Maximize, Minus, Plus } from 'lucide-react'
 
@@ -19,11 +19,11 @@ interface SpreadCanvasProps {
   onSelectSlot: (slotId: string | null) => void
 }
 
-const MAX_CANVAS_WIDTH = 1040
+const DEFAULT_CANVAS_WIDTH = 1040
 const CANVAS_PADDING = 48
 const MIN_CANVAS_WIDTH = 280
 const MIN_CANVAS_HEIGHT = 220
-const PREVIEW_FIT_RATIO = 0.82
+const PREVIEW_FIT_RATIO = 0.88
 const MIN_ZOOM = 0.4
 const MAX_ZOOM = 2
 
@@ -35,6 +35,15 @@ interface SpreadCanvasScaleParams {
   zoom: number
 }
 
+interface PendingZoomAnchor {
+  scrollLeft: number
+  scrollTop: number
+  pointerX: number
+  pointerY: number
+  previousZoom: number
+  nextZoom: number
+}
+
 export function calculateSpreadCanvasScale({
   availableWidth,
   availableHeight,
@@ -42,7 +51,7 @@ export function calculateSpreadCanvasScale({
   spreadHeightMm,
   zoom,
 }: SpreadCanvasScaleParams) {
-  const widthLimit = Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, availableWidth - CANVAS_PADDING))
+  const widthLimit = Math.max(MIN_CANVAS_WIDTH, availableWidth - CANVAS_PADDING)
   const heightLimit = Math.max(MIN_CANVAS_HEIGHT, availableHeight - CANVAS_PADDING)
 
   return Math.min(widthLimit / spreadWidthMm, heightLimit / spreadHeightMm) * PREVIEW_FIT_RATIO * zoom
@@ -86,11 +95,12 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
   const { language, zineViewOptions } = usePreferences()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const pendingZoomAnchorRef = useRef<PendingZoomAnchor | null>(null)
   const panRef = useRef<{ pointerId: number; x: number; y: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null)
   const suppressClickRef = useRef(false)
   const [spacePressed, setSpacePressed] = useState(false)
   const [panning, setPanning] = useState(false)
-  const [availableSize, setAvailableSize] = useState({ width: MAX_CANVAS_WIDTH, height: 640 })
+  const [availableSize, setAvailableSize] = useState({ width: DEFAULT_CANVAS_WIDTH, height: 640 })
   const { pageW, pageH, spreadW, spreadH } = getProjectSpreadSize(project)
   const bleed = getProjectBleedMm(project)
   const scale = calculateSpreadCanvasScale({
@@ -112,6 +122,16 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    const anchor = pendingZoomAnchorRef.current
+    if (!viewport || !anchor || anchor.nextZoom !== zoom) return
+
+    viewport.scrollLeft = calculatePointerAnchoredScroll(anchor.scrollLeft, anchor.pointerX, anchor.previousZoom, anchor.nextZoom)
+    viewport.scrollTop = calculatePointerAnchoredScroll(anchor.scrollTop, anchor.pointerY, anchor.previousZoom, anchor.nextZoom)
+    pendingZoomAnchorRef.current = null
+  }, [zoom])
 
   useEffect(() => {
     function isEditableTarget(target: EventTarget | null) {
@@ -145,30 +165,26 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
   }, [])
 
   function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (!event.ctrlKey && !event.metaKey) return
+
     const viewport = viewportRef.current
     if (!viewport) return
 
     event.preventDefault()
-    if (!event.ctrlKey && !event.metaKey) {
-      viewport.scrollBy({
-        left: event.deltaX + (event.shiftKey ? event.deltaY : 0),
-        top: event.shiftKey ? 0 : event.deltaY,
-      })
-      return
-    }
-
     const nextZoom = clampZoom(zoom + (event.deltaY > 0 ? -0.08 : 0.08))
     if (nextZoom === zoom) return
     const rect = viewport.getBoundingClientRect()
     const pointerX = event.clientX - rect.left
     const pointerY = event.clientY - rect.top
-    const previousScrollLeft = viewport.scrollLeft
-    const previousScrollTop = viewport.scrollTop
+    pendingZoomAnchorRef.current = {
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+      pointerX,
+      pointerY,
+      previousZoom: zoom,
+      nextZoom,
+    }
     onZoomChange(nextZoom)
-    requestAnimationFrame(() => {
-      viewport.scrollLeft = calculatePointerAnchoredScroll(previousScrollLeft, pointerX, zoom, nextZoom)
-      viewport.scrollTop = calculatePointerAnchoredScroll(previousScrollTop, pointerY, zoom, nextZoom)
-    })
   }
 
   const spreadIndex = Math.max(0, project.spreads.findIndex((spread) => spread.id === activeSpread?.id))
@@ -191,7 +207,8 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
     <div ref={containerRef} className="zine-desk zine-canvas relative min-h-0 min-w-0 flex-1 overflow-hidden">
       <div
         ref={viewportRef}
-        className={`flex h-full w-full overflow-auto p-6 ${panning ? 'cursor-grabbing' : spacePressed ? 'cursor-grab' : ''}`}
+        className={`h-full w-full overflow-auto ${panning ? 'cursor-grabbing' : spacePressed ? 'cursor-grab' : ''}`}
+        style={{ scrollbarGutter: 'stable' }}
         onWheel={handleWheel}
         onClick={() => {
           if (suppressClickRef.current) {
@@ -236,8 +253,9 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
           if (moved) event.stopPropagation()
         }}
       >
-        {/* m-auto 而非父级 justify/items-center：放大超出视口时保证四边都可滚动到 */}
-        <div className="m-auto flex shrink-0 flex-col items-center gap-3">
+        {/* The stage keeps the canvas origin continuous when overflow begins. */}
+        <div className="flex min-h-full min-w-full w-max shrink-0 items-center justify-center p-6">
+          <div className="flex shrink-0 flex-col items-center gap-3">
           {/* 纸张 = 成品 + 出血：满版内容需延伸到纸边，裁切后才无白边 */}
           <div
             className="relative shrink-0 bg-white"
@@ -343,6 +361,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
               {getPageSizeLabel(project)} {orientationLabel} · {pageW} × {pageH} mm · {t('admin.zine_bleed_label', language, { bleed })}
             </span>
           </p>
+          </div>
         </div>
       </div>
 
