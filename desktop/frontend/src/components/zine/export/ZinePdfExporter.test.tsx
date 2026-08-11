@@ -204,6 +204,16 @@ if (Math.round(Number(pdfImageStyle?.width)) !== 170 || Math.round(Number(pdfIma
   throw new Error(`Expected PDF image dimensions to be converted to points, got ${String(pdfImageStyle?.width)} x ${String(pdfImageStyle?.height)}`)
 }
 
+const transformedPdfImageStyle = createPdfImageStyle(
+  { position: 'absolute', left: 12, top: 18, width: 40, height: 30, overflow: 'hidden' },
+  { id: 'wide', source: 'library', fileName: 'wide.jpg', width: 800, height: 400, previewUrl: '', fullUrl: '', createdAt: 0 },
+  { scale: 1.5, offsetX: 10, offsetY: -20, rotation: 15 },
+)
+
+if (Math.round(Number(transformedPdfImageStyle.width)) !== 255 || Math.round(Number(transformedPdfImageStyle.height)) !== 128 || transformedPdfImageStyle.transform !== 'rotate(15deg)') {
+  throw new Error(`Expected PDF export to preserve the editable full-image placement, got ${JSON.stringify(transformedPdfImageStyle)}`)
+}
+
 Object.defineProperty(globalThis, 'localStorage', {
   value: {
     getItem: (key: string) => (key === 'mo-gallery-server' ? 'https://gallery.example.com' : null),

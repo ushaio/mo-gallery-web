@@ -5,11 +5,13 @@ import {
   ChevronDown,
   History,
   Loader2,
+  MessageCircleQuestion,
   MessageSquare,
   Pencil,
   Plus,
   Search,
   Send,
+  Sparkles,
   Square,
   Trash2,
   X,
@@ -47,7 +49,13 @@ import {
   createZineDirectEditHost,
   type ZineDirectEditHost,
 } from '@/lib/zine/zine-direct-edit-host'
-import { hasExplicitZineEditIntent } from '@/lib/zine/zine-ai-intent'
+import {
+  buildZineConversationHistory,
+  createZineAgentPermissionMetadata,
+  readZineAgentPermissionMetadata,
+  shouldRequestZineAgentPermission,
+  type ZineAgentPermissionMetadata,
+} from '@/lib/zine/zine-ai-permission'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
@@ -134,7 +142,7 @@ function executionErrorMessage(error: unknown): string | null {
 }
 
 export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
-  const { language } = usePreferences()
+  const { language, zineAiMode, setZineAiMode } = usePreferences()
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const aiTaskId = useZineStore((state) => state.aiTaskId)
@@ -233,6 +241,9 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
   if (!project) return null
 
   const activeModel = models.find((model) => model.id === selectedModel)
+  const effectiveMode = zineAiMode === 'agent' && activeModel && supportsDirectEdit(activeModel)
+    ? 'agent'
+    : 'ask'
   const normalizedModelSearch = modelSearch.trim().toLocaleLowerCase()
   const filteredModels = normalizedModelSearch
     ? models.filter((model) => (
@@ -376,12 +387,70 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
     }
   }
 
-  async function runEdit() {
-    if (!conversationId || !activeSpreadId || !activeModel || !projectId) return
-    const prompt = instruction.trim()
-    if (!prompt) return
-    const directEdit = hasExplicitZineEditIntent(prompt)
+  function markConversationUsed(prompt: string) {
+    if (!conversationId) return
+    const generatedTitle = messages.length === 0
+      && (!activeConversation?.title || activeConversation.title === t('admin.ai_new_chat', language))
+      ? deriveConversationTitle(prompt)
+      : null
+    setConversations((current) => {
+      const updated = current.find((conversation) => conversation.id === conversationId)
+      if (!updated) return current
+      return [
+        {
+          ...updated,
+          ...(generatedTitle ? { title: generatedTitle } : {}),
+          updatedAt: new Date().toISOString(),
+        },
+        ...current.filter((conversation) => conversation.id !== conversationId),
+      ]
+    })
+    if (generatedTitle) {
+      void updateLocalEditorAiConversation(conversationId, { title: generatedTitle }).catch(() => {})
+    }
+  }
 
+  async function requestAgentPermission(prompt: string, model: StoryAiModelOption) {
+    if (!conversationId) return
+    setInstruction('')
+    setRunning(true)
+    setError('')
+    try {
+      const userMessage = await appendLocalEditorAiMessage(conversationId, {
+        role: 'user',
+        content: prompt,
+        status: 'completed',
+        model: model.id,
+        action: 'custom',
+      })
+      const permissionMessage = await appendLocalEditorAiMessage(conversationId, {
+        role: 'assistant',
+        content: t('admin.zine_ai_permission_required', language),
+        status: 'completed',
+        model: model.id,
+        action: 'custom',
+        metadata: createZineAgentPermissionMetadata(prompt),
+      })
+      setMessages((current) => [...current, userMessage, permissionMessage])
+      markConversationUsed(prompt)
+    } catch (permissionError: unknown) {
+      setError(permissionError instanceof Error ? permissionError.message : t('admin.zine_ai_failed', language))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  async function executePrompt(
+    prompt: string,
+    model: StoryAiModelOption,
+    mode: 'ask' | 'agent',
+    appendUser: boolean,
+  ) {
+    if (!conversationId || !activeSpreadId || !projectId) {
+      setRunning(false)
+      return
+    }
+    const directEdit = mode === 'agent' && supportsDirectEdit(model)
     const controller = new AbortController()
     const taskId = createEditorAgentTaskId()
     const host = createZineDirectEditHost(projectId, activeSpreadId)
@@ -397,52 +466,41 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
     try {
       const [endpoint, userMessage] = await Promise.all([
         getLocalEndpoint(),
-        appendLocalEditorAiMessage(conversationId, {
-          role: 'user',
-          content: prompt,
-          status: 'completed',
-          model: activeModel.id,
-          action: 'custom',
-        }),
+        appendUser
+          ? appendLocalEditorAiMessage(conversationId, {
+              role: 'user',
+              content: prompt,
+              status: 'completed',
+              model: model.id,
+              action: 'custom',
+            })
+          : Promise.resolve(null),
       ])
       assistantMessage = await appendLocalEditorAiMessage(conversationId, {
         role: 'assistant',
         content: '',
         status: 'streaming',
-        model: activeModel.id,
+        model: model.id,
         action: 'custom',
       })
       taskIdByMessageIdRef.current.set(assistantMessage.id, taskId)
-      setMessages((current) => [...current, userMessage, assistantMessage as EditorAiMessageDto])
-      const generatedTitle = messages.length === 0
-        && (!activeConversation?.title || activeConversation.title === t('admin.ai_new_chat', language))
-        ? deriveConversationTitle(prompt)
-        : null
-      setConversations((current) => {
-        const updated = current.find((conversation) => conversation.id === conversationId)
-        if (!updated) return current
-        return [
-          {
-            ...updated,
-            ...(generatedTitle ? { title: generatedTitle } : {}),
-            updatedAt: new Date().toISOString(),
-          },
-          ...current.filter((conversation) => conversation.id !== conversationId),
-        ]
-      })
-      if (generatedTitle) {
-        void updateLocalEditorAiConversation(conversationId, { title: generatedTitle }).catch(() => {})
-      }
+      setMessages((current) => [
+        ...current,
+        ...(userMessage ? [userMessage] : []),
+        assistantMessage as EditorAiMessageDto,
+      ])
+      if (appendUser) markConversationUsed(prompt)
 
       const result = await runDirectEditAgent({
         endpoint,
-        model: activeModel.id,
+        model: model.id,
         instruction: prompt,
+        conversationHistory: buildZineConversationHistory(messages, prompt, appendUser),
         host,
         taskId,
         signal: controller.signal,
         ...taskOptions(
-          activeModel,
+          model,
           activeSpreadId,
           project.assets.map((asset) => asset.id),
           directEdit,
@@ -460,7 +518,7 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
         ...assistantMessage,
         status: 'completed',
         content,
-        model: activeModel.id,
+        model: model.id,
         ...(metadata === undefined ? {} : { metadata }),
       }
       executionCompleted = true
@@ -468,7 +526,7 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
       const completed = await finishLocalEditorAiMessage(assistantMessage.id, {
         status: 'completed',
         content,
-        model: activeModel.id,
+        model: model.id,
         ...(metadata === undefined ? {} : { metadata }),
       })
       setMessages((current) => replaceMessage(current, completed))
@@ -485,7 +543,7 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
         const terminal = await finishLocalEditorAiMessage(assistantMessage.id, {
           status: stopped ? 'stopped' : 'failed',
           content: '',
-          model: activeModel.id,
+          model: model.id,
           error: message,
         }).catch(() => null)
         if (terminal) setMessages((current) => replaceMessage(current, terminal))
@@ -496,6 +554,72 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
       setRunning(false)
       setActivity('')
     }
+  }
+
+  async function resolvePermission(
+    message: EditorAiMessageDto,
+    permission: ZineAgentPermissionMetadata,
+    resolution: 'continued' | 'kept',
+    model: StoryAiModelOption,
+  ) {
+    const content = resolution === 'continued'
+      ? t('admin.zine_ai_permission_continued', language)
+      : t('admin.zine_ai_permission_kept', language)
+    const updated = await finishLocalEditorAiMessage(message.id, {
+      status: 'completed',
+      content,
+      model: model.id,
+      metadata: createZineAgentPermissionMetadata(permission.instruction, resolution),
+    })
+    setMessages((current) => replaceMessage(current, updated))
+  }
+
+  async function continueWithAgent(message: EditorAiMessageDto, permission: ZineAgentPermissionMetadata) {
+    if (running) return
+    const agentModel = activeModel && supportsDirectEdit(activeModel)
+      ? activeModel
+      : models.find(supportsDirectEdit)
+    if (!agentModel) {
+      setError(t('admin.zine_ai_agent_unavailable', language))
+      return
+    }
+    setRunning(true)
+    setError('')
+    try {
+      setZineAiMode('agent')
+      setSelectedModel(agentModel.id)
+      await resolvePermission(message, permission, 'continued', agentModel)
+    } catch (permissionError: unknown) {
+      setError(permissionError instanceof Error ? permissionError.message : t('admin.zine_ai_failed', language))
+      setRunning(false)
+      return
+    }
+    await executePrompt(permission.instruction, agentModel, 'agent', false)
+  }
+
+  async function keepAskMode(message: EditorAiMessageDto, permission: ZineAgentPermissionMetadata) {
+    if (running || !activeModel) return
+    setRunning(true)
+    setError('')
+    try {
+      setZineAiMode('ask')
+      await resolvePermission(message, permission, 'kept', activeModel)
+    } catch (permissionError: unknown) {
+      setError(permissionError instanceof Error ? permissionError.message : t('admin.zine_ai_failed', language))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  async function runEdit() {
+    if (!activeModel) return
+    const prompt = instruction.trim()
+    if (!prompt) return
+    if (shouldRequestZineAgentPermission(effectiveMode, prompt)) {
+      await requestAgentPermission(prompt, activeModel)
+      return
+    }
+    await executePrompt(prompt, activeModel, effectiveMode, true)
   }
 
   async function changeTaskState(message: EditorAiMessageDto, state: 'undone' | 'redone') {
@@ -726,6 +850,7 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
             const history = taskId ? hostByTaskIdRef.current.get(taskId)?.getTaskHistoryState(taskId) : null
             const taskMetadata = readEditorAiTaskMessageMetadata(message.metadata)
             const task = taskMetadata?.task.status === 'completed' ? taskMetadata.task : null
+            const permission = readZineAgentPermissionMetadata(message.metadata)
             return (
               <div
                 key={message.id}
@@ -746,6 +871,31 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{message.content || message.error}</p>
                 )}
+                {permission?.state === 'pending' ? (
+                  <div className="mt-3 rounded-lg border bg-muted/30 p-2.5" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={running || !models.some(supportsDirectEdit)}
+                        onClick={() => void continueWithAgent(message, permission)}
+                        className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={models.some(supportsDirectEdit) ? t('admin.zine_ai_permission_continue', language) : t('admin.zine_ai_agent_unavailable', language)}
+                      >
+                        <Sparkles size={12} />
+                        <span>{t('admin.zine_ai_permission_continue', language)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={running || !activeModel}
+                        onClick={() => void keepAskMode(message, permission)}
+                        className="flex h-8 items-center justify-center rounded-md border px-2 text-[10px] font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
+                        style={{ borderColor: 'var(--border)' }}
+                      >
+                        {t('admin.zine_ai_permission_keep', language)}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {task ? (
                   <ZineAiChangeSetCard
                     task={task}
@@ -795,6 +945,7 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
             <div className="mx-3 mb-2 rounded-lg border bg-muted/30 px-3 py-2 text-[10px] leading-4 text-muted-foreground" style={{ borderColor: 'var(--border)' }}>
               <p className="font-medium text-foreground">{t('admin.zine_ai_current_context', language)}</p>
               <p>{t('admin.zine_ai_context_spread', language)}</p>
+              <p>{effectiveMode === 'agent' ? t('admin.zine_ai_mode_agent_title', language) : t('admin.zine_ai_mode_ask_title', language)}</p>
               <p>{activeModel?.vision ? t('admin.zine_ai_vision_ready', language) : t('admin.zine_ai_vision_disabled', language)}</p>
             </div>
           ) : null}
@@ -881,6 +1032,33 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
                   <span className="shrink-0 text-[9px] font-normal opacity-70">{t('admin.zine_ai_suggestion_only', language)}</span>
                 ) : null}
                 <ChevronDown size={13} className={`shrink-0 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+
+            <div className="grid h-8 w-[104px] shrink-0 grid-cols-2 rounded-lg border bg-muted/30 p-0.5" style={{ borderColor: 'var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => setZineAiMode('ask')}
+                disabled={running}
+                className={`flex min-w-0 items-center justify-center gap-1 rounded-md px-1 text-[9px] font-medium transition ${effectiveMode === 'ask' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                aria-pressed={effectiveMode === 'ask'}
+                aria-label={t('admin.zine_ai_mode_ask_title', language)}
+                title={t('admin.zine_ai_mode_ask_title', language)}
+              >
+                <MessageCircleQuestion size={11} />
+                <span>{t('admin.zine_ai_mode_ask', language)}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setZineAiMode('agent')}
+                disabled={running || !activeModel || !supportsDirectEdit(activeModel)}
+                className={`flex min-w-0 items-center justify-center gap-1 rounded-md px-1 text-[9px] font-medium transition ${effectiveMode === 'agent' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'} disabled:cursor-not-allowed disabled:opacity-35`}
+                aria-pressed={effectiveMode === 'agent'}
+                aria-label={activeModel && supportsDirectEdit(activeModel) ? t('admin.zine_ai_mode_agent_title', language) : t('admin.zine_ai_agent_unavailable', language)}
+                title={activeModel && supportsDirectEdit(activeModel) ? t('admin.zine_ai_mode_agent_title', language) : t('admin.zine_ai_agent_unavailable', language)}
+              >
+                <Sparkles size={11} />
+                <span>{t('admin.zine_ai_mode_agent', language)}</span>
               </button>
             </div>
 

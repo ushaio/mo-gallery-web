@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import { DEFAULT_ZINE_VIEW_OPTIONS, type ZineViewOptionKey, type ZineViewOptions } from '@/lib/zine/view-options'
+import type { ZineAiMode } from '@/lib/zine/zine-ai-permission'
 
 type PhotoViewMode = 'crop' | 'fit' | 'masonry'
 
@@ -14,6 +15,7 @@ interface AdminPreferences {
   sidebarCollapsed: boolean
   zineStripWidth: number
   zineViewOptions: ZineViewOptions
+  zineAiMode: ZineAiMode
   setPhotoColumns: (n: number) => void
   setPhotoGridSize: (n: number) => void
   setPhotoViewMode: (mode: PhotoViewMode) => void
@@ -22,6 +24,7 @@ interface AdminPreferences {
   setSidebarCollapsed: (collapsed: boolean) => void
   setZineStripWidth: (n: number) => void
   setZineViewOption: (key: ZineViewOptionKey, enabled: boolean) => void
+  setZineAiMode: (mode: ZineAiMode) => void
 }
 
 export const usePreferences = create<AdminPreferences>()(
@@ -35,6 +38,7 @@ export const usePreferences = create<AdminPreferences>()(
       sidebarCollapsed: false,
       zineStripWidth: 176,
       zineViewOptions: DEFAULT_ZINE_VIEW_OPTIONS,
+      zineAiMode: 'ask',
       setPhotoColumns: (n) => set({ photoColumns: n }),
       setPhotoGridSize: (n) => set({ photoGridSize: n }),
       setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
@@ -45,6 +49,7 @@ export const usePreferences = create<AdminPreferences>()(
       setZineViewOption: (key, enabled) => set((state) => ({
         zineViewOptions: { ...state.zineViewOptions, [key]: enabled },
       })),
+      setZineAiMode: (mode) => set({ zineAiMode: mode }),
     }),
     { name: 'mo-gallery-preferences' },
   ),

@@ -16,6 +16,14 @@ const zoomedScale = calculateSpreadCanvasScale({
   zoom: 0.5,
 })
 
+const landscapeScale = calculateSpreadCanvasScale({
+  availableWidth: 1200,
+  availableHeight: 520,
+  spreadWidthMm: 420,
+  spreadHeightMm: 148,
+  zoom: 1,
+})
+
 const renderedWidth = 296 * scale
 
 const renderedHeight = 210 * scale
@@ -34,6 +42,10 @@ if (Math.round(zoomedScale * 1000) !== Math.round(scale * 0.5 * 1000)) {
 
 if (renderedWidth > 1200 - 48) {
   throw new Error(`Expected screen canvas width to use px sizing and fit viewport, got ${renderedWidth}px`)
+}
+
+if (420 * landscapeScale < 1000) {
+  throw new Error('Expected a landscape spread to use the available viewport width instead of a fixed canvas cap')
 }
 
 if (toScreenPx(296, scale) !== renderedWidth) {

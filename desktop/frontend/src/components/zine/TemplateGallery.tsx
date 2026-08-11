@@ -57,8 +57,7 @@ export function TemplateGallery({ onAddTemplate }: TemplateGalleryProps) {
           <button
             key={preview.id}
             type="button"
-            className="group rounded-lg border p-2 text-left transition hover:border-primary hover:bg-accent/40"
-            style={{ borderColor: 'var(--border)' }}
+            className="group rounded-lg border border-transparent p-2 text-left outline-none transition hover:border-primary hover:bg-accent/40 focus-visible:border-primary focus-visible:bg-accent/40"
             onClick={() => onAddTemplate(preview.id)}
           >
             <div className="relative mx-auto overflow-hidden bg-white shadow-sm ring-1 ring-black/10" style={{ width: PREVIEW_WIDTH, height: spreadH * scale }}>

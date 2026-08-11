@@ -1,4 +1,4 @@
-import { renderSlot } from './slot-render'
+import { calculateImagePlacement, renderSlot } from './slot-render'
 import type { ImageSlot, ZineAsset } from './types'
 
 const slot: ImageSlot = {
@@ -38,6 +38,21 @@ if ('zIndex' in rendered.pdfStyle) {
 
 if (rendered.htmlStyle.zIndex !== slot.zIndex) {
   throw new Error(`Expected htmlStyle to keep zIndex for canvas stacking, got ${rendered.htmlStyle.zIndex}`)
+}
+
+if (rendered.imageInner?.htmlStyle.inset !== 0 || rendered.imageInner.imageStyle.objectFit) {
+  throw new Error('Expected the photo transform layer to preserve the full source image instead of pre-cropping it into the frame')
+}
+
+const placement = calculateImagePlacement(40, 30, 800, 400, {
+  scale: 1.5,
+  offsetX: 10,
+  offsetY: -20,
+  rotation: 15,
+})
+
+if (placement.width !== 90 || placement.height !== 45 || placement.left !== -21 || placement.top !== -13.5 || placement.rotation !== 15) {
+  throw new Error(`Expected full-image cover placement to retain adjustable overflow, got ${JSON.stringify(placement)}`)
 }
 
 Object.defineProperty(globalThis, 'localStorage', {

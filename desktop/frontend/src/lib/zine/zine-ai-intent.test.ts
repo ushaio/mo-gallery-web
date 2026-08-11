@@ -16,9 +16,11 @@ for (const instruction of [
   '把这段文案写入当前跨页',
   '在当前页面添加一个文本框并写入文案',
   '调整当前跨页的照片布局',
+  '优化页面排版',
   '将右页图片裁剪得更紧凑',
   'insert this copy into the current spread',
   'adjust the current page layout',
+  'refine the current spread layout',
 ]) {
   assert.equal(hasExplicitZineEditIntent(instruction), true, instruction)
 }

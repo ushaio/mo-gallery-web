@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:zine": "tsx --test src/lib/zine/geometry.test.ts src/lib/zine/gesture-session.test.ts src/lib/zine/crop-session.test.ts src/lib/zine/templates.test.ts src/lib/zine/save-state.test.ts src/components/zine/image-load-state.test.ts src/components/zine/SpreadCanvas.test.ts src/components/zine/PhotoTrayLibrary.test.ts src/components/zine/PhotoTrayLocalImport.test.ts src/lib/zine/print.test.ts src/lib/zine/slot-render.test.ts src/lib/zine/spread-raster.test.ts src/lib/zine/zine-ai-intent.test.ts src/lib/zine/zine-direct-edit-host.test.ts src/store/zine-history.test.ts"
+    "test:zine": "tsx --test src/lib/zine/geometry.test.ts src/lib/zine/gesture-session.test.ts src/lib/zine/crop-session.test.ts src/lib/zine/templates.test.ts src/lib/zine/save-state.test.ts src/components/zine/image-load-state.test.ts src/components/zine/SpreadCanvas.test.ts src/components/zine/PhotoTrayCurrent.test.ts src/components/zine/PhotoTrayLibrary.test.ts src/components/zine/PhotoTrayLocalImport.test.ts src/lib/zine/print.test.ts src/lib/zine/slot-render.test.ts src/lib/zine/spread-raster.test.ts src/lib/zine/zine-ai-intent.test.ts src/lib/zine/zine-ai-permission.test.ts src/lib/zine/zine-direct-edit-host.test.ts src/store/zine-history.test.ts"
   },
   "dependencies": {
     "@mo-gallery/ai-agent": "workspace:*",

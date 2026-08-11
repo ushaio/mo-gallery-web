@@ -4,7 +4,9 @@ import {
   GestureSession,
   applyGestureBoundary,
   buildGestureGuides,
+  constrainMovementToAxis,
   finalizeGestureGeometry,
+  getDominantMovementAxis,
   snapGestureRotation,
 } from './gesture-session'
 import type { ImageSlot } from './types'
@@ -61,5 +63,10 @@ assert.equal(bounded.y, 208, 'boundary policy keeps the slot partially visible a
 const rotation = snapGestureRotation(-1.5, [0, 45, 90], 3)
 assert.equal(rotation.rotation, 0)
 assert.equal(rotation.snapped, true)
+
+assert.equal(getDominantMovementAxis(18, 7), 'x', 'Shift drag locks to the dominant horizontal axis')
+assert.deepEqual(constrainMovementToAxis(18, 7, 'x'), [18, 0])
+assert.equal(getDominantMovementAxis(4, -12), 'y', 'Shift drag locks to the dominant vertical axis')
+assert.deepEqual(constrainMovementToAxis(4, -12, 'y'), [0, -12])
 
 console.log('✓ Zine gesture session normalization, snapping, boundary, and cross-spread behavior')
