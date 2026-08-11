@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 
 import { PageStrip } from './PageStrip'
-import { PhotoTray } from './PhotoTray'
 import { SlotContextBar } from './SlotContextBar'
 import { SpreadCanvas } from './SpreadCanvas'
 import { ZineAiAssistant } from './ZineAiAssistant'
@@ -180,7 +179,6 @@ export function ZineEditor() {
         </div>
         {assistantOpen ? <ZineAiAssistant onClose={() => setAssistantOpen(false)} /> : null}
       </div>
-      <PhotoTray />
     </div>
   )
 }

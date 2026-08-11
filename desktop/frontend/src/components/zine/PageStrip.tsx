@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { BookMarked, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
+import { BookMarked, ChevronDown, ChevronUp, Files, Images, Plus, Trash2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { getSpreadPageNumbers, getTotalPageCount, hasCoverSpread, isCoverSpread } from '@/lib/zine/print'
@@ -8,6 +8,7 @@ import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
 import { PageThumb } from './PageThumb'
+import { PhotoTray } from './PhotoTray'
 
 const STRIP_MIN_WIDTH = 140
 const STRIP_MAX_WIDTH = 320
@@ -45,6 +46,7 @@ function RailAction({ label, onClick, disabled, children }: RailActionProps) {
 }
 
 export function PageStrip() {
+  const [activeView, setActiveView] = useState<'pages' | 'assets'>('pages')
   const { language } = usePreferences()
   const storedWidth = usePreferences((state) => state.zineStripWidth)
   const setStripWidth = usePreferences((state) => state.setZineStripWidth)
@@ -87,16 +89,41 @@ export function PageStrip() {
 
   return (
     <aside className="relative flex shrink-0 flex-col border-r bg-card" style={{ width: `${stripWidth}px`, borderColor: 'var(--border)' }}>
-      <div className="flex items-baseline justify-between px-4 pb-1 pt-3">
-        <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>
-          {t('admin.zine_pages', language)}
-        </span>
-        <span className="text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
-          {t('admin.zine_page_total', language, { count: getTotalPageCount(project) })}
-        </span>
+      <div className="border-b p-2" style={{ borderColor: 'var(--border)' }}>
+        <div className="grid grid-cols-2 rounded-md bg-muted p-0.5 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setActiveView('pages')}
+            className={`flex h-7 min-w-0 items-center justify-center gap-1 rounded transition ${activeView === 'pages' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            aria-pressed={activeView === 'pages'}
+          >
+            <Files size={13} aria-hidden="true" />
+            <span className="truncate">{t('admin.zine_pages', language)}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView('assets')}
+            className={`flex h-7 min-w-0 items-center justify-center gap-1 rounded transition ${activeView === 'assets' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            aria-pressed={activeView === 'assets'}
+          >
+            <Images size={13} aria-hidden="true" />
+            <span className="truncate">{t('admin.zine_assets', language)}</span>
+          </button>
+        </div>
       </div>
 
-      <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      {activeView === 'pages' ? (
+        <>
+          <div className="flex items-baseline justify-between px-4 pb-1 pt-3">
+            <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>
+              {t('admin.zine_pages', language)}
+            </span>
+            <span className="text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+              {t('admin.zine_page_total', language, { count: getTotalPageCount(project) })}
+            </span>
+          </div>
+
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {!coverExists && (
           <button
             type="button"
@@ -175,7 +202,11 @@ export function PageStrip() {
           <Plus size={14} />
           {t('admin.zine_add_spread', language)}
         </button>
-      </div>
+          </div>
+        </>
+      ) : (
+        <PhotoTray />
+      )}
 
       {/* 右缘拖拽手柄：拖动调宽 · 双击复位 · 方向键微调 */}
       <div

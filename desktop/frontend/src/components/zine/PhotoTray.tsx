@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useAuth } from '@/contexts/AuthContext'
@@ -11,16 +10,16 @@ import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
 import { PhotoTrayLibrary } from './PhotoTrayLibrary'
+import { PhotoTrayCurrent } from './PhotoTrayCurrent'
 import { PhotoTrayLocalImport } from './PhotoTrayLocalImport'
 
-type PhotoTrayTab = 'library' | 'local'
+type PhotoTrayTab = 'current' | 'library' | 'local'
 
 export function PhotoTray() {
   const { isAuthenticated } = useAuth()
   const { language } = usePreferences()
   const [activeTab, setActiveTab] = useState<PhotoTrayTab>(isAuthenticated ? 'library' : 'local')
-  const displayedTab = isAuthenticated ? activeTab : 'local'
-  const [collapsed, setCollapsed] = useState(false)
+  const displayedTab = !isAuthenticated && activeTab === 'library' ? 'local' : activeTab
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
@@ -30,6 +29,7 @@ export function PhotoTray() {
 
   const activeSpread = project?.spreads.find((spread) => spread.id === activeSpreadId)
   const selectedSlot = activeSpread?.slots.find((slot) => slot.id === selectedSlotId)
+  const currentAssets = project?.assets ?? []
 
   function onPickAsset(asset: ZineAsset) {
     const assetAlreadyInProject = Boolean(project?.assets.some((item) => item.id === asset.id))
@@ -104,62 +104,50 @@ export function PhotoTray() {
   }
 
   return (
-    <div className="shrink-0 border-t bg-card" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex h-9 items-center gap-3 px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--muted-foreground)' }}>
-          {t('admin.zine_assets', language)}
-        </span>
-
-        <div className="flex rounded-md bg-muted p-0.5 text-xs">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b p-2" style={{ borderColor: 'var(--border)' }}>
+        <div className="grid grid-cols-3 rounded-md bg-muted p-0.5 text-[10px]">
+          <button
+            type="button"
+            className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'current' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setActiveTab('current')}
+          >
+            {t('admin.zine_current', language)}
+          </button>
           {isAuthenticated && (
             <button
               type="button"
-              className={`rounded px-2.5 py-0.5 transition ${displayedTab === 'library' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => {
-                setActiveTab('library')
-                setCollapsed(false)
-              }}
+              className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'library' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setActiveTab('library')}
             >
               {t('admin.zine_library', language)}
             </button>
           )}
           <button
             type="button"
-            className={`rounded px-2.5 py-0.5 transition ${displayedTab === 'local' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => {
-              setActiveTab('local')
-              setCollapsed(false)
-            }}
+            className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'local' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setActiveTab('local')}
           >
             {t('admin.zine_local', language)}
           </button>
         </div>
 
-        <p className="ml-auto hidden truncate text-[11px] md:block" style={{ color: 'var(--muted-foreground)' }}>
-          {t('admin.zine_tray_hint', language)}
-        </p>
-
-        <button
-          type="button"
-          onClick={() => setCollapsed((value) => !value)}
-          className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition hover:bg-accent"
-          style={{ color: 'var(--muted-foreground)' }}
-          aria-label={t(collapsed ? 'admin.zine_expand_tray' : 'admin.zine_collapse_tray', language)}
-          title={t(collapsed ? 'admin.zine_expand_tray' : 'admin.zine_collapse_tray', language)}
-        >
-          {collapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
       </div>
 
-      {!collapsed && (
-        <div className="h-32 px-3 pb-3">
-          {displayedTab === 'library' ? (
+      <div className="min-h-0 flex-1 p-3">
+          {displayedTab === 'current' ? (
+            <PhotoTrayCurrent
+              assets={currentAssets}
+              spreads={project?.spreads ?? []}
+              onPickAsset={onPickAsset}
+              onDragAsset={onDragAsset}
+            />
+          ) : displayedTab === 'library' ? (
             <PhotoTrayLibrary onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
           ) : (
             <PhotoTrayLocalImport onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
           )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

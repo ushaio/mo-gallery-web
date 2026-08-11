@@ -108,9 +108,9 @@ export function PhotoTrayLibrary({ onPickAsset, onDragAsset }: PhotoTrayLibraryP
 
   if (loading) {
     return (
-      <div className="flex h-full gap-2 overflow-hidden">
+      <div className="grid h-full grid-cols-2 gap-2 overflow-hidden">
         {Array.from({ length: 8 }, (_, index) => (
-          <div key={index} className="aspect-square h-full shrink-0 animate-pulse rounded-md" style={{ backgroundColor: 'var(--muted)' }} />
+          <div key={index} className="aspect-square w-full animate-pulse rounded-md" style={{ backgroundColor: 'var(--muted)' }} />
         ))}
       </div>
     )
@@ -121,7 +121,7 @@ export function PhotoTrayLibrary({ onPickAsset, onDragAsset }: PhotoTrayLibraryP
   }
 
   return (
-    <div className="custom-scrollbar flex h-full gap-2 overflow-x-auto pb-1">
+    <div className="custom-scrollbar grid h-full grid-cols-2 content-start gap-2 overflow-y-auto pb-1">
       {assets.map((asset) => (
         <TrayThumb key={asset.id} asset={asset} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
       ))}

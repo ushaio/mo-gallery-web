@@ -76,12 +76,12 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
   }
 
   return (
-    <div className="flex h-full min-w-0 gap-3">
-      <div className="flex h-full shrink-0 flex-col items-start justify-center gap-1.5">
+    <div className="flex h-full min-w-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-col items-stretch gap-1.5">
         <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void importFiles(event.target.files)} />
         <button
           type="button"
-          className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+          className="flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60"
           style={{ borderColor: 'var(--border)' }}
           onClick={() => inputRef.current?.click()}
           disabled={importing}
@@ -103,7 +103,7 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset }: PhotoTrayLoca
           {t('admin.zine_local_empty', language)}
         </div>
       ) : (
-        <div className="custom-scrollbar flex h-full min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+        <div className="custom-scrollbar grid min-h-0 min-w-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto pb-1">
           {assets.map((asset) => (
             <TrayThumb key={asset.id} asset={asset} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
           ))}
