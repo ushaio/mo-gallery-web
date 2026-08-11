@@ -316,23 +316,61 @@ func (a *App) GetSetupState() map[string]interface{} {
 	return map[string]interface{}{
 		"completed": a.cfg.UI.SetupCompleted,
 		"database": map[string]interface{}{
-			"host": a.cfg.Database.Host,
-			"port": a.cfg.Database.Port,
-			"user": a.cfg.Database.User,
+			"host":                a.cfg.Database.Host,
+			"port":                a.cfg.Database.Port,
+			"user":                a.cfg.Database.User,
 			"password_configured": a.cfg.Database.Password != "",
-			"dbname": a.cfg.Database.DBName,
-			"sslmode": a.cfg.Database.SSLMode,
+			"dbname":              a.cfg.Database.DBName,
+			"sslmode":             a.cfg.Database.SSLMode,
 		},
 		"api": map[string]interface{}{
-			"base_url": a.cfg.API.BaseURL,
-			"login_url": a.cfg.API.LoginURL,
-			"jwt_secret": "",
-			"jwt_configured": a.cfg.API.JWTSecret != "",
+			"base_url":            a.cfg.API.BaseURL,
+			"login_url":           a.cfg.API.LoginURL,
+			"jwt_secret":          "",
+			"jwt_configured":      a.cfg.API.JWTSecret != "",
 			"password_configured": a.cfg.API.SavedPassword != "",
-			"remember_login": a.cfg.API.RememberLogin,
-			"saved_username": a.cfg.API.SavedUsername,
+			"remember_login":      a.cfg.API.RememberLogin,
+			"saved_username":      a.cfg.API.SavedUsername,
 		},
 	}
+}
+
+// TestDatabaseConnection verifies setup values without changing the active
+// database connection or persisting the submitted configuration.
+func (a *App) TestDatabaseConnection(data map[string]interface{}) error {
+	databaseConfig := a.cfg.Database
+	if value, ok := data["host"].(string); ok {
+		databaseConfig.Host = strings.TrimSpace(value)
+	}
+	if value, ok := data["port"].(float64); ok {
+		databaseConfig.Port = int(value)
+	}
+	if value, ok := data["user"].(string); ok {
+		databaseConfig.User = strings.TrimSpace(value)
+	}
+	if value, ok := data["password"].(string); ok && value != "" {
+		databaseConfig.Password = value
+	}
+	if value, ok := data["dbname"].(string); ok {
+		databaseConfig.DBName = strings.TrimSpace(value)
+	}
+	if value, ok := data["sslmode"].(string); ok {
+		databaseConfig.SSLMode = strings.TrimSpace(value)
+	}
+
+	if databaseConfig.Host == "" || databaseConfig.User == "" || databaseConfig.DBName == "" {
+		return errors.New("请完整填写数据库主机、用户名和数据库名")
+	}
+	if databaseConfig.Port <= 0 || databaseConfig.Port > 65535 {
+		return errors.New("数据库端口必须在 1 到 65535 之间")
+	}
+	if databaseConfig.SSLMode == "" {
+		databaseConfig.SSLMode = "disable"
+	}
+	if err := db.TestConnection(databaseConfig.DSN()); err != nil {
+		return fmt.Errorf("数据库连接验证失败: %w", err)
+	}
+	return nil
 }
 
 // CompleteSetup persists the first-run database and optional cloud login

@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { CompleteSetup, Login } from '../../wailsjs/go/main/App'
+import { CompleteSetup, Login, TestDatabaseConnection } from '../../wailsjs/go/main/App'
 import { AuthBrandPanel } from '@/components/layout/AuthBrandPanel'
 import { useAuth } from '@/contexts/AuthContext'
 import { getErrorMessage } from '@/lib/auth-errors'
@@ -138,7 +138,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
     finish: '验证并进入', skip: '使用离线功能', optional: '可选', required: '必填',
     host: '主机', port: '端口', user: '用户名', password: '密码', dbname: '数据库名', sslmode: 'SSL 模式',
     server: '服务地址', jwt: 'JWT Secret', loginUsername: '管理员用户名', loginPassword: '管理员密码', rememberLogin: '记住登录（加密存储）',
-    saved: '正在验证...', saveError: '保存失败，请重试', loginError: '登录验证失败，请检查连接和登录信息', secretSaved: '已保存，留空则继续沿用',
+    saved: '正在验证...', saveError: '保存失败，请重试', databaseError: '数据库连接验证失败，请检查连接信息', loginError: '登录验证失败，请检查连接和登录信息', secretSaved: '已保存，留空则继续沿用',
     stepLabel: (current: number, total: number) => `步骤 ${current} / ${total}`,
   } : {
     eyebrow: 'FIRST RUN', title: 'Welcome to MO Gallery', body: 'Take a minute to configure your connections. You can change them later in Settings.',
@@ -146,7 +146,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
     finish: 'Verify and enter', skip: 'Use offline features', optional: 'Optional', required: 'Required',
     host: 'Host', port: 'Port', user: 'User', password: 'Password', dbname: 'Database name', sslmode: 'SSL mode',
     server: 'Server URL', jwt: 'JWT Secret', loginUsername: 'Administrator username', loginPassword: 'Administrator password', rememberLogin: 'Remember login (encrypted)',
-    saved: 'Verifying...', saveError: 'Could not save setup. Try again.', loginError: 'Sign-in verification failed. Check the connection and credentials.', secretSaved: 'Saved. Leave blank to keep the current value.',
+    saved: 'Verifying...', saveError: 'Could not save setup. Try again.', databaseError: 'Could not connect to the database. Check the connection settings.', loginError: 'Sign-in verification failed. Check the connection and credentials.', secretSaved: 'Saved. Leave blank to keep the current value.',
     stepLabel: (current: number, total: number) => `Step ${current} / ${total}`,
   }, [zh])
 
@@ -193,40 +193,52 @@ export function SetupPage({ initialState, onComplete }: Props) {
     }
   }
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
+
+    if (step === 0) {
+      setSaving(true)
+      try {
+        await TestDatabaseConnection(database)
+        setStep(1)
+      } catch (cause: unknown) {
+        setError(getErrorMessage(cause) || copy.databaseError)
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     if (step < steps.length - 1) {
       setStep((current) => current + 1)
       return
     }
 
-    void (async () => {
-      setSaving(true)
-      try {
-        const server = api.login_url.trim() || api.base_url.trim()
-        const result = await Login(server, credentials.username, credentials.password, api.jwt_secret, credentials.rememberLogin)
-        if (!result?.token) {
-          setError(copy.loginError)
-          return
-        }
-
-        const setupApi = {
-          ...api,
-          remember_login: credentials.rememberLogin,
-          saved_username: credentials.rememberLogin ? credentials.username : '',
-          password: credentials.rememberLogin ? credentials.password : '',
-        }
-        await CompleteSetup({ database, api: setupApi, offline_only: false })
-        onComplete(completedState())
-        login(result.token, result.user)
-        navigate('/overview', { replace: true })
-      } catch (cause: unknown) {
-        setError(getErrorMessage(cause) || copy.loginError)
-      } finally {
-        setSaving(false)
+    setSaving(true)
+    try {
+      const server = api.login_url.trim() || api.base_url.trim()
+      const result = await Login(server, credentials.username, credentials.password, api.jwt_secret, credentials.rememberLogin)
+      if (!result?.token) {
+        setError(copy.loginError)
+        return
       }
-    })()
+
+      const setupApi = {
+        ...api,
+        remember_login: credentials.rememberLogin,
+        saved_username: credentials.rememberLogin ? credentials.username : '',
+        password: credentials.rememberLogin ? credentials.password : '',
+      }
+      await CompleteSetup({ database, api: setupApi, offline_only: false })
+      onComplete(completedState())
+      login(result.token, result.user)
+      navigate('/overview', { replace: true })
+    } catch (cause: unknown) {
+      setError(getErrorMessage(cause) || copy.loginError)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const field = (label: string, value: string | number, onChange: (value: string) => void, options?: { type?: string; required?: boolean; placeholder?: string; icon?: LucideIcon; autoComplete?: string }) => {
@@ -350,7 +362,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
               ) : (
                 <div className="space-y-4">
                   {field(copy.loginUsername, credentials.username, (value) => setCredentials((current) => ({ ...current, username: value })), { icon: UserRound, required: true, autoComplete: 'username' })}
-                  <SecretInput label={copy.loginPassword} value={credentials.password} onChange={(value) => setCredentials((current) => ({ ...current, password: value }))} language={language} disabled={saving} icon={Lock} required autoComplete="current-password" />
+                  <SecretInput label={copy.loginPassword} value={credentials.password} onChange={(value) => setCredentials((current) => ({ ...current, password: value }))} language={language} placeholder={api.password_configured ? copy.secretSaved : undefined} disabled={saving} icon={Lock} required={!api.password_configured} autoComplete="current-password" />
                   <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                     <input
                       type="checkbox"

@@ -698,6 +698,10 @@ export function TestAgentMCPServer(arg1) {
   return window['go']['main']['App']['TestAgentMCPServer'](arg1);
 }
 
+export function TestDatabaseConnection(arg1) {
+  return window['go']['main']['App']['TestDatabaseConnection'](arg1);
+}
+
 export function ToggleFeatured(arg1) {
   return window['go']['main']['App']['ToggleFeatured'](arg1);
 }

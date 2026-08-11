@@ -134,7 +134,17 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 	if serverURL == "" {
 		return nil, errors.New("请输入服务器地址")
 	}
-	if username == "" || password == "" {
+	if username == "" {
+		return nil, errors.New("用户名和密码不能为空")
+	}
+	if password == "" && s.cfg.API.SavedPassword != "" {
+		savedPassword, err := config.DecryptPassword(s.cfg.API.SavedPassword)
+		if err != nil {
+			return nil, fmt.Errorf("读取已保存登录密码失败: %w", err)
+		}
+		password = savedPassword
+	}
+	if password == "" {
 		return nil, errors.New("用户名和密码不能为空")
 	}
 	jwtSecret = strings.TrimSpace(jwtSecret)

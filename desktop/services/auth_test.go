@@ -125,6 +125,49 @@ func TestLoginUsesProvidedJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoginUsesSavedPasswordWhenInputIsEmpty(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", t.TempDir())
+	} else {
+		t.Setenv("HOME", t.TempDir())
+	}
+
+	const secret = "expected-secret"
+	encryptedPassword, err := config.EncryptPassword("saved-password")
+	if err != nil {
+		t.Fatalf("EncryptPassword() error = %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode login body: %v", err)
+		}
+		if body["password"] != "saved-password" {
+			t.Fatalf("password = %q, want saved password", body["password"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(webLoginResponse{
+			Success: true,
+			Token:   signedTestToken(t, secret, time.Now().Add(time.Hour)),
+			User:    UserInfo{ID: "user-1", Username: "admin", IsAdmin: true},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{API: config.APIConfig{
+		JWTSecret:     secret,
+		RememberLogin: true,
+		SavedUsername: "admin",
+		SavedPassword: encryptedPassword,
+	}}
+	service := NewAuthService(cfg)
+	if _, err := service.Login(server.URL, "admin", "", secret, true); err != nil {
+		t.Fatalf("Login() with saved password error = %v", err)
+	}
+}
+
 func TestParseLoginEndpoint(t *testing.T) {
 	tests := []struct {
 		name      string

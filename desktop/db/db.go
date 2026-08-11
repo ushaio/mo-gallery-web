@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -11,6 +13,30 @@ import (
 
 // DB 全局数据库实例
 var DB *gorm.DB
+
+// TestConnection verifies a PostgreSQL DSN without replacing the active
+// application database connection.
+func TestConnection(dsn string) error {
+	testDB, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		return fmt.Errorf("连接数据库失败: %w", err)
+	}
+
+	sqlDB, err := testDB.DB()
+	if err != nil {
+		return fmt.Errorf("获取底层连接失败: %w", err)
+	}
+	defer func() { _ = sqlDB.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return fmt.Errorf("数据库 ping 失败: %w", err)
+	}
+	return nil
+}
 
 // Connect 初始化数据库连接
 func Connect(dsn string) error {

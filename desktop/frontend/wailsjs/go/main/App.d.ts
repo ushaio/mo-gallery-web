@@ -356,6 +356,8 @@ export function StartLocalLibraryScan():Promise<void>;
 
 export function TestAgentMCPServer(arg1:string):Promise<agent_extensions.MCPServer>;
 
+export function TestDatabaseConnection(arg1:Record<string, any>):Promise<void>;
+
 export function ToggleFeatured(arg1:string):Promise<services.PhotoDTO>;
 
 export function ToggleShowFlag(arg1:string):Promise<services.PhotoDTO>;
