@@ -4,8 +4,8 @@ import { t } from '@/lib/i18n'
 import type { Spread, ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 
-import { TrayThumb } from './TrayThumb'
 import { PhotoTrayLocalImport } from './PhotoTrayLocalImport'
+import { TrayThumb } from './TrayThumb'
 
 interface PhotoTrayCurrentProps {
   assets: ZineAsset[]

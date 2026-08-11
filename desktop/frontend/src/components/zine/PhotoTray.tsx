@@ -127,16 +127,16 @@ export function PhotoTray() {
       </div>
 
       <div className="min-h-0 flex-1 p-3">
-          {displayedTab === 'current' ? (
-            <PhotoTrayCurrent
-              assets={currentAssets}
-              spreads={project?.spreads ?? []}
-              onPickAsset={onPickAsset}
-              onDragAsset={onDragAsset}
-            />
-          ) : displayedTab === 'library' ? (
-            <PhotoTrayLibrary onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
-          ) : null}
+        {displayedTab === 'current' ? (
+          <PhotoTrayCurrent
+            assets={currentAssets}
+            spreads={project?.spreads ?? []}
+            onPickAsset={onPickAsset}
+            onDragAsset={onDragAsset}
+          />
+        ) : displayedTab === 'library' ? (
+          <PhotoTrayLibrary onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
+        ) : null}
       </div>
     </div>
   )

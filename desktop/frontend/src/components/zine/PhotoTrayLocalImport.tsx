@@ -78,20 +78,20 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = 
 
   const importControls = (
     <div className="flex shrink-0 flex-col items-stretch gap-1.5">
-        <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void importFiles(event.target.files)} />
-        <button
-          type="button"
-          className="flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60"
-          style={{ borderColor: 'var(--border)' }}
-          onClick={() => inputRef.current?.click()}
-          disabled={importing}
-        >
-          {importing ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
-          {importing ? t('admin.zine_importing', language) : t('admin.zine_import_local', language)}
-        </button>
-        <span className="px-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-          {t('admin.zine_local_hint', language)}
-        </span>
+      <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void importFiles(event.target.files)} />
+      <button
+        type="button"
+        className="flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+        style={{ borderColor: 'var(--border)' }}
+        onClick={() => inputRef.current?.click()}
+        disabled={importing}
+      >
+        {importing ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
+        {importing ? t('admin.zine_importing', language) : t('admin.zine_import_local', language)}
+      </button>
+      <span className="px-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+        {t('admin.zine_local_hint', language)}
+      </span>
     </div>
   )
 
