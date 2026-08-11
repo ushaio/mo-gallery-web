@@ -2,7 +2,7 @@
 
 > 用途：作为新会话的最小项目上下文入口，帮助 Agent 先定位模块，再按需读取代码，避免默认扫描整个仓库。
 >
-> 更新时间：2026-08-06
+> 更新时间：2026-08-11
 >
 > 规则：本文档是导航和稳定架构摘要，不是源码副本。若本文档与当前源码、配置或测试不一致，以当前源码为准，并在任务完成后更新本文档。
 
@@ -69,6 +69,7 @@ Web Next.js / Desktop Wails / Mobile Flutter
 
 Desktop 另有：Go services → Wails bindings → 本地前端
               Local Library Manager → SQLite 索引 + 用户本地原图/缓存
+              Editor AI → `editor-ai.db` SQLite（Zine/独立 AI 助手共用会话与消息表）
 Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 ```
 
@@ -134,7 +135,7 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 - 本地图库 feature：`desktop/frontend/src/features/local-library/`。
 - API bridge：`desktop/frontend/src/lib/api/`、Wails 生成绑定 `desktop/frontend/wailsjs/`。
 - Zine：`components/zine/`、`pages/zine/`、`lib/zine/`、`store/zine.ts`。
-- Desktop AI：`lib/api/editor-ai-local.ts`、`lib/api/editor-ai-metadata.ts`、`components/zine/ZineAiAssistant.tsx`；Go 代理和持久化在 `desktop/services/editor-ai.go` 等。
+- Desktop AI：`lib/api/editor-ai-local.ts`、`lib/api/editor-ai-metadata.ts`、`components/zine/ZineAiAssistant.tsx`；Go 代理在 `desktop/services/editor-ai.go`，会话与消息持久化在配置目录的 `editor-ai.db` SQLite，Zine 和独立 AI 助手通过 `scopeId` 共用 `AiConversation` / `AiMessage` 表。
 
 ## 7. Mobile 读取索引
 

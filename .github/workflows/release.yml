@@ -83,6 +83,9 @@ jobs:
           - arch: arm64
             platform: windows/arm64
             runner: windows-11-arm
+          - arch: x86
+            platform: windows/386
+            runner: windows-2025
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -197,6 +200,14 @@ jobs:
             platform: darwin/universal
             runner: macos-15
     runs-on: ${{ matrix.runner }}
+    env:
+      MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -232,9 +243,40 @@ jobs:
         working-directory: desktop/frontend
         run: pnpm list react-router-dom sonner
 
+      - name: Import Apple signing certificate
+        if: ${{ env.MACOS_CERTIFICATE_P12_BASE64 != '' && env.MACOS_CERTIFICATE_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/mo-gallery-build.keychain-db"
+          CERTIFICATE_PATH="$RUNNER_TEMP/mo-gallery-signing.p12"
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MACOS_CERTIFICATE_PASSWORD" "$KEYCHAIN_PATH"
+
       - name: Build macOS application
         working-directory: desktop
         run: wails build -clean -platform ${{ matrix.platform }}
+
+      - name: Sign macOS application
+        if: ${{ env.MACOS_SIGNING_IDENTITY != '' && env.MACOS_CERTIFICATE_P12_BASE64 != '' }}
+        working-directory: desktop
+        run: codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" build/bin/mo-gallery-desktop.app
+
+      - name: Notarize macOS application bundle
+        if: ${{ env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' && env.MACOS_CERTIFICATE_P12_BASE64 != '' }}
+        working-directory: desktop
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent build/bin/mo-gallery-desktop.app "$RUNNER_TEMP/mo-gallery-notarization.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/mo-gallery-notarization.zip" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple build/bin/mo-gallery-desktop.app
 
       - name: Archive macOS application bundle
         working-directory: desktop
@@ -247,12 +289,41 @@ jobs:
           mkdir -p release-assets
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
             "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.zip"
+          DMG_ROOT="$RUNNER_TEMP/mo-gallery-dmg-root"
+          rm -rf "$DMG_ROOT"
+          mkdir -p "$DMG_ROOT"
+          ditto "$APP_PATH" "$DMG_ROOT/MO Gallery Desktop.app"
+          ln -s /Applications "$DMG_ROOT/Applications"
+          hdiutil create -volname "MO Gallery Desktop" -srcfolder "$DMG_ROOT" -ov -format UDZO \
+            "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.dmg"
+          PKG_PATH="release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.pkg"
+          if [ -n "$MACOS_INSTALLER_IDENTITY" ] && [ -n "$MACOS_CERTIFICATE_P12_BASE64" ]; then
+            pkgbuild --component "$APP_PATH" --install-location /Applications --sign "$MACOS_INSTALLER_IDENTITY" "$PKG_PATH"
+          else
+            pkgbuild --component "$APP_PATH" --install-location /Applications "$PKG_PATH"
+          fi
+
+      - name: Notarize macOS distributables
+        if: ${{ env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' && env.MACOS_INSTALLER_IDENTITY != '' && env.MACOS_CERTIFICATE_P12_BASE64 != '' }}
+        working-directory: desktop
+        run: |
+          for artifact in release-assets/*.dmg release-assets/*.pkg; do
+            xcrun notarytool submit "$artifact" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --wait
+            xcrun stapler staple "$artifact"
+          done
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: mo-gallery-desktop-macos-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
-          path: desktop/release-assets/*.zip
+          path: |
+            desktop/release-assets/*.zip
+            desktop/release-assets/*.dmg
+            desktop/release-assets/*.pkg
           if-no-files-found: error
 
   desktop-linux-build:
@@ -265,9 +336,15 @@ jobs:
           - arch: amd64
             platform: linux/amd64
             runner: ubuntu-24.04
+            deb_arch: amd64
+            rpm_arch: x86_64
+            appimage_arch: x86_64
           - arch: arm64
             platform: linux/arm64
             runner: ubuntu-24.04-arm
+            deb_arch: arm64
+            rpm_arch: aarch64
+            appimage_arch: aarch64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -275,7 +352,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev dpkg-dev rpm curl file
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -327,11 +404,97 @@ jobs:
             "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.tar.gz" \
             mo-gallery-desktop
 
+          PACKAGE_VERSION='${{ needs.prepare.outputs.version }}'
+          DEB_VERSION="${PACKAGE_VERSION/-/~}"
+          RPM_VERSION="${PACKAGE_VERSION//-/_}"
+          DEB_ARCH='${{ matrix.deb_arch }}'
+          DEB_ROOT="release-assets/deb-root"
+          mkdir -p "$DEB_ROOT/usr/bin" "$DEB_ROOT/usr/share/applications" "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps" "$DEB_ROOT/DEBIAN"
+          install -m 0755 "$BINARY_PATH" "$DEB_ROOT/usr/bin/mo-gallery-desktop"
+          install -m 0644 build/appicon.png "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png"
+          cat > "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Name=MO Gallery Desktop
+          Exec=mo-gallery-desktop
+          Icon=mo-gallery-desktop
+          Type=Application
+          Categories=Graphics;Photography;
+          DESKTOP
+          cat > "$DEB_ROOT/DEBIAN/control" <<CONTROL
+          Package: mo-gallery-desktop
+          Version: $DEB_VERSION
+          Section: graphics
+          Priority: optional
+          Architecture: $DEB_ARCH
+          Depends: libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0
+          Maintainer: MO Gallery <admin@mo.gallery>
+          Description: MO Gallery Desktop administration client
+          CONTROL
+          dpkg-deb --build "$DEB_ROOT" "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.deb"
+
+          RPM_ARCH='${{ matrix.rpm_arch }}'
+          RPM_TOP="$PWD/release-assets/rpm"
+          mkdir -p "$RPM_TOP/BUILD" "$RPM_TOP/RPMS/$RPM_ARCH" "$RPM_TOP/SOURCES" "$RPM_TOP/SPECS" "$RPM_TOP/SRPMS"
+          mkdir -p release-assets/rpm-root/usr/bin release-assets/rpm-root/usr/share/applications release-assets/rpm-root/usr/share/icons/hicolor/512x512/apps
+          install -m 0755 "$BINARY_PATH" release-assets/rpm-root/usr/bin/mo-gallery-desktop
+          install -m 0644 build/appicon.png release-assets/rpm-root/usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png
+          cp "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" release-assets/rpm-root/usr/share/applications/
+          tar -C release-assets -czf "$RPM_TOP/SOURCES/mo-gallery-desktop.tar.gz" rpm-root
+          cat > "$RPM_TOP/SPECS/mo-gallery-desktop.spec" <<SPEC
+          Name: mo-gallery-desktop
+          Version: $RPM_VERSION
+          Release: 1
+          Summary: MO Gallery Desktop administration client
+          License: Proprietary
+          Source0: mo-gallery-desktop.tar.gz
+          BuildArch: $RPM_ARCH
+          Requires: gtk3
+          Requires: webkit2gtk4.1
+          %description
+          MO Gallery Desktop administration client.
+          %prep
+          %setup -q -n rpm-root
+          %install
+          mkdir -p %{buildroot}
+          cp -a usr %{buildroot}/
+          %files
+          /usr/bin/mo-gallery-desktop
+          /usr/share/applications/mo-gallery-desktop.desktop
+          /usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png
+          SPEC
+          rpmbuild --define "_topdir $RPM_TOP" -bb "$RPM_TOP/SPECS/mo-gallery-desktop.spec"
+          cp "$RPM_TOP/RPMS/$RPM_ARCH/"*.rpm "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.rpm"
+
+          APPDIR="$PWD/release-assets/mo-gallery-desktop.AppDir"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+          install -m 0755 "$BINARY_PATH" "$APPDIR/usr/bin/mo-gallery-desktop"
+          install -m 0644 build/appicon.png "$APPDIR/mo-gallery-desktop.png"
+          install -m 0644 build/appicon.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png"
+          install -m 0644 "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" "$APPDIR/mo-gallery-desktop.desktop"
+          install -m 0644 "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" "$APPDIR/usr/share/applications/mo-gallery-desktop.desktop"
+          cat > "$APPDIR/AppRun" <<'APPRUN'
+          #!/bin/sh
+          HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "$HERE/usr/bin/mo-gallery-desktop" "$@"
+          APPRUN
+          chmod +x "$APPDIR/AppRun"
+          LINUXDEPLOY_ARCH='${{ matrix.appimage_arch }}'
+          curl -fL "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${LINUXDEPLOY_ARCH}.AppImage" -o linuxdeploy.AppImage
+          chmod +x linuxdeploy.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy.AppImage --appdir "$APPDIR" --output appimage
+          APPIMAGE_PATH=$(find . -maxdepth 1 -name '*.AppImage' -not -name 'linuxdeploy.AppImage' -print -quit)
+          test -n "$APPIMAGE_PATH"
+          mv "$APPIMAGE_PATH" "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.AppImage"
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: mo-gallery-desktop-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
-          path: desktop/release-assets/*.tar.gz
+          path: |
+            desktop/release-assets/*.tar.gz
+            desktop/release-assets/*.deb
+            desktop/release-assets/*.rpm
+            desktop/release-assets/*.AppImage
           if-no-files-found: error
 
   # TEMP-DISABLED flutter-android-build:
@@ -407,11 +570,25 @@ jobs:
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-setup.exe"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-arm64-portable.exe"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-arm64-setup.exe"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-x86-portable.exe"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-x86-setup.exe"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.zip"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.dmg"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.pkg"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.zip"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.dmg"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.pkg"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.zip"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.dmg"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.pkg"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.deb"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.rpm"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.AppImage"
             "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.tar.gz"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.deb"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.rpm"
+            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.AppImage"
           )
           for asset in "${expected_assets[@]}"; do
             if [ ! -f "release-assets/$asset" ]; then
