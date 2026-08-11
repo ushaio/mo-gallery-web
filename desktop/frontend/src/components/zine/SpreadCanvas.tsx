@@ -83,7 +83,7 @@ function CropMarks() {
 }
 
 export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZoomChange, onSelectSlot }: SpreadCanvasProps) {
-  const { language } = usePreferences()
+  const { language, zineViewOptions } = usePreferences()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const panRef = useRef<{ pointerId: number; x: number; y: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null)
@@ -249,7 +249,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
           >
             {/* 裁切原点容器：槽位坐标一律相对成品左上角，出血区在其负方向 */}
             <div className="absolute" style={{ left: `${bleedPx}px`, top: `${bleedPx}px`, width: `${trimW}px`, height: `${trimH}px` }}>
-              <CropMarks />
+              {zineViewOptions.showBleed ? <CropMarks /> : null}
 
               {activeSpread?.slots.map((slot) => (
                 <SlotView
@@ -263,6 +263,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                   assets={project.assets}
                   selected={selectedSlotId === slot.id}
                   scale={scale}
+                  viewOptions={zineViewOptions}
                   onSelect={onSelectSlot}
                 />
               ))}
@@ -275,25 +276,29 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                   </p>
                 </div>
               )}
-              {bleedPx > 0 && (
+              {zineViewOptions.showBleed && bleedPx > 0 && (
                 <div className="pointer-events-none absolute inset-0 z-20" style={{ boxShadow: `0 0 0 ${bleedPx}px rgba(244, 63, 94, 0.05)` }} />
               )}
-              {/* 裁切框（成品尺寸） */}
-              <div className="pointer-events-none absolute inset-0 z-20" style={{ boxShadow: 'inset 0 0 0 1px rgba(59, 130, 246, 0.45)' }} />
-              {/* 安全边距参考线：文字等关键内容建议保持在虚线以内 */}
-              {(['left', 'right'] as const).map((side) => (
-                <div
-                  key={side}
-                  className="pointer-events-none absolute z-20 border border-dashed"
-                  style={{
-                    left: `${(side === 'right' ? pageWPx : 0) + safePx}px`,
-                    top: `${safePx}px`,
-                    width: `${pageWPx - safePx * 2}px`,
-                    height: `${trimH - safePx * 2}px`,
-                    borderColor: 'rgba(59, 130, 246, 0.22)',
-                  }}
-                />
-              ))}
+              {zineViewOptions.showGuides ? (
+                <>
+                  {/* 裁切框（成品尺寸） */}
+                  <div className="pointer-events-none absolute inset-0 z-20" style={{ boxShadow: 'inset 0 0 0 1px rgba(59, 130, 246, 0.45)' }} />
+                  {/* 安全边距参考线：文字等关键内容建议保持在虚线以内 */}
+                  {(['left', 'right'] as const).map((side) => (
+                    <div
+                      key={side}
+                      className="pointer-events-none absolute z-20 border border-dashed"
+                      style={{
+                        left: `${(side === 'right' ? pageWPx : 0) + safePx}px`,
+                        top: `${safePx}px`,
+                        width: `${pageWPx - safePx * 2}px`,
+                        height: `${trimH - safePx * 2}px`,
+                        borderColor: 'rgba(59, 130, 246, 0.22)',
+                      }}
+                    />
+                  ))}
+                </>
+              ) : null}
 
               {/* 页码预览：与导出一致（封面跨页不编页码） */}
               {pageNumberSettings?.enabled &&
@@ -326,7 +331,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                     'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 38%, rgba(0,0,0,0.14) 50%, rgba(0,0,0,0.05) 62%, rgba(0,0,0,0) 100%)',
                 }}
               />
-              <div className="pointer-events-none absolute inset-y-0 z-30 w-px bg-black/10" style={{ left: `${pageWPx}px` }} />
+              {zineViewOptions.showGuides ? <div className="pointer-events-none absolute inset-y-0 z-30 w-px bg-black/10" style={{ left: `${pageWPx}px` }} /> : null}
             </div>
           </div>
 

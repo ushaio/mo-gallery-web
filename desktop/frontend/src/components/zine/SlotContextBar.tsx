@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { AlignCenter, AlignLeft, AlignRight, Image as ImageIcon, ImageOff, Minus, Plus, RotateCcw, Trash2, Type as TypeIcon } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
+import { createDefaultImageTransform } from '@/lib/zine/crop-session'
 import type { ImageSlot, TextSlot } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
@@ -95,7 +96,7 @@ export function SlotContextBar() {
           </BarButton>
           <BarButton
             label={t('admin.zine_reset_crop', language)}
-            onClick={() => patchSlot({ imageTransform: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 } } satisfies Partial<ImageSlot>)}
+            onClick={() => patchSlot({ imageTransform: createDefaultImageTransform() } satisfies Partial<ImageSlot>)}
             disabled={
               (slot as ImageSlot).imageTransform.scale === 1
               && (slot as ImageSlot).imageTransform.offsetX === 0

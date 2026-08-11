@@ -2,6 +2,15 @@ import { getSlotPageSide, geometryEqual, type SlotGeometry } from './geometry'
 import type { Slot } from './types'
 
 export type GestureKind = 'drag' | 'resize' | 'rotate'
+export type MovementAxis = 'x' | 'y'
+
+export function getDominantMovementAxis(deltaX: number, deltaY: number): MovementAxis {
+  return Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y'
+}
+
+export function constrainMovementToAxis(deltaX: number, deltaY: number, axis: MovementAxis): readonly [number, number] {
+  return axis === 'x' ? [deltaX, 0] : [0, deltaY]
+}
 export type GestureGuideAxis = 'x' | 'y'
 export type GestureGuideKind = 'page-edge' | 'page-center' | 'spine' | 'safe-margin'
 

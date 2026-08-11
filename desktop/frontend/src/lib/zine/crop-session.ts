@@ -1,10 +1,19 @@
 import type { ZineImageTransform } from './types'
 
-const MIN_SCALE = 0.1
-const MAX_SCALE = 8
+export const MIN_CROP_SCALE = 0.1
+export const MAX_CROP_SCALE = 8
+
+export function createDefaultImageTransform(): ZineImageTransform {
+  return { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 }
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
+}
+
+export function clampCropScale(value: number) {
+  if (!Number.isFinite(value)) return 1
+  return clamp(value, MIN_CROP_SCALE, MAX_CROP_SCALE)
 }
 
 export class CropSession {
@@ -26,13 +35,14 @@ export class CropSession {
   }
 
   zoom(deltaY: number, step = 1.08) {
+    if (deltaY === 0) return this.draft
     const factor = deltaY < 0 ? step : 1 / step
-    this.draft = { ...this.draft, scale: clamp(this.draft.scale * factor, MIN_SCALE, MAX_SCALE) }
+    this.draft = { ...this.draft, scale: clampCropScale(this.draft.scale * factor) }
     return this.draft
   }
 
   reset() {
-    this.draft = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 }
+    this.draft = createDefaultImageTransform()
     return this.draft
   }
 

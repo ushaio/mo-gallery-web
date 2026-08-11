@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { useAuth } from '@/contexts/AuthContext'
 import { t } from '@/lib/i18n'
+import { createDefaultImageTransform } from '@/lib/zine/crop-session'
 import { recordZineOperation } from '@/lib/zine/operation-log'
 import type { ImageSlot, ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
@@ -77,7 +78,10 @@ export function PhotoTray() {
       imageTransform: target.imageTransform,
     }, { flush: true })
 
-    updateSlot(activeSpread.id, target.id, { assetId: asset.id } satisfies Partial<ImageSlot>)
+    updateSlot(activeSpread.id, target.id, {
+      assetId: asset.id,
+      ...(target.assetId !== asset.id ? { imageTransform: createDefaultImageTransform() } : {}),
+    } satisfies Partial<ImageSlot>)
     selectSlot(target.id)
 
     const committed = useZineStore.getState()

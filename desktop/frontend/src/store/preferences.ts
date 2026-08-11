@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { DEFAULT_ZINE_VIEW_OPTIONS, type ZineViewOptionKey, type ZineViewOptions } from '@/lib/zine/view-options'
+
 type PhotoViewMode = 'crop' | 'fit' | 'masonry'
 
 interface AdminPreferences {
@@ -11,6 +13,7 @@ interface AdminPreferences {
   theme: 'light' | 'dark' | 'system'
   sidebarCollapsed: boolean
   zineStripWidth: number
+  zineViewOptions: ZineViewOptions
   setPhotoColumns: (n: number) => void
   setPhotoGridSize: (n: number) => void
   setPhotoViewMode: (mode: PhotoViewMode) => void
@@ -18,6 +21,7 @@ interface AdminPreferences {
   setTheme: (theme: 'light' | 'dark' | 'system') => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setZineStripWidth: (n: number) => void
+  setZineViewOption: (key: ZineViewOptionKey, enabled: boolean) => void
 }
 
 export const usePreferences = create<AdminPreferences>()(
@@ -30,6 +34,7 @@ export const usePreferences = create<AdminPreferences>()(
       theme: 'system',
       sidebarCollapsed: false,
       zineStripWidth: 176,
+      zineViewOptions: DEFAULT_ZINE_VIEW_OPTIONS,
       setPhotoColumns: (n) => set({ photoColumns: n }),
       setPhotoGridSize: (n) => set({ photoGridSize: n }),
       setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
@@ -37,6 +42,9 @@ export const usePreferences = create<AdminPreferences>()(
       setTheme: (theme) => set({ theme }),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setZineStripWidth: (n) => set({ zineStripWidth: n }),
+      setZineViewOption: (key, enabled) => set((state) => ({
+        zineViewOptions: { ...state.zineViewOptions, [key]: enabled },
+      })),
     }),
     { name: 'mo-gallery-preferences' },
   ),

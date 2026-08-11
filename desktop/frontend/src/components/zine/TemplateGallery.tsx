@@ -51,11 +51,11 @@ export function TemplateGallery({ onAddTemplate }: TemplateGalleryProps) {
   const scale = PREVIEW_WIDTH / spreadW
 
   return (
-    <div className="absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border bg-popover p-3 text-popover-foreground shadow-xl" style={{ borderColor: 'var(--border)' }}>
+    <div className="absolute right-0 top-full z-30 mt-2 w-72 rounded-lg border bg-popover p-3 text-popover-foreground shadow-xl" style={{ borderColor: 'var(--border)' }}>
       <p className="mb-2.5 px-0.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
         {t('admin.zine_template_pick', language)}
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid max-h-[70vh] grid-cols-2 gap-2 overflow-y-auto pr-1">
         {previews.map((preview) => (
           <button
             key={preview.id}

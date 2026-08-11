@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown, CircleAlert, Download, FileImage, FileText, Hash, ImagePlus, LayoutTemplate, Loader2, Redo2, RefreshCw, Type, Undo2 } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, CircleAlert, Download, FileImage, FileText, Hash, ImagePlus, LayoutTemplate, Loader2, Redo2, RefreshCw, SlidersHorizontal, Type, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { t } from '@/lib/i18n'
 import { exportZineSpreadImage, type ZineRasterFormat } from '@/lib/zine/spread-raster'
+import type { ZineViewOptionKey } from '@/lib/zine/view-options'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
@@ -66,7 +67,7 @@ function ToolTextButton({ label, onClick, disabled, icon, trailing }: ToolTextBu
 
 export function ZineToolbar() {
   const navigate = useNavigate()
-  const { language } = usePreferences()
+  const { language, zineViewOptions, setZineViewOption } = usePreferences()
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const saving = useZineStore((state) => state.saving)
@@ -85,6 +86,7 @@ export function ZineToolbar() {
   const [title, setTitle] = useState(project?.title ?? '')
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [pageNumbersOpen, setPageNumbersOpen] = useState(false)
+  const [viewOptionsOpen, setViewOptionsOpen] = useState(false)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   const [exportingImage, setExportingImage] = useState<ZineRasterFormat | null>(null)
@@ -140,6 +142,12 @@ export function ZineToolbar() {
       active: pageNumberSettings.enabled && pageNumberSettings.position === 'bottom-outer',
       apply: () => setPageNumbers({ enabled: true, position: 'bottom-outer' }),
     },
+  ]
+  const viewOptions: Array<{ key: ZineViewOptionKey; label: string }> = [
+    { key: 'showBleed', label: t('admin.zine_view_show_bleed', language) },
+    { key: 'showGuides', label: t('admin.zine_view_show_guides', language) },
+    { key: 'snapToGuides', label: t('admin.zine_view_snap_to_guides', language) },
+    { key: 'showImageOutlines', label: t('admin.zine_view_show_image_outlines', language) },
   ]
 
   return (
@@ -236,6 +244,62 @@ export function ZineToolbar() {
                 setTemplatesOpen(false)
               }}
             />
+          </>
+        )}
+      </div>
+
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          title={t('admin.zine_view_options', language)}
+          aria-label={t('admin.zine_view_options', language)}
+          aria-expanded={viewOptionsOpen}
+          aria-haspopup="menu"
+          onClick={() => setViewOptionsOpen((open) => !open)}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition ${viewOptionsOpen ? 'bg-accent text-foreground' : 'text-foreground/75 hover:bg-accent hover:text-foreground'}`}
+        >
+          <SlidersHorizontal size={16} />
+        </button>
+        {viewOptionsOpen && (
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-20 cursor-default"
+              onClick={() => setViewOptionsOpen(false)}
+              aria-label={t('common.collapse', language)}
+              tabIndex={-1}
+            />
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-30 mt-2 w-48 rounded-lg border bg-popover p-1.5 text-popover-foreground shadow-xl"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              {viewOptions.map((option) => {
+                const enabled = zineViewOptions[option.key]
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={enabled}
+                    onClick={() => setZineViewOption(option.key, !enabled)}
+                    className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-xs transition hover:bg-accent"
+                  >
+                    <span
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border"
+                      style={{
+                        borderColor: enabled ? 'var(--primary)' : 'var(--border)',
+                        backgroundColor: enabled ? 'var(--primary)' : 'transparent',
+                        color: enabled ? 'var(--primary-foreground)' : 'transparent',
+                      }}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </span>
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
           </>
         )}
       </div>
