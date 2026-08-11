@@ -55,6 +55,7 @@ public/uploads
 .npm-cache
 
 # local agent and workspace state
+/.agents/
 /.cursor/
 /.workbuddy/
 /outputs/
