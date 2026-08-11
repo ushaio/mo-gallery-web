@@ -332,11 +332,11 @@ wails build -platform linux/amd64 -tags webkit2_41
 
 GitHub Release 会使用原生 runner 构建 Wails 支持的桌面目标：
 
-- Windows AMD64/ARM64：Portable EXE 与 NSIS Setup 安装包
-- macOS AMD64/ARM64/Universal：`.app` ZIP 分发包
-- Linux AMD64/ARM64：`.tar.gz` 可执行文件归档
+- Windows AMD64/ARM64/x86：Portable EXE 与 NSIS Setup 安装包
+- macOS AMD64/ARM64/Universal：`.zip`、`.dmg`、`.pkg`
+- Linux AMD64/ARM64：`.tar.gz`、`.deb`、`.rpm`、`.AppImage`
 
-NSIS 是 Windows 专用安装器格式；macOS 和 Linux 使用各自平台的标准可分发归档。Linux 用户仍需要系统提供 GTK3/WebKitGTK 运行库。
+NSIS 是 Windows 专用安装器格式；macOS DMG/PKG 和 Linux 包由 Release workflow 在原生 runner 上生成。Linux 用户仍需要系统提供 GTK3/WebKitGTK 运行库。
 
 | 发布方式 | 适用场景 | 特点 |
 |----------|----------|------|
