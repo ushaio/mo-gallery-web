@@ -139,6 +139,9 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 	}
 	jwtSecret = strings.TrimSpace(jwtSecret)
 	if jwtSecret == "" {
+		jwtSecret = strings.TrimSpace(s.cfg.API.JWTSecret)
+	}
+	if jwtSecret == "" {
 		return nil, errors.New("JWT Secret 不能为空")
 	}
 	s.cfg.API.JWTSecret = jwtSecret
