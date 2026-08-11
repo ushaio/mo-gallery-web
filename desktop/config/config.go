@@ -259,6 +259,7 @@ type UIConfig struct {
 	Language    string `json:"language"`     // zh / en
 	Theme       string `json:"theme"`        // light / dark / system
 	WindowStyle string `json:"window_style"` // native / integrated
+	SetupCompleted bool `json:"setup_completed"` // whether the first-run setup was completed
 }
 
 // NormalizeWindowStyle returns a supported startup window style.
@@ -361,6 +362,17 @@ func Load(customPath string) (*Config, error) {
 
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	// Config files created before the first-run setup field was introduced
+	// already represent an established installation when cloud settings exist.
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) == nil {
+		var rawUI map[string]json.RawMessage
+		if json.Unmarshal(raw["ui"], &rawUI) == nil {
+			if _, hasSetupFlag := rawUI["setup_completed"]; !hasSetupFlag && (cfg.API.BaseURL != "" || cfg.API.SavedUsername != "") {
+				cfg.UI.SetupCompleted = true
+			}
+		}
 	}
 	cfg.AI.Normalize()
 	cfg.UI.WindowStyle = NormalizeWindowStyle(cfg.UI.WindowStyle)

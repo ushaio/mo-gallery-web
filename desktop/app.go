@@ -310,6 +310,95 @@ func (a *App) GetApiConfig() map[string]interface{} {
 	}
 }
 
+// GetSetupState returns the persisted first-run setup state and safe-to-edit
+// connection fields. Passwords are intentionally omitted from this response.
+func (a *App) GetSetupState() map[string]interface{} {
+	return map[string]interface{}{
+		"completed": a.cfg.UI.SetupCompleted,
+		"database": map[string]interface{}{
+			"host": a.cfg.Database.Host,
+			"port": a.cfg.Database.Port,
+			"user": a.cfg.Database.User,
+			"dbname": a.cfg.Database.DBName,
+			"sslmode": a.cfg.Database.SSLMode,
+		},
+		"api": map[string]interface{}{
+			"base_url": a.cfg.API.BaseURL,
+			"login_url": a.cfg.API.LoginURL,
+			"jwt_secret": a.cfg.API.JWTSecret,
+			"remember_login": a.cfg.API.RememberLogin,
+			"saved_username": a.cfg.API.SavedUsername,
+		},
+	}
+}
+
+// CompleteSetup persists the first-run database and optional cloud login
+// settings. The payload is a map to keep the Wails bridge backwards-compatible
+// with generated bindings while allowing older config files to be upgraded.
+func (a *App) CompleteSetup(data map[string]interface{}) error {
+	database, _ := data["database"].(map[string]interface{})
+	api, _ := data["api"].(map[string]interface{})
+	offlineOnly, _ := data["offline_only"].(bool)
+
+	if value, ok := database["host"].(string); ok {
+		a.cfg.Database.Host = strings.TrimSpace(value)
+	}
+	if value, ok := database["port"].(float64); ok && value > 0 {
+		a.cfg.Database.Port = int(value)
+	}
+	if value, ok := database["user"].(string); ok {
+		a.cfg.Database.User = strings.TrimSpace(value)
+	}
+	if value, ok := database["password"].(string); ok {
+		a.cfg.Database.Password = value
+	}
+	if value, ok := database["dbname"].(string); ok {
+		a.cfg.Database.DBName = strings.TrimSpace(value)
+	}
+	if value, ok := database["sslmode"].(string); ok {
+		a.cfg.Database.SSLMode = strings.TrimSpace(value)
+	}
+
+	if value, ok := api["base_url"].(string); ok {
+		a.cfg.API.BaseURL = strings.TrimRight(strings.TrimSpace(value), "/")
+	}
+	if value, ok := api["login_url"].(string); ok {
+		a.cfg.API.LoginURL = strings.TrimRight(strings.TrimSpace(value), "/")
+	}
+	if value, ok := api["jwt_secret"].(string); ok {
+		a.cfg.API.JWTSecret = strings.TrimSpace(value)
+	}
+	if value, ok := api["remember_login"].(bool); ok {
+		a.cfg.API.RememberLogin = value
+	}
+	if value, ok := api["saved_username"].(string); ok {
+		a.cfg.API.SavedUsername = strings.TrimSpace(value)
+	}
+	if value, ok := api["password"].(string); ok {
+		if value == "" || !a.cfg.API.RememberLogin {
+			a.cfg.API.SavedPassword = ""
+		} else {
+			encrypted, err := config.EncryptPassword(value)
+			if err != nil {
+				return err
+			}
+			a.cfg.API.SavedPassword = encrypted
+		}
+	}
+
+	a.cfg.UI.SetupCompleted = true
+	if err := a.cfg.Save(""); err != nil {
+		return err
+	}
+	if !offlineOnly && a.cfg.Database.DSN() != "" {
+		db.Close()
+		if err := db.Connect(a.cfg.Database.DSN()); err != nil && a.Logger != nil {
+			a.Logger.Warn(services.LogCategorySystem, "setup_database_unavailable", "数据库暂时不可用，继续使用离线功能", err.Error())
+		}
+	}
+	return nil
+}
+
 // ─── Photos ──────────────────────────────────────────
 
 func (a *App) GetPhotos(params services.ListPhotosParams) (*services.PaginatedResponse[services.PhotoDTO], error) {

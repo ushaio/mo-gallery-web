@@ -46,6 +46,8 @@ export function ClearLogs():Promise<void>;
 
 export function CloseLocalLibrary():Promise<void>;
 
+export function CompleteSetup(arg1:Record<string, any>):Promise<void>;
+
 export function CopyLocalAssetsToClipboard(arg1:Array<string>,arg2:boolean):Promise<void>;
 
 export function CreateAlbum(arg1:services.CreateAlbumParams):Promise<services.AlbumDTO>;
@@ -195,6 +197,8 @@ export function GetPhoto(arg1:string):Promise<services.PhotoDTO>;
 export function GetPhotos(arg1:services.ListPhotosParams):Promise<services.PaginatedResponse_mo_gallery_desktop_services_PhotoDTO_>;
 
 export function GetSettings():Promise<Record<string, string>>;
+
+export function GetSetupState():Promise<Record<string, any>>;
 
 export function GetStorageSources():Promise<Array<types.StorageSourceDTO>>;
 

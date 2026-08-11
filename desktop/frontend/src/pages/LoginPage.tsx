@@ -8,11 +8,9 @@ import {
   Globe,
   HardDrive,
   Images,
-  KeyRound,
   Loader2,
   Lock,
   Moon,
-  Server,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -25,7 +23,6 @@ import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { GetApiConfig, Login } from '../../wailsjs/go/main/App'
 
-const SERVER_KEY = 'mo-gallery-server'
 const CONFIG_RETRY_DELAYS_MS = [0, 300, 900, 1800]
 
 // GetApiConfig 返回结构（对应 Go 侧 App.GetApiConfig 的 map[string]interface{}）
@@ -36,55 +33,6 @@ interface SavedConfig {
   remember_login?: boolean
   saved_username?: string
   saved_password?: string
-}
-
-interface SecretFieldProps {
-  id: string
-  label: string
-  value: string
-  onChange: (value: string) => void
-  placeholder: string
-  language: 'zh' | 'en'
-  autoFocus?: boolean
-  mono?: boolean
-}
-
-function SecretField({ id, label, value, onChange, placeholder, language, autoFocus, mono }: SecretFieldProps) {
-  const [visible, setVisible] = useState(false)
-  const visibilityLabel = language === 'zh' ? (visible ? '隐藏' : '显示') : visible ? 'Hide' : 'Show'
-
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <div className="relative">
-        <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-        <input
-          id={id}
-          type={visible ? 'text' : 'password'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          autoFocus={autoFocus}
-          required
-          autoComplete="off"
-          aria-label={label}
-          className={`w-full rounded-lg border border-border bg-card py-2.5 pl-10 pr-10 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/40 focus:border-primary focus:ring-2 focus:ring-primary/20 ${
-            mono ? 'font-mono' : ''
-          }`}
-        />
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          aria-label={visibilityLabel}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-        >
-          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
-      </div>
-    </div>
-  )
 }
 
 export function LoginPage() {
@@ -130,9 +78,6 @@ export function LoginPage() {
   useEffect(() => {
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | undefined
-
-    const saved = localStorage.getItem(SERVER_KEY)
-    if (saved) setServer(saved)
 
     const applyConfig = (config: SavedConfig) => {
       if (cancelled) return
@@ -191,7 +136,6 @@ export function LoginPage() {
       const result = await Login(server, username, password, jwtSecret, rememberLogin)
       if (result?.token) {
         // 保存服务器地址
-        localStorage.setItem(SERVER_KEY, result.server || server)
         login(result.token, result.user)
         navigate('/', { replace: true })
       } else {
@@ -341,44 +285,6 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading}>
             {/* 服务器或管理员登录地址 */}
-            <div>
-              <label htmlFor="server" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                {t('admin.server_address', language)}
-              </label>
-              <div className="relative">
-                <Server className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-                <input
-                  id="server"
-                  type="text"
-                  inputMode="url"
-                  value={server}
-                  onChange={(e) => {
-                    setServer(e.target.value)
-                    clearError()
-                  }}
-                  placeholder={t('admin.server_address_hint', language)}
-                  disabled={loading}
-                  required
-                  autoFocus
-                  autoComplete="url"
-                  className="w-full rounded-lg border border-border bg-card py-2.5 pl-10 pr-3.5 font-mono text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/40 focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
-                />
-              </div>
-            </div>
-
-            <SecretField
-              id="jwt-secret"
-              label={t('admin.jwt_secret', language)}
-              value={jwtSecret}
-              onChange={(v) => {
-                setJwtSecret(v)
-                clearError()
-              }}
-              placeholder={t('admin.jwt_secret_hint', language)}
-              language={language}
-              mono
-            />
-
             {/* 用户名 */}
             <div>
               <label htmlFor="username" className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -434,19 +340,27 @@ export function LoginPage() {
             </div>
 
             {/* 记住登录 */}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="remember-login"
-                checked={rememberLogin}
-                onChange={(e) => setRememberLogin(e.target.checked)}
-                disabled={loading}
-                className="h-4 w-4 cursor-pointer rounded border-border"
-                style={{ accentColor: 'var(--primary)' }}
-              />
-              <label htmlFor="remember-login" className="cursor-pointer text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label htmlFor="remember-login" className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  id="remember-login"
+                  checked={rememberLogin}
+                  onChange={(e) => setRememberLogin(e.target.checked)}
+                  disabled={loading}
+                  className="h-4 w-4 cursor-pointer rounded border-border"
+                  style={{ accentColor: 'var(--primary)' }}
+                />
                 {t('admin.remember_login', language)}
               </label>
+              <button
+                type="button"
+                onClick={() => navigate('/setup')}
+                disabled={loading}
+                className="text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline disabled:opacity-50"
+              >
+                {language === 'zh' ? '修改服务器配置' : 'Edit connection settings'}
+              </button>
             </div>
 
             <button

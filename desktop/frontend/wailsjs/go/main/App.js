@@ -78,6 +78,10 @@ export function CloseLocalLibrary() {
   return window['go']['main']['App']['CloseLocalLibrary']();
 }
 
+export function CompleteSetup(arg1) {
+  return window['go']['main']['App']['CompleteSetup'](arg1);
+}
+
 export function CopyLocalAssetsToClipboard(arg1, arg2) {
   return window['go']['main']['App']['CopyLocalAssetsToClipboard'](arg1, arg2);
 }
@@ -376,6 +380,10 @@ export function GetPhotos(arg1) {
 
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
+}
+
+export function GetSetupState() {
+  return window['go']['main']['App']['GetSetupState']();
 }
 
 export function GetStorageSources() {
