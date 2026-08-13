@@ -17,6 +17,7 @@ import {
   GetFilmRolls,
   GetStorageSources,
   GetStories,
+  PrepareClipboardUpload,
   PrepareLocalAssetUpload,
   PrepareUpload,
   SelectFiles,
@@ -83,7 +84,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   storageSourceId: '',
   storagePath: '',
   compressEnabled: true,
-  maxSizeMB: 0,
+  maxSizeMB: 4,
   showFlag: true,
   stripGPS: false,
 }
@@ -122,6 +123,7 @@ export function UploadPage() {
   const [useCustomPrefix, setUseCustomPrefix] = useState(() => uploadPageDraftState.useCustomPrefix)
   const [showPrefixDropdown, setShowPrefixDropdown] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const clipboardPasteInFlightRef = useRef(false)
 
   useEffect(() => {
     uploadPageDraftState = {
@@ -284,6 +286,43 @@ export function UploadPage() {
       setPreparingLabel('')
     }
   }
+
+  const processClipboardFiles = async (files: File[]) => {
+    if (clipboardPasteInFlightRef.current) return
+    clipboardPasteInFlightRef.current = true
+    setPreparing(true)
+    setPreparingLabel('正在读取剪贴板图片')
+    try {
+      const dataURLs = await Promise.all(files.map(readFileAsDataURL))
+      const prepared: PreparedFile[] = await PrepareClipboardUpload(
+        files.map(file => file.name),
+        dataURLs,
+      )
+      await appendPreparedFiles(prepared)
+      toast.success(`已从剪贴板添加 ${prepared.length} 张图片`)
+    } catch (err: unknown) {
+      console.error('剪贴板图片预处理失败:', err)
+      toast.error(err instanceof Error ? err.message : '无法读取剪贴板图片')
+    } finally {
+      clipboardPasteInFlightRef.current = false
+      setPreparing(false)
+      setPreparingLabel('')
+    }
+  }
+
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const imageFiles = Array.from(event.clipboardData?.items || [])
+        .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+        .map(item => item.getAsFile())
+        .filter((file): file is File => file !== null)
+      if (imageFiles.length === 0) return
+      event.preventDefault()
+      void processClipboardFiles(imageFiles)
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   useEffect(() => {
     const intent = useUploadIntentStore.getState().consume()
@@ -656,7 +695,7 @@ export function UploadPage() {
                     style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
                     onClick={handleFileDialog}>
                     <Upload size={20} className="mx-auto mb-1.5 opacity-30" />
-                    <p className="text-xs">{preparingLabel || '点击或拖拽追加文件'}</p>
+                    <p className="text-xs">{preparingLabel || '点击、拖拽或粘贴图片以继续添加'}</p>
                   </div>
                 </div>
               ) : (
@@ -673,7 +712,7 @@ export function UploadPage() {
                       </div>
                     )}
                   </div>
-                  <p className="text-sm font-medium mb-1.5">{preparingLabel || '拖拽照片到此处，或点击选择文件'}</p>
+                  <p className="text-sm font-medium mb-1.5">{preparingLabel || '拖拽、粘贴照片到此处，或点击选择文件'}</p>
                   <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>支持 JPG、PNG、WebP、AVIF、TIFF 格式</p>
                 </div>
               )}
@@ -839,4 +878,15 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => typeof reader.result === 'string'
+      ? resolve(reader.result)
+      : reject(new Error('无法读取剪贴板图片'))
+    reader.onerror = () => reject(reader.error || new Error('无法读取剪贴板图片'))
+    reader.readAsDataURL(file)
+  })
 }

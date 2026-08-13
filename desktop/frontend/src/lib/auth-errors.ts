@@ -53,8 +53,7 @@ export function isAuthError(error: unknown): boolean {
     || message.includes('token 已过期')
     || message.includes('签名无效')
     || message.includes('jwt 密钥') // 未配置 JWT 密钥 / 请检查 JWT 密钥配置
-    || message.includes('401')
-    || message.includes('unauthorized')
+    || /^unauthorized(?:\s|:|$)/.test(message)
     || message.includes('invalid token')
     || message.includes('administrator login url has changed')
 }

@@ -276,6 +276,8 @@ export function PlanLocalAssetMove(arg1:Array<string>,arg2:string,arg3:string):P
 
 export function PlanLocalLibraryFolderMove(arg1:string,arg2:string,arg3:string,arg4:string):Promise<local_library.FolderFileOperationPlan>;
 
+export function PrepareClipboardUpload(arg1:Array<string>,arg2:Array<string>):Promise<Array<services.PreparedFile>>;
+
 export function PrepareLocalAssetUpload(arg1:Array<string>):Promise<Array<services.PreparedFile>>;
 
 export function PrepareUpload(arg1:Array<string>):Promise<Array<services.PreparedFile>>;

@@ -538,6 +538,10 @@ export function PlanLocalLibraryFolderMove(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['PlanLocalLibraryFolderMove'](arg1, arg2, arg3, arg4);
 }
 
+export function PrepareClipboardUpload(arg1, arg2) {
+  return window['go']['main']['App']['PrepareClipboardUpload'](arg1, arg2);
+}
+
 export function PrepareLocalAssetUpload(arg1) {
   return window['go']['main']['App']['PrepareLocalAssetUpload'](arg1);
 }

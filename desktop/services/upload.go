@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,13 +11,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"mo-gallery-desktop/image"
 )
 
 // UploadService 处理照片上传
 type UploadService struct {
-	proxy *ProxyClient
+	proxy            *ProxyClient
+	clipboardMu      sync.Mutex
+	clipboardTempDir string
 }
 
 func NewUploadService(proxy *ProxyClient) *UploadService {
@@ -85,6 +89,112 @@ type AiImageUploadResult struct {
 var supportedUploadExtensions = map[string]string{
 	".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WebP",
 	".avif": "AVIF", ".tif": "TIFF", ".tiff": "TIFF",
+}
+
+const maxClipboardImageBytes = 100 * 1024 * 1024
+
+const desktopCompressedUploadMaxBytes = 4 * 1024 * 1024
+
+var clipboardImageExtensions = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+	"image/avif": ".avif",
+	"image/tiff": ".tiff",
+}
+
+func (s *UploadService) clipboardDirectory() (string, error) {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if s.clipboardTempDir != "" {
+		return s.clipboardTempDir, nil
+	}
+	directory, err := os.MkdirTemp("", "mo-gallery-clipboard-")
+	if err != nil {
+		return "", fmt.Errorf("无法创建剪贴板图片临时目录: %w", err)
+	}
+	s.clipboardTempDir = directory
+	return directory, nil
+}
+
+// PrepareClipboardUpload persists browser clipboard images for the lifetime of
+// the app, then sends them through the same validation, hash, and EXIF pipeline
+// as files selected from disk.
+func (s *UploadService) PrepareClipboardUpload(fileNames, dataURLs []string) ([]PreparedFile, error) {
+	if len(fileNames) == 0 || len(fileNames) != len(dataURLs) {
+		return nil, errors.New("剪贴板图片数据不完整")
+	}
+	directory, err := s.clipboardDirectory()
+	if err != nil {
+		return nil, err
+	}
+
+	paths := make([]string, 0, len(dataURLs))
+	displayNames := make([]string, 0, len(dataURLs))
+	for index, dataURL := range dataURLs {
+		header, encoded, found := strings.Cut(dataURL, ",")
+		if !found || !strings.HasPrefix(header, "data:") || !strings.HasSuffix(header, ";base64") {
+			return nil, fmt.Errorf("第 %d 张剪贴板图片数据无效", index+1)
+		}
+		mimeType := strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64"))
+		extension, supported := clipboardImageExtensions[mimeType]
+		if !supported {
+			return nil, fmt.Errorf("不支持剪贴板图片格式 %s；支持 JPG、PNG、WebP、AVIF、TIFF", mimeType)
+		}
+		if len(encoded) > base64.StdEncoding.EncodedLen(maxClipboardImageBytes) {
+			return nil, fmt.Errorf("第 %d 张剪贴板图片超过 100 MB", index+1)
+		}
+		data, decodeErr := base64.StdEncoding.DecodeString(encoded)
+		if decodeErr != nil {
+			return nil, fmt.Errorf("第 %d 张剪贴板图片解码失败", index+1)
+		}
+		if len(data) == 0 || len(data) > maxClipboardImageBytes {
+			return nil, fmt.Errorf("第 %d 张剪贴板图片大小无效", index+1)
+		}
+
+		tempFile, createErr := os.CreateTemp(directory, "clipboard-*"+extension)
+		if createErr != nil {
+			return nil, fmt.Errorf("保存剪贴板图片失败: %w", createErr)
+		}
+		tempPath := tempFile.Name()
+		if _, writeErr := tempFile.Write(data); writeErr != nil {
+			_ = tempFile.Close()
+			_ = os.Remove(tempPath)
+			return nil, fmt.Errorf("保存剪贴板图片失败: %w", writeErr)
+		}
+		if closeErr := tempFile.Close(); closeErr != nil {
+			_ = os.Remove(tempPath)
+			return nil, fmt.Errorf("保存剪贴板图片失败: %w", closeErr)
+		}
+		paths = append(paths, tempPath)
+
+		name := strings.TrimSpace(filepath.Base(fileNames[index]))
+		if name == "" || name == "." {
+			name = fmt.Sprintf("剪贴板图片-%d%s", index+1, extension)
+		} else {
+			name = strings.TrimSuffix(name, filepath.Ext(name)) + extension
+		}
+		displayNames = append(displayNames, name)
+	}
+
+	prepared, err := s.PrepareUpload(paths)
+	if err != nil {
+		return nil, err
+	}
+	for index := range prepared {
+		prepared[index].FileName = displayNames[index]
+	}
+	return prepared, nil
+}
+
+func (s *UploadService) CleanupClipboardUploads() {
+	s.clipboardMu.Lock()
+	directory := s.clipboardTempDir
+	s.clipboardTempDir = ""
+	s.clipboardMu.Unlock()
+	if directory != "" {
+		_ = os.RemoveAll(directory)
+	}
 }
 
 func validateUploadFile(filePath string) error {
@@ -231,6 +341,33 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		return result, nil
 	}
 
+	uploadPath := filePath
+	if settings.CompressEnabled {
+		targetBytes := int64(desktopCompressedUploadMaxBytes)
+		if settings.MaxSizeMB > 0 {
+			requestedBytes := int64(settings.MaxSizeMB * 1024 * 1024)
+			if requestedBytes < targetBytes {
+				targetBytes = requestedBytes
+			}
+		}
+		tempDir, err := os.MkdirTemp("", "mo-gallery-upload-")
+		if err != nil {
+			result.Error = "创建本地压缩目录失败: " + err.Error()
+			return result, nil
+		}
+		defer os.RemoveAll(tempDir)
+		baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+		uploadPath = filepath.Join(tempDir, baseName+".avif")
+		orientation := 1
+		if exifData != nil && exifData.Orientation > 0 {
+			orientation = exifData.Orientation
+		}
+		if err := image.CompressToAVIF(filePath, uploadPath, orientation, targetBytes); err != nil {
+			result.Error = "本地压缩失败: " + err.Error()
+			return result, nil
+		}
+	}
+
 	// ── 构造表单字段 ───────────────────────────────────
 	title := settings.Title
 	if title == "" {
@@ -270,12 +407,6 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	if !settings.ShowFlag {
 		fields["show_flag"] = "false"
 	}
-	if settings.CompressEnabled {
-		fields["compression_mode"] = "compress"
-		if settings.MaxSizeMB > 0 {
-			fields["max_size_mb"] = fmt.Sprintf("%.0f", settings.MaxSizeMB)
-		}
-	}
 	if settings.StripGPS {
 		fields["strip_gps"] = "true"
 	}
@@ -292,7 +423,7 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 
 	// ── 发送文件到 Web API ─────────────────────────────
 	files := map[string]string{
-		"file": filePath,
+		"file": uploadPath,
 	}
 
 	// POSTMultipart already unwraps the Web API's { data: ... } envelope.

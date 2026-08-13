@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -163,7 +166,18 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 		if err != nil {
 			return fmt.Errorf("打开文件失败: %w", err)
 		}
-		part, err := writer.CreateFormFile(fieldName, filepath.Base(filePath))
+		header := make(textproto.MIMEHeader)
+		header.Set("Content-Disposition", fmt.Sprintf(
+			`form-data; name="%s"; filename="%s"`,
+			escapeMultipartValue(fieldName),
+			escapeMultipartValue(filepath.Base(filePath)),
+		))
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		header.Set("Content-Type", contentType)
+		part, err := writer.CreatePart(header)
 		if err != nil {
 			f.Close()
 			return fmt.Errorf("创建表单文件失败: %w", err)
@@ -238,6 +252,10 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 	}
 
 	return nil
+}
+
+func escapeMultipartValue(value string) string {
+	return strings.NewReplacer("\\", "\\\\", `"`, `\"`).Replace(value)
 }
 
 // PATCH 发起 PATCH 请求
@@ -428,5 +446,15 @@ func parseAPIError(statusCode int, body []byte) error {
 			ExistingPhotoID: errBody.ExistingPhotoID,
 		}
 	}
-	return fmt.Errorf("API 错误 (HTTP %d): %s", statusCode, string(body))
+	const maxResponsePreview = 512
+	preview := strings.TrimSpace(string(body))
+	if len(preview) > maxResponsePreview {
+		preview = preview[:maxResponsePreview] + "..."
+	}
+	if preview == "" {
+		preview = "服务器返回了空响应"
+	} else if strings.HasPrefix(strings.ToLower(preview), "<!doctype html") || strings.HasPrefix(strings.ToLower(preview), "<html") {
+		preview = "服务器返回了 HTML 页面，请检查服务器地址和 API 路由"
+	}
+	return fmt.Errorf("API 错误 (HTTP %d): %s", statusCode, preview)
 }

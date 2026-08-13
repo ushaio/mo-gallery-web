@@ -2,8 +2,29 @@ package services
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
+
+func TestParseAPIErrorSummarizesHTMLResponse(t *testing.T) {
+	err := parseAPIError(404, []byte(`<!DOCTYPE html><html><body><div>not found</div><script>"unauthorized":"$undefined"</script></body></html>`))
+	message := err.Error()
+
+	if !strings.Contains(message, "HTTP 404") || !strings.Contains(message, "HTML") {
+		t.Fatalf("unexpected error: %q", message)
+	}
+	if strings.Contains(message, "unauthorized") || len(message) > 200 {
+		t.Fatalf("HTML response leaked into error: %q", message)
+	}
+}
+
+func TestParseAPIErrorTruncatesNonJSONResponse(t *testing.T) {
+	err := parseAPIError(502, []byte(strings.Repeat("x", 1024)))
+
+	if len(err.Error()) > 600 || !strings.HasSuffix(err.Error(), "...") {
+		t.Fatalf("response preview was not truncated: %q", err.Error())
+	}
+}
 
 func TestParseUnauthorizedErrorPreservesGateReason(t *testing.T) {
 	err := parseUnauthorizedError([]byte(`{

@@ -190,6 +190,9 @@ func (a *App) startAiHTTPServer() {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.Upload != nil {
+		a.Upload.CleanupClipboardUploads()
+	}
 	if a.AgentExtensions != nil {
 		a.AgentExtensions.StopAll()
 	}
@@ -664,6 +667,10 @@ func (a *App) DeleteComment(id string) error { return a.Comment.Delete(id) }
 
 func (a *App) PrepareUpload(filePaths []string) ([]services.PreparedFile, error) {
 	return a.Upload.PrepareUpload(filePaths)
+}
+
+func (a *App) PrepareClipboardUpload(fileNames, dataURLs []string) ([]services.PreparedFile, error) {
+	return a.Upload.PrepareClipboardUpload(fileNames, dataURLs)
 }
 
 func localAssetIDs(ids []string) []local_library.AssetID {
