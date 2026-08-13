@@ -3329,11 +3329,11 @@ export namespace services {
 	    platform: string;
 	    arch: string;
 	    installMode: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new UpdateAsset(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -3371,11 +3371,11 @@ export namespace services {
 	    path: string;
 	    name: string;
 	    installMode: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new UpdateDownloadResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
@@ -3461,11 +3461,11 @@ export namespace services {
 	    publishedAt: string;
 	    notes: string;
 	    asset?: UpdateAsset;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.currentVersion = source["currentVersion"];
@@ -3476,7 +3476,7 @@ export namespace services {
 	        this.notes = source["notes"];
 	        this.asset = this.convertValues(source["asset"], UpdateAsset);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -3709,3 +3709,4 @@ export namespace types {
 	}
 
 }
+
