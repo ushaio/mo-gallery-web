@@ -99,3 +99,28 @@ export function renderSlot(slot: Slot, _pageWmm: number, assets: ZineAsset[] = [
     },
   }
 }
+
+export interface ImageFrameGeometry { x: number; y: number; w: number; h: number }
+
+/** Keep the rendered photo fixed on the canvas while changing its clipping frame. */
+export function preserveImageTransformOnFrameResize(
+  initialFrame: ImageFrameGeometry,
+  nextFrame: ImageFrameGeometry,
+  imageWidth: number,
+  imageHeight: number,
+  transform: ZineImageTransform,
+): ZineImageTransform {
+  if (![initialFrame.x, initialFrame.y, initialFrame.w, initialFrame.h, nextFrame.x, nextFrame.y, nextFrame.w, nextFrame.h, imageWidth, imageHeight].every(Number.isFinite)
+    || imageWidth <= 0 || imageHeight <= 0 || nextFrame.w <= 0 || nextFrame.h <= 0) return transform
+  const before = calculateImagePlacement(initialFrame.w, initialFrame.h, imageWidth, imageHeight, transform)
+  const coverScale = Math.max(nextFrame.w / imageWidth, nextFrame.h / imageHeight)
+  const scale = Math.max(0.01, before.width / (imageWidth * coverScale))
+  const centerX = initialFrame.x + before.left + before.width / 2
+  const centerY = initialFrame.y + before.top + before.height / 2
+  return {
+    ...transform,
+    scale,
+    offsetX: ((centerX - nextFrame.x - nextFrame.w / 2) / nextFrame.w) * 100,
+    offsetY: ((centerY - nextFrame.y - nextFrame.h / 2) / nextFrame.h) * 100,
+  }
+}

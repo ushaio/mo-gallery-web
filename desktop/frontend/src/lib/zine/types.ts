@@ -15,7 +15,13 @@ export interface ZineImageTransform { scale: number; offsetX: number; offsetY: n
 export interface ZineProject { id: string; title: string; pageSize: ZinePageSize; pageOrientation: ZinePageOrientation; geometryVersion?: ZineGeometryVersion; customSizeMm?: ZineCustomSizeMm; bleedMm?: number; pageNumbers?: ZinePageNumberSettings; createdBy: string; createdAt: number; updatedAt: number; spreads: Spread[]; assets: ZineAsset[] }
 export interface Spread { id: string; templateId: string; role?: ZineSpreadRole; slots: Slot[] }
 export interface SlotBase { id: string; kind: SlotKind; page: ZinePageSide; x: number; y: number; w: number; h: number; rotation: number; zIndex: number }
-export interface ImageSlot extends SlotBase { kind: 'image'; assetId: string | null; imageTransform: ZineImageTransform }
+export interface ImageSlot extends SlotBase {
+  kind: 'image'
+  assetId: string | null
+  imageTransform: ZineImageTransform
+  /** Legacy projects omit this and retain the original bound resize behavior. */
+  imageFrameBinding?: boolean
+}
 export type ZineTextVerticalAlign = 'top' | 'center' | 'bottom'
 export interface TextSlot extends SlotBase { kind: 'text'; content: string; align: 'left' | 'center' | 'right'; verticalAlign?: ZineTextVerticalAlign; fontSize: number; lineHeight: number; color: string; fontFamily: string }
 export type Slot = ImageSlot | TextSlot

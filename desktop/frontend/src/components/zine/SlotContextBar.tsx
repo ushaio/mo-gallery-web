@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Check, ChevronDown, Image as ImageIcon, ImageOff, Minus, Plus, RotateCcw, Star, Trash2, Type as TypeIcon, type LucideIcon } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Check, ChevronDown, Image as ImageIcon, ImageOff, Link, Link2Off, Minus, Plus, RotateCcw, Star, Trash2, Type as TypeIcon, type LucideIcon } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { createDefaultImageTransform } from '@/lib/zine/crop-session'
@@ -294,6 +294,13 @@ export function SlotContextBar() {
             disabled={!(slot as ImageSlot).assetId}
           >
             <ImageOff size={14} />
+          </BarButton>
+          <BarButton
+            label={t((slot as ImageSlot).imageFrameBinding === false ? 'admin.zine_bind_image_to_frame' : 'admin.zine_unbind_image_from_frame', language)}
+            active={(slot as ImageSlot).imageFrameBinding !== false}
+            onClick={() => patchSlot({ imageFrameBinding: (slot as ImageSlot).imageFrameBinding === false } satisfies Partial<ImageSlot>)}
+          >
+            {(slot as ImageSlot).imageFrameBinding === false ? <Link2Off size={14} /> : <Link size={14} />}
           </BarButton>
           <BarButton
             label={t('admin.zine_reset_crop', language)}

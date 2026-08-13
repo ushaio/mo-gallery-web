@@ -10,7 +10,7 @@ import { buildGestureGuides, constrainMovementToAxis, GestureSession, getDominan
 import { t } from '@/lib/i18n'
 import { calculateEffectiveDpi, MIN_PRINT_DPI, SAFE_MARGIN_MM } from '@/lib/zine/print'
 import { recordZineOperation } from '@/lib/zine/operation-log'
-import { calculateImagePlacement, renderSlot } from '@/lib/zine/slot-render'
+import { calculateImagePlacement, preserveImageTransformOnFrameResize, renderSlot } from '@/lib/zine/slot-render'
 import type { Slot, Spread, ZineAsset, ZineImageTransform } from '@/lib/zine/types'
 import type { ZineViewOptions } from '@/lib/zine/view-options'
 import { usePreferences } from '@/store/preferences'
@@ -104,6 +104,21 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   const activeGuideKeysRef = useRef('')
   const frameDragAxisRef = useRef<MovementAxis | null>(null)
   const frameDragLogRef = useRef({ moveCount: 0, lastLoggedAt: 0 })
+  const resizeImageTransformRef = useRef<ZineImageTransform | null>(null)
+  const resizeInitialImageTransformRef = useRef<ZineImageTransform | null>(null)
+  const resizeImageStyleSnapshotRef = useRef<string | null>(null)
+  const resizeImagePreviewRef = useRef<{
+    frameLeftPx: number
+    frameTopPx: number
+    widthPx: number
+    heightPx: number
+    transform: string
+    boundsLeftPx: number
+    boundsTopPx: number
+    boundsWidthPx: number
+    boundsHeightPx: number
+    boundsTransform: string
+  } | null>(null)
   const cropDragLogRef = useRef({ moveCount: 0, lastLoggedAt: 0 })
   const dragDepthRef = useRef(0)
   const [dragOver, setDragOver] = useState(false)
@@ -375,16 +390,25 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     setActiveGuides((current) => current.length === 0 ? current : [])
     setRotationSnap(null)
     geometryRef.current = result.geometry
-    commitLiveGeometry(result.geometry)
+    commitLiveGeometry(result.geometry, resizeImageTransformRef.current ?? undefined)
+    const imageTransform = resizeImageTransformRef.current
+    resizeImageTransformRef.current = null
+    resizeInitialImageTransformRef.current = null
+    resizeImageStyleSnapshotRef.current = null
+    resizeImagePreviewRef.current = null
     if (!result.changed) return
-    updateSlot(spread.id, slot.id, { ...result.geometry, page: result.page })
+    updateSlot(spread.id, slot.id, { ...result.geometry, page: result.page, ...(imageTransform ? { imageTransform } : {}) })
   }
 
   function resetLiveStyle() {
     commitLiveGeometry(geometryRef.current)
   }
 
-  function commitLiveGeometry(next: SlotGeometry) {
+  function commitLiveGeometry(
+    next: SlotGeometry,
+    imageTransform = slot.kind === 'image' ? slot.imageTransform : undefined,
+    updateImageLayer = true,
+  ) {
     const element = slotRef.current
     if (!element) return
     element.style.left = `${toScreenPx(next.x, scale)}px`
@@ -401,12 +425,75 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
       outlineLayer.style.height = `${toScreenPx(next.h, scale)}px`
       outlineLayer.style.transform = `rotate(${next.rotation}deg)`
     }
-    if (cropBoundsRef.current && slot.kind === 'image' && asset) {
+    if (updateImageLayer && cropBoundsRef.current && slot.kind === 'image' && asset) {
+      Object.assign(cropBoundsRef.current.style, imageBoundsStyle({ ...slot, ...next }, asset, imageTransform ?? slot.imageTransform, scale))
+    }
+    if (updateImageLayer && cropTransformRef.current && imageTransform) {
+      cropTransformRef.current.style.transform = cropTransformStyle(imageTransform)
+    }
+  }
+
+  function applyLiveResizeGeometry(
+    next: SlotGeometry,
+    widthPx: number,
+    heightPx: number,
+    dragTransform: string,
+    imageTransform?: ZineImageTransform,
+  ) {
+    const element = slotRef.current
+    if (!element) return
+    element.style.width = `${widthPx}px`
+    element.style.height = `${heightPx}px`
+    element.style.transform = dragTransform
+
+    const outlineLayer = cropControlsRef.current
+    if (outlineLayer) {
+      outlineLayer.style.width = `${widthPx}px`
+      outlineLayer.style.height = `${heightPx}px`
+      outlineLayer.style.transform = dragTransform
+    }
+    if (!imageTransform && cropBoundsRef.current && slot.kind === 'image' && asset) {
       Object.assign(cropBoundsRef.current.style, imageBoundsStyle({ ...slot, ...next }, asset, slot.imageTransform, scale))
     }
   }
 
+  function applyUnboundResizePreview(next: SlotGeometry) {
+    const layer = cropTransformRef.current
+    const preview = resizeImagePreviewRef.current
+    if (!layer || !preview) return
+    Object.assign(layer.style, {
+      inset: 'auto',
+      left: `${preview.frameLeftPx - toScreenPx(next.x, scale)}px`,
+      top: `${preview.frameTopPx - toScreenPx(next.y, scale)}px`,
+      width: `${preview.widthPx}px`,
+      height: `${preview.heightPx}px`,
+      transform: preview.transform,
+      transformOrigin: 'center',
+    })
+    if (cropBoundsRef.current) {
+      Object.assign(cropBoundsRef.current.style, {
+        left: `${preview.boundsLeftPx - toScreenPx(next.x, scale)}px`,
+        top: `${preview.boundsTopPx - toScreenPx(next.y, scale)}px`,
+        width: `${preview.boundsWidthPx}px`,
+        height: `${preview.boundsHeightPx}px`,
+        transform: preview.boundsTransform,
+        transformOrigin: 'center',
+      })
+    }
+  }
+
+  function restoreImageTransformLayer() {
+    const layer = cropTransformRef.current
+    const snapshot = resizeImageStyleSnapshotRef.current
+    if (!layer || snapshot === null) return
+    layer.style.cssText = snapshot
+  }
+
   function beginGeometryGesture(kind: GestureKind, resizeDirection?: readonly [number, number]) {
+    resizeImageTransformRef.current = null
+    resizeInitialImageTransformRef.current = null
+    resizeImageStyleSnapshotRef.current = null
+    resizeImagePreviewRef.current = null
     const initial = toSlotGeometry(slot)
     geometryRef.current = initial
     gestureSessionRef.current = new GestureSession(initial, {
@@ -799,8 +886,29 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
             }, { flush: true })
             commitGeometry()
           }}
-          onResizeStart={({ dragStart, direction }) => {
+          onResizeStart={({ dragStart, direction, setMin }) => {
             beginGeometryGesture('resize', direction as [number, number])
+            setMin([MIN_SLOT_MM * scale, MIN_SLOT_MM * scale])
+            if (slot.kind === 'image' && asset && slot.imageFrameBinding === false) {
+              resizeImageTransformRef.current = slot.imageTransform
+              resizeInitialImageTransformRef.current = slot.imageTransform
+              const placement = calculateImagePlacement(slot.w, slot.h, asset.width, asset.height, slot.imageTransform)
+              resizeImagePreviewRef.current = {
+                frameLeftPx: toScreenPx(slot.x, scale),
+                frameTopPx: toScreenPx(slot.y, scale),
+                widthPx: toScreenPx(slot.w, scale),
+                heightPx: toScreenPx(slot.h, scale),
+                transform: cropTransformStyle(slot.imageTransform),
+                boundsLeftPx: toScreenPx(slot.x + placement.left, scale),
+                boundsTopPx: toScreenPx(slot.y + placement.top, scale),
+                boundsWidthPx: toScreenPx(placement.width, scale),
+                boundsHeightPx: toScreenPx(placement.height, scale),
+                boundsTransform: `rotate(${placement.rotation}deg)`,
+              }
+              if (cropTransformRef.current) {
+                resizeImageStyleSnapshotRef.current = cropTransformRef.current.style.cssText
+              }
+            }
             if (dragStart) dragStart.set([0, 0])
           }}
           onResize={({ width, height, drag }) => {
@@ -812,10 +920,24 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
               w: Math.max(MIN_SLOT_MM, width / scale),
               h: Math.max(MIN_SLOT_MM, height / scale),
             }
+            const imageTransform = slot.kind === 'image' && asset && slot.imageFrameBinding === false
+              ? preserveImageTransformOnFrameResize(
+                gestureSessionRef.current?.initial ?? toSlotGeometry(slot),
+                next,
+                asset.width,
+                asset.height,
+                resizeInitialImageTransformRef.current ?? slot.imageTransform,
+              )
+              : undefined
+            if (imageTransform) resizeImageTransformRef.current = imageTransform
             updateGeometryDraft(next)
-            commitLiveGeometry(next)
+            applyLiveResizeGeometry(next, width, height, drag.transform, imageTransform)
+            if (imageTransform) applyUnboundResizePreview(next)
           }}
-          onResizeEnd={commitGeometry}
+          onResizeEnd={() => {
+            restoreImageTransformLayer()
+            commitGeometry()
+          }}
           onRotateStart={({ set }) => {
             beginGeometryGesture('rotate')
             set(slot.rotation)
