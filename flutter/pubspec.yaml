@@ -1,7 +1,7 @@
 name: mo_gallery_mobile
 description: MO Gallery mobile upload client (Android-first).
 publish_to: 'none'
-version: 0.8.1+1
+version: 0.8.2+2
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
