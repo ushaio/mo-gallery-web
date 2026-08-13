@@ -98,6 +98,7 @@ export interface ZineState {
   moveSpread: (id: string, direction: -1 | 1) => void
   removeSpread: (id: string) => void
   addAsset: (asset: ZineAsset) => void
+  moveAsset: (id: string, targetId: string) => void
   rename: (title: string) => void
   setPageNumbers: (settings: ZinePageNumberSettings) => void
   pushHistory: () => void
@@ -306,6 +307,23 @@ export const useZineStore = create<ZineState>()((set, get) => ({
     set((state) => {
       if (!state.project) return state
       return { project: withUpdatedProject(state.project, { assets: [...state.project.assets, asset] }), ...markDirty() }
+    })
+  },
+  moveAsset: (id, targetId) => {
+    if (get().aiTaskId || id === targetId) return
+    const assets = get().project?.assets
+    const sourceIndex = assets?.findIndex((asset) => asset.id === id) ?? -1
+    const targetIndex = assets?.findIndex((asset) => asset.id === targetId) ?? -1
+    if (!assets || sourceIndex < 0 || targetIndex < 0) return
+
+    set((state) => {
+      if (!state.project) return state
+
+      const reorderedAssets = [...state.project.assets]
+      const [movedAsset] = reorderedAssets.splice(sourceIndex, 1)
+      reorderedAssets.splice(targetIndex, 0, movedAsset)
+
+      return { project: withUpdatedProject(state.project, { assets: reorderedAssets }), ...markDirty() }
     })
   },
   rename: (title) => {

@@ -65,4 +65,26 @@ assert.equal(undone.project?.spreads[0]?.slots[0]?.x, 10)
 assert.equal(undone.project?.spreads[0]?.slots[0]?.rotation, 0)
 assert.equal(undone.redoStack.length, 1)
 
+useZineStore.setState({
+  project: {
+    ...structuredClone(project),
+    assets: [
+      { id: 'asset-1', source: 'local', fileName: 'one.jpg', width: 100, height: 100, previewUrl: '', fullUrl: '', createdAt: 1 },
+      { id: 'asset-2', source: 'local', fileName: 'two.jpg', width: 100, height: 100, previewUrl: '', fullUrl: '', createdAt: 1 },
+      { id: 'asset-3', source: 'local', fileName: 'three.jpg', width: 100, height: 100, previewUrl: '', fullUrl: '', createdAt: 1 },
+    ],
+  },
+  dirty: false,
+  saveStatus: 'saved',
+  aiTaskId: null,
+})
+
+useZineStore.getState().moveAsset('asset-1', 'asset-3')
+assert.deepEqual(useZineStore.getState().project?.assets.map((asset) => asset.id), ['asset-2', 'asset-3', 'asset-1'])
+assert.equal(useZineStore.getState().dirty, true)
+assert.equal(useZineStore.getState().saveStatus, 'unsaved')
+
+useZineStore.getState().moveAsset('missing', 'asset-2')
+assert.deepEqual(useZineStore.getState().project?.assets.map((asset) => asset.id), ['asset-2', 'asset-3', 'asset-1'])
+
 console.log('✓ Zine gesture commit produces one undo step and marks the project unsaved')

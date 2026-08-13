@@ -9,9 +9,11 @@ interface TrayThumbProps {
   sourceLabel?: string
   onPick: () => void
   onDragAsset: () => void
+  onDragStart?: () => void
+  onDragEnd?: () => void
 }
 
-export function TrayThumb({ asset, used = false, usedLabel = 'Used', sourceLabel, onPick, onDragAsset }: TrayThumbProps) {
+export function TrayThumb({ asset, used = false, usedLabel = 'Used', sourceLabel, onPick, onDragAsset, onDragStart, onDragEnd }: TrayThumbProps) {
   return (
     <button
       type="button"
@@ -21,10 +23,12 @@ export function TrayThumb({ asset, used = false, usedLabel = 'Used', sourceLabel
       onClick={onPick}
       onDragStart={(event) => {
         onDragAsset()
+        onDragStart?.()
         event.dataTransfer.setData('application/x-zine-asset-id', asset.id)
         event.dataTransfer.setData('application/json', JSON.stringify(asset))
-        event.dataTransfer.effectAllowed = 'copy'
+        event.dataTransfer.effectAllowed = onDragStart ? 'copyMove' : 'copy'
       }}
+      onDragEnd={onDragEnd}
       title={used ? `${asset.fileName} · ${usedLabel}` : asset.fileName}
     >
       <img

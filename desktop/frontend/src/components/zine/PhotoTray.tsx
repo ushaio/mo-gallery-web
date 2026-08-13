@@ -24,6 +24,7 @@ export function PhotoTray() {
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
   const addAsset = useZineStore((state) => state.addAsset)
+  const moveAsset = useZineStore((state) => state.moveAsset)
   const updateSlot = useZineStore((state) => state.updateSlot)
   const selectSlot = useZineStore((state) => state.selectSlot)
 
@@ -126,6 +127,7 @@ export function PhotoTray() {
           spreads={project?.spreads ?? []}
           onPickAsset={onPickAsset}
           onDragAsset={onDragAsset}
+          onMoveAsset={moveAsset}
         />
       </div>
       <div className="flex shrink-0 flex-col gap-1.5 border-t p-2" style={{ borderColor: 'var(--border)' }}>
