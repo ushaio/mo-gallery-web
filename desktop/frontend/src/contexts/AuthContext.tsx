@@ -16,7 +16,7 @@ interface AuthContextType {
   user: UserInfo | null
   isAuthenticated: boolean
   isReady: boolean
-  login: (token: string, user: UserInfo) => void
+  login: (token: string, user: UserInfo, server?: string) => void
   logout: () => void
 }
 
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleAuthFailure = useCallback((error?: unknown) => {
     clearAuthState()
     sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage(error))
-    navigate('/library?source=local', { replace: true })
+    navigate('/login', { replace: true })
   }, [clearAuthState, navigate])
 
   useEffect(() => {
@@ -210,12 +210,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (retryTimer) clearTimeout(retryTimer)
     }
   }, [handleAuthFailure])
-  const login = useCallback((newToken: string, newUser: UserInfo) => {
+  const login = useCallback((newToken: string, newUser: UserInfo, server?: string) => {
     authSyncPendingRef.current = false
     setToken(newToken)
     setUser(newUser)
     localStorage.setItem(TOKEN_KEY, newToken)
     localStorage.setItem(USER_KEY, JSON.stringify(newUser))
+    const normalizedServer = server?.trim().replace(/\/+$/, '')
+    if (normalizedServer) localStorage.setItem(SERVER_KEY, normalizedServer)
   }, [])
 
   const logout = useCallback(() => {

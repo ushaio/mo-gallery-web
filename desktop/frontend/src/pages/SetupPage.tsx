@@ -232,7 +232,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
       }
       await CompleteSetup({ database, api: setupApi, offline_only: false })
       onComplete(completedState())
-      login(result.token, result.user)
+      login(result.token, result.user, result.server || server)
       navigate('/overview', { replace: true })
     } catch (cause: unknown) {
       setError(getErrorMessage(cause) || copy.loginError)

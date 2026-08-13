@@ -134,7 +134,7 @@ export function LoginPage() {
       const result = await Login(server, username, password, jwtSecret, rememberLogin)
       if (result?.token) {
         // 保存服务器地址
-        login(result.token, result.user)
+        login(result.token, result.user, result.server || server)
         navigate('/', { replace: true })
       } else {
         setError(t('admin.loginFailed', language))
