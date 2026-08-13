@@ -34,6 +34,8 @@ export function CancelLocalLibraryScan():Promise<void>;
 
 export function CheckDuplicates(arg1:Array<string>):Promise<services.DuplicateCheckResult>;
 
+export function CheckForUpdates(arg1:string,arg2:boolean):Promise<services.UpdateInfo>;
+
 export function CleanupStorage(arg1:Array<string>,arg2:string):Promise<services.StorageCleanupResult>;
 
 export function ClearAuth():Promise<void>;
@@ -111,6 +113,8 @@ export function DeleteStory(arg1:string):Promise<void>;
 export function DiscoverAgentMCPServerTools(arg1:string):Promise<agent_extensions.MCPServer>;
 
 export function DownloadMessageImageToLocal(arg1:string):Promise<string>;
+
+export function DownloadUpdate():Promise<services.UpdateDownloadResult>;
 
 export function ExecuteLocalAssetMovePlan(arg1:string):Promise<local_library.AssetFileOperationExecution>;
 
@@ -245,6 +249,8 @@ export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boole
 export function MoveLocalAssets(arg1:Array<string>,arg2:string):Promise<Array<local_library.AssetMoveResult>>;
 
 export function MoveLocalLibraryFolder(arg1:string,arg2:string,arg3:string):Promise<local_library.FolderDTO>;
+
+export function OpenDownloadedUpdate():Promise<void>;
 
 export function OpenLocalAssetInDefaultApp(arg1:string):Promise<void>;
 

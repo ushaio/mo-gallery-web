@@ -47,6 +47,15 @@ import {
 import { config as wailsConfig, local_library, type services } from '../../wailsjs/go/models'
 import { version } from '../../package.json'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+import {
+  checkForUpdates,
+  downloadUpdate,
+  isDevelopmentBuild,
+  openDownloadedUpdate,
+  type UpdateDownloadProgress,
+  type UpdateDownloadResult,
+  type UpdateInfo,
+} from '@/lib/app-updater'
 import { getWindowAppearance, restartApplication, updateWindowStyle, type WindowAppearance, type WindowStyle } from '@/lib/window-appearance'
 import {
   Settings, Info,
@@ -55,7 +64,7 @@ import {
   Unlink, Link, Sparkles, Eye, EyeOff,
   FileText, Trash, Filter, FolderOpen, FolderInput, Copy, Database, Image as ImageIcon,
   Github, ExternalLink, LayoutDashboard, Images, ChevronRight, Puzzle,
-  AppWindow, Monitor, Moon, Palette, Sun,
+  AppWindow, Monitor, Moon, Palette, Sun, Download, CircleCheck, TriangleAlert,
 } from 'lucide-react'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
@@ -1724,6 +1733,72 @@ const APP_TECH_STACK: { label: string; value: string }[] = [
 ]
 
 function AboutTab() {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [updateError, setUpdateError] = useState('')
+  const [checking, setChecking] = useState(true)
+  const [developmentBuild, setDevelopmentBuild] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [progress, setProgress] = useState<UpdateDownloadProgress | null>(null)
+  const [downloaded, setDownloaded] = useState<UpdateDownloadResult | null>(null)
+
+  const check = useCallback(async (silent = false, force = false) => {
+    setChecking(true)
+    setUpdateError('')
+    try {
+      const info = await checkForUpdates(version, force)
+      setUpdateInfo(info)
+      setDownloaded(null)
+      setProgress(null)
+      if (!silent && !info.updateAvailable) toast.success('当前已是最新版本')
+    } catch (error: unknown) {
+      setUpdateError(getErrorMessage(error))
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void isDevelopmentBuild()
+      .then((isDev) => {
+        if (!active) return
+        setDevelopmentBuild(isDev)
+        if (isDev) {
+          setChecking(false)
+          return
+        }
+        void check(true)
+      })
+      .catch(() => void check(true))
+    return () => { active = false }
+  }, [check])
+
+  const startDownload = async () => {
+    setDownloading(true)
+    setUpdateError('')
+    setProgress({ downloaded: 0, total: updateInfo?.asset?.size || 0, percent: 0 })
+    try {
+      const result = await downloadUpdate(setProgress)
+      setDownloaded(result)
+      toast.success('更新包下载并校验完成')
+    } catch (error: unknown) {
+      setUpdateError(getErrorMessage(error))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const installUpdate = async () => {
+    try {
+      await openDownloadedUpdate()
+      if (downloaded?.installMode === 'reveal') toast.success('已打开更新包所在目录')
+    } catch (error: unknown) {
+      setUpdateError(getErrorMessage(error))
+    }
+  }
+
+  const progressPercent = Math.min(100, Math.max(0, progress?.percent || 0))
+
   return (
     <div className="space-y-6">
       {/* 项目介绍 */}
@@ -1749,6 +1824,85 @@ function AboutTab() {
           <AboutInfoRow label="产品名称" value="MO Gallery Desktop" />
           <AboutInfoRow label="许可协议" value="MIT License" />
           <AboutInfoRow label="版权所有" value="© 2026 ushaio" />
+        </div>
+      </Section>
+
+      <Section title="软件更新">
+        <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+              style={{ backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }}>
+              {checking ? <Loader2 size={16} className="animate-spin" /> : updateError ? <TriangleAlert size={16} /> : <CircleCheck size={16} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">
+                {checking
+                  ? '正在检查更新...'
+                  : updateError
+                    ? '无法检查更新'
+                    : updateInfo?.updateAvailable
+                      ? `发现新版本 v${updateInfo.latestVersion}`
+                      : developmentBuild && !updateInfo
+                        ? '开发模式未自动检查更新'
+                        : '当前已是最新版本'}
+              </p>
+              <p className="mt-1 text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>
+                当前版本 v{version}
+                {updateInfo?.publishedAt && ` · 最新版本发布于 ${new Date(updateInfo.publishedAt).toLocaleDateString('zh-CN')}`}
+                {developmentBuild && !updateInfo && ' · 点击右侧按钮手动检查'}
+              </p>
+              {updateError && <p role="alert" className="mt-2 text-xs text-destructive">{updateError}</p>}
+            </div>
+            <button type="button" onClick={() => void check(false, true)} disabled={checking || downloading} className={btnOutline}>
+              <RefreshCw size={13} className={checking ? 'animate-spin' : ''} />
+              检查更新
+            </button>
+          </div>
+
+          {updateInfo?.updateAvailable && (
+            <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+              {updateInfo.notes && (
+                <div className="max-h-44 overflow-y-auto rounded-md p-3 text-xs leading-5 whitespace-pre-wrap custom-scrollbar"
+                  style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+                  {updateInfo.notes}
+                </div>
+              )}
+
+              {downloading && (
+                <div className="mt-3">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                    <span>正在下载并校验更新包</span>
+                    <span>{progressPercent.toFixed(0)}% · {formatBytes(progress?.downloaded || 0)} / {progress?.total ? formatBytes(progress.total) : '未知大小'}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: 'var(--muted)' }}>
+                    <div className="h-full rounded-full transition-[width]" style={{ width: `${progressPercent}%`, backgroundColor: 'var(--primary)' }} />
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {downloaded ? (
+                  <button type="button" onClick={() => void installUpdate()} className={btnPrimary}
+                    style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                    <Download size={13} />
+                    {downloaded.installMode === 'installer' ? '安装更新' : '打开更新目录'}
+                  </button>
+                ) : updateInfo.asset ? (
+                  <button type="button" onClick={() => void startDownload()} disabled={downloading} className={btnPrimary}
+                    style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                    {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                    {downloading ? '下载中...' : `下载 v${updateInfo.latestVersion}`}
+                  </button>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>当前系统或架构暂无自动更新包。</span>
+                )}
+                <button type="button" onClick={() => BrowserOpenURL(updateInfo.releaseUrl)} className={btnOutline}>
+                  <ExternalLink size={13} />
+                  查看 Release
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </Section>
 

@@ -54,6 +54,7 @@ type App struct {
 	Logger              *services.Logger
 	ZineOperationLogger *services.ZineOperationLogger
 	Overview            *services.OverviewService
+	Updater             *services.UpdateService
 	LocalLibrary        *local_library.Manager
 	AgentExtensions     *agent_extensions.Manager
 }
@@ -65,6 +66,7 @@ func NewApp(cfg *config.Config) *App {
 		Proxy:               services.NewProxyClient(),
 		Logger:              services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 		ZineOperationLogger: services.NewZineOperationLogger(config.ConfigDir()),
+		Updater:             services.NewUpdateService(config.ConfigDir()),
 	}
 	app.LocalLibrary = local_library.NewManager(config.ConfigDir(), func(event local_library.LocalLibraryEvent) {
 		if app.ctx != nil {
@@ -234,6 +236,37 @@ func (a *App) RestartApplication() error {
 	}
 
 	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
+	return nil
+}
+
+func (a *App) CheckForUpdates(currentVersion string, force bool) (*services.UpdateInfo, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return a.Updater.Check(ctx, currentVersion, force)
+}
+
+func (a *App) DownloadUpdate() (*services.UpdateDownloadResult, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return a.Updater.Download(ctx, func(progress services.UpdateDownloadProgress) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "app-update:progress", progress)
+		}
+	})
+}
+
+func (a *App) OpenDownloadedUpdate() error {
+	shouldQuit, err := a.Updater.OpenDownloaded()
+	if err != nil {
+		return err
+	}
+	if shouldQuit && a.ctx != nil {
 		runtime.Quit(a.ctx)
 	}
 	return nil

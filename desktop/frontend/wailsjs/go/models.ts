@@ -3321,6 +3321,30 @@ export namespace services {
 	        this.sortOrder = source["sortOrder"];
 	    }
 	}
+	export class UpdateAsset {
+	    name: string;
+	    downloadUrl: string;
+	    size: number;
+	    digest: string;
+	    platform: string;
+	    arch: string;
+	    installMode: string;
+
+	    static createFrom(source: any = {}) {
+	        return new UpdateAsset(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.downloadUrl = source["downloadUrl"];
+	        this.size = source["size"];
+	        this.digest = source["digest"];
+	        this.platform = source["platform"];
+	        this.arch = source["arch"];
+	        this.installMode = source["installMode"];
+	    }
+	}
 	export class UpdateBlogParams {
 	    title?: string;
 	    content?: string;
@@ -3341,6 +3365,22 @@ export namespace services {
 	        this.category = source["category"];
 	        this.tags = source["tags"];
 	        this.isPublished = source["isPublished"];
+	    }
+	}
+	export class UpdateDownloadResult {
+	    path: string;
+	    name: string;
+	    installMode: string;
+
+	    static createFrom(source: any = {}) {
+	        return new UpdateDownloadResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.installMode = source["installMode"];
 	    }
 	}
 	export class UpdateFilmRollParams {
@@ -3412,6 +3452,48 @@ export namespace services {
 	        this.sortOrder = source["sortOrder"];
 	        this.isActive = source["isActive"];
 	    }
+	}
+	export class UpdateInfo {
+	    currentVersion: string;
+	    latestVersion: string;
+	    updateAvailable: boolean;
+	    releaseUrl: string;
+	    publishedAt: string;
+	    notes: string;
+	    asset?: UpdateAsset;
+
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currentVersion = source["currentVersion"];
+	        this.latestVersion = source["latestVersion"];
+	        this.updateAvailable = source["updateAvailable"];
+	        this.releaseUrl = source["releaseUrl"];
+	        this.publishedAt = source["publishedAt"];
+	        this.notes = source["notes"];
+	        this.asset = this.convertValues(source["asset"], UpdateAsset);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class UpdatePhotoParams {
 	    title?: string;
@@ -3627,4 +3709,3 @@ export namespace types {
 	}
 
 }
-

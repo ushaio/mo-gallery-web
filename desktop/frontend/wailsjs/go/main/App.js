@@ -54,6 +54,10 @@ export function CheckDuplicates(arg1) {
   return window['go']['main']['App']['CheckDuplicates'](arg1);
 }
 
+export function CheckForUpdates(arg1, arg2) {
+  return window['go']['main']['App']['CheckForUpdates'](arg1, arg2);
+}
+
 export function CleanupStorage(arg1, arg2) {
   return window['go']['main']['App']['CleanupStorage'](arg1, arg2);
 }
@@ -208,6 +212,10 @@ export function DiscoverAgentMCPServerTools(arg1) {
 
 export function DownloadMessageImageToLocal(arg1) {
   return window['go']['main']['App']['DownloadMessageImageToLocal'](arg1);
+}
+
+export function DownloadUpdate() {
+  return window['go']['main']['App']['DownloadUpdate']();
 }
 
 export function ExecuteLocalAssetMovePlan(arg1) {
@@ -476,6 +484,10 @@ export function MoveLocalAssets(arg1, arg2) {
 
 export function MoveLocalLibraryFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveLocalLibraryFolder'](arg1, arg2, arg3);
+}
+
+export function OpenDownloadedUpdate() {
+  return window['go']['main']['App']['OpenDownloadedUpdate']();
 }
 
 export function OpenLocalAssetInDefaultApp(arg1) {
