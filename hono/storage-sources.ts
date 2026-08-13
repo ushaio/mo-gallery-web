@@ -2,8 +2,21 @@ import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import {
+  encryptStoredSecret,
+  redactStoredSecret,
+  REDACTED_SECRET,
+} from '~/server/lib/stored-secrets'
 
 const storageSources = new Hono<{ Variables: AuthVariables }>()
+
+function serializeSource<T extends { accessKey: string | null; secretKey: string | null }>(source: T) {
+  return {
+    ...source,
+    accessKey: redactStoredSecret(source.accessKey),
+    secretKey: redactStoredSecret(source.secretKey),
+  }
+}
 
 storageSources.use('/admin/storage-sources/*', authMiddleware)
 storageSources.use('/admin/storage-sources', authMiddleware)
@@ -13,7 +26,7 @@ storageSources.get('/admin/storage-sources', async (c) => {
   const sources = await db.storageSource.findMany({
     orderBy: { createdAt: 'asc' },
   })
-  return c.json({ success: true, data: sources })
+  return c.json({ success: true, data: sources.map(serializeSource) })
 })
 
 // Create a storage source
@@ -40,8 +53,8 @@ storageSources.post('/admin/storage-sources', async (c) => {
     data: {
       name,
       type,
-      accessKey: accessKey || null,
-      secretKey: secretKey || null,
+      accessKey: encryptStoredSecret(accessKey),
+      secretKey: encryptStoredSecret(secretKey),
       bucket: bucket || null,
       region: region || null,
       endpoint: endpoint || null,
@@ -52,7 +65,7 @@ storageSources.post('/admin/storage-sources', async (c) => {
     },
   })
 
-  return c.json({ success: true, data: source }, 201)
+  return c.json({ success: true, data: serializeSource(source) }, 201)
 })
 
 // Update a storage source
@@ -69,8 +82,10 @@ storageSources.patch('/admin/storage-sources/:id', async (c) => {
     where: { id },
     data: {
       ...(name !== undefined && { name }),
-      ...(accessKey !== undefined && { accessKey: accessKey || null }),
-      ...(secretKey !== undefined && { secretKey: secretKey || null }),
+      ...(accessKey !== undefined && accessKey !== REDACTED_SECRET
+        && { accessKey: encryptStoredSecret(accessKey) }),
+      ...(secretKey !== undefined && secretKey !== REDACTED_SECRET
+        && { secretKey: encryptStoredSecret(secretKey) }),
       ...(bucket !== undefined && { bucket: bucket || null }),
       ...(region !== undefined && { region: region || null }),
       ...(endpoint !== undefined && { endpoint: endpoint || null }),
@@ -81,7 +96,7 @@ storageSources.patch('/admin/storage-sources/:id', async (c) => {
     },
   })
 
-  return c.json({ success: true, data: updated })
+  return c.json({ success: true, data: serializeSource(updated) })
 })
 
 // Delete a storage source

@@ -18,10 +18,10 @@ export async function getLinuxDoAuthUrl(loginSlug?: string): Promise<{ url: stri
   return apiRequestData<{ url: string; state: string }>(`/api/auth/linuxdo${query}`)
 }
 
-export async function loginWithLinuxDo(code: string, loginSlug?: string): Promise<LoginResponse> {
+export async function loginWithLinuxDo(code: string, state: string, loginSlug?: string): Promise<LoginResponse> {
   const envelope = await apiRequest('/api/auth/linuxdo/callback', {
     method: 'POST',
-    body: JSON.stringify({ code, loginSlug }),
+    body: JSON.stringify({ code, state, loginSlug }),
   })
   if (!('token' in envelope) || typeof envelope.token !== 'string') {
     throw new Error('Unexpected OAuth response (missing token)')
@@ -44,10 +44,10 @@ export async function getLinuxDoBinding(token: string): Promise<LinuxDoBinding |
   return result.binding
 }
 
-export async function bindLinuxDoAccount(token: string, code: string): Promise<LinuxDoBinding> {
+export async function bindLinuxDoAccount(token: string, code: string, state: string): Promise<LinuxDoBinding> {
   const envelope = await apiRequest('/api/auth/linuxdo/bind', {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, state }),
   }, token)
   if (!('binding' in envelope)) {
     throw new Error('Unexpected response (missing binding)')

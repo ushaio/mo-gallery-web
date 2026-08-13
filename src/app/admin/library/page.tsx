@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'next/navigation'
 import {
   Camera,
   ChevronDown,
@@ -23,11 +24,12 @@ import {
 import { useAdmin } from '../layout'
 import { deleteAlbum, getAdminAlbums, updateAlbum } from '@/lib/api/albums'
 import { ApiUnauthorizedError } from '@/lib/api/core'
-import type { AlbumDto } from '@/lib/api/types'
+import type { AlbumDto, PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { LibraryAlbumsWorkspace } from '@/components/admin/LibraryAlbumsWorkspace'
 import { LibraryFilmRollWorkspace } from '@/components/admin/LibraryFilmRollWorkspace'
 import { LibraryPhotoWorkspace, type LibraryPhotoFilters } from '@/components/admin/LibraryPhotoWorkspace'
+import { PhotoPreviewOverlay } from '@/components/admin/PhotoPreviewOverlay'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { cn } from '@/lib/utils'
 
@@ -48,7 +50,6 @@ interface AlbumContextMenuState {
 }
 
 const SECTION_STORAGE_KEY = 'admin-resource-library-sections'
-const VIEW_STORAGE_KEY = 'admin-resource-library-view'
 
 const DEFAULT_SECTIONS: Record<SectionKey, boolean> = { photoType: true, categories: true, albums: true }
 
@@ -61,6 +62,7 @@ function readSections(): Record<SectionKey, boolean> {
 }
 
 export default function LibraryPage() {
+  const searchParams = useSearchParams()
   const {
     token,
     photos,
@@ -70,9 +72,11 @@ export default function LibraryPage() {
     notify,
     refreshPhotos,
     handleUnauthorized,
-    setSelectedPhoto,
   } = useAdmin()
-  const [view, setView] = useState<LibraryView>('photos')
+  const initialView = searchParams.get('view')
+  const [view, setView] = useState<LibraryView>(
+    initialView === 'albums' || initialView === 'film-rolls' ? initialView : 'photos',
+  )
   const [sections, setSections] = useState<Record<SectionKey, boolean>>(DEFAULT_SECTIONS)
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [albumsLoading, setAlbumsLoading] = useState(false)
@@ -82,16 +86,9 @@ export default function LibraryPage() {
   const [updatingAlbumId, setUpdatingAlbumId] = useState<string | null>(null)
   const [pendingAlbumDelete, setPendingAlbumDelete] = useState<AlbumDto | null>(null)
   const [photoFilters, setPhotoFilters] = useState<LibraryPhotoFilters>({})
+  const [previewPhoto, setPreviewPhoto] = useState<PhotoDto | null>(null)
 
   useEffect(() => {
-    const query = new URLSearchParams(window.location.search).get('view')
-    const storedView = window.localStorage.getItem(VIEW_STORAGE_KEY)
-    const nextView: LibraryView = query === 'albums' || query === 'film-rolls'
-      ? query
-      : storedView === 'albums' || storedView === 'film-rolls'
-        ? storedView
-        : 'photos'
-    setView(nextView)
     setSections(readSections())
   }, [])
 
@@ -111,7 +108,6 @@ export default function LibraryPage() {
 
   const updateView = (next: LibraryView) => {
     setView(next)
-    window.localStorage.setItem(VIEW_STORAGE_KEY, next)
     window.history.replaceState(null, '', `/admin/library?view=${next}`)
     if (next !== 'photos') setPhotoFilters({})
   }
@@ -261,7 +257,7 @@ export default function LibraryPage() {
             t={t}
             notify={notify}
             onUnauthorized={handleUnauthorized}
-            onPreview={setSelectedPhoto}
+            onPreview={setPreviewPhoto}
             onAlbumsChanged={loadAlbums}
             createSignal={albumCreateSignal}
             openRequest={albumWorkspaceRequest ?? undefined}
@@ -275,7 +271,7 @@ export default function LibraryPage() {
             t={t}
             notify={notify}
             onUnauthorized={handleUnauthorized}
-            onPreview={setSelectedPhoto}
+            onPreview={setPreviewPhoto}
             onPhotosChanged={refreshPhotos}
           />
         )}
@@ -315,6 +311,15 @@ export default function LibraryPage() {
         onCancel={() => setPendingAlbumDelete(null)}
         t={t}
       />
+
+      {previewPhoto && (
+        <PhotoPreviewOverlay
+          photo={previewPhoto}
+          cdnDomain={settings?.cdn_domain?.trim() || undefined}
+          t={t}
+          onClose={() => setPreviewPhoto(null)}
+        />
+      )}
     </div>
   )
 }

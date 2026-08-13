@@ -1,4 +1,5 @@
 import 'server-only'
+import bcrypt from 'bcryptjs'
 import { Hono } from 'hono'
 import { signToken } from '~/server/lib/jwt'
 import { db } from '~/server/lib/db'
@@ -7,6 +8,12 @@ import {
   verifyAdminLoginSlug,
 } from '~/server/lib/admin-login-gate'
 import { authMiddleware, AuthVariables } from './middleware/auth'
+import {
+  clearLoginFailures,
+  getLoginLimit,
+  recordLoginFailure,
+} from '~/server/lib/login-rate-limit'
+import { createOAuthState, verifyOAuthState } from '~/server/lib/oauth-state'
 
 const auth = new Hono<{ Variables: AuthVariables }>()
 
@@ -19,6 +26,7 @@ const LINUXDO_REDIRECT_URI = process.env.LINUXDO_REDIRECT_URI || ''
 const LINUXDO_AUTHORIZE_URL = 'https://connect.linux.do/oauth2/authorize'
 const LINUXDO_TOKEN_URL = 'https://connect.linuxdo.org/oauth2/token'
 const LINUXDO_USER_URL = 'https://connect.linuxdo.org/api/user'
+const DUMMY_PASSWORD_HASH = '$2b$10$7EqJtq98hPqEX7fNZaFWoO5cZDr2ay0V5WwOOmySTAzgk1UFu/V7u'
 
 auth.post('/login', async (c) => {
   const { username, password, loginSlug } = await c.req.json<{
@@ -41,19 +49,47 @@ auth.post('/login', async (c) => {
     }, 403)
   }
 
-  const adminUsername = process.env.ADMIN_USERNAME || 'admin'
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123'
+  const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+    || c.req.header('x-real-ip')?.trim()
+    || 'unknown'
+  const limit = await getLoginLimit(clientIp, username)
+  if (limit) {
+    c.header('Retry-After', String(limit.retryAfterSeconds))
+    return c.json({
+      code: 'LOGIN_RATE_LIMITED',
+      error: 'Too many login attempts. Try again later.',
+    }, 429)
+  }
 
-  if (username !== adminUsername || password !== adminPassword) {
+  const configuredUsername = process.env.ADMIN_USERNAME?.trim()
+  if (!configuredUsername) {
+    console.error('Password login is unavailable: ADMIN_USERNAME is not configured')
+    return c.json({ error: 'Password login is not configured' }, 503)
+  }
+
+  const admin = await db.user.findUnique({
+    where: { username: configuredUsername },
+    select: { id: true, username: true, password: true, isAdmin: true },
+  })
+  const passwordMatches = await bcrypt.compare(password, admin?.password || DUMMY_PASSWORD_HASH)
+
+  if (username !== configuredUsername || !admin || !passwordMatches) {
+    await recordLoginFailure(clientIp, username)
     return c.json({
       code: 'INVALID_CREDENTIALS',
       error: 'Invalid username or password',
     }, 401)
   }
 
+  await clearLoginFailures(clientIp, username)
+
+  if (!admin.isAdmin) {
+    await db.user.update({ where: { id: admin.id }, data: { isAdmin: true } })
+  }
+
   const token = signToken({
-    sub: 'admin',
-    username: adminUsername,
+    sub: admin.id,
+    username: admin.username,
     isAdmin: true,
     adminGateVersion: getAdminGateVersion(),
   })
@@ -61,7 +97,7 @@ auth.post('/login', async (c) => {
   return c.json({
     success: true,
     token,
-    user: { username: adminUsername, isAdmin: true },
+    user: { id: admin.id, username: admin.username, isAdmin: true },
   })
 })
 
@@ -76,7 +112,7 @@ auth.get('/linuxdo', (c) => {
     return c.json({ error: 'Invalid administrator login path' }, 403)
   }
 
-  const state = Math.random().toString(36).substring(2, 15)
+  const state = createOAuthState()
   const authUrl = new URL(LINUXDO_AUTHORIZE_URL)
   authUrl.searchParams.set('client_id', LINUXDO_CLIENT_ID)
   authUrl.searchParams.set('redirect_uri', LINUXDO_REDIRECT_URI)
@@ -88,13 +124,17 @@ auth.get('/linuxdo', (c) => {
 
 // Handle Linux DO OAuth callback
 auth.post('/linuxdo/callback', async (c) => {
-  const { code, loginSlug } = await c.req.json<{
+  const { code, state, loginSlug } = await c.req.json<{
     code?: string
+    state?: string
     loginSlug?: string
   }>()
 
   if (!code) {
     return c.json({ error: 'Authorization code is required' }, 400)
+  }
+  if (!verifyOAuthState(state)) {
+    return c.json({ error: 'Invalid or expired OAuth state' }, 400)
   }
 
   // Exchange code for access token
@@ -117,15 +157,14 @@ auth.post('/linuxdo/callback', async (c) => {
   }
 
   if (!tokenResponse.ok) {
-    const errorText = await tokenResponse.text()
-    console.error('Linux DO token exchange failed:', tokenResponse.status, errorText)
+    console.error('Linux DO token exchange failed:', tokenResponse.status)
     return c.json({ error: 'Failed to exchange authorization code' }, 400)
   }
 
   const tokenData = await tokenResponse.json() as { access_token?: string }
   const access_token = tokenData.access_token
   if (!access_token) {
-    console.error('Linux DO token response missing access_token:', tokenData)
+    console.error('Linux DO token response missing access_token')
     return c.json({ error: 'No access token received' }, 400)
   }
 
@@ -141,8 +180,7 @@ auth.post('/linuxdo/callback', async (c) => {
   }
 
   if (!userResponse.ok) {
-    const errorText = await userResponse.text()
-    console.error('Linux DO user info failed:', userResponse.status, errorText)
+    console.error('Linux DO user info failed:', userResponse.status)
     return c.json({ error: 'Failed to get user info' }, 400)
   }
 
@@ -219,9 +257,10 @@ auth.get('/linuxdo/enabled', (c) => {
 // Get admin's bound Linux DO account info
 auth.get('/linuxdo/binding', authMiddleware, async (c) => {
   try {
-    // Find admin user with Linux DO binding
+    const currentUser = c.get('user')
     const boundUser = await db.user.findFirst({
       where: {
+        id: currentUser.sub,
         isAdmin: true,
         oauthProvider: 'linuxdo',
         oauthId: { not: null },
@@ -252,10 +291,13 @@ auth.get('/linuxdo/binding', authMiddleware, async (c) => {
 
 // Bind Linux DO account to admin (requires admin auth)
 auth.post('/linuxdo/bind', authMiddleware, async (c) => {
-  const { code } = await c.req.json()
+  const { code, state } = await c.req.json<{ code?: string; state?: string }>()
 
   if (!code) {
     return c.json({ error: 'Authorization code is required' }, 400)
+  }
+  if (!verifyOAuthState(state)) {
+    return c.json({ error: 'Invalid or expired OAuth state' }, 400)
   }
 
   // Exchange code for access token
@@ -278,15 +320,14 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
   }
 
   if (!tokenResponse.ok) {
-    const errorText = await tokenResponse.text()
-    console.error('Linux DO bind token exchange failed:', tokenResponse.status, errorText)
+    console.error('Linux DO bind token exchange failed:', tokenResponse.status)
     return c.json({ error: 'Failed to exchange authorization code' }, 400)
   }
 
   const tokenData = await tokenResponse.json() as { access_token?: string }
   const access_token = tokenData.access_token
   if (!access_token) {
-    console.error('Linux DO bind token response missing access_token:', tokenData)
+    console.error('Linux DO bind token response missing access_token')
     return c.json({ error: 'No access token received' }, 400)
   }
 
@@ -302,8 +343,7 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
   }
 
   if (!userResponse.ok) {
-    const errorText = await userResponse.text()
-    console.error('Linux DO bind user info failed:', userResponse.status, errorText)
+    console.error('Linux DO bind user info failed:', userResponse.status)
     return c.json({ error: 'Failed to get user info' }, 400)
   }
 
@@ -328,31 +368,21 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
     },
   })
 
-  if (existingBinding) {
-    // If already bound, just update it to be admin
-    await db.user.update({
-      where: { id: existingBinding.id },
-      data: {
-        isAdmin: true,
-        oauthUsername: userData.username,
-        avatarUrl: userData.avatar_url,
-        trustLevel: userData.trust_level,
-      },
-    })
-  } else {
-    // Create new binding as admin
-    await db.user.create({
-      data: {
-        username: `linuxdo_${userData.id}`,
-        oauthProvider: 'linuxdo',
-        oauthId: String(userData.id),
-        oauthUsername: userData.username,
-        avatarUrl: userData.avatar_url,
-        trustLevel: userData.trust_level,
-        isAdmin: true,
-      },
-    })
+  const currentUser = c.get('user')
+  if (existingBinding && existingBinding.id !== currentUser.sub) {
+    return c.json({ error: 'This Linux DO account is already linked to another user' }, 409)
   }
+
+  await db.user.update({
+    where: { id: currentUser.sub },
+    data: {
+      oauthProvider: 'linuxdo',
+      oauthId: String(userData.id),
+      oauthUsername: userData.username,
+      avatarUrl: userData.avatar_url,
+      trustLevel: userData.trust_level,
+    },
+  })
 
   return c.json({
     success: true,
@@ -367,14 +397,19 @@ auth.post('/linuxdo/bind', authMiddleware, async (c) => {
 // Unbind Linux DO account from admin (requires admin auth)
 auth.delete('/linuxdo/bind', authMiddleware, async (c) => {
   try {
-    // Find and remove admin binding
+    const currentUser = c.get('user')
     const result = await db.user.updateMany({
       where: {
+        id: currentUser.sub,
         isAdmin: true,
         oauthProvider: 'linuxdo',
       },
       data: {
-        isAdmin: false,
+        oauthProvider: null,
+        oauthId: null,
+        oauthUsername: null,
+        avatarUrl: null,
+        trustLevel: null,
       },
     })
 

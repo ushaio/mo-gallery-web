@@ -32,6 +32,15 @@ model User {
   @@index([oauthProvider])
 }
 
+model AdminLoginAttempt {
+  key       String   @id
+  failures  Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+}
+
 model AiConversation {
   id           String      @id @default(cuid())
   userId       String?

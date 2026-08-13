@@ -2,6 +2,11 @@ import 'server-only'
 import { db } from '~/server/lib/db'
 import { StorageConfig } from './types'
 import path from 'path'
+import {
+  decryptStoredSecret,
+  encryptStoredSecret,
+  isStoredSecretEncrypted,
+} from '~/server/lib/stored-secrets'
 
 const CACHE_TTL_MS = 60_000
 
@@ -62,7 +67,7 @@ export function storageConfigFromSource(source: {
     case 'github':
       return {
         provider: 'github',
-        githubToken: source.accessKey ?? undefined,
+        githubToken: decryptStoredSecret(source.accessKey),
         githubRepo: source.bucket ?? undefined,
         githubPath: source.basePath ?? undefined,
         githubBranch: source.branch ?? 'main',
@@ -73,8 +78,8 @@ export function storageConfigFromSource(source: {
     case 's3':
       return {
         provider: 's3',
-        s3AccessKeyId: source.accessKey ?? undefined,
-        s3SecretAccessKey: source.secretKey ?? undefined,
+        s3AccessKeyId: decryptStoredSecret(source.accessKey),
+        s3SecretAccessKey: decryptStoredSecret(source.secretKey),
         s3Bucket: source.bucket ?? undefined,
         s3Region: source.region ?? undefined,
         s3Endpoint: source.endpoint ?? undefined,
@@ -94,6 +99,15 @@ export function storageConfigFromSource(source: {
 export async function getStorageConfigBySourceId(sourceId: string): Promise<StorageConfig> {
   const source = await db.storageSource.findUnique({ where: { id: sourceId } })
   if (!source) throw new Error(`StorageSource not found: ${sourceId}`)
+  const accessKey = source.accessKey && !isStoredSecretEncrypted(source.accessKey)
+    ? encryptStoredSecret(source.accessKey)
+    : source.accessKey
+  const secretKey = source.secretKey && !isStoredSecretEncrypted(source.secretKey)
+    ? encryptStoredSecret(source.secretKey)
+    : source.secretKey
+  if (accessKey !== source.accessKey || secretKey !== source.secretKey) {
+    await db.storageSource.update({ where: { id: sourceId }, data: { accessKey, secretKey } })
+  }
   return storageConfigFromSource(source)
 }
 
@@ -103,6 +117,19 @@ export async function getStorageConfigBySourceId(sourceId: string): Promise<Stor
  */
 export async function getStorageConfig(providerOverride?: string): Promise<StorageConfig> {
   const settingsMap = await getSettings()
+  const legacySecretKeys = ['github_token', 's3_access_key_id', 's3_secret_access_key']
+  const legacySecretUpdates = Object.fromEntries(
+    legacySecretKeys
+      .filter((key) => settingsMap[key] && !isStoredSecretEncrypted(settingsMap[key]))
+      .map((key) => [key, encryptStoredSecret(settingsMap[key])]),
+  )
+  if (Object.keys(legacySecretUpdates).length > 0) {
+    await db.$transaction(Object.entries(legacySecretUpdates).map(([key, value]) =>
+      db.setting.update({ where: { key }, data: { value: value || '' } }),
+    ))
+    Object.assign(settingsMap, legacySecretUpdates)
+    invalidateSettingsCache()
+  }
 
   const provider = (
     providerOverride || settingsMap.storage_provider || 'local'
@@ -116,7 +143,7 @@ export async function getStorageConfig(providerOverride?: string): Promise<Stora
       config.localBaseUrl = '/uploads'
       break
     case 'github':
-      config.githubToken = settingsMap.github_token
+      config.githubToken = decryptStoredSecret(settingsMap.github_token)
       config.githubRepo = settingsMap.github_repo
       config.githubPath = settingsMap.github_path || 'uploads'
       config.githubBranch = settingsMap.github_branch || 'main'
@@ -124,8 +151,8 @@ export async function getStorageConfig(providerOverride?: string): Promise<Stora
       config.githubPagesUrl = settingsMap.github_pages_url
       break
     case 's3':
-      config.s3AccessKeyId = settingsMap.s3_access_key_id
-      config.s3SecretAccessKey = settingsMap.s3_secret_access_key
+      config.s3AccessKeyId = decryptStoredSecret(settingsMap.s3_access_key_id)
+      config.s3SecretAccessKey = decryptStoredSecret(settingsMap.s3_secret_access_key)
       config.s3Bucket = settingsMap.s3_bucket
       config.s3Endpoint = settingsMap.s3_endpoint
       config.s3PublicUrl = settingsMap.s3_public_url

@@ -7,17 +7,21 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
 
 async function main() {
-  const adminUsername = process.env.ADMIN_USERNAME?.trim() || 'admin'
-  const adminPlainPassword = process.env.ADMIN_PASSWORD?.trim() || 'admin123'
+  const adminUsername = process.env.ADMIN_USERNAME?.trim()
+  const adminPlainPassword = process.env.ADMIN_PASSWORD?.trim()
+  if (!adminUsername || !adminPlainPassword) {
+    throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD are required for seeding')
+  }
   const adminPassword = await bcrypt.hash(adminPlainPassword, 10)
   const shouldUpdatePassword = Boolean(process.env.ADMIN_PASSWORD?.trim())
 
   const admin = await prisma.user.upsert({
     where: { username: adminUsername },
-    update: shouldUpdatePassword ? { password: adminPassword } : {},
+    update: { password: adminPassword, isAdmin: true },
     create: {
       username: adminUsername,
       password: adminPassword,
+      isAdmin: true,
     },
   })
 

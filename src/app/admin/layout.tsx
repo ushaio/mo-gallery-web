@@ -18,27 +18,16 @@ import { usePathname } from 'next/navigation'
 import {
   ApiUnauthorizedError,
   addPhotosToStory,
-  batchDeletePhotos,
-  batchUpdatePhotoTakenAt,
-  batchUpdatePhotoShowFlag,
-  batchUpdatePhotoType,
   batchUpdatePhotoUrls,
-  checkPhotosStories,
-  deletePhoto,
   getAdminSettings,
   getCategories,
   getPhotos,
   updateAdminSettings,
-  updatePhoto,
   type AdminSettingsDto,
   type PhotoDto,
-  type PhotoWithStories,
 } from '@/lib/api'
 import { Toast, type Notification } from '@/components/Toast'
-import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
 import { UrlUpdateConfirmDialog } from '@/components/admin/UrlUpdateConfirmDialog'
-import { BatchPhotoActionDialog, type BatchPhotoActionInput } from '@/components/admin/BatchPhotoActionDialog'
-import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -53,27 +42,13 @@ interface AdminContextType {
   categories: string[]
   settings: AdminSettingsDto | null
   setSettings: (settings: AdminSettingsDto) => void
-  photosLoading: boolean
   settingsLoading: boolean
   settingsSaving: boolean
   refreshPhotos: () => Promise<void>
-  refreshSettings: () => Promise<void>
-  refreshCategories: () => Promise<void>
   handleSaveSettings: () => Promise<void>
-  handleDelete: (photoId?: string) => void
-  handleBatchAction: () => void
-  handleToggleFeatured: (photo: PhotoDto) => Promise<void>
-  selectedPhotoIds: Set<string>
-  setSelectedPhotoIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  handleSelectPhotoToggle: (id: string) => void
-  photosViewMode: 'grid' | 'list'
-  setPhotosViewMode: (mode: 'grid' | 'list') => void
-  photosError: string
   settingsError: string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   t: (key: string) => string
-  selectedPhoto: PhotoDto | null
-  setSelectedPhoto: (photo: PhotoDto | null) => void
   handleUnauthorized: (error?: unknown) => void
   isImmersiveMode: boolean
   setIsImmersiveMode: React.Dispatch<React.SetStateAction<boolean>>
@@ -144,23 +119,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // Photos State
   const [categories, setCategories] = useState<string[]>([])
   const [photos, setPhotos] = useState<PhotoDto[]>([])
-  const [photosLoading, setPhotosLoading] = useState(false)
-  const [photosError, setPhotosError] = useState('')
-  const [photosViewMode, setPhotosViewMode] = useState<'grid' | 'list'>('grid')
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set())
-  const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
-  const [showBatchActionDialog, setShowBatchActionDialog] = useState(false)
-  const [batchActionSaving, setBatchActionSaving] = useState(false)
-
-  // Delete Dialog State
-  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
-    photoIds: string[]
-    isBulk: boolean
-  } | null>(null)
-  const [deleteOriginal, setDeleteOriginal] = useState(true)
-  const [deleteThumbnail, setDeleteThumbnail] = useState(true)
-  const [deleteDialogLoading, setDeleteDialogLoading] = useState(false)
-  const [photosWithStories, setPhotosWithStories] = useState<PhotoWithStories[]>([])
 
   // Logout Confirmation State
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -202,8 +160,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, [])
 
   const refreshPhotos = useCallback(async () => {
-    setPhotosError('')
-    setPhotosLoading(true)
     try {
       // Use all: true to get all photos for admin management
       const data = await getPhotos({ all: true })
@@ -213,11 +169,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         handleUnauthorized(err)
         return
       }
-      setPhotosError(err instanceof Error ? err.message : t('common.error'))
-    } finally {
-      setPhotosLoading(false)
+      notify(err instanceof Error ? err.message : t('common.error'), 'error')
     }
-  }, [handleUnauthorized, t])
+  }, [handleUnauthorized, notify, t])
 
   const refreshSettings = useCallback(async () => {
     if (!token) return
@@ -243,207 +197,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     refreshPhotos()
     refreshSettings()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Photos Handlers ---
-  const handleDelete = useCallback(async (photoId?: string) => {
-    if (!token) return
-    
-    const photoIds = photoId ? [photoId] : Array.from(selectedPhotoIds)
-    if (photoIds.length === 0) return
-    
-    // Show dialog immediately with loading state
-    setDeleteConfirmDialog({
-      photoIds,
-      isBulk: photoIds.length > 1,
-    })
-    setDeleteDialogLoading(true)
-    setPhotosWithStories([])
-    
-    try {
-      // Check if any photos have associated stories
-      const result = await checkPhotosStories(token, photoIds)
-      setPhotosWithStories(result.photosWithStories)
-    } catch (err) {
-      console.error('Failed to check photo stories:', err)
-      // If check fails, allow deletion to proceed
-      setPhotosWithStories([])
-    } finally {
-      setDeleteDialogLoading(false)
-    }
-  }, [token, selectedPhotoIds])
-
-  const confirmDelete = async () => {
-    if (!deleteConfirmDialog || !token) return
-
-    try {
-      if (deleteConfirmDialog.isBulk) {
-        setPhotosLoading(true)
-        const force = photosWithStories.length > 0
-        const result = await batchDeletePhotos({
-          token,
-          photoIds: deleteConfirmDialog.photoIds,
-          deleteOriginal,
-          deleteThumbnail,
-          force,
-        })
-        setSelectedPhotoIds(new Set())
-        await refreshPhotos()
-        notify(`${result.deleted} ${t('admin.notify_photo_deleted')}`)
-        if (result.failed > 0) {
-          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
-        }
-      } else {
-        const force = photosWithStories.length > 0
-        await deletePhoto({
-          token,
-          id: deleteConfirmDialog.photoIds[0],
-          deleteOriginal,
-          deleteThumbnail,
-          force,
-        })
-        await refreshPhotos()
-        notify(t('admin.notify_photo_deleted'))
-      }
-      setDeleteConfirmDialog(null)
-      setDeleteOriginal(true)
-      setDeleteThumbnail(true)
-    } catch (err) {
-      if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized(err)
-        return
-      }
-      notify(err instanceof Error ? err.message : t('common.error'), 'error')
-    } finally {
-      setPhotosLoading(false)
-    }
-  }
-
-  const handleBatchAction = useCallback(() => {
-    if (selectedPhotoIds.size === 0) return
-    setShowBatchActionDialog(true)
-  }, [selectedPhotoIds.size])
-
-  const confirmBatchAction = useCallback(async (input: BatchPhotoActionInput) => {
-    if (!token || selectedPhotoIds.size === 0) return
-    setBatchActionSaving(true)
-
-    try {
-      let didUpdate = false
-
-      if (input.action === 'photoType') {
-        if (!input.photoType) {
-          setShowBatchActionDialog(false)
-          return
-        }
-        const result = await batchUpdatePhotoType({
-          token,
-          photoIds: Array.from(selectedPhotoIds),
-          photoType: input.photoType || 'digital',
-          filmRollId: input.filmRollId,
-        })
-        setSelectedPhotoIds(new Set())
-        await refreshPhotos()
-        notify(`${result.updated} ${t('admin.batch_update_completed') || 'photos updated'}`)
-        if (result.failed > 0) {
-          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
-        }
-        didUpdate = true
-      }
-      if (input.action === 'takenAt') {
-        if (!input.takenAt) {
-          setShowBatchActionDialog(false)
-          return
-        }
-        const result = await batchUpdatePhotoTakenAt({
-          token,
-          photoIds: Array.from(selectedPhotoIds),
-          takenAt: input.takenAt,
-        })
-        setSelectedPhotoIds(new Set())
-        await refreshPhotos()
-        notify(`${result.updated} ${t('admin.batch_update_completed') || 'photos updated'}`)
-        if (result.failed > 0) {
-          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
-        }
-        didUpdate = true
-      }
-      if (input.action === 'showFlag') {
-        if (input.showFlag === undefined) {
-          setShowBatchActionDialog(false)
-          return
-        }
-        const result = await batchUpdatePhotoShowFlag({
-          token,
-          photoIds: Array.from(selectedPhotoIds),
-          showFlag: input.showFlag,
-        })
-        setSelectedPhotoIds(new Set())
-        await refreshPhotos()
-        notify(`${result.updated} ${t('admin.batch_update_completed') || 'photos updated'}`)
-        if (result.failed > 0) {
-          notify(`${result.failed} failed: ${result.errors.join(', ')}`, 'error')
-        }
-        didUpdate = true
-      }
-
-      if (didUpdate) setShowBatchActionDialog(false)
-    } catch (err) {
-      if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized(err)
-        return
-      }
-      notify(err instanceof Error ? err.message : t('common.error'), 'error')
-    } finally {
-      setBatchActionSaving(false)
-    }
-  }, [token, selectedPhotoIds, refreshPhotos, notify, t, handleUnauthorized])
-
-  const handleToggleFeatured = useCallback(async (photo: PhotoDto) => {
-    if (!token) return
-    try {
-      await updatePhoto({
-        token,
-        id: photo.id,
-        patch: { isFeatured: !photo.isFeatured },
-      })
-      // Update local state instead of refreshing all photos
-      setPhotos((prevPhotos) =>
-        prevPhotos.map((p) =>
-          p.id === photo.id ? { ...p, isFeatured: !p.isFeatured } : p
-        )
-      )
-      notify(
-        photo.isFeatured
-          ? t('admin.notify_featured_removed')
-          : t('admin.notify_featured_added')
-      )
-    } catch (err) {
-      if (err instanceof ApiUnauthorizedError) {
-        handleUnauthorized(err)
-        return
-      }
-      notify(err instanceof Error ? err.message : t('common.error'), 'error')
-    }
-  }, [token, notify, t, handleUnauthorized])
-
-  const handleSelectPhotoToggle = useCallback((id: string) => {
-    setSelectedPhotoIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
-
-  // Handler for saving photo updates from PhotoDetailPanel
-  const handlePhotoSave = useCallback((updatedPhoto: PhotoDto) => {
-    // Update local photos state
-    setPhotos((prevPhotos) =>
-      prevPhotos.map((p) =>
-        p.id === updatedPhoto.id ? updatedPhoto : p
-      )
-    )
-  }, [])
 
   // --- Settings Handlers ---
   const saveSettingsWithoutUrlUpdate = useCallback(async () => {
@@ -546,27 +299,13 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     categories,
     settings,
     setSettings,
-    photosLoading,
     settingsLoading,
     settingsSaving,
     refreshPhotos,
-    refreshSettings,
-    refreshCategories,
     handleSaveSettings,
-    handleDelete,
-    handleBatchAction,
-    handleToggleFeatured,
-    selectedPhotoIds,
-    setSelectedPhotoIds,
-    handleSelectPhotoToggle,
-    photosViewMode,
-    setPhotosViewMode,
-    photosError,
     settingsError,
     notify,
     t,
-    selectedPhoto,
-    setSelectedPhoto,
     handleUnauthorized,
     isImmersiveMode,
     setIsImmersiveMode,
@@ -678,40 +417,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           </div>
         </main>
 
-        <PhotoDetailPanel
-          photo={selectedPhoto}
-          isOpen={!!selectedPhoto}
-          categories={categories}
-          allPhotos={photos}
-          cdnDomain={globalSettings?.cdn_domain}
-          token={token}
-          onClose={() => setSelectedPhoto(null)}
-          onSave={handlePhotoSave}
-          onUnauthorized={handleUnauthorized}
-          t={t}
-          notify={notify}
-        />
-
-        <DeleteConfirmDialog
-          isOpen={!!deleteConfirmDialog}
-          isBulk={deleteConfirmDialog?.isBulk ?? false}
-          count={deleteConfirmDialog?.photoIds.length ?? 0}
-          deleteOriginal={deleteOriginal}
-          setDeleteOriginal={setDeleteOriginal}
-          deleteThumbnail={deleteThumbnail}
-          setDeleteThumbnail={setDeleteThumbnail}
-          onConfirm={confirmDelete}
-          onCancel={() => {
-            setDeleteConfirmDialog(null)
-            setDeleteOriginal(true)
-            setDeleteThumbnail(true)
-            setPhotosWithStories([])
-          }}
-          t={t}
-          isLoading={deleteDialogLoading}
-          photosWithStories={photosWithStories}
-        />
-
         <UrlUpdateConfirmDialog
           isOpen={showUrlUpdateDialog}
           oldUrl={urlUpdateParams?.oldPublicUrl || ''}
@@ -722,18 +427,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             setUrlUpdateParams(null)
           }}
           t={t}
-        />
-
-        <BatchPhotoActionDialog
-          isOpen={showBatchActionDialog}
-          count={selectedPhotoIds.size}
-          isSubmitting={batchActionSaving}
-          onConfirm={confirmBatchAction}
-          onCancel={() => {
-            if (!batchActionSaving) setShowBatchActionDialog(false)
-          }}
-          t={t}
-          notify={notify}
         />
 
         {/* Logout Confirmation Dialog */}

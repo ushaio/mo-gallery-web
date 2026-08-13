@@ -50,9 +50,9 @@ function OAuthCallbackContent() {
         return
       }
 
-      // Verify state for CSRF protection (optional but recommended)
+      // State is required both here and by the API callback.
       const savedState = consumeOAuthState()
-      if (savedState && state !== savedState) {
+      if (!savedState || !state || state !== savedState) {
         setStatus('error')
         setError(t('login.oauth_state_mismatch'))
         return
@@ -72,7 +72,7 @@ function OAuthCallbackContent() {
         }
 
         try {
-          await bindLinuxDoAccount(storedToken, code)
+          await bindLinuxDoAccount(storedToken, code, state)
           setStatus('success')
           setRedirectUrl(adminBindSession.returnUrl || '/admin/settings')
 
@@ -98,6 +98,7 @@ function OAuthCallbackContent() {
       try {
         const { token: newToken, user } = await loginWithLinuxDo(
           code,
+          state,
           adminLoginSlug ?? undefined,
         )
         login(newToken, user)

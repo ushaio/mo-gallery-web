@@ -49,7 +49,7 @@ function createEditorAiRouter(dependencies: EditorAiRouteDependencies) {
 const JWT_SECRET = 'editor-ai-route-test-secret'
 process.env.JWT_SECRET = JWT_SECRET
 
-const TOKEN = jwt.sign({ sub: 'user-a', username: 'alice' }, JWT_SECRET)
+const TOKEN = jwt.sign({ sub: 'user-a', username: 'alice', isAdmin: true }, JWT_SECRET)
 const AUTH_HEADERS = {
   Authorization: `Bearer ${TOKEN}`,
   'Content-Type': 'application/json',

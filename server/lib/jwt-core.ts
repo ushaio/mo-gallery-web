@@ -14,13 +14,21 @@ function getJwtSecret(): string {
   if (!secret) {
     throw new Error('JWT_SECRET is required')
   }
+  if (process.env.NODE_ENV === 'production' && Buffer.byteLength(secret) < 32) {
+    throw new Error('JWT_SECRET must be at least 32 bytes in production')
+  }
   return secret
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' })
+  return jwt.sign(payload, getJwtSecret(), {
+    algorithm: 'HS256',
+    expiresIn: '7d',
+  })
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, getJwtSecret()) as JwtPayload
+  return jwt.verify(token, getJwtSecret(), {
+    algorithms: ['HS256'],
+  }) as JwtPayload
 }

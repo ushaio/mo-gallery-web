@@ -40,9 +40,6 @@ export function getAdminSidebarItems(t: (key: string) => string): AdminSidebarIt
 }
 
 export function getActiveAdminSidebarItem(pathname: string): AdminSidebarItemDefinition {
-  if (pathname === '/admin/photos' || pathname.startsWith('/admin/photos/') || pathname === '/admin/albums' || pathname.startsWith('/admin/albums/') || pathname === '/admin/film-rolls' || pathname.startsWith('/admin/film-rolls/')) {
-    return ADMIN_SIDEBAR_ITEMS[0]
-  }
   return (
     ADMIN_SIDEBAR_ITEMS.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ??
     ADMIN_SIDEBAR_ITEMS[0]
