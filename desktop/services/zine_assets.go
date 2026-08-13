@@ -10,8 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/image/font/sfnt"
 )
 
 const maxZineAiImageBytes = 25 * 1024 * 1024
@@ -83,6 +87,101 @@ type ZineCJKFontInfo struct {
 type zineFontCandidate struct {
 	path           string
 	postscriptName string
+}
+
+var (
+	zineSystemFontsOnce sync.Once
+	zineSystemFonts     []string
+)
+
+// ListZineSystemFonts returns unique font family names from the local system.
+// It parses both standalone fonts and TrueType collections used by Windows CJK fonts.
+func ListZineSystemFonts() []string {
+	zineSystemFontsOnce.Do(func() {
+		zineSystemFonts = scanZineSystemFonts()
+	})
+	return append([]string(nil), zineSystemFonts...)
+}
+
+func scanZineSystemFonts() []string {
+	paths := zineSystemFontPaths()
+	seen := make(map[string]struct{})
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if collection, err := sfnt.ParseCollection(data); err == nil {
+			for index := 0; index < collection.NumFonts(); index++ {
+				font, err := collection.Font(index)
+				if err != nil {
+					continue
+				}
+				if family, err := font.Name(nil, sfnt.NameIDFamily); err == nil {
+					family = strings.TrimSpace(family)
+					if family != "" {
+						seen[family] = struct{}{}
+					}
+				}
+			}
+			continue
+		}
+		font, err := sfnt.Parse(data)
+		if err != nil {
+			continue
+		}
+		if family, err := font.Name(nil, sfnt.NameIDFamily); err == nil {
+			family = strings.TrimSpace(family)
+			if family != "" {
+				seen[family] = struct{}{}
+			}
+		}
+	}
+	fonts := make([]string, 0, len(seen))
+	for family := range seen {
+		fonts = append(fonts, family)
+	}
+	sort.Strings(fonts)
+	return fonts
+}
+
+func zineSystemFontPaths() []string {
+	var dirs []string
+	switch runtime.GOOS {
+	case "windows":
+		windir := os.Getenv("WINDIR")
+		if windir == "" {
+			windir = `C:\\Windows`
+		}
+		dirs = append(dirs, filepath.Join(windir, "Fonts"))
+		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+			dirs = append(dirs, filepath.Join(userProfile, "AppData", "Local", "Microsoft", "Windows", "Fonts"))
+		}
+	case "darwin":
+		dirs = []string{"/System/Library/Fonts", "/Library/Fonts"}
+		if home, err := os.UserHomeDir(); err == nil {
+			dirs = append(dirs, filepath.Join(home, "Library", "Fonts"))
+		}
+	default:
+		dirs = []string{"/usr/share/fonts", "/usr/local/share/fonts"}
+		if home, err := os.UserHomeDir(); err == nil {
+			dirs = append(dirs, filepath.Join(home, ".fonts"), filepath.Join(home, ".local", "share", "fonts"))
+		}
+	}
+	var paths []string
+	for _, dir := range dirs {
+		_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if ext == ".ttf" || ext == ".otf" || ext == ".ttc" || ext == ".otc" {
+				paths = append(paths, path)
+			}
+			return nil
+		})
+	}
+	return paths
 }
 
 func zineFontCandidates() []zineFontCandidate {

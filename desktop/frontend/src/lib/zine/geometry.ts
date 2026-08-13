@@ -1,5 +1,5 @@
 import { getSpreadSize } from './page-sizes'
-import type { Slot, ZineProject } from './types'
+import type { Slot, TextSlot, ZineProject } from './types'
 
 export const ZINE_GEOMETRY_VERSION = 2 as const
 
@@ -30,15 +30,17 @@ export function normalizeSlotGeometry(slot: Slot, pageWmm: number): Slot {
 }
 
 export function migrateProjectGeometry(project: ZineProject): ZineProject {
-  if (project.geometryVersion === ZINE_GEOMETRY_VERSION) return project
-
   const { pageW } = getSpreadSize(project.pageSize, project.pageOrientation, project.customSizeMm)
   return {
     ...project,
     geometryVersion: ZINE_GEOMETRY_VERSION,
     spreads: project.spreads.map((spread) => ({
       ...spread,
-      slots: spread.slots.map((slot) => normalizeSlotGeometry(slot, pageW)),
+      slots: spread.slots.map((slot) => {
+        const normalized = normalizeSlotGeometry(slot, pageW)
+        if (normalized.kind !== 'text' || normalized.verticalAlign) return normalized
+        return { ...normalized, verticalAlign: 'top' } as TextSlot
+      }),
     })),
   }
 }

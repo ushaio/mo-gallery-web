@@ -16,6 +16,7 @@ interface AdminPreferences {
   zineStripWidth: number
   zineViewOptions: ZineViewOptions
   zineAiMode: ZineAiMode
+  zineFavoriteFonts: string[]
   setPhotoColumns: (n: number) => void
   setPhotoGridSize: (n: number) => void
   setPhotoViewMode: (mode: PhotoViewMode) => void
@@ -25,6 +26,7 @@ interface AdminPreferences {
   setZineStripWidth: (n: number) => void
   setZineViewOption: (key: ZineViewOptionKey, enabled: boolean) => void
   setZineAiMode: (mode: ZineAiMode) => void
+  toggleZineFavoriteFont: (fontFamily: string) => void
 }
 
 export const usePreferences = create<AdminPreferences>()(
@@ -39,6 +41,7 @@ export const usePreferences = create<AdminPreferences>()(
       zineStripWidth: 176,
       zineViewOptions: DEFAULT_ZINE_VIEW_OPTIONS,
       zineAiMode: 'ask',
+      zineFavoriteFonts: [],
       setPhotoColumns: (n) => set({ photoColumns: n }),
       setPhotoGridSize: (n) => set({ photoGridSize: n }),
       setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
@@ -50,6 +53,11 @@ export const usePreferences = create<AdminPreferences>()(
         zineViewOptions: { ...state.zineViewOptions, [key]: enabled },
       })),
       setZineAiMode: (mode) => set({ zineAiMode: mode }),
+      toggleZineFavoriteFont: (fontFamily) => set((state) => ({
+        zineFavoriteFonts: state.zineFavoriteFonts.includes(fontFamily)
+          ? state.zineFavoriteFonts.filter((font) => font !== fontFamily)
+          : [...state.zineFavoriteFonts, fontFamily],
+      })),
     }),
     { name: 'mo-gallery-preferences' },
   ),

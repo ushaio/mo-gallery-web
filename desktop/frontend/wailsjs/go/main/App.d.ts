@@ -224,6 +224,8 @@ export function GetZineImageDataURL(arg1:string):Promise<string>;
 
 export function GetZineLogPath():Promise<string>;
 
+export function GetZineSystemFonts():Promise<Array<string>>;
+
 export function ImportAgentMCPServers(arg1:string):Promise<Array<agent_extensions.MCPServer>>;
 
 export function ImportLocalLibraryFiles(arg1:Array<string>,arg2:string):Promise<Array<local_library.ImportResult>>;

@@ -184,9 +184,13 @@ export function resolveZinePdfFontFamily(fontFamily: string | undefined, content
   if (PDF_STANDARD_FONT_FAMILIES.has(requested)) return requested
 
   const lower = requested.toLowerCase()
+  if (/song|simsun|hei|simhei|kaiti|fangsong|楷|黑|宋|仿/.test(lower)) {
+    if (cjkFontFamily) return cjkFontFamily
+    return 'Helvetica'
+  }
   if (/mono|courier/.test(lower)) return 'Courier'
   if (/sans|arial|helvetica/.test(lower)) return 'Helvetica'
-  if (/serif|times|georgia|garamond|song|ming/.test(lower)) return 'Times-Roman'
+  if (/serif|times|georgia|garamond/.test(lower)) return 'Times-Roman'
   return 'Helvetica'
 }
 
@@ -442,8 +446,10 @@ function renderPdfSlot(slot: Slot, pageW: number, assets: ZineAsset[], cjkFontFa
     )
   }
 
+  const verticalAlign = slot.verticalAlign ?? 'top'
+  const justifyContent = verticalAlign === 'center' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start'
   return (
-    <View key={slot.id} style={createPdfSlotStyle(rendered.pdfStyle as PdfMeasuredStyle)}>
+    <View key={slot.id} style={{ ...createPdfSlotStyle(rendered.pdfStyle as PdfMeasuredStyle), justifyContent }}>
       <Text style={createPdfTextStyle(rendered.text, cjkFontFamily)}>{rendered.text?.content ?? ''}</Text>
     </View>
   )

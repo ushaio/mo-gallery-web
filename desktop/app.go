@@ -999,6 +999,10 @@ func (a *App) GetZineCJKFontInfo() services.ZineCJKFontInfo {
 	return services.ResolveZineCJKFont()
 }
 
+func (a *App) GetZineSystemFonts() []string {
+	return services.ListZineSystemFonts()
+}
+
 // GetZineImageDataURL loads a remote Zine image through Go so editor AI can
 // inspect it without WebView CORS or development-server routing limitations.
 func (a *App) GetZineImageDataURL(src string) (string, error) {

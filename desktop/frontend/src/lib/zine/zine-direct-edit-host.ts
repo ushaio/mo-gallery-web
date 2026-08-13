@@ -64,7 +64,7 @@ interface ZineSnapshotVisuals {
 }
 
 const BASE_SLOT_ATTRS = new Set(['page', 'x', 'y', 'w', 'h', 'rotation', 'zIndex'])
-const TEXT_SLOT_ATTRS = new Set(['content', 'align', 'fontSize', 'lineHeight', 'color', 'fontFamily'])
+const TEXT_SLOT_ATTRS = new Set(['content', 'align', 'verticalAlign', 'fontSize', 'lineHeight', 'color', 'fontFamily'])
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -100,6 +100,7 @@ function slotToJson(slot: Slot, pageW: number): Record<string, JsonValue> {
     ...base,
     content: slot.content,
     align: slot.align,
+    verticalAlign: slot.verticalAlign ?? 'top',
     fontSize: slot.fontSize,
     lineHeight: slot.lineHeight,
     color: slot.color,
@@ -290,6 +291,7 @@ function parseSlot(value: unknown, pageW: number): Slot | null {
   if (
     typeof value.content !== 'string'
     || (value.align !== 'left' && value.align !== 'center' && value.align !== 'right')
+    || (value.verticalAlign !== undefined && value.verticalAlign !== 'top' && value.verticalAlign !== 'center' && value.verticalAlign !== 'bottom')
     || !finiteNumber(value.fontSize)
     || value.fontSize <= 0
     || !finiteNumber(value.lineHeight)
@@ -302,6 +304,7 @@ function parseSlot(value: unknown, pageW: number): Slot | null {
     kind: 'text',
     content: value.content,
     align: value.align,
+    verticalAlign: value.verticalAlign ?? 'top',
     fontSize: value.fontSize,
     lineHeight: value.lineHeight,
     color: value.color,
@@ -322,6 +325,9 @@ function validateSlotAttrs(slot: Slot, attrs: Readonly<Record<string, unknown>>)
     }
     if (key === 'align' && value !== 'left' && value !== 'center' && value !== 'right') {
       return 'Text alignment must be left, center, or right'
+    }
+    if (key === 'verticalAlign' && value !== 'top' && value !== 'center' && value !== 'bottom') {
+      return 'Text vertical alignment must be top, center, or bottom'
     }
     if ((key === 'content' || key === 'color' || key === 'fontFamily') && typeof value !== 'string') {
       return `Attribute ${key} must be a string`

@@ -1,11 +1,12 @@
-import type { ReactNode } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, Image as ImageIcon, ImageOff, Minus, Plus, RotateCcw, Trash2, Type as TypeIcon } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Check, ChevronDown, Image as ImageIcon, ImageOff, Minus, Plus, RotateCcw, Star, Trash2, Type as TypeIcon, type LucideIcon } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
 import { createDefaultImageTransform } from '@/lib/zine/crop-session'
 import type { ImageSlot, TextSlot } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
+import { GetZineSystemFonts } from '../../../wailsjs/go/main/App'
 
 const TEXT_COLORS = ['#111111', '#666666', '#FFFFFF', '#B08D2A']
 const MIN_FONT_SIZE = 8
@@ -18,6 +19,25 @@ const FONT_FAMILIES = [
   { value: 'serif', labelKey: 'admin.zine_font_serif' },
   { value: 'sans-serif', labelKey: 'admin.zine_font_sans' },
   { value: 'monospace', labelKey: 'admin.zine_font_mono' },
+  { value: 'Arial', labelKey: 'admin.zine_font_arial' },
+  { value: 'Georgia', labelKey: 'admin.zine_font_georgia' },
+  { value: 'Courier New', labelKey: 'admin.zine_font_courier' },
+  { value: 'SimSun', labelKey: 'admin.zine_font_song' },
+  { value: 'SimHei', labelKey: 'admin.zine_font_heiti' },
+  { value: 'KaiTi', labelKey: 'admin.zine_font_kaiti' },
+  { value: 'FangSong', labelKey: 'admin.zine_font_fangsong' },
+] as const
+
+const HORIZONTAL_ALIGNMENTS = [
+  { value: 'left', labelKey: 'admin.zine_align_left', icon: AlignLeft },
+  { value: 'center', labelKey: 'admin.zine_align_center', icon: AlignCenter },
+  { value: 'right', labelKey: 'admin.zine_align_right', icon: AlignRight },
+] as const
+
+const VERTICAL_ALIGNMENTS = [
+  { value: 'top', labelKey: 'admin.zine_vertical_align_top', icon: AlignVerticalJustifyStart },
+  { value: 'center', labelKey: 'admin.zine_vertical_align_center', icon: AlignVerticalJustifyCenter },
+  { value: 'bottom', labelKey: 'admin.zine_vertical_align_bottom', icon: AlignVerticalJustifyEnd },
 ] as const
 
 interface BarButtonProps {
@@ -52,13 +72,187 @@ function BarDivider() {
   return <div className="mx-0.5 h-4 w-px shrink-0" style={{ backgroundColor: 'var(--border)' }} />
 }
 
+interface AlignmentMenuOption {
+  value: string
+  label: string
+  icon: LucideIcon
+}
+
+function AlignmentMenu({ label, value, options, onChange }: { label: string; value: string; options: AlignmentMenuOption[]; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const selected = options.find((option) => option.value === value) ?? options[0]
+  const SelectedIcon = selected.icon
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        title={`${label}: ${selected.label}`}
+        aria-label={`${label}: ${selected.label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-7 w-8 items-center justify-center gap-0.5 rounded-full transition hover:bg-accent"
+      >
+        <SelectedIcon size={14} />
+        <ChevronDown size={9} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label={label}
+          className="absolute bottom-[calc(100%+8px)] left-1/2 z-30 min-w-32 -translate-x-1/2 overflow-hidden rounded-md border bg-popover p-1 shadow-xl"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          {options.map((option) => {
+            const Icon = option.icon
+            const active = option.value === value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                onClick={() => {
+                  onChange(option.value)
+                  setOpen(false)
+                }}
+                className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-xs transition hover:bg-accent ${active ? 'bg-accent/70' : ''}`}
+              >
+                <Icon size={14} />
+                <span className="flex-1 whitespace-nowrap">{option.label}</span>
+                {active && <Check size={12} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FontMenu({ label, value, options, favoriteFonts, onChange, onToggleFavorite }: { label: string; value: string; options: Array<{ value: string; label: string }>; favoriteFonts: string[]; onChange: (value: string) => void; onToggleFavorite: (value: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const selected = options.find((option) => option.value === value) ?? { value, label: value }
+  const filteredOptions = (query.trim()
+    ? options.filter((option) => option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    : options
+  ).sort((left, right) => Number(favoriteFonts.includes(right.value)) - Number(favoriteFonts.includes(left.value)))
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        title={`${label}: ${selected.label}`}
+        aria-label={`${label}: ${selected.label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setQuery('')
+          setOpen((current) => !current)
+        }}
+        className="flex h-7 min-w-16 items-center justify-center gap-1 rounded-full px-2 text-[11px] transition hover:bg-accent"
+        style={{ fontFamily: value, color: 'var(--popover-foreground)' }}
+      >
+        <span className="max-w-14 truncate">{selected.label}</span>
+        <ChevronDown size={9} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label={label}
+          className="absolute bottom-[calc(100%+8px)] left-1/2 z-30 w-56 -translate-x-1/2 overflow-hidden rounded-md border bg-popover p-1 shadow-xl"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={label}
+            className="mb-1 h-8 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+            style={{ borderColor: 'var(--border)' }}
+          />
+          <div className="max-h-72 overflow-y-auto">
+            {filteredOptions.map((option) => {
+              const active = option.value === value
+              const favorite = favoriteFonts.includes(option.value)
+              return (
+                <div key={option.value} className={`flex h-8 items-center rounded transition hover:bg-accent ${active ? 'bg-accent/70' : ''}`}>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => {
+                      onChange(option.value)
+                      setOpen(false)
+                    }}
+                    className="flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs"
+                    style={{ fontFamily: option.value }}
+                  >
+                    <span className="flex-1 truncate">{option.label}</span>
+                    {active && <Check size={12} className="shrink-0" />}
+                  </button>
+                  <button
+                    type="button"
+                    title={favorite ? t('admin.zine_font_unfavorite') : t('admin.zine_font_favorite')}
+                    aria-label={`${favorite ? t('admin.zine_font_unfavorite') : t('admin.zine_font_favorite')} ${option.label}`}
+                    aria-pressed={favorite}
+                    onClick={() => onToggleFavorite(option.value)}
+                    className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded transition hover:bg-background ${favorite ? 'text-amber-500' : 'text-muted-foreground'}`}
+                  >
+                    <Star size={13} fill={favorite ? 'currentColor' : 'none'} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SlotContextBar() {
-  const { language } = usePreferences()
+  const { language, zineFavoriteFonts, toggleZineFavoriteFont } = usePreferences()
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
   const updateSlot = useZineStore((state) => state.updateSlot)
   const removeSlot = useZineStore((state) => state.removeSlot)
+  const [systemFonts, setSystemFonts] = useState<string[]>([])
+
+  useEffect(() => {
+    let active = true
+    void GetZineSystemFonts()
+      .then((fonts) => {
+        if (active && Array.isArray(fonts)) setSystemFonts(fonts)
+      })
+      .catch(() => {
+        // Browser development mode has no Wails bridge.
+      })
+    return () => { active = false }
+  }, [])
 
   const spread = project?.spreads.find((item) => item.id === activeSpreadId)
   const slot = spread?.slots.find((item) => item.id === selectedSlotId)
@@ -66,6 +260,13 @@ export function SlotContextBar() {
   if (!spread || !slot) return null
 
   const isImage = slot.kind === 'image'
+  const fontOptions = Array.from(new Map([
+    ...FONT_FAMILIES.map((font) => [font.value, { value: font.value, label: t(font.labelKey, language) }] as const),
+    ...systemFonts.map((font) => [font, { value: font, label: font }] as const),
+    ...((slot.kind === 'text' && slot.fontFamily && !FONT_FAMILIES.some((font) => font.value === slot.fontFamily) && !systemFonts.includes(slot.fontFamily))
+      ? [[slot.fontFamily, { value: slot.fontFamily, label: slot.fontFamily }] as const]
+      : []),
+  ]).values())
 
   function patchSlot(patch: Partial<ImageSlot> | Partial<TextSlot>) {
     if (!spread || !slot) return
@@ -129,35 +330,29 @@ export function SlotContextBar() {
 
           <BarDivider />
 
-          <select
+          <FontMenu
+            label={t('admin.zine_font_family', language)}
             value={(slot as TextSlot).fontFamily || 'serif'}
-            onChange={(event) => patchSlot({ fontFamily: event.target.value } satisfies Partial<TextSlot>)}
-            title={t('admin.zine_font_family', language)}
-            aria-label={t('admin.zine_font_family', language)}
-            className="h-7 cursor-pointer rounded-full bg-transparent px-1.5 text-[11px] outline-none transition hover:bg-accent"
-            style={{ color: 'var(--popover-foreground)' }}
-          >
-            {!FONT_FAMILIES.some((font) => font.value === ((slot as TextSlot).fontFamily || 'serif')) && (
-              <option value={(slot as TextSlot).fontFamily}>{(slot as TextSlot).fontFamily}</option>
-            )}
-            {FONT_FAMILIES.map((font) => (
-              <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>
-                {t(font.labelKey, language)}
-              </option>
-            ))}
-          </select>
+            options={fontOptions}
+            favoriteFonts={zineFavoriteFonts}
+            onChange={(fontFamily) => patchSlot({ fontFamily } satisfies Partial<TextSlot>)}
+            onToggleFavorite={toggleZineFavoriteFont}
+          />
 
           <BarDivider />
 
-          <BarButton label={t('admin.zine_align_left', language)} onClick={() => patchSlot({ align: 'left' } satisfies Partial<TextSlot>)} active={(slot as TextSlot).align === 'left'}>
-            <AlignLeft size={14} />
-          </BarButton>
-          <BarButton label={t('admin.zine_align_center', language)} onClick={() => patchSlot({ align: 'center' } satisfies Partial<TextSlot>)} active={(slot as TextSlot).align === 'center'}>
-            <AlignCenter size={14} />
-          </BarButton>
-          <BarButton label={t('admin.zine_align_right', language)} onClick={() => patchSlot({ align: 'right' } satisfies Partial<TextSlot>)} active={(slot as TextSlot).align === 'right'}>
-            <AlignRight size={14} />
-          </BarButton>
+          <AlignmentMenu
+            label={t('admin.zine_text_align', language)}
+            value={(slot as TextSlot).align}
+            options={HORIZONTAL_ALIGNMENTS.map((alignment) => ({ ...alignment, label: t(alignment.labelKey, language) }))}
+            onChange={(align) => patchSlot({ align: align as TextSlot['align'] } satisfies Partial<TextSlot>)}
+          />
+          <AlignmentMenu
+            label={t('admin.zine_vertical_align', language)}
+            value={(slot as TextSlot).verticalAlign ?? 'top'}
+            options={VERTICAL_ALIGNMENTS.map((alignment) => ({ ...alignment, label: t(alignment.labelKey, language) }))}
+            onChange={(verticalAlign) => patchSlot({ verticalAlign: verticalAlign as TextSlot['verticalAlign'] } satisfies Partial<TextSlot>)}
+          />
 
           <BarDivider />
 

@@ -87,5 +87,15 @@ export function renderSlot(slot: Slot, _pageWmm: number, assets: ZineAsset[] = [
       },
     }
   }
-  return { htmlStyle, pdfStyle, text: { content: slot.content, htmlStyle: { fontSize: slot.fontSize, lineHeight: slot.lineHeight, color: slot.color, fontFamily: slot.fontFamily, textAlign: slot.align, whiteSpace: 'pre-wrap' }, pdfStyle: { fontSize: slot.fontSize, lineHeight: slot.lineHeight, color: slot.color, fontFamily: slot.fontFamily, textAlign: slot.align } } }
+  const verticalAlign = slot.verticalAlign ?? 'top'
+  const justifyContent = verticalAlign === 'center' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start'
+  return {
+    htmlStyle,
+    pdfStyle,
+    text: {
+      content: slot.content,
+      htmlStyle: { display: 'flex', flexDirection: 'column', justifyContent, fontSize: slot.fontSize, lineHeight: slot.lineHeight, color: slot.color, fontFamily: slot.fontFamily, textAlign: slot.align, whiteSpace: 'pre-wrap' },
+      pdfStyle: { fontSize: slot.fontSize, lineHeight: slot.lineHeight, color: slot.color, fontFamily: slot.fontFamily, textAlign: slot.align },
+    },
+  }
 }

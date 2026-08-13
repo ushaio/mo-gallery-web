@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { BookImage, Loader2, Plus, Trash2 } from 'lucide-react'
 
@@ -72,7 +73,12 @@ export function ZinePage() {
       const store = useZineStore.getState()
       const project = store.createProject(t('admin.zine_untitled', language), options)
       await useZineStore.getState().save()
-      setCreateOpen(false)
+      // The page stays mounted in an Activity cache while the editor route is shown.
+      // Commit the portal unmount and busy-state reset before navigating.
+      flushSync(() => {
+        setCreateOpen(false)
+        setCreating(false)
+      })
       navigate(`/zine/editor/${project.id}`)
     } finally {
       setCreating(false)

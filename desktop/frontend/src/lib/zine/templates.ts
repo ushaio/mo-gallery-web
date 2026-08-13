@@ -17,7 +17,7 @@ function imageSlot(page: 'left' | 'right', pageW: number, x: number, y: number, 
 }
 
 function textSlot(page: 'left' | 'right', pageW: number, x: number, y: number, w: number, h: number, zIndex: number): TextSlot {
-  return { id: createZineId(), kind: 'text', page, x: spreadX(page, pageW, x), y, w, h, rotation: 0, zIndex, content: '', align: 'left', fontSize: 18, lineHeight: 1.25, color: '#111111', fontFamily: 'serif' }
+  return { id: createZineId(), kind: 'text', page, x: spreadX(page, pageW, x), y, w, h, rotation: 0, zIndex, content: '', align: 'left', verticalAlign: 'top', fontSize: 18, lineHeight: 1.25, color: '#111111', fontFamily: 'serif' }
 }
 
 function imageGrid(page: 'left' | 'right', pageW: number, pageH: number, columns: number, rows: number, startZIndex: number) {

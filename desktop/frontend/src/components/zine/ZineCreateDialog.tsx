@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { BookImage, Loader2 } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
@@ -40,27 +40,28 @@ export function ZineCreateDialog({ open, creating, onCancel, onCreate }: ZineCre
     onCreate({ pageSize, pageOrientation: orientation, ...(pageSize === 'custom' ? { customSizeMm } : {}) })
   }
 
+  // This dialog is rendered through a body portal while the Zine list page is
+  // kept alive by React Activity. Unmount immediately when closed so a hidden
+  // page cannot leave an exiting portal over the editor route.
+  if (!open) return null
+
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
-            onClick={() => !creating && onCancel()}
-          />
-          <div className="pointer-events-none fixed inset-0 z-[121] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="pointer-events-auto w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl"
-              style={{ borderColor: 'var(--border)' }}
-            >
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.15 }}
+        className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
+        onClick={() => !creating && onCancel()}
+      />
+      <div className="pointer-events-none fixed inset-0 z-[121] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="pointer-events-auto w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl"
+          style={{ borderColor: 'var(--border)' }}
+        >
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                   <BookImage size={18} style={{ color: 'var(--primary)' }} />
@@ -184,11 +185,9 @@ export function ZineCreateDialog({ open, creating, onCancel, onCreate }: ZineCre
                   {t('admin.zine_create', language)}
                 </button>
               </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>,
+        </motion.div>
+      </div>
+    </>,
     document.body,
   )
 }

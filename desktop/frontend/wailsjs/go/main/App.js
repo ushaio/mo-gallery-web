@@ -434,6 +434,10 @@ export function GetZineLogPath() {
   return window['go']['main']['App']['GetZineLogPath']();
 }
 
+export function GetZineSystemFonts() {
+  return window['go']['main']['App']['GetZineSystemFonts']();
+}
+
 export function ImportAgentMCPServers(arg1) {
   return window['go']['main']['App']['ImportAgentMCPServers'](arg1);
 }

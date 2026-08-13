@@ -42,7 +42,7 @@ export function SlotTextContent({ content, style, placeholder, editing, onChange
       ref={ref}
       // 非编辑态关闭指针事件，让单击选中/拖动作用于整个槽位；双击进入编辑
       className={`zine-text-slot h-full w-full outline-none ${editing ? 'cursor-text' : 'pointer-events-none'}`}
-      style={{ ...style, whiteSpace: 'pre-wrap' }}
+      style={{ ...style, minWidth: 0, whiteSpace: 'pre-wrap' }}
       contentEditable={editing}
       suppressContentEditableWarning
       data-placeholder={placeholder}

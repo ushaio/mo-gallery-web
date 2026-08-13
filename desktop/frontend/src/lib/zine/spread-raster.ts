@@ -297,7 +297,10 @@ function drawTextSlot(
 
   const textX = slot.align === 'left' ? -width / 2 : slot.align === 'right' ? width / 2 : 0
   const lines = slot.content.split('\n').flatMap((paragraph) => splitTextLine(context, paragraph, width))
-  let y = -height / 2
+  const contentHeight = lines.length * lineHeight
+  const verticalAlign = slot.verticalAlign ?? 'top'
+  const verticalOffset = verticalAlign === 'center' ? (height - contentHeight) / 2 : verticalAlign === 'bottom' ? height - contentHeight : 0
+  let y = -height / 2 + Math.max(0, verticalOffset)
   for (const line of lines) {
     if (y + lineHeight > height / 2 + lineHeight) break
     context.fillText(line, textX, y, width)
