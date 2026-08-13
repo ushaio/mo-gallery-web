@@ -59,6 +59,9 @@ interface Props {
   snapshot: LibrarySnapshot
   onSnapshot: (snapshot: LibrarySnapshot) => void
   onClose: () => void
+  selectionMode?: boolean
+  existingAssetIds?: string[]
+  onSelectionChange?: (assets: LocalAsset[]) => void
 }
 
 const EMPTY_PAGE: AssetPage = {
@@ -94,7 +97,7 @@ interface FolderTarget {
   isRoot: boolean
 }
 
-export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: Props) {
+export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, selectionMode = false, existingAssetIds = [], onSelectionChange }: Props) {
   const navigate = useNavigate()
   const { token, isAuthenticated } = useAuth()
   const { t } = useLanguage()
@@ -183,6 +186,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   const [organizationBusy, setOrganizationBusy] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
+  const existingAssetIdSet = useMemo(() => new Set(existingAssetIds), [existingAssetIds])
   const [selectedQueryToken, setSelectedQueryToken] = useState<string | null>(null)
   const [selectedQueryTotal, setSelectedQueryTotal] = useState(0)
   const selectionAnchorRef = useRef<string | null>(null)
@@ -294,6 +298,12 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
   }, [expandedFolderPaths, folder, folders, foldersOpen])
 
   const selectGridAsset = useCallback((asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => {
+    if (selectionMode) {
+      if (asset.availability !== 'active' || !isPhotoAsset(asset)) return
+      if (existingAssetIdSet.has(asset.id)) return
+      setSelectedAssetIds((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : [...current, asset.id])
+      return
+    }
     const ids = page.items.map((item) => item.id)
     if (intent?.range && selectionAnchorRef.current) {
       const anchorIndex = ids.indexOf(selectionAnchorRef.current)
@@ -320,7 +330,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     setSelectedAssetIds([asset.id])
     selectionAnchorRef.current = asset.id
     selectAsset(asset)
-  }, [page.items, selectAsset])
+  }, [existingAssetIdSet, page.items, selectAsset, selectionMode])
 
   const reloadTrashedFolders = useCallback(async () => {
     setTrashedFoldersLoading(true)
@@ -385,6 +395,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
     const selectedIds = new Set(selectedAssetIds)
     return page.items.filter((item) => selectedIds.has(item.id))
   }, [page.items, selectedAssetIds])
+  useEffect(() => {
+    if (selectionMode && onSelectionChange) onSelectionChange(selectedAssets.filter((asset) => asset.availability === 'active' && isPhotoAsset(asset)))
+  }, [onSelectionChange, selectedAssets, selectionMode])
   const selectedCount = selectedQueryToken ? selectedQueryTotal : selectedAssetIds.length
   const allLoadedSelected = page.items.length > 0 && page.items.every((item) => selectedAssetIds.includes(item.id))
   const selectedUploadAssets = selectedAssets.filter((asset) => asset.availability === 'active' && isPhotoAsset(asset))
@@ -1770,11 +1783,11 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose }: P
           <LocalAssetGrid assets={page.items} folders={currentChildFolders} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
             emptyTitle={availability === 'missing' ? copy.missingEmpty : undefined} emptyHint={availability === 'missing' ? copy.missingEmptyHint : undefined}
             canUpload={isAuthenticated} storageSources={storageSources} storageSourcesLoading={storageSourcesLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
-            selectedIds={selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={openFolderFromContent} onLoadMore={loadMore}
+            selectedIds={selectionMode ? [...new Set([...selectedAssetIds, ...existingAssetIds])] : selectedAssetIds} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={openFolderFromContent} onLoadMore={loadMore}
             onOpenInFileManager={(asset) => void openAssetInFileManager(asset)}
             onClipboard={copyAssetToClipboard} onUpload={uploadAsset} onUploadSettings={openUploadSettings} onUploadToStorage={uploadAssetToStorage} onRefreshStorageSources={() => void reloadStorageSources()} onDelete={(asset) => { selectAsset(asset); setDeleteAsset(asset) }} onRename={openRenameAsset} onMove={openMoveAsset} onRestore={restoreAsset}
             onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => { selectAsset(asset); setRemoveMissingAsset(asset) }} />
-          {selectedCount > 0 && (
+          {selectedCount > 0 && !selectionMode && (
             <LocalAssetSelectionToolbar
               copy={copy}
               selectedCount={selectedCount}

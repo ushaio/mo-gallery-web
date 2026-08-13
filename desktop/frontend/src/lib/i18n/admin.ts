@@ -3,6 +3,13 @@ import type { LocaleDictionaryGroup } from './types'
 export const adminMessages: LocaleDictionaryGroup = {
   zh: {
     admin: {
+      zine_import_cloud: '导入云端资源库',
+      zine_import_local_library: '导入本地资源库',
+      zine_selected_count: '已选择 {count} 张照片',
+      zine_import_selected: '导入已选照片',
+      zine_source_local_file: '本地照片',
+      zine_source_cloud: '云端资源库',
+      zine_source_local_library: '本地资源库',
       admin: '管理员',
       console: '管理控制台',
       super_user: '超级用户',
@@ -105,7 +112,6 @@ export const adminMessages: LocaleDictionaryGroup = {
       zine_import_local: '导入本地图片',
       zine_importing: '导入中…',
       zine_local_empty: '尚未导入本地图片',
-      zine_local_hint: '支持多选 image/*',
       zine_import_failed: '本地图片导入失败',
       zine_slot_image: '图片框',
       zine_slot_text: '文本框',
@@ -852,6 +858,13 @@ export const adminMessages: LocaleDictionaryGroup = {
   },
   en: {
     admin: {
+      zine_import_cloud: 'Import cloud library',
+      zine_import_local_library: 'Import local library',
+      zine_selected_count: '{count} photos selected',
+      zine_import_selected: 'Import selected',
+      zine_source_local_file: 'Local photo',
+      zine_source_cloud: 'Cloud library',
+      zine_source_local_library: 'Local library',
       admin: 'Admin',
       console: 'Admin Console',
       super_user: 'Super User',
@@ -954,7 +967,6 @@ export const adminMessages: LocaleDictionaryGroup = {
       zine_import_local: 'Import local images',
       zine_importing: 'Importing…',
       zine_local_empty: 'No local images imported yet',
-      zine_local_hint: 'Multi-select image/* supported',
       zine_import_failed: 'Failed to import local images',
       zine_slot_image: 'Image box',
       zine_slot_text: 'Text box',

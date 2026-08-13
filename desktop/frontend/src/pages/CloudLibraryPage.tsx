@@ -42,6 +42,7 @@ import { loadPersistentResource } from '@/lib/persistent-cache'
 import { useLibrarySections, usePreferences, usePhotoFilters } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import type { Album } from '@/types'
+import type { Photo } from '@/types'
 
 type CloudView = 'photos' | 'albums' | 'film-rolls'
 type AlbumDetailTab = 'overview' | 'photos'
@@ -100,7 +101,13 @@ function SectionHeader({ open, onToggle, label, onRefresh, refreshing = false, r
   )
 }
 
-export function CloudLibraryPage() {
+interface CloudLibraryPageProps {
+  selectionMode?: boolean
+  existingPhotoIds?: string[]
+  onSelectionChange?: (photos: Photo[]) => void
+}
+
+export function CloudLibraryPage({ selectionMode = false, existingPhotoIds = [], onSelectionChange }: CloudLibraryPageProps = {}) {
   const language = usePreferences((state) => state.language)
   const sections = useLibrarySections((state) => state.sections)
   const toggleSection = useLibrarySections((state) => state.toggleSection)
@@ -421,7 +428,7 @@ export function CloudLibraryPage() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {view === 'photos' ? (
-          <PhotosPage />
+          <PhotosPage selectionMode={selectionMode} existingPhotoIds={existingPhotoIds} onSelectionChange={onSelectionChange} />
         ) : view === 'film-rolls' ? (
           <FilmRollsPage />
         ) : createMode || managingAlbumId ? (

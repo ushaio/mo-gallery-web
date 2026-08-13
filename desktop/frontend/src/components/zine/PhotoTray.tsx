@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Cloud, HardDrive } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,16 +10,16 @@ import type { ImageSlot, ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 import { useZineStore } from '@/store/zine'
 
-import { PhotoTrayLibrary } from './PhotoTrayLibrary'
 import { PhotoTrayCurrent } from './PhotoTrayCurrent'
+import { PhotoTrayLocalImport } from './PhotoTrayLocalImport'
+import { PhotoLibraryDialog } from './PhotoLibraryDialog'
 
-type PhotoTrayTab = 'current' | 'library'
+type ImportSource = 'cloud' | 'local-library' | null
 
 export function PhotoTray() {
   const { isAuthenticated } = useAuth()
   const { language } = usePreferences()
-  const [activeTab, setActiveTab] = useState<PhotoTrayTab>(isAuthenticated ? 'library' : 'current')
-  const displayedTab = !isAuthenticated && activeTab === 'library' ? 'current' : activeTab
+  const [importSource, setImportSource] = useState<ImportSource>(null)
   const project = useZineStore((state) => state.project)
   const activeSpreadId = useZineStore((state) => state.activeSpreadId)
   const selectedSlotId = useZineStore((state) => state.selectedSlotId)
@@ -102,42 +103,54 @@ export function PhotoTray() {
     }
   }
 
+  function importAsset(asset: ZineAsset) {
+    if (project?.assets.some((item) => item.id === asset.id)) return
+    addAsset(asset)
+    recordZineOperation('asset_added_to_project', {
+      projectId: project?.id,
+      assetId: asset.id,
+      assetSource: asset.source,
+      importOnly: true,
+    }, { flush: true })
+  }
+
+  function importAssets(assets: ZineAsset[]) {
+    assets.forEach(importAsset)
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b p-2" style={{ borderColor: 'var(--border)' }}>
-        <div className={`grid rounded-md bg-muted p-0.5 text-[10px] ${isAuthenticated ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          <button
-            type="button"
-            className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'current' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            onClick={() => setActiveTab('current')}
-          >
-            {t('admin.zine_current', language)}
-          </button>
-          {isAuthenticated && (
-            <button
-              type="button"
-              className={`h-7 min-w-0 truncate rounded px-1 transition ${displayedTab === 'library' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setActiveTab('library')}
-            >
-              {t('admin.zine_library', language)}
-            </button>
-          )}
-        </div>
-
-      </div>
-
       <div className="min-h-0 flex-1 p-3">
-        {displayedTab === 'current' ? (
-          <PhotoTrayCurrent
-            assets={currentAssets}
-            spreads={project?.spreads ?? []}
-            onPickAsset={onPickAsset}
-            onDragAsset={onDragAsset}
-          />
-        ) : displayedTab === 'library' ? (
-          <PhotoTrayLibrary onPickAsset={onPickAsset} onDragAsset={onDragAsset} />
-        ) : null}
+        <PhotoTrayCurrent
+          assets={currentAssets}
+          spreads={project?.spreads ?? []}
+          onPickAsset={onPickAsset}
+          onDragAsset={onDragAsset}
+        />
       </div>
+      <div className="flex shrink-0 flex-col gap-1.5 border-t p-2" style={{ borderColor: 'var(--border)' }}>
+        <PhotoTrayLocalImport onPickAsset={importAsset} onDragAsset={onDragAsset} controlsOnly />
+        <button
+          type="button"
+          disabled={!isAuthenticated}
+          onClick={() => setImportSource(importSource === 'cloud' ? null : 'cloud')}
+          className={`flex w-full items-center justify-start gap-2 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 ${importSource === 'cloud' ? 'bg-accent text-accent-foreground' : ''}`}
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <Cloud size={13} className="shrink-0" />
+          <span>{t('admin.zine_import_cloud', language)}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportSource(importSource === 'local-library' ? null : 'local-library')}
+          className={`flex w-full items-center justify-start gap-2 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent ${importSource === 'local-library' ? 'bg-accent text-accent-foreground' : ''}`}
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <HardDrive size={13} className="shrink-0" />
+          <span>{t('admin.zine_import_local_library', language)}</span>
+        </button>
+      </div>
+      <PhotoLibraryDialog source={importSource} existingAssets={currentAssets} onClose={() => setImportSource(null)} onImportAssets={importAssets} />
     </div>
   )
 }

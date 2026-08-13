@@ -8,9 +8,15 @@ import { localLibraryCopy } from '@/features/local-library/copy'
 import { LocalLibraryWelcome } from '@/features/local-library/LocalLibraryWelcome'
 import { LocalLibraryWorkbench } from '@/features/local-library/LocalLibraryWorkbench'
 import { useLocalLibraryStore } from '@/features/local-library/store'
-import type { EntryState, LibrarySnapshot } from '@/features/local-library/types'
+import type { EntryState, LibrarySnapshot, LocalAsset } from '@/features/local-library/types'
 
-export function LocalLibraryPage() {
+interface LocalLibraryPageProps {
+  selectionMode?: boolean
+  existingAssetIds?: string[]
+  onSelectionChange?: (assets: LocalAsset[]) => void
+}
+
+export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [], onSelectionChange }: LocalLibraryPageProps = {}) {
   const language = usePreferences((state) => state.language)
   const copy = localLibraryCopy[language]
   const snapshot = useLocalLibraryStore((state) => state.snapshot)
@@ -59,7 +65,7 @@ export function LocalLibraryPage() {
   }
 
   if (snapshot) {
-    return <LocalLibraryWorkbench copy={copy} snapshot={snapshot} onSnapshot={setSnapshot} onClose={handleClosed} />
+    return <LocalLibraryWorkbench copy={copy} snapshot={snapshot} onSnapshot={setSnapshot} onClose={handleClosed} selectionMode={selectionMode} existingAssetIds={existingAssetIds} onSelectionChange={onSelectionChange} />
   }
 
   return <LocalLibraryWelcome copy={copy} recent={entry.recent} onOpened={handleOpened} onRecentChanged={loadEntry} />

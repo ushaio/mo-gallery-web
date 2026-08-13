@@ -14,6 +14,7 @@ interface PhotoTrayLocalImportProps {
   onPickAsset: (asset: ZineAsset) => void
   onDragAsset: (asset: ZineAsset) => void
   controlsOnly?: boolean
+  compact?: boolean
 }
 
 function createLocalAssetId() {
@@ -35,7 +36,7 @@ export function selectZineProjectAssets(project: { assets: ZineAsset[] } | null 
   return project?.assets ?? EMPTY_ZINE_ASSETS
 }
 
-export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = false }: PhotoTrayLocalImportProps) {
+export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = false, compact = false }: PhotoTrayLocalImportProps) {
   const { language } = usePreferences()
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [importing, setImporting] = useState(false)
@@ -56,6 +57,7 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = 
         const asset: ZineAsset = {
           id,
           source: 'local',
+          origin: 'local-file',
           blobId,
           fileName: file.name,
           width,
@@ -77,21 +79,18 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = 
   }
 
   const importControls = (
-    <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+    <div className="flex min-w-0 shrink-0 flex-col items-stretch gap-1.5">
       <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => void importFiles(event.target.files)} />
       <button
         type="button"
-        className="flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60"
+        className={`flex min-w-0 items-center justify-center gap-1 rounded-md border py-2 font-medium transition hover:bg-accent disabled:cursor-wait disabled:opacity-60 ${compact ? 'px-1 text-[10px]' : 'px-3 text-xs'}`}
         style={{ borderColor: 'var(--border)' }}
         onClick={() => inputRef.current?.click()}
         disabled={importing}
       >
         {importing ? <Loader2 size={13} className="animate-spin" /> : <FolderOpen size={13} />}
-        {importing ? t('admin.zine_importing', language) : t('admin.zine_import_local', language)}
+        <span className="truncate">{importing ? t('admin.zine_importing', language) : t('admin.zine_import_local', language)}</span>
       </button>
-      <span className="px-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-        {t('admin.zine_local_hint', language)}
-      </span>
     </div>
   )
 
@@ -111,8 +110,8 @@ export function PhotoTrayLocalImport({ onPickAsset, onDragAsset, controlsOnly = 
         </div>
       ) : (
         <div className="custom-scrollbar grid min-h-0 min-w-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto pb-1">
-          {assets.map((asset) => (
-            <TrayThumb key={asset.id} asset={asset} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
+            {assets.map((asset) => (
+            <TrayThumb key={asset.id} asset={asset} sourceLabel={t('admin.zine_source_local_file', language)} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
           ))}
         </div>
       )}

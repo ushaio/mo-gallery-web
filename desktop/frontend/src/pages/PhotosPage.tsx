@@ -245,7 +245,13 @@ const PhotoGridCard = memo(function PhotoGridCard({
   )
 })
 
-export function PhotosPage() {
+interface PhotosPageProps {
+  selectionMode?: boolean
+  existingPhotoIds?: string[]
+  onSelectionChange?: (photos: Photo[]) => void
+}
+
+export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSelectionChange }: PhotosPageProps = {}) {
   const { language, photoGridSize, photoViewMode: viewMode, setPhotoGridSize, setPhotoViewMode: setViewMode } = usePreferences()
   const gridSize = Math.min(MAX_PHOTO_GRID_SIZE, Math.max(MIN_PHOTO_GRID_SIZE, photoGridSize))
   const filters = usePhotoFilters()
@@ -274,6 +280,7 @@ export function PhotosPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const existingPhotoIdSet = useMemo(() => new Set(existingPhotoIds), [existingPhotoIds])
   const [categories, setCategories] = useState<string[]>([])
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const [deleteTarget, setDeleteTarget] = useState<Photo | null>(null)
@@ -539,6 +546,7 @@ export function PhotosPage() {
   }, [gridSize, hasMore, loading, loadingMore, photos.length, viewMode])
 
   const toggleSelect = useCallback((id: string) => {
+    if (existingPhotoIdSet.has(id)) return
     anchorIdRef.current = id
     setSelected(prev => {
       const next = new Set(prev)
@@ -546,11 +554,19 @@ export function PhotosPage() {
       else next.add(id)
       return next
     })
-  }, [])
+  }, [existingPhotoIdSet])
+
+  useEffect(() => {
+    if (selectionMode && onSelectionChange) onSelectionChange(photos.filter((photo) => selected.has(photo.id)))
+  }, [onSelectionChange, photos, selected, selectionMode])
 
   // 与 web 端后台一致：普通点击打开详情，Shift+点击 / 复选框负责多选；
   // 已有锚点时 Shift+点击 选中锚点到当前的整段范围
   const handlePhotoClick = useCallback((event: React.MouseEvent, photo: Photo) => {
+    if (selectionMode) {
+      toggleSelect(photo.id)
+      return
+    }
     if (event.shiftKey) {
       event.preventDefault()
       const list = latestRef.current.photos
@@ -569,7 +585,7 @@ export function PhotosPage() {
       return
     }
     setDetailPhoto(photo)
-  }, [toggleSelect])
+  }, [selectionMode, toggleSelect])
 
   // 双击卡片：打开全屏大图预览
   const handlePhotoDoubleClick = useCallback((photo: Photo) => {
@@ -769,12 +785,12 @@ export function PhotosPage() {
     <PhotoGridCard
       key={photo.id}
       photo={photo}
-      isSelected={selected.has(photo.id)}
+      isSelected={selected.has(photo.id) || existingPhotoIdSet.has(photo.id)}
       isDeleting={deletingIds.has(photo.id)}
       language={language}
       viewMode={viewMode}
       onCardClick={handlePhotoClick}
-      onCardDoubleClick={handlePhotoDoubleClick}
+      onCardDoubleClick={selectionMode ? () => undefined : handlePhotoDoubleClick}
       onContextOpen={setDetailPhoto}
       onEditDetails={(item) => openEditor(item, 'info')}
       onEditStory={(item) => openEditor(item, 'story')}
@@ -900,7 +916,7 @@ export function PhotosPage() {
         )}
 
         {/* 保留原有多选交互：照片区域底部悬浮操作栏。 */}
-        {selected.size > 0 && (
+        {selected.size > 0 && !selectionMode && (
           <div className="sticky bottom-4 z-20 mt-4 flex justify-center pointer-events-none">
             <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-lg" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}>
               <span className="whitespace-nowrap px-2 text-xs font-medium">{t('admin.selected', language)} {selected.size}</span>

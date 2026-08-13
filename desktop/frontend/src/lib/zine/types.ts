@@ -8,6 +8,7 @@ export type ZineSpreadRole = 'cover' | 'content'
 export type ZinePageNumberPosition = 'bottom-center' | 'bottom-outer'
 export type SlotKind = 'image' | 'text'
 export type ZineAssetSource = 'library' | 'local'
+export type ZineAssetOrigin = 'local-file' | 'cloud-library' | 'local-library'
 
 export interface ZinePageNumberSettings { enabled: boolean; position: ZinePageNumberPosition }
 export interface ZineCustomSizeMm { width: number; height: number }
@@ -25,7 +26,7 @@ export interface ImageSlot extends SlotBase {
 export type ZineTextVerticalAlign = 'top' | 'center' | 'bottom'
 export interface TextSlot extends SlotBase { kind: 'text'; content: string; align: 'left' | 'center' | 'right'; verticalAlign?: ZineTextVerticalAlign; fontSize: number; lineHeight: number; color: string; fontFamily: string }
 export type Slot = ImageSlot | TextSlot
-export interface ZineAsset { id: string; source: ZineAssetSource; libraryPhotoId?: string; blobId?: string; fileName: string; width: number; height: number; dpi?: number; previewUrl: string; fullUrl: string; createdAt: number }
+export interface ZineAsset { id: string; source: ZineAssetSource; origin?: ZineAssetOrigin; libraryPhotoId?: string; blobId?: string; fileName: string; width: number; height: number; dpi?: number; previewUrl: string; fullUrl: string; createdAt: number }
 export interface ZinePageSizeDef { id: ZinePageSize; label: string; widthMm: number; heightMm: number }
 export interface TemplateDef { id: string; nameKey: string; pageLayout: 'single' | 'two-up' | 'text-photo' | 'cover'; buildSlots: (pageW: number, pageH: number, bleedMm?: number) => Slot[] }
 export interface RenderedSlot { htmlStyle: CSSProperties; pdfStyle: Record<string, string | number>; imageInner?: { src: string; htmlStyle: CSSProperties; imageStyle: CSSProperties; pdfStyle: Record<string, string | number> }; text?: { content: string; htmlStyle: CSSProperties; pdfStyle: Record<string, string | number> } }

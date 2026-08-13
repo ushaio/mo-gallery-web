@@ -12,7 +12,8 @@ import { TrayThumb } from './TrayThumb'
 
 interface PhotoTrayLibraryProps {
   onPickAsset: (asset: ZineAsset) => void
-  onDragAsset: (asset: ZineAsset) => void
+  onDragAsset?: (asset: ZineAsset) => void
+  columns?: string
 }
 
 interface WailsPhotoApp {
@@ -65,7 +66,7 @@ function TrayMessage({ icon, text }: { icon?: ReactNode; text: string }) {
   )
 }
 
-export function PhotoTrayLibrary({ onPickAsset, onDragAsset }: PhotoTrayLibraryProps) {
+export function PhotoTrayLibrary({ onPickAsset, onDragAsset = () => undefined, columns = 'grid-cols-2' }: PhotoTrayLibraryProps) {
   const { language } = usePreferences()
   const [assets, setAssets] = useState<ZineAsset[]>([])
   const [available, setAvailable] = useState(true)
@@ -108,7 +109,7 @@ export function PhotoTrayLibrary({ onPickAsset, onDragAsset }: PhotoTrayLibraryP
 
   if (loading) {
     return (
-      <div className="grid h-full grid-cols-2 gap-2 overflow-hidden">
+      <div className={`grid h-full ${columns} gap-2 overflow-hidden`}>
         {Array.from({ length: 8 }, (_, index) => (
           <div key={index} className="aspect-square w-full animate-pulse rounded-md" style={{ backgroundColor: 'var(--muted)' }} />
         ))}
@@ -121,9 +122,9 @@ export function PhotoTrayLibrary({ onPickAsset, onDragAsset }: PhotoTrayLibraryP
   }
 
   return (
-    <div className="custom-scrollbar grid h-full grid-cols-2 content-start gap-2 overflow-y-auto pb-1">
+    <div className={`custom-scrollbar grid h-full ${columns} content-start gap-2 overflow-y-auto pb-1`}>
       {assets.map((asset) => (
-        <TrayThumb key={asset.id} asset={asset} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
+        <TrayThumb key={asset.id} asset={asset} sourceLabel={t('admin.zine_source_cloud', language)} onPick={() => onPickAsset(asset)} onDragAsset={() => onDragAsset(asset)} />
       ))}
     </div>
   )
