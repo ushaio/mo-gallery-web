@@ -19,7 +19,6 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { ResizableImage } from '../tiptap-extensions/ResizableImage'
 import { PastedStyleMark } from '../tiptap-extensions/PastedStyleMark'
 import { PastedBlockStyle } from '../tiptap-extensions/PastedBlockStyle'
-import { DropCapParagraph } from '../tiptap-extensions/DropCapParagraph'
 import { StyledHorizontalRule } from '../tiptap-extensions/StyledHorizontalRule'
 import { MediaEmbed } from '../tiptap-extensions/MediaEmbed'
 import { StoryLinkCard } from '../tiptap-extensions/StoryLinkCard'
@@ -122,7 +121,6 @@ export function useNarrativeEditor({
   const editor = useEditor({
     extensions: [
       PastedBlockStyle,
-      DropCapParagraph,
       StarterKit.configure({
         horizontalRule: false,
         heading: {

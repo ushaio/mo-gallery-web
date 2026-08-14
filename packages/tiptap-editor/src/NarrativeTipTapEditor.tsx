@@ -262,7 +262,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             isAlignCenter: false,
             isAlignRight: false,
             isImageSelected: false,
-            hasDropCap: false,
             headingLevel: '',
             fontSize: '',
             fontFamily: '',
@@ -289,7 +288,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           isAlignCenter: currentEditor.isActive({ textAlign: 'center' }),
           isAlignRight: currentEditor.isActive({ textAlign: 'right' }),
           isImageSelected: currentEditor.isActive('image'),
-          hasDropCap: currentEditor.getAttributes('paragraph').dropCap === true,
           headingLevel: (
             ['1', '2', '3', '4', '5', '6'].find((level) =>
               currentEditor.isActive('heading', { level: Number.parseInt(level, 10) })
@@ -337,7 +335,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       isAlignCenter: false,
       isAlignRight: false,
       isImageSelected: false,
-      hasDropCap: false,
       headingLevel: '',
       fontSize: '',
       fontFamily: '',
@@ -629,25 +626,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const setTextAlign = useCallback((align: 'left' | 'center' | 'right') => {
       if (!editor || isAiTaskLocked) return
-      const chain = editor.chain().focus()
-      if ((align === 'center' || align === 'right') && resolvedEditorUiState.hasDropCap) {
-        chain.setParagraphDropCap(false)
-      }
-      chain.setTextAlign(align).run()
-    }, [editor, isAiTaskLocked, resolvedEditorUiState.hasDropCap])
-
-    const toggleDropCap = useCallback(() => {
-      if (!editor || isAiTaskLocked) return
-      const chain = editor.chain().focus()
-      if (resolvedEditorUiState.hasDropCap) {
-        chain.setParagraphDropCap(false).run()
-        return
-      }
-      if (resolvedEditorUiState.isAlignCenter || resolvedEditorUiState.isAlignRight) {
-        chain.setTextAlign('left')
-      }
-      chain.setParagraphDropCap(true).run()
-    }, [editor, isAiTaskLocked, resolvedEditorUiState.hasDropCap, resolvedEditorUiState.isAlignCenter, resolvedEditorUiState.isAlignRight])
+      editor.chain().focus().setTextAlign(align).run()
+    }, [editor, isAiTaskLocked])
 
     const setHeadingLevel = useCallback((level: string) => {
       if (!editor || isAiTaskLocked) return
@@ -825,7 +805,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       { id: 'bulletList', group: 'block', label: t('editor.bullet_list'), keywords: ['bullet', 'list'], icon: List, surfaces: ['main', 'floating', 'slash'] },
       { id: 'orderedList', group: 'block', label: t('editor.ordered_list'), keywords: ['ordered', 'numbered', 'list'], icon: ListOrdered, surfaces: ['main', 'floating', 'slash'] },
       { id: 'blockquote', group: 'block', label: t('editor.blockquote'), keywords: ['quote', 'blockquote'], icon: Quote, surfaces: ['main', 'floating', 'slash'] },
-      { id: 'dropCap', group: 'format', label: t('editor.drop_cap'), keywords: ['drop cap'], icon: Pilcrow, surfaces: ['format'] },
       { id: 'alignLeft', group: 'format', label: t('editor.align_left'), keywords: ['align left'], icon: AlignLeft, surfaces: ['main'] },
       { id: 'alignCenter', group: 'format', label: t('editor.align_center'), keywords: ['align center'], icon: AlignCenter, surfaces: ['main'] },
       { id: 'alignRight', group: 'format', label: t('editor.align_right'), keywords: ['align right'], icon: AlignRight, surfaces: ['main'] },
@@ -848,7 +827,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       bulletList: { active: resolvedEditorUiState.isBulletList, disabled: isAiTaskLocked, execute: toggleBulletList },
       orderedList: { active: resolvedEditorUiState.isOrderedList, disabled: isAiTaskLocked, execute: toggleOrderedList },
       blockquote: { active: resolvedEditorUiState.isBlockquote, disabled: isAiTaskLocked, execute: toggleBlockquote },
-      dropCap: { active: resolvedEditorUiState.hasDropCap, disabled: isAiTaskLocked, execute: toggleDropCap },
       alignLeft: { active: resolvedEditorUiState.isAlignLeft, disabled: isAiTaskLocked, execute: () => setTextAlign('left') },
       alignCenter: { active: resolvedEditorUiState.isAlignCenter, disabled: isAiTaskLocked, execute: () => setTextAlign('center') },
       alignRight: { active: resolvedEditorUiState.isAlignRight, disabled: isAiTaskLocked, execute: () => setTextAlign('right') },
@@ -1222,7 +1200,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               disabled={isAiTaskLocked}
               panelClassName="right-0 left-auto max-h-[calc(100vh-5rem)] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto"
             >
-              {/* 仅保留工具栏没有的命令：首字下沉、文字颜色、背景颜色 */}
+              {/* 仅保留工具栏没有的命令：文字颜色、背景颜色 */}
               {formatCommands.filter((command) => command.id !== 'textColor' && command.id !== 'backgroundColor').map((command) => (
                 <CommandMenuItem key={command.id} command={command} onSelect={() => setOpenToolbarMenu(null)} />
               ))}

@@ -13,7 +13,6 @@ import {
   convertHtmlImageToAttrs,
   isMarkdownImageSyntax,
   isMarkdownContent,
-  ensureFirstParagraphHasDropCap,
 } from './markdown-converter'
 import { IMAGE_WIDTH_PRESETS } from './editor-constants'
 import {
@@ -82,7 +81,6 @@ export function useEditorImperativeHandle({
       if (editor) {
         const processed = isMarkdownContent(html) ? convertMarkdownToHtml(html) : html
         editor.commands.setContent(processed)
-        ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = html
         onChange(editor.getHTML())
         onJsonChange?.(editor.getJSON())
@@ -148,7 +146,6 @@ export function useEditorImperativeHandle({
         const processedNext = prepareNextValue()
         const newHtml = currentHtml.replace(searchValue, processedNext)
         editor.commands.setContent(newHtml)
-        ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = newHtml
         onChange(newHtml)
         onJsonChange?.(editor.getJSON())
@@ -163,7 +160,6 @@ export function useEditorImperativeHandle({
       )
       if (placeholderReplacement?.replaced) {
         editor.commands.setContent(placeholderReplacement.html)
-        ensureFirstParagraphHasDropCap(editor)
         currentValueRef.current = placeholderReplacement.html
         onChange(placeholderReplacement.html)
         onJsonChange?.(editor.getJSON())

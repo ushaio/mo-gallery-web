@@ -68,31 +68,6 @@ export function normalizeHexColor(value: string) {
   return null
 }
 
-export function ensureFirstParagraphHasDropCap(currentEditor: Editor) {
-  let offset = 0
-
-  for (let index = 0; index < currentEditor.state.doc.childCount; index += 1) {
-    const child = currentEditor.state.doc.child(index)
-
-    if (child.type.name === 'paragraph') {
-      if (typeof child.attrs.dropCap === 'boolean') {
-        return
-      }
-
-      const nextAttrs = {
-        ...child.attrs,
-        dropCap: true,
-      }
-
-      const transaction = currentEditor.state.tr.setNodeMarkup(offset, undefined, nextAttrs)
-      currentEditor.view.dispatch(transaction)
-      return
-    }
-
-    offset += child.nodeSize
-  }
-}
-
 export function convertMarkdownToHtml(input: string): string {
   if (!input) return ''
 
