@@ -1,5 +1,4 @@
-import { reportAuthFailure } from '@/lib/auth-failure'
-import { ApiUnauthorizedError, apiRequest, apiRequestData, apiRequestWithMeta, buildApiUrl, buildQuery, extractErrorCode, extractErrorMessage } from './core'
+import { ApiUnauthorizedError, apiRequest, apiRequestData, apiRequestWithMeta, buildApiUrl, buildQuery, extractErrorCode, extractErrorMessage, notifyApiUnauthorized } from './core'
 import type { PhotoDto, PhotoPaginationMeta, PhotoDeleteError, PhotoWithStories } from './types'
 
 // Duplicate check types
@@ -160,7 +159,7 @@ export async function uploadPhoto(input: {
   file: File
   title: string
   category: string | string[]
-  origin_flag?: 'web' | 'mobile'
+  origin_flag?: 'web' | 'mobile' | 'desktop'
   storage_provider?: string
   storage_source_id?: string
   storage_path?: string
@@ -201,7 +200,7 @@ export function uploadPhotoWithProgress(input: {
   file: File
   title: string
   category?: string | string[]
-  origin_flag?: 'web' | 'mobile'
+  origin_flag?: 'web' | 'mobile' | 'desktop'
   storage_provider?: string
   storage_source_id?: string
   storage_path?: string
@@ -263,7 +262,7 @@ export function uploadPhotoWithProgress(input: {
           extractErrorMessage(payload) ?? 'Token invalid or expired',
           extractErrorCode(payload),
         )
-        reportAuthFailure({ code: error.code, message: error.message })
+        notifyApiUnauthorized(error)
         reject(error)
         return
       }

@@ -27,6 +27,7 @@
     "@jsquash/jpeg": "^1.6.0",
     "@jsquash/png": "^3.1.1",
     "@mo-gallery/ai-agent": "workspace:*",
+    "@mo-gallery/api-client": "workspace:*",
     "@mo-gallery/tiptap-editor": "workspace:*",
     "@octokit/rest": "^22.0.1",
     "@prisma/adapter-pg": "^7.8.0",

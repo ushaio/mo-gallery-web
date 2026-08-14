@@ -1,4 +1,5 @@
 import type {
+  AiChangeSetState,
   EditorAiMessageMetadata,
 } from '@mo-gallery/ai-agent'
 
@@ -183,6 +184,11 @@ export interface StoryAiGenerateInput {
   contextAfter?: string
   images?: string[]
   imageKeys?: string[]
+  useAgentExtensions?: boolean
+  selectedAgentSkillIds?: string[]
+  disabledAgentSkillIds?: string[]
+  useAgentMcpTools?: boolean
+  enabledAgentMcpServerIds?: string[]
 }
 
 export interface AiImageUploadResult {
@@ -200,6 +206,8 @@ export interface EditorAiImageSaveResult {
 export interface StoryAiModelOption {
   id: string
   label: string
+  provider?: string
+  model?: string
   capabilities?: Array<'chat' | 'image'>
   vision: boolean
   tools: boolean
@@ -261,6 +269,7 @@ export type EditorAiMessageFinishInput =
     model?: string
     metadata?: EditorAiMessageMetadata
   }
+
   | {
     status: 'failed' | 'stopped'
     content?: string
@@ -268,6 +277,11 @@ export type EditorAiMessageFinishInput =
     metadata?: EditorAiMessageMetadata
     error: string
   }
+
+export interface EditorAiTaskStateUpdateInput {
+  messageId: string
+  state: AiChangeSetState
+}
 
 export interface EditorAiConversationInput {
   scopeId: string
@@ -292,6 +306,9 @@ export interface EditorAiConversationsQuery {
 
 export type EditorAiGenerateInput = StoryAiGenerateInput & {
   conversationId: string
+  generateImage?: boolean
+  imageModel?: string
+  imageSize?: string
 }
 
 export interface EditorAiImageGenerateInput {
@@ -302,6 +319,22 @@ export interface EditorAiImageGenerateInput {
   imageSize?: string
   images?: string[]
   imageKeys?: string[]
+}
+
+export interface AiImageMetadata {
+  type: 'image'
+  localPath?: string
+  uploadedUrl?: string | null
+  storageKey?: string | null
+  photoId?: string | null
+  prompt: string
+  provider?: string
+  model?: string
+  size?: string
+  mimeType?: string
+  revisedPrompt?: string
+  generatedAt?: string
+  source?: string
 }
 
 export interface BlogDto {

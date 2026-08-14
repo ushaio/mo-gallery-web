@@ -10,6 +10,14 @@ export function configureApiRuntime(nextRuntime: ApiRuntime): void {
   runtime = { ...runtime, ...nextRuntime }
 }
 
+export function notifyApiUnauthorized(error: ApiUnauthorizedError): void {
+  runtime.onUnauthorized?.(error)
+}
+
+export function notifyApiRequestCompleted(path: string, method = 'GET'): void {
+  runtime.onRequestCompleted?.(path, method)
+}
+
 function getApiBase(): string {
   if (runtime.getBaseUrl) return runtime.getBaseUrl().replace(/\/+$/, '')
 
@@ -101,7 +109,7 @@ export async function apiRequest(
       extractErrorMessage(payload) ?? 'Token invalid or expired',
       extractErrorCode(payload),
     )
-    if (token) runtime.onUnauthorized?.(error)
+    if (token) notifyApiUnauthorized(error)
     throw error
   }
   if (!res.ok) {
@@ -112,15 +120,16 @@ export async function apiRequest(
     )
   }
 
-  runtime.onRequestCompleted?.(path, init.method ?? 'GET')
   if (payload && typeof payload === 'object' && 'success' in payload) {
     const envelope = payload as ApiEnvelope<unknown>
     if (envelope.success === false) {
       throw new ApiRequestError(extractErrorMessage(payload) ?? 'Request failed', res.status, extractErrorCode(payload))
     }
+    notifyApiRequestCompleted(path, init.method ?? 'GET')
     return envelope
   }
 
+  notifyApiRequestCompleted(path, init.method ?? 'GET')
   return { success: true, data: payload }
 }
 

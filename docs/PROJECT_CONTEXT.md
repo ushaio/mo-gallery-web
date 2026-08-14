@@ -224,3 +224,9 @@ cd flutter && flutter test
 - 完成跨端架构调整或重要 ADR。
 
 不要因为普通组件新增、局部样式调整或单个 bug 修复就扩写本文件。
+
+## 13. Shared API Client
+
+- `packages/api-client/` contains the shared Web/Desktop HTTP API client, DTOs, endpoint modules, and request envelope/error handling.
+- `src/lib/api/` and `desktop/frontend/src/lib/api/` are compatibility entrypoints that re-export the package and configure platform runtime hooks.
+- Keep platform-specific authentication notifications, cache invalidation, local AI, and upload transport in the corresponding app adapter; keep endpoint paths and shared request/response contracts in `packages/api-client/`.
