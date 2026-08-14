@@ -110,6 +110,8 @@ export function DeleteStorageSource(arg1:string):Promise<void>;
 
 export function DeleteStory(arg1:string):Promise<void>;
 
+export function DeleteZineProject(arg1:string):Promise<void>;
+
 export function DiscoverAgentMCPServerTools(arg1:string):Promise<agent_extensions.MCPServer>;
 
 export function DownloadMessageImageToLocal(arg1:string):Promise<string>;
@@ -218,11 +220,15 @@ export function GetStoryAiProviderModels(arg1:string):Promise<services.StoryAiMo
 
 export function GetWindowAppearance():Promise<main.WindowAppearance>;
 
+export function GetZineAssetBlob(arg1:string):Promise<string>;
+
 export function GetZineCJKFontInfo():Promise<services.ZineCJKFontInfo>;
 
 export function GetZineImageDataURL(arg1:string):Promise<string>;
 
 export function GetZineLogPath():Promise<string>;
+
+export function GetZineProject(arg1:string):Promise<string>;
 
 export function GetZineSystemFonts():Promise<Array<string>>;
 
@@ -245,6 +251,8 @@ export function ListLocalLibraryCollections():Promise<Array<local_library.Collec
 export function ListLocalLibraryTags():Promise<Array<local_library.TagDTO>>;
 
 export function ListLocalLibraryTrashedFolders():Promise<Array<local_library.FolderTrashEntry>>;
+
+export function ListZineProjects():Promise<Array<string>>;
 
 export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<services.LoginResult>;
 
@@ -331,6 +339,10 @@ export function SaveAiImageToAlbum(arg1:string):Promise<services.PhotoDTO>;
 export function SaveMessageImageToAlbum(arg1:string,arg2:string):Promise<services.PhotoDTO>;
 
 export function SaveMessageImageToLocalLibrary(arg1:string,arg2:string):Promise<Array<local_library.ImportResult>>;
+
+export function SaveZineAssetBlob(arg1:string,arg2:string):Promise<void>;
+
+export function SaveZineProject(arg1:string):Promise<void>;
 
 export function ScanStorage(arg1:services.StorageScanParams):Promise<services.StorageScanResult>;
 

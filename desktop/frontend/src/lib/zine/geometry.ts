@@ -30,6 +30,8 @@ export function normalizeSlotGeometry(slot: Slot, pageWmm: number): Slot {
 }
 
 export function migrateProjectGeometry(project: ZineProject): ZineProject {
+  if (project.geometryVersion === ZINE_GEOMETRY_VERSION) return project
+
   const { pageW } = getSpreadSize(project.pageSize, project.pageOrientation, project.customSizeMm)
   return {
     ...project,

@@ -206,6 +206,10 @@ export function DeleteStory(arg1) {
   return window['go']['main']['App']['DeleteStory'](arg1);
 }
 
+export function DeleteZineProject(arg1) {
+  return window['go']['main']['App']['DeleteZineProject'](arg1);
+}
+
 export function DiscoverAgentMCPServerTools(arg1) {
   return window['go']['main']['App']['DiscoverAgentMCPServerTools'](arg1);
 }
@@ -422,6 +426,10 @@ export function GetWindowAppearance() {
   return window['go']['main']['App']['GetWindowAppearance']();
 }
 
+export function GetZineAssetBlob(arg1) {
+  return window['go']['main']['App']['GetZineAssetBlob'](arg1);
+}
+
 export function GetZineCJKFontInfo() {
   return window['go']['main']['App']['GetZineCJKFontInfo']();
 }
@@ -432,6 +440,10 @@ export function GetZineImageDataURL(arg1) {
 
 export function GetZineLogPath() {
   return window['go']['main']['App']['GetZineLogPath']();
+}
+
+export function GetZineProject(arg1) {
+  return window['go']['main']['App']['GetZineProject'](arg1);
 }
 
 export function GetZineSystemFonts() {
@@ -476,6 +488,10 @@ export function ListLocalLibraryTags() {
 
 export function ListLocalLibraryTrashedFolders() {
   return window['go']['main']['App']['ListLocalLibraryTrashedFolders']();
+}
+
+export function ListZineProjects() {
+  return window['go']['main']['App']['ListZineProjects']();
 }
 
 export function Login(arg1, arg2, arg3, arg4, arg5) {
@@ -648,6 +664,14 @@ export function SaveMessageImageToAlbum(arg1, arg2) {
 
 export function SaveMessageImageToLocalLibrary(arg1, arg2) {
   return window['go']['main']['App']['SaveMessageImageToLocalLibrary'](arg1, arg2);
+}
+
+export function SaveZineAssetBlob(arg1, arg2) {
+  return window['go']['main']['App']['SaveZineAssetBlob'](arg1, arg2);
+}
+
+export function SaveZineProject(arg1) {
+  return window['go']['main']['App']['SaveZineProject'](arg1);
 }
 
 export function ScanStorage(arg1) {
