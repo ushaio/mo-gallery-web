@@ -22,7 +22,7 @@ import {
 import type { AdminSettingsDto, AlbumDto } from '@/lib/api/types'
 import { checkDuplicatePhotos } from '@/lib/api/photos'
 import { getAdminAlbums } from '@/lib/api/albums'
-import { compressImage } from '@/lib/image-compress'
+import { compressImage, type CompressionFormat } from '@/lib/image-compress'
 import { calculateFileHashes } from '@/lib/file-hash'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { formatFileSize } from '@/lib/utils'
@@ -58,6 +58,7 @@ function ConfirmModal({
   storageProvider,
   storagePath,
   compressionEnabled,
+  compressionFormat,
   privacyStripEnabled,
   t
 }: {
@@ -71,6 +72,7 @@ function ConfirmModal({
   storageProvider: string
   storagePath?: string
   compressionEnabled: boolean
+  compressionFormat: CompressionFormat
   privacyStripEnabled: boolean
   t: (key: string) => string
 }) {
@@ -126,7 +128,9 @@ function ConfirmModal({
           </div>
           <div className="flex justify-between py-3">
             <span className="text-muted-foreground text-sm">{t('admin.image_compression')}</span>
-       <span className="font-medium">{compressionEnabled ? t('common.enabled') : t('common.disabled')}</span>
+            <span className="font-medium">
+              {compressionEnabled ? `${t('common.enabled')} · ${compressionFormat.toUpperCase()}` : t('common.disabled')}
+            </span>
           </div>
         </div>
 
@@ -319,12 +323,14 @@ function DraggableFileItem({
 function TestCompressionModal({
   file,
   maxSizeMB,
+  compressionFormat,
   onClose,
   onResult,
   t,
 }: {
   file: UploadFile | null
   maxSizeMB: number
+  compressionFormat: CompressionFormat
   onClose: () => void
   onResult?: (fileId: string, compressedSize: number) => void
   t: (key: string) => string
@@ -348,6 +354,7 @@ function TestCompressionModal({
     const start = performance.now()
     compressImage(file.file, {
       mode: 'compress',
+      format: compressionFormat,
       maxSizeMB: maxSizeMB > 0 ? maxSizeMB : undefined,
     })
       .then(compressed => {
@@ -358,7 +365,7 @@ function TestCompressionModal({
       .catch(err => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setRunning(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file, maxSizeMB])
+  }, [file, maxSizeMB, compressionFormat])
 
   useEffect(() => {
     return () => {
@@ -479,6 +486,7 @@ export function UploadTab({
     title: '',
     categories: [],
     compressionEnabled: false,
+    compressionFormat: 'avif',
     maxSizeMB: 0,
     showFlag: true,
     privacyStripEnabled: false,
@@ -505,7 +513,7 @@ export function UploadTab({
   const currentSettings = uploadSettings
   useEffect(() => {
     setTestedSizeMap(new Map())
-  }, [currentSettings.maxSizeMB, currentSettings.compressionEnabled])
+  }, [currentSettings.maxSizeMB, currentSettings.compressionEnabled, currentSettings.compressionFormat])
 
   // Duplicate check
   const [checkingDuplicates, setCheckingDuplicates] = useState(false)
@@ -793,6 +801,7 @@ export function UploadTab({
       filmRollId: uploadType === 'film' ? (uploadSettings.filmRollId || undefined) : undefined,
       showFlag: currentSettings.showFlag,
       compressionMode: currentSettings.compressionEnabled ? 'compress' : undefined,
+      compressionFormat: currentSettings.compressionEnabled ? currentSettings.compressionFormat : undefined,
       maxSizeMB: currentSettings.compressionEnabled && currentSettings.maxSizeMB > 0 ? currentSettings.maxSizeMB : undefined,
       stripGps: currentSettings.privacyStripEnabled,
       token,
@@ -1040,6 +1049,7 @@ export function UploadTab({
         storageProvider={currentSettings.storageSourceId || 'local'}
         storagePath={currentSettings.storagePath}
         compressionEnabled={currentSettings.compressionEnabled}
+        compressionFormat={currentSettings.compressionFormat}
         privacyStripEnabled={currentSettings.privacyStripEnabled}
         t={t}
       />
@@ -1059,6 +1069,7 @@ export function UploadTab({
       <TestCompressionModal
         file={testCompressionFile}
         maxSizeMB={currentSettings.maxSizeMB}
+        compressionFormat={currentSettings.compressionFormat}
         onClose={() => setTestCompressionFile(null)}
         onResult={(fileId, compressedSize) => {
           setTestedSizeMap(prev => {

@@ -5,7 +5,7 @@ import { uploadPhotoWithProgress } from '@/lib/api/photos'
 import { addPhotosToAlbum } from '@/lib/api/albums'
 import { addPhotosToStory } from '@/lib/api/stories'
 import { addPhotosToFilmRoll } from '@/lib/api/film-rolls'
-import { compressImage, CompressionMode, convertImageToJpeg, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
+import { compressImage, CompressionMode, CompressionFormat, compressionFormatToMime, convertImageToJpeg, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
 
 export type UploadTaskStatus = 'pending' | 'compressing' | 'uploading' | 'completed' | 'failed'
 
@@ -39,6 +39,7 @@ export interface UploadTask {
   batchId: string // Unique batch identifier
   // Compression settings
   compressionMode?: CompressionMode
+  compressionFormat?: CompressionFormat
   maxSizeMB?: number
   maxWidthOrHeight?: number
   // Privacy: strip GPS from EXIF before upload
@@ -64,6 +65,7 @@ interface UploadQueueContextType {
     filmRollId?: string
     showFlag?: boolean
     compressionMode?: CompressionMode
+    compressionFormat?: CompressionFormat
     maxSizeMB?: number
     maxWidthOrHeight?: number
     stripGps?: boolean
@@ -88,8 +90,6 @@ export function useUploadQueue() {
 const CONCURRENCY = 4
 const MAX_RETRIES = 2
 const RETRY_DELAY_MS = 2000
-const AVIF_FILE_TYPE = 'image/avif'
-const AVIF_EXTENSION = '.avif'
 const RETRYABLE_ERROR_PATTERNS = [
   /^Network error/i,
   /^Upload timeout/i,
@@ -103,10 +103,6 @@ const RETRYABLE_ERROR_PATTERNS = [
 function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false
   return RETRYABLE_ERROR_PATTERNS.some((p) => p.test(err.message))
-}
-
-function replaceFileExtension(filename: string, extension: string) {
-  return filename.replace(/\.[^.]*$/, '') + extension
 }
 
 function getFilenameFromStorageValue(value: string | null | undefined) {
@@ -260,6 +256,7 @@ export function UploadQueueProvider({
       let fileToUpload = task.file
       let compressedSize: number | undefined
       const shouldCompress = task.compressionMode && task.compressionMode !== 'none'
+      const compressionFormat = task.compressionFormat ?? 'avif'
 
       const latestToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       if (latestToken) tokenRef.current = latestToken
@@ -304,7 +301,7 @@ export function UploadQueueProvider({
         try {
           fileToUpload = await compressImage(
             fileToUpload,
-            { mode: task.compressionMode, maxSizeMB: task.maxSizeMB, maxWidthOrHeight: task.maxWidthOrHeight },
+            { mode: task.compressionMode, format: compressionFormat, maxSizeMB: task.maxSizeMB, maxWidthOrHeight: task.maxWidthOrHeight },
             (progress) => {
               updateTaskProgress(task.id, Math.round(progress * 0.3))
             }
@@ -320,7 +317,7 @@ export function UploadQueueProvider({
                     compressedSize,
                     fileSize: compressedSize!,
                     targetFileSize: compressedSize,
-                    targetFileType: AVIF_FILE_TYPE,
+                    targetFileType: compressionFormatToMime(compressionFormat),
                   }
                 : t
             )
@@ -340,7 +337,7 @@ export function UploadQueueProvider({
                     compressedSize: undefined,
                     fileSize: fileToUpload.size,
                     targetFileSize: fileToUpload.size,
-                    targetFileType: AVIF_FILE_TYPE,
+                    targetFileType: compressionFormatToMime(compressionFormat),
                     error: null,
                   }
                 : t
@@ -367,6 +364,7 @@ export function UploadQueueProvider({
         film_roll_id: task.filmRollId,
         show_flag: task.showFlag,
         compression_mode: task.compressionMode,
+        compression_format: shouldCompress ? compressionFormat : undefined,
         max_size_mb: task.maxSizeMB,
         exif_json: exifJsonString,
         strip_gps: task.stripGps ? 'true' : undefined,
@@ -487,6 +485,7 @@ export function UploadQueueProvider({
       filmRollId?: string
       showFlag?: boolean
       compressionMode?: CompressionMode
+      compressionFormat?: CompressionFormat
       maxSizeMB?: number
       maxWidthOrHeight?: number
       stripGps?: boolean
@@ -527,6 +526,7 @@ export function UploadQueueProvider({
             showFlag: params.showFlag ?? true,
             fileHash: item.fileHash,
             compressionMode: params.compressionMode,
+            compressionFormat: params.compressionFormat,
             maxSizeMB: params.maxSizeMB,
             maxWidthOrHeight: params.maxWidthOrHeight,
             stripGps: params.stripGps,

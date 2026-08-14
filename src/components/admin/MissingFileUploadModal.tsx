@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { X, Upload, Loader2, Minimize2 } from 'lucide-react'
-import { compressImage, type CompressionMode } from '@/lib/image-compress'
+import { compressImage, type CompressionMode, type CompressionFormat } from '@/lib/image-compress'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 
@@ -38,6 +38,7 @@ export function MissingFileUploadModal({
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [compressionMode, setCompressionMode] = useState<CompressionMode>('none')
+  const [compressionFormat, setCompressionFormat] = useState<CompressionFormat>('avif')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = useCallback((f: File) => {
@@ -63,7 +64,7 @@ export function MissingFileUploadModal({
     try {
       let uploadFile = file
       if (compressionMode !== 'none') {
-        uploadFile = await compressImage(file, { mode: compressionMode })
+        uploadFile = await compressImage(file, { mode: compressionMode, format: compressionFormat })
       }
 
       const form = new FormData()
@@ -98,6 +99,7 @@ export function MissingFileUploadModal({
       return null
     })
     setCompressionMode('none')
+    setCompressionFormat('avif')
     onClose()
   }
 
@@ -188,6 +190,18 @@ export function MissingFileUploadModal({
                 { value: 'compress', label: t('admin.compression_enabled') || '压缩' },
               ]}
             />
+            {compressionMode !== 'none' && (
+              <div className="mt-3">
+                <label className="block text-[10px] text-muted-foreground mb-1.5">
+                  {t('admin.compression_format_label') || 'Output format'}
+                </label>
+                <AdminSelect
+                  value={compressionFormat}
+                  onChange={v => setCompressionFormat(v as CompressionFormat)}
+                  options={[{ value: 'avif', label: 'AVIF' }, { value: 'webp', label: 'WebP' }]}
+                />
+              </div>
+            )}
           </div>
 
           {/* Missing Type Info */}

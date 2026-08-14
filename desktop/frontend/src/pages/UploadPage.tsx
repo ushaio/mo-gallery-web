@@ -68,6 +68,7 @@ interface UploadSettings {
   storageSourceId: string
   storagePath: string
   compressEnabled: boolean
+  compressionFormat: 'webp' | 'avif'
   maxSizeMB: number
   showFlag: boolean
   stripGPS: boolean
@@ -84,6 +85,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   storageSourceId: '',
   storagePath: '',
   compressEnabled: true,
+  compressionFormat: 'avif',
   maxSizeMB: 4,
   showFlag: true,
   stripGPS: false,
@@ -359,6 +361,7 @@ export function UploadPage() {
         storageSourceId: settings.storageSourceId,
         storagePath: settings.storagePath,
         compressEnabled: settings.compressEnabled,
+        compressionFormat: settings.compressionFormat,
         maxSizeMB: settings.maxSizeMB,
         showFlag: settings.showFlag,
         stripGPS: settings.stripGPS,
@@ -616,10 +619,17 @@ export function UploadPage() {
                     <input type="checkbox" checked={settings.compressEnabled}
                       onChange={e => setSettings(s => ({ ...s, compressEnabled: e.target.checked }))}
                       className="rounded" />
-                    <span className="text-sm">压缩为 AVIF</span>
+                    <span className="text-sm">压缩格式</span>
                   </label>
                   {settings.compressEnabled && (
                     <div className="pl-6">
+                      <SelectDropdown
+                        value={settings.compressionFormat}
+                        options={[{ value: 'avif', label: 'AVIF' }, { value: 'webp', label: 'WebP' }]}
+                        onChange={value => setSettings(s => ({ ...s, compressionFormat: value as 'webp' | 'avif' }))}
+                        ariaLabel="压缩格式"
+                        className="mb-3"
+                      />
                       <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                         目标大小: {settings.maxSizeMB > 0 ? `${settings.maxSizeMB.toFixed(1)} MB` : '不限'}
                       </label>

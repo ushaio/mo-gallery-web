@@ -40,6 +40,9 @@ func main() {
 	if err := db.ConnectLocalAI(config.ConfigDir()); err != nil {
 		log.Fatalf("初始化本地 AI 会话数据库失败: %v", err)
 	}
+	if err := db.ConnectLocalDrafts(config.ConfigDir()); err != nil {
+		log.Fatalf("初始化本地草稿数据库失败: %v", err)
+	}
 	if err := db.ConnectLocalZine(config.ConfigDir()); err != nil {
 		log.Fatalf("初始化本地 Zine 数据库失败: %v", err)
 	}

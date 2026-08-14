@@ -19,7 +19,7 @@ import { PhotoLibraryDialog } from '@/components/zine/PhotoLibraryDialog'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
-import { normalizeCompressionMode } from '@/lib/image-compress'
+import { normalizeCompressionFormat, normalizeCompressionMode } from '@/lib/image-compress'
 import { cn } from '@/lib/utils'
 import { useAdmin } from './layout'
 import { useImmersiveMode } from './shared/useImmersiveMode'
@@ -52,6 +52,7 @@ import type { Photo } from '@/types'
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
   compressionMode: 'compress',
+  compressionFormat: 'avif',
   showFlag: true,
   storageProvider: 'local',
   categories: [],
@@ -62,6 +63,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
 const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
   compressionMode: 'compress',
+  compressionFormat: 'avif',
   showFlag: true,
   storageProvider: 'local',
   categories: [],
@@ -133,7 +135,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleDraftRestore,
     handleDraftDiscard,
     handleDraftCancel,
-    clearDraft,
+    markDraftSynced,
     saveDraft,
     resetDraftState,
   } = useStoryDraftState({
@@ -200,7 +202,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         notify(t('story.updated'), 'success')
       }
 
-      await clearDraft(currentStory.id)
+      await markDraftSynced(currentStory.id)
       pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
       setPendingImages([])
       setPendingCoverId(null)
@@ -223,7 +225,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = false
       setSaving(false)
     }
-  }, [clearDraft, currentStory, initialStory, listPaneCollapsed, loadStories, location.search, notify, onToggleListPane, pendingImages, resetDraftState, navigate, stories, t])
+  }, [markDraftSynced, currentStory, initialStory, listPaneCollapsed, loadStories, location.search, notify, onToggleListPane, pendingImages, resetDraftState, navigate, stories, t])
 
   const {
     editorRef,
@@ -519,6 +521,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       try {
         const parsed = JSON.parse(raw) as UploadSettings
         if (parsed.compressionMode) parsed.compressionMode = normalizeCompressionMode(parsed.compressionMode)
+        parsed.compressionFormat = normalizeCompressionFormat(parsed.compressionFormat)
         restorePasteUploadSettings({ ...DEFAULT_PASTE_UPLOAD_SETTINGS, ...parsed })
       } catch (error) {
         console.error('Failed to restore paste upload settings:', error)
@@ -531,6 +534,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     try {
       const parsed = JSON.parse(uploadRaw) as UploadSettings
       if (parsed.compressionMode) parsed.compressionMode = normalizeCompressionMode(parsed.compressionMode)
+      parsed.compressionFormat = normalizeCompressionFormat(parsed.compressionFormat)
       restoreUploadSettings({ ...DEFAULT_UPLOAD_SETTINGS, ...parsed })
     } catch (error) {
       console.error('Failed to restore upload settings:', error)

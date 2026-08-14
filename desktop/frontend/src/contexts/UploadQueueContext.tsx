@@ -44,6 +44,7 @@ interface UploadSettings {
   storageSourceId: string
   storagePath: string
   compressEnabled: boolean
+  compressionFormat?: 'webp' | 'avif'
   maxSizeMB: number
   showFlag: boolean
   stripGPS: boolean
@@ -150,6 +151,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
           storagePath: settings.storagePath || '',
           storagePathFull: Boolean(settings.storagePathFull),
           compressEnabled: settings.compressEnabled,
+          compressionFormat: settings.compressionFormat || 'avif',
           maxSizeMB: settings.maxSizeMB,
           showFlag: settings.showFlag,
           stripGPS: settings.stripGPS,

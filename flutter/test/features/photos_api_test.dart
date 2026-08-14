@@ -78,6 +78,49 @@ void main() {
     }
   });
 
+  test('uploadPhoto sends the selected server compression format', () async {
+    final file = File(
+      '${Directory.systemTemp.path}/mo_gallery_upload_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await file.writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
+
+    final dio = Dio(BaseOptions(baseUrl: 'https://example.com/api'));
+    FormData? captured;
+    dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+      captured = options.data as FormData;
+      handler.next(options);
+    }));
+    final adapter = DioAdapter(dio: dio);
+    adapter.onPost(
+      '/admin/photos',
+      (server) => server.reply(200, {
+        'success': true,
+        'data': {'id': 'p1', 'title': 'photo'},
+      }),
+      data: Matchers.any,
+    );
+
+    final api = PhotosApi(ApiClient(baseUrl: 'https://example.com', dio: dio));
+    try {
+      await api.uploadPhoto(
+        filePath: file.path,
+        title: 'photo',
+        fileHash: 'hash',
+        compressEnabled: true,
+        compressionFormat: 'webp',
+        maxSizeMb: 3.5,
+      );
+      final fields = Map<String, String>.fromEntries(captured!.fields);
+      expect(fields['compression_mode'], 'compress');
+      expect(fields['compression_format'], 'webp');
+      expect(fields['max_size_mb'], '4');
+    } finally {
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+  });
+
   test('uploadPhoto maps 409 duplicate', () async {
     final file = File(
       '${Directory.systemTemp.path}/mo_gallery_upload_${DateTime.now().microsecondsSinceEpoch}.jpg',

@@ -176,7 +176,9 @@ class UploadWorker {
       }
 
       final settings = task.settings;
-      if (settings.compressEnabled) {
+      final compressLocally = settings.compressEnabled &&
+          settings.compressionFormat == UploadCompressionFormat.webp;
+      if (compressLocally) {
         await _queue.updateTask(
           task.copyWith(status: UploadTaskStatus.compressing, progress: 0),
         );
@@ -187,14 +189,16 @@ class UploadWorker {
       );
 
       var uploadPath = task.localPath;
-      if (settings.compressEnabled) {
-        final compressedPath = '${task.localPath}.compressed.jpg';
+      var compressionCompletedLocally = false;
+      if (compressLocally) {
+        final compressedPath = '${task.localPath}.compressed.webp';
         try {
           uploadPath = await compressImageForUpload(
             sourcePath: task.localPath,
             outputPath: compressedPath,
             maxSizeMb: settings.maxSizeMb,
           );
+          compressionCompletedLocally = uploadPath != task.localPath;
         } catch (_) {
           // Match web fallback behavior: compression failure must not lose the
           // upload. The original file remains the upload source.
@@ -237,9 +241,10 @@ class UploadWorker {
           storagePathFull: settings.storagePathFull,
           showFlag: settings.showFlag,
           exifJson: exifJson,
-          // Compression is completed on the Flutter device. Do not ask Hono to
-          // perform a second compression pass.
-          compressEnabled: false,
+          compressEnabled:
+              settings.compressEnabled && !compressionCompletedLocally,
+          compressionFormat: settings.compressionFormat,
+          maxSizeMb: settings.maxSizeMb,
           stripGps: settings.stripGps,
           onSendProgress: (sent, total) async {
             if (total <= 0) return;

@@ -201,6 +201,7 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 	db.Close()
 	db.CloseLocalAI()
+	db.CloseLocalDrafts()
 	db.CloseLocalZine()
 }
 

@@ -70,6 +70,7 @@ Web Next.js / Desktop Wails / Mobile Flutter
 Desktop 另有：Go services → Wails bindings → 本地前端
               Local Library Manager → SQLite 索引 + 用户本地原图/缓存
               Editor AI → `editor-ai.db` SQLite（Zine/独立 AI 助手共用会话与消息表）
+              Article/Story Drafts → `drafts.db` SQLite（结构化正文列 + 编辑期元数据/待上传图片；首次运行从 IndexedDB 迁移）
               Zine → `zine.db` SQLite（项目 JSON + 本地导入图片 BLOB；首次运行从 IndexedDB 迁移并清理旧库）
 Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 ```
@@ -78,6 +79,7 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 
 - Desktop 本地图库不是 PostgreSQL 云端图库的镜像；本地原图归用户本地图库目录，SQLite 保存索引、组织和状态。
 - Desktop Zine 草稿及其本地导入图片由配置目录中的 `zine.db` 持久化；旧 IndexedDB 数据只补迁缺失记录，不覆盖 SQLite 中的新版本，迁移校验成功后自动删除旧库。
+- Desktop 文章与叙事编辑草稿由配置目录中的 `drafts.db` 持久化；`title`、`content`、`contentJson` 等正文属性使用独立列，`cloudSynced` 标记草稿是否已与云端保存版本同步，待上传图片与封面/照片选择等编辑期状态存入元数据。旧 IndexedDB 草稿逐条校验迁移成功后清理，浏览器开发模式仍使用 IndexedDB。
 - Desktop 云端能力通常经过 Go service / proxy；本地图库能力由 `desktop/local_library/` 直接处理。
 - Mobile 业务数据通过 HTTP API，上传任务和会话状态保存在设备本地。
 - Web API 统一位于 `/api/*`；Hono 处理领域路由和认证，响应通常使用 `{ success, data, meta }` envelope。

@@ -30,6 +30,7 @@ const settings = {
   storagePath: 'photos/2026',
   storagePathFull: true,
   compressionMode: 'none' as const,
+  compressionFormat: 'webp' as const,
   maxSizeMB: 8,
   showFlag: false,
   stripGps: true,
@@ -46,6 +47,7 @@ assert(restored.storageSourceId === settings.storageSourceId, 'expected storage 
 assert(restored.storagePath === settings.storagePath, 'expected storage path to survive restoration')
 assert(restored.storagePathFull === settings.storagePathFull, 'expected storage path mode to survive restoration')
 assert(restored.compressionMode === settings.compressionMode, 'expected compression mode to survive restoration')
+assert(restored.compressionFormat === settings.compressionFormat, 'expected compression format to survive restoration')
 assert(restored.maxSizeMB === settings.maxSizeMB, 'expected maximum size to survive restoration')
 assert(restored.showFlag === settings.showFlag, 'expected visibility to survive restoration')
 assert(restored.stripGps === settings.stripGps, 'expected privacy settings to survive restoration')
@@ -60,6 +62,7 @@ assert(
 
 const normalized = normalizeLocalLibraryUploadSettings({
   compressionMode: 'quality',
+  compressionFormat: 'jpeg',
   showFlag: 'false',
   stripGps: true,
   maxSizeMB: -1,
@@ -67,6 +70,7 @@ const normalized = normalizeLocalLibraryUploadSettings({
   albumIds: 'album-1',
 })
 assert(normalized.compressionMode === 'compress', 'expected legacy compression modes to normalize')
+assert(normalized.compressionFormat === 'avif', 'expected invalid compression formats to fall back to AVIF')
 assert(normalized.showFlag === true, 'expected invalid booleans to fall back to defaults')
 assert(normalized.stripGps === true, 'expected valid booleans to be preserved')
 assert(normalized.maxSizeMB === undefined, 'expected invalid maximum size to be discarded')

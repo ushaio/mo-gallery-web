@@ -3628,6 +3628,7 @@ export namespace services {
 	    storagePathFull: boolean;
 	    showFlag: boolean;
 	    compressEnabled: boolean;
+	    compressionFormat: string;
 	    maxSizeMB: number;
 	    stripGPS: boolean;
 	    filmRollId: string;
@@ -3647,6 +3648,7 @@ export namespace services {
 	        this.storagePathFull = source["storagePathFull"];
 	        this.showFlag = source["showFlag"];
 	        this.compressEnabled = source["compressEnabled"];
+	        this.compressionFormat = source["compressionFormat"];
 	        this.maxSizeMB = source["maxSizeMB"];
 	        this.stripGPS = source["stripGPS"];
 	        this.filmRollId = source["filmRollId"];

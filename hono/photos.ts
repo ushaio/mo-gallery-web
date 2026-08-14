@@ -11,6 +11,7 @@ import {
   generateThumbnailBuffer,
   getMetadataAndThumbnail,
   withSharpTimeout,
+  type CompressionOutputFormat,
 } from '~/server/lib/image-processing'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
 import { resolvePhotoThumbnailUrl, resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
@@ -20,7 +21,6 @@ import path from 'path'
 
 const photos = new Hono<{ Variables: AuthVariables }>()
 const THUMBNAIL_EXTENSION = '.avif'
-const ORIGINAL_AVIF_EXTENSION = '.avif'
 const DEFAULT_AVIF_QUALITY = 82
 const AVIF_CONTENT_TYPE = 'image/avif'
 const DISPLAY_IMAGE_WIDTHS = [1280, 1920, 2560] as const
@@ -781,6 +781,10 @@ photos.post('/admin/photos', async (c) => {
     const filmRollId = formData.get('film_roll_id') as string | null
     const showFlag = formData.get('show_flag') !== 'false'
     const compressionMode = formData.get('compression_mode') as string | null
+    const compressionFormatInput = formData.get('compression_format') as string | null
+    const compressionFormat: CompressionOutputFormat = compressionFormatInput === 'webp' ? 'webp' : 'avif'
+    const compressionContentType = compressionFormat === 'webp' ? 'image/webp' : 'image/avif'
+    const compressionExtension = compressionFormat === 'webp' ? '.webp' : '.avif'
     const maxSizeMBInput = formData.get('max_size_mb')
     const maxSizeMB = typeof maxSizeMBInput === 'string' ? Number(maxSizeMBInput) : undefined
     const shouldCompressOriginal = compressionMode === 'compress'
@@ -883,15 +887,17 @@ photos.post('/admin/photos', async (c) => {
       console.warn('[upload] Dimension limit enforcement failed:', error)
     }
 
-    if (shouldCompressOriginal && file.type !== 'image/avif') {
+    if (shouldCompressOriginal && file.type !== compressionContentType) {
       try {
         buffer = await withSharpTimeout(
-          sharp(buffer).rotate().avif({ quality: DEFAULT_AVIF_QUALITY }).toBuffer(),
+          compressionFormat === 'webp'
+            ? sharp(buffer).rotate().webp({ quality: DEFAULT_AVIF_QUALITY }).toBuffer()
+            : sharp(buffer).rotate().avif({ quality: DEFAULT_AVIF_QUALITY }).toBuffer(),
         )
-        originalContentType = 'image/avif'
-        originalFilename = replaceFileExtension(file.name, ORIGINAL_AVIF_EXTENSION)
+        originalContentType = compressionContentType
+        originalFilename = replaceFileExtension(file.name, compressionExtension)
       } catch (error) {
-        console.warn('[upload] Server AVIF compression failed, keeping uploaded file:', error)
+        console.warn(`[upload] Server ${compressionFormat.toUpperCase()} compression failed, keeping uploaded file:`, error)
       }
     }
 
@@ -899,11 +905,9 @@ photos.post('/admin/photos', async (c) => {
     // uploaded uncompressed), iteratively re-encode toward the target.
     if (targetMaxSizeMB && buffer.length > targetMaxSizeMB * 1024 * 1024) {
       try {
-        buffer = await withSharpTimeout(compressToTargetSize(buffer, targetMaxSizeMB))
-        if (originalContentType !== 'image/avif') {
-          originalContentType = 'image/avif'
-          originalFilename = replaceFileExtension(file.name, ORIGINAL_AVIF_EXTENSION)
-        }
+        buffer = await withSharpTimeout(compressToTargetSize(buffer, targetMaxSizeMB, { format: compressionFormat }))
+        originalContentType = compressionContentType
+        originalFilename = replaceFileExtension(file.name, compressionExtension)
       } catch (error) {
         console.warn('[upload] Target size compression failed:', error)
       }

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -55,18 +56,19 @@ type DuplicateCheckResult struct {
 
 // UploadSettings 上传参数
 type UploadSettings struct {
-	Title           string   `json:"title"`
-	Categories      []string `json:"categories"`
-	StorageSourceID string   `json:"storageSourceId"`
-	StorageProvider string   `json:"storageProvider"`
-	StoragePath     string   `json:"storagePath"`
-	StoragePathFull bool     `json:"storagePathFull"`
-	ShowFlag        bool     `json:"showFlag"`
-	CompressEnabled bool     `json:"compressEnabled"`
-	MaxSizeMB       float64  `json:"maxSizeMB"`
-	StripGPS        bool     `json:"stripGPS"`
-	FilmRollID      string   `json:"filmRollId"`
-	OriginFlag      string   `json:"originFlag"`
+	Title             string   `json:"title"`
+	Categories        []string `json:"categories"`
+	StorageSourceID   string   `json:"storageSourceId"`
+	StorageProvider   string   `json:"storageProvider"`
+	StoragePath       string   `json:"storagePath"`
+	StoragePathFull   bool     `json:"storagePathFull"`
+	ShowFlag          bool     `json:"showFlag"`
+	CompressEnabled   bool     `json:"compressEnabled"`
+	CompressionFormat string   `json:"compressionFormat"`
+	MaxSizeMB         float64  `json:"maxSizeMB"`
+	StripGPS          bool     `json:"stripGPS"`
+	FilmRollID        string   `json:"filmRollId"`
+	OriginFlag        string   `json:"originFlag"`
 }
 
 // UploadResult 单张上传结果
@@ -342,7 +344,11 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	}
 
 	uploadPath := filePath
-	if settings.CompressEnabled {
+	compressionFormat := strings.ToLower(settings.CompressionFormat)
+	if compressionFormat != "webp" {
+		compressionFormat = "avif"
+	}
+	if settings.CompressEnabled && compressionFormat == "avif" {
 		targetBytes := int64(desktopCompressedUploadMaxBytes)
 		if settings.MaxSizeMB > 0 {
 			requestedBytes := int64(settings.MaxSizeMB * 1024 * 1024)
@@ -409,6 +415,13 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	}
 	if settings.StripGPS {
 		fields["strip_gps"] = "true"
+	}
+	if settings.CompressEnabled && compressionFormat == "webp" {
+		fields["compression_mode"] = "compress"
+		fields["compression_format"] = "webp"
+		if settings.MaxSizeMB > 0 {
+			fields["max_size_mb"] = strconv.FormatFloat(settings.MaxSizeMB, 'f', -1, 64)
+		}
 	}
 
 	// EXIF 数据序列化为 JSON 字符串。字段名与服务端 parseExifJson 对齐

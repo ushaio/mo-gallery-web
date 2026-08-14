@@ -958,7 +958,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       return state.selection.empty
         && $from.depth === 1
         && $from.parent.type.name === 'paragraph'
-        && $from.parent.content.size === 0
+        && $from.parent.textContent.startsWith('/')
     }, [isAiTaskLocked])
 
     if (!editor) {

@@ -60,6 +60,7 @@ export async function uploadStoryPhotoFile({
     storage_path_full: settings.storagePathFull,
     show_flag: settings.showFlag,
     compression_mode: settings.compressionMode,
+    compression_format: settings.compressionFormat,
     max_size_mb: settings.maxSizeMB,
     exif_json: exifJsonString,
     strip_gps: settings.stripGps ? 'true' : undefined,

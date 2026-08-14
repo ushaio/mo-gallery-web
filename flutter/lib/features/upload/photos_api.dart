@@ -214,6 +214,7 @@ class PhotosApi {
     bool storagePathFull = false,
     bool showFlag = true,
     bool compressEnabled = false,
+    String compressionFormat = 'avif',
     double? maxSizeMb,
     bool stripGps = false,
     void Function(int sent, int total)? onSendProgress,
@@ -260,6 +261,10 @@ class PhotosApi {
     }
     if (compressEnabled) {
       form.fields.add(const MapEntry('compression_mode', 'compress'));
+      form.fields.add(MapEntry(
+        'compression_format',
+        compressionFormat == 'webp' ? 'webp' : 'avif',
+      ));
       if (maxSizeMb != null && maxSizeMb > 0) {
         form.fields.add(MapEntry('max_size_mb', maxSizeMb.round().toString()));
       }

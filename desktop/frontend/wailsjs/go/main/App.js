@@ -178,6 +178,10 @@ export function DeleteLocalAssetCloudAndLocal(arg1, arg2) {
   return window['go']['main']['App']['DeleteLocalAssetCloudAndLocal'](arg1, arg2);
 }
 
+export function DeleteLocalDraft(arg1) {
+  return window['go']['main']['App']['DeleteLocalDraft'](arg1);
+}
+
 export function DeleteLocalLibraryCollection(arg1) {
   return window['go']['main']['App']['DeleteLocalLibraryCollection'](arg1);
 }
@@ -342,6 +346,10 @@ export function GetLocalAssetOriginalPaths(arg1) {
   return window['go']['main']['App']['GetLocalAssetOriginalPaths'](arg1);
 }
 
+export function GetLocalDraft(arg1) {
+  return window['go']['main']['App']['GetLocalDraft'](arg1);
+}
+
 export function GetLocalLibraryBackups() {
   return window['go']['main']['App']['GetLocalLibraryBackups']();
 }
@@ -468,6 +476,10 @@ export function IsLinuxDoEnabled() {
 
 export function ListLocalAssets(arg1) {
   return window['go']['main']['App']['ListLocalAssets'](arg1);
+}
+
+export function ListLocalDrafts() {
+  return window['go']['main']['App']['ListLocalDrafts']();
 }
 
 export function ListLocalFolders() {
@@ -656,6 +668,10 @@ export function SaveAgentMCPServer(arg1) {
 
 export function SaveAiImageToAlbum(arg1) {
   return window['go']['main']['App']['SaveAiImageToAlbum'](arg1);
+}
+
+export function SaveLocalDraft(arg1, arg2) {
+  return window['go']['main']['App']['SaveLocalDraft'](arg1, arg2);
 }
 
 export function SaveMessageImageToAlbum(arg1, arg2) {

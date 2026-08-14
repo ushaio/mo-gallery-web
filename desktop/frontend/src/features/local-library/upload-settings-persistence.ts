@@ -1,10 +1,11 @@
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
-import { normalizeCompressionMode } from '@/lib/image-compress'
+import { normalizeCompressionMode, normalizeCompressionFormat } from '@/lib/image-compress'
 
 export const LOCAL_LIBRARY_UPLOAD_SETTINGS_KEY = 'local_library_upload_settings'
 
 export const DEFAULT_LOCAL_LIBRARY_UPLOAD_SETTINGS: UploadSettings = {
   compressionMode: 'compress',
+  compressionFormat: 'avif',
   showFlag: true,
   stripGps: false,
   categories: [],
@@ -48,6 +49,7 @@ export function normalizeLocalLibraryUploadSettings(value: unknown): UploadSetti
     storagePath: optionalString(stored.storagePath),
     storagePathFull: optionalBoolean(stored.storagePathFull),
     compressionMode,
+    compressionFormat: normalizeCompressionFormat(stored.compressionFormat),
     maxSizeMB: optionalPositiveNumber(stored.maxSizeMB),
     showFlag: optionalBoolean(stored.showFlag) ?? DEFAULT_LOCAL_LIBRARY_UPLOAD_SETTINGS.showFlag,
     stripGps: optionalBoolean(stored.stripGps) ?? DEFAULT_LOCAL_LIBRARY_UPLOAD_SETTINGS.stripGps,

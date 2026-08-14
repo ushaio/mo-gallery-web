@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { STORY_EDITOR_DRAFT_PREFIX, type StoryEditorDraftData } from '@/lib/client-db'
-import { clearStoryEditorDraftFromDB, getStoryEditorDraftFromDB, saveStoryEditorDraftToDB } from '@/lib/client-db'
+import { getStoryEditorDraftFromDB, markStoryEditorDraftSynced, saveStoryEditorDraftToDB } from '@/lib/client-db'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { AUTO_SAVE_DELAY } from './constants'
 import type { DraftRestoreDialogState, StorySnapshot } from './types'
@@ -39,7 +39,7 @@ interface UseStoryDraftStateResult {
   handleDraftRestore: () => void
   handleDraftDiscard: () => void
   handleDraftCancel: () => void
-  clearDraft: (storyId?: string) => Promise<void>
+  markDraftSynced: (storyId?: string) => Promise<void>
   saveDraft: () => Promise<void>
   resetDraftState: () => void
 }
@@ -146,12 +146,11 @@ export function useStoryDraftState({
     }
   }, [currentStory, pendingCoverId, pendingImages, stories])
 
-  const clearDraft = useCallback(async (storyId?: string) => {
+  const markDraftSynced = useCallback(async (storyId?: string) => {
     try {
-      await clearStoryEditorDraftFromDB(storyId)
-      setLastSavedAt(null)
+      await markStoryEditorDraftSynced(storyId)
     } catch (error) {
-      console.error('Failed to clear draft:', error)
+      console.error('Failed to mark story draft as cloud-synced:', error)
     }
   }, [])
 
@@ -203,7 +202,7 @@ export function useStoryDraftState({
 
     try {
       const draft = await getStoryEditorDraftFromDB(story.id)
-      if (draft && draft.savedAt && draft.savedAt > new Date(story.updatedAt).getTime()) {
+      if (draft && !draft.cloudSynced && draft.savedAt && draft.savedAt > new Date(story.updatedAt).getTime()) {
         setCurrentStory({ ...story })
         setDraftRestoreDialog({ isOpen: true, draft, story })
         return
@@ -317,7 +316,7 @@ export function useStoryDraftState({
     handleDraftRestore,
     handleDraftDiscard,
     handleDraftCancel,
-    clearDraft,
+    markDraftSynced,
     saveDraft,
     resetDraftState,
   }

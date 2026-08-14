@@ -183,6 +183,10 @@
   list-style: decimal;
 }
 
+.tiptap-editor .tiptap li[data-list-marker-hidden='true'] {
+  list-style-type: none;
+}
+
 .tiptap-editor .tiptap li p {
   margin-top: 0.25em;
   margin-bottom: 0.25em;

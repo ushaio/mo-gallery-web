@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 
-/// Compresses an upload to a JPEG on the device.
+/// Compresses an upload to WebP on the device.
 ///
 /// The source remains the durable upload input. The returned file is a sibling
 /// in the task sandbox and can be safely replaced on retry.
@@ -28,13 +28,13 @@ Future<String> compressImageForUpload({
   for (var index = 0; index < qualities.length; index++) {
     final path = index == 0
         ? outputPath
-        : outputPath.replaceFirst(RegExp(r'\.jpg$'), '-$index.jpg');
+        : outputPath.replaceFirst(RegExp(r'\.webp$'), '-$index.webp');
     final bytes = await FlutterImageCompress.compressWithFile(
       sourcePath,
       minWidth: widths[index],
       minHeight: widths[index],
       quality: qualities[index],
-      format: CompressFormat.jpeg,
+      format: CompressFormat.webp,
       keepExif: false,
     );
     if (bytes == null || bytes.isEmpty) continue;

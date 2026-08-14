@@ -1,7 +1,9 @@
 export type CompressionMode = 'none' | 'compress'
+export type CompressionFormat = 'webp' | 'avif'
 
 export interface CompressionOptions {
   mode?: CompressionMode
+  format?: CompressionFormat
   maxSizeMB?: number
   maxWidthOrHeight?: number
   fileType?: string
@@ -104,11 +106,18 @@ export function stripGpsFromExifJson(exif: ExifJsonData): ExifJsonData {
 const COMPRESS_DEFAULTS = {
   maxSizeMB: 0,
   maxWidthOrHeight: 4096,
-  fileType: 'image/avif',
   // Canvas quality uses 0-1; WASM AVIF quality uses 0-100. We keep the option
   // in the 0-1 range internally and convert when calling the WASM encoder.
   // 0.63 maps to AVIF quality 63 — visually lossless with good compression.
   quality: 0.63,
+}
+
+export function normalizeCompressionFormat(value: unknown): CompressionFormat {
+  return value === 'webp' ? 'webp' : 'avif'
+}
+
+export function compressionFormatToMime(format: CompressionFormat): 'image/webp' | 'image/avif' {
+  return format === 'webp' ? 'image/webp' : 'image/avif'
 }
 
 // Backward compat: legacy values 'quality'/'size' map to 'compress'
@@ -303,7 +312,8 @@ export async function compressImage(
   const requestedMax = options.maxWidthOrHeight
   const keepResolution = !requestedMax || !Number.isFinite(requestedMax)
   const maxWidthOrHeight = keepResolution ? 4096 : requestedMax
-  const fileType = options.fileType ?? COMPRESS_DEFAULTS.fileType
+  const format = normalizeCompressionFormat(options.format)
+  const fileType = options.fileType ?? compressionFormatToMime(format)
   const quality = normalizeQuality(options.quality)
 
   // Non-AVIF output falls back to Canvas toBlob (e.g. WebP/JPEG export).

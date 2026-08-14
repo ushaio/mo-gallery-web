@@ -204,7 +204,7 @@ class _UploadPreviewPageState extends ConsumerState<UploadPreviewPage> {
       if (_settings.titlePrefix.isNotEmpty)
         '${AppStrings.t('upload.titlePrefix', lang: lang)}: ${_settings.titlePrefix}',
       if (_settings.compressEnabled)
-        AppStrings.t('upload.compress', lang: lang),
+        '${AppStrings.t('upload.compress', lang: lang)} (${_settings.compressionFormat.toUpperCase()})',
       if (_settings.compressEnabled &&
           _settings.maxSizeMb != null &&
           _settings.maxSizeMb! > 0)

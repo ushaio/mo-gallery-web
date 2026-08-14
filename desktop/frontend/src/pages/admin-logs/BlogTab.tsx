@@ -1,7 +1,7 @@
 /**
  * 博客管理（master-detail）：左栏列表 + 右栏编辑器。
- * 选中行即编辑；切换/退出前先落盘草稿（IndexedDB 自动保存兜底）；
- * 保存后留在编辑态并清除草稿。草稿恢复/删除对话框与自动保存逻辑沿用原实现。
+ * 选中行即编辑；切换/退出前先落盘草稿（桌面 SQLite/浏览器 IndexedDB 兜底）；
+ * 保存后留在编辑态并标记草稿已与云端同步。草稿恢复/删除对话框与自动保存逻辑沿用原实现。
  */
 'use client'
 
@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   saveBlogDraftToDB,
   getBlogDraftFromDB,
-  clearBlogDraftFromDB,
+  markBlogDraftSynced,
   type BlogDraftData
 } from '@/lib/client-db'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
@@ -148,7 +148,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
     return null
   }, [])
 
-  // 保存草稿到 IndexedDB
+  // 保存草稿到本地存储
   const saveDraft = useCallback(async () => {
     if (!currentBlog) return
     if (!currentBlog.title && !currentBlog.content) return
@@ -170,16 +170,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
       console.error('Failed to save blog draft', e)
     }
   }, [currentBlog])
-
-  // 从 IndexedDB 清除草稿
-  const clearDraft = useCallback(async (blogId?: string) => {
-    try {
-      await clearBlogDraftFromDB(blogId)
-      setLastSavedAt(null)
-    } catch (e) {
-      console.error('Failed to clear blog draft', e)
-    }
-  }, [])
 
   // 检查内容是否变更（脏检查）
   useEffect(() => {
@@ -311,7 +301,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
 
     // 检查是否存在新博客的草稿
     const draft = await loadDraftForBlog(undefined)
-    if (draft && (draft.title || draft.content)) {
+    if (draft && !draft.cloudSynced && (draft.title || draft.content)) {
       // 弹出对话框询问用户是否恢复草稿
       setCurrentBlog({
         title: '',
@@ -349,7 +339,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
 
     // 检查是否存在该博客的草稿
     const draft = await loadDraftForBlog(blog.id)
-    if (draft && draft.savedAt > new Date(blog.updatedAt).getTime()) {
+    if (draft && !draft.cloudSynced && draft.savedAt > new Date(blog.updatedAt).getTime()) {
       // 草稿比已保存版本更新，弹出对话框
       setCurrentBlog({
         id: blog.id,
@@ -427,7 +417,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
           setCurrentBlog((blog) => (blog ? { ...blog, id: blogId } : blog))
         },
       })
-      await clearDraft(savedId || currentBlog.id)
+      await markBlogDraftSynced(savedId || currentBlog.id)
 
       await fetchBlogs()
       // 保存后保持编辑态：以当前内容重置初始引用，标记为已清洁

@@ -96,6 +96,8 @@ export function DeleteLocalAssetCloud(arg1:string,arg2:boolean):Promise<void>;
 
 export function DeleteLocalAssetCloudAndLocal(arg1:string,arg2:boolean):Promise<void>;
 
+export function DeleteLocalDraft(arg1:string):Promise<void>;
+
 export function DeleteLocalLibraryCollection(arg1:string):Promise<void>;
 
 export function DeleteLocalLibraryCollectionGroup(arg1:string,arg2:boolean):Promise<void>;
@@ -178,6 +180,8 @@ export function GetLinuxDoBinding():Promise<services.LinuxDoBindingDTO>;
 
 export function GetLocalAssetOriginalPaths(arg1:Array<string>):Promise<Array<string>>;
 
+export function GetLocalDraft(arg1:string):Promise<string>;
+
 export function GetLocalLibraryBackups():Promise<local_library.BackupOverview>;
 
 export function GetLocalLibraryCacheStats():Promise<local_library.LocalLibraryCacheStats>;
@@ -241,6 +245,8 @@ export function InitializeLocalLibrary(arg1:string,arg2:string):Promise<local_li
 export function IsLinuxDoEnabled():Promise<boolean>;
 
 export function ListLocalAssets(arg1:local_library.AssetQuery):Promise<local_library.AssetPage>;
+
+export function ListLocalDrafts():Promise<Array<string>>;
 
 export function ListLocalFolders():Promise<Array<local_library.FolderDTO>>;
 
@@ -335,6 +341,8 @@ export function RevokeAgentAuthorization(arg1:string):Promise<void>;
 export function SaveAgentMCPServer(arg1:agent_extensions.MCPServerInput):Promise<agent_extensions.MCPServer>;
 
 export function SaveAiImageToAlbum(arg1:string):Promise<services.PhotoDTO>;
+
+export function SaveLocalDraft(arg1:string,arg2:string):Promise<void>;
 
 export function SaveMessageImageToAlbum(arg1:string,arg2:string):Promise<services.PhotoDTO>;
 

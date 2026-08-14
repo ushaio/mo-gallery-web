@@ -76,4 +76,29 @@ void main() {
       expect(settings.storagePathFull, isFalse);
     });
   });
+
+  group('UploadBatchSettings compression format', () {
+    test('format survives serialization', () {
+      const original = UploadBatchSettings(
+        compressionFormat: UploadCompressionFormat.webp,
+      );
+
+      final decoded = UploadBatchSettings.decode(original.encode());
+
+      expect(decoded.compressionFormat, UploadCompressionFormat.webp);
+    });
+
+    test('missing or unsupported format defaults to AVIF', () {
+      expect(
+        UploadBatchSettings.fromJson({}).compressionFormat,
+        UploadCompressionFormat.avif,
+      );
+      expect(
+        UploadBatchSettings.fromJson({
+          'compressionFormat': 'jpeg',
+        }).compressionFormat,
+        UploadCompressionFormat.avif,
+      );
+    });
+  });
 }

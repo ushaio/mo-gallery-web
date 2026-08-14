@@ -11,6 +11,7 @@ const SERVER_AVIF_MIN_QUALITY = 40
 const SERVER_AVIF_QUALITY_STEP = 8
 const SERVER_AVIF_MAX_ROUNDS = 4
 const SERVER_AVIF_MIN_LONG_EDGE = 1280
+export type CompressionOutputFormat = 'avif' | 'webp'
 
 // Serverless safeguards
 const SERVER_MAX_IMAGE_DIMENSION = 8000 // Downscale images larger than this
@@ -55,7 +56,8 @@ export async function getMetadataAndThumbnail(
 }
 
 /**
- * Iteratively compress an AVIF buffer toward a target size.
+ * Iteratively compress an image buffer toward a target size while preserving
+ * the requested modern output format.
  *
  * Strategy: lower quality first (step 8, floor 40), then shrink the long edge
  * once quality bottoms out. Each round re-encodes from the original buffer to
@@ -65,13 +67,14 @@ export async function getMetadataAndThumbnail(
 export async function compressToTargetSize(
   buffer: Buffer,
   targetSizeMB: number,
-  options: { maxRounds?: number; minQuality?: number } = {},
+  options: { maxRounds?: number; minQuality?: number; format?: CompressionOutputFormat } = {},
 ): Promise<Buffer> {
   const targetBytes = targetSizeMB * 1024 * 1024
   if (buffer.length <= targetBytes) return buffer
 
   const maxRounds = Math.min(options.maxRounds ?? SERVER_AVIF_MAX_ROUNDS, SERVER_AVIF_MAX_ROUNDS)
   const minQuality = options.minQuality ?? SERVER_AVIF_MIN_QUALITY
+  const format = options.format ?? 'avif'
 
   let current = buffer
   let quality = SERVER_AVIF_DEFAULT_QUALITY
@@ -98,7 +101,7 @@ export async function compressToTargetSize(
     if (longEdge !== null) {
       pipeline = pipeline.resize(longEdge, longEdge, { fit: 'inside', withoutEnlargement: true })
     }
-    current = await pipeline.avif({ quality }).toBuffer()
+    current = await (format === 'webp' ? pipeline.webp({ quality }) : pipeline.avif({ quality })).toBuffer()
   }
 
   return current

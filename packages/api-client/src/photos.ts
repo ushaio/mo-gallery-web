@@ -167,6 +167,7 @@ export async function uploadPhoto(input: {
   film_roll_id?: string
   show_flag?: boolean
   compression_mode?: string
+  compression_format?: 'webp' | 'avif'
   max_size_mb?: number
   exif_json?: string
   strip_gps?: string
@@ -184,6 +185,7 @@ export async function uploadPhoto(input: {
   if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
   if (input.show_flag !== undefined) form.set('show_flag', input.show_flag ? 'true' : 'false')
   if (input.compression_mode) form.set('compression_mode', input.compression_mode)
+  if (input.compression_format) form.set('compression_format', input.compression_format)
   if (input.max_size_mb !== undefined) form.set('max_size_mb', String(input.max_size_mb))
   if (input.exif_json) form.set('exif_json', input.exif_json)
   if (input.strip_gps) form.set('strip_gps', input.strip_gps)
@@ -209,6 +211,7 @@ export function uploadPhotoWithProgress(input: {
   film_roll_id?: string
   show_flag?: boolean
   compression_mode?: string
+  compression_format?: 'webp' | 'avif'
   max_size_mb?: number
   exif_json?: string
   strip_gps?: string
@@ -231,6 +234,7 @@ export function uploadPhotoWithProgress(input: {
     if (input.film_roll_id) form.set('film_roll_id', input.film_roll_id)
     if (input.show_flag !== undefined) form.set('show_flag', input.show_flag ? 'true' : 'false')
     if (input.compression_mode) form.set('compression_mode', input.compression_mode)
+    if (input.compression_format) form.set('compression_format', input.compression_format)
     if (input.max_size_mb !== undefined) form.set('max_size_mb', String(input.max_size_mb))
     if (input.exif_json) form.set('exif_json', input.exif_json)
     if (input.strip_gps) form.set('strip_gps', input.strip_gps)

@@ -25,7 +25,7 @@ import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
-import { normalizeCompressionMode } from '@/lib/image-compress'
+import { normalizeCompressionFormat, normalizeCompressionMode } from '@/lib/image-compress'
 import { cn } from '@/lib/utils'
 import { useAdmin } from '../layout'
 import {
@@ -45,6 +45,7 @@ import { applySavedOrder, savePhotoOrder } from './stories/utils'
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
   compressionMode: 'compress',
+  compressionFormat: 'avif',
   showFlag: true,
   storageProvider: 'local',
   categories: [],
@@ -55,6 +56,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
 const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
   compressionMode: 'compress',
+  compressionFormat: 'avif',
   showFlag: true,
   storageProvider: 'local',
   categories: [],
@@ -525,6 +527,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       try {
         const parsed = JSON.parse(raw) as UploadSettings
         if (parsed.compressionMode) parsed.compressionMode = normalizeCompressionMode(parsed.compressionMode)
+        parsed.compressionFormat = normalizeCompressionFormat(parsed.compressionFormat)
         restorePasteUploadSettings({ ...DEFAULT_PASTE_UPLOAD_SETTINGS, ...parsed })
       } catch (error) {
         console.error('Failed to restore paste upload settings:', error)
@@ -537,6 +540,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     try {
       const parsed = JSON.parse(uploadRaw) as UploadSettings
       if (parsed.compressionMode) parsed.compressionMode = normalizeCompressionMode(parsed.compressionMode)
+      parsed.compressionFormat = normalizeCompressionFormat(parsed.compressionFormat)
       restoreUploadSettings({ ...DEFAULT_UPLOAD_SETTINGS, ...parsed })
     } catch (error) {
       console.error('Failed to restore upload settings:', error)

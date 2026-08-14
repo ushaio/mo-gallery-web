@@ -364,21 +364,45 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
                         if (_settings.compressEnabled)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                            child: AppTextField(
-                              controller: _maxSizeController,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                              label: AppStrings.t(
-                                'upload.maxSizeMb',
-                                lang: lang,
-                              ),
-                              hint: AppStrings.t(
-                                'upload.maxSizeMbHint',
-                                lang: lang,
-                              ),
-                              onChanged: (_) => setState(() {}),
+                            child: Column(
+                              children: [
+                                DropdownButtonFormField<String>(
+                                  value: _settings.compressionFormat,
+                                  decoration: InputDecoration(
+                                    labelText: AppStrings.t(
+                                      'upload.compressionFormat',
+                                      lang: lang,
+                                    ),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(value: 'avif', child: Text('AVIF')),
+                                    DropdownMenuItem(value: 'webp', child: Text('WebP')),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setState(() => _settings = _settings.copyWith(
+                                      compressionFormat: value,
+                                    ));
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                AppTextField(
+                                  controller: _maxSizeController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  label: AppStrings.t(
+                                    'upload.maxSizeMb',
+                                    lang: lang,
+                                  ),
+                                  hint: AppStrings.t(
+                                    'upload.maxSizeMbHint',
+                                    lang: lang,
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                ),
+                              ],
                             ),
                           ),
                         _PickerToggleRow(

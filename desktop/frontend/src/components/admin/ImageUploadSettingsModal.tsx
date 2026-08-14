@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Settings2, X } from 'lucide-react'
-import type { CompressionMode } from '@/lib/image-compress'
-import { normalizeCompressionMode } from '@/lib/image-compress'
+import type { CompressionMode, CompressionFormat } from '@/lib/image-compress'
+import { normalizeCompressionMode, normalizeCompressionFormat } from '@/lib/image-compress'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { PhotoUploadParams, type PhotoUploadSettings } from '@/components/admin/PhotoUploadParams'
 
@@ -18,6 +18,7 @@ export interface UploadSettings {
   storagePath?: string
   storagePathFull?: boolean
   compressionMode?: CompressionMode
+  compressionFormat?: CompressionFormat
   showFlag?: boolean
   stripGps?: boolean
   categories?: string[]
@@ -54,6 +55,7 @@ function getInitialAlbumIds(initialSettings?: UploadSettings) {
 
 function getInitialUploadSettings(initialSettings?: UploadSettings): PhotoUploadSettings {
   const compressionMode = normalizeCompressionMode(initialSettings?.compressionMode ?? 'compress')
+  const compressionFormat = normalizeCompressionFormat(initialSettings?.compressionFormat)
   return {
     title: initialSettings?.title ?? '',
     categories: getInitialCategories(initialSettings),
@@ -63,6 +65,7 @@ function getInitialUploadSettings(initialSettings?: UploadSettings): PhotoUpload
     storagePath: initialSettings?.storagePath,
     storagePathFull: initialSettings?.storagePathFull,
     compressionEnabled: compressionMode !== 'none',
+    compressionFormat,
     maxSizeMB: initialSettings?.maxSizeMB ?? 0,
     showFlag: initialSettings?.showFlag ?? true,
     privacyStripEnabled: Boolean(initialSettings?.stripGps),
@@ -173,6 +176,7 @@ function ImageUploadSettingsModalContent({
       title: uploadSettings.title,
       storyId: uploadSettings.storyId,
       compressionMode: uploadSettings.compressionEnabled ? 'compress' : 'none',
+      compressionFormat: uploadSettings.compressionFormat,
       showFlag: uploadSettings.showFlag,
       stripGps: uploadSettings.privacyStripEnabled,
       categories: uploadSettings.categories,

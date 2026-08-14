@@ -22,6 +22,7 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminMultiSelect, AdminSelect } from '@/components/admin/AdminFormControls'
 import { StorySelectorModal } from '@/components/admin/StorySelectorModal'
 import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
+import type { CompressionFormat } from '@/lib/image-compress'
 
 export interface PhotoUploadSettings {
   title: string
@@ -33,6 +34,7 @@ export interface PhotoUploadSettings {
   storagePath?: string
   storagePathFull?: boolean
   compressionEnabled: boolean
+  compressionFormat: CompressionFormat
   maxSizeMB: number
   showFlag: boolean
   privacyStripEnabled: boolean
@@ -164,6 +166,7 @@ export function PhotoUploadParams({
   const [isInitialized, setIsInitialized] = useState(false)
 
   const [compressionEnabled, setCompressionEnabled] = useState(initialSettings?.compressionEnabled ?? true)
+  const [compressionFormat, setCompressionFormat] = useState<CompressionFormat>(initialSettings?.compressionFormat ?? 'avif')
   const [maxSizeMB, setMaxSizeMB] = useState(initialSettings?.maxSizeMB ?? 0)
   const [sliderValue, setSliderValue] = useState(initialSettings?.maxSizeMB ?? 0)
   const [showFlag, setShowFlag] = useState(initialSettings?.showFlag ?? true)
@@ -274,6 +277,7 @@ export function PhotoUploadParams({
       storagePath: fullStoragePath,
       storagePathFull: useCustomPrefix,
       compressionEnabled,
+      compressionFormat,
       maxSizeMB,
       showFlag,
       privacyStripEnabled,
@@ -288,6 +292,7 @@ export function PhotoUploadParams({
     uploadPath,
     useCustomPrefix,
     compressionEnabled,
+    compressionFormat,
     maxSizeMB,
     showFlag,
     privacyStripEnabled,
@@ -502,6 +507,19 @@ export function PhotoUploadParams({
             )}
             {compressionEnabled && (
               <div className="space-y-2">
+                <div>
+                  <label className="block text-[10px] text-muted-foreground mb-1.5">
+                    {t('admin.compression_format_label') || 'Output format'}
+                  </label>
+                  <AdminSelect
+                    value={compressionFormat}
+                    onChange={(value) => setCompressionFormat(value as CompressionFormat)}
+                    options={[
+                      { value: 'avif', label: 'AVIF' },
+                      { value: 'webp', label: 'WebP' },
+                    ]}
+                  />
+                </div>
                 <div>
                   <div className="flex items-baseline justify-between mb-1.5">
                     <label className="text-[10px] text-muted-foreground">

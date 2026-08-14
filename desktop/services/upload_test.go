@@ -281,3 +281,55 @@ func TestUploadFileCompressesLocallyBeforeMultipartUpload(t *testing.T) {
 		t.Fatalf("uploaded AVIF header = %x", receivedHeader)
 	}
 }
+
+func TestUploadFileDelegatesWebPCompressionToServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm() error = %v", err)
+		}
+		if got := r.FormValue("compression_mode"); got != "compress" {
+			t.Errorf("compression_mode = %q", got)
+		}
+		if got := r.FormValue("compression_format"); got != "webp" {
+			t.Errorf("compression_format = %q", got)
+		}
+		if got := r.FormValue("max_size_mb"); got != "3.5" {
+			t.Errorf("max_size_mb = %q", got)
+		}
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("FormFile() error = %v", err)
+		}
+		defer file.Close()
+		if header.Filename != "desktop-source.jpg" {
+			t.Errorf("uploaded filename = %q", header.Filename)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"data":    map[string]any{"id": "webp-photo", "url": "/compressed.webp"},
+		})
+	}))
+	defer server.Close()
+
+	sourcePath := filepath.Join(t.TempDir(), "desktop-source.jpg")
+	if err := os.WriteFile(sourcePath, []byte{0xff, 0xd8, 0xff, 0xd9}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	proxy := NewProxyClient()
+	proxy.SetServer(server.URL)
+	proxy.SetToken("desktop-token")
+	service := NewUploadService(proxy)
+	result, err := service.UploadFile(sourcePath, UploadSettings{
+		CompressEnabled:   true,
+		CompressionFormat: "webp",
+		MaxSizeMB:         3.5,
+	}, "", nil)
+	if err != nil {
+		t.Fatalf("UploadFile() error = %v", err)
+	}
+	if result == nil || !result.Success || result.Photo == nil || result.Photo.ID != "webp-photo" {
+		t.Fatalf("UploadFile() result = %+v", result)
+	}
+}

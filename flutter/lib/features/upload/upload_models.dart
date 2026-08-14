@@ -5,6 +5,14 @@ abstract final class UploadPhotoType {
   static const film = 'film';
 }
 
+abstract final class UploadCompressionFormat {
+  static const webp = 'webp';
+  static const avif = 'avif';
+
+  static String normalize(Object? value) =>
+      value == webp ? webp : avif;
+}
+
 enum UploadTaskStatus {
   pending,
   checking,
@@ -33,6 +41,7 @@ class UploadBatchSettings {
     this.storagePath = '',
     this.storagePathFull = false,
     this.compressEnabled = true,
+    this.compressionFormat = UploadCompressionFormat.avif,
     this.maxSizeMb,
     this.showFlag = true,
     this.stripGps = false,
@@ -48,6 +57,7 @@ class UploadBatchSettings {
   final String storagePath;
   final bool storagePathFull;
   final bool compressEnabled;
+  final String compressionFormat;
   final double? maxSizeMb;
   final bool showFlag;
   final bool stripGps;
@@ -65,6 +75,7 @@ class UploadBatchSettings {
     String? storagePath,
     bool? storagePathFull,
     bool? compressEnabled,
+    String? compressionFormat,
     double? maxSizeMb,
     bool? showFlag,
     bool? stripGps,
@@ -85,6 +96,9 @@ class UploadBatchSettings {
       storagePath: storagePath ?? this.storagePath,
       storagePathFull: storagePathFull ?? this.storagePathFull,
       compressEnabled: compressEnabled ?? this.compressEnabled,
+      compressionFormat: UploadCompressionFormat.normalize(
+        compressionFormat ?? this.compressionFormat,
+      ),
       maxSizeMb: maxSizeMb ?? this.maxSizeMb,
       showFlag: showFlag ?? this.showFlag,
       stripGps: stripGps ?? this.stripGps,
@@ -102,6 +116,7 @@ class UploadBatchSettings {
         'storagePath': storagePath,
         'storagePathFull': storagePathFull,
         'compressEnabled': compressEnabled,
+        'compressionFormat': compressionFormat,
         'maxSizeMb': maxSizeMb,
         'showFlag': showFlag,
         'stripGps': stripGps,
@@ -127,6 +142,9 @@ class UploadBatchSettings {
       storagePath: (json['storagePath'] as String?) ?? '',
       storagePathFull: json['storagePathFull'] == true,
       compressEnabled: json['compressEnabled'] != false,
+      compressionFormat: UploadCompressionFormat.normalize(
+        json['compressionFormat'],
+      ),
       maxSizeMb: (json['maxSizeMb'] as num?)?.toDouble(),
       showFlag: json['showFlag'] != false,
       stripGps: json['stripGps'] == true,
