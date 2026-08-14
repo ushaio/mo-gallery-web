@@ -1,0 +1,51 @@
+title: "[Showcase] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎展示使用 MO Gallery 创建的网站、摄影项目、工作流或扩展。
+
+        Share a website, photography project, workflow, or extension built with MO Gallery.
+
+  - type: dropdown
+    id: project_type
+    attributes:
+      label: "展示类型 / Type"
+      options:
+        - "摄影网站 / Photography website"
+        - "相册或摄影故事 / Album or photo story"
+        - "Zine 或出版物 / Zine or publication"
+        - "工作流或部署方案 / Workflow or deployment"
+        - "扩展或二次开发 / Extension or customization"
+        - "其他 / Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: introduction
+    attributes:
+      label: "项目介绍 / Project overview"
+      description: "介绍作品背景、使用的 MO Gallery 功能和你的实现思路。 / Describe the project, the MO Gallery features used, and your approach."
+    validations:
+      required: true
+
+  - type: input
+    id: project_url
+    attributes:
+      label: "项目链接 / Project URL"
+      description: "公开网站、代码仓库或作品页面。 / Link to a public site, repository, or project page."
+      placeholder: "https://"
+
+  - type: textarea
+    id: media
+    attributes:
+      label: "图片或演示 / Images or demo"
+      description: "可直接拖入截图或附上演示链接。 / Drag in screenshots or add a demo link."
+
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: "发布确认 / Publishing confirmation"
+      options:
+        - label: "我有权公开分享以上内容，且已移除敏感信息。 / I have permission to share this content publicly and removed sensitive information."
+          required: true

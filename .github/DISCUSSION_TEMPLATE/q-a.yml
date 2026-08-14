@@ -1,0 +1,62 @@
+title: "[Q&A] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请提供足够的环境和复现信息，方便社区快速定位问题。涉及明确缺陷时，请改用 Issue 中的 Bug 报告。
+
+        Include enough environment and reproduction details for the community to help. For a confirmed defect, use the Bug report issue template instead.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "相关模块 / Area"
+      options:
+        - "Web 公开站点 / Public website"
+        - "Web 管理后台 / Web admin"
+        - "Desktop 工作台 / Desktop"
+        - "Mobile 客户端 / Mobile"
+        - "部署与存储 / Deployment and storage"
+        - "开发与 API / Development and API"
+        - "其他 / Other"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: "MO Gallery 版本 / Version"
+      description: "例如 v0.7.0-beta、main 分支或提交哈希。 / For example, v0.7.0-beta, the main branch, or a commit hash."
+      placeholder: "v0.7.0-beta"
+
+  - type: textarea
+    id: question
+    attributes:
+      label: "问题描述 / Question"
+      description: "说明你想完成什么、遇到了什么，以及期望的结果。 / Explain your goal, what happened, and what you expected."
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempts
+    attributes:
+      label: "已尝试的方法 / What have you tried?"
+      description: "列出已查阅的文档、执行的命令和观察到的结果。 / List documentation, commands, and results you have already checked."
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "环境信息 / Environment"
+      description: "包括操作系统、部署方式、浏览器或客户端版本；请勿粘贴密钥。 / Include OS, deployment, browser, or client versions. Do not include secrets."
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "提交前确认 / Before submitting"
+      options:
+        - label: "我已搜索现有 Discussions 和 Issues，未找到相同问题。 / I searched existing Discussions and Issues for the same question."
+          required: true
+        - label: "我已移除日志、截图和配置中的密钥及隐私信息。 / I removed secrets and private information from logs, screenshots, and configuration."
+          required: true
+

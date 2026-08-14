@@ -1,0 +1,37 @@
+title: "[General] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎参与 MO Gallery 社区交流。请用清晰的标题概括主题。
+
+        Welcome to the MO Gallery community. Please summarize the topic in the title.
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: "话题 / Topic"
+      options:
+        - "使用体验 / User experience"
+        - "摄影与创作 / Photography and creation"
+        - "部署与运维 / Deployment and operations"
+        - "开发与贡献 / Development and contribution"
+        - "其他 / Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: content
+    attributes:
+      label: "讨论内容 / Discussion"
+      description: "请完整描述你想交流的内容。 / Tell us what you would like to discuss."
+      placeholder: "分享背景、想法或问题…… / Share the context, idea, or question..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "补充信息 / Additional context"
+      description: "可附上截图、链接或其他相关资料。 / Add screenshots, links, or other useful context."
+

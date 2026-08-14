@@ -1,0 +1,59 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你帮助 MO Gallery 变得更好。请先说明需求和使用场景，再描述建议方案。
+
+        Thanks for helping improve MO Gallery. Start with the need and use case, then describe your proposal.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "相关模块 / Area"
+      options:
+        - "Web 公开站点 / Public website"
+        - "Web 管理后台 / Web admin"
+        - "Desktop 工作台 / Desktop"
+        - "Mobile 客户端 / Mobile"
+        - "API、存储或部署 / API, storage, or deployment"
+        - "其他 / Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "需求与场景 / Need and use case"
+      description: "当前遇到了什么问题？这个建议会帮助谁？ / What problem are you facing, and who would benefit?"
+      placeholder: "当我……时，目前需要…… / When I..., I currently need to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "建议方案 / Proposed solution"
+      description: "描述期望的行为或交互，不必提供完整技术方案。 / Describe the expected behavior or interaction; a full technical design is not required."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "替代方案 / Alternatives"
+      description: "你尝试过哪些替代方法？ / What alternatives have you tried?"
+
+  - type: textarea
+    id: references
+    attributes:
+      label: "参考资料 / References"
+      description: "可附上截图、原型、链接或类似产品。 / Add screenshots, mockups, links, or comparable products."
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: "参与贡献 / Contribution"
+      options:
+        - label: "我愿意参与讨论、测试或实现。 / I am willing to discuss, test, or implement this idea."
+
