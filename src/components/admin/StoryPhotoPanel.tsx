@@ -50,7 +50,6 @@ interface StoryPhotoPanelProps {
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   onAddPhotos: () => void
-  onInsertExternalPhotoMarkdown: () => void
   onInsertPhotoMarkdown: (photo: PhotoDto) => void
   onInsertGalleryMarkdown: (photoIds: string[]) => void
   onRemovePhoto: (photoId: string) => void
@@ -93,7 +92,6 @@ export function StoryPhotoPanel({
   t,
   notify,
   onAddPhotos: onAddPhotosProp,
-  onInsertExternalPhotoMarkdown: onInsertExternalPhotoMarkdownProp,
   onInsertPhotoMarkdown: onInsertPhotoMarkdownProp,
   onInsertGalleryMarkdown: onInsertGalleryMarkdownProp,
   onRemovePhoto: onRemovePhotoProp,
@@ -118,7 +116,6 @@ export function StoryPhotoPanel({
     guardNarrativeAiMutation(disabled, operation)
 
   const onAddPhotos = guardMutation(onAddPhotosProp)
-  const onInsertExternalPhotoMarkdown = guardMutation(onInsertExternalPhotoMarkdownProp)
   const onInsertPhotoMarkdown = guardMutation(onInsertPhotoMarkdownProp)
   const onInsertGalleryMarkdown = guardMutation(onInsertGalleryMarkdownProp)
   const onRemovePhoto = guardMutation(onRemovePhotoProp)
@@ -182,7 +179,7 @@ export function StoryPhotoPanel({
               className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground [writing-mode:vertical-rl]"
               aria-hidden="true"
             >
-              {t('story.related_photos')}
+              {t('story.material_library')}
             </span>
           </div>
           <div className="flex flex-col items-center gap-2">
@@ -217,7 +214,7 @@ export function StoryPhotoPanel({
         <div className="flex items-center gap-2">
           <ImageIcon className="h-4 w-4 text-primary" />
           <span className="text-xs font-bold uppercase tracking-[0.24em] text-foreground">
-            {t('story.related_photos')}
+            {t('story.material_library')}
           </span>
           <span className="border border-border/70 bg-background/80 px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
             {totalPhotos}
@@ -229,15 +226,6 @@ export function StoryPhotoPanel({
           ) : null}
         </div>
         <div className="flex items-center gap-1.5">
-          <AdminButton
-            type="button"
-            onClick={onInsertExternalPhotoMarkdown}
-            adminVariant="outlineMuted"
-            size="xs"
-            className="h-7 border-border/70 bg-background/70"
-          >
-            {t('admin.external_photo')}
-          </AdminButton>
           <AdminButton
             type="button"
             onClick={onOpenPasteUploadSettings}
@@ -396,10 +384,18 @@ export function StoryPhotoPanel({
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()
+                            if (isPhotoInserted(photo)) {
+                              notify(t('story.material_in_use'), 'info')
+                              return
+                            }
                             onRemovePhoto(photo.id)
                           }}
                           adminVariant="ghost"
-                          className="border border-white/20 bg-white/15 p-1.5 text-white hover:bg-destructive"
+                          className={cn(
+                            'border border-white/20 bg-white/15 p-1.5 text-white',
+                            isPhotoInserted(photo) ? 'cursor-not-allowed opacity-50' : 'hover:bg-destructive',
+                          )}
+                          title={isPhotoInserted(photo) ? t('story.material_in_use') : undefined}
                         >
                           <X className="h-3.5 w-3.5" />
                         </AdminButton>

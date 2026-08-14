@@ -52,8 +52,7 @@ interface StoryEditorViewProps {
   onClose: () => void
   onSave: () => void
   onPasteFiles: (files: File[]) => void
-  onOpenPhotoSelector: () => void
-  onInsertExternalPhotoMarkdown: () => void
+  onOpenMaterialLibrary: () => void
   onInsertPhotoMarkdown: (photo: PhotoDto) => void
   onInsertGalleryMarkdown: (photoIds: string[]) => void
   onOpenPasteUploadSettings: () => void
@@ -109,8 +108,7 @@ export function StoryEditorView({
   onClose,
   onSave,
   onPasteFiles,
-  onOpenPhotoSelector,
-  onInsertExternalPhotoMarkdown,
+  onOpenMaterialLibrary,
   onInsertPhotoMarkdown,
   onInsertGalleryMarkdown,
   onOpenPasteUploadSettings,
@@ -136,7 +134,7 @@ export function StoryEditorView({
 }: StoryEditorViewProps) {
   const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
   const editorCharacterCount = countStoryCharacters(currentStory.content)
-  const relatedPhotoCount = currentStory.photos?.length || 0
+  const materialCount = currentStory.photos?.length || 0
   const hydratedEditorContent = useMemo(
     () => hydrateStoryContentImages(currentStory.content, currentStory.photos || [], settingsCdnDomain),
     [currentStory.content, currentStory.photos, settingsCdnDomain],
@@ -162,8 +160,8 @@ export function StoryEditorView({
         publishedLabel={t('admin.published')}
         draftLabel={t('admin.draft')}
         onSave={onSave}
-        saveDisabled={saving}
-        saveLabel={saving ? t('ui.saving') : t('admin.save')}
+        saveDisabled={saving || isUploading}
+        saveLabel={saving ? t('ui.saving') : isUploading ? t('admin.uploading') : t('admin.save')}
         savingLabel={t('ui.saving')}
         onPreview={showPreview}
         previewLabel={t('admin.preview')}
@@ -220,7 +218,7 @@ export function StoryEditorView({
             </span>
             <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
               <ImageIcon className="h-3.5 w-3.5" />
-              {relatedPhotoCount} {t('story.related_photos')}
+              {materialCount} {t('story.materials_suffix')}
             </span>
           </>
         }
@@ -268,7 +266,7 @@ export function StoryEditorView({
           </div>
 
           <fieldset disabled={isAiTaskLocked} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
-            <StoryPhotoPanel disabled={isAiTaskLocked} isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenPhotoSelector} onInsertExternalPhotoMarkdown={onInsertExternalPhotoMarkdown} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
+            <StoryPhotoPanel disabled={isAiTaskLocked} isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenMaterialLibrary} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
           </fieldset>
         </div>
       </EditorShell>

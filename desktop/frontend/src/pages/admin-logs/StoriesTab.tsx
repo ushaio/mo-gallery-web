@@ -7,16 +7,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { BookOpen } from 'lucide-react'
 import {
-  getPhotos,
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
-import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
+import { PhotoLibraryDialog } from '@/components/zine/PhotoLibraryDialog'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
@@ -48,6 +47,7 @@ import {
   UpdateStory,
 } from '../../../wailsjs/go/main/App'
 import type { services } from '../../../wailsjs/go/models'
+import type { Photo } from '@/types'
 
 const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   maxSizeMB: 0,
@@ -85,7 +85,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [saving, setSaving] = useState(false)
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([])
-  const [showPhotoSelector, setShowPhotoSelector] = useState(false)
+  const [showMaterialLibrary, setShowMaterialLibrary] = useState(false)
   const [pendingCoverId, setPendingCoverId] = useState<string | null>(null)
   const [deleteStoryId, setDeleteStoryId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -244,7 +244,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleConfirmPasteUpload,
     handleInsertPhotoMarkdown,
     handleInsertGalleryMarkdown,
-    handleInsertExternalPhotoMarkdown,
     restorePasteUploadSettings,
     restoreUploadSettings,
   } = useStoryEditorActions({
@@ -253,6 +252,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     allPhotos,
     stories,
     pendingImages,
+    cdnDomain: settings?.cdn_domain,
     initialUploadSettings: DEFAULT_UPLOAD_SETTINGS,
     initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
     pendingPhotoIdsRef,
@@ -347,42 +347,31 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     await doSaveStory()
   }, [currentStory, doSaveStory, notify, pendingImages, setShowUploadSettings, t, token])
 
-  const handleUpdatePhotos = useCallback(async (selectedPhotoIds: string[]) => {
-    let sourcePhotos = allPhotos
-
-    if (selectedPhotoIds.some((id) => !sourcePhotos.find((photo) => photo.id === id))) {
-      try {
-        sourcePhotos = await getPhotos({ all: true })
-        setAllPhotos(sourcePhotos)
-      } catch (error) {
-        console.error('Failed to refresh photos for selector:', error)
-      }
-    }
-
-    const selectedPhotos = selectedPhotoIds
-      .map((id) => sourcePhotos.find((photo) => photo.id === id) || currentStory?.photos?.find((photo) => photo.id === id))
-      .filter((photo): photo is PhotoDto => Boolean(photo))
-
-    setCurrentStory((prev) => {
-      if (!prev) return prev
-
-      const coverStillExists = prev.coverPhotoId
-        ? selectedPhotos.some((photo) => photo.id === prev.coverPhotoId)
-        : true
-
+  const handleImportMaterials = useCallback((photos: Photo[]) => {
+    const importedPhotos: PhotoDto[] = photos.map((photo) => {
+      const { camera: _camera, lens: _lens, ...photoFields } = photo
       return {
-        ...prev,
-        photos: selectedPhotos,
-        ...(coverStillExists
-          ? {}
-          : {
-              coverPhotoId: undefined,
-              coverCrop: null,
-            }),
+        ...photoFields,
+        originFlag: photo.originFlag === 'web' || photo.originFlag === 'mobile' || photo.originFlag === 'desktop'
+          ? photo.originFlag
+          : undefined,
       }
     })
-    setShowPhotoSelector(false)
-  }, [allPhotos, currentStory?.photos])
+    setCurrentStory((prev) => {
+      if (!prev) return prev
+      const existingIds = new Set((prev.photos || []).map((photo) => photo.id))
+      const newPhotos = importedPhotos.filter((photo) => !existingIds.has(photo.id))
+      return {
+        ...prev,
+        photos: [...(prev.photos || []), ...newPhotos],
+      }
+    })
+    setAllPhotos((prev) => {
+      const existingIds = new Set(prev.map((photo) => photo.id))
+      return [...prev, ...importedPhotos.filter((photo) => !existingIds.has(photo.id))]
+    })
+    setShowMaterialLibrary(false)
+  }, [])
 
   const handleRemovePhoto = useCallback((photoId: string) => {
     setCurrentStory((prev) => {
@@ -646,8 +635,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onClose={resetEditorState}
           onSave={() => void handleSaveStory()}
           onPasteFiles={handlePasteFiles}
-          onOpenPhotoSelector={() => setShowPhotoSelector(true)}
-          onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
+          onOpenMaterialLibrary={() => setShowMaterialLibrary(true)}
           onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
           onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
           onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
@@ -686,7 +674,12 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       )}
       </main>
 
-      <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
+      <PhotoLibraryDialog
+        source={showMaterialLibrary ? 'cloud' : null}
+        existingPhotoIds={currentPhotoIds}
+        onClose={() => setShowMaterialLibrary(false)}
+        onImportPhotos={handleImportMaterials}
+      />
       <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} currentStoryId={currentStory?.id} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}

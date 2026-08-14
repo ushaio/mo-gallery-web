@@ -1,4 +1,5 @@
 import { reportAuthFailure } from '@/lib/auth-errors'
+import { invalidateDesktopCacheForApiRequest } from '@/lib/app-cache'
 import { ApiUnauthorizedError, apiRequest, apiRequestData, apiRequestWithMeta, buildApiUrl, buildQuery, extractErrorCode, extractErrorMessage } from './core'
 import type { PhotoDto, PhotoPaginationMeta, PhotoDeleteError, PhotoWithStories } from './types'
 
@@ -240,8 +241,10 @@ export function uploadPhotoWithProgress(input: {
           if (response.success === false) {
             reject(new Error(extractErrorMessage(response) ?? 'Upload failed'))
           } else if (response.data) {
+            invalidateDesktopCacheForApiRequest('/api/admin/photos', 'POST')
             resolve(response.data as PhotoDto)
           } else {
+            invalidateDesktopCacheForApiRequest('/api/admin/photos', 'POST')
             resolve(response as PhotoDto)
           }
         } else {

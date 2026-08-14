@@ -1,29 +1,18 @@
 ﻿'use client'
 
 import { useCallback } from 'react'
-import { compressImage, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
-import { calculateFileHash } from '@/lib/file-hash'
-import { stripGpsData } from '@/lib/privacy-strip'
-import {
-  addPhotosToAlbum,
-  checkDuplicatePhoto,
-  uploadPhotoWithProgress,
-  type PhotoDto,
-  type StoryDto,
-} from '@/lib/api'
-import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
+import { addPhotosToAlbum, type PhotoDto } from '@/lib/api'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
-import { GetAllPhotos } from '../../../../wailsjs/go/main/App'
+import { uploadStoryPhotoFile } from './uploadStoryPhotoFile'
 
 interface UploadAndInsertParams {
   token: string
-  currentStory: StoryDto | null
-  allPhotos: PhotoDto[]
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
-  setAllPhotos: React.Dispatch<React.SetStateAction<PhotoDto[]>>
   setUploadProgress: React.Dispatch<React.SetStateAction<{ current: number; total: number; currentFile: string }>>
-  insertDirective: (markdown: string) => void
-  replaceEditorText: (searchValue: string, nextValue: string) => void
+  insertUploadPlaceholder: (placeholder: { uploadId: string; fileName: string; imageWidth: number; imageHeight: number }) => void
+  resolveUploadPlaceholder: (uploadId: string, photo: PhotoDto) => boolean
+  failUploadPlaceholder: (uploadId: string) => void
+  findExistingPhotoById: (photoId: string) => Promise<PhotoDto | null>
   addPhotoToCache: (photo: PhotoDto) => void
   addPhotoToCurrentStory: (photo: PhotoDto) => void
   persistPasteUploadSettings: (settings: UploadSettings) => void
@@ -34,15 +23,42 @@ interface UploadAndInsertParams {
 
 type UseStoryPasteUploadsParams = UploadAndInsertParams
 
+async function readImageDimensions(file: File) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file)
+      const dimensions = { width: bitmap.width, height: bitmap.height }
+      bitmap.close()
+      if (dimensions.width > 0 && dimensions.height > 0) return dimensions
+    } catch {
+      // Fall through to the object URL path for older WebViews and uncommon formats.
+    }
+  }
+
+  return await new Promise<{ width: number; height: number }>((resolve) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+    const finish = (dimensions: { width: number; height: number }) => {
+      URL.revokeObjectURL(objectUrl)
+      resolve(dimensions)
+    }
+    image.onload = () => finish({
+      width: image.naturalWidth || 4,
+      height: image.naturalHeight || 3,
+    })
+    image.onerror = () => finish({ width: 4, height: 3 })
+    image.src = objectUrl
+  })
+}
+
 export function useStoryPasteUploads({
   token,
-  currentStory,
-  allPhotos,
   notify,
-  setAllPhotos,
   setUploadProgress,
-  insertDirective,
-  replaceEditorText,
+  insertUploadPlaceholder,
+  resolveUploadPlaceholder,
+  failUploadPlaceholder,
+  findExistingPhotoById,
   addPhotoToCache,
   addPhotoToCurrentStory,
   persistPasteUploadSettings,
@@ -50,14 +66,6 @@ export function useStoryPasteUploads({
   setIsUploading,
   pendingPasteFilesRef,
 }: UseStoryPasteUploadsParams) {
-  const buildProcessingPlaceholder = useCallback((id: string, fileName: string) => {
-    return `\n<!-- story-paste-upload:${id} -->\n[正在处理：${fileName}…]\n`
-  }, [])
-
-  const buildUploadingPlaceholder = useCallback((id: string, fileName: string) => {
-    return `\n<!-- story-paste-upload:${id} -->\n[正在上传：${fileName}…]()\n`
-  }, [])
-
   const uploadAndInsertFiles = useCallback(async (files: File[], settings: UploadSettings) => {
     if (files.length === 0) return
 
@@ -66,130 +74,88 @@ export function useStoryPasteUploads({
       categories: settings.categories || [],
     }
 
-    const placeholders = files.map((file) => {
+    const placeholders = await Promise.all(files.map(async (file) => {
       const id = crypto.randomUUID()
+      const { width: imageWidth, height: imageHeight } = await readImageDimensions(file)
       return {
         id,
         file,
-        processingText: buildProcessingPlaceholder(id, file.name),
-        uploadingText: buildUploadingPlaceholder(id, file.name),
+        imageWidth,
+        imageHeight,
       }
-    })
+    }))
 
-    placeholders.forEach((item) => insertDirective(item.processingText))
+    placeholders.forEach((item) => insertUploadPlaceholder({
+      uploadId: item.id,
+      fileName: item.file.name,
+      imageWidth: item.imageWidth,
+      imageHeight: item.imageHeight,
+    }))
     persistPasteUploadSettings(nextSettings)
     setShowPasteUploadSettings(false)
     pendingPasteFilesRef.current = null
     setIsUploading(true)
     setUploadProgress({ current: 0, total: files.length, currentFile: '' })
 
+    let successCount = 0
+    let failedCount = 0
+
     try {
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index]
         const placeholder = placeholders[index]
 
-        // Show uploading state
-        replaceEditorText(placeholder.processingText, placeholder.uploadingText)
-        setUploadProgress({ current: index + 1, total: files.length, currentFile: file.name })
-
-        const fileHash = await calculateFileHash(file)
-        const duplicate = await checkDuplicatePhoto(token, fileHash)
-
-        if (duplicate.isDuplicate && duplicate.existingPhoto) {
-          const existingPhotoId = duplicate.existingPhoto.id
-          let existingPhoto =
-            currentStory?.photos.find((photo) => photo.id === existingPhotoId) ||
-            allPhotos.find((photo) => photo.id === existingPhotoId)
-
-          if (!existingPhoto) {
-            const photos = await GetAllPhotos() as unknown as PhotoDto[]
-            existingPhoto = (photos || []).find((photo: PhotoDto) => photo.id === existingPhotoId)
-            setAllPhotos(photos || [])
-          }
-
-          if (existingPhoto) {
-            addPhotoToCache(existingPhoto)
-            addPhotoToCurrentStory(existingPhoto)
-            replaceEditorText(placeholder.uploadingText, buildStoryMarkdownImage({ url: existingPhoto.url, alt: existingPhoto.title, photoId: existingPhoto.id }))
-            notify(`复用重复图片：${existingPhoto.title}`, 'info')
-            continue
-          }
-        }
-
-        let fileToUpload = file
-
-        // Extract EXIF before compression/GPS-strip (compression discards EXIF).
-        let exifJsonString: string | undefined
         try {
-          let exifJson = await extractExifToJson(fileToUpload)
-          if (nextSettings.stripGps) {
-            exifJson = stripGpsFromExifJson(exifJson)
-          }
-          if (Object.keys(exifJson).length > 0) {
-            exifJsonString = JSON.stringify(exifJson)
-          }
-        } catch {
-          // EXIF read failure should not block upload
-        }
+          setUploadProgress({ current: index + 1, total: files.length, currentFile: file.name })
 
-        if (nextSettings.stripGps) {
-          fileToUpload = await stripGpsData(fileToUpload)
-        }
-
-        if (nextSettings.compressionMode && nextSettings.compressionMode !== 'none') {
-          fileToUpload = await compressImage(fileToUpload, {
-            mode: nextSettings.compressionMode,
-            maxSizeMB: nextSettings.maxSizeMB && nextSettings.maxSizeMB > 0 ? nextSettings.maxSizeMB : undefined,
-            maxWidthOrHeight: 4096,
+          const { photo: uploadedPhoto, reusedDuplicate } = await uploadStoryPhotoFile({
+            token,
+            file,
+            settings: nextSettings,
+            findExistingPhotoById,
+            onProgress: (progress) => {
+              setUploadProgress({ current: index + 1, total: files.length, currentFile: `${file.name} ${progress}%` })
+            },
           })
-        }
 
-        const uploadedPhoto = await uploadPhotoWithProgress({
-          token,
-          file: fileToUpload,
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          category: nextSettings.categories,
-          origin_flag: 'desktop',
-          storage_provider: nextSettings.storageProvider,
-          storage_source_id: nextSettings.storageSourceId,
-          storage_path: nextSettings.storagePath,
-          storage_path_full: nextSettings.storagePathFull,
-          show_flag: nextSettings.showFlag,
-          compression_mode: nextSettings.compressionMode,
-          max_size_mb: nextSettings.maxSizeMB,
-          exif_json: exifJsonString,
-          strip_gps: nextSettings.stripGps ? 'true' : undefined,
-          file_hash: fileHash,
-          onProgress: (progress) => {
-            setUploadProgress({ current: index + 1, total: files.length, currentFile: `${file.name} ${progress}%` })
-          },
-        })
+          addPhotoToCache(uploadedPhoto)
+          addPhotoToCurrentStory(uploadedPhoto)
+          if (!resolveUploadPlaceholder(placeholder.id, uploadedPhoto)) {
+            throw new Error('图片已上传，但编辑器占位替换失败')
+          }
+          successCount += 1
+          if (reusedDuplicate) {
+            notify(`复用重复图片：${uploadedPhoto.title}`, 'info')
+          }
 
-        if (nextSettings.albumIds?.length) {
-          for (const albumId of nextSettings.albumIds) {
+          // Album association is secondary to replacing the editor placeholder.
+          if (nextSettings.albumIds?.length) {
+            for (const albumId of nextSettings.albumIds) {
+              try {
+                await addPhotosToAlbum(token, albumId, [uploadedPhoto.id])
+              } catch (error) {
+                console.error('Failed to add pasted upload to album:', error)
+              }
+            }
+          } else if (nextSettings.albumId) {
             try {
-              await addPhotosToAlbum(token, albumId, [uploadedPhoto.id])
+              await addPhotosToAlbum(token, nextSettings.albumId, [uploadedPhoto.id])
             } catch (error) {
               console.error('Failed to add pasted upload to album:', error)
             }
           }
-        } else if (nextSettings.albumId) {
-          try {
-            await addPhotosToAlbum(token, nextSettings.albumId, [uploadedPhoto.id])
-          } catch (error) {
-            console.error('Failed to add pasted upload to album:', error)
-          }
+        } catch (error) {
+          failedCount += 1
+          failUploadPlaceholder(placeholder.id)
+          const message = error instanceof Error ? error.message : '粘贴图片处理失败'
+          console.error(`Failed to process pasted image ${file.name}:`, error)
+          notify(`${file.name}：${message}`, 'error')
         }
-
-        addPhotoToCache(uploadedPhoto)
-        addPhotoToCurrentStory(uploadedPhoto)
-        replaceEditorText(placeholder.uploadingText, buildStoryMarkdownImage({ url: uploadedPhoto.url, alt: uploadedPhoto.title, photoId: uploadedPhoto.id }))
       }
 
-      notify('粘贴图片已处理并插入正文', 'success')
-    } catch (error) {
-      console.error('Failed to handle pasted files:', error)
-      notify(error instanceof Error ? error.message : '粘贴图片处理失败', 'error')
+      if (successCount > 0) {
+        notify(failedCount > 0 ? `已插入 ${successCount} 张图片，${failedCount} 张失败` : '粘贴图片已处理并插入正文', failedCount > 0 ? 'info' : 'success')
+      }
     } finally {
       setIsUploading(false)
       setUploadProgress({ current: 0, total: 0, currentFile: '' })
@@ -197,16 +163,13 @@ export function useStoryPasteUploads({
   }, [
     addPhotoToCache,
     addPhotoToCurrentStory,
-    allPhotos,
-    buildProcessingPlaceholder,
-    buildUploadingPlaceholder,
-    currentStory?.photos,
-    insertDirective,
+    failUploadPlaceholder,
+    findExistingPhotoById,
+    insertUploadPlaceholder,
     notify,
     pendingPasteFilesRef,
     persistPasteUploadSettings,
-    replaceEditorText,
-    setAllPhotos,
+    resolveUploadPlaceholder,
     setIsUploading,
     setShowPasteUploadSettings,
     setUploadProgress,

@@ -29,8 +29,24 @@ export interface NarrativeTipTapEditorHandle {
   insertValue: (html: string) => void
   insertMarkdown: (markdown: string) => void
   replaceText: (searchValue: string, nextValue: string) => boolean
+  insertImageUploadPlaceholder: (placeholder: ImageUploadPlaceholderInput) => boolean
+  resolveImageUploadPlaceholder: (uploadId: string, image: ImageUploadResult) => boolean
+  failImageUploadPlaceholder: (uploadId: string) => boolean
   scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => boolean
   focus: () => void
+}
+
+export interface ImageUploadPlaceholderInput {
+  uploadId: string
+  fileName: string
+  imageWidth: number
+  imageHeight: number
+}
+
+export interface ImageUploadResult {
+  src: string
+  alt?: string
+  photoId?: string
 }
 
 interface UseEditorImperativeHandleOptions {
@@ -156,6 +172,90 @@ export function useEditorImperativeHandle({
       }
 
       return false
+    },
+
+    insertImageUploadPlaceholder: ({ uploadId, fileName, imageWidth, imageHeight }) => {
+      if (isAiTaskLocked || !editor || !uploadId) return false
+
+      const editorDom = editor.view.dom
+      const computedStyle = window.getComputedStyle(editorDom)
+      const contentWidth = editorDom.clientWidth
+        - (parseFloat(computedStyle.paddingLeft) || 0)
+        - (parseFloat(computedStyle.paddingRight) || 0)
+      const safeImageWidth = Number.isFinite(imageWidth) && imageWidth > 0 ? imageWidth : 4
+      const safeImageHeight = Number.isFinite(imageHeight) && imageHeight > 0 ? imageHeight : 3
+      const displayWidth = Math.max(120, Math.min(contentWidth || 640, safeImageWidth))
+
+      focusEditor()
+      return editor.chain().insertContent({
+        type: 'paragraph',
+        attrs: { textAlign: 'center' },
+        content: [{
+          type: 'imageUploadPlaceholder',
+          attrs: {
+            uploadId,
+            fileName,
+            imageWidth: safeImageWidth,
+            imageHeight: safeImageHeight,
+            displayWidth,
+            state: 'loading',
+          },
+        }],
+      }).run()
+    },
+
+    resolveImageUploadPlaceholder: (uploadId, image) => {
+      if (isAiTaskLocked || !editor || !uploadId || !image.src) return false
+
+      let placeholderPos = -1
+      let placeholderWidth: number | null = null
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'imageUploadPlaceholder' && node.attrs.uploadId === uploadId) {
+          placeholderPos = pos
+          placeholderWidth = typeof node.attrs.displayWidth === 'number' ? node.attrs.displayWidth : null
+          return false
+        }
+        return true
+      })
+      if (placeholderPos < 0) return false
+
+      const imageType = editor.state.schema.nodes.image
+      if (!imageType) return false
+      const imageNode = imageType.create({
+        src: image.src,
+        alt: image.alt || '',
+        width: placeholderWidth,
+        height: null,
+        ...(image.photoId ? { photoId: image.photoId } : {}),
+      })
+      editor.view.dispatch(
+        editor.state.tr
+          .replaceWith(placeholderPos, placeholderPos + 1, imageNode)
+          .scrollIntoView(),
+      )
+      return true
+    },
+
+    failImageUploadPlaceholder: (uploadId) => {
+      if (isAiTaskLocked || !editor || !uploadId) return false
+
+      let placeholderPos = -1
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'imageUploadPlaceholder' && node.attrs.uploadId === uploadId) {
+          placeholderPos = pos
+          return false
+        }
+        return true
+      })
+      if (placeholderPos < 0) return false
+
+      const placeholderNode = editor.state.doc.nodeAt(placeholderPos)
+      if (!placeholderNode) return false
+      editor.view.dispatch(editor.state.tr.setNodeMarkup(placeholderPos, undefined, {
+        ...placeholderNode.attrs,
+        state: 'failed',
+      }))
+      return true
     },
 
     scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => {

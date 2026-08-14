@@ -303,6 +303,60 @@
   outline: 3px solid rgba(149, 141, 241, 0.45);
 }
 
+.tiptap-editor .tiptap .tiptap-image-upload-placeholder {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: top;
+  border: 1px solid color-mix(in srgb, var(--border, #e5e7eb) 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--muted, #f3f4f6) 48%, var(--background, #ffffff));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--background, #ffffff) 72%, transparent);
+}
+
+.tiptap-editor .tiptap .tiptap-image-upload-placeholder::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  transform: translateX(-100%);
+  background: linear-gradient(
+    100deg,
+    transparent 18%,
+    color-mix(in srgb, var(--foreground, #111827) 5%, transparent) 48%,
+    transparent 78%
+  );
+  animation: tiptap-image-upload-shimmer 1.35s ease-in-out infinite;
+}
+
+.tiptap-editor .tiptap .tiptap-image-upload-placeholder[data-state='failed'] {
+  border-color: color-mix(in srgb, var(--destructive, #dc2626) 35%, var(--border, #e5e7eb));
+  background: color-mix(in srgb, var(--destructive, #dc2626) 8%, var(--muted, #f3f4f6));
+}
+
+.tiptap-editor .tiptap .tiptap-image-upload-placeholder[data-state='failed']::after {
+  display: none;
+}
+
+.tiptap-editor .tiptap .tiptap-image-upload-placeholder[data-selected='true'] {
+  outline: 3px solid rgba(149, 141, 241, 0.45);
+  outline-offset: 2px;
+}
+
+@keyframes tiptap-image-upload-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tiptap-editor .tiptap .tiptap-image-upload-placeholder::after {
+    animation: none;
+    transform: none;
+    opacity: 0.35;
+  }
+}
+
 .tiptap-editor .tiptap .media-embed-node {
   display: block;
   margin: 1.5rem 0;

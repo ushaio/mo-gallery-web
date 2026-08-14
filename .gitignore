@@ -104,3 +104,4 @@ public/uploads
 /packages/*/node_modules/
 .pencil-ui/
 docs/
+.env*

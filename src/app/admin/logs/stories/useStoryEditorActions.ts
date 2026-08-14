@@ -4,15 +4,11 @@ import { useCallback, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { DragEvent } from 'react'
 import ExifReader from 'exifreader'
-import { compressImage, extractExifToJson, stripGpsFromExifJson } from '@/lib/image-compress'
-import { calculateFileHash } from '@/lib/file-hash'
-import { stripGpsData } from '@/lib/privacy-strip'
+import { resolveAssetUrl } from '@/lib/api/core'
 import {
   addPhotosToAlbum,
   addPhotosToStory,
-  checkDuplicatePhoto,
   getPhotos,
-  uploadPhotoWithProgress,
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
@@ -23,6 +19,7 @@ import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal
 import { STORY_PASTE_UPLOAD_SETTINGS_KEY, STORY_UPLOAD_SETTINGS_KEY } from './constants'
 import type { UploadProgressState } from './types'
 import { useStoryPasteUploads } from './useStoryPasteUploads'
+import { uploadStoryPhotoFile } from './uploadStoryPhotoFile'
 
 interface UseStoryEditorActionsParams {
   token: string | null
@@ -30,6 +27,7 @@ interface UseStoryEditorActionsParams {
   allPhotos: PhotoDto[]
   stories: StoryDto[]
   pendingImages: PendingImage[]
+  cdnDomain?: string
   initialUploadSettings: UploadSettings
   initialPasteUploadSettings: UploadSettings
   pendingPhotoIdsRef: MutableRefObject<string[] | null>
@@ -61,7 +59,6 @@ interface UseStoryEditorActionsResult {
   handleConfirmPasteUpload: (settings: UploadSettings) => Promise<void>
   handleInsertPhotoMarkdown: (photo: PhotoDto) => void
   handleInsertGalleryMarkdown: (photoIds: string[]) => void
-  handleInsertExternalPhotoMarkdown: () => void
   restoreUploadSettings: (settings: UploadSettings) => void
   restorePasteUploadSettings: (settings: UploadSettings) => void
 }
@@ -88,6 +85,7 @@ export function useStoryEditorActions({
   allPhotos,
   stories,
   pendingImages,
+  cdnDomain,
   initialUploadSettings,
   initialPasteUploadSettings,
   pendingPhotoIdsRef,
@@ -149,12 +147,36 @@ export function useStoryEditorActions({
     setCurrentStory((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
   }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
 
-  const replaceEditorText = useCallback((searchValue: string, nextValue: string) => {
-    editorRef.current?.replaceText(searchValue, nextValue)
+  const syncEditorContent = useCallback(() => {
     const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
     const latestJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
     setCurrentStory((prev) => (prev ? { ...prev, content: latestValue, contentJson: latestJsonValue } : prev))
   }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
+
+  const insertUploadPlaceholder = useCallback((placeholder: {
+    uploadId: string
+    fileName: string
+    imageWidth: number
+    imageHeight: number
+  }) => {
+    editorRef.current?.insertImageUploadPlaceholder(placeholder)
+    syncEditorContent()
+  }, [syncEditorContent])
+
+  const resolveUploadPlaceholder = useCallback((uploadId: string, photo: PhotoDto) => {
+    const resolved = editorRef.current?.resolveImageUploadPlaceholder(uploadId, {
+      src: resolveAssetUrl(photo.url, cdnDomain),
+      alt: photo.title,
+      photoId: photo.id,
+    }) ?? false
+    syncEditorContent()
+    return resolved
+  }, [cdnDomain, syncEditorContent])
+
+  const failUploadPlaceholder = useCallback((uploadId: string) => {
+    editorRef.current?.failImageUploadPlaceholder(uploadId)
+    syncEditorContent()
+  }, [syncEditorContent])
 
   const addPhotoToCurrentStory = useCallback((photo: PhotoDto) => {
     setCurrentStory((prev) => {
@@ -183,13 +205,12 @@ export function useStoryEditorActions({
 
   const { uploadAndInsertFiles } = useStoryPasteUploads({
     token: token || '',
-    currentStory,
-    allPhotos,
     notify,
-    setAllPhotos,
     setUploadProgress,
-    insertDirective,
-    replaceEditorText,
+    insertUploadPlaceholder,
+    resolveUploadPlaceholder,
+    failUploadPlaceholder,
+    findExistingPhotoById,
     addPhotoToCache,
     addPhotoToCurrentStory,
     persistPasteUploadSettings,
@@ -241,69 +262,11 @@ export function useStoryEditorActions({
       setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'uploading' as const, progress: 0 } : image))
 
       try {
-        const fileHash = await calculateFileHash(pending.file)
-        const duplicate = await checkDuplicatePhoto(token, fileHash)
-
-        if (duplicate.isDuplicate && duplicate.existingPhoto) {
-          const existingPhoto = await findExistingPhotoById(duplicate.existingPhoto.id)
-
-          if (existingPhoto) {
-            if (!uploadedPhotoIds.includes(existingPhoto.id)) {
-              uploadedPhotoIds.push(existingPhoto.id)
-            }
-            if (!uploadedPhotos.some((photo) => photo.id === existingPhoto.id)) {
-              uploadedPhotos.push(existingPhoto)
-            }
-            addPhotoToCache(existingPhoto)
-            setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'success' as const, progress: 100, photoId: existingPhoto.id } : image))
-            notify(`图片已重复，已替换为已上传照片：${existingPhoto.title}`, 'info')
-            continue
-          }
-        }
-
-        let fileToUpload = pending.file
-
-        // Extract EXIF before compression/GPS-strip (compression discards EXIF).
-        let exifJsonString: string | undefined
-        try {
-          let exifJson = await extractExifToJson(fileToUpload)
-          if (settings.stripGps) {
-            exifJson = stripGpsFromExifJson(exifJson)
-          }
-          if (Object.keys(exifJson).length > 0) {
-            exifJsonString = JSON.stringify(exifJson)
-          }
-        } catch {
-          // EXIF read failure should not block upload
-        }
-
-        if (settings.stripGps) {
-          fileToUpload = await stripGpsData(fileToUpload)
-        }
-
-        if (settings.compressionMode && settings.compressionMode !== 'none') {
-          fileToUpload = await compressImage(fileToUpload, {
-            mode: settings.compressionMode,
-            maxSizeMB: settings.maxSizeMB && settings.maxSizeMB > 0 ? settings.maxSizeMB : undefined,
-            maxWidthOrHeight: 4096,
-          })
-        }
-
-        const photo = await uploadPhotoWithProgress({
+        const { photo, reusedDuplicate } = await uploadStoryPhotoFile({
           token,
-          file: fileToUpload,
-          title: pending.file.name.replace(/\.[^/.]+$/, ''),
-          category: settings.categories?.length ? settings.categories : settings.category,
-          storage_provider: settings.storageProvider,
-          storage_source_id: settings.storageSourceId,
-          storage_path: settings.storagePath,
-          storage_path_full: settings.storagePathFull,
-          show_flag: settings.showFlag,
-          compression_mode: settings.compressionMode,
-          max_size_mb: settings.maxSizeMB,
-          exif_json: exifJsonString,
-          strip_gps: settings.stripGps ? 'true' : undefined,
-          file_hash: fileHash,
+          file: pending.file,
+          settings,
+          findExistingPhotoById,
           onProgress: (progress) => {
             setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, progress } : image))
           },
@@ -316,6 +279,10 @@ export function useStoryEditorActions({
           uploadedPhotos.push(photo)
         }
         setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'success' as const, progress: 100, photoId: photo.id } : image))
+        if (reusedDuplicate) {
+          addPhotoToCache(photo)
+          notify(`图片已存在，已复用：${photo.title}`, 'info')
+        }
       } catch (error) {
         setPendingImages((prev) => prev.map((image) => image.id === pending.id ? { ...image, status: 'failed' as const, error: error instanceof Error ? error.message : 'Upload failed' } : image))
       }
@@ -375,7 +342,7 @@ export function useStoryEditorActions({
     }
 
     notify(`${failedCount} ${t('admin.upload_failed_count')}`, 'error')
-  }, [addPhotoToCache, currentStory, findExistingPhotoById, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
+  }, [addPhotoToCache, currentStory, findExistingPhotoById, notify, onRequestSave, pendingImages, pendingPhotoIdsRef, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {
     setPendingImages((prev) => prev.map((image) => image.status === 'failed' ? { ...image, status: 'pending' as const, error: undefined, progress: 0 } : image))
@@ -433,21 +400,6 @@ export function useStoryEditorActions({
     notify('Inserted Markdown gallery', 'success')
   }, [currentStory?.photos, insertDirective, notify])
 
-  const handleInsertExternalPhotoMarkdown = useCallback(() => {
-    const url = window.prompt('Enter external image URL (https)')
-    if (!url) return
-
-    const trimmedUrl = url.trim()
-    if (!/^https:\/\//i.test(trimmedUrl)) {
-      notify('External images must use an https URL', 'error')
-      return
-    }
-
-    const caption = window.prompt('Enter image caption (optional)')?.trim() || ''
-    insertDirective(buildStoryMarkdownImage({ url: trimmedUrl, alt: caption }))
-    notify('Inserted external Markdown image', 'success')
-  }, [insertDirective, notify])
-
   return {
     editorRef,
     showUploadSettings,
@@ -468,9 +420,7 @@ export function useStoryEditorActions({
     handleConfirmPasteUpload,
     handleInsertPhotoMarkdown,
     handleInsertGalleryMarkdown,
-    handleInsertExternalPhotoMarkdown,
     restoreUploadSettings,
     restorePasteUploadSettings,
   }
 }
-

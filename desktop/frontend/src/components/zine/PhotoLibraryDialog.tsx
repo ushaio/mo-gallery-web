@@ -13,14 +13,29 @@ import type { LocalAsset } from '@/features/local-library/types'
 import type { Photo } from '@/types'
 
 
-type LibrarySource = 'cloud' | 'local-library'
+export type LibrarySource = 'cloud' | 'local-library'
 
-interface PhotoLibraryDialogProps {
+interface PhotoLibraryDialogBaseProps {
   source: LibrarySource | null
-  existingAssets: ZineAsset[]
   onClose: () => void
-  onImportAssets: (assets: ZineAsset[]) => void
 }
+
+interface ZinePhotoLibraryDialogProps extends PhotoLibraryDialogBaseProps {
+  existingAssets: ZineAsset[]
+  onImportAssets: (assets: ZineAsset[]) => void
+  existingPhotoIds?: never
+  onImportPhotos?: never
+}
+
+interface CloudPhotoLibraryDialogProps extends PhotoLibraryDialogBaseProps {
+  source: 'cloud' | null
+  existingPhotoIds: string[]
+  onImportPhotos: (photos: Photo[]) => void
+  existingAssets?: never
+  onImportAssets?: never
+}
+
+type PhotoLibraryDialogProps = ZinePhotoLibraryDialogProps | CloudPhotoLibraryDialogProps
 
 function cloudPhotoToZineAsset(photo: Photo): ZineAsset {
   return {
@@ -52,12 +67,15 @@ function localPhotoToZineAsset(asset: LocalAsset): ZineAsset {
   }
 }
 
-export function PhotoLibraryDialog({ source, existingAssets, onClose, onImportAssets }: PhotoLibraryDialogProps) {
+export function PhotoLibraryDialog(props: PhotoLibraryDialogProps) {
+  const { source, onClose } = props
   const language = usePreferences((state) => state.language)
-  const [selectedAssets, setSelectedAssets] = useState<ZineAsset[]>([])
+  const [selectedCloudPhotos, setSelectedCloudPhotos] = useState<Photo[]>([])
+  const [selectedLocalAssets, setSelectedLocalAssets] = useState<LocalAsset[]>([])
 
   useEffect(() => {
-    setSelectedAssets([])
+    setSelectedCloudPhotos([])
+    setSelectedLocalAssets([])
   }, [source])
 
   useEffect(() => {
@@ -69,25 +87,37 @@ export function PhotoLibraryDialog({ source, existingAssets, onClose, onImportAs
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose, source])
   const handleCloudSelection = useCallback((photos: Photo[]) => {
-    setSelectedAssets(photos.map(cloudPhotoToZineAsset))
+    setSelectedCloudPhotos(photos)
   }, [])
   const handleLocalSelection = useCallback((assets: LocalAsset[]) => {
-    setSelectedAssets(assets.map(localPhotoToZineAsset))
+    setSelectedLocalAssets(assets)
   }, [])
-  const existingCloudIds = existingAssets
-    .filter((asset) => asset.origin === 'cloud-library' || (!asset.origin && asset.id.startsWith('library_')))
-    .map((asset) => asset.libraryPhotoId ?? asset.id.replace(/^library_/, ''))
-  const existingLocalIds = existingAssets
-    .filter((asset) => asset.origin === 'local-library' || (!asset.origin && asset.id.startsWith('local-library_')))
-    .map((asset) => asset.libraryPhotoId ?? asset.id.replace(/^local-library_/, ''))
+  const existingCloudIds = 'existingPhotoIds' in props
+    ? props.existingPhotoIds
+    : (props.existingAssets ?? [])
+      .filter((asset) => asset.origin === 'cloud-library' || (!asset.origin && asset.id.startsWith('library_')))
+      .map((asset) => asset.libraryPhotoId ?? asset.id.replace(/^library_/, ''))
+  const existingLocalIds = 'existingAssets' in props
+    ? (props.existingAssets ?? [])
+      .filter((asset) => asset.origin === 'local-library' || (!asset.origin && asset.id.startsWith('local-library_')))
+      .map((asset) => asset.libraryPhotoId ?? asset.id.replace(/^local-library_/, ''))
+    : []
 
   if (!source || typeof document === 'undefined') return null
 
   const cloud = source === 'cloud'
   const title = t(cloud ? 'admin.zine_import_cloud' : 'admin.zine_import_local_library', language)
   const Icon = cloud ? Cloud : HardDrive
+  const selectedCount = cloud ? selectedCloudPhotos.length : selectedLocalAssets.length
   function handleImport() {
-    onImportAssets(selectedAssets)
+    if ('onImportPhotos' in props) {
+      props.onImportPhotos!(selectedCloudPhotos)
+    } else {
+      const assets = cloud
+        ? selectedCloudPhotos.map(cloudPhotoToZineAsset)
+        : selectedLocalAssets.map(localPhotoToZineAsset)
+      props.onImportAssets!(assets)
+    }
     onClose()
   }
 
@@ -124,8 +154,8 @@ export function PhotoLibraryDialog({ source, existingAssets, onClose, onImportAs
             )}
           </div>
           <div className="flex shrink-0 items-center justify-between gap-3 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t('admin.zine_selected_count', language, { count: selectedAssets.length })}</span>
-            <button type="button" disabled={selectedAssets.length === 0} onClick={handleImport} className="rounded-md px-4 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{t('admin.zine_import_selected', language)}</button>
+            <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{t('admin.zine_selected_count', language, { count: selectedCount })}</span>
+            <button type="button" disabled={selectedCount === 0} onClick={handleImport} className="rounded-md px-4 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{t('admin.zine_import_selected', language)}</button>
           </div>
         </motion.div>
       </div>

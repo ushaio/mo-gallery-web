@@ -23,6 +23,7 @@ import { DropCapParagraph } from '../tiptap-extensions/DropCapParagraph'
 import { StyledHorizontalRule } from '../tiptap-extensions/StyledHorizontalRule'
 import { MediaEmbed } from '../tiptap-extensions/MediaEmbed'
 import { StoryLinkCard } from '../tiptap-extensions/StoryLinkCard'
+import { ImageUploadPlaceholder } from '../tiptap-extensions/ImageUploadPlaceholder'
 import type { NarrativeEditorRuntime } from '../runtime'
 import { parseMediaEmbedInfo } from '../lib/media-embed'
 import { buildStoryLinkCardAttrs, parseStoryLink } from '../lib/story-link-card'
@@ -150,6 +151,7 @@ export function useNarrativeEditor({
       }),
       MediaEmbed,
       StoryLinkCard,
+      ImageUploadPlaceholder,
       Underline,
       PastedStyleMark,
       TextAlign.configure({

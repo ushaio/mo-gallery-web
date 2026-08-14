@@ -16,7 +16,7 @@ import {
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
-import { PhotoSelectorModal } from '@/components/admin/PhotoSelectorModal'
+import { PhotoLibraryDialog } from '@/components/admin/PhotoLibraryDialog'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
@@ -26,9 +26,11 @@ import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { normalizeCompressionMode } from '@/lib/image-compress'
+import { cn } from '@/lib/utils'
 import { useAdmin } from '../layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
+  STORY_LIST_PANE_COLLAPSED_KEY,
   STORY_UPLOAD_SETTINGS_KEY,
   STORY_PASTE_UPLOAD_SETTINGS_KEY,
 } from './stories/constants'
@@ -77,12 +79,13 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [saving, setSaving] = useState(false)
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([])
-  const [showPhotoSelector, setShowPhotoSelector] = useState(false)
+  const [showMaterialLibrary, setShowMaterialLibrary] = useState(false)
   const [pendingCoverId, setPendingCoverId] = useState<string | null>(null)
   const [deleteStoryId, setDeleteStoryId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [useCustomDate, setUseCustomDate] = useState(false)
   const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(false)
+  const [isListPaneCollapsed, setIsListPaneCollapsed] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [previewPhotoIndex, setPreviewPhotoIndex] = useState<number | null>(null)
   const [showCoverCropEditor, setShowCoverCropEditor] = useState(false)
@@ -243,7 +246,6 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleConfirmPasteUpload,
     handleInsertPhotoMarkdown,
     handleInsertGalleryMarkdown,
-    handleInsertExternalPhotoMarkdown,
     restorePasteUploadSettings,
     restoreUploadSettings,
   } = useStoryEditorActions({
@@ -252,6 +254,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     allPhotos,
     stories,
     pendingImages,
+    cdnDomain: settings?.cdn_domain,
     initialUploadSettings: DEFAULT_UPLOAD_SETTINGS,
     initialPasteUploadSettings: DEFAULT_PASTE_UPLOAD_SETTINGS,
     pendingPhotoIdsRef,
@@ -362,7 +365,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
             }),
       }
     })
-    setShowPhotoSelector(false)
+    setShowMaterialLibrary(false)
   }, [allPhotos, currentStory?.photos])
 
   const handleRemovePhoto = useCallback((photoId: string) => {
@@ -515,6 +518,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   useEffect(() => {
     if (typeof window === 'undefined') return
     setIsPhotoPanelCollapsed(window.localStorage.getItem(STORY_PHOTO_PANEL_COLLAPSED_KEY) === 'true')
+    setIsListPaneCollapsed(window.localStorage.getItem(STORY_LIST_PANE_COLLAPSED_KEY) === 'true')
 
     const raw = window.localStorage.getItem(STORY_PASTE_UPLOAD_SETTINGS_KEY)
     if (raw) {
@@ -573,6 +577,16 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     })
   }, [])
 
+  const toggleListPane = useCallback(() => {
+    setIsListPaneCollapsed((prev) => {
+      const next = !prev
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(STORY_LIST_PANE_COLLAPSED_KEY, String(next))
+      }
+      return next
+    })
+  }, [])
+
   return (
     <div className="flex h-full flex-col gap-6 overflow-hidden">
       {storyEditMode === 'list' || !currentStory ? (
@@ -590,6 +604,27 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onRefresh={() => void loadStories()}
         />
       ) : (
+        <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
+          <aside className={cn('hidden shrink-0 overflow-hidden border-r border-border md:flex md:w-[280px] xl:w-[320px]', isListPaneCollapsed && 'md:hidden')}>
+            <div className="flex min-h-0 w-full flex-col overflow-hidden">
+              <StoryListView
+                stories={stories}
+                loading={loading}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                selectedStoryId={currentStory.id}
+                compact
+                onCreateStory={() => void handleCreateStory()}
+                onEditStory={(story) => void handleEditStory(story)}
+                onTogglePublish={(story) => void handleTogglePublish(story)}
+                onRequestDelete={setDeleteStoryId}
+                t={t}
+                cdnDomain={settings?.cdn_domain}
+                onRefresh={() => void loadStories()}
+              />
+            </div>
+          </aside>
+          <main className="min-w-0 flex-1 overflow-hidden">
         <StoryEditorView
           token={token}
           currentStory={currentStory}
@@ -604,6 +639,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           setUseCustomDate={setUseCustomDate}
           isPhotoPanelCollapsed={isPhotoPanelCollapsed}
           togglePhotoPanelCollapse={togglePhotoPanelCollapse}
+          listPaneCollapsed={isListPaneCollapsed}
+          onToggleListPane={toggleListPane}
           settingsCdnDomain={settings?.cdn_domain}
           isUploading={isUploading}
           uploadProgress={uploadProgress}
@@ -617,8 +654,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           onBack={resetEditorState}
           onSave={() => void handleSaveStory()}
           onPasteFiles={handlePasteFiles}
-          onOpenPhotoSelector={() => setShowPhotoSelector(true)}
-          onInsertExternalPhotoMarkdown={handleInsertExternalPhotoMarkdown}
+          onOpenMaterialLibrary={() => setShowMaterialLibrary(true)}
           onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
           onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
           onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
@@ -646,9 +682,11 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           notify={notify}
           setCurrentStory={setCurrentStory}
         />
+          </main>
+        </div>
       )}
 
-      <PhotoSelectorModal isOpen={showPhotoSelector} onClose={() => setShowPhotoSelector(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} />
+      <PhotoLibraryDialog isOpen={showMaterialLibrary} onClose={() => setShowMaterialLibrary(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} title={t('story.material_library')} />
       <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} currentStoryId={currentStory?.id} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}
