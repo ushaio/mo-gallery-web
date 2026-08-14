@@ -35,11 +35,4 @@ assert.equal(
   'legacy-storage-secret',
 )
 
-process.env.JWT_SECRET = 'rotated-jwt-secret-that-is-at-least-32-bytes'
-process.env.SECRETS_ENCRYPTION_KEY_PREVIOUS = 'legacy-jwt-secret-that-encrypted-storage'
-assert.equal(
-  storedSecrets.decryptStoredSecret(encryptedWithJwtFallback),
-  'legacy-storage-secret',
-)
-
 console.log('Security crypto tests passed')

@@ -6,7 +6,7 @@ export const REDACTED_SECRET = '********'
 export class StoredSecretDecryptionError extends Error {
   constructor() {
     super(
-      'Stored credential cannot be decrypted. Restore the encryption key in SECRETS_ENCRYPTION_KEY_PREVIOUS or re-enter the storage credentials in the web admin.',
+      'Stored credential cannot be decrypted with the current server keys. Re-enter the storage credentials in the web admin.',
     )
     this.name = 'StoredSecretDecryptionError'
   }
@@ -32,9 +32,6 @@ function getEncryptionSource(): string {
 function getDecryptionKeys(): Buffer[] {
   const sources = [
     process.env.SECRETS_ENCRYPTION_KEY?.trim(),
-    ...(process.env.SECRETS_ENCRYPTION_KEY_PREVIOUS ?? '')
-      .split(',')
-      .map((value) => value.trim()),
     process.env.JWT_SECRET?.trim(),
   ].filter((value): value is string => Boolean(value))
 
@@ -73,7 +70,7 @@ export function decryptStoredSecret(value: string | null | undefined): string | 
         decipher.final(),
       ]).toString('utf8')
     } catch {
-      // Try the next configured key during key rotation.
+      // Support credentials encrypted by the JWT fallback before a dedicated key was configured.
     }
   }
 
