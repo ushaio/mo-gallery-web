@@ -3,17 +3,46 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 const ENCRYPTED_PREFIX = 'enc:v1:'
 export const REDACTED_SECRET = '********'
 
+export class StoredSecretDecryptionError extends Error {
+  constructor() {
+    super(
+      'Stored credential cannot be decrypted. Restore the encryption key in SECRETS_ENCRYPTION_KEY_PREVIOUS or re-enter the storage credentials in the web admin.',
+    )
+    this.name = 'StoredSecretDecryptionError'
+  }
+}
+
 export function isStoredSecretEncrypted(value: string | null | undefined): boolean {
   return Boolean(value?.startsWith(ENCRYPTED_PREFIX))
 }
 
-function getEncryptionKey(): Buffer {
+function deriveEncryptionKey(source: string): Buffer {
+  return createHash('sha256').update(`mo-gallery:stored-secrets:v1\0${source}`).digest()
+}
+
+function getEncryptionSource(): string {
   const source = process.env.SECRETS_ENCRYPTION_KEY?.trim()
     || process.env.JWT_SECRET?.trim()
   if (!source) {
     throw new Error('SECRETS_ENCRYPTION_KEY or JWT_SECRET is required')
   }
-  return createHash('sha256').update(`mo-gallery:stored-secrets:v1\0${source}`).digest()
+  return source
+}
+
+function getDecryptionKeys(): Buffer[] {
+  const sources = [
+    process.env.SECRETS_ENCRYPTION_KEY?.trim(),
+    ...(process.env.SECRETS_ENCRYPTION_KEY_PREVIOUS ?? '')
+      .split(',')
+      .map((value) => value.trim()),
+    process.env.JWT_SECRET?.trim(),
+  ].filter((value): value is string => Boolean(value))
+
+  const uniqueSources = [...new Set(sources)]
+  if (uniqueSources.length === 0) {
+    throw new Error('SECRETS_ENCRYPTION_KEY or JWT_SECRET is required')
+  }
+  return uniqueSources.map(deriveEncryptionKey)
 }
 
 export function encryptStoredSecret(value: string | null | undefined): string | null {
@@ -21,7 +50,7 @@ export function encryptStoredSecret(value: string | null | undefined): string | 
   if (value.startsWith(ENCRYPTED_PREFIX)) return value
 
   const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', getEncryptionKey(), iv)
+  const cipher = createCipheriv('aes-256-gcm', deriveEncryptionKey(getEncryptionSource()), iv)
   const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
   const authTag = cipher.getAuthTag()
   return `${ENCRYPTED_PREFIX}${iv.toString('base64url')}.${authTag.toString('base64url')}.${ciphertext.toString('base64url')}`
@@ -32,14 +61,23 @@ export function decryptStoredSecret(value: string | null | undefined): string | 
   if (!value.startsWith(ENCRYPTED_PREFIX)) return value
 
   const parts = value.slice(ENCRYPTED_PREFIX.length).split('.')
-  if (parts.length !== 3) throw new Error('Invalid encrypted secret')
+  if (parts.length !== 3) throw new StoredSecretDecryptionError()
   const [iv, authTag, ciphertext] = parts
-  const decipher = createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(iv, 'base64url'))
-  decipher.setAuthTag(Buffer.from(authTag, 'base64url'))
-  return Buffer.concat([
-    decipher.update(Buffer.from(ciphertext, 'base64url')),
-    decipher.final(),
-  ]).toString('utf8')
+
+  for (const key of getDecryptionKeys()) {
+    try {
+      const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'))
+      decipher.setAuthTag(Buffer.from(authTag, 'base64url'))
+      return Buffer.concat([
+        decipher.update(Buffer.from(ciphertext, 'base64url')),
+        decipher.final(),
+      ]).toString('utf8')
+    } catch {
+      // Try the next configured key during key rotation.
+    }
+  }
+
+  throw new StoredSecretDecryptionError()
 }
 
 export function redactStoredSecret(value: string | null | undefined): string | null {
