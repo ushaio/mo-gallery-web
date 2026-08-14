@@ -436,6 +436,11 @@
   width: 4px;
 }
 
+/* Keep the block handle outside the content column while aligning it to the block's top. */
+.tiptap-editor .drag-handle {
+  transform: translateX(-8px);
+}
+
 .tiptap-editor .tiptap [data-resize-container][data-node='image'] {
   display: inline-flex;
   vertical-align: top;
@@ -451,18 +456,54 @@
   margin: 0;
 }
 
+.tiptap-editor .tiptap [data-resize-container][data-node='image'] {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 0 transparent;
+  transition: outline-color 140ms ease, box-shadow 140ms ease;
+}
+
+.tiptap-editor .tiptap [data-resize-container][data-node='image']:hover,
 .tiptap-editor .tiptap [data-resize-container][data-node='image'][data-selected],
 .tiptap-editor .tiptap [data-resize-container][data-node='image'].ProseMirror-selectednode,
 .tiptap-editor .tiptap [data-resize-container][data-node='image'][data-resize-state='true'] {
-  outline: 3px solid rgba(149, 141, 241, 0.45);
-  outline-offset: 0;
+  outline-color: #111111;
+  box-shadow: 0 0 0 4px rgb(17 17 17 / 0.18), 0 5px 14px rgb(15 23 42 / 0.14);
 }
 
 .tiptap-editor .tiptap [data-resize-handle] {
-  background: #958df1;
-  border: 2px solid var(--tiptap-white);
-  height: 0.75rem;
-  width: 0.75rem;
+  box-sizing: border-box;
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 1.5px solid #111111;
+  border-radius: 999px;
+  background: var(--tiptap-white);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.24);
+  opacity: 0;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.tiptap-editor .tiptap [data-resize-handle='top-left'] {
+  transform: translate(-50%, -50%);
+}
+
+.tiptap-editor .tiptap [data-resize-handle='top-right'] {
+  transform: translate(50%, -50%);
+}
+
+.tiptap-editor .tiptap [data-resize-handle='bottom-left'] {
+  transform: translate(-50%, 50%);
+}
+
+.tiptap-editor .tiptap [data-resize-handle='bottom-right'] {
+  transform: translate(50%, 50%);
+}
+
+.tiptap-editor .tiptap [data-resize-container][data-node='image']:hover [data-resize-handle],
+.tiptap-editor .tiptap [data-resize-container][data-node='image'][data-selected] [data-resize-handle],
+.tiptap-editor .tiptap [data-resize-container][data-node='image'].ProseMirror-selectednode [data-resize-handle],
+.tiptap-editor .tiptap [data-resize-container][data-node='image'][data-resize-state='true'] [data-resize-handle] {
+  opacity: 1;
 }
 
 .tiptap-dark .tiptap {

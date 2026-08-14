@@ -16,6 +16,7 @@ import { useEditorState, EditorContent } from '@tiptap/react'
 import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
 import DragHandle from '@tiptap/extension-drag-handle-react'
 import type { JSONContent } from '@tiptap/core'
+import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import {
   Bold,
   Italic,
@@ -880,6 +881,28 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const bubbleMenuOptions = useMemo(() => ({ placement: 'top' as const }), [])
     const floatingMenuOptions = useMemo(() => ({ placement: 'right-start' as const }), [])
     const dragHandlePositionConfig = useMemo(() => ({ placement: 'left-start' as const }), [])
+    const handleBlockDragEnd = useCallback(() => {
+      if (!editor) {
+        return
+      }
+
+      const currentEditor = editor
+      requestAnimationFrame(() => {
+        if (currentEditor.isDestroyed) {
+          return
+        }
+
+        const { selection, doc } = currentEditor.state
+        if (selection instanceof NodeSelection) {
+          const cursorPosition = Math.min(selection.from + 1, doc.content.size)
+          currentEditor.view.dispatch(
+            currentEditor.state.tr.setSelection(TextSelection.near(doc.resolve(cursorPosition))),
+          )
+        }
+
+        currentEditor.view.focus()
+      })
+    }, [editor])
 
     const shouldShowBubbleMenu = useCallback<BubbleMenuShouldShow>(({ editor: currentEditor, from, to }) => (
       !isAiTaskLocked
@@ -914,9 +937,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             <DragHandle
               editor={editor}
               computePositionConfig={dragHandlePositionConfig}
+              onElementDragEnd={handleBlockDragEnd}
+              nested
             >
               <div
-                className="relative z-20 flex h-7 w-6 cursor-grab items-center justify-center rounded-md border border-transparent bg-background/80 text-muted-foreground/70 shadow-sm backdrop-blur-sm transition-[border-color,background-color,color,opacity] hover:border-border hover:bg-background hover:text-foreground active:cursor-grabbing"
+                className="relative z-20 flex h-7 w-6 cursor-grab items-center justify-center rounded-md border border-transparent bg-transparent text-muted-foreground/70 shadow-none transition-[border-color,background-color,box-shadow,color,opacity] hover:border-border hover:bg-background hover:text-foreground hover:shadow-sm active:cursor-grabbing"
                 title={t('editor.block_drag_handle')}
               >
                 <GripVertical className="h-4 w-4" />
