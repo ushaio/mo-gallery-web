@@ -152,9 +152,11 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const pendingSelectionRef = useRef<{ from: number; to: number } | null>(null)
     const toolbarRef = useRef<HTMLFieldSetElement | null>(null)
     const backgroundColorButtonRef = useRef<HTMLButtonElement | null>(null)
+    const bubbleBackgroundColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const backgroundColorMenuRef = useRef<HTMLDivElement | null>(null)
     const backgroundColorPickerRef = useRef<HTMLInputElement | null>(null)
     const textColorButtonRef = useRef<HTMLButtonElement | null>(null)
+    const bubbleTextColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const textColorMenuRef = useRef<HTMLDivElement | null>(null)
     const textColorPickerRef = useRef<HTMLInputElement | null>(null)
 
@@ -164,11 +166,13 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const [imageUrl, setImageUrl] = useState('')
     const [openToolbarMenu, setOpenToolbarMenu] = useState<'insert' | 'format' | null>(null)
     const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
+    const [backgroundColorAnchor, setBackgroundColorAnchor] = useState<'toolbar' | 'bubble'>('toolbar')
     const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
     const [customBackgroundColor, setCustomBackgroundColor] = useState(DEFAULT_TEXT_HIGHLIGHT)
     const [recentBackgroundColors, setRecentBackgroundColors] = useState<string[]>([])
     const [backgroundColorTab, setBackgroundColorTab] = useState<'basic' | 'more'>('basic')
     const [showTextColorMenu, setShowTextColorMenu] = useState(false)
+    const [textColorAnchor, setTextColorAnchor] = useState<'toolbar' | 'bubble'>('toolbar')
     const [textColorMenuPosition, setTextColorMenuPosition] = useState({ top: 0, left: 0 })
     const [customTextColor, setCustomTextColor] = useState(DEFAULT_TEXT_COLOR)
     const [recentTextColors, setRecentTextColors] = useState<string[]>([])
@@ -728,7 +732,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     useColorPickerMenu({
       isOpen: showTextColorMenu,
-      buttonRef: textColorButtonRef,
+      buttonRef: textColorAnchor === 'bubble' ? bubbleTextColorButtonRef : textColorButtonRef,
       menuRef: textColorMenuRef,
       onSetIsOpen: setShowTextColorMenu,
       onSetPosition: setTextColorMenuPosition,
@@ -736,14 +740,15 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     useColorPickerMenu({
       isOpen: showBackgroundColorMenu,
-      buttonRef: backgroundColorButtonRef,
+      buttonRef: backgroundColorAnchor === 'bubble' ? bubbleBackgroundColorButtonRef : backgroundColorButtonRef,
       menuRef: backgroundColorMenuRef,
       onSetIsOpen: setShowBackgroundColorMenu,
       onSetPosition: setBackgroundColorMenuPosition,
     })
 
-    const toggleTextColorMenu = useCallback(() => {
+    const toggleTextColorMenu = useCallback((anchor: 'toolbar' | 'bubble') => {
       if (!showTextColorMenu) {
+        setTextColorAnchor(anchor)
         setCustomTextColor(resolvedEditorUiState.color || DEFAULT_TEXT_COLOR)
         setTextColorTab(
           MORE_TEXT_COLOR_OPTIONS.includes(
@@ -755,8 +760,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       setShowTextColorMenu((current) => !current)
     }, [resolvedEditorUiState.color, showTextColorMenu])
 
-    const toggleBackgroundColorMenu = useCallback(() => {
+    const toggleBackgroundColorMenu = useCallback((anchor: 'toolbar' | 'bubble') => {
       if (!showBackgroundColorMenu) {
+        setBackgroundColorAnchor(anchor)
         setCustomBackgroundColor(resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT)
         setBackgroundColorTab(
           MORE_BACKGROUND_COLOR_OPTIONS.includes(
@@ -830,8 +836,8 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       alignLeft: { active: resolvedEditorUiState.isAlignLeft, disabled: isAiTaskLocked, execute: () => setTextAlign('left') },
       alignCenter: { active: resolvedEditorUiState.isAlignCenter, disabled: isAiTaskLocked, execute: () => setTextAlign('center') },
       alignRight: { active: resolvedEditorUiState.isAlignRight, disabled: isAiTaskLocked, execute: () => setTextAlign('right') },
-      textColor: { active: Boolean(resolvedEditorUiState.color), disabled: isAiTaskLocked, execute: toggleTextColorMenu },
-      backgroundColor: { active: Boolean(resolvedEditorUiState.backgroundColor), disabled: isAiTaskLocked, execute: toggleBackgroundColorMenu },
+      textColor: { active: Boolean(resolvedEditorUiState.color), disabled: isAiTaskLocked, execute: () => toggleTextColorMenu('toolbar') },
+      backgroundColor: { active: Boolean(resolvedEditorUiState.backgroundColor), disabled: isAiTaskLocked, execute: () => toggleBackgroundColorMenu('toolbar') },
       image: { disabled: isAiTaskLocked, execute: addImage },
       table: { disabled: isAiTaskLocked, execute: addTable },
       clearFormatting: { disabled: isAiTaskLocked, execute: clearFormatting },
@@ -960,6 +966,41 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   </React.Fragment>
                 )
               })}
+              <div className="mx-0.5 h-4 w-px bg-border/80" aria-hidden="true" />
+              <FloatingToolbarButton
+                buttonRef={bubbleTextColorButtonRef}
+                onClick={() => toggleTextColorMenu('bubble')}
+                isActive={Boolean(resolvedEditorUiState.color) || showTextColorMenu}
+                disabled={isAiTaskLocked}
+                title={t('editor.text_color')}
+                ariaHasPopup="dialog"
+                ariaExpanded={showTextColorMenu}
+              >
+                <span className="relative flex h-5 w-5 items-center justify-center pb-1" aria-hidden="true">
+                  <Palette className="h-3.5 w-3.5" />
+                  <span
+                    className="absolute inset-x-0 bottom-0 h-1 rounded-[1px] border border-foreground/15"
+                    style={{ backgroundColor: resolvedEditorUiState.color || DEFAULT_TEXT_COLOR }}
+                  />
+                </span>
+              </FloatingToolbarButton>
+              <FloatingToolbarButton
+                buttonRef={bubbleBackgroundColorButtonRef}
+                onClick={() => toggleBackgroundColorMenu('bubble')}
+                isActive={Boolean(resolvedEditorUiState.backgroundColor) || showBackgroundColorMenu}
+                disabled={isAiTaskLocked}
+                title={t('editor.background_color')}
+                ariaHasPopup="dialog"
+                ariaExpanded={showBackgroundColorMenu}
+              >
+                <span className="relative flex h-5 w-5 items-center justify-center pb-1" aria-hidden="true">
+                  <Highlighter className="h-3.5 w-3.5" />
+                  <span
+                    className="absolute inset-x-0 bottom-0 h-1 rounded-[1px] border border-foreground/15"
+                    style={{ backgroundColor: resolvedEditorUiState.backgroundColor || DEFAULT_TEXT_HIGHLIGHT }}
+                  />
+                </span>
+              </FloatingToolbarButton>
               {showLinkInput ? (
                 <div className="ml-1 flex items-center gap-1 border-l border-border/80 pl-1">
                   <input
@@ -1210,7 +1251,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 type="button"
                 role="menuitem"
                 onMouseDown={preserveSelectionOnToolbarMouseDown}
-                onClick={toggleTextColorMenu}
+                onClick={() => toggleTextColorMenu('toolbar')}
                 className="flex h-9 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
               >
                 <Palette className="h-4 w-4 text-muted-foreground" />
@@ -1222,7 +1263,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 type="button"
                 role="menuitem"
                 onMouseDown={preserveSelectionOnToolbarMouseDown}
-                onClick={toggleBackgroundColorMenu}
+                onClick={() => toggleBackgroundColorMenu('toolbar')}
                 className="flex h-9 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
               >
                 <Highlighter className="h-4 w-4 text-muted-foreground" />

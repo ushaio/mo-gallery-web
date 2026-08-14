@@ -103,6 +103,9 @@ interface FloatingToolbarButtonProps {
   disabled?: boolean
   title: string
   children: React.ReactNode
+  buttonRef?: Ref<HTMLButtonElement>
+  ariaHasPopup?: React.AriaAttributes['aria-haspopup']
+  ariaExpanded?: boolean
 }
 
 export function FloatingToolbarButton({
@@ -111,9 +114,13 @@ export function FloatingToolbarButton({
   disabled = false,
   title,
   children,
+  buttonRef,
+  ariaHasPopup,
+  ariaExpanded,
 }: FloatingToolbarButtonProps) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
@@ -121,6 +128,8 @@ export function FloatingToolbarButton({
       title={title}
       aria-label={title}
       aria-pressed={typeof isActive === 'boolean' ? isActive : undefined}
+      aria-haspopup={ariaHasPopup}
+      aria-expanded={ariaExpanded}
       className={`flex h-8 min-w-8 items-center justify-center rounded-sm border px-1.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         isActive
           ? 'border-primary/30 bg-primary/10 text-primary'

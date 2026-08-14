@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect } from 'react'
 import type { Ref, Dispatch, SetStateAction } from 'react'
+import { createPortal } from 'react-dom'
 import { normalizeHexColor } from './markdown-converter'
 import { shouldCloseColorPickerMenu } from './color-picker-utils'
 import {
@@ -61,12 +62,12 @@ function ColorPickerMenu({
   titleMore,
   confirmLabel,
 }: ColorPickerMenuProps) {
-  if (!isOpen) return null
+  if (!isOpen || typeof document === 'undefined') return null
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-40 flex w-[360px] flex-col gap-3 rounded-md border border-border bg-background p-4 shadow-xl"
+      className="fixed z-40 flex max-h-[calc(100vh-1.5rem)] w-[min(360px,calc(100vw-1.5rem))] flex-col gap-3 overflow-y-auto rounded-md border border-border bg-background p-4 shadow-xl"
       style={{
         top: position.top,
         left: position.left,
@@ -197,7 +198,8 @@ function ColorPickerMenu({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -339,18 +341,30 @@ export function useColorPickerMenu({
     if (!buttonElement?.current) return
 
     const rect = buttonElement.current.getBoundingClientRect()
-    const menuWidth = 360
     const viewportPadding = 12
+    const menuGap = 6
+    const menuWidth = Math.min(360, window.innerWidth - viewportPadding * 2)
+    const menuElement = (menuRef as React.RefObject<HTMLDivElement>)?.current
+    const menuHeight = menuElement?.getBoundingClientRect().height
+      ?? Math.min(360, window.innerHeight - viewportPadding * 2)
+    const availableAbove = rect.top - viewportPadding
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding
+    const placeAbove = availableBelow < menuHeight + menuGap && availableAbove > availableBelow
     const left = Math.max(
       viewportPadding,
       Math.min(rect.left, window.innerWidth - menuWidth - viewportPadding)
     )
+    const preferredTop = placeAbove
+      ? rect.top - menuHeight - menuGap
+      : rect.bottom + menuGap
+    const maxTop = Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding)
+    const top = Math.max(viewportPadding, Math.min(preferredTop, maxTop))
 
     onSetPosition({
-      top: rect.bottom + 6,
+      top,
       left,
     })
-  }, [buttonRef, onSetPosition])
+  }, [buttonRef, menuRef, onSetPosition])
 
   useEffect(() => {
     if (!isOpen) return
