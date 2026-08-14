@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Settings2, X } from 'lucide-react'
 import type { AdminSettingsDto } from '@/lib/api/types'
 import type { CompressionMode } from '@/lib/image-compress'
 import { normalizeCompressionMode } from '@/lib/image-compress'
@@ -10,6 +12,8 @@ import { PhotoUploadParams, type PhotoUploadSettings } from '@/components/admin/
 
 export interface UploadSettings {
   maxSizeMB?: number
+  title?: string
+  storyId?: string
   storageProvider?: string
   storageSourceId?: string
   storagePath?: string
@@ -69,8 +73,60 @@ function getInitialUploadSettings(initialSettings?: UploadSettings): PhotoUpload
 export function ImageUploadSettingsModal({
   ...props
 }: ImageUploadSettingsModalProps) {
-  if (!props.isOpen) return null
-  return <ImageUploadSettingsModalContent key={JSON.stringify(props.initialSettings ?? {})} {...props} />
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(props.onClose)
+
+  useEffect(() => {
+    onCloseRef.current = props.onClose
+  }, [props.onClose])
+
+  useEffect(() => {
+    if (!props.isOpen) return
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      previousFocusRef.current?.focus()
+      previousFocusRef.current = null
+    }
+  }, [props.isOpen])
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <AnimatePresence>
+      {props.isOpen && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm" onClick={props.onClose} />
+          <div className="pointer-events-none fixed inset-0 z-[121] flex items-center justify-center p-4">
+            <motion.div ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1} initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 8 }} className="pointer-events-auto flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border border-border bg-background shadow-2xl outline-none">
+              <ImageUploadSettingsModalContent key={JSON.stringify(props.initialSettings ?? {})} {...props} />
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body,
+  )
 }
 
 function ImageUploadSettingsModalContent({
@@ -88,6 +144,8 @@ function ImageUploadSettingsModalContent({
 
   const handleConfirm = () => {
     const settingsToSave: UploadSettings = {
+      title: uploadSettings.title,
+      storyId: uploadSettings.storyId,
       compressionMode: uploadSettings.compressionEnabled ? 'compress' : 'none',
       showFlag: uploadSettings.showFlag,
       stripGps: uploadSettings.privacyStripEnabled,
@@ -116,25 +174,19 @@ function ImageUploadSettingsModalContent({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-background border border-border w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
-        {/* Header */}
-        <div className="sticky top-0 bg-background border-b border-border px-8 py-6 flex items-center justify-between z-10">
-          <h3 className="text-lg font-light tracking-wide">
-            {t('admin.upload_settings')} ({pendingCount} {t('admin.files')})
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <>
+      <div className="flex items-start gap-3 border-b border-border p-5">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary"><Settings2 className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold">{t('admin.upload_settings')}</h2>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t('admin.upload_settings_hint')}</p>
         </div>
-
-        {/* Content - Hide upload button, we'll use footer buttons */}
-        <div className="p-8">
-          <div className="space-y-4">
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-medium tabular-nums text-muted-foreground">{pendingCount} {t('admin.files')}</span>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} className="rounded-md p-1.5 hover:bg-secondary"><X className="h-4 w-4" /></button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <PhotoUploadParams
               mode="digital"
               token={token}
@@ -151,17 +203,16 @@ function ImageUploadSettingsModalContent({
               uploadError=""
               hideStorySelector={!!currentStoryId}
               initialStoryId={currentStoryId}
+              initialSettings={getInitialUploadSettings(initialSettings)}
+              embedded
             />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-background border-t border-border px-8 py-6 flex gap-4 z-10">
+      </div>
+      <div className="flex justify-end gap-2 border-t border-border bg-background px-5 py-4">
           <AdminButton
             onClick={onClose}
             adminVariant="outline"
             size="lg"
-            className="flex-1 py-3"
+            className="min-w-28 rounded-md"
           >
             {t('common.cancel')}
           </AdminButton>
@@ -169,12 +220,12 @@ function ImageUploadSettingsModalContent({
             onClick={handleConfirm}
             adminVariant="primary"
             size="lg"
-            className="flex-1 py-3"
+            className="min-w-36 rounded-md"
+            disabled={!uploadSettings.storageSourceId}
           >
             {confirmLabel || t('admin.confirm_upload')}
           </AdminButton>
-        </div>
       </div>
-    </div>
+    </>
   )
 }

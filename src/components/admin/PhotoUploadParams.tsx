@@ -53,8 +53,10 @@ interface PhotoUploadParamsProps {
   onSelectFilesClick?: () => void
   uploading?: boolean
   uploadError?: string
+  initialSettings?: Partial<PhotoUploadSettings>
   hideStorySelector?: boolean
   initialStoryId?: string
+  embedded?: boolean
 }
 
 // Inline Prefix Dropdown
@@ -130,19 +132,21 @@ export function PhotoUploadParams({
   onSelectFilesClick,
   uploading = false,
   uploadError,
+  initialSettings,
   hideStorySelector = false,
   initialStoryId,
+  embedded = false,
 }: PhotoUploadParamsProps) {
-  const [uploadTitle, setUploadTitle] = useState('')
-  const [uploadCategories, setUploadCategories] = useState<string[]>([])
+  const [uploadTitle, setUploadTitle] = useState(initialSettings?.title ?? '')
+  const [uploadCategories, setUploadCategories] = useState<string[]>(initialSettings?.categories ?? [])
 
-  const [uploadStoryId, setUploadStoryId] = useState('')
+  const [uploadStoryId, setUploadStoryId] = useState(initialSettings?.storyId ?? '')
   const [uploadStoryTitle, setUploadStoryTitle] = useState('')
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loadingStories, setLoadingStories] = useState(false)
   const [showStorySelector, setShowStorySelector] = useState(false)
 
-  const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>([])
+  const [uploadAlbumIds, setUploadAlbumIds] = useState<string[]>(initialSettings?.albumIds ?? [])
   const [albums, setAlbums] = useState<AlbumDto[]>([])
   const [loadingAlbums, setLoadingAlbums] = useState(false)
 
@@ -153,18 +157,18 @@ export function PhotoUploadParams({
   const [loadingFilmRolls, setLoadingFilmRolls] = useState(false)
   const [showFilmRollSelector, setShowFilmRollSelector] = useState(false)
 
-  const [uploadSourceId, setUploadSourceId] = useState<string>('')
+  const [uploadSourceId, setUploadSourceId] = useState<string>(initialSettings?.storageSourceId ?? '')
   const [storageSources, setStorageSources] = useState<StorageSourceDto[]>([])
-  const [useCustomPrefix, setUseCustomPrefix] = useState(false)
-  const [uploadPath, setUploadPath] = useState('')
+  const [useCustomPrefix, setUseCustomPrefix] = useState(Boolean(initialSettings?.storagePathFull))
+  const [uploadPath, setUploadPath] = useState(initialSettings?.storagePath ?? '')
   const [isInitialized, setIsInitialized] = useState(false)
 
-  const [compressionEnabled, setCompressionEnabled] = useState(true)
-  const [maxSizeMB, setMaxSizeMB] = useState(0)
-  const [sliderValue, setSliderValue] = useState(0)
-  const [showFlag, setShowFlag] = useState(true)
+  const [compressionEnabled, setCompressionEnabled] = useState(initialSettings?.compressionEnabled ?? true)
+  const [maxSizeMB, setMaxSizeMB] = useState(initialSettings?.maxSizeMB ?? 0)
+  const [sliderValue, setSliderValue] = useState(initialSettings?.maxSizeMB ?? 0)
+  const [showFlag, setShowFlag] = useState(initialSettings?.showFlag ?? true)
 
-  const [privacyStripEnabled, setPrivacyStripEnabled] = useState(false)
+  const [privacyStripEnabled, setPrivacyStripEnabled] = useState(initialSettings?.privacyStripEnabled ?? false)
 
   // Initialize storyId from prop
   useEffect(() => {
@@ -185,17 +189,13 @@ export function PhotoUploadParams({
     if (!token || isInitialized) return
     getStorageSources(token).then(sources => {
       setStorageSources(sources)
-      if (sources.length > 0) setUploadSourceId(sources[0].id)
+      const nextSourceId = sources.some((source) => source.id === uploadSourceId)
+        ? uploadSourceId
+        : sources[0]?.id || ''
+      setUploadSourceId(nextSourceId)
       setIsInitialized(true)
     }).catch(() => setIsInitialized(true))
-  }, [token, isInitialized])
-
-  // Reset custom prefix when storage source changes
-  useEffect(() => {
-    if (!isInitialized) return
-    setUseCustomPrefix(false)
-    setUploadPath('')
-  }, [uploadSourceId, isInitialized])
+  }, [token, isInitialized, uploadSourceId])
 
   const selectedSource = storageSources.find(s => s.id === uploadSourceId)
   const configPrefix = selectedSource?.basePath || undefined
@@ -297,7 +297,7 @@ export function PhotoUploadParams({
 
   return (
     <>
-      <div className="sticky top-6">
+      <div className={embedded ? 'space-y-4' : 'sticky top-6'}>
         <div className="flex items-center gap-3 mb-4">
           <Settings2 className="w-4 h-4 text-muted-foreground" />
           <h2 className="text-xs font-medium tracking-wide uppercase text-muted-foreground">{t('admin.upload_params')}</h2>
@@ -529,7 +529,7 @@ export function PhotoUploadParams({
           </div>
 
           {/* Upload Button */}
-          <AdminButton
+          {!embedded && <AdminButton
             onClick={fileCount === 0 ? onSelectFilesClick : onUploadClick}
             disabled={uploading || (fileCount === 0 && !onSelectFilesClick)}
             adminVariant="primary"
@@ -547,7 +547,7 @@ export function PhotoUploadParams({
                 {fileCount === 0 ? t('admin.select_photos') : t('admin.start_upload')}
               </>
             )}
-          </AdminButton>
+          </AdminButton>}
           {uploadError && <p className="text-xs text-destructive text-center mt-1">{uploadError}</p>}
         </div>
       </div>

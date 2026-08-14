@@ -19,7 +19,7 @@ import {
 import type { SelectOption } from '@/components/admin/AdminFormControls'
 import { AdminSelect } from '@/components/admin/AdminFormControls'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { ListSkeleton } from '@/components/admin/Skeleton'
+import { Skeleton } from '@/components/admin/Skeleton'
 import type { StoryDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { countStoryCharacters } from '@/lib/story-rich-content'
@@ -38,6 +38,26 @@ interface StoryListViewProps {
   t: (key: string) => string
   cdnDomain?: string
   onRefresh?: () => void
+}
+
+function StoryListSkeleton({ compact }: { compact: boolean }) {
+  return (
+    <div className={`grid grid-cols-1 ${compact ? 'gap-1.5' : 'gap-4'}`}>
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div
+          key={index}
+          className={`relative flex items-center ${compact ? 'gap-2.5 rounded-md px-2 py-2' : 'gap-5 border border-border px-5 py-5 sm:gap-6'}`}
+        >
+          <Skeleton className={`${compact ? 'h-11 w-14 rounded-md' : 'hidden h-16 w-24 rounded-none sm:block'} shrink-0`} />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className={`${compact ? 'h-4 w-2/3' : 'h-5 w-1/2'}`} />
+            <Skeleton className={`${compact ? 'h-2.5 w-1/2' : 'h-3 w-2/3'}`} />
+          </div>
+          <Skeleton className={`absolute right-2 ${compact ? 'top-1.5 h-3 w-10' : 'top-2 h-4 w-14'}`} />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function StoryListView({
@@ -85,8 +105,8 @@ export function StoryListView({
   const hasActiveFilters = !!statusFilter || !!searchQuery.trim()
 
   return (
-    <div className={`flex flex-1 flex-col overflow-hidden ${compact ? 'gap-3' : 'space-y-8'}`}>
-      <div className={`flex shrink-0 items-center border-b border-border ${compact ? 'gap-1.5 pb-3' : 'justify-between pb-4'}`}>
+    <div className={`flex flex-1 flex-col overflow-hidden ${compact ? 'gap-2' : 'space-y-8'}`}>
+      <div className={`flex shrink-0 items-center border-b border-border ${compact ? 'gap-1.5 px-1 pb-3' : 'justify-between pb-4'}`}>
         {compact ? (
           <>
             <div className="relative min-w-0 flex-1">
@@ -132,9 +152,9 @@ export function StoryListView({
         )}
       </div>
 
-      <div className="custom-scrollbar flex-1 overflow-y-auto">
+      <div className={`custom-scrollbar flex-1 overflow-y-auto ${compact ? 'px-1' : ''}`}>
         {loading ? (
-          <div className="p-6"><ListSkeleton count={5} /></div>
+          <StoryListSkeleton compact={compact} />
         ) : (
           <div className={`grid grid-cols-1 ${compact ? 'gap-1.5' : 'gap-4'}`}>
             {filteredStories.map((story) => {
@@ -145,7 +165,7 @@ export function StoryListView({
               return (
                 <div
                   key={story.id}
-                  className={`group relative flex items-center transition-colors hover:border-primary/50 ${compact ? 'gap-2.5 rounded-md px-2.5 py-2' : 'gap-5 border px-5 py-5 sm:gap-6'} ${isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border bg-card'}`}
+                  className={`group relative flex items-center transition-colors hover:border-primary/50 ${compact ? 'gap-2.5 rounded-md px-2 py-2' : 'gap-5 border px-5 py-5 sm:gap-6'} ${isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border bg-card'}`}
                 >
                   <div className={`${compact ? 'h-11 w-14 rounded-md' : 'hidden h-16 w-24 sm:block'} shrink-0 cursor-pointer overflow-hidden border border-border/70 bg-muted`} onClick={() => onEditStory(story)}>
                     {coverPhoto ? (
