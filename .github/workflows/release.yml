@@ -595,11 +595,30 @@ jobs:
           git tag "${{ needs.prepare.outputs.tag }}"
           git push origin "${{ needs.prepare.outputs.tag }}"
 
+      - name: Extract release notes
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+
+          const lines = fs.readFileSync('RELEASE.md', 'utf8').split(/\r?\n/)
+          const headingPattern = /^## v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\s|$)/
+          const start = lines.findIndex((line) => headingPattern.test(line))
+          const end = lines.findIndex((line, index) => index > start && headingPattern.test(line))
+          const notes = lines.slice(start + 1, end === -1 ? undefined : end).join('\n').trim()
+
+          if (start === -1 || !notes) {
+            console.error('Could not extract non-empty notes for the latest release from RELEASE.md')
+            process.exit(1)
+          }
+
+          fs.writeFileSync('release-notes.md', `${notes}\n`)
+          NODE
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          body_path: RELEASE.md
+          body_path: release-notes.md
           files: release-assets/*
           generate_release_notes: false
         env:

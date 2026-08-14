@@ -335,7 +335,7 @@ func initializeAndListTools(ctx context.Context, runtime *mcpRuntime) ([]MCPTool
 	initialized := runtime.initialized
 	runtime.mu.Unlock()
 	if !initialized {
-		if _, err := runtime.request(ctx, "initialize", map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "mo-gallery-desktop", "version": "0.8.2"}}); err != nil {
+		if _, err := runtime.request(ctx, "initialize", map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "mo-gallery-desktop", "version": "0.8.3"}}); err != nil {
 			return nil, err
 		}
 		if err := runtime.notify("notifications/initialized", map[string]any{}); err != nil {
