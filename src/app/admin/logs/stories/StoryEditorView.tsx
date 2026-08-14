@@ -6,6 +6,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  PanelRightClose,
+  PanelRightOpen,
   Clock,
   Eye,
   FileText,
@@ -255,6 +257,12 @@ export function StoryEditorView({
               onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
               onJsonChange={(contentJson) => setCurrentStory((prev) => (prev ? { ...prev, contentJson: normalizeStoryContentJsonImages(contentJson) } : prev))}
               onPasteFiles={onPasteFiles}
+              toolbarAfterRedoAction={{
+                title: isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse'),
+                onClick: togglePhotoPanelCollapse,
+                icon: isPhotoPanelCollapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />,
+                disabled: isAiTaskLocked,
+              }}
               placeholder={t('ui.markdown_placeholder')}
               className="overflow-hidden bg-background"
               documentId={currentStory.id}
@@ -270,21 +278,7 @@ export function StoryEditorView({
           </div>
         </div>
 
-        <div className="relative z-10 hidden w-0 shrink-0 md:block">
-          <button
-            type="button"
-            onClick={togglePhotoPanelCollapse}
-            className="absolute left-1/2 top-1/2 z-10 flex h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none"
-            aria-label={isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse')}
-            aria-pressed={isPhotoPanelCollapsed}
-          >
-            <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
-              {isPhotoPanelCollapsed ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            </div>
-          </button>
-        </div>
-
-        <fieldset disabled={isAiTaskLocked} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-20' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
+        <fieldset disabled={isAiTaskLocked} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-0' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
           <StoryPhotoPanel disabled={isAiTaskLocked} isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenMaterialLibrary} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
         </fieldset>
       </div>

@@ -10,7 +10,6 @@ import {
   Upload,
   RefreshCw,
   MoreVertical,
-  LayoutGrid,
 } from 'lucide-react'
 import { blockNarrativeAiInteraction } from '@mo-gallery/tiptap-editor'
 import { resolveAssetUrl } from '@/lib/api/core'
@@ -121,7 +120,6 @@ export function StoryPhotoPanel({
   notify,
   onAddPhotos,
   onInsertPhotoMarkdown,
-  onInsertGalleryMarkdown,
   onRemovePhoto,
   onRemovePendingImage,
   onSetCover,
@@ -165,42 +163,7 @@ export function StoryPhotoPanel({
   }
 
   if (isCollapsed) {
-    return (
-      <StoryPhotoPanelBoundary disabled={disabled}>
-        <div
-        className={cn(
-          'flex h-full w-20 shrink-0 flex-col overflow-hidden border border-border bg-card transition-all duration-300',
-          isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
-          isImmersiveMode && 'border-t-0'
-        )}
-        onDragOver={onPhotoPanelDragOver}
-        onDragLeave={onPhotoPanelDragLeave}
-        onDrop={onPhotoPanelDrop}
-      >
-        <div className="flex h-full flex-col items-center justify-between bg-background/60 px-2 py-4">
-          <div className="flex flex-col items-center gap-2">
-            <ImageIcon className="h-4 w-4 text-primary" />
-            <span
-              className="text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground [writing-mode:vertical-rl]"
-              aria-hidden="true"
-            >
-              {t('story.material_library')}
-            </span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <span className="bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">
-              {totalPhotos}
-            </span>
-            {pendingImages.length > 0 ? (
-              <span className="bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-600">
-                {pendingImages.length}
-              </span>
-            ) : null}
-          </div>
-        </div>
-        </div>
-      </StoryPhotoPanelBoundary>
-    )
+    return null
   }
 
   return (
@@ -288,24 +251,6 @@ export function StoryPhotoPanel({
       ) : null}
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-        {currentStory?.photos && currentStory.photos.length >= 2 ? (
-          <div className="mb-4 rounded-md border border-border/70 bg-muted/30 p-3">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              {t('admin.insert_photo')}
-            </div>
-            <AdminButton
-              type="button"
-              onClick={() => onInsertGalleryMarkdown(currentStory.photos.map((photo) => photo.id))}
-              adminVariant="primarySoft"
-              size="sm"
-              className="flex w-full items-center justify-center gap-2 border-border/70 bg-background/70 font-medium"
-            >
-              <LayoutGrid className="h-4 w-4" />
-              {t('admin.insert_story_gallery_markdown')}
-            </AdminButton>
-          </div>
-        ) : null}
-
         {(currentStory?.photos && currentStory.photos.length > 0) || pendingImages.length > 0 ? (
           <div className="grid grid-cols-2 gap-3">
             {getCombinedItems().map((item, idx) => {

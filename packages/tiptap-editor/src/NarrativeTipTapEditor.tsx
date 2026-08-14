@@ -106,6 +106,12 @@ export interface NarrativeTipTapEditorProps {
   placeholder?: string
   onPasteFiles?: (files: File[]) => void | Promise<void>
   className?: string
+  toolbarAfterRedoAction?: {
+    title: string
+    onClick: () => void
+    icon: React.ReactNode
+    disabled?: boolean
+  }
   /** 宿主应用注入的 i18n / 主题 / 后端接口 */
   runtime: NarrativeEditorRuntime
   documentId?: string
@@ -135,6 +141,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     placeholder,
     onPasteFiles,
     className,
+    toolbarAfterRedoAction,
     runtime,
     documentId,
     documentKind,
@@ -1249,7 +1256,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             <ToolbarDivider className="hidden sm:block" />
             {mainCommands.filter((command) => command.id === 'undo' || command.id === 'redo').map((command) => {
               const Icon = command.icon
-              return (
+              const button = (
                 <ToolbarButton
                   key={command.id}
                   onClick={command.execute}
@@ -1258,6 +1265,23 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 >
                   <Icon className="h-4 w-4" />
                 </ToolbarButton>
+              )
+
+              if (command.id !== 'redo' || !toolbarAfterRedoAction) {
+                return button
+              }
+
+              return (
+                <React.Fragment key={command.id}>
+                  {button}
+                  <ToolbarButton
+                    onClick={toolbarAfterRedoAction.onClick}
+                    disabled={toolbarAfterRedoAction.disabled || isAiTaskLocked}
+                    title={toolbarAfterRedoAction.title}
+                  >
+                    {toolbarAfterRedoAction.icon}
+                  </ToolbarButton>
+                </React.Fragment>
               )
             })}
           </div>
