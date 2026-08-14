@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowUp, Calendar, ChevronLeft, ChevronRight, Clock, Image a
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
+import { WechatIcon } from '@mo-gallery/tiptap-editor'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getStory } from '@/lib/api/stories'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
@@ -28,26 +29,6 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
 import { buildStoryPreviewText, stripStoryContentToPlainText } from '@/lib/story-rich-content'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
-
-function WechatIcon(props: React.ComponentProps<'svg'>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
-      <path
-        d="M9.05 4C5.16 4 2 6.6 2 9.8c0 1.9 1.13 3.58 2.88 4.66L4.1 17.2l2.92-1.47c.65.14 1.33.22 2.03.22 3.89 0 7.05-2.6 7.05-5.8S12.94 4 9.05 4Z"
-        fill="currentColor"
-        fillOpacity="0.92"
-      />
-      <path
-        d="M15.72 9.53c-3.46 0-6.28 2.3-6.28 5.13 0 1.54.83 2.91 2.14 3.85l-.51 2.2 2.26-1.13c.75.19 1.55.29 2.39.29 3.47 0 6.28-2.3 6.28-5.13s-2.81-5.21-6.28-5.21Z"
-        fill="currentColor"
-      />
-      <circle cx="6.98" cy="9.48" r="1.02" fill="#fff" />
-      <circle cx="11.01" cy="9.48" r="1.02" fill="#fff" />
-      <circle cx="13.92" cy="14.54" r="0.92" fill="#fff" />
-      <circle cx="17.46" cy="14.54" r="0.92" fill="#fff" />
-    </svg>
-  )
-}
 
 function estimateReadingMinutes(content: string) {
   const plainText = stripStoryContentToPlainText(content)

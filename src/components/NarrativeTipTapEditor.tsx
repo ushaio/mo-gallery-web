@@ -16,9 +16,11 @@ import type {
   NarrativeEditorRuntime,
 } from '@mo-gallery/tiptap-editor'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { useSettings } from '@/contexts/SettingsContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { buildApiUrl } from '@/lib/api/core'
 import { getAdminStory } from '@/lib/api/stories'
+import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
 import {
   appendEditorAiMessage,
   clearEditorAiConversation,
@@ -55,6 +57,7 @@ export type { NarrativeTipTapEditorHandle }
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
   (props, ref) => {
     const { t } = useLanguage()
+    const { settings } = useSettings()
     const { resolvedTheme } = useTheme()
 
     // Agent 模式端点：走服务端 Hono 代理，上游密钥不出服务器
@@ -67,9 +70,27 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       headers: { Authorization: `Bearer ${token}` },
     }), [])
 
+    const copyToWechat = useCallback<NonNullable<NarrativeEditorRuntime['copyToWechat']>>(async (input) => {
+      let photos: Awaited<ReturnType<typeof getAdminStory>>['photos'] = []
+
+      if (input.documentKind === 'story' && input.documentId && input.token) {
+        try {
+          photos = (await getAdminStory(input.token, input.documentId)).photos
+        } catch {
+          // Current editor HTML remains copyable even if the saved story cannot be refreshed.
+        }
+      }
+
+      await copyStoryAsWechatArticle({
+        title: input.title || '',
+        content: input.html,
+        photos,
+      }, settings?.cdn_domain)
+    }, [settings?.cdn_domain])
+
     const runtime = useMemo<NarrativeEditorRuntime>(
-      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint }),
-      [t, resolvedTheme, getAgentEndpoint],
+      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint, copyToWechat }),
+      [t, resolvedTheme, getAgentEndpoint, copyToWechat],
     )
 
     if (props.aiOptions?.enabled === true) {

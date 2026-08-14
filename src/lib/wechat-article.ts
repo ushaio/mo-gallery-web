@@ -2,6 +2,8 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { findStoryPhotoById } from '@/lib/story-rich-content'
 
+type WechatArticleSource = Pick<StoryDto, 'title' | 'content' | 'photos'>
+
 /* ------------------------------------------------------------------ */
 /*  WeChat-compatible inline style map                                 */
 /* ------------------------------------------------------------------ */
@@ -145,7 +147,7 @@ function walkNode(node: Node, photos: PhotoDto[], cdnDomain: string | undefined,
 /*  Public API — HTML formatter                                        */
 /* ------------------------------------------------------------------ */
 
-export function formatStoryAsWechatHtml(story: StoryDto, cdnDomain?: string) {
+export function formatStoryAsWechatHtml(story: WechatArticleSource, cdnDomain?: string) {
   const photos = story.photos || []
   const content = story.content || ''
   if (!content.trim()) return ''
@@ -203,7 +205,7 @@ function stripToPlainText(html: string) {
     .trim()
 }
 
-export function formatStoryAsPlainText(story: StoryDto) {
+export function formatStoryAsPlainText(story: WechatArticleSource) {
   const body = stripToPlainText(story.content || '')
   return [story.title.trim(), body].filter(Boolean).join('\n\n')
 }
@@ -274,7 +276,7 @@ export async function copyTextToClipboard(text: string) {
 /*  Main entry point                                                   */
 /* ------------------------------------------------------------------ */
 
-export async function copyStoryAsWechatArticle(story: StoryDto, cdnDomain?: string) {
+export async function copyStoryAsWechatArticle(story: WechatArticleSource, cdnDomain?: string) {
   const html = formatStoryAsWechatHtml(story, cdnDomain)
   const plainText = formatStoryAsPlainText(story)
   await copyHtmlToClipboard(html || plainText, plainText)

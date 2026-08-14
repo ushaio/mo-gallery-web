@@ -56,6 +56,17 @@ assert.doesNotMatch(editorSource, /surfaces: \['main', 'bubble', 'format'\]/, 'i
 assert.doesNotMatch(editorSource, /surfaces: \['main', 'format'\]/, 'align, redo and clear-formatting are not duplicated into the format menu')
 assert.match(editorSource, /surfaces: \['format'\]/, 'format menu keeps only commands absent from the toolbar: drop cap and colors')
 assert.doesNotMatch(editorSource, /command\.id === 'blockquote' \? 'hidden lg:flex'/, 'quote command stays in the scrolling command strip')
+assert.match(editorSource, /openToolbarMenu === 'copy'/, 'copy opens a toolbar popover below its trigger')
+assert.match(editorSource, /icon=\{Copy\}/, 'copy is exposed as an icon command next to editor history')
+assert.match(editorSource, /html: editor\.getHTML\(\)/, 'platform copy uses the current unsaved editor HTML')
+assert.match(editorSource, /copyCurrentContentToWechat/, 'the WeChat option invokes the host clipboard formatter')
+assert.match(editorSource, /<WechatIcon className="h-4 w-4"/, 'the platform option uses the shared WeChat icon')
+assert.match(editorSource, /name: 'fixed-block-handle-x'/, 'block handles use a fixed horizontal positioning rule')
+assert.match(
+  editorSource,
+  /return \{ x: x - \(referenceRect\.left - contentLeft\) \}/,
+  'indented blocks keep the drag handle aligned with the default content edge',
+)
 assert.doesNotMatch(editorSource, /className="hidden lg:flex"/, 'layout commands no longer collapse below a breakpoint; the strip scrolls')
 assert.doesNotMatch(editorSource, /'hidden sm:flex'/, 'promoted desktop commands no longer collapse; the strip scrolls')
 assert.match(editorSource, /tiptap-editor relative z-0 isolate/, 'editor creates a local stacking context below host dialogs')

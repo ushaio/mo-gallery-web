@@ -39,6 +39,7 @@ import {
   Palette,
   RemoveFormatting,
   Plus,
+  Copy,
   GripVertical,
   MoreHorizontal,
 } from 'lucide-react'
@@ -96,6 +97,7 @@ import {
 } from './tiptap-editor/ai-task-lock'
 import { createAiTaskLockNotifier } from './tiptap-editor/ai-task-lock-notifier'
 import { createNarrativeDirectEditHost } from './tiptap-editor/narrative-direct-edit-host'
+import { WechatIcon } from './tiptap-editor/WechatIcon'
 import './tiptap-editor.css'
 
 export interface NarrativeTipTapEditorProps {
@@ -131,6 +133,7 @@ export type { NarrativeTipTapEditorHandle }
 
 type BubbleMenuShouldShow = NonNullable<React.ComponentProps<typeof BubbleMenu>['shouldShow']>
 type FloatingMenuShouldShow = NonNullable<React.ComponentProps<typeof FloatingMenu>['shouldShow']>
+type DragHandlePositionConfig = NonNullable<React.ComponentProps<typeof DragHandle>['computePositionConfig']>
 
 export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, NarrativeTipTapEditorProps>(
   ({
@@ -159,12 +162,14 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const bubbleTextColorButtonRef = useRef<HTMLButtonElement | null>(null)
     const textColorMenuRef = useRef<HTMLDivElement | null>(null)
     const textColorPickerRef = useRef<HTMLInputElement | null>(null)
+    const copyStatusTimerRef = useRef<number | null>(null)
 
     const [showLinkInput, setShowLinkInput] = useState(false)
     const [linkUrl, setLinkUrl] = useState('')
     const [showImageInput, setShowImageInput] = useState(false)
     const [imageUrl, setImageUrl] = useState('')
-    const [openToolbarMenu, setOpenToolbarMenu] = useState<'insert' | 'format' | null>(null)
+    const [openToolbarMenu, setOpenToolbarMenu] = useState<'insert' | 'format' | 'copy' | null>(null)
+    const [copyStatus, setCopyStatus] = useState<'success' | 'error' | null>(null)
     const [showBackgroundColorMenu, setShowBackgroundColorMenu] = useState(false)
     const [backgroundColorAnchor, setBackgroundColorAnchor] = useState<'toolbar' | 'bubble'>('toolbar')
     const [backgroundColorMenuPosition, setBackgroundColorMenuPosition] = useState({ top: 0, left: 0 })
@@ -204,6 +209,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     useEffect(() => () => {
       aiTaskLockNotifier.dispose()
+      if (copyStatusTimerRef.current !== null) {
+        window.clearTimeout(copyStatusTimerRef.current)
+      }
     }, [aiTaskLockNotifier])
 
     const { editor, currentValueRef } = useNarrativeEditor({
@@ -796,6 +804,29 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const undo = () => !isAiTaskLocked && editor?.chain().focus().undo().run()
     const redo = () => !isAiTaskLocked && editor?.chain().focus().redo().run()
+    const copyCurrentContentToWechat = useCallback(async () => {
+      if (!editor || !runtime.copyToWechat || isAiTaskLocked) return
+
+      try {
+        await runtime.copyToWechat({
+          html: editor.getHTML(),
+          title: aiOptions?.title,
+          documentId,
+          documentKind,
+          token: aiOptions?.token || undefined,
+        })
+        setCopyStatus('success')
+      } catch (error) {
+        console.error('Failed to copy editor content for WeChat:', error)
+        setCopyStatus('error')
+      } finally {
+        setOpenToolbarMenu(null)
+        if (copyStatusTimerRef.current !== null) {
+          window.clearTimeout(copyStatusTimerRef.current)
+        }
+        copyStatusTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2200)
+      }
+    }, [aiOptions?.title, aiOptions?.token, documentId, documentKind, editor, isAiTaskLocked, runtime])
 
     // The registry only stores callbacks for later user events; it never executes them during render.
     /* eslint-disable react-hooks/refs */
@@ -871,7 +902,24 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const bubbleMenuOptions = useMemo(() => ({ placement: 'top' as const }), [])
     const floatingMenuOptions = useMemo(() => ({ placement: 'right-start' as const }), [])
-    const dragHandlePositionConfig = useMemo(() => ({ placement: 'left-start' as const }), [])
+    const dragHandlePositionConfig = useMemo<DragHandlePositionConfig>(() => ({
+      placement: 'left-start',
+      middleware: [{
+        name: 'fixed-block-handle-x',
+        fn: ({ x, elements }) => {
+          if (!editor || editor.isDestroyed) {
+            return {}
+          }
+
+          const editorDom = editor.view.dom
+          const editorRect = editorDom.getBoundingClientRect()
+          const referenceRect = elements.reference.getBoundingClientRect()
+          const contentLeft = editorRect.left + (Number.parseFloat(window.getComputedStyle(editorDom).paddingLeft) || 0)
+
+          return { x: x - (referenceRect.left - contentLeft) }
+        },
+      }],
+    }), [editor])
     const handleBlockDragEnd = useCallback(() => {
       if (!editor) {
         return
@@ -1275,7 +1323,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             <ToolbarDivider className="hidden sm:block" />
             {mainCommands.filter((command) => command.id === 'undo' || command.id === 'redo').map((command) => {
               const Icon = command.icon
-              const button = (
+              return (
                 <ToolbarButton
                   key={command.id}
                   onClick={command.execute}
@@ -1285,25 +1333,49 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                   <Icon className="h-4 w-4" />
                 </ToolbarButton>
               )
-
-              if (command.id !== 'redo' || !toolbarAfterRedoAction) {
-                return button
-              }
-
-              return (
-                <React.Fragment key={command.id}>
-                  {button}
-                  <ToolbarButton
-                    onClick={toolbarAfterRedoAction.onClick}
-                    disabled={toolbarAfterRedoAction.disabled || isAiTaskLocked}
-                    title={toolbarAfterRedoAction.title}
-                  >
-                    {toolbarAfterRedoAction.icon}
-                  </ToolbarButton>
-                </React.Fragment>
-              )
             })}
+            {runtime.copyToWechat ? (
+              <ToolbarPopover
+                open={openToolbarMenu === 'copy'}
+                onOpenChange={(open) => setOpenToolbarMenu(open ? 'copy' : null)}
+                label={t('editor.copy_for_platform')}
+                icon={Copy}
+                disabled={isAiTaskLocked}
+                panelClassName="right-0 left-auto w-52"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void copyCurrentContentToWechat()}
+                  className="flex h-10 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#07c160] text-white">
+                    <WechatIcon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{t('editor.copy_wechat')}</span>
+                </button>
+              </ToolbarPopover>
+            ) : null}
+            {toolbarAfterRedoAction ? (
+              <ToolbarButton
+                onClick={toolbarAfterRedoAction.onClick}
+                disabled={toolbarAfterRedoAction.disabled || isAiTaskLocked}
+                title={toolbarAfterRedoAction.title}
+              >
+                {toolbarAfterRedoAction.icon}
+              </ToolbarButton>
+            ) : null}
           </div>
+
+          {copyStatus ? (
+            <div
+              role={copyStatus === 'error' ? 'alert' : 'status'}
+              className={`pointer-events-none absolute right-2 top-[calc(100%+0.5rem)] z-40 rounded-sm border bg-background px-3 py-2 text-xs shadow-lg ${copyStatus === 'error' ? 'border-destructive/30 text-destructive' : 'border-border text-foreground'}`}
+            >
+              {t(copyStatus === 'error' ? 'editor.copy_failed' : 'editor.copy_success')}
+            </div>
+          ) : null}
         </fieldset>
 
         {/* Color Picker Menus */}

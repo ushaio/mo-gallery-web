@@ -145,6 +145,14 @@ export interface EditorAgentEndpoint {
   headers?: Record<string, string>
 }
 
+export interface EditorPlatformCopyInput {
+  html: string
+  title?: string
+  documentId?: string
+  documentKind?: 'story' | 'blog'
+  token?: string
+}
+
 /** TipTap AI 助手需要的后端接口（签名与应用侧 lib/api/story-ai.ts 一致） */
 export interface EditorAiApi {
   getStoryAiModels(token: string): Promise<StoryAiModelsResponse>
@@ -185,6 +193,8 @@ export interface NarrativeEditorRuntime {
   getAdminStory: (token: string, storyId: string) => Promise<EditorStory>
   /** AI 助手后端接口 */
   ai: EditorAiApi
+  /** Host-specific rich-text conversion and clipboard integration. */
+  copyToWechat?: (input: EditorPlatformCopyInput) => Promise<void>
   /**
    * Agent 模式（/agent 指令）使用的 OpenAI 兼容端点；不提供则不启用
    * Agent。desktop 返回本地 Go 代理，web 返回带鉴权头的 Hono 代理路由。
