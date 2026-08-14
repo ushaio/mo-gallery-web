@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/ContextMenu'
 import {
   ArrowDown, ArrowUp, BookOpen, Columns3, LayoutGrid, Star, Eye, EyeOff, Trash2, Loader2, Check,
-  Maximize2, Minus, Pencil, Plus, RefreshCw, Search, X, CheckSquare, Film, ImageOff,
+  Maximize2, Minus, Pencil, Plus, RefreshCw, Search, X, CheckSquare, Film, ImageOff, Filter,
 } from 'lucide-react'
 
 // 三栏资源库中间区域较窄，8 列视图下 50 张可能不足以撑满一屏，导致没有滚动事件。
@@ -44,11 +44,123 @@ const MIN_PHOTO_GRID_SIZE = 120
 const MAX_PHOTO_GRID_SIZE = 280
 const MASONRY_COLUMN_GAP = 6
 const MASONRY_CARD_MARGIN = 6
+const CLOUD_PHOTO_FORMATS = ['jpg', 'png', 'webp', 'avif', 'gif', 'tiff', 'heic'] as const
+
+function getPhotoFileFormat(photo: Pick<Photo, 'storageKey' | 'url'>) {
+  const source = photo.storageKey || photo.url
+  const path = source.split(/[?#]/, 1)[0]
+  const extension = path.match(/\.([a-z0-9]+)$/i)?.[1]?.toLocaleLowerCase()
+  return extension === 'jpeg' ? 'jpg' : extension
+}
+
+function CloudPhotoFilters({ language, categories, category, photoType, fileFormats, onCategoryChange, onPhotoTypeChange, onFileFormatsChange }: {
+  language: 'zh' | 'en'
+  categories: string[]
+  category: string
+  photoType: string | null
+  fileFormats: string[]
+  onCategoryChange: (value: string) => void
+  onPhotoTypeChange: (value: string | null) => void
+  onFileFormatsChange: (value: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const activeCount = (category !== '全部' ? 1 : 0) + (photoType ? 1 : 0) + (fileFormats.length ? 1 : 0)
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!buttonRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
+  }, [open])
+
+  const toggleFileFormat = (format: string) => {
+    onFileFormatsChange(fileFormats.includes(format)
+      ? fileFormats.filter((item) => item !== format)
+      : [...fileFormats, format])
+  }
+
+  const optionClass = (active: boolean) => `rounded-md border px-2.5 py-1.5 text-[10px] font-medium transition hover:bg-secondary ${active ? 'bg-primary text-primary-foreground' : 'bg-background'}`
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title={language === 'zh' ? '筛选' : 'Filters'}
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border bg-input px-2.5 text-xs hover:bg-secondary"
+      >
+        <Filter size={13} />
+        <span>{language === 'zh' ? '筛选' : 'Filters'}</span>
+        {activeCount > 0 && <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[9px] text-primary-foreground">{activeCount}</span>}
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label={language === 'zh' ? '照片筛选' : 'Photo filters'}
+          className="absolute left-3 right-3 top-[calc(100%+4px)] z-30 max-h-[min(60vh,32rem)] overflow-auto rounded-md border bg-background p-4 shadow-xl"
+        >
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold">{language === 'zh' ? '筛选' : 'Filters'}</h2>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{language === 'zh' ? '不同筛选项之间为“并且”，照片类型可多选。' : 'Filters use AND; photo formats can be combined.'}</p>
+            </div>
+            <button type="button" onClick={() => setOpen(false)} aria-label={language === 'zh' ? '关闭筛选' : 'Close filters'} className="rounded-md p-1.5 hover:bg-secondary"><X size={15} /></button>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-6 gap-y-5">
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold">{language === 'zh' ? '成像方式' : 'Capture type'}</h3>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => onPhotoTypeChange(null)} className={optionClass(!photoType)}>{language === 'zh' ? '全部' : 'All'}</button>
+                <button type="button" onClick={() => onPhotoTypeChange('digital')} className={optionClass(photoType === 'digital')}>{t('admin.photos_type_digital', language)}</button>
+                <button type="button" onClick={() => onPhotoTypeChange('film')} className={optionClass(photoType === 'film')}>{t('admin.photos_type_film', language)}</button>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold">{language === 'zh' ? '照片类型' : 'Photo format'}</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {CLOUD_PHOTO_FORMATS.map((format) => (
+                  <button key={format} type="button" onClick={() => toggleFileFormat(format)} className={optionClass(fileFormats.includes(format))}>{format.toUpperCase()}</button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold">{language === 'zh' ? '照片分类' : 'Category'}</h3>
+              <div className="flex max-h-28 flex-wrap gap-1.5 overflow-auto pr-1">
+                {categories.map((item) => (
+                  <button key={item} type="button" onClick={() => onCategoryChange(item)} className={optionClass(category === item)}>{item === '全部' ? (language === 'zh' ? '全部' : 'All') : item}</button>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between border-t pt-3">
+            <button type="button" disabled={activeCount === 0} onClick={() => { onCategoryChange('全部'); onPhotoTypeChange(null); onFileFormatsChange([]) }} className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-[10px] hover:bg-secondary disabled:opacity-40"><X size={11} />{language === 'zh' ? '清除全部' : 'Clear all'}</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-primary px-4 py-1.5 text-[10px] font-medium text-primary-foreground hover:opacity-90">{language === 'zh' ? '完成' : 'Done'}</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 interface AlbumPhotoFilters {
   search: string
   category: string
   photoType: string | null
+  fileFormats: string[]
   featured: boolean | null
   cameraId: string | null
   lensId: string | null
@@ -64,6 +176,7 @@ function filterAndSortAlbumPhotos(photos: Photo[], filters: AlbumPhotoFilters) {
     .filter((photo) => !category || photo.category?.split(',').includes(category))
     .filter((photo) => !search || photo.title?.toLocaleLowerCase().includes(search))
     .filter((photo) => !filters.photoType || photo.photoType === filters.photoType)
+    .filter((photo) => filters.fileFormats.length === 0 || filters.fileFormats.includes(getPhotoFileFormat(photo) || ''))
     .filter((photo) => filters.featured === null || photo.isFeatured === filters.featured)
     .filter((photo) => !filters.cameraId || photo.cameraId === filters.cameraId)
     .filter((photo) => !filters.lensId || photo.lensId === filters.lensId)
@@ -259,7 +372,7 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
   const navigate = useNavigate()
 
   const filterKey = JSON.stringify([
-    filters.category, filters.search, filters.photoType, filters.channel,
+    filters.category, filters.search, filters.photoType, filters.fileFormats, filters.channel,
     filters.albumId, filters.cameraId, filters.lensId, filters.featured,
     filters.sortBy, filters.sortOrder,
   ])
@@ -392,6 +505,7 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
         category: filters.category === '全部' ? '' : filters.category,
         search: filters.search,
         photoType: filters.photoType ?? undefined,
+        formats: filters.fileFormats,
         channel: filters.channel ?? undefined,
         albumId: '',
         cameraId: filters.cameraId ?? '',
@@ -817,8 +931,11 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
     <>
       <PageHeader title={collectionTitle} />
 
+      {/* 中间浏览工作区 + 底部状态栏 + 右侧详情栏。 */}
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col">
       {/* 与本地资源库一致：搜索、筛选、视图和排序集中在内容工具栏。 */}
-      <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="relative flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
         <div className="relative min-w-0 flex-1">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
           <input
@@ -830,28 +947,15 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
           />
           {searchInput && <button type="button" onClick={() => setSearchInput('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1"><X size={13} /></button>}
         </div>
-        <SelectDropdown
-          value={filters.category}
-          options={[
-            { value: '全部', label: t('common.all', language) },
-            ...categories.filter((category) => category !== '全部').map((category) => ({ value: category, label: category })),
-          ]}
-          onChange={(value) => filters.setCategory(value as string)}
-          placeholder={t('common.all', language)}
-          ariaLabel={t('ui.category_filter', language)}
-          className="w-32 shrink-0"
-        />
-        <SelectDropdown
-          value={filters.photoType || ''}
-          options={[
-            { value: '', label: language === 'zh' ? '全部类型' : 'All types' },
-            { value: 'digital', label: t('admin.photos_type_digital', language) },
-            { value: 'film', label: t('admin.photos_type_film', language) },
-          ]}
-          onChange={(value) => filters.setPhotoType((value as string) || null)}
-          placeholder={language === 'zh' ? '全部类型' : 'All types'}
-          ariaLabel={language === 'zh' ? '照片类型' : 'Photo type'}
-          className="w-28 shrink-0"
+        <CloudPhotoFilters
+          language={language}
+          categories={categories}
+          category={filters.category}
+          photoType={filters.photoType}
+          fileFormats={filters.fileFormats}
+          onCategoryChange={filters.setCategory}
+          onPhotoTypeChange={filters.setPhotoType}
+          onFileFormatsChange={filters.setFileFormats}
         />
         <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5">
           <button type="button" onClick={() => setViewMode('crop')} title={language === 'zh' ? '裁切填充' : 'Cropped view'} aria-label={language === 'zh' ? '裁切填充' : 'Cropped view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'crop' ? 'var(--secondary)' : undefined }}><LayoutGrid size={13} /></button>
@@ -871,9 +975,6 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
         <button type="button" onClick={() => filters.setSortOrder(filters.sortOrder === 'asc' ? 'desc' : 'asc')} title={filters.sortOrder === 'asc' ? (language === 'zh' ? '升序' : 'Ascending') : (language === 'zh' ? '降序' : 'Descending')} aria-label={filters.sortOrder === 'asc' ? (language === 'zh' ? '升序' : 'Ascending') : (language === 'zh' ? '降序' : 'Descending')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-input hover:bg-secondary">{filters.sortOrder === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
       </div>
 
-      {/* 与本地资源库一致：中间浏览工作区 + 底部状态栏 + 右侧详情栏。 */}
-      <div className="flex min-h-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3 pb-4" onScroll={handleScroll}>
         <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-3 bg-background/90 text-[10px] backdrop-blur" style={{ color: 'var(--muted-foreground)' }}>
           <div className="flex min-w-0 items-center gap-2"><span className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary" style={{ color: 'var(--foreground)' }}><LayoutGrid size={11} /></span><span className="truncate font-medium" style={{ color: 'var(--foreground)' }}>{collectionTitle}</span></div>

@@ -283,6 +283,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     const category = c.req.query('category')
     const search = c.req.query('search')
     const photoType = c.req.query('photoType')
+    const formats = c.req.query('formats')
     const featured = c.req.query('featured')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
@@ -305,6 +306,30 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
       where.filmPhoto = { isNot: null }
     } else if (photoType === 'digital') {
       where.filmPhoto = { is: null }
+    }
+    if (formats) {
+      const formatSuffixes = [...new Set(formats
+        .split(',')
+        .map((format) => format.trim().toLocaleLowerCase())
+        .filter((format) => ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'tiff', 'tif', 'heic', 'heif'].includes(format))
+        .flatMap((format) => format === 'jpg' || format === 'jpeg'
+          ? ['.jpg', '.jpeg']
+          : format === 'tiff' || format === 'tif'
+            ? ['.tif', '.tiff']
+            : format === 'heic' || format === 'heif'
+              ? ['.heic', '.heif']
+              : [`.${format}`]))]
+
+      if (formatSuffixes.length > 0) {
+        where.AND = [{
+          OR: formatSuffixes.flatMap((suffix) => [
+            { storageKey: { endsWith: suffix, mode: 'insensitive' as const } },
+            { url: { endsWith: suffix, mode: 'insensitive' as const } },
+            { url: { contains: `${suffix}?`, mode: 'insensitive' as const } },
+            { url: { contains: `${suffix}#`, mode: 'insensitive' as const } },
+          ]),
+        }]
+      }
     }
     if (featured === 'true') {
       where.isFeatured = true

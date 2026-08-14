@@ -9,6 +9,10 @@ const editorSource = readSource('src/NarrativeTipTapEditor.tsx')
 const toolbarSource = readSource('src/tiptap-editor/EditorToolbar.tsx')
 const colorPickerSource = readSource('src/tiptap-editor/ColorPickerMenu.tsx')
 const cssSource = readSource('src/tiptap-editor.css')
+const desktopWrapperSource = readFileSync(
+  new URL('../../../desktop/frontend/src/components/NarrativeTipTapEditor.tsx', import.meta.url),
+  'utf8',
+)
 
 assert.match(editorSource, /createEditorCommandRegistry/, 'editor surfaces share the command registry')
 assert.match(editorSource, /event\.altKey[\s\S]*event\.key !== 'F10'/, 'Alt+F10 moves focus into the main toolbar')
@@ -61,6 +65,11 @@ assert.match(editorSource, /icon=\{Copy\}/, 'copy is exposed as an icon command 
 assert.match(editorSource, /html: editor\.getHTML\(\)/, 'platform copy uses the current unsaved editor HTML')
 assert.match(editorSource, /copyCurrentContentToWechat/, 'the WeChat option invokes the host clipboard formatter')
 assert.match(editorSource, /<WechatIcon className="h-4 w-4"/, 'the platform option uses the shared WeChat icon')
+assert.match(
+  desktopWrapperSource,
+  /copyWechatArticleToClipboard[\s\S]*copyToWechat/,
+  'desktop injects the shared WeChat clipboard formatter so the copy command is visible',
+)
 assert.match(editorSource, /name: 'fixed-block-handle-x'/, 'block handles use a fixed horizontal positioning rule')
 assert.match(
   editorSource,

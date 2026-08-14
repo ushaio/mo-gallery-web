@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   Film,
+  Filter,
   ImageOff,
   Images,
   LayoutGrid,
@@ -53,10 +54,12 @@ import { cn } from '@/lib/utils'
 const PAGE_SIZE = 100
 const MASONRY_COLUMN_GAP = 6
 const MASONRY_CARD_MARGIN = 6
+const PHOTO_FORMATS = ['jpg', 'png', 'webp', 'avif', 'gif', 'tiff', 'heic'] as const
 
 export interface LibraryPhotoFilters {
   categoryFilter?: string
   photoTypeFilter?: string
+  fileFormats?: string[]
   albumFilter?: string
   onlyFeatured?: boolean
 }
@@ -78,6 +81,97 @@ type SortOrder = 'asc' | 'desc'
 type ContextMenuState = { photo: PhotoDto; x: number; y: number }
 type EditorState = { photo: PhotoDto; tab: 'info' | 'story' }
 type DeleteRequest = { ids: string[]; isBulk: boolean }
+
+function getPhotoFileFormat(photo: Pick<PhotoDto, 'storageKey' | 'url'>) {
+  const source = photo.storageKey || photo.url
+  const path = source.split(/[?#]/, 1)[0]
+  const extension = path.match(/\.([a-z0-9]+)$/i)?.[1]?.toLocaleLowerCase()
+  return extension === 'jpeg' ? 'jpg' : extension
+}
+
+function PhotoFiltersPopover({ categories, category, photoType, fileFormats, t, onCategoryChange, onPhotoTypeChange, onFileFormatsChange }: {
+  categories: string[]
+  category: string
+  photoType: string
+  fileFormats: string[]
+  t: (key: string) => string
+  onCategoryChange: (value: string) => void
+  onPhotoTypeChange: (value: string) => void
+  onFileFormatsChange: (value: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const activeCount = (category !== 'all' ? 1 : 0) + (photoType !== 'all' ? 1 : 0) + (fileFormats.length ? 1 : 0)
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!buttonRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick)
+  }, [open])
+
+  const toggleFileFormat = (format: string) => {
+    onFileFormatsChange(fileFormats.includes(format)
+      ? fileFormats.filter((item) => item !== format)
+      : [...fileFormats, format])
+  }
+  const optionClass = (active: boolean) => cn(
+    'rounded-md border border-border px-2.5 py-1.5 text-[10px] font-medium transition hover:bg-muted',
+    active && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
+  )
+
+  return (
+    <>
+      <button ref={buttonRef} type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="dialog" className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs hover:bg-muted">
+        <Filter size={13} />
+        <span>{t('admin.filters')}</span>
+        {activeCount > 0 && <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[9px] text-primary-foreground">{activeCount}</span>}
+      </button>
+
+      {open && (
+        <div ref={panelRef} role="dialog" aria-label={t('admin.filters')} className="absolute left-3 right-3 top-[calc(100%+4px)] z-30 max-h-[min(60vh,32rem)] overflow-auto rounded-md border border-border bg-background p-4 shadow-xl">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div><h2 className="text-sm font-semibold">{t('admin.filters')}</h2><p className="mt-0.5 text-[10px] text-muted-foreground">{t('admin.photo_filter_logic_hint')}</p></div>
+            <button type="button" onClick={() => setOpen(false)} aria-label={t('admin.close_filters')} className="rounded-md p-1.5 hover:bg-muted"><X size={15} /></button>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-6 gap-y-5">
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold">{t('admin.capture_type')}</h3>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => onPhotoTypeChange('all')} className={optionClass(photoType === 'all')}>{t('common.all')}</button>
+                <button type="button" onClick={() => onPhotoTypeChange('digital')} className={optionClass(photoType === 'digital')}>{t('admin.upload_type_digital')}</button>
+                <button type="button" onClick={() => onPhotoTypeChange('film')} className={optionClass(photoType === 'film')}>{t('admin.upload_type_film')}</button>
+              </div>
+            </section>
+
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold">{t('admin.photo_format')}</h3>
+              <div className="flex flex-wrap gap-1.5">{PHOTO_FORMATS.map((format) => <button key={format} type="button" onClick={() => toggleFileFormat(format)} className={optionClass(fileFormats.includes(format))}>{format.toUpperCase()}</button>)}</div>
+            </section>
+
+            <section>
+              <h3 className="mb-2 text-[11px] font-semibold">{t('admin.category')}</h3>
+              <div className="flex max-h-28 flex-wrap gap-1.5 overflow-auto pr-1">
+                <button type="button" onClick={() => onCategoryChange('all')} className={optionClass(category === 'all')}>{t('common.all')}</button>
+                {categories.filter((item) => item !== 'all' && item !== '全部').map((item) => <button key={item} type="button" onClick={() => onCategoryChange(item)} className={optionClass(category === item)}>{item}</button>)}
+              </div>
+            </section>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between border-t border-border pt-3">
+            <button type="button" disabled={activeCount === 0} onClick={() => { onCategoryChange('all'); onPhotoTypeChange('all'); onFileFormatsChange([]) }} className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-[10px] hover:bg-muted disabled:opacity-40"><X size={11} />{t('admin.clear_all_filters')}</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-primary px-4 py-1.5 text-[10px] font-medium text-primary-foreground hover:bg-primary/90">{t('admin.filter_done')}</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 function estimateMasonryPhotoHeight(photo: PhotoDto, columnWidth: number) {
   const aspectRatio = photo.width > 0 && photo.height > 0
@@ -227,6 +321,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState(initialFilters.categoryFilter || 'all')
   const [photoType, setPhotoType] = useState(initialFilters.photoTypeFilter || 'all')
+  const [fileFormats, setFileFormats] = useState<string[]>(initialFilters.fileFormats || [])
   const [featured, setFeatured] = useState(initialFilters.onlyFeatured === true)
   const [albumId, setAlbumId] = useState(initialFilters.albumFilter || '')
   const [sortBy, setSortBy] = useState<SortField>('takenAt')
@@ -253,7 +348,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
   const sentinelRef = useRef<HTMLDivElement>(null)
   const anchorIdRef = useRef<string | null>(null)
 
-  const filterKey = JSON.stringify([albumId, category, featured, photoType, search, sortBy, sortOrder])
+  const filterKey = JSON.stringify([albumId, category, featured, photoType, fileFormats, search, sortBy, sortOrder])
   const cdnDomain = settings?.cdn_domain?.trim() || undefined
   const masonryColumnCount = Math.max(1, Math.floor((photoGridWidth + MASONRY_COLUMN_GAP) / (gridSize + MASONRY_COLUMN_GAP)))
   const masonryColumnWidth = Math.max(
@@ -305,6 +400,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         nextPhotos = (album.photos || [])
           .filter((photo) => category === 'all' || photo.category?.split(',').includes(category))
           .filter((photo) => photoType === 'all' || (photo.photoType || 'digital') === photoType)
+          .filter((photo) => fileFormats.length === 0 || fileFormats.includes(getPhotoFileFormat(photo) || ''))
           .filter((photo) => !featured || photo.isFeatured)
           .filter((photo) => !query || photo.title?.toLocaleLowerCase().includes(query))
           .toSorted((left, right) => {
@@ -319,6 +415,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
           category,
           search,
           photoType: photoType === 'digital' || photoType === 'film' ? photoType : undefined,
+          formats: fileFormats,
           featured: featured ? true : undefined,
           page,
           pageSize: PAGE_SIZE,
@@ -346,7 +443,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         setLoadingMore(false)
       }
     }
-  }, [albumId, category, featured, hasMore, onUnauthorized, photoType, search, sortBy, sortOrder, t, token])
+  }, [albumId, category, featured, fileFormats, hasMore, onUnauthorized, photoType, search, sortBy, sortOrder, t, token])
 
   useEffect(() => {
     pageRef.current = 1
@@ -571,21 +668,13 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
   return (
     <div className="relative flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+        <div className="relative flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <div className="relative min-w-[180px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('common.search')} className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-xs outline-none focus:border-primary" />
             {searchInput && <button type="button" onClick={() => setSearchInput('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted"><X size={13} /></button>}
           </div>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-8 w-32 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary">
-            <option value="all">{t('common.all')}</option>
-            {categories.filter((item) => item !== 'all' && item !== '全部').map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <select value={photoType} onChange={(event) => setPhotoType(event.target.value)} className="h-8 w-28 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary">
-            <option value="all">{t('admin.all_types')}</option>
-            <option value="digital">{t('admin.upload_type_digital')}</option>
-            <option value="film">{t('admin.upload_type_film')}</option>
-          </select>
+          <PhotoFiltersPopover categories={categories} category={category} photoType={photoType} fileFormats={fileFormats} t={t} onCategoryChange={setCategory} onPhotoTypeChange={setPhotoType} onFileFormatsChange={setFileFormats} />
           <div className="flex h-8 items-center rounded-md border border-border bg-background p-0.5">
             <ViewButton active={viewMode === 'crop'} icon={LayoutGrid} label={t('admin.resource_library_crop_view')} onClick={() => setViewMode('crop')} />
             <ViewButton active={viewMode === 'fit'} icon={Maximize2} label={t('admin.resource_library_fit_view')} onClick={() => setViewMode('fit')} />

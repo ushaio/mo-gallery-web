@@ -68,6 +68,7 @@ interface PhotoFilters {
   search: string
   category: string
   photoType: string | null
+  fileFormats: string[]
   channel: string | null
   albumId: string | null
   cameraId: string | null
@@ -78,6 +79,7 @@ interface PhotoFilters {
   setSearch: (s: string) => void
   setCategory: (c: string) => void
   setPhotoType: (t: string | null) => void
+  setFileFormats: (formats: string[]) => void
   setChannel: (c: string | null) => void
   setAlbumId: (id: string | null) => void
   setCameraId: (id: string | null) => void
@@ -92,6 +94,7 @@ const defaultFilters = {
   search: '',
   category: '全部',
   photoType: null as string | null,
+  fileFormats: [] as string[],
   channel: null as string | null,
   albumId: null as string | null,
   cameraId: null as string | null,
@@ -106,6 +109,7 @@ export const usePhotoFilters = create<PhotoFilters>()((set) => ({
   setSearch: (s) => set({ search: s }),
   setCategory: (c) => set({ category: c }),
   setPhotoType: (t) => set({ photoType: t }),
+  setFileFormats: (formats) => set({ fileFormats: formats }),
   setChannel: (c) => set({ channel: c }),
   setAlbumId: (id) => set({ albumId: id }),
   setCameraId: (id) => set({ cameraId: id }),

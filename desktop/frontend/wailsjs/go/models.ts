@@ -2670,6 +2670,7 @@ export namespace services {
 	    lensId: string;
 	    search: string;
 	    photoType?: string;
+	    formats: string[];
 	    channel?: string;
 	    featured?: boolean;
 	    showFlag?: boolean;
@@ -2691,6 +2692,7 @@ export namespace services {
 	        this.lensId = source["lensId"];
 	        this.search = source["search"];
 	        this.photoType = source["photoType"];
+	        this.formats = source["formats"];
 	        this.channel = source["channel"];
 	        this.featured = source["featured"];
 	        this.showFlag = source["showFlag"];

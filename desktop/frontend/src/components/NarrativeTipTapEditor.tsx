@@ -7,7 +7,7 @@
  */
 
 import { forwardRef, useMemo } from 'react'
-import NarrativeTipTapEditorCore from '@mo-gallery/tiptap-editor'
+import NarrativeTipTapEditorCore, { copyWechatArticleToClipboard } from '@mo-gallery/tiptap-editor'
 import type {
   NarrativeTipTapEditorHandle,
   NarrativeTipTapEditorProps as CoreEditorProps,
@@ -24,6 +24,12 @@ const editorAi: NarrativeEditorRuntime['ai'] = editorAiLocal
 
 // Agent 模式端点：本地 Go 代理（密钥在 Go 侧注入）
 const getAgentEndpoint: NarrativeEditorRuntime['getAgentEndpoint'] = async () => await getLocalEndpoint()
+const copyToWechat: NonNullable<NarrativeEditorRuntime['copyToWechat']> = async (input) => {
+  await copyWechatArticleToClipboard({
+    title: input.title || '',
+    content: input.html,
+  })
+}
 
 type WithoutRuntime<T> = T extends unknown ? Omit<T, 'runtime'> : never
 
@@ -36,7 +42,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const { resolvedTheme } = useTheme()
 
     const runtime = useMemo<NarrativeEditorRuntime>(
-      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint }),
+      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint, copyToWechat }),
       [t, resolvedTheme],
     )
 

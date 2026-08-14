@@ -114,6 +114,7 @@ export function CloudLibraryPage({ selectionMode = false, existingPhotoIds = [],
   const albumId = usePhotoFilters((state) => state.albumId)
   const category = usePhotoFilters((state) => state.category)
   const photoType = usePhotoFilters((state) => state.photoType)
+  const setFileFormats = usePhotoFilters((state) => state.setFileFormats)
   const featured = usePhotoFilters((state) => state.featured)
   const setAlbumId = usePhotoFilters((state) => state.setAlbumId)
   const setCategory = usePhotoFilters((state) => state.setCategory)
@@ -172,73 +173,82 @@ export function CloudLibraryPage({ selectionMode = false, existingPhotoIds = [],
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const showFeaturedPhotos = useCallback(() => {
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(true)
     setSearchParams({ source: 'cloud' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const showFilmRolls = useCallback(() => {
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud', view: 'film-rolls' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const showPhotoType = useCallback((nextPhotoType: 'digital' | 'film') => {
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(nextPhotoType)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const showCategory = useCallback((nextCategory: string) => {
     setAlbumId(null)
     setCategory(nextCategory)
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const showAlbum = useCallback((id: string) => {
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setAlbumId(id)
     setSearchParams({ source: 'cloud' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const showAlbumBrowser = useCallback(() => {
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud', view: 'albums' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const createAlbum = useCallback(() => {
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud', view: 'albums', create: '1' }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const manageAlbum = useCallback((id: string, tab: AlbumDetailTab) => {
     setAlbumId(null)
     setCategory('全部')
     setPhotoType(null)
+    setFileFormats([])
     setFeatured(null)
     setSearchParams({ source: 'cloud', view: 'albums', manage: id, tab }, { replace: true })
-  }, [setAlbumId, setCategory, setFeatured, setPhotoType, setSearchParams])
+  }, [setAlbumId, setCategory, setFeatured, setFileFormats, setPhotoType, setSearchParams])
 
   const togglePublished = useCallback(async (album: Album) => {
     if (updatingAlbumId) return

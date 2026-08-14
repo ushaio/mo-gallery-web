@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -100,20 +101,21 @@ type LensDTO struct {
 }
 
 type ListPhotosParams struct {
-	Category  string  `json:"category"`
-	AlbumID   string  `json:"albumId"`
-	CameraID  string  `json:"cameraId"`
-	LensID    string  `json:"lensId"`
-	Search    string  `json:"search"`
-	PhotoType *string `json:"photoType"`
-	Channel   *string `json:"channel"`
-	Featured  *bool   `json:"featured"`
-	ShowFlag  *bool   `json:"showFlag"`
-	SortBy    string  `json:"sortBy"`
-	SortOrder string  `json:"sortOrder"`
-	Page      int     `json:"page"`
-	PageSize  int     `json:"pageSize"`
-	All       bool    `json:"all"`
+	Category  string   `json:"category"`
+	AlbumID   string   `json:"albumId"`
+	CameraID  string   `json:"cameraId"`
+	LensID    string   `json:"lensId"`
+	Search    string   `json:"search"`
+	PhotoType *string  `json:"photoType"`
+	Formats   []string `json:"formats"`
+	Channel   *string  `json:"channel"`
+	Featured  *bool    `json:"featured"`
+	ShowFlag  *bool    `json:"showFlag"`
+	SortBy    string   `json:"sortBy"`
+	SortOrder string   `json:"sortOrder"`
+	Page      int      `json:"page"`
+	PageSize  int      `json:"pageSize"`
+	All       bool     `json:"all"`
 }
 
 type UpdatePhotoParams struct {
@@ -167,6 +169,9 @@ func (s *PhotoService) List(params ListPhotosParams) (*PaginatedResponse[PhotoDT
 	}
 	if params.PhotoType != nil && (*params.PhotoType == "digital" || *params.PhotoType == "film") {
 		q.Set("photoType", *params.PhotoType)
+	}
+	if len(params.Formats) > 0 {
+		q.Set("formats", strings.Join(params.Formats, ","))
 	}
 	if params.Featured != nil {
 		q.Set("featured", fmt.Sprintf("%t", *params.Featured))

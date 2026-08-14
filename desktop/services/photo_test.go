@@ -2,6 +2,8 @@ package services
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
@@ -44,5 +46,30 @@ func TestPhotoDTOUnmarshalDominantColors(t *testing.T) {
 				t.Fatalf("DominantColors = %#v, want %#v", photo.DominantColors, tt.want)
 			}
 		})
+	}
+}
+
+func TestPhotoServiceListForwardsFormats(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("formats"); got != "jpg,webp,avif" {
+			t.Fatalf("formats query = %q, want %q", got, "jpg,webp,avif")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":[],"meta":{"total":0,"page":1,"pageSize":100,"totalPages":0,"hasMore":false}}`))
+	}))
+	defer server.Close()
+
+	proxy := NewProxyClient()
+	proxy.SetServer(server.URL)
+	proxy.SetToken("test-token")
+	service := NewPhotoService(proxy)
+
+	_, err := service.List(ListPhotosParams{
+		Formats:  []string{"jpg", "webp", "avif"},
+		Page:     1,
+		PageSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
 	}
 }

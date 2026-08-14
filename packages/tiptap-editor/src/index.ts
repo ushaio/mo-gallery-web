@@ -12,6 +12,7 @@ export * from './runtime'
 // 工具函数（阅读态渲染、粘贴上传占位等也会用到）
 export * from './lib/media-embed'
 export * from './lib/story-link-card'
+export * from './lib/wechat-article'
 export * from './tiptap-editor/editor-constants'
 export * from './tiptap-editor/ai-task-mutation-guard'
 export * from './tiptap-editor/markdown-converter'
