@@ -421,6 +421,22 @@ export function useNarrativeEditor({
           const listItemStart = $from.before(listItemDepth)
           const currentListItem = $from.node(listItemDepth)
 
+          // An empty nested item is a structural placeholder. Hiding its marker
+          // leaves it at the nested level, so the following item can be promoted
+          // when the user continues deleting. Lift it immediately instead.
+          if ($from.parent.content.size === 0) {
+            let liftedTransaction: Transaction | undefined
+            const lifted = liftListItem(listItemType)(view.state, transaction => {
+              liftedTransaction = transaction
+            })
+
+            if (!lifted || !liftedTransaction) return false
+
+            event.preventDefault()
+            view.dispatch(liftedTransaction)
+            return true
+          }
+
           if (currentListItem.attrs.markerHidden === true) {
             let liftedTransaction: Transaction | undefined
             const lifted = liftListItem(listItemType)(view.state, transaction => {
