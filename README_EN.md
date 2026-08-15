@@ -484,3 +484,15 @@ Vercel function filesystems are not designed to persist user uploads. Use S3, Cl
 ## 📜 License
 
 Released under the **MIT License**.
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=ushaio%2Fmo-gallery-web&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ushaio/mo-gallery-web&type=date&theme=dark&legend=top-left&sealed_token=qu9-MEVV8696GiaTdMhvDBhNScK6ZhwW8caUioDSuVscetrFt1dQthCPFrcPTHCOUqoWTqfwAP8mV3lGTyUDDkfObhTjBJ_Y5iWjBhZytO9z-OUmXVdIVrMTwFI2zZR9aEVxtuBiOdnQem5TdO55JVAxDiveM5-AM8ZjYpjQ_wiOh0rbhaiCtwnIlSgK" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ushaio/mo-gallery-web&type=date&legend=top-left&sealed_token=qu9-MEVV8696GiaTdMhvDBhNScK6ZhwW8caUioDSuVscetrFt1dQthCPFrcPTHCOUqoWTqfwAP8mV3lGTyUDDkfObhTjBJ_Y5iWjBhZytO9z-OUmXVdIVrMTwFI2zZR9aEVxtuBiOdnQem5TdO55JVAxDiveM5-AM8ZjYpjQ_wiOh0rbhaiCtwnIlSgK" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ushaio/mo-gallery-web&type=date&legend=top-left&sealed_token=qu9-MEVV8696GiaTdMhvDBhNScK6ZhwW8caUioDSuVscetrFt1dQthCPFrcPTHCOUqoWTqfwAP8mV3lGTyUDDkfObhTjBJ_Y5iWjBhZytO9z-OUmXVdIVrMTwFI2zZR9aEVxtuBiOdnQem5TdO55JVAxDiveM5-AM8ZjYpjQ_wiOh0rbhaiCtwnIlSgK" />
+ </picture>
+</a>

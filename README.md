@@ -601,3 +601,7 @@ Vercel 函数文件系统不用于持久化用户上传。请使用 S3、Cloudfl
 ## 许可证
 
 本项目以 **MIT License** 发布。
+
+---
+
+[https://www.star-history.com/?repos=ushaio%2Fmo-gallery-web&type=date&legend=top-left](https://www.star-history.com/?repos=ushaio%2Fmo-gallery-web&type=date&legend=top-left)
