@@ -45,8 +45,9 @@ type OverviewDTO = services.OverviewDTO
 type RecentPhoto = services.RecentPhotoDTO
 type RecentTextItem = services.RecentStoryDTO | services.RecentBlogDTO
 
-const OVERVIEW_PAGE_CLASS = 'p-6 space-y-6 w-full min-w-0 max-w-6xl mx-auto h-full overflow-y-scroll'
-const OVERVIEW_PAGE_STYLE: CSSProperties = { scrollbarGutter: 'stable' }
+const OVERVIEW_SCROLL_CLASS = 'p-6 h-full w-full min-w-0 overflow-y-auto'
+const OVERVIEW_SCROLL_STYLE: CSSProperties = { scrollbarGutter: 'stable' }
+const OVERVIEW_INNER_CLASS = 'max-w-6xl mx-auto space-y-6'
 
 function getPublicContentUrl(path: 'story' | 'blog', id: string) {
   const url = buildApiUrl(`/${path}/${encodeURIComponent(id)}`)
@@ -557,7 +558,8 @@ export function OverviewPage() {
   ]
 
   return (
-    <div className={OVERVIEW_PAGE_CLASS} style={OVERVIEW_PAGE_STYLE}>
+    <div className={OVERVIEW_SCROLL_CLASS} style={OVERVIEW_SCROLL_STYLE}>
+      <div className={OVERVIEW_INNER_CLASS}>
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold" style={{ color: 'var(--foreground)' }}>
           {t('admin.overview_title', language)}
@@ -636,6 +638,7 @@ export function OverviewPage() {
           noDataLabel={noDataLabel}
           publicPath="blog"
         />
+      </div>
       </div>
     </div>
   )
