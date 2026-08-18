@@ -80,7 +80,14 @@ public/uploads
 /desktop/frontend/package.json.md5
 /desktop/build/bin
 /desktop/.tmp/
+/desktop/.tmp-go-modcache/
+/desktop/.tmp-go-cache-ui/
 /desktop/**/*.go.[0-9]*
+/desktop/frontend/.vite-dev.*.log
+/desktop/build/runtime-package/
+/desktop/build/generated/
+/desktop/storage_plugins/runtime_assets/*
+!/desktop/storage_plugins/runtime_assets/.gitkeep
 *.bak
 
 # flutter mobile client
@@ -102,6 +109,9 @@ public/uploads
 
 # workspace package dependency links
 /packages/*/node_modules/
+/packages/*/dist/
+.pnpm-store/
 .pencil-ui/
-docs/
 .env*
+.tmp-go-cache/
+.claude/
