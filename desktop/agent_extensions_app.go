@@ -23,31 +23,31 @@ func (a *App) GetAgentExtensionSnapshot() (agent_extensions.AgentExtensionSnapsh
 	return manager.Snapshot(), nil
 }
 
-func (a *App) SelectAndImportSkillDirectory() (agent_extensions.Skill, error) {
+func (a *App) SelectAndImportSkillDirectory() ([]agent_extensions.Skill, error) {
 	manager, err := a.agentExtensionManager()
 	if err != nil {
-		return agent_extensions.Skill{}, err
+		return nil, err
 	}
 	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择 Skill 目录"})
 	if err != nil || path == "" {
-		return agent_extensions.Skill{}, err
+		return nil, err
 	}
-	return manager.ImportSkill(path)
+	return manager.ImportSkills(path)
 }
 
-func (a *App) SelectAndImportSkillArchive() (agent_extensions.Skill, error) {
+func (a *App) SelectAndImportSkillArchive() ([]agent_extensions.Skill, error) {
 	manager, err := a.agentExtensionManager()
 	if err != nil {
-		return agent_extensions.Skill{}, err
+		return nil, err
 	}
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title:   "选择 Skill 压缩包",
 		Filters: []runtime.FileFilter{{DisplayName: "Skill archive (*.zip;*.skill)", Pattern: "*.zip;*.skill"}},
 	})
 	if err != nil || path == "" {
-		return agent_extensions.Skill{}, err
+		return nil, err
 	}
-	return manager.ImportSkill(path)
+	return manager.ImportSkills(path)
 }
 
 func (a *App) ReadAgentSkill(id string) (agent_extensions.SkillContent, error) {
