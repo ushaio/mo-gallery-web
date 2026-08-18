@@ -1,4 +1,5 @@
 import { GetAiHttpPort } from '../../../wailsjs/go/main/App'
+import type { EditorAiUsage } from '@mo-gallery/ai-agent'
 import type { EditorAiMessageDto, StoryAiModelOption } from '@/lib/api/types'
 
 // Local AI HTTP service port
@@ -44,6 +45,26 @@ export function getGenerationDurationMs(metadata: unknown): number | null {
   return typeof durationMs === 'number' && Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null
 }
 
+function readTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : undefined
+}
+
+export function getGenerationUsage(metadata: unknown): EditorAiUsage | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const rawUsage = (metadata as { usage?: unknown }).usage
+  if (!rawUsage || typeof rawUsage !== 'object' || Array.isArray(rawUsage)) return null
+  const usage = rawUsage as Record<string, unknown>
+  const parsed: EditorAiUsage = {
+    inputTokens: readTokenCount(usage.inputTokens),
+    outputTokens: readTokenCount(usage.outputTokens),
+    reasoningTokens: readTokenCount(usage.reasoningTokens),
+    cacheReadTokens: readTokenCount(usage.cacheReadTokens),
+  }
+  return Object.values(parsed).some(value => value !== undefined) ? parsed : null
+}
+
 export function withGenerationDuration(metadata: EditorAiMessageDto['metadata'], durationMs: number): EditorAiMessageDto['metadata'] {
   if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
     return { ...metadata, durationMs }
@@ -53,4 +74,8 @@ export function withGenerationDuration(metadata: EditorAiMessageDto['metadata'],
 
 export function formatGenerationDuration(durationMs: number): string {
   return durationMs < 1000 ? `${Math.round(durationMs)} ms` : `${(durationMs / 1000).toFixed(1)} s`
+}
+
+export function formatTokenCount(tokens: number): string {
+  return new Intl.NumberFormat().format(tokens)
 }
