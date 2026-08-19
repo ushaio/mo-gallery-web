@@ -29,3 +29,29 @@ func TestAcquireLibraryLockReclaimsOldIncompleteRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAcquireLibraryLockCanBeReacquiredAfterRelease(t *testing.T) {
+	root := t.TempDir()
+	if err := prepareLibraryStructure(root); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := acquireLibraryLock(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acquireLibraryLock(root); err == nil {
+		t.Fatal("expected a second owner to be rejected")
+	}
+	if err := first.Release(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := acquireLibraryLock(root)
+	if err != nil {
+		t.Fatalf("expected lock to be reacquired after release: %v", err)
+	}
+	if err := second.Release(); err != nil {
+		t.Fatal(err)
+	}
+}

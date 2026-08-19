@@ -10,34 +10,30 @@ import (
 	"time"
 )
 
-type libraryLock struct{ path string }
+type libraryLock struct {
+	path string
+	file *os.File
+}
 
 type lockRecord struct {
 	PID       int       `json:"pid"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+var errLibraryLockBusy = errors.New("library lock is busy")
+
 func acquireLibraryLock(root string) (*libraryLock, error) {
 	path := internalPath(root, "lock")
 	payload, _ := json.Marshal(lockRecord{PID: os.Getpid(), CreatedAt: time.Now().UTC()})
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	file, err := tryAcquireLibraryLock(path, payload)
 	if err == nil {
-		if _, writeErr := file.Write(payload); writeErr != nil {
-			file.Close()
-			_ = os.Remove(path)
-			return nil, writeErr
-		}
-		if closeErr := file.Close(); closeErr != nil {
-			_ = os.Remove(path)
-			return nil, closeErr
-		}
-		return &libraryLock{path: path}, nil
+		return &libraryLock{path: path, file: file}, nil
 	}
-	if !errors.Is(err, os.ErrExist) {
+	if !errors.Is(err, os.ErrExist) && !errors.Is(err, errLibraryLockBusy) {
 		return nil, err
 	}
 	data, readErr := os.ReadFile(path)
-	if readErr == nil {
+	if readErr == nil && !errors.Is(err, errLibraryLockBusy) {
 		var record lockRecord
 		parseErr := json.Unmarshal(data, &record)
 		stale := parseErr == nil && record.PID > 0 && !processOwnsLock(record)
@@ -73,9 +69,17 @@ func (l *libraryLock) Release() error {
 	if l == nil || l.path == "" {
 		return nil
 	}
+	closeErr := error(nil)
+	if l.file != nil {
+		closeErr = l.file.Close()
+		l.file = nil
+	}
 	err := os.Remove(l.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		err = nil
+	}
+	if closeErr != nil {
+		return closeErr
 	}
 	return err
 }

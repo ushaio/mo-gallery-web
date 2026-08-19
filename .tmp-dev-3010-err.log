@@ -1,0 +1,10 @@
+$ next dev
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3001
+- PID:          308568
+- Dir:          D:\Projects\mo-gallery\mo-gallery-web
+- Log:          .next\dev\logs\next-development.log
+
+You can access the existing server at http://localhost:3001,
+or run taskkill /PID 308568 /F to stop it and start a new one.

@@ -1,0 +1,26 @@
+{
+  "kind": "builder-handoff",
+  "summary": "将保存会话恢复拆为可测试的 restoreAuthAttempt：SetAuth 成功前不更新认证就绪状态，临时 IPC 错误继续退避重试，明确认证错误结束加载态并转登录，无效会话保持现有未登录流程。AuthProvider 只在终态结果上更新 React 会话和 isReady。",
+  "addressed_acceptance_ids": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19"],
+  "checks": [
+    {
+      "name": "auth restore focused tests",
+      "result": "passed",
+      "note": "tsx desktop/frontend/src/contexts/auth-restore.test.ts; 4/4 passed"
+    },
+    {
+      "name": "desktop frontend build",
+      "result": "passed",
+      "note": "npm run build; tsc and vite build exited 0; existing Rollup warnings only"
+    },
+    {
+      "name": "git diff check",
+      "result": "passed",
+      "note": "git diff --check returned clean"
+    }
+  ],
+  "known_limits": [
+    "未运行真实 Wails 窗口的交互式启动 E2E；构建和纯恢复状态测试覆盖本次竞态边界。",
+    "Vite 输出已有动态导入和大 chunk 警告，未改变。"
+  ]
+}

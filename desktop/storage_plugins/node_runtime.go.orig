@@ -1,0 +1,160 @@
+package storage_plugins
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
+
+// BundledNodeRuntimeVersion is kept separate from the storage API version.
+// Updating Node must not silently change the plugin host contract.
+const BundledNodeRuntimeVersion = "22.14.0"
+
+type nodeRuntimeManifest struct {
+	Version   string            `json:"version"`
+	Files     map[string]string `json:"files"`
+	SHA256    map[string]string `json:"sha256"`
+	Signature string            `json:"signature"`
+	PublicKey string            `json:"publicKey,omitempty"`
+}
+
+type nodeRuntimeSignedPayload struct {
+	Version string            `json:"version"`
+	Files   map[string]string `json:"files"`
+	SHA256  map[string]string `json:"sha256"`
+}
+
+func validateNodeRuntime(manifest Manifest) error {
+	if manifest.Runtime != RuntimeNode22 {
+		return &PluginError{
+			Code:    ErrorRuntimeMissing,
+			Message: fmt.Sprintf("unsupported bundled Node runtime %q; supported runtime is %s", manifest.Runtime, RuntimeNode22),
+		}
+	}
+	return nil
+}
+
+func verifyBundledNodeRuntime(root string) error {
+	if strings.TrimSpace(root) == "" {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime directory is not configured"}
+	}
+	manifestPath, err := resolvePackagePath(root, "runtime-manifest.json")
+	if err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest path is invalid", Cause: err}
+	}
+	if err := validateRegularFile(manifestPath, "bundled Node runtime manifest"); err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest is unavailable", Cause: err}
+	}
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest cannot be read", Cause: err}
+	}
+	var manifest nodeRuntimeManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest is invalid", Cause: err}
+	}
+	if manifest.Version != BundledNodeRuntimeVersion || len(manifest.Files) != len(supportedPlatformKeys) || len(manifest.SHA256) != len(supportedPlatformKeys) {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime version or file list is invalid"}
+	}
+	for _, platform := range supportedPlatformKeys {
+		relative := strings.TrimSpace(manifest.Files[platform])
+		if relative == "" || strings.TrimSpace(manifest.SHA256[platform]) == "" {
+			return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest is missing a supported platform"}
+		}
+		expected := filepath.ToSlash(filepath.Join(platform, "node"))
+		if platform == "windows-amd64" {
+			expected = filepath.ToSlash(filepath.Join(platform, "node.exe"))
+		}
+		if relative != expected {
+			return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest uses an unexpected file layout"}
+		}
+	}
+	publicKey, err := decodeEd25519PublicKey(BundledNodeRuntimePublicKey)
+	if err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime trust key is unavailable", Cause: err}
+	}
+	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(manifest.Signature))
+	if err != nil || len(signature) != ed25519.SignatureSize {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime signature is invalid"}
+	}
+	payload, err := json.Marshal(nodeRuntimeSignedPayload{
+		Version: manifest.Version,
+		Files:   manifest.Files,
+		SHA256:  manifest.SHA256,
+	})
+	if err != nil || !ed25519.Verify(publicKey, payload, signature) {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime signature verification failed"}
+	}
+	for platform, relative := range manifest.Files {
+		if !isSupportedPlatformKey(platform) {
+			return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime manifest contains an unsupported platform"}
+		}
+		path, pathErr := resolvePackagePath(root, relative)
+		if pathErr != nil {
+			return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime path is invalid", Cause: pathErr}
+		}
+		if fileErr := validateRegularFile(path, "bundled Node runtime"); fileErr != nil {
+			return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime is unavailable", Cause: fileErr}
+		}
+		expected := strings.ToLower(strings.TrimSpace(manifest.SHA256[platform]))
+		if fileErr := verifyFileHash(path, expected); fileErr != nil {
+			return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime checksum verification failed", Cause: fileErr}
+		}
+	}
+	key, err := platformKey()
+	if err != nil {
+		return err
+	}
+	if _, ok := manifest.Files[key]; !ok {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime does not include the current platform"}
+	}
+	return nil
+}
+
+func readNodeRuntimeVersion(path string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, path, "--version").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(strings.TrimPrefix(string(output), "v")), nil
+}
+
+func verifyBundledNodeRuntimeVersion(path string) error {
+	version, err := readNodeRuntimeVersion(path)
+	if err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime cannot report its version", Cause: err}
+	}
+	if version != BundledNodeRuntimeVersion {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "bundled Node runtime version does not match the pinned version"}
+	}
+	return nil
+}
+
+func verifyDevelopmentNodeRuntimeVersion(path string) error {
+	version, err := readNodeRuntimeVersion(path)
+	if err != nil {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "development Node runtime cannot report its version", Cause: err}
+	}
+	if !strings.HasPrefix(version, "22.") {
+		return &PluginError{Code: ErrorRuntimeMissing, Message: "development Node runtime must use Node 22"}
+	}
+	return nil
+}
+
+func nodeRuntimePath(root, platform string) (string, error) {
+	relative := filepath.ToSlash(filepath.Join(platform, "node"))
+	if runtime.GOOS == "windows" && platform == "windows-amd64" {
+		relative = filepath.ToSlash(filepath.Join(platform, "node.exe"))
+	}
+	return resolvePackagePath(root, relative)
+}
