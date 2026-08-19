@@ -189,7 +189,37 @@ func readStoreSchemaVersion(db *sql.DB) (int, bool, error) {
 	if version > currentSchemaVersion {
 		return version, false, fmt.Errorf("local library schema version %d is newer than supported version %d", version, currentSchemaVersion)
 	}
-	return version, version < currentSchemaVersion, nil
+	hasLegacyCloudURL, err := tableHasColumn(db, "assets", "cloud_url")
+	if err != nil {
+		return 0, false, err
+	}
+	return version, version < currentSchemaVersion || hasLegacyCloudURL, nil
+}
+
+func tableHasColumn(queryer interface {
+	Query(string, ...any) (*sql.Rows, error)
+}, table, column string) (bool, error) {
+	rows, err := queryer.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func (s *store) Close() error { return s.db.Close() }
@@ -347,15 +377,16 @@ func (s *store) migrate() error {
 	if err := addColumnIfMissing(tx, "assets", "cloud_photo_id", "TEXT"); err != nil {
 		return fmt.Errorf("migrate local library cloud photo id: %w", err)
 	}
-	if version == 8 {
-		// M009 is deliberately version-gated. If a database claims to be v8 but
-		// does not have this legacy column, fail and let the outer migration
-		// rollback restore the user's pre-upgrade backup.
+	hasLegacyCloudURL, err := tableHasColumn(tx, "assets", "cloud_url")
+	if err != nil {
+		return fmt.Errorf("inspect legacy assets.cloud_url: %w", err)
+	}
+	if hasLegacyCloudURL {
 		if _, err := tx.Exec(`ALTER TABLE assets DROP COLUMN cloud_url`); err != nil {
 			return fmt.Errorf("M009 drop assets.cloud_url: %w", err)
 		}
-		version = 9
 	}
+	version = currentSchemaVersion
 	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_assets_cloud_photo ON assets(cloud_photo_id)`); err != nil {
 		return fmt.Errorf("migrate local library cloud photo index: %w", err)
 	}

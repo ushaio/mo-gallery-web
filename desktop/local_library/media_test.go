@@ -324,6 +324,60 @@ func TestStoreMigratesVersionEightCloudURLColumn(t *testing.T) {
 	}
 }
 
+func TestStoreMigratesVersionNineCloudURLDrift(t *testing.T) {
+	root := createVersionTwoTestDatabase(t)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(internalPath(root, "library.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE assets ADD COLUMN cloud_photo_id TEXT;
+        ALTER TABLE assets ADD COLUMN cloud_url TEXT;
+        INSERT INTO assets(id,relative_path,path_key,file_name,extension,format,mime_type,byte_size,modified_at_ns,availability,discovered_at,technical_updated_at,cloud_photo_id,cloud_url)
+            VALUES('legacy-v9','legacy-v9.jpg','legacy-v9.jpg','legacy-v9.jpg','.jpg','jpeg','image/jpeg',1,1,'active',1,1,'photo-9','https://old.example/photo-9.jpg');
+        UPDATE library_meta SET value='9' WHERE key='schema_version'`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	check, err := inspectStoreUpgrade(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.Required || check.CurrentVersion != 9 {
+		t.Fatalf("upgrade check = %+v, want required v9 due to legacy cloud_url", check)
+	}
+
+	store, err := openStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var version string
+	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != "9" {
+		t.Fatalf("schema version=%q, want 9", version)
+	}
+	foundCloudURL, err := tableHasColumn(store.db, "assets", "cloud_url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foundCloudURL {
+		t.Fatal("obsolete cloud_url column remains after drift repair")
+	}
+	var photoID string
+	if err := store.db.QueryRow(`SELECT cloud_photo_id FROM assets WHERE id='legacy-v9'`).Scan(&photoID); err != nil {
+		t.Fatal(err)
+	}
+	if photoID != "photo-9" {
+		t.Fatalf("cloud_photo_id=%q, want photo-9", photoID)
+	}
+}
+
 func TestStoreUseRequiresExplicitUpgrade(t *testing.T) {
 	root := createVersionTwoTestDatabase(t)
 	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(internalPath(root, "library.db")))

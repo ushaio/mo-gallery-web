@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Camera,
   Check,
@@ -24,6 +24,7 @@ import {
   type PhotoDto,
 } from "@/lib/api";
 import { normalizeDominantColors } from "@/lib/photoColors";
+import { CameraParameters } from "@/components/CameraParameters";
 import type { Photo } from "@/types";
 
 interface Props {
@@ -249,18 +250,8 @@ export function PhotoInfoSidebar({
   const [categorySaving, setCategorySaving] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [shootingOpen, setShootingOpen] = useState(true);
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(true);
   const copyTimerRef = useRef<number | null>(null);
-
-  const exposureParts = useMemo(() => {
-    if (!photo) return [];
-    return [
-      photo.aperture,
-      photo.shutterSpeed,
-      photo.iso ? `ISO ${photo.iso}` : null,
-      photo.focalLength,
-    ].filter(Boolean) as string[];
-  }, [photo]);
 
   const handleCopy = async (text: string, key: string) => {
     try {
@@ -331,8 +322,19 @@ export function PhotoInfoSidebar({
   const dominantColors = normalizeDominantColors(photo.dominantColors);
   const dimensionLabel =
     photo.width && photo.height ? `${photo.width} × ${photo.height}` : null;
+  const cameraLabel = [photo.cameraMake, photo.cameraModel]
+    .filter(Boolean)
+    .join(" ");
+  const cameraParameters = [
+    { label: t("gallery.aperture"), value: photo.aperture },
+    { label: t("gallery.shutter"), value: photo.shutterSpeed },
+    { label: t("gallery.iso"), value: photo.iso ? `ISO ${photo.iso}` : null },
+    { label: t("gallery.focal"), value: photo.focalLength },
+  ].filter((parameter): parameter is { label: string; value: string } =>
+    Boolean(parameter.value),
+  );
   const hasExif = Boolean(
-    photo.cameraModel || photo.lensModel || exposureParts.length > 0,
+    cameraLabel || photo.lensModel || cameraParameters.length > 0,
   );
   const fileSizeLabel = photo.size ? formatBytes(photo.size) : null;
   const copyableUrls = [
@@ -636,43 +638,13 @@ export function PhotoInfoSidebar({
           open={shootingOpen}
           onToggle={() => setShootingOpen((v) => !v)}
         >
-          <div className="space-y-2">
-            {photo.cameraModel && (
-              <p
-                className="truncate text-[11px] font-semibold"
-                title={photo.cameraModel}
-                style={{ color: "var(--foreground)" }}
-              >
-                {photo.cameraModel}
-              </p>
-            )}
-            {photo.lensModel && (
-              <p
-                className="truncate text-[10px]"
-                style={{ color: "var(--muted-foreground)" }}
-                title={photo.lensModel}
-              >
-                {photo.lensModel}
-              </p>
-            )}
-            {exposureParts.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {exposureParts.map((part) => (
-                  <span
-                    key={part}
-                    className="rounded border px-1.5 py-0.5 text-[10px] font-mono font-medium tabular-nums"
-                    style={{
-                      borderColor: "var(--border)",
-                      backgroundColor: "var(--secondary)",
-                      color: "var(--foreground)",
-                    }}
-                  >
-                    {part}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <CameraParameters
+            cameraLabel={t("admin.camera")}
+            cameraValue={cameraLabel}
+            lensLabel={t("admin.lens")}
+            lensValue={photo.lensModel}
+            parameters={cameraParameters}
+          />
         </Section>
       )}
 
