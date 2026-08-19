@@ -40,6 +40,7 @@ interface Props {
   onDelete: (photo: Photo) => void;
   onSave: (photo: PhotoDto) => void;
   onUnauthorized: () => void;
+  hideEditActions?: boolean;
 }
 
 const missing = "—";
@@ -243,6 +244,7 @@ export function PhotoInfoSidebar({
   onDelete,
   onSave,
   onUnauthorized,
+  hideEditActions = false,
 }: Props) {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [categoryEditing, setCategoryEditing] = useState(false);
@@ -816,19 +818,10 @@ export function PhotoInfoSidebar({
 
       {/* ── 操作区（常驻贴底） ── */}
       <div className="mt-auto space-y-2 px-5 pb-5 pt-4">
-        <div className="grid grid-cols-2 gap-2">
-          <ActionButton
-            icon={Pencil}
-            label={t("admin.edit_details")}
-            onClick={() => onEditDetails(photo)}
-            primary
-          />
-          <ActionButton
-            icon={FileText}
-            label={t("admin.edit_story")}
-            onClick={() => onEditStory(photo)}
-          />
-        </div>
+        {!hideEditActions && <div className="grid grid-cols-2 gap-2">
+          <ActionButton icon={Pencil} label={t("admin.edit_details")} onClick={() => onEditDetails(photo)} primary />
+          <ActionButton icon={FileText} label={t("admin.edit_story")} onClick={() => onEditStory(photo)} />
+        </div>}
         <ActionButton
           icon={Trash2}
           label={t("admin.delete")}

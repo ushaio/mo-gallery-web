@@ -13,6 +13,7 @@ interface Props {
   onClear: () => void
   onMove: () => void
   onUpdate: (update: Omit<BatchAssetOrganizationUpdate, 'assetIds'>) => void
+  floating?: boolean
 }
 
 const COLOR_SWATCHES: Array<{ value: string; bg: string; label: string; nameKey?: 'red' | 'yellow' | 'green' | 'blue' | 'purple' }> = [
@@ -101,14 +102,16 @@ function Section({
   )
 }
 
-export function LocalAssetBatchDetails({ selectedCount, tags, collections, copy, busy, canMove, onClear, onMove, onUpdate }: Props) {
+export function LocalAssetBatchDetails({ selectedCount, tags, collections, copy, busy, canMove, onClear, onMove, onUpdate, floating = false }: Props) {
   const [classificationOpen, setClassificationOpen] = useState(true)
   const [organizationOpen, setOrganizationOpen] = useState(true)
   const [hoverRating, setHoverRating] = useState(0)
 
   return (
     <aside
-      className="custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex"
+      className={floating
+        ? 'custom-scrollbar absolute bottom-14 right-3 z-40 flex max-h-[min(680px,calc(100%-7rem))] w-[340px] flex-col overflow-y-auto rounded-xl border bg-background shadow-[0_16px_40px_-20px_rgba(15,23,42,0.72)]'
+        : 'custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex'}
       style={{ borderColor: 'var(--border)' }}
       data-local-library-guide="batch-details"
     >

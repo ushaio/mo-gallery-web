@@ -423,6 +423,7 @@ interface PhotoCardActions {
 interface PhotoCardProps extends PhotoCardActions {
   photo: Photo;
   isSelected: boolean;
+  isFocused: boolean;
   isDeleting: boolean;
   language: "zh" | "en";
   viewMode: "crop" | "fit" | "masonry";
@@ -442,7 +443,7 @@ function PhotoContextTarget({
   onToggleFeatured,
   onToggleShow,
   onRequestDelete,
-}: Omit<PhotoCardProps, "onCardClick" | "viewMode"> & {
+}: Omit<PhotoCardProps, "onCardClick" | "viewMode" | "isFocused"> & {
   children: React.ReactElement;
 }) {
   return (
@@ -531,6 +532,7 @@ function PhotoContextTarget({
 const PhotoGridCard = memo(function PhotoGridCard({
   photo,
   isSelected,
+  isFocused,
   isDeleting,
   language,
   viewMode,
@@ -562,24 +564,30 @@ const PhotoGridCard = memo(function PhotoGridCard({
       onRequestDelete={onRequestDelete}
     >
       <div
+        tabIndex={0}
         className={`group overflow-hidden border text-left transition focus:outline-none ${masonry ? "mb-1.5 inline-block w-full rounded-sm align-top" : "flex h-full min-w-0 flex-col rounded-lg"} ${isDeleting ? "cursor-wait opacity-75" : "cursor-pointer"}`}
         style={{
-          borderColor: isSelected
+          borderColor: isSelected || isFocused
             ? "var(--primary)"
             : masonry
               ? "transparent"
               : "var(--border)",
-          backgroundColor: isSelected
+          backgroundColor: isSelected || isFocused
             ? "var(--accent)"
             : masonry
               ? "transparent"
               : "var(--card)",
-          boxShadow: isSelected ? "0 0 0 1px var(--primary)" : undefined,
+          boxShadow: isSelected || isFocused ? "0 0 0 1px var(--primary)" : undefined,
           breakInside: masonry ? "avoid" : undefined,
           contentVisibility: masonry ? undefined : "auto",
         }}
         onClick={(event) => {
           if (!isDeleting) onCardClick(event, photo);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== " " || event.target !== event.currentTarget || isDeleting) return;
+          event.preventDefault();
+          onToggleSelect(photo.id);
         }}
         onDoubleClick={() => {
           if (!isDeleting) onCardDoubleClick(photo);
@@ -684,14 +692,6 @@ const PhotoGridCard = memo(function PhotoGridCard({
           <div className="block w-full px-2.5 py-2">
             <span className="block truncate text-xs font-medium">
               {photo.title || "Untitled"}
-            </span>
-            <span
-              className="mt-0.5 block truncate text-[10px]"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {photo.width && photo.height
-                ? `${photo.width} × ${photo.height}`
-                : photo.category || "—"}
             </span>
           </div>
         )}
@@ -1085,12 +1085,15 @@ export function PhotosPage({
       anchorIdRef.current = id;
       setSelected((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
+        const removing = next.has(id);
+        if (removing) next.delete(id);
         else next.add(id);
+        const nextFocusedId = removing ? Array.from(next).at(-1) : id;
+        setDetailPhoto(photos.find((photo) => photo.id === nextFocusedId) ?? null);
         return next;
       });
     },
-    [existingPhotoIdSet],
+    [existingPhotoIdSet, photos],
   );
 
   useEffect(() => {
@@ -1102,15 +1105,11 @@ export function PhotosPage({
   // 已有锚点时 Shift+点击 选中锚点到当前的整段范围
   const handlePhotoClick = useCallback(
     (event: React.MouseEvent, photo: Photo) => {
-      if (selectionMode) {
-        toggleSelect(photo.id);
-        return;
-      }
       if (event.shiftKey) {
         event.preventDefault();
         const list = latestRef.current.photos;
         const anchorId = anchorIdRef.current;
-        if (anchorId && anchorId !== photo.id) {
+        if (anchorId) {
           const anchorIdx = list.findIndex((p) => p.id === anchorId);
           const currentIdx = list.findIndex((p) => p.id === photo.id);
           if (anchorIdx !== -1 && currentIdx !== -1) {
@@ -1119,16 +1118,23 @@ export function PhotosPage({
                 ? [anchorIdx, currentIdx]
                 : [currentIdx, anchorIdx];
             const rangeIds = list.slice(start, end + 1).map((p) => p.id);
-            setSelected((prev) => new Set([...prev, ...rangeIds]));
+            setSelected(new Set(rangeIds));
+            setDetailPhoto(photo);
             return;
           }
         }
+        setDetailPhoto(photo);
+        return;
+      }
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
         toggleSelect(photo.id);
         return;
       }
+      anchorIdRef.current = photo.id;
       setDetailPhoto(photo);
     },
-    [selectionMode, toggleSelect],
+    [toggleSelect],
   );
 
   // 双击卡片：打开全屏大图预览
@@ -1452,6 +1458,7 @@ export function PhotosPage({
       key={photo.id}
       photo={photo}
       isSelected={selected.has(photo.id) || existingPhotoIdSet.has(photo.id)}
+      isFocused={detailPhoto?.id === photo.id}
       isDeleting={deletingIds.has(photo.id)}
       language={language}
       viewMode={viewMode}
@@ -1763,6 +1770,30 @@ export function PhotosPage({
                     className="mx-0.5 h-4 w-px"
                     style={{ backgroundColor: "var(--border)" }}
                   />
+                  {selected.size > 1 && detailPhoto && !selectionMode && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openEditor(detailPhoto, "info")}
+                        title={t("admin.edit_details", language)}
+                        aria-label={t("admin.edit_details", language)}
+                        className="rounded-md p-1.5 hover:opacity-80"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditor(detailPhoto, "story")}
+                        title={t("admin.edit_story", language)}
+                        aria-label={t("admin.edit_story", language)}
+                        className="rounded-md p-1.5 hover:opacity-80"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        <FileText size={15} />
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={toggleSelectAllLoaded}
                     title={
@@ -1913,6 +1944,7 @@ export function PhotosPage({
           onDelete={requestDeletePhoto}
           onSave={handleDetailSave}
           onUnauthorized={logout}
+          hideEditActions={selectionMode || selected.size > 1}
         />
       </div>
 
