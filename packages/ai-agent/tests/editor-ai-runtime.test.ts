@@ -19,12 +19,13 @@ import {
 type MockStreamPart = Awaited<ReturnType<MockLanguageModelV4['doStream']>>['stream'] extends ReadableStream<infer Part>
   ? Part
   : never
+type MockCallOptions = Parameters<MockLanguageModelV4['doStream']>[0]
 
 const usage = {
   inputTokens: {
     total: 3,
-    noCache: 3,
-    cacheRead: undefined,
+    noCache: 1,
+    cacheRead: 2,
     cacheWrite: undefined,
   },
   outputTokens: {
@@ -42,10 +43,14 @@ function finish(unified: 'stop' | 'tool-calls'): MockStreamPart {
   }
 }
 
-function mockModel(responses: MockStreamPart[][]): MockLanguageModelV4 {
+function mockModel(
+  responses: MockStreamPart[][],
+  onCall?: (options: MockCallOptions) => void,
+): MockLanguageModelV4 {
   let callIndex = 0
   return new MockLanguageModelV4({
-    doStream: async () => {
+    doStream: async (options) => {
+      onCall?.(options)
       const chunks = responses[callIndex]
       callIndex += 1
       if (!chunks) throw new Error(`Unexpected model call ${callIndex}`)
@@ -224,26 +229,37 @@ await test('keeps legacy text-only and system messages compatible', () => {
 })
 
 await test('streams text through the project-owned generation API', async () => {
+  let callOptions: MockCallOptions | undefined
   const model = mockModel([[
     { type: 'text-start', id: 'text-1' },
     { type: 'text-delta', id: 'text-1', delta: 'Hello' },
     { type: 'text-delta', id: 'text-1', delta: ' world' },
     { type: 'text-end', id: 'text-1' },
     finish('stop'),
-  ]])
+  ]], options => { callOptions = options })
   const chunks: string[] = []
+  const usages: publicApi.EditorAiUsage[] = []
 
   const text = await streamVercelAiText({
     endpoint: { baseURL: 'http://localhost/v1' },
     model: 'mock-model',
     messages: [{ role: 'user', text: 'hello' }],
     temperature: 0.2,
+    reasoningEffort: 'high',
     languageModel: model,
     onChunk: (chunk) => chunks.push(chunk),
+    onUsage: value => usages.push(value),
   })
 
   assert.equal(text, 'Hello world')
   assert.deepEqual(chunks, ['Hello', ' world'])
+  assert.equal(callOptions?.providerOptions?.['mo-gallery']?.reasoningEffort, 'high')
+  assert.deepEqual(usages, [{
+    inputTokens: 3,
+    outputTokens: 10,
+    reasoningTokens: undefined,
+    cacheReadTokens: 2,
+  }])
 })
 
 await test('exposes reasoning and tool lifecycle events without replacing text streaming', async () => {
@@ -273,7 +289,7 @@ await test('exposes reasoning and tool lifecycle events without replacing text s
 
   assert.equal(text, '完成')
   assert.deepEqual(events.map(event => event.type), [
-    'reasoning-delta', 'tool-input-start', 'tool-input-delta', 'tool-call', 'tool-error', 'tool-result', 'text-delta',
+    'response-start', 'reasoning-delta', 'tool-input-start', 'tool-input-delta', 'tool-call', 'tool-error', 'tool-result', 'text-delta', 'response-end',
   ])
   const trace = events.reduce<EditorAiTraceBlock[]>(
     (blocks, event) => reduceEditorAiTrace(blocks, event),
@@ -287,6 +303,17 @@ await test('exposes reasoning and tool lifecycle events without replacing text s
     },
     { type: 'text', id: 'text-1', text: '完成' },
   ])
+})
+
+await test('exposes a waiting activity until the first model output arrives', () => {
+  const waiting = reduceEditorAiTrace([], { type: 'response-start', id: 'response-1' })
+  assert.deepEqual(waiting, [{ type: 'activity', id: 'response-1', status: 'waiting' }])
+
+  const responding = reduceEditorAiTrace(waiting, { type: 'text-delta', id: 'text-1', text: '开始回复' })
+  assert.deepEqual(responding, [{ type: 'text', id: 'text-1', text: '开始回复' }])
+
+  const ended = reduceEditorAiTrace(waiting, { type: 'response-end', id: 'response-1' })
+  assert.deepEqual(ended, [])
 })
 
 await test('legacy proposal runtime emits proposals and approval requests', async () => {

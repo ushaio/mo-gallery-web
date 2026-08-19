@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
   XCircle,
+  Puzzle,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,6 +34,7 @@ import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
 import { CleanupStorage, FixMissingPhotos, GenerateThumbnail, ScanStorage } from '../../wailsjs/go/main/App'
 import type { services } from '../../wailsjs/go/models'
+import { StorageTab } from './SettingsPage'
 
 // ── 工具函数 ─────────────────────────────────────────────────
 
@@ -304,7 +306,7 @@ function FileThumb({ file }: { file: services.StorageFileDTO }) {
 
 // ── 主组件 ───────────────────────────────────────────────────
 
-export function StoragePage() {
+function StorageCleanupPage() {
   const { language } = usePreferences()
   const [provider, setProvider] = useState(() => {
     const stored = readLocal(PROVIDER_KEY, 'local')
@@ -1074,5 +1076,33 @@ export function StoragePage() {
         t={(key) => t(key, language)}
       />
     </>
+  )
+}
+
+export function StoragePage() {
+  const { language } = usePreferences()
+  const [view, setView] = useState<'sources' | 'cleanup'>('sources')
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title={t('admin.storage_sources', language)}
+        actions={(
+          <div className="flex h-9 items-center rounded-md border bg-background p-0.5" style={{ borderColor: 'var(--border)' }} role="tablist" aria-label={t('admin.storage_sources', language)}>
+            <button type="button" role="tab" aria-selected={view === 'sources'} onClick={() => setView('sources')} className="flex h-8 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors hover:bg-secondary sm:px-3" style={{ backgroundColor: view === 'sources' ? 'var(--accent)' : 'transparent', color: view === 'sources' ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}>
+              <Puzzle size={13} />
+              <span className="hidden sm:inline">{t('admin.storage_sources', language)}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={view === 'cleanup'} onClick={() => setView('cleanup')} className="flex h-8 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors hover:bg-secondary sm:px-3" style={{ backgroundColor: view === 'cleanup' ? 'var(--accent)' : 'transparent', color: view === 'cleanup' ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}>
+              <HardDrive size={13} />
+              <span className="hidden sm:inline">{t('admin.storage_cleanup', language)}</span>
+            </button>
+          </div>
+        )}
+      />
+      <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-6">
+        {view === 'sources' ? <StorageTab mode="sources" /> : <StorageCleanupPage />}
+      </div>
+    </div>
   )
 }

@@ -5,7 +5,12 @@ import { readEditorAiAssistantTrace, type EditorAiTraceBlock } from '@mo-gallery
 import type { AiImageMetadata, EditorAiMessageDto } from '@/lib/api/types'
 import type { AgentSkill } from '@/lib/agent-extensions'
 import { getMessageImages } from '@/lib/ai-assistant/images'
-import { formatGenerationDuration, getGenerationDurationMs } from '@/lib/ai-assistant/utils'
+import {
+  formatGenerationDuration,
+  formatTokenCount,
+  getGenerationDurationMs,
+  getGenerationUsage,
+} from '@/lib/ai-assistant/utils'
 import { ImagePreview } from '../image/ImagePreview'
 import { MessageImage } from '../image/MessageImage'
 import { AssistantTrace } from './AssistantTrace'
@@ -34,6 +39,12 @@ export function DesktopMessageBubble({ message, persistedMessageId, trace, copie
   const traceBlocks = trace ?? readEditorAiAssistantTrace(message.metadata)
   const hasTraceText = traceBlocks.some(block => block.type === 'text' && block.text)
   const generationDurationMs = getGenerationDurationMs(message.metadata)
+  const generationUsage = getGenerationUsage(message.metadata)
+  const cacheReadTokens = generationUsage?.cacheReadTokens
+
+  if (!isUser && message.status === 'streaming' && !imageMetadata && !message.content && traceBlocks.length === 0) {
+    return null
+  }
 
   return (
     <div className={`group mb-3 ${isUser ? 'flex flex-row-reverse gap-2' : 'flex gap-2'}`}>
@@ -74,18 +85,16 @@ export function DesktopMessageBubble({ message, persistedMessageId, trace, copie
             </>
           ) : (
             <>
-              {!imageMetadata && <AssistantTrace blocks={traceBlocks} streaming={message.status === 'streaming'} skills={skills} />}
+              {!imageMetadata && (
+                <AssistantTrace
+                  blocks={traceBlocks}
+                  streaming={message.status === 'streaming'}
+                  skills={skills}
+                  t={t}
+                />
+              )}
               {imageMetadata ? (
                 <ImagePreview message={message} messageId={saveMessageId} metadata={imageMetadata} t={t} />
-              ) : message.status === 'streaming' && !message.content && traceBlocks.length === 0 ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.ai_thinking')}</span>
-                  <span className="flex gap-1">
-                    {[0, 1, 2].map(i => (
-                      <span key={i} className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: 'var(--muted-foreground)', opacity: 0.45, animationDelay: `${i * 150}ms` }} />
-                    ))}
-                  </span>
-                </div>
               ) : message.content && !hasTraceText ? (
                 <div className="ai-markdown text-sm leading-relaxed break-words" style={{ color: 'var(--foreground)' }}>
                   <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
@@ -111,6 +120,19 @@ export function DesktopMessageBubble({ message, persistedMessageId, trace, copie
           )}
         </div>
 
+        {!isUser && (generationDurationMs !== null || cacheReadTokens !== undefined) && (
+          <div className="mt-1 flex items-center gap-2 px-1 text-[9px] tabular-nums" style={{ color: 'var(--muted-foreground)', opacity: 0.65 }}>
+            {generationDurationMs !== null && <span>{formatGenerationDuration(generationDurationMs)}</span>}
+            {cacheReadTokens !== undefined && (
+              <span>
+                {cacheReadTokens > 0
+                  ? `${t('admin.ai_cache_hit')} ${formatTokenCount(cacheReadTokens)}`
+                  : t('admin.ai_cache_miss')}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Message actions: show on hover */}
         {message.content && !isUser && (
           <div className="flex items-center gap-0.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -124,11 +146,6 @@ export function DesktopMessageBubble({ message, persistedMessageId, trace, copie
               style={{ color: 'var(--muted-foreground)' }}>
               <Quote size={9} />
             </button>
-            {generationDurationMs !== null && (
-              <span className="px-1.5 py-0.5 text-[9px] tabular-nums" style={{ color: 'var(--muted-foreground)', opacity: 0.6 }}>
-                {formatGenerationDuration(generationDurationMs)}
-              </span>
-            )}
             <button onClick={() => onRetry(message)} disabled={branching || message.status === 'streaming'}
               className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-accent disabled:opacity-40"
               style={{ color: 'var(--muted-foreground)' }}>

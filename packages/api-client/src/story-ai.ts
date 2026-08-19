@@ -1,6 +1,6 @@
 import { apiRequest, apiRequestData, buildApiUrl, buildQuery, extractErrorMessage } from './core'
 import type { AiChangeSetState } from '@mo-gallery/ai-agent'
-import type { EditorAiStreamEvent } from '@mo-gallery/ai-agent'
+import type { EditorAiStreamEvent, EditorAiUsage } from '@mo-gallery/ai-agent'
 
 import type {
   AiImageUploadResult,
@@ -21,6 +21,7 @@ import type {
 export interface StoryAiStreamHandlers {
   onChunk: (chunk: string) => void
   onEvent?: (event: EditorAiStreamEvent) => void
+  onUsage?: (usage: EditorAiUsage) => void
   onPersisted?: (messageIds: { userMessageId: string; assistantMessageId: string }) => void
   onDone?: () => void
   signal?: AbortSignal

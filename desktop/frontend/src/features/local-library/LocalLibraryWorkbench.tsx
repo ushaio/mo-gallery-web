@@ -425,7 +425,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   }, [availability, refreshKey, reloadTrashedFolders])
 
   const reloadStorageSources = useCallback(async () => {
-    if (!isAuthenticated || storageSourcesLoadingRef.current) return
+    if (storageSourcesLoadingRef.current) return
 
     const requestVersion = storageSourcesRequestVersionRef.current
     storageSourcesLoadingRef.current = true
@@ -441,21 +441,13 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
         setStorageSourcesLoading(false)
       }
     }
-  }, [isAuthenticated])
+  }, [])
 
   useCachedPageEffect(() => {
-    if (!isAuthenticated) {
-      storageSourcesRequestVersionRef.current += 1
-      storageSourcesLoadingRef.current = false
-      setStorageSources([])
-      setStorageSourcesLoading(false)
-      return
-    }
-
     storageSourcesRequestVersionRef.current += 1
     storageSourcesLoadingRef.current = false
     void reloadStorageSources()
-  }, [isAuthenticated, reloadStorageSources, storageSourcesRevision])
+  }, [reloadStorageSources, storageSourcesRevision])
 
   useEffect(() => {
     if (!propertiesFolder) {

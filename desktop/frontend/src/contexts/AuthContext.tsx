@@ -35,7 +35,7 @@ type WailsFunction = ((...args: unknown[]) => unknown) & {
   __authOriginal?: WailsFunction
 }
 
-const AUTH_BOOTSTRAP_METHODS = new Set(['GetApiConfig', 'Login', 'SetAuth', 'ValidateToken'])
+const AUTH_BOOTSTRAP_METHODS = new Set(['GetApiConfig', 'Login', 'SetAuth'])
 
 interface WailsRuntimeWindow {
   go?: {

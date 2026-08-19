@@ -164,7 +164,12 @@ export function buildQuery(params: Record<string, string | number | undefined | 
   return query ? `?${query}` : ''
 }
 
-export function resolveAssetUrl(assetPath: string, cdnDomain?: string): string {
+export function resolveAssetUrl(assetPath: string | null | undefined, cdnDomain?: string): string {
+  // Storage-backed photos can legitimately have no public URL (for example,
+  // while a private or desktop-only source is not available to the web app).
+  // Keep URL consumers render-safe instead of letting a null value reach
+  // String.prototype.startsWith.
+  if (!assetPath) return ''
   if (/^(https?:|data:|blob:)/i.test(assetPath)) return assetPath
   const normalizedPath = assetPath.startsWith('/') ? assetPath : `/${assetPath}`
   const cdn = cdnDomain?.trim()

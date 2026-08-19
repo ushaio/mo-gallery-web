@@ -6,6 +6,7 @@ import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
 import { polishStoryAiPrompt } from '~/server/lib/story-ai-prompt'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
+import { resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
 
 const stories = new Hono<{ Variables: AuthVariables }>()
 
@@ -87,14 +88,14 @@ stories.get('/stories', async (c) => {
       orderBy: { createdAt: 'desc' },
     })
 
-    const data = storiesList.map((story) => ({
+    const data = await Promise.all(storiesList.map(async (story) => ({
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
         dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : [],
-      })),
-    }))
+      }))),
+    })))
 
     return c.json({
       success: true,
@@ -125,11 +126,11 @@ stories.get('/stories/:id', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
         dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : [],
-      })),
+      }))),
     }
 
     return c.json({
@@ -215,10 +216,10 @@ stories.get('/photos/:photoId/story', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -258,10 +259,10 @@ stories.get('/admin/photos/:photoId/story', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -285,13 +286,13 @@ stories.get('/admin/stories', async (c) => {
       orderBy: { createdAt: 'desc' },
     })
 
-    const data = storiesList.map((story) => ({
+    const data = await Promise.all(storiesList.map(async (story) => ({
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
-    }))
+      }))),
+    })))
 
     return c.json({
       success: true,
@@ -322,10 +323,10 @@ stories.get('/admin/stories/:id', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -376,10 +377,10 @@ stories.post('/admin/stories', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -432,10 +433,10 @@ stories.patch('/admin/stories/:id', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -492,10 +493,10 @@ stories.post('/admin/stories/:id/photos', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -533,10 +534,10 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -574,10 +575,10 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
 
     const data = {
       ...story,
-      photos: story.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(story.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({

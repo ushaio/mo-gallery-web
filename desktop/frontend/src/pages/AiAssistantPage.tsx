@@ -13,8 +13,10 @@ import type {
 import {
   editorAiMessageMetadataSchema,
   reduceEditorAiTrace,
+  type EditorAiReasoningEffort,
   type EditorAiStreamEvent,
   type EditorAiTraceBlock,
+  type EditorAiUsage,
 } from '@mo-gallery/ai-agent'
 // Text chat shares the editor AI pipeline (agent package, local proxy, and conversation database).
 // Image generation continues to use the local /ai/generate endpoint.
@@ -43,6 +45,7 @@ import {
 } from '../../wailsjs/go/main/App'
 import {
   Eraser,
+  BrainCircuit,
   Image as ImageIcon,
   Loader2,
   PanelLeft,
@@ -108,6 +111,7 @@ export function AiAssistantPage() {
   const [sending, setSending] = useState(false)
   const [models, setModels] = useState<StoryAiModelsResponse | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [reasoningEffort, setReasoningEffort] = useState<EditorAiReasoningEffort | 'default'>('default')
   const [imageMode, setImageMode] = useState(false)
   const [selectedImageModel, setSelectedImageModel] = useState<string>('')
   const [selectedImageSize, setSelectedImageSize] = useState('auto')
@@ -712,6 +716,7 @@ export function AiAssistantPage() {
     const abortController = new AbortController()
     abortRef.current = abortController
     let accumulated = ''
+    let generationUsage: EditorAiUsage | undefined
 
     const updateAssistantMessage = (
       updater: (message: EditorAiMessageDto) => EditorAiMessageDto,
@@ -744,6 +749,8 @@ export function AiAssistantPage() {
         type: 'assistant_trace',
         blocks,
         durationMs: Math.max(0, Math.round(performance.now() - generationStartedAt)),
+        ...(generationUsage ? { usage: generationUsage } : {}),
+        ...(reasoningEffort !== 'default' ? { reasoningEffort } : {}),
       })
       if (!traceMetadata.success) return
       updateAssistantMessage(message => ({ ...message, metadata: traceMetadata.data }))
@@ -849,6 +856,7 @@ export function AiAssistantPage() {
           action: 'custom',
           prompt,
           model: selectedModel || undefined,
+          reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
           title: conversationTitle,
           images: images.length > 0 ? images : undefined,
           useAgentExtensions: true,
@@ -867,6 +875,9 @@ export function AiAssistantPage() {
           onEvent: (event: EditorAiStreamEvent) => {
             liveTraceRef.current = reduceEditorAiTrace(liveTraceRef.current, event)
             setLiveTrace(liveTraceRef.current)
+          },
+          onUsage: (usage) => {
+            generationUsage = usage
           },
           onPersisted: (messageIds) => {
             setPersistedMessageIds(previous => ({
@@ -1286,6 +1297,26 @@ export function AiAssistantPage() {
                     placeholder="选择模型"
                     size="sm"
                     icon={Sparkles}
+                    disabled={sending}
+                    placement="top"
+                  />
+                </div>
+              )}
+
+              {!imageMode && (
+                <div className="w-28">
+                  <SelectDropdown
+                    value={reasoningEffort}
+                    options={[
+                      { value: 'default', label: t('admin.ai_reasoning_default') },
+                      { value: 'low', label: t('admin.ai_reasoning_low') },
+                      { value: 'medium', label: t('admin.ai_reasoning_medium') },
+                      { value: 'high', label: t('admin.ai_reasoning_high') },
+                    ]}
+                    onChange={(value) => setReasoningEffort(value as EditorAiReasoningEffort | 'default')}
+                    placeholder={t('admin.ai_reasoning_effort')}
+                    size="sm"
+                    icon={BrainCircuit}
                     disabled={sending}
                     placement="top"
                   />

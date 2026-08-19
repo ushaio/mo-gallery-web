@@ -2,6 +2,16 @@ packages:
   - desktop/frontend
   - packages/*
 
+allowBuilds:
+  '@prisma/engines': true
+  better-sqlite3: true
+  core-js-pure: true
+  esbuild: true
+  exifreader: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
+
 onlyBuiltDependencies:
   - prisma
   - '@prisma/client'

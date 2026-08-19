@@ -12,7 +12,7 @@ export function createVercelAiLanguageModel(
     baseURL: endpoint.baseURL.replace(/\/+$/, ''),
     ...(endpoint.apiKey ? { apiKey: endpoint.apiKey } : {}),
     ...(endpoint.headers ? { headers: endpoint.headers } : {}),
-    includeUsage: false,
+    includeUsage: true,
   })
 
   return provider.chatModel(modelId)

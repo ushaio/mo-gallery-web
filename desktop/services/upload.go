@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -9,23 +10,38 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/image"
+	"mo-gallery-desktop/storage_plugins"
 )
 
 // UploadService 处理照片上传
 type UploadService struct {
-	proxy            *ProxyClient
-	clipboardMu      sync.Mutex
-	clipboardTempDir string
+	proxy                *ProxyClient
+	storagePlugins       *storage_plugins.Manager
+	pendingRegistrations *pendingRegistrationStore
+	pendingRetryMu       sync.Mutex
+	clipboardMu          sync.Mutex
+	clipboardTempDir     string
 }
 
 func NewUploadService(proxy *ProxyClient) *UploadService {
-	return &UploadService{proxy: proxy}
+	service := &UploadService{proxy: proxy}
+	if store, err := newPendingRegistrationStore(config.ConfigDir()); err == nil {
+		service.pendingRegistrations = store
+	}
+	return service
+}
+
+func (s *UploadService) SetStoragePlugins(manager *storage_plugins.Manager) {
+	s.storagePlugins = manager
 }
 
 // PreparedFile 预处理后的文件信息
@@ -58,6 +74,8 @@ type DuplicateCheckResult struct {
 type UploadSettings struct {
 	Title             string   `json:"title"`
 	Categories        []string `json:"categories"`
+	StorageRuntime    string   `json:"storageRuntime"`
+	StoragePluginID   string   `json:"storagePluginId"`
 	StorageSourceID   string   `json:"storageSourceId"`
 	StorageProvider   string   `json:"storageProvider"`
 	StoragePath       string   `json:"storagePath"`
@@ -329,17 +347,13 @@ func (s *UploadService) CheckDuplicates(hashes []string) (*DuplicateCheckResult,
 	return &result, nil
 }
 
-// UploadFile 上传照片：发送文件到 Web API，由服务端处理存储+入库
+// UploadFile uploads through the local Desktop plugin path; the legacy Web
+// path remains available only for non-plugin callers.
 func (s *UploadService) UploadFile(filePath string, settings UploadSettings, hash string, exifData *image.ExifData) (*UploadResult, error) {
 	result := &UploadResult{FilePath: filePath}
 
 	if err := validateUploadFile(filePath); err != nil {
 		result.Error = err.Error()
-		return result, nil
-	}
-
-	if s.proxy == nil || !s.proxy.IsReady() {
-		result.Error = "未连接到服务器"
 		return result, nil
 	}
 
@@ -372,6 +386,10 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 			result.Error = "本地压缩失败: " + err.Error()
 			return result, nil
 		}
+	}
+	if settings.StorageRuntime == storage_plugins.RuntimeDesktopPlugin && settings.CompressEnabled && compressionFormat == "webp" {
+		result.Error = "桌面存储插件上传暂不支持 WebP 压缩，请改用 AVIF 或关闭压缩"
+		return result, nil
 	}
 
 	// ── 构造表单字段 ───────────────────────────────────
@@ -424,6 +442,17 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		}
 	}
 
+	if settings.StorageRuntime == storage_plugins.RuntimeDesktopPlugin {
+		return s.uploadWithStoragePlugin(filePath, uploadPath, settings, hash, exifData)
+	}
+	if s.proxy == nil || !s.proxy.IsReady() {
+		result.Error = "未连接到服务器"
+		return result, nil
+	}
+	// Retry durable registration work before creating another remote object.
+	// A transient API outage must not turn one upload into multiple objects.
+	s.RetryPendingRegistrations(context.Background())
+
 	// EXIF 数据序列化为 JSON 字符串。字段名与服务端 parseExifJson 对齐
 	// （镜头字段是 lens 而非 lensModel；gps 是 JSON 字符串；takenAt 使用
 	// EXIF 日期格式，与服务端 parseExifDate 一致）。没有任何有效字段时
@@ -466,6 +495,352 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	result.Success = true
 	result.Photo = &photo
 	return result, nil
+}
+
+func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, settings UploadSettings, hash string, exifData *image.ExifData) (*UploadResult, error) {
+	result := &UploadResult{FilePath: sourcePath}
+	if s.storagePlugins == nil {
+		result.Error = "桌面存储插件未初始化"
+		return result, nil
+	}
+	if strings.TrimSpace(settings.StorageSourceID) == "" {
+		result.Error = "桌面存储源不能为空"
+		return result, nil
+	}
+	s.RetryPendingRegistrations(context.Background())
+	if strings.TrimSpace(settings.StoragePluginID) == "" {
+		settings.StoragePluginID = s.storagePlugins.PluginID(settings.StorageSourceID)
+	}
+	if strings.TrimSpace(settings.StoragePluginID) == "" {
+		result.Error = "桌面存储插件标识不能为空"
+		return result, nil
+	}
+	if settings.CompressEnabled && strings.EqualFold(settings.CompressionFormat, "webp") {
+		result.Error = "桌面存储插件上传暂不支持 WebP 压缩，请改用 AVIF 或关闭压缩"
+		return result, nil
+	}
+	if settings.StripGPS && !(settings.CompressEnabled && strings.EqualFold(settings.CompressionFormat, "avif")) {
+		tempDir, err := os.MkdirTemp("", "mo-gallery-upload-sanitized-")
+		if err != nil {
+			result.Error = "创建隐私处理目录失败: " + err.Error()
+			return result, nil
+		}
+		defer os.RemoveAll(tempDir)
+		extension := strings.ToLower(filepath.Ext(uploadPath))
+		if extension != ".jpg" && extension != ".jpeg" && extension != ".png" && extension != ".avif" {
+			extension = ".jpg"
+		}
+		sanitizedPath := filepath.Join(tempDir, strings.TrimSuffix(filepath.Base(uploadPath), filepath.Ext(uploadPath))+extension)
+		if err := image.StripMetadata(uploadPath, sanitizedPath, exifOrientation(exifData)); err != nil {
+			result.Error = "清理照片隐私元数据失败: " + err.Error()
+			return result, nil
+		}
+		uploadPath = sanitizedPath
+	}
+
+	if strings.TrimSpace(hash) == "" {
+		if computedHash, hashErr := fileHash(sourcePath); hashErr == nil {
+			hash = computedHash
+		}
+	}
+	baseName := pluginObjectKey(uploadPath, hash)
+	contentType := contentTypeForPath(uploadPath)
+	object, err := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
+		SourceID:       settings.StorageSourceID,
+		Key:            baseName,
+		Path:           settings.StoragePath,
+		UseFullPath:    settings.StoragePathFull,
+		FilePath:       uploadPath,
+		ContentType:    contentType,
+		Checksum:       hash,
+		IdempotencyKey: strings.TrimSpace(hash) + ":" + settings.StorageSourceID,
+	})
+	if err != nil {
+		result.Error = "插件上传原图失败: " + err.Error()
+		return result, nil
+	}
+	if object.URLType != "public" {
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
+		result.Error = "桌面存储插件必须返回稳定的 public URL，不能登记临时或签名 URL"
+		return result, nil
+	}
+
+	thumbnailPath, err := image.GenerateThumbnailJPEG(uploadPath, exifOrientation(exifData))
+	if err != nil {
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
+		result.Error = "生成缩略图失败: " + err.Error()
+		return result, nil
+	}
+	defer os.Remove(thumbnailPath)
+	thumbnailKey := thumbnailObjectKey(object.Key)
+	thumbnail, thumbErr := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
+		SourceID:       settings.StorageSourceID,
+		Key:            thumbnailKey,
+		UseFullPath:    true,
+		FilePath:       thumbnailPath,
+		ContentType:    "image/jpeg",
+		Checksum:       "",
+		IdempotencyKey: strings.TrimSpace(hash) + ":thumbnail:" + settings.StorageSourceID,
+	})
+	if thumbErr != nil {
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
+		result.Error = "插件上传缩略图失败: " + thumbErr.Error()
+		return result, nil
+	}
+	if thumbnail.URLType != "public" {
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: thumbnail.Key})
+		result.Error = "桌面存储插件必须为缩略图返回稳定的 public URL，不能登记临时或签名 URL"
+		return result, nil
+	}
+
+	width, height, dimensionErr := image.ReadDimensions(uploadPath)
+	if dimensionErr != nil {
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
+		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: thumbnail.Key})
+		result.Error = "读取图片尺寸失败: " + dimensionErr.Error()
+		return result, nil
+	}
+	title := settings.Title
+	if title == "" {
+		title = filepath.Base(sourcePath)
+	}
+	originFlag := settings.OriginFlag
+	if originFlag == "" {
+		originFlag = "desktop"
+	}
+	registerExif := cloneExifData(exifData)
+	if settings.StripGPS && registerExif != nil {
+		registerExif.GPS = nil
+	}
+	register := map[string]any{
+		"title":               title,
+		"path":                object.Key,
+		"thumbPath":           thumbnail.Key,
+		"storageProvider":     firstNonEmpty(settings.StorageProvider, settings.StoragePluginID),
+		"storageRuntime":      storage_plugins.RuntimeDesktopPlugin,
+		"storagePluginId":     settings.StoragePluginID,
+		"storageSourceId":     settings.StorageSourceID,
+		"storageUrlType":      object.URLType,
+		"storageUrlExpiresAt": formatTime(object.ExpiresAt),
+		"width":               width,
+		"height":              height,
+		"size":                object.Size,
+		"fileHash":            hash,
+		"showFlag":            settings.ShowFlag,
+		"originFlag":          originFlag,
+		"category":            strings.Join(settings.Categories, ","),
+		"filmRollId":          nullableString(settings.FilmRollID),
+		"exif":                registerExif,
+	}
+	if s.proxy == nil || !s.proxy.IsReady() {
+		if s.pendingRegistrations != nil {
+			item := pendingRegistration{
+				ID: pendingRegistrationID(), SourceID: settings.StorageSourceID,
+				OriginalKey: object.Key, ThumbnailKey: thumbnail.Key,
+				RegisterBody: register, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+			}
+			if queueErr := s.pendingRegistrations.put(item); queueErr == nil {
+				result.Error = "照片已上传，等待服务器连接后登记"
+				return result, nil
+			}
+		}
+		_ = s.cleanupPluginObjects(settings.StorageSourceID, object.Key, thumbnail.Key)
+		result.Error = "照片登记失败：未连接到服务器"
+		return result, nil
+	}
+	var photo PhotoDTO
+	if err := s.proxy.POST("/admin/photos/register", register, &photo); err != nil {
+		if apiErr := new(APIError); errors.As(err, &apiErr) && apiErr.Code == "DUPLICATE_PHOTO" {
+			_ = s.cleanupPluginObjects(settings.StorageSourceID, object.Key, thumbnail.Key)
+			result.IsDuplicate = true
+			result.Existing = &DuplicateInfo{ID: apiErr.ExistingPhotoID, Title: apiErr.Message}
+			return result, nil
+		}
+		if s.pendingRegistrations != nil {
+			item := pendingRegistration{
+				ID:           pendingRegistrationID(),
+				SourceID:     settings.StorageSourceID,
+				OriginalKey:  object.Key,
+				ThumbnailKey: thumbnail.Key,
+				RegisterBody: register,
+				CreatedAt:    time.Now().UTC(),
+				UpdatedAt:    time.Now().UTC(),
+			}
+			if queueErr := s.pendingRegistrations.put(item); queueErr != nil {
+				result.Error = "登记照片失败，且保存补偿任务失败: " + queueErr.Error()
+				return result, nil
+			}
+			result.Error = "登记照片失败，已保留上传对象并等待重试: " + err.Error()
+			return result, nil
+		}
+		_ = s.cleanupPluginObjects(settings.StorageSourceID, object.Key, thumbnail.Key)
+		result.Error = "登记照片失败: " + err.Error()
+		return result, nil
+	}
+	if photo.ID == "" {
+		if s.pendingRegistrations != nil {
+			item := pendingRegistration{
+				ID:           pendingRegistrationID(),
+				SourceID:     settings.StorageSourceID,
+				OriginalKey:  object.Key,
+				ThumbnailKey: thumbnail.Key,
+				RegisterBody: register,
+				CreatedAt:    time.Now().UTC(),
+				UpdatedAt:    time.Now().UTC(),
+			}
+			if queueErr := s.pendingRegistrations.put(item); queueErr == nil {
+				result.Error = "登记照片未返回 ID，已保留上传对象并等待重试"
+				return result, nil
+			}
+		}
+		_ = s.cleanupPluginObjects(settings.StorageSourceID, object.Key, thumbnail.Key)
+		result.Error = "登记照片失败：服务端未返回照片信息"
+		return result, nil
+	}
+	result.Success = true
+	result.Photo = &photo
+	return result, nil
+}
+
+// RetryPendingRegistrations retries registrations whose objects were uploaded
+// successfully but whose database request failed. It intentionally leaves
+// non-retryable-looking failures queued until the user or a later run can
+// inspect them; deleting remote objects here could lose a successful upload.
+func (s *UploadService) RetryPendingRegistrations(ctx context.Context) {
+	_ = ctx // ProxyClient currently exposes request-scoped timeouts internally.
+	s.pendingRetryMu.Lock()
+	defer s.pendingRetryMu.Unlock()
+	if s.pendingRegistrations == nil || s.proxy == nil || !s.proxy.IsReady() || s.storagePlugins == nil {
+		return
+	}
+	for _, item := range s.pendingRegistrations.list() {
+		var photo PhotoDTO
+		err := s.proxy.POST("/admin/photos/register", item.RegisterBody, &photo)
+		if err == nil && photo.ID != "" {
+			_ = s.pendingRegistrations.remove(item.ID)
+			continue
+		}
+		if apiErr := new(APIError); errors.As(err, &apiErr) && apiErr.Code == "DUPLICATE_PHOTO" {
+			_ = s.cleanupPluginObjects(item.SourceID, item.OriginalKey, item.ThumbnailKey)
+			_ = s.pendingRegistrations.remove(item.ID)
+			continue
+		}
+		item.Attempts++
+		item.UpdatedAt = time.Now().UTC()
+		if err != nil {
+			item.LastError = err.Error()
+		} else {
+			item.LastError = "registration response did not include a photo id"
+		}
+		_ = s.pendingRegistrations.update(item)
+	}
+}
+
+func (s *UploadService) cleanupPluginObjects(sourceID, originalKey, thumbnailKey string) error {
+	if s.storagePlugins == nil {
+		return nil
+	}
+	var firstErr error
+	for _, key := range []string{originalKey, thumbnailKey} {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		if err := s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: sourceID, Key: key}); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func pendingRegistrationID() string {
+	return fmt.Sprintf("registration-%d", time.Now().UnixNano())
+}
+
+func exifOrientation(data *image.ExifData) int {
+	if data != nil && data.Orientation > 0 {
+		return data.Orientation
+	}
+	return 1
+}
+
+func cloneExifData(data *image.ExifData) *image.ExifData {
+	if data == nil {
+		return nil
+	}
+	clone := *data
+	if data.GPS != nil {
+		gps := *data.GPS
+		clone.GPS = &gps
+	}
+	return &clone
+}
+
+func contentTypeForPath(filePath string) string {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	case ".avif":
+		return "image/avif"
+	case ".tif", ".tiff":
+		return "image/tiff"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+func pluginObjectKey(filePath, hash string) string {
+	baseName := filepath.Base(filePath)
+	extension := filepath.Ext(baseName)
+	stem := strings.TrimSuffix(baseName, extension)
+	suffix := strings.TrimSpace(hash)
+	if len(suffix) > 16 {
+		suffix = suffix[:16]
+	}
+	if suffix == "" {
+		suffix = fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return stem + "-" + suffix + extension
+}
+
+func thumbnailObjectKey(key string) string {
+	directory := path.Dir(key)
+	name := strings.TrimSuffix(path.Base(key), path.Ext(key)) + ".jpg"
+	if directory == "." {
+		return path.Join(".thumbnails", name)
+	}
+	return path.Join(directory, ".thumbnails", name)
+}
+
+// PluginThumbnailObjectKey is shared by the Desktop deletion flow so it uses
+// the same object ownership convention as the upload path.
+func PluginThumbnailObjectKey(key string) string { return thumbnailObjectKey(key) }
+
+func formatTime(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
+}
+
+func nullableString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // UploadAiImage uploads an AI-generated image to shared storage without creating

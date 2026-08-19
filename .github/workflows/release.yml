@@ -70,8 +70,59 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-  desktop-windows-build:
+  node-runtime:
     needs: prepare
+    if: needs.prepare.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      NODE_RUNTIME_PRIVATE_KEY: ${{ secrets.NODE_RUNTIME_PRIVATE_KEY }}
+      PLUGIN_SIGNING_PUBLIC_KEY: ${{ secrets.PLUGIN_SIGNING_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install archive utilities
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate release signing configuration
+        run: |
+          test -n "$NODE_RUNTIME_PRIVATE_KEY" || { echo 'NODE_RUNTIME_PRIVATE_KEY secret is required'; exit 1; }
+          test -n "$PLUGIN_SIGNING_PUBLIC_KEY" || { echo 'PLUGIN_SIGNING_PUBLIC_KEY secret is required'; exit 1; }
+
+      - name: Fetch, verify and sign bundled Node runtime
+        run: |
+          printf '%s' "$NODE_RUNTIME_PRIVATE_KEY" > "$RUNNER_TEMP/node-runtime-private.pem"
+          printf '%s' "$PLUGIN_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/plugin-signing-public.pem"
+          node desktop/build/fetch-node-runtime.mjs \
+            --private-key "$RUNNER_TEMP/node-runtime-private.pem" \
+            --plugin-public-key "$RUNNER_TEMP/plugin-signing-public.pem" \
+            --plugin-public-key-output desktop/build/generated/plugin-signing-public-key.b64 \
+            --output-root desktop/storage_plugins/runtime_assets \
+            --public-key-output desktop/build/generated/node-runtime-public-key.b64
+
+      - name: Stage runtime bundle artifact
+        run: |
+          mkdir -p desktop/build/runtime-package
+          cp -R desktop/storage_plugins/runtime_assets desktop/build/runtime-package/runtime_assets
+          cp desktop/build/generated/*.b64 desktop/build/runtime-package/
+
+      - name: Upload runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: mo-gallery-node-runtime-${{ needs.prepare.outputs.tag }}
+          path: desktop/build/runtime-package
+          if-no-files-found: error
+
+  desktop-windows-build:
+    needs:
+      - prepare
+      - node-runtime
     if: needs.prepare.outputs.tag_exists == 'false'
     strategy:
       fail-fast: false
@@ -107,7 +158,7 @@ jobs:
       - name: Install Wails CLI
         shell: pwsh
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
           $goBin = Join-Path (go env GOPATH) 'bin'
           $goBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $goBin 'wails.exe') version
@@ -118,6 +169,22 @@ jobs:
       - name: Verify desktop frontend dependencies
         working-directory: desktop/frontend
         run: pnpm list react-router-dom sonner
+
+      - name: Download verified Node runtime bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: mo-gallery-node-runtime-${{ needs.prepare.outputs.tag }}
+          path: desktop/build/runtime-package
+
+      - name: Install runtime bundle and trust keys
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          Copy-Item 'build/runtime-package/runtime_assets/*' 'storage_plugins/runtime_assets' -Recurse -Force
+          $runtimeKey = (Get-Content 'build/runtime-package/node-runtime-public-key.b64' -Raw).Trim()
+          $pluginKey = (Get-Content 'build/runtime-package/plugin-signing-public-key.b64' -Raw).Trim()
+          "NODE_RUNTIME_PUBLIC_KEY=$runtimeKey" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PLUGIN_SIGNING_PUBLIC_KEY=$pluginKey" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Ensure NSIS is available
         shell: pwsh
@@ -148,7 +215,7 @@ jobs:
       - name: Build portable executable and NSIS installer
         working-directory: desktop
         shell: pwsh
-        run: wails build -clean -nsis -platform ${{ matrix.platform }}
+        run: wails build -clean -nsis -platform ${{ matrix.platform }} -ldflags "-X mo-gallery-desktop/storage_plugins.BundledNodeRuntimePublicKey=$env:NODE_RUNTIME_PUBLIC_KEY -X mo-gallery-desktop/storage_plugins.BundledPluginSigningPublicKey=$env:PLUGIN_SIGNING_PUBLIC_KEY"
 
       - name: Normalize Windows artifact names
         working-directory: desktop
@@ -179,7 +246,9 @@ jobs:
           if-no-files-found: error
 
   desktop-macos-build:
-    needs: prepare
+    needs:
+      - prepare
+      - node-runtime
     if: needs.prepare.outputs.tag_exists == 'false'
     strategy:
       fail-fast: false
@@ -227,7 +296,7 @@ jobs:
 
       - name: Install Wails CLI
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           "$(go env GOPATH)/bin/wails" version
 
@@ -237,6 +306,19 @@ jobs:
       - name: Verify desktop frontend dependencies
         working-directory: desktop/frontend
         run: pnpm list react-router-dom sonner
+
+      - name: Download verified Node runtime bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: mo-gallery-node-runtime-${{ needs.prepare.outputs.tag }}
+          path: desktop/build/runtime-package
+
+      - name: Install runtime bundle and trust keys
+        working-directory: desktop
+        run: |
+          cp -R build/runtime-package/runtime_assets/. storage_plugins/runtime_assets/
+          echo "NODE_RUNTIME_PUBLIC_KEY=$(tr -d '\\r\\n' < build/runtime-package/node-runtime-public-key.b64)" >> "$GITHUB_ENV"
+          echo "PLUGIN_SIGNING_PUBLIC_KEY=$(tr -d '\\r\\n' < build/runtime-package/plugin-signing-public-key.b64)" >> "$GITHUB_ENV"
 
       - name: Import Apple signing certificate
         if: ${{ env.MACOS_CERTIFICATE_P12_BASE64 != '' && env.MACOS_CERTIFICATE_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' }}
@@ -254,7 +336,7 @@ jobs:
 
       - name: Build macOS application
         working-directory: desktop
-        run: wails build -clean -platform ${{ matrix.platform }}
+        run: wails build -clean -platform ${{ matrix.platform }} -ldflags "-X mo-gallery-desktop/storage_plugins.BundledNodeRuntimePublicKey=$NODE_RUNTIME_PUBLIC_KEY -X mo-gallery-desktop/storage_plugins.BundledPluginSigningPublicKey=$PLUGIN_SIGNING_PUBLIC_KEY"
 
       - name: Sign macOS application
         if: ${{ env.MACOS_SIGNING_IDENTITY != '' && env.MACOS_CERTIFICATE_P12_BASE64 != '' }}
@@ -322,7 +404,9 @@ jobs:
           if-no-files-found: error
 
   desktop-linux-build:
-    needs: prepare
+    needs:
+      - prepare
+      - node-runtime
     if: needs.prepare.outputs.tag_exists == 'false'
     strategy:
       fail-fast: false
@@ -370,7 +454,7 @@ jobs:
 
       - name: Install Wails CLI
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           "$(go env GOPATH)/bin/wails" version
 
@@ -381,9 +465,22 @@ jobs:
         working-directory: desktop/frontend
         run: pnpm list react-router-dom sonner
 
+      - name: Download verified Node runtime bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: mo-gallery-node-runtime-${{ needs.prepare.outputs.tag }}
+          path: desktop/build/runtime-package
+
+      - name: Install runtime bundle and trust keys
+        working-directory: desktop
+        run: |
+          cp -R build/runtime-package/runtime_assets/. storage_plugins/runtime_assets/
+          echo "NODE_RUNTIME_PUBLIC_KEY=$(tr -d '\\r\\n' < build/runtime-package/node-runtime-public-key.b64)" >> "$GITHUB_ENV"
+          echo "PLUGIN_SIGNING_PUBLIC_KEY=$(tr -d '\\r\\n' < build/runtime-package/plugin-signing-public-key.b64)" >> "$GITHUB_ENV"
+
       - name: Build Linux application
         working-directory: desktop
-        run: wails build -clean -platform ${{ matrix.platform }} -tags webkit2_41
+        run: wails build -clean -platform ${{ matrix.platform }} -tags webkit2_41 -ldflags "-X mo-gallery-desktop/storage_plugins.BundledNodeRuntimePublicKey=$NODE_RUNTIME_PUBLIC_KEY -X mo-gallery-desktop/storage_plugins.BundledPluginSigningPublicKey=$PLUGIN_SIGNING_PUBLIC_KEY"
 
       - name: Archive Linux executable
         working-directory: desktop
@@ -532,6 +629,7 @@ jobs:
   publish:
     needs:
       - prepare
+      - node-runtime
       - desktop-windows-build
       - desktop-macos-build
       - desktop-linux-build

@@ -375,6 +375,10 @@ export function useStoryEditorActions({
 
   const handleInsertPhotoMarkdown = useCallback((photo: PhotoDto) => {
     addPhotoToCurrentStory(photo)
+    if (!photo.url) {
+      notify('Photo URL is unavailable', 'error')
+      return
+    }
     insertDirective(buildStoryMarkdownImage({ url: photo.url, alt: photo.title, photoId: photo.id }))
     notify('Inserted Markdown image', 'success')
   }, [addPhotoToCurrentStory, insertDirective, notify])
@@ -395,8 +399,13 @@ export function useStoryEditorActions({
     }
 
     const markdown = photosToInsert
-      .map((photo) => buildStoryMarkdownImage({ url: photo.url, alt: photo.title, photoId: photo.id }).trim())
+      .filter((photo) => Boolean(photo.url))
+      .map((photo) => buildStoryMarkdownImage({ url: photo.url!, alt: photo.title, photoId: photo.id }).trim())
       .join('\n\n')
+    if (!markdown) {
+      notify('Photo URL is unavailable', 'error')
+      return
+    }
     insertDirective(`\n${markdown}\n`)
     notify('Inserted Markdown gallery', 'success')
   }, [currentStory?.photos, insertDirective, notify])

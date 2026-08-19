@@ -31,7 +31,8 @@ export const PhotoViewerImage = memo(function PhotoViewerImage({
   }
 
   const thumbnailUrl = resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)
-  const displayUrl = `/api/photos/${encodeURIComponent(photo.id)}/display?width=1920&v=${encodeURIComponent(photo.url)}`
+  const displayUrl = `/api/photos/${encodeURIComponent(photo.id)}/display?width=1920&v=${encodeURIComponent(photo.url ?? '')}`
+  const previewUrl = thumbnailUrl || displayUrl
   const imageStyle = {
     transform: `scale(${scale})`,
     transition: isDragging ? 'none' : 'transform 0.2s',
@@ -43,7 +44,7 @@ export const PhotoViewerImage = memo(function PhotoViewerImage({
         <>
           {!isDisplayLoaded ? (
             <Image
-              src={thumbnailUrl}
+              src={previewUrl}
               alt={photo.title}
               fill
               sizes="(max-width: 1024px) 100vw, 70vw"

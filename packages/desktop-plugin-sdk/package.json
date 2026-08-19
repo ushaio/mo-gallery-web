@@ -1,0 +1,23 @@
+{
+  "name": "@mo-gallery/desktop-plugin-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript SDK for MO Gallery Desktop storage plugins.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "files": ["src", "templates", "README.md", "tsconfig.json", "vitest.config.ts"],
+  "scripts": {
+    "build": "tsc --noEmit false --outDir dist --declaration --declarationMap --sourceMap -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx tests/contract.test.ts",
+    "create-plugin": "node --import tsx scripts/create-plugin.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

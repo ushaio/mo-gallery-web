@@ -152,9 +152,10 @@ const productionFetch: SafeRemoteImageFetch = (urlValue, options) => new Promise
     resolve({
       status: response.statusCode ?? 0,
       ok: Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 300),
-      headers: new Headers(Object.entries(response.headers).flatMap(([name, value]) => (
-        value === undefined ? [] : [[name, Array.isArray(value) ? value.join(', ') : value]]
-      ))),
+      headers: new Headers(Object.entries(response.headers).flatMap(([name, value]) => {
+        if (value === undefined) return [] as [string, string][]
+        return [[name, Array.isArray(value) ? value.join(', ') : value]] as [string, string][]
+      })),
       body: Readable.toWeb(response) as Response['body'],
     })
   })

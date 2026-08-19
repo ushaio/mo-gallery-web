@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { ChevronRight, Sparkles } from 'lucide-react'
+import { ChevronRight, Loader2, Sparkles } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { EditorAiTraceBlock } from '@mo-gallery/ai-agent'
 import type { AgentSkill } from '@/lib/agent-extensions'
 
-function ReasoningTraceBlock({ block, active }: {
+function ReasoningTraceBlock({ block, active, t }: {
   block: Extract<EditorAiTraceBlock, { type: 'reasoning' }>
   active: boolean
+  t: (key: string) => string
 }) {
   const [open, setOpen] = useState(active)
   const [userInteracted, setUserInteracted] = useState(false)
@@ -21,7 +22,7 @@ function ReasoningTraceBlock({ block, active }: {
         className="flex w-full items-center gap-2 py-1 text-left"
       >
         <Sparkles size={11} />
-        <span>{active ? '思考中...' : '思考过程'}</span>
+        <span>{active ? t('admin.ai_thinking') : t('admin.ai_reasoning')}</span>
         <ChevronRight size={11} className={`ml-auto transition-transform ${effectiveOpen ? 'rotate-90' : ''}`} />
       </button>
       {effectiveOpen && <div className="whitespace-pre-wrap break-words pl-5 pt-1 leading-relaxed">{block.text}</div>}
@@ -56,16 +57,15 @@ function getSkillIdFromTool(tool: Extract<EditorAiTraceBlock, { type: 'tool' }>)
   return null
 }
 
-function ToolTraceBlock({ tool, skills }: {
+function ToolTraceBlock({ tool, skills, t }: {
   tool: Extract<EditorAiTraceBlock, { type: 'tool' }>
   skills: AgentSkill[]
+  t: (key: string) => string
 }) {
   const skillId = getSkillIdFromTool(tool)
   const skill = skillId ? skills.find(item => item.id === skillId) : undefined
   const label = skill ? `Skill: ${skill.name}` : skillId ? `Skill: ${skillId}` : tool.name || 'tool'
-  const status = tool.status === 'preparing' ? 'preparing'
-    : tool.status === 'running' ? 'running'
-      : tool.status === 'completed' ? 'completed' : 'failed'
+  const status = t(`admin.ai_tool_${tool.status}`)
   return (
     <details className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
       <summary className="cursor-pointer select-none py-1">{label} · {status}</summary>
@@ -82,19 +82,25 @@ function ToolTraceBlock({ tool, skills }: {
   )
 }
 
-export function AssistantTrace({ blocks, streaming, skills }: {
+export function AssistantTrace({ blocks, streaming, skills, t }: {
   blocks: EditorAiTraceBlock[]
   streaming: boolean
   skills: AgentSkill[]
+  t: (key: string) => string
 }) {
   if (blocks.length === 0) return null
   const activeReasoningId = streaming && blocks.at(-1)?.type === 'reasoning' ? blocks.at(-1)?.id : null
   return (
     <div className="space-y-2">
-      {blocks.map(block => block.type === 'reasoning' ? (
-        <ReasoningTraceBlock key={block.id} block={block} active={block.id === activeReasoningId} />
+      {blocks.map(block => block.type === 'activity' ? (
+        <div key={block.id} className="flex items-center gap-2 py-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+          <Loader2 size={11} className="animate-spin" />
+          <span>{t('admin.ai_thinking')}</span>
+        </div>
+      ) : block.type === 'reasoning' ? (
+        <ReasoningTraceBlock key={block.id} block={block} active={block.id === activeReasoningId} t={t} />
       ) : block.type === 'tool' ? (
-        <ToolTraceBlock key={block.id} tool={block} skills={skills} />
+        <ToolTraceBlock key={block.id} tool={block} skills={skills} t={t} />
       ) : block.text ? (
         <div key={block.id} className="ai-markdown text-sm leading-relaxed break-words" style={{ color: 'var(--foreground)' }}>
           <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>

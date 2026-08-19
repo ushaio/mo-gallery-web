@@ -50,7 +50,10 @@ export function checkForUpdates(currentVersion: string, force = false) {
 
 export async function isDevelopmentBuild() {
   const environment = await Environment()
-  return environment.buildType !== 'production'
+  // Wails uses `dev` only for `wails dev`. A debug production binary still
+  // uses the production trust boundary and must not install unpacked plugin
+  // directories.
+  return environment.buildType === 'dev'
 }
 
 export function downloadUpdate(onProgress: (progress: UpdateDownloadProgress) => void) {

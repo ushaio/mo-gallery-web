@@ -151,7 +151,7 @@ export function LibraryPhotoInfoSidebar({
   ]
   const copyRows = [
     { key: 'id', label: t('admin.resource_library_photo_id'), value: photo.id },
-    { key: 'storage-key', label: t('admin.resource_library_storage_path'), value: photo.storageKey || '' },
+    { key: 'storage-key', label: t('admin.resource_library_storage_path'), value: photo.path || '' },
     { key: 'thumbnail-url', label: t('admin.resource_library_thumbnail_url'), value: photo.thumbnailUrl ? resolveAssetUrl(photo.thumbnailUrl, cdnDomain) : '' },
     { key: 'original-url', label: t('admin.resource_library_original_url'), value: resolveAssetUrl(photo.url, cdnDomain) },
   ]

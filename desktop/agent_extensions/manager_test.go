@@ -119,13 +119,13 @@ func TestPrepareSkillSourceResolvesSingleNestedSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, cleanup, err := prepareSkillSource(filepath.Join(root, "repository"), t.TempDir())
+	resolved, cleanup, err := prepareSkillSources(filepath.Join(root, "repository"), t.TempDir())
 	defer cleanup()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved != skillRoot {
-		t.Fatalf("resolved unexpected Skill root: got %q want %q", resolved, skillRoot)
+	if len(resolved) != 1 || resolved[0] != skillRoot {
+		t.Fatalf("resolved unexpected Skill roots: got %q want %q", resolved, skillRoot)
 	}
 }
 
@@ -136,20 +136,20 @@ func TestPrepareSkillSourceStagesStandaloneSkillMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	installRoot := t.TempDir()
-	resolved, cleanup, err := prepareSkillSource(source, installRoot)
+	resolved, cleanup, err := prepareSkillSources(source, installRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	if resolved == source || !strings.HasPrefix(resolved, filepath.Join(installRoot, "skill-import-")) {
+	if len(resolved) != 1 || resolved[0] == source || !strings.HasPrefix(resolved[0], filepath.Join(installRoot, "skill-import-")) {
 		t.Fatalf("standalone Skill was not staged: got %q", resolved)
 	}
-	if _, err := os.Stat(filepath.Join(resolved, "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(resolved[0], "SKILL.md")); err != nil {
 		t.Fatalf("staged SKILL.md is missing: %v", err)
 	}
 }
 
-func TestPrepareSkillSourceExplainsMultipleNestedSkills(t *testing.T) {
+func TestPrepareSkillSourcesResolvesMultipleNestedSkills(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"first", "second"} {
 		skillRoot := filepath.Join(root, "skills", name)
@@ -161,15 +161,63 @@ func TestPrepareSkillSourceExplainsMultipleNestedSkills(t *testing.T) {
 		}
 	}
 
-	_, cleanup, err := prepareSkillSource(root, t.TempDir())
+	resolved, cleanup, err := prepareSkillSources(root, t.TempDir())
 	defer cleanup()
-	if err == nil {
-		t.Fatal("expected multiple nested Skills to require an explicit directory")
+	if err != nil {
+		t.Fatal(err)
 	}
-	message := err.Error()
-	for _, expected := range []string{"包含多个 Skill", "skills/first", "skills/second"} {
-		if !strings.Contains(message, expected) {
-			t.Fatalf("error %q does not mention %q", message, expected)
+	if len(resolved) != 2 {
+		t.Fatalf("expected two Skill roots, got %q", resolved)
+	}
+	for index, expected := range []string{"first", "second"} {
+		if filepath.Base(resolved[index]) != expected {
+			t.Fatalf("unexpected Skill root at %d: got %q want %q", index, resolved[index], expected)
+		}
+	}
+}
+
+func TestImportSkillsInstallsMultipleSkillsAndReadsTheirReadmes(t *testing.T) {
+	sourceRoot := t.TempDir()
+	for _, name := range []string{"first", "second"} {
+		skillRoot := filepath.Join(sourceRoot, "skills", name)
+		if err := os.MkdirAll(skillRoot, 0755); err != nil {
+			t.Fatal(err)
+		}
+		manifest := "---\nname: " + name + "\ndescription: " + name + " skill\n---\nInstructions"
+		if err := os.WriteFile(filepath.Join(skillRoot, "SKILL.md"), []byte(manifest), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillRoot, "README.md"), []byte("# "+name+"\n\nIntroduction"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	configRoot := t.TempDir()
+	installRoot := filepath.Join(configRoot, "agent-extensions")
+	if err := os.MkdirAll(installRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	manager := &Manager{
+		path:        filepath.Join(configRoot, "agent-extensions.json"),
+		installRoot: installRoot,
+	}
+	imported, err := manager.ImportSkills(sourceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imported) != 2 || len(manager.ListSkills()) != 2 {
+		t.Fatalf("expected two imported Skills, got imported=%d snapshot=%d", len(imported), len(manager.ListSkills()))
+	}
+	for _, skill := range imported {
+		if skill.SourcePath != sourceRoot {
+			t.Fatalf("unexpected source path for %s: %q", skill.ID, skill.SourcePath)
+		}
+		content, readErr := manager.ReadSkill(skill.ID)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if !strings.Contains(content.Readme, "# "+skill.Name) {
+			t.Fatalf("README for %s was not loaded: %q", skill.ID, content.Readme)
 		}
 	}
 }
@@ -180,10 +228,43 @@ func TestPrepareSkillSourceRejectsDirectoryWithoutSkillManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, cleanup, err := prepareSkillSource(root, t.TempDir())
+	_, cleanup, err := prepareSkillSources(root, t.TempDir())
 	defer cleanup()
 	if err == nil || !strings.Contains(err.Error(), "未在") {
 		t.Fatalf("expected a useful missing manifest error, got %v", err)
+	}
+}
+
+func TestPrepareSkillSourcesResolvesMultipleSkillsFromArchive(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "skills.zip")
+	file, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	for _, name := range []string{"first", "second"} {
+		entry, createErr := writer.Create("skills/" + name + "/SKILL.md")
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, writeErr := entry.Write([]byte("---\nname: " + name + "\ndescription: archived skill\n---\nInstructions")); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, cleanup, err := prepareSkillSources(archivePath, t.TempDir())
+	defer cleanup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("expected two Skill roots from archive, got %q", resolved)
 	}
 }
 
@@ -209,7 +290,7 @@ func TestPrepareSkillSourceRejectsDuplicateArchiveEntries(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	_, cleanup, err := prepareSkillSource(archivePath, t.TempDir())
+	_, cleanup, err := prepareSkillSources(archivePath, t.TempDir())
 	cleanup()
 	if err == nil {
 		t.Fatal("expected duplicate archive entry to be rejected")

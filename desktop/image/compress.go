@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	stdimage "image"
-	_ "image/jpeg"
+	"image/jpeg"
+	"image/png"
 	_ "image/png"
 	"math"
 	"os"
@@ -79,6 +80,46 @@ func CompressToAVIF(sourcePath, destinationPath string, orientation int, maxByte
 	)
 }
 
+// StripMetadata re-encodes an image after applying its orientation. The
+// standard encoders do not copy EXIF blocks, so GPS and other private tags are
+// removed before a plugin receives the file. Unsupported source formats fall
+// back to a clean JPEG rather than silently preserving metadata.
+func StripMetadata(sourcePath, destinationPath string, orientation int) error {
+	source, err := decodeForCompression(sourcePath)
+	if err != nil {
+		return fmt.Errorf("无法解码图片: %w", err)
+	}
+	source = orientForCompression(source, orientation)
+	file, err := os.Create(destinationPath)
+	if err != nil {
+		return err
+	}
+	closeWithError := func(writeErr error) error {
+		closeErr := file.Close()
+		if writeErr != nil {
+			_ = os.Remove(destinationPath)
+			return writeErr
+		}
+		if closeErr != nil {
+			_ = os.Remove(destinationPath)
+			return closeErr
+		}
+		return nil
+	}
+	switch strings.ToLower(filepath.Ext(destinationPath)) {
+	case ".png":
+		return closeWithError(png.Encode(file, source))
+	case ".avif":
+		encoded, encodeErr := encodeAVIF(source, 90)
+		if encodeErr == nil {
+			_, encodeErr = file.Write(encoded)
+		}
+		return closeWithError(encodeErr)
+	default:
+		return closeWithError(jpeg.Encode(file, source, &jpeg.Options{Quality: 95}))
+	}
+}
+
 func decodeForCompression(sourcePath string) (stdimage.Image, error) {
 	file, err := os.Open(sourcePath)
 	if err != nil {
@@ -90,6 +131,49 @@ func decodeForCompression(sourcePath string) (stdimage.Image, error) {
 	}
 	decoded, _, err := stdimage.Decode(file)
 	return decoded, err
+}
+
+// ReadDimensions returns the decoded image dimensions using the same decoder
+// as local compression, including AVIF support.
+func ReadDimensions(sourcePath string) (int, int, error) {
+	decoded, err := decodeForCompression(sourcePath)
+	if err != nil {
+		return 0, 0, err
+	}
+	bounds := decoded.Bounds()
+	return bounds.Dx(), bounds.Dy(), nil
+}
+
+// GenerateThumbnailJPEG creates a temporary, orientation-corrected JPEG
+// rendition for a remote storage plugin upload.
+func GenerateThumbnailJPEG(sourcePath string, orientation int) (string, error) {
+	decoded, err := decodeForCompression(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	decoded = orientForCompression(decoded, orientation)
+	decoded = resizeForCompression(decoded, 512)
+	file, err := os.CreateTemp("", "mo-gallery-thumbnail-*.jpg")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	defer func() {
+		if err != nil {
+			_ = file.Close()
+			_ = os.Remove(path)
+		}
+	}()
+	if encodeErr := jpeg.Encode(file, decoded, &jpeg.Options{Quality: 86}); encodeErr != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return "", encodeErr
+	}
+	if closeErr := file.Close(); closeErr != nil {
+		_ = os.Remove(path)
+		return "", closeErr
+	}
+	return path, nil
 }
 
 func encodeAVIF(source stdimage.Image, quality int) ([]byte, error) {

@@ -14,6 +14,7 @@ import type {
   NarrativeTipTapEditorHandle,
   NarrativeTipTapEditorProps as CoreEditorProps,
   NarrativeEditorRuntime,
+  EditorStory,
 } from '@mo-gallery/tiptap-editor'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -47,6 +48,24 @@ const editorAi: NarrativeEditorRuntime['ai'] = {
   updateEditorAiTaskState,
   polishStoryAiPrompt,
   streamStoryAiGenerate,
+}
+
+async function getEditorStory(token: string, storyId: string): Promise<EditorStory> {
+  const story = await getAdminStory(token, storyId)
+  return {
+    id: story.id,
+    title: story.title,
+    content: story.content,
+    coverPhotoId: story.coverPhotoId,
+    isPublished: story.isPublished,
+    storyDate: story.storyDate,
+    createdAt: story.createdAt,
+    photos: story.photos.map((photo) => ({
+      url: photo.url ?? photo.path ?? '',
+      thumbnailUrl: photo.thumbnailUrl ?? undefined,
+      id: photo.id,
+    })),
+  }
 }
 
 type WithoutRuntime<T> = T extends unknown ? Omit<T, 'runtime'> : never
@@ -89,7 +108,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [settings?.cdn_domain])
 
     const runtime = useMemo<NarrativeEditorRuntime>(
-      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint, copyToWechat }),
+      () => ({ t, resolvedTheme, getAdminStory: getEditorStory, ai: editorAi, getAgentEndpoint, copyToWechat }),
       [t, resolvedTheme, getAgentEndpoint, copyToWechat],
     )
 

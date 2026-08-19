@@ -5,50 +5,43 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 
 	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/db"
 	"mo-gallery-desktop/services"
 )
 
-func signedAppTestToken(t *testing.T, secret string) string {
-	t.Helper()
+func TestSetAuthRejectsSessionRejectedByServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"TOKEN_INVALID","error":"expired"}`))
+	}))
+	defer server.Close()
 
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, services.JWTClaims{
-		Sub:      "user-1",
-		Username: "admin",
-		IsAdmin:  true,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-		},
-	}).SignedString([]byte(secret))
-	if err != nil {
-		t.Fatalf("sign token: %v", err)
-	}
-	return token
-}
-
-func TestSetAuthRejectsTokenWithInvalidSignature(t *testing.T) {
-	cfg := &config.Config{API: config.APIConfig{JWTSecret: "expected-secret"}}
+	cfg := &config.Config{}
 	app := NewApp(cfg)
 	app.Auth = services.NewAuthService(cfg)
-
-	if _, err := app.SetAuth("http://localhost:3000", signedAppTestToken(t, "wrong-secret")); err == nil {
-		t.Fatal("SetAuth accepted a token signed with the wrong secret")
+	if _, err := app.SetAuth(server.URL, "invalid-token"); err == nil {
+		t.Fatal("SetAuth accepted a session rejected by the server")
 	}
 }
 
-func TestSetAuthAcceptsTokenWithValidSignature(t *testing.T) {
-	cfg := &config.Config{API: config.APIConfig{JWTSecret: "expected-secret"}}
+func TestSetAuthAcceptsSessionValidatedByServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/auth/me" || r.Header.Get("Authorization") != "Bearer opaque-token" {
+			t.Fatalf("unexpected request: %s %q", r.URL.Path, r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"id":"user-1","username":"admin","isAdmin":true}}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{}
 	app := NewApp(cfg)
 	app.Auth = services.NewAuthService(cfg)
-
-	user, err := app.SetAuth("http://localhost:3000", signedAppTestToken(t, "expected-secret"))
+	user, err := app.SetAuth(server.URL, "opaque-token")
 	if err != nil {
-		t.Fatalf("SetAuth rejected a valid token: %v", err)
+		t.Fatalf("SetAuth rejected a server-validated session: %v", err)
 	}
 	if user.Username != "admin" || !user.IsAdmin {
 		t.Fatalf("user = %+v, want admin user", user)
@@ -56,7 +49,7 @@ func TestSetAuthAcceptsTokenWithValidSignature(t *testing.T) {
 }
 
 func TestGetOverviewRequiresAuthenticatedProxy(t *testing.T) {
-	app := NewApp(&config.Config{API: config.APIConfig{JWTSecret: "expected-secret"}})
+	app := NewApp(&config.Config{})
 
 	_, err := app.GetOverview()
 	if err == nil {
@@ -68,11 +61,17 @@ func TestGetOverviewRequiresAuthenticatedProxy(t *testing.T) {
 }
 
 func TestRejectedSetAuthDoesNotUnlockOverview(t *testing.T) {
-	cfg := &config.Config{API: config.APIConfig{JWTSecret: "expected-secret"}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"TOKEN_INVALID","error":"expired"}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{}
 	app := NewApp(cfg)
 	app.Auth = services.NewAuthService(cfg)
 
-	if _, err := app.SetAuth("http://localhost:3000", signedAppTestToken(t, "wrong-secret")); err == nil {
+	if _, err := app.SetAuth(server.URL, "invalid-token"); err == nil {
 		t.Fatal("SetAuth accepted invalid token")
 	}
 	if _, err := app.GetOverview(); err == nil {

@@ -49,12 +49,15 @@ func (Lens) TableName() string { return "Lens" }
 type Photo struct {
 	ID              string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Title           string    `gorm:"type:text" json:"title"`
-	URL             string    `gorm:"type:text" json:"url"`
-	ThumbnailURL    *string   `gorm:"column:thumbnailUrl;type:text" json:"thumbnailUrl,omitempty"`
 	OriginFlag      string    `gorm:"column:originFlag;type:text;default:web" json:"originFlag"`
 	StorageProvider string    `gorm:"column:storageProvider;type:text;default:local" json:"storageProvider"`
+	StorageRuntime  string    `gorm:"column:storageRuntime;type:text;default:web" json:"storageRuntime"`
+	StoragePluginID *string   `gorm:"column:storagePluginId;type:text" json:"storagePluginId,omitempty"`
 	StorageSourceID *string   `gorm:"column:storageSourceId;type:text" json:"storageSourceId,omitempty"`
-	StorageKey      *string   `gorm:"column:storageKey;type:text" json:"storageKey,omitempty"`
+	Path            *string   `gorm:"column:path;type:text" json:"path,omitempty"`
+	ThumbPath       *string   `gorm:"column:thumbPath;type:text" json:"thumbPath,omitempty"`
+	StorageURLType  string    `gorm:"column:storageUrlType;type:text;default:public" json:"storageUrlType"`
+	StorageURLExpiresAt *time.Time `gorm:"column:storageUrlExpiresAt" json:"storageUrlExpiresAt,omitempty"`
 	Width           int       `json:"width"`
 	Height          int       `json:"height"`
 	Size            *int64    `json:"size,omitempty"`

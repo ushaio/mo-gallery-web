@@ -46,8 +46,9 @@ const MASONRY_COLUMN_GAP = 6
 const MASONRY_CARD_MARGIN = 6
 const CLOUD_PHOTO_FORMATS = ['jpg', 'png', 'webp', 'avif', 'gif', 'tiff', 'heic'] as const
 
-function getPhotoFileFormat(photo: Pick<Photo, 'storageKey' | 'url'>) {
-  const source = photo.storageKey || photo.url
+function getPhotoFileFormat(photo: Pick<Photo, 'path' | 'url'>) {
+  const source = photo.path || photo.url
+  if (!source) return undefined
   const path = source.split(/[?#]/, 1)[0]
   const extension = path.match(/\.([a-z0-9]+)$/i)?.[1]?.toLocaleLowerCase()
   return extension === 'jpeg' ? 'jpg' : extension

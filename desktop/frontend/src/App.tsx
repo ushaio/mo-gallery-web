@@ -34,8 +34,7 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
 
 function hasLoginConfiguration(setupState: SetupState) {
   const serverUrl = setupState.api.login_url?.trim() || setupState.api.base_url?.trim()
-  const hasJwtSecret = setupState.api.jwt_configured || Boolean(setupState.api.jwt_secret?.trim())
-  return Boolean(serverUrl && hasJwtSecret)
+  return Boolean(serverUrl)
 }
 
 function AppRoutes() {
@@ -56,7 +55,7 @@ function AppRoutes() {
       .catch(() => {
         // Browser development mode has no Wails bridge; keep the normal app usable.
         if (active) {
-          setSetupState({ completed: true, database: {} as SetupState['database'], api: {} as SetupState['api'] })
+          setSetupState({ completed: true, api: {} as SetupState['api'] })
           setSetupStateAvailable(false)
         }
       })

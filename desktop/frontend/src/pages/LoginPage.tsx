@@ -27,7 +27,6 @@ const CONFIG_RETRY_DELAYS_MS = [0, 300, 900, 1800]
 interface SavedConfig {
   base_url?: string
   login_url?: string
-  jwt_secret?: string
   remember_login?: boolean
   saved_username?: string
   saved_password?: string
@@ -35,13 +34,16 @@ interface SavedConfig {
 
 export function LoginPage() {
   const [server, setServer] = useState('')
-  const [jwtSecret, setJwtSecret] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [rememberLogin, setRememberLogin] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [error, setError] = useState('')
-  const [authNotice, setAuthNotice] = useState('')
+  const [authNotice] = useState(() => {
+    const message = sessionStorage.getItem(AUTH_ERROR_MESSAGE_KEY) || ''
+    sessionStorage.removeItem(AUTH_ERROR_MESSAGE_KEY)
+    return message
+  })
   const [loading, setLoading] = useState(false)
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const { login } = useAuth()
@@ -82,7 +84,6 @@ export function LoginPage() {
       const configServer = config.login_url || config.base_url
       // 仅当配置里确实有值时覆盖，避免空值冲掉 localStorage 恢复的 server
       if (configServer) setServer(configServer)
-      if (config.jwt_secret) setJwtSecret(config.jwt_secret)
       setRememberLogin(Boolean(config.remember_login))
       if (config.remember_login) {
         setUsername(config.saved_username || '')
@@ -111,12 +112,6 @@ export function LoginPage() {
 
     void restoreConfig(0)
 
-    const authError = sessionStorage.getItem(AUTH_ERROR_MESSAGE_KEY)
-    if (authError) {
-      setAuthNotice(authError)
-      sessionStorage.removeItem(AUTH_ERROR_MESSAGE_KEY)
-    }
-
     return () => {
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
@@ -131,7 +126,7 @@ export function LoginPage() {
     setLoading(true)
 
     try {
-      const result = await Login(server, username, password, jwtSecret, rememberLogin)
+      const result = await Login(server, username, password, rememberLogin)
       if (result?.token) {
         // 保存服务器地址
         login(result.token, result.user, result.server || server)
@@ -238,6 +233,29 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading}>
             {/* 服务器或管理员登录地址 */}
+            <div>
+              <label htmlFor="server" className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {language === 'zh' ? '服务器或管理员登录地址' : 'Server or administrator login URL'}
+              </label>
+              <div className="relative">
+                <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+                <input
+                  id="server"
+                  type="url"
+                  value={server}
+                  onChange={(e) => {
+                    setServer(e.target.value)
+                    clearError()
+                  }}
+                  disabled={loading}
+                  required
+                  autoComplete="url"
+                  placeholder="https://gallery.example.com/login/private"
+                  className="w-full rounded-lg border border-border bg-card py-2.5 pl-10 pr-3.5 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground/40 focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                />
+              </div>
+            </div>
+
             {/* 用户名 */}
             <div>
               <label htmlFor="username" className="mb-1.5 block text-xs font-medium text-muted-foreground">

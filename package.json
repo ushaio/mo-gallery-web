@@ -12,6 +12,8 @@
     "test:editor-ai-images": "node --conditions=react-server --import tsx server/lib/editor-ai-images.test.ts",
     "test:story-ai-images": "node --conditions=react-server --import tsx server/lib/story-ai.test.ts",
     "test:security": "node --conditions=react-server --import tsx tests/security-crypto.test.ts",
+    "desktop:plugin:package": "node desktop/build/package-desktop-plugin.mjs",
+    "desktop:runtime:verify": "node desktop/build/verify-node-runtime.mjs",
     "lint": "eslint",
     "prisma:generate": "npx prisma generate",
     "prisma:dev": "npx prisma migrate dev",

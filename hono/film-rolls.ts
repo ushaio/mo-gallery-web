@@ -4,6 +4,7 @@ import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
+import { resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
 
 const filmRolls = new Hono<{ Variables: AuthVariables }>()
 
@@ -27,11 +28,16 @@ const filmRollPhotoInclude = {
   },
 }
 
-function mapFilmRollWithPhotos(roll: NonNullable<Awaited<ReturnType<typeof db.filmRoll.findUnique>>>) {
+async function mapFilmRollWithPhotos(roll: NonNullable<Awaited<ReturnType<typeof db.filmRoll.findUnique>>>) {
   const rollWithPhotos = roll as typeof roll & {
     filmPhotos: Array<{
       createdAt: Date
       photo: {
+        path?: string | null
+        thumbPath?: string | null
+        storageSourceId?: string | null
+        storageProvider?: string | null
+        storageUrlType?: string | null
         categories: { name: string }[]
         dominantColors: string | null
         createdAt: Date
@@ -47,18 +53,18 @@ function mapFilmRollWithPhotos(roll: NonNullable<Awaited<ReturnType<typeof db.fi
     createdAt: rollWithPhotos.createdAt.toISOString(),
     updatedAt: rollWithPhotos.updatedAt.toISOString(),
     photoCount: rollWithPhotos.filmPhotos.length,
-    filmPhotos: rollWithPhotos.filmPhotos.map((fp) => ({
+    filmPhotos: await Promise.all(rollWithPhotos.filmPhotos.map(async (fp) => ({
       ...fp,
       createdAt: fp.createdAt.toISOString(),
       photo: {
-        ...fp.photo,
+        ...(await resolvePhotoUrlsInto(fp.photo)),
         category: fp.photo.categories.map((c) => c.name).join(','),
         dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
         createdAt: fp.photo.createdAt.toISOString(),
         takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
         categories: undefined,
       },
-    })),
+    }))),
   }
 }
 
@@ -130,18 +136,18 @@ filmRolls.get('/film-rolls/:id', async (c) => {
       endDate: roll.endDate?.toISOString() ?? null,
       createdAt: roll.createdAt.toISOString(),
       updatedAt: roll.updatedAt.toISOString(),
-      filmPhotos: roll.filmPhotos.map((fp) => ({
+      filmPhotos: await Promise.all(roll.filmPhotos.map(async (fp) => ({
         ...fp,
         createdAt: fp.createdAt.toISOString(),
         photo: {
-          ...fp.photo,
+          ...(await resolvePhotoUrlsInto(fp.photo)),
           category: fp.photo.categories.map((c) => c.name).join(','),
           dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
           createdAt: fp.photo.createdAt.toISOString(),
           takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
           categories: undefined,
         },
-      })),
+      }))),
     }
 
     return c.json({ success: true, data })
@@ -321,18 +327,18 @@ filmRolls.post('/admin/film-rolls/:id/photos', async (c) => {
       createdAt: updated!.createdAt.toISOString(),
       updatedAt: updated!.updatedAt.toISOString(),
       photoCount: updated!.filmPhotos.length,
-      filmPhotos: updated!.filmPhotos.map((fp) => ({
+      filmPhotos: await Promise.all(updated!.filmPhotos.map(async (fp) => ({
         ...fp,
         createdAt: fp.createdAt.toISOString(),
         photo: {
-          ...fp.photo,
+          ...(await resolvePhotoUrlsInto(fp.photo)),
           category: fp.photo.categories.map((c) => c.name).join(','),
           dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
           createdAt: fp.photo.createdAt.toISOString(),
           takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
           categories: undefined,
         },
-      })),
+      }))),
     }
 
     return c.json({ success: true, data })
@@ -394,7 +400,7 @@ filmRolls.post('/admin/film-rolls/:id/reorder-frames', async (c) => {
     })
     if (!updated) return c.json({ error: 'Film roll not found' }, 404)
 
-    return c.json({ success: true, data: mapFilmRollWithPhotos(updated) })
+    return c.json({ success: true, data: await mapFilmRollWithPhotos(updated) })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
@@ -447,7 +453,7 @@ filmRolls.post('/admin/film-rolls/:id/frames/order', async (c) => {
     })
     if (!updated) return c.json({ error: 'Film roll not found' }, 404)
 
-    return c.json({ success: true, data: mapFilmRollWithPhotos(updated) })
+    return c.json({ success: true, data: await mapFilmRollWithPhotos(updated) })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
@@ -487,18 +493,18 @@ filmRolls.delete('/admin/film-rolls/:id/photos/:photoId', async (c) => {
       createdAt: updated!.createdAt.toISOString(),
       updatedAt: updated!.updatedAt.toISOString(),
       photoCount: updated!.filmPhotos.length,
-      filmPhotos: updated!.filmPhotos.map((fp) => ({
+      filmPhotos: await Promise.all(updated!.filmPhotos.map(async (fp) => ({
         ...fp,
         createdAt: fp.createdAt.toISOString(),
         photo: {
-          ...fp.photo,
+          ...(await resolvePhotoUrlsInto(fp.photo)),
           category: fp.photo.categories.map((c) => c.name).join(','),
           dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
           createdAt: fp.photo.createdAt.toISOString(),
           takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
           categories: undefined,
         },
-      })),
+      }))),
     }
 
     return c.json({ success: true, data })

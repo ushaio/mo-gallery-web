@@ -1,4 +1,4 @@
-import type { UploadFileInput, UploadResult } from './storage/types'
+import type { UploadFileInput } from './storage/types'
 
 export function resolvePhotoUploadAssets({
   reuseUploadedFileAsThumbnail,
@@ -43,9 +43,3 @@ export function resolvePhotoUploadAssets({
   }
 }
 
-export function resolvePhotoThumbnailUrl(
-  uploadResult: UploadResult,
-  reuseUploadedFileAsThumbnail: boolean,
-): string | undefined {
-  return reuseUploadedFileAsThumbnail ? uploadResult.url : uploadResult.thumbnailUrl
-}

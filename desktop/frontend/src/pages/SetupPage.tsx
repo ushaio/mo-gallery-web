@@ -3,25 +3,20 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Database,
   Eye,
   EyeOff,
   Globe,
   HardDrive,
-  Hash,
-  KeyRound,
   Loader2,
   Lock,
   Moon,
-  Server,
-  ShieldCheck,
   Sun,
   TriangleAlert,
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { CompleteSetup, Login, TestDatabaseConnection } from '../../wailsjs/go/main/App'
+import { CompleteSetup, Login } from '../../wailsjs/go/main/App'
 import { AuthBrandPanel } from '@/components/layout/AuthBrandPanel'
 import { useAuth } from '@/contexts/AuthContext'
 import { getErrorMessage } from '@/lib/auth-errors'
@@ -29,20 +24,9 @@ import { usePreferences } from '@/store/preferences'
 
 export interface SetupState {
   completed: boolean
-  database: {
-    host: string
-    port: number
-    user: string
-    password?: string
-    password_configured?: boolean
-    dbname: string
-    sslmode: string
-  }
   api: {
     base_url: string
     login_url: string
-    jwt_secret: string
-    jwt_configured?: boolean
     remember_login: boolean
     saved_username?: string
     password_configured?: boolean
@@ -56,8 +40,7 @@ interface Props {
 
 const fallbackState: SetupState = {
   completed: false,
-  database: { host: 'localhost', port: 5432, user: 'postgres', password: '', password_configured: false, dbname: 'mo_gallery', sslmode: 'disable' },
-  api: { base_url: '', login_url: '', jwt_secret: '', jwt_configured: false, remember_login: false, saved_username: '', password_configured: false },
+  api: { base_url: '', login_url: '', remember_login: false, saved_username: '', password_configured: false },
 }
 
 interface SecretInputProps {
@@ -98,7 +81,6 @@ export function SetupPage({ initialState, onComplete }: Props) {
   const { language, theme, setTheme, setLanguage } = usePreferences()
   const zh = language === 'zh'
   const [step, setStep] = useState(0)
-  const [database, setDatabase] = useState({ ...fallbackState.database, ...initialState.database })
   const [api, setApi] = useState({ ...fallbackState.api, ...initialState.api, password: '' })
   const [credentials, setCredentials] = useState({
     username: initialState.api.saved_username || '',
@@ -133,25 +115,22 @@ export function SetupPage({ initialState, onComplete }: Props) {
   }, [theme])
 
   const copy = useMemo(() => zh ? {
-    eyebrow: '首次启动', title: '欢迎使用 MO Gallery', body: '花一分钟配置连接信息。数据库和云端登录都可以稍后在设置中修改。',
-    database: '配置数据库', connection: '配置连接', login: '登录信息', next: '下一步', back: '上一步',
+    eyebrow: '首次启动', title: '欢迎使用 MO Gallery', body: '花一分钟配置云端连接。业务数据由服务端统一管理，本地功能可离线使用。',
+    connection: '配置连接', login: '登录信息', next: '下一步', back: '上一步',
     finish: '验证并进入', skip: '使用离线功能', optional: '可选', required: '必填',
-    host: '主机', port: '端口', user: '用户名', password: '密码', dbname: '数据库名', sslmode: 'SSL 模式',
-    server: '服务地址', jwt: 'JWT Secret', loginUsername: '管理员用户名', loginPassword: '管理员密码', rememberLogin: '记住登录（加密存储）',
-    saved: '正在验证...', saveError: '保存失败，请重试', databaseError: '数据库连接验证失败，请检查连接信息', loginError: '登录验证失败，请检查连接和登录信息', secretSaved: '已保存，留空则继续沿用',
+    server: '服务地址', loginUsername: '管理员用户名', loginPassword: '管理员密码', rememberLogin: '记住登录（加密存储）',
+    saved: '正在验证...', saveError: '保存失败，请重试', loginError: '登录验证失败，请检查连接和登录信息', secretSaved: '已保存，留空则继续沿用',
     stepLabel: (current: number, total: number) => `步骤 ${current} / ${total}`,
   } : {
-    eyebrow: 'FIRST RUN', title: 'Welcome to MO Gallery', body: 'Take a minute to configure your connections. You can change them later in Settings.',
-    database: 'Configure database', connection: 'Configure connection', login: 'Sign-in details', next: 'Continue', back: 'Back',
+    eyebrow: 'FIRST RUN', title: 'Welcome to MO Gallery', body: 'Connect to your server. Cloud data stays server-managed while local features remain available offline.',
+    connection: 'Configure connection', login: 'Sign-in details', next: 'Continue', back: 'Back',
     finish: 'Verify and enter', skip: 'Use offline features', optional: 'Optional', required: 'Required',
-    host: 'Host', port: 'Port', user: 'User', password: 'Password', dbname: 'Database name', sslmode: 'SSL mode',
-    server: 'Server URL', jwt: 'JWT Secret', loginUsername: 'Administrator username', loginPassword: 'Administrator password', rememberLogin: 'Remember login (encrypted)',
-    saved: 'Verifying...', saveError: 'Could not save setup. Try again.', databaseError: 'Could not connect to the database. Check the connection settings.', loginError: 'Sign-in verification failed. Check the connection and credentials.', secretSaved: 'Saved. Leave blank to keep the current value.',
+    server: 'Server URL', loginUsername: 'Administrator username', loginPassword: 'Administrator password', rememberLogin: 'Remember login (encrypted)',
+    saved: 'Verifying...', saveError: 'Could not save setup. Try again.', loginError: 'Sign-in verification failed. Check the connection and credentials.', secretSaved: 'Saved. Leave blank to keep the current value.',
     stepLabel: (current: number, total: number) => `Step ${current} / ${total}`,
   }, [zh])
 
   const steps = [
-    { icon: Database, title: copy.database },
     { icon: Globe, title: copy.connection },
     { icon: UserRound, title: copy.login },
   ]
@@ -159,31 +138,20 @@ export function SetupPage({ initialState, onComplete }: Props) {
 
   const completedState = (offlineOnly = false): SetupState => ({
     completed: true,
-    database: {
-      host: database.host,
-      port: database.port,
-      user: database.user,
-      password: '',
-      password_configured: database.password_configured || Boolean(database.password),
-      dbname: database.dbname,
-      sslmode: database.sslmode,
-    },
     api: {
       base_url: api.base_url,
       login_url: api.login_url,
-      jwt_secret: '',
-      jwt_configured: api.jwt_configured || Boolean(api.jwt_secret.trim()),
       remember_login: offlineOnly ? api.remember_login : credentials.rememberLogin,
       saved_username: offlineOnly ? api.saved_username : credentials.rememberLogin ? credentials.username : '',
       password_configured: offlineOnly ? api.password_configured : credentials.rememberLogin,
     },
   })
 
-  const useOffline = async () => {
+  const handleUseOffline = async () => {
     setSaving(true)
     setError('')
     try {
-      await CompleteSetup({ database, api, offline_only: true })
+      await CompleteSetup({ api, offline_only: true })
       onComplete(completedState(true))
       navigate('/library?source=local', { replace: true })
     } catch {
@@ -197,19 +165,6 @@ export function SetupPage({ initialState, onComplete }: Props) {
     event.preventDefault()
     setError('')
 
-    if (step === 0) {
-      setSaving(true)
-      try {
-        await TestDatabaseConnection(database)
-        setStep(1)
-      } catch (cause: unknown) {
-        setError(getErrorMessage(cause) || copy.databaseError)
-      } finally {
-        setSaving(false)
-      }
-      return
-    }
-
     if (step < steps.length - 1) {
       setStep((current) => current + 1)
       return
@@ -218,7 +173,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
     setSaving(true)
     try {
       const server = api.login_url.trim() || api.base_url.trim()
-      const result = await Login(server, credentials.username, credentials.password, api.jwt_secret, credentials.rememberLogin)
+      const result = await Login(server, credentials.username, credentials.password, credentials.rememberLogin)
       if (!result?.token) {
         setError(copy.loginError)
         return
@@ -230,7 +185,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
         saved_username: credentials.rememberLogin ? credentials.username : '',
         password: credentials.rememberLogin ? credentials.password : '',
       }
-      await CompleteSetup({ database, api: setupApi, offline_only: false })
+      await CompleteSetup({ api: setupApi, offline_only: false })
       onComplete(completedState())
       login(result.token, result.user, result.server || server)
       navigate('/overview', { replace: true })
@@ -346,18 +301,8 @@ export function SetupPage({ initialState, onComplete }: Props) {
 
             <div className="mt-7 sm:min-h-[252px]">
               {step === 0 ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {field(copy.host, database.host, (value) => setDatabase((current) => ({ ...current, host: value })), { icon: Server, required: true })}
-                  {field(copy.port, database.port, (value) => setDatabase((current) => ({ ...current, port: Number(value) || 0 })), { icon: Hash, type: 'number', required: true })}
-                  {field(copy.user, database.user, (value) => setDatabase((current) => ({ ...current, user: value })), { icon: UserRound, required: true })}
-                  <SecretInput label={copy.password} value={database.password || ''} onChange={(value) => setDatabase((current) => ({ ...current, password: value }))} language={language} placeholder={database.password_configured ? copy.secretSaved : undefined} disabled={saving} icon={KeyRound} />
-                  {field(copy.dbname, database.dbname, (value) => setDatabase((current) => ({ ...current, dbname: value })), { icon: Database, required: true })}
-                  {field(copy.sslmode, database.sslmode, (value) => setDatabase((current) => ({ ...current, sslmode: value })), { icon: ShieldCheck, placeholder: 'disable' })}
-                </div>
-              ) : step === 1 ? (
                 <div className="space-y-4">
                   {field(copy.server, api.login_url || api.base_url, (value) => setApi((current) => ({ ...current, base_url: value, login_url: value })), { icon: Globe, placeholder: 'https://gallery.example.com', required: true, autoComplete: 'url' })}
-                  <SecretInput label={copy.jwt} value={api.jwt_secret} onChange={(value) => setApi((current) => ({ ...current, jwt_secret: value }))} language={language} placeholder={api.jwt_configured ? copy.secretSaved : undefined} disabled={saving} icon={KeyRound} required={!api.jwt_configured} autoComplete="off" />
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -420,7 +365,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
 
           <button
             type="button"
-            onClick={() => void useOffline()}
+            onClick={() => void handleUseOffline()}
             disabled={saving}
             className="group mx-auto mt-5 flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           >

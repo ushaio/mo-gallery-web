@@ -41,37 +41,20 @@ storage.get('/admin/storage/scan', async (c) => {
   const listResult = await storageProvider.list({ fullScan: true })
 
   const dbPhotos = await db.photo.findMany({
-    where: { storageProvider: provider },
-    select: { id: true, title: true, storageKey: true, url: true, thumbnailUrl: true },
+    // Desktop plugin objects are owned by the Desktop process and must not be
+    // interpreted as Web storage files during scans or cleanup.
+    where: { storageProvider: provider, storageRuntime: 'web' },
+    select: { id: true, title: true, path: true, thumbPath: true },
   })
 
-  const keyToPhoto = new Map(dbPhotos.map(p => [p.storageKey || p.url, p]))
+  const keyToPhoto = new Map(dbPhotos.map(p => [p.path || '', p]))
   const storageKeys = new Set(listResult.files.map(f => f.key))
-
-  // Helper to extract thumbnail key from thumbnailUrl
-  const getThumbnailKeyFromUrl = (thumbnailUrl: string | null) => {
-    if (!thumbnailUrl) return null
-    // Extract key from URL - handle different URL formats
-    // e.g., /uploads/thumb-xxx.avif -> thumb-xxx.avif
-    // e.g., https://cdn.example.com/path/thumb-xxx.avif -> path/thumb-xxx.avif
-    const match = thumbnailUrl.match(/(?:\/uploads\/|\/)?([^/]*thumb-[^/]+)$/)
-    if (match) return match[1]
-    // For full paths like path/to/thumb-xxx.jpg
-    const lastSlash = thumbnailUrl.lastIndexOf('/')
-    return lastSlash >= 0 ? thumbnailUrl.substring(lastSlash + 1) : thumbnailUrl
-  }
 
   const filesWithStatus: FileWithStatus[] = listResult.files
     .filter(f => !f.key.includes('thumb-'))
     .map(file => {
       const photo = keyToPhoto.get(file.key)
-      let hasThumb = false
-      if (photo?.thumbnailUrl) {
-        const thumbKey = getThumbnailKeyFromUrl(photo.thumbnailUrl)
-        if (thumbKey) {
-          hasThumb = Array.from(storageKeys).some(k => k.endsWith(thumbKey) || k === thumbKey)
-        }
-      }
+      const hasThumb = Boolean(photo?.thumbPath && storageKeys.has(photo.thumbPath))
       return {
         key: file.key,
         url: file.url,
@@ -86,32 +69,23 @@ storage.get('/admin/storage/scan', async (c) => {
 
   const missingFiles: FileWithStatus[] = []
   for (const p of dbPhotos) {
-    const key = p.storageKey || p.url
+    const key = p.path || ''
     const hasOriginal = storageKeys.has(key)
-    
-    // Check thumbnail by matching against storage keys
-    let hasThumb = false
-    if (p.thumbnailUrl) {
-      const thumbKey = getThumbnailKeyFromUrl(p.thumbnailUrl)
-      if (thumbKey) {
-        // Check if any storage key ends with the thumbnail filename
-        hasThumb = Array.from(storageKeys).some(k => k.endsWith(thumbKey) || k === thumbKey)
-      }
-    }
+    const hasThumb = Boolean(p.thumbPath && storageKeys.has(p.thumbPath))
 
     if (!hasOriginal && !hasThumb) {
       missingFiles.push({
-        key, url: p.url, size: 0, lastModified: new Date(),
+        key, url: '', size: 0, lastModified: new Date(),
         status: 'missing', photoId: p.id, photoTitle: p.title, missingType: 'both',
       })
     } else if (!hasOriginal) {
       missingFiles.push({
-        key, url: p.url, size: 0, lastModified: new Date(),
+        key, url: '', size: 0, lastModified: new Date(),
         status: 'missing_original', photoId: p.id, photoTitle: p.title, missingType: 'original',
       })
     } else if (!hasThumb) {
       missingFiles.push({
-        key, url: p.url, size: 0, lastModified: new Date(),
+        key, url: '', size: 0, lastModified: new Date(),
         status: 'missing_thumbnail', photoId: p.id, photoTitle: p.title, missingType: 'thumbnail',
       })
     }
@@ -154,6 +128,23 @@ storage.post('/admin/storage/cleanup', async (c) => {
     return c.json({ error: 'keys array is required' }, 400)
   }
 
+  const protectedPhotos = await db.photo.findMany({
+    where: {
+      storageRuntime: 'desktop-plugin',
+      OR: [
+        { path: { in: keys } },
+        { thumbPath: { in: keys } },
+      ],
+    },
+    select: { path: true },
+  })
+  if (protectedPhotos.length > 0) {
+    return c.json({
+      error: 'DESKTOP_PLUGIN_SOURCE_READ_ONLY',
+      message: 'Desktop plugin objects must be cleaned up from the Desktop client',
+    }, 409)
+  }
+
   const storageConfig = await getStorageConfig(provider || 'local')
   const storageProvider = StorageProviderFactory.create(storageConfig)
 
@@ -187,7 +178,7 @@ storage.post('/admin/storage/fix-missing', async (c) => {
   }
 
   const result = await db.photo.deleteMany({
-    where: { id: { in: photoIds } },
+    where: { id: { in: photoIds }, storageRuntime: 'web' },
   })
 
   return c.json({

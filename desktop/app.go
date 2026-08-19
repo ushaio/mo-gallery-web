@@ -24,6 +24,7 @@ import (
 	"mo-gallery-desktop/image"
 	local_library "mo-gallery-desktop/local_library"
 	"mo-gallery-desktop/services"
+	"mo-gallery-desktop/storage_plugins"
 	"mo-gallery-desktop/types"
 )
 
@@ -57,6 +58,8 @@ type App struct {
 	Updater             *services.UpdateService
 	LocalLibrary        *local_library.Manager
 	AgentExtensions     *agent_extensions.Manager
+	StoragePlugins      *storage_plugins.Manager
+	PluginMarketplace   *storage_plugins.Marketplace
 }
 
 func NewApp(cfg *config.Config) *App {
@@ -68,6 +71,12 @@ func NewApp(cfg *config.Config) *App {
 		ZineOperationLogger: services.NewZineOperationLogger(config.ConfigDir()),
 		Updater:             services.NewUpdateService(config.ConfigDir()),
 	}
+	if storageManager, err := storage_plugins.NewManager(config.ConfigDir()); err != nil {
+		log.Printf("storage plugin manager init failed: %v", err)
+	} else {
+		app.StoragePlugins = storageManager
+		app.PluginMarketplace = storage_plugins.NewMarketplace(config.ConfigDir(), storageManager)
+	}
 	app.LocalLibrary = local_library.NewManager(config.ConfigDir(), func(event local_library.LocalLibraryEvent) {
 		if app.ctx != nil {
 			runtime.EventsEmit(app.ctx, "local-library:event", event)
@@ -78,6 +87,11 @@ func NewApp(cfg *config.Config) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if a.StoragePlugins != nil {
+		// An unpacked plugin directory is only an explicit Wails development
+		// workflow. Production and debug builds must use signed packages.
+		a.StoragePlugins.SetDeveloperMode(runtime.Environment(ctx).BuildType == "dev")
+	}
 	a.Proxy.SetLogger(a.Logger)
 	a.Auth = services.NewAuthService(a.cfg)
 	a.Auth.SetProxy(a.Proxy)
@@ -89,11 +103,12 @@ func (a *App) startup(ctx context.Context) {
 	a.Friend = services.NewFriendService(a.Proxy)
 	a.Comment = services.NewCommentService(a.Proxy)
 	a.Upload = services.NewUploadService(a.Proxy)
+	a.Upload.SetStoragePlugins(a.StoragePlugins)
 	a.Storage = services.NewStorageService(a.Proxy)
 	a.Settings = services.NewSettingsService(a.Proxy)
 	a.EditorAi = services.NewEditorAiService(a.cfg, a.Upload)
 	a.EditorAi.SetLogger(a.Logger)
-	a.Overview = services.NewOverviewService()
+	a.Overview = services.NewOverviewService(a.Proxy)
 	var extensionErr error
 	a.AgentExtensions, extensionErr = agent_extensions.NewManager(config.ConfigDir())
 	if extensionErr != nil {
@@ -196,10 +211,12 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.AgentExtensions != nil {
 		a.AgentExtensions.StopAll()
 	}
+	if a.StoragePlugins != nil {
+		a.StoragePlugins.StopAll()
+	}
 	if a.LocalLibrary != nil {
 		_ = a.LocalLibrary.Close()
 	}
-	db.Close()
 	db.CloseLocalAI()
 	db.CloseLocalDrafts()
 	db.CloseLocalZine()
@@ -279,8 +296,8 @@ func (a *App) OpenDownloadedUpdate() error {
 
 // ─── Auth ────────────────────────────────────────────
 
-func (a *App) Login(serverURL, username, password, jwtSecret string, rememberLogin bool) (*services.LoginResult, error) {
-	result, err := a.Auth.Login(serverURL, username, password, jwtSecret, rememberLogin)
+func (a *App) Login(serverURL, username, password string, rememberLogin bool) (*services.LoginResult, error) {
+	result, err := a.Auth.Login(serverURL, username, password, rememberLogin)
 	if err != nil {
 		a.Logger.Error(services.LogCategoryAuth, "login_failed", "登录失败", err.Error())
 		return nil, err
@@ -288,12 +305,19 @@ func (a *App) Login(serverURL, username, password, jwtSecret string, rememberLog
 	a.Proxy.SetServer(result.Server)
 	a.Proxy.SetToken(result.Token)
 	a.setAuthenticatedUser(result.User.ID)
+	a.syncAllStorageSourcesToCloud()
+	if a.Upload != nil {
+		go a.Upload.RetryPendingRegistrations(context.Background())
+	}
 	a.Logger.Info(services.LogCategoryAuth, "login_success", "登录成功", "用户: "+username+", 服务器: "+serverURL)
 	return result, nil
 }
 
 func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
-	user, err := a.Auth.ValidateToken(token)
+	a.Proxy.SetServer(serverURL)
+	a.Proxy.SetToken(token)
+	a.Auth.SetProxy(a.Proxy)
+	user, err := a.Auth.GetCurrentUser()
 	if err != nil {
 		a.Proxy.SetToken("")
 		a.setAuthenticatedUser("")
@@ -301,9 +325,11 @@ func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
 		return nil, err
 	}
 
-	a.Proxy.SetServer(serverURL)
-	a.Proxy.SetToken(token)
 	a.setAuthenticatedUser(user.ID)
+	a.syncAllStorageSourcesToCloud()
+	if a.Upload != nil {
+		go a.Upload.RetryPendingRegistrations(context.Background())
+	}
 	return user, nil
 }
 
@@ -328,10 +354,6 @@ func (a *App) requireAuthenticatedUserID() (string, error) {
 	return userID, nil
 }
 
-func (a *App) ValidateToken(token string) (*services.UserInfo, error) {
-	return a.Auth.ValidateToken(token)
-}
-
 func (a *App) GetApiConfig() map[string]interface{} {
 	// 解密密码
 	decryptedPassword := ""
@@ -344,31 +366,20 @@ func (a *App) GetApiConfig() map[string]interface{} {
 	return map[string]interface{}{
 		"base_url":       a.cfg.API.BaseURL,
 		"login_url":      a.cfg.API.LoginURL,
-		"jwt_secret":     a.cfg.API.JWTSecret,
 		"remember_login": a.cfg.API.RememberLogin,
 		"saved_username": a.cfg.API.SavedUsername,
 		"saved_password": decryptedPassword,
 	}
 }
 
-// GetSetupState returns the persisted first-run setup state and safe-to-edit
-// connection fields. Passwords are intentionally omitted from this response.
+// GetSetupState returns the persisted first-run API setup state. Secrets are
+// intentionally omitted from this response.
 func (a *App) GetSetupState() map[string]interface{} {
 	return map[string]interface{}{
 		"completed": a.cfg.UI.SetupCompleted,
-		"database": map[string]interface{}{
-			"host":                a.cfg.Database.Host,
-			"port":                a.cfg.Database.Port,
-			"user":                a.cfg.Database.User,
-			"password_configured": a.cfg.Database.Password != "",
-			"dbname":              a.cfg.Database.DBName,
-			"sslmode":             a.cfg.Database.SSLMode,
-		},
 		"api": map[string]interface{}{
 			"base_url":            a.cfg.API.BaseURL,
 			"login_url":           a.cfg.API.LoginURL,
-			"jwt_secret":          "",
-			"jwt_configured":      a.cfg.API.JWTSecret != "",
 			"password_configured": a.cfg.API.SavedPassword != "",
 			"remember_login":      a.cfg.API.RememberLogin,
 			"saved_username":      a.cfg.API.SavedUsername,
@@ -376,79 +387,17 @@ func (a *App) GetSetupState() map[string]interface{} {
 	}
 }
 
-// TestDatabaseConnection verifies setup values without changing the active
-// database connection or persisting the submitted configuration.
-func (a *App) TestDatabaseConnection(data map[string]interface{}) error {
-	databaseConfig := a.cfg.Database
-	if value, ok := data["host"].(string); ok {
-		databaseConfig.Host = strings.TrimSpace(value)
-	}
-	if value, ok := data["port"].(float64); ok {
-		databaseConfig.Port = int(value)
-	}
-	if value, ok := data["user"].(string); ok {
-		databaseConfig.User = strings.TrimSpace(value)
-	}
-	if value, ok := data["password"].(string); ok && value != "" {
-		databaseConfig.Password = value
-	}
-	if value, ok := data["dbname"].(string); ok {
-		databaseConfig.DBName = strings.TrimSpace(value)
-	}
-	if value, ok := data["sslmode"].(string); ok {
-		databaseConfig.SSLMode = strings.TrimSpace(value)
-	}
-
-	if databaseConfig.Host == "" || databaseConfig.User == "" || databaseConfig.DBName == "" {
-		return errors.New("请完整填写数据库主机、用户名和数据库名")
-	}
-	if databaseConfig.Port <= 0 || databaseConfig.Port > 65535 {
-		return errors.New("数据库端口必须在 1 到 65535 之间")
-	}
-	if databaseConfig.SSLMode == "" {
-		databaseConfig.SSLMode = "disable"
-	}
-	if err := db.TestConnection(databaseConfig.DSN()); err != nil {
-		return fmt.Errorf("数据库连接验证失败: %w", err)
-	}
-	return nil
-}
-
-// CompleteSetup persists the first-run database and optional cloud login
-// settings. The payload is a map to keep the Wails bridge backwards-compatible
-// with generated bindings while allowing older config files to be upgraded.
+// CompleteSetup persists the first-run API and optional cloud login settings.
+// The payload remains a map so older clients may submit their legacy database
+// field without affecting the API-only cloud data path.
 func (a *App) CompleteSetup(data map[string]interface{}) error {
-	database, _ := data["database"].(map[string]interface{})
 	api, _ := data["api"].(map[string]interface{})
-	offlineOnly, _ := data["offline_only"].(bool)
-
-	if value, ok := database["host"].(string); ok {
-		a.cfg.Database.Host = strings.TrimSpace(value)
-	}
-	if value, ok := database["port"].(float64); ok && value > 0 {
-		a.cfg.Database.Port = int(value)
-	}
-	if value, ok := database["user"].(string); ok {
-		a.cfg.Database.User = strings.TrimSpace(value)
-	}
-	if value, ok := database["password"].(string); ok && value != "" {
-		a.cfg.Database.Password = value
-	}
-	if value, ok := database["dbname"].(string); ok {
-		a.cfg.Database.DBName = strings.TrimSpace(value)
-	}
-	if value, ok := database["sslmode"].(string); ok {
-		a.cfg.Database.SSLMode = strings.TrimSpace(value)
-	}
 
 	if value, ok := api["base_url"].(string); ok {
 		a.cfg.API.BaseURL = strings.TrimRight(strings.TrimSpace(value), "/")
 	}
 	if value, ok := api["login_url"].(string); ok {
 		a.cfg.API.LoginURL = strings.TrimRight(strings.TrimSpace(value), "/")
-	}
-	if value, ok := api["jwt_secret"].(string); ok && strings.TrimSpace(value) != "" {
-		a.cfg.API.JWTSecret = strings.TrimSpace(value)
 	}
 	if value, ok := api["remember_login"].(bool); ok {
 		a.cfg.API.RememberLogin = value
@@ -472,12 +421,6 @@ func (a *App) CompleteSetup(data map[string]interface{}) error {
 	if err := a.cfg.Save(""); err != nil {
 		return err
 	}
-	if !offlineOnly && a.cfg.Database.DSN() != "" {
-		db.Close()
-		if err := db.Connect(a.cfg.Database.DSN()); err != nil && a.Logger != nil {
-			a.Logger.Warn(services.LogCategorySystem, "setup_database_unavailable", "数据库暂时不可用，继续使用离线功能", err.Error())
-		}
-	}
 	return nil
 }
 
@@ -493,6 +436,20 @@ func (a *App) UpdatePhoto(id string, params services.UpdatePhotoParams) (*servic
 	return a.Photo.Update(id, params)
 }
 func (a *App) DeletePhoto(id string, params services.DeletePhotoParams) error {
+	photo, lookupErr := a.Photo.GetByID(id)
+	if lookupErr != nil {
+		return lookupErr
+	}
+	if photo.StorageRuntime == storage_plugins.RuntimeDesktopPlugin {
+		if err := a.deleteDesktopPhotoObjects(photo, params); err != nil {
+			a.Logger.Error(services.LogCategoryPhoto, "delete_photo_objects_failed", "删除桌面插件照片对象失败", "ID: "+id+", 错误: "+err.Error())
+			return err
+		}
+		// The Web API owns only the metadata for Desktop plugin photos. Object
+		// deletion has already been completed through the storage capability.
+		params.DeleteOriginal = false
+		params.DeleteThumbnail = false
+	}
 	err := a.Photo.Delete(id, params)
 	if err != nil {
 		a.Logger.Error(services.LogCategoryPhoto, "delete_photo_failed", "删除照片失败", "ID: "+id+", 错误: "+err.Error())
@@ -508,7 +465,85 @@ func (a *App) ToggleShowFlag(id string) (*services.PhotoDTO, error) {
 	return a.Photo.ToggleShowFlag(id)
 }
 func (a *App) BatchDeletePhotos(params services.BatchDeleteParams) (*services.BatchResult, error) {
-	return a.Photo.BatchDelete(params)
+	result := &services.BatchResult{}
+	webIDs := make([]string, 0, len(params.PhotoIDs))
+	for _, id := range params.PhotoIDs {
+		photo, err := a.Photo.GetByID(id)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, id+": "+err.Error())
+			continue
+		}
+		if photo.StorageRuntime != storage_plugins.RuntimeDesktopPlugin {
+			webIDs = append(webIDs, id)
+			continue
+		}
+		if err := a.DeletePhoto(id, services.DeletePhotoParams{
+			DeleteOriginal:  params.DeleteOriginal,
+			DeleteThumbnail: params.DeleteThumbnail,
+			Force:           params.Force,
+		}); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, id+": "+err.Error())
+		} else {
+			result.Success++
+		}
+	}
+	if len(webIDs) > 0 {
+		webResult, err := a.Photo.BatchDelete(services.BatchDeleteParams{
+			PhotoIDs: webIDs, DeleteOriginal: params.DeleteOriginal,
+			DeleteThumbnail: params.DeleteThumbnail, Force: params.Force,
+		})
+		if err != nil {
+			result.Failed += len(webIDs)
+			result.Errors = append(result.Errors, err.Error())
+		} else if webResult != nil {
+			result.Success += webResult.Success
+			result.Failed += webResult.Failed
+			result.Errors = append(result.Errors, webResult.Errors...)
+		}
+	}
+	return result, nil
+}
+
+func (a *App) deleteDesktopPhotoObjects(photo *services.PhotoDTO, params services.DeletePhotoParams) error {
+	if a.StoragePlugins == nil {
+		return errors.New("桌面存储插件未初始化")
+	}
+	if !params.DeleteOriginal && !params.DeleteThumbnail {
+		return nil
+	}
+	if photo.StorageSourceID == nil || strings.TrimSpace(*photo.StorageSourceID) == "" {
+		return errors.New("桌面插件照片缺少存储源")
+	}
+	deleteKey := func(key string) error {
+		if strings.TrimSpace(key) == "" {
+			return nil
+		}
+		return a.StoragePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: *photo.StorageSourceID, Key: key})
+	}
+	if params.DeleteOriginal && photo.Path != nil && strings.TrimSpace(*photo.Path) != "" {
+		if err := deleteKey(*photo.Path); err != nil {
+			return fmt.Errorf("删除原图对象失败: %w", err)
+		}
+	} else if params.DeleteOriginal {
+		return errors.New("桌面插件照片缺少原图对象路径")
+	}
+	if params.DeleteThumbnail {
+		key := ""
+		if photo.ThumbPath != nil {
+			key = *photo.ThumbPath
+		} else if photo.Path != nil {
+			key = services.PluginThumbnailObjectKey(*photo.Path)
+		}
+		if strings.TrimSpace(key) == "" {
+			return errors.New("桌面插件照片缺少缩略图对象 key")
+		}
+		if err := deleteKey(key); err != nil {
+			return fmt.Errorf("删除缩略图对象失败: %w", err)
+		}
+	}
+	return nil
 }
 func (a *App) BatchUpdateShowFlag(photoIDs []string, showFlag bool) (*services.BatchResult, error) {
 	return a.Photo.BatchUpdateShowFlag(photoIDs, showFlag)
@@ -813,15 +848,242 @@ func (a *App) UpdateSettings(data map[string]string) (map[string]string, error) 
 	return a.Settings.UpdateSettings(data)
 }
 func (a *App) GetStorageSources() ([]types.StorageSourceDTO, error) {
-	return a.Settings.GetStorageSources()
+	if a.StoragePlugins == nil {
+		return []types.StorageSourceDTO{}, nil
+	}
+	sources := a.StoragePlugins.ListSources()
+	result := make([]types.StorageSourceDTO, 0, len(sources))
+	for _, source := range sources {
+		config := source.Config
+		result = append(result, types.StorageSourceDTO{
+			ID: source.ID, Name: source.Name, Type: source.PluginID,
+			Runtime: storage_plugins.RuntimeDesktopPlugin, PluginID: source.PluginID,
+			Enabled: source.Enabled, Status: source.Status, LastError: source.LastError,
+			Bucket: stringPointer(config["bucket"]), Region: stringPointer(config["region"]),
+			Endpoint: stringPointer(config["endpoint"]), PublicURL: stringPointer(firstConfigValue(config, "publicURL", "publicUrl")),
+			BasePath: stringPointer(config["basePath"]), Branch: stringPointer(config["branch"]),
+			AccessMethod: stringPointer(config["accessMethod"]),
+			Config:       config, Local: true,
+		})
+	}
+	return result, nil
 }
-func (a *App) CreateStorageSource(data map[string]string) (*types.StorageSourceDTO, error) {
-	return a.Settings.CreateStorageSource(data)
+
+func stringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
-func (a *App) UpdateStorageSource(id string, data map[string]string) (*types.StorageSourceDTO, error) {
-	return a.Settings.UpdateStorageSource(id, data)
+
+func firstConfigValue(config map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := config[key]; value != "" {
+			return value
+		}
+	}
+	return ""
 }
-func (a *App) DeleteStorageSource(id string) error { return a.Settings.DeleteStorageSource(id) }
+func (a *App) GetDesktopStorageSources() []storage_plugins.SourceDTO {
+	if a.StoragePlugins == nil {
+		return []storage_plugins.SourceDTO{}
+	}
+	return a.StoragePlugins.ListSources()
+}
+
+func (a *App) GetDesktopStoragePlugins() []storage_plugins.PluginDescriptor {
+	if a.StoragePlugins == nil {
+		return []storage_plugins.PluginDescriptor{}
+	}
+	return a.StoragePlugins.ListPlugins()
+}
+
+func (a *App) GetDesktopSystemPlugins() []storage_plugins.PluginDescriptor {
+	if a.StoragePlugins == nil {
+		return []storage_plugins.PluginDescriptor{}
+	}
+	return a.StoragePlugins.ListSystemPlugins()
+}
+
+func (a *App) GetDesktopPluginMarketplace(force bool) (storage_plugins.MarketplaceCatalog, error) {
+	if a.PluginMarketplace == nil {
+		return storage_plugins.MarketplaceCatalog{}, errors.New("插件市场未初始化")
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return a.PluginMarketplace.Fetch(ctx, force)
+}
+
+func (a *App) InstallDesktopMarketplacePlugin(pluginID, version string) (storage_plugins.PluginDescriptor, error) {
+	if a.PluginMarketplace == nil {
+		return storage_plugins.PluginDescriptor{}, errors.New("插件市场未初始化")
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return a.PluginMarketplace.Install(ctx, pluginID, version)
+}
+
+func (a *App) ListDesktopSystemPluginVersions(pluginID string) ([]storage_plugins.PluginVersionDescriptor, error) {
+	if a.StoragePlugins == nil {
+		return []storage_plugins.PluginVersionDescriptor{}, errors.New("系统插件未初始化")
+	}
+	return a.StoragePlugins.ListSystemPluginVersions(pluginID)
+}
+
+func (a *App) ListDesktopStoragePluginVersions(pluginID string) ([]storage_plugins.PluginVersionDescriptor, error) {
+	if a.StoragePlugins == nil {
+		return []storage_plugins.PluginVersionDescriptor{}, errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.ListPluginVersions(pluginID)
+}
+
+func (a *App) SelectDesktopStoragePluginManifest() (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("桌面应用尚未启动")
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择存储插件目录"})
+}
+
+func (a *App) SelectDesktopStoragePluginPackage() (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("桌面应用尚未启动")
+	}
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:   "选择存储插件包",
+		Filters: []runtime.FileFilter{{DisplayName: "Storage plugin package (*.zip)", Pattern: "*.zip"}},
+	})
+}
+
+func (a *App) InstallDesktopStoragePlugin(pluginDirectory string) (storage_plugins.PluginDescriptor, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.PluginDescriptor{}, errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.InstallPlugin(pluginDirectory)
+}
+
+func (a *App) InstallDesktopSystemPlugin(pluginDirectory string) (storage_plugins.PluginDescriptor, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.PluginDescriptor{}, errors.New("系统插件未初始化")
+	}
+	return a.StoragePlugins.InstallSystemPlugin(pluginDirectory)
+}
+
+func (a *App) InstallDesktopStoragePluginPackage(packagePath string) (storage_plugins.PluginDescriptor, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.PluginDescriptor{}, errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.InstallPluginPackage(packagePath)
+}
+
+func (a *App) InstallDesktopSystemPluginPackage(packagePath string) (storage_plugins.PluginDescriptor, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.PluginDescriptor{}, errors.New("系统插件未初始化")
+	}
+	return a.StoragePlugins.InstallSystemPluginPackage(packagePath)
+}
+
+func (a *App) RollbackDesktopStoragePlugin(pluginID, version string) error {
+	if a.StoragePlugins == nil {
+		return errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.RollbackPlugin(pluginID, version)
+}
+
+func (a *App) RollbackDesktopSystemPlugin(pluginID, version string) error {
+	if a.StoragePlugins == nil {
+		return errors.New("系统插件未初始化")
+	}
+	return a.StoragePlugins.RollbackSystemPlugin(pluginID, version)
+}
+
+func (a *App) UninstallDesktopStoragePlugin(pluginID string) error {
+	if a.StoragePlugins == nil {
+		return errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.UninstallPlugin(pluginID)
+}
+
+func (a *App) UninstallDesktopSystemPlugin(pluginID string) error {
+	if a.StoragePlugins == nil {
+		return errors.New("系统插件未初始化")
+	}
+	return a.StoragePlugins.UninstallSystemPlugin(pluginID)
+}
+
+func (a *App) OpenDesktopStoragePluginLocation(pluginID string) error {
+	if a.StoragePlugins == nil {
+		return errors.New("桌面存储插件未初始化")
+	}
+	location, err := a.StoragePlugins.PluginLocation(pluginID)
+	if err != nil {
+		return err
+	}
+	switch runtime.Environment(a.ctx).Platform {
+	case "windows":
+		return exec.Command("explorer", location).Start()
+	case "darwin":
+		return exec.Command("open", location).Start()
+	default:
+		return exec.Command("xdg-open", location).Start()
+	}
+}
+
+func (a *App) OpenDesktopSystemPluginLocation(pluginID string) error {
+	return a.OpenDesktopStoragePluginLocation(pluginID)
+}
+
+func (a *App) CreateDesktopStorageSource(input storage_plugins.SourceInput) (storage_plugins.SourceDTO, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.SourceDTO{}, errors.New("桌面存储插件未初始化")
+	}
+	source, err := a.StoragePlugins.CreateSource(input)
+	if err != nil {
+		return storage_plugins.SourceDTO{}, err
+	}
+	a.syncStorageSourceToCloud(source, false)
+	return source, nil
+}
+
+func (a *App) UpdateDesktopStorageSource(input storage_plugins.SourceInput) (storage_plugins.SourceDTO, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.SourceDTO{}, errors.New("桌面存储插件未初始化")
+	}
+	source, err := a.StoragePlugins.UpdateSource(input)
+	if err != nil {
+		return storage_plugins.SourceDTO{}, err
+	}
+	a.syncStorageSourceToCloud(source, false)
+	return source, nil
+}
+
+func (a *App) SetDesktopStorageSourceEnabled(id string, enabled bool) (storage_plugins.SourceDTO, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.SourceDTO{}, errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.SetSourceEnabled(id, enabled)
+}
+
+func (a *App) DeleteDesktopStorageSource(id string) error {
+	if a.StoragePlugins == nil {
+		return errors.New("桌面存储插件未初始化")
+	}
+	if err := a.StoragePlugins.DeleteSource(id); err != nil {
+		return err
+	}
+	a.syncStorageSourceToCloud(storage_plugins.SourceDTO{ID: id}, true)
+	return nil
+}
+
+func (a *App) TestDesktopStorageSource(sourceID string) (storage_plugins.HealthResult, error) {
+	if a.StoragePlugins == nil {
+		return storage_plugins.HealthResult{Status: "error"}, errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.TestSource(context.Background(), sourceID)
+}
 
 // ─── Storage Scan/Cleanup ─────────────────────────────
 

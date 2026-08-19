@@ -247,13 +247,20 @@ func (m *Manager) ListAuthorizations() []AuthorizationGrant { return m.Snapshot(
 func (m *Manager) ListAudits() []ToolInvocationAudit        { return m.Snapshot().Audits }
 
 func (m *Manager) ImportSkill(sourcePath string) (Skill, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	contentRoot, cleanup, err := prepareSkillSource(sourcePath, m.installRoot)
+	contentRoots, cleanup, err := prepareSkillSources(sourcePath, m.installRoot)
 	if err != nil {
 		return Skill{}, err
 	}
 	defer cleanup()
+	if len(contentRoots) != 1 {
+		return Skill{}, errors.New("ImportSkill 仅接受单个 Skill 来源")
+	}
+	return m.importSkillRoot(sourcePath, contentRoots[0])
+}
+
+func (m *Manager) importSkillRoot(sourcePath, contentRoot string) (Skill, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	instructions, metadata, err := readSkillMarkdown(filepath.Join(contentRoot, "SKILL.md"))
 	if err != nil {
@@ -302,6 +309,25 @@ func (m *Manager) ImportSkill(sourcePath string) (Skill, error) {
 	return skill, nil
 }
 
+// ImportSkills discovers every Skill in a selected directory or archive.
+func (m *Manager) ImportSkills(sourcePath string) ([]Skill, error) {
+	contentRoots, cleanup, err := prepareSkillSources(sourcePath, m.installRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	imported := make([]Skill, 0, len(contentRoots))
+	for _, contentRoot := range contentRoots {
+		skill, importErr := m.importSkillRoot(sourcePath, contentRoot)
+		if importErr != nil {
+			return nil, importErr
+		}
+		imported = append(imported, skill)
+	}
+	return imported, nil
+}
+
 func (m *Manager) ReadSkill(id string) (SkillContent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -319,6 +345,10 @@ func (m *Manager) ReadSkill(id string) (SkillContent, error) {
 	if err != nil {
 		return SkillContent{}, err
 	}
+	readme, err := readSkillReadme(skill.InstallPath)
+	if err != nil {
+		return SkillContent{}, err
+	}
 	refs := []SkillReference{}
 	_ = filepath.Walk(filepath.Join(skill.InstallPath, "references"), func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil || info == nil || info.IsDir() {
@@ -331,7 +361,7 @@ func (m *Manager) ReadSkill(id string) (SkillContent, error) {
 		}
 		return nil
 	})
-	return SkillContent{Skill: *skill, Instructions: instructions, References: refs}, nil
+	return SkillContent{Skill: *skill, Instructions: instructions, Readme: readme, References: refs}, nil
 }
 
 func (m *Manager) ReadSkillResource(id, requestedPath string) (SkillResource, error) {
@@ -769,6 +799,34 @@ func readSkillMarkdown(path string) (string, map[string]string, error) {
 	return instructions, metadata, nil
 }
 
+func readSkillReadme(root string) (string, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", fmt.Errorf("读取 Skill 目录失败: %w", err)
+	}
+	for _, entry := range entries {
+		if !strings.EqualFold(entry.Name(), "README.md") {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return "", fmt.Errorf("读取 README.md 信息失败: %w", infoErr)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("README.md 不是普通文件")
+		}
+		if info.Size() > 1024*1024 {
+			return "", errors.New("README.md 超过 1 MiB 限制")
+		}
+		data, readErr := os.ReadFile(filepath.Join(root, entry.Name()))
+		if readErr != nil {
+			return "", fmt.Errorf("读取 README.md 失败: %w", readErr)
+		}
+		return string(data), nil
+	}
+	return "", nil
+}
+
 func hashDirectory(root string) (string, error) {
 	digest := sha256.New()
 	var paths []string
@@ -832,14 +890,14 @@ func copyDirectory(source, target string) error {
 	})
 }
 
-func prepareSkillSource(sourcePath, installRoot string) (string, func(), error) {
+func prepareSkillSources(sourcePath, installRoot string) ([]string, func(), error) {
 	info, err := os.Stat(sourcePath)
 	if err != nil {
-		return "", func() {}, err
+		return nil, func() {}, err
 	}
 	if info.IsDir() {
-		root, resolveErr := resolveSkillRoot(sourcePath)
-		return root, func() {}, resolveErr
+		roots, resolveErr := resolveSkillRoots(sourcePath)
+		return roots, func() {}, resolveErr
 	}
 	// A standalone SKILL.md is a valid Skill source as well. Stage it in a
 	// temporary directory so the rest of the importer can use the same
@@ -847,108 +905,108 @@ func prepareSkillSource(sourcePath, installRoot string) (string, func(), error) 
 	if info.Mode().IsRegular() && strings.EqualFold(filepath.Base(sourcePath), "SKILL.md") {
 		temporary, err := os.MkdirTemp(installRoot, "skill-import-")
 		if err != nil {
-			return "", func() {}, err
+			return nil, func() {}, err
 		}
 		cleanup := func() { _ = os.RemoveAll(temporary) }
 		data, err := os.ReadFile(sourcePath)
 		if err != nil {
 			cleanup()
-			return "", func() {}, err
+			return nil, func() {}, err
 		}
 		if err := os.WriteFile(filepath.Join(temporary, "SKILL.md"), data, 0644); err != nil {
 			cleanup()
-			return "", func() {}, err
+			return nil, func() {}, err
 		}
-		return temporary, cleanup, nil
+		return []string{temporary}, cleanup, nil
 	}
 	if filepath.Ext(sourcePath) != ".zip" && filepath.Ext(sourcePath) != ".skill" {
-		return "", func() {}, errors.New("Skill 仅支持目录、.skill 或 .zip")
+		return nil, func() {}, errors.New("Skill 仅支持目录、.skill 或 .zip")
 	}
 	temporary, err := os.MkdirTemp(installRoot, "skill-import-")
 	if err != nil {
-		return "", func() {}, err
+		return nil, func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(temporary) }
 	archive, err := zip.OpenReader(sourcePath)
 	if err != nil {
 		cleanup()
-		return "", func() {}, err
+		return nil, func() {}, err
 	}
 	defer archive.Close()
 	seenEntries := map[string]struct{}{}
 	for _, entry := range archive.File {
 		if entry.Mode()&os.ModeSymlink != 0 {
 			cleanup()
-			return "", func() {}, errors.New("Skill 压缩包包含不支持的符号链接")
+			return nil, func() {}, errors.New("Skill 压缩包包含不支持的符号链接")
 		}
 		name := filepath.Clean(entry.Name)
 		if filepath.IsAbs(name) || name == "." || strings.HasPrefix(name, ".."+string(os.PathSeparator)) || name == ".." {
 			cleanup()
-			return "", func() {}, errors.New("Skill 压缩包包含越界路径")
+			return nil, func() {}, errors.New("Skill 压缩包包含越界路径")
 		}
 		entryKey := strings.ToLower(filepath.ToSlash(name))
 		if _, exists := seenEntries[entryKey]; exists {
 			cleanup()
-			return "", func() {}, fmt.Errorf("Skill 压缩包包含重复路径: %s", entry.Name)
+			return nil, func() {}, fmt.Errorf("Skill 压缩包包含重复路径: %s", entry.Name)
 		}
 		seenEntries[entryKey] = struct{}{}
 		target := filepath.Join(temporary, name)
 		if !strings.HasPrefix(target, temporary+string(os.PathSeparator)) && target != temporary {
 			cleanup()
-			return "", func() {}, errors.New("Skill 压缩包包含越界路径")
+			return nil, func() {}, errors.New("Skill 压缩包包含越界路径")
 		}
 		if entry.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0755); err != nil {
 				cleanup()
-				return "", func() {}, err
+				return nil, func() {}, err
 			}
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			cleanup()
-			return "", func() {}, err
+			return nil, func() {}, err
 		}
 		input, err := entry.Open()
 		if err != nil {
 			cleanup()
-			return "", func() {}, err
+			return nil, func() {}, err
 		}
 		output, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 		if err != nil {
 			input.Close()
 			cleanup()
-			return "", func() {}, err
+			return nil, func() {}, err
 		}
 		_, copyErr := io.Copy(output, input)
 		input.Close()
 		output.Close()
 		if copyErr != nil {
 			cleanup()
-			return "", func() {}, copyErr
+			return nil, func() {}, copyErr
 		}
 	}
-	root, err := resolveSkillRoot(temporary)
+	roots, err := resolveSkillRoots(temporary)
 	if err != nil {
 		cleanup()
-		return "", func() {}, err
+		return nil, func() {}, err
 	}
-	return root, cleanup, nil
+	return roots, cleanup, nil
 }
 
-func resolveSkillRoot(root string) (string, error) {
+func resolveSkillRoots(root string) ([]string, error) {
 	manifestPath := filepath.Join(root, "SKILL.md")
 	info, err := os.Lstat(manifestPath)
 	if err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("Skill 包含不支持的符号链接: %s", manifestPath)
+			return nil, fmt.Errorf("Skill 包含不支持的符号链接: %s", manifestPath)
 		}
 		if info.IsDir() {
-			return "", fmt.Errorf("SKILL.md 不能是目录: %s", manifestPath)
+			return nil, fmt.Errorf("SKILL.md 不能是目录: %s", manifestPath)
 		}
-		return root, nil
+		return []string{root}, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("检查 SKILL.md 失败: %w", err)
+		return nil, fmt.Errorf("检查 SKILL.md 失败: %w", err)
 	}
 
 	candidates := []string{}
@@ -979,25 +1037,13 @@ func resolveSkillRoot(root string) (string, error) {
 		return nil
 	})
 	if walkErr != nil {
-		return "", fmt.Errorf("查找 SKILL.md 失败: %w", walkErr)
+		return nil, fmt.Errorf("查找 SKILL.md 失败: %w", walkErr)
 	}
 	sort.Strings(candidates)
-	if len(candidates) == 1 {
-		return candidates[0], nil
-	}
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("所选目录不是有效的 Skill：未在 %s 或其子目录中找到 SKILL.md", root)
+		return nil, fmt.Errorf("所选目录不是有效的 Skill：未在 %s 或其子目录中找到 SKILL.md", root)
 	}
-
-	relativeCandidates := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		relative, relErr := filepath.Rel(root, candidate)
-		if relErr != nil {
-			relative = candidate
-		}
-		relativeCandidates = append(relativeCandidates, filepath.ToSlash(relative))
-	}
-	return "", fmt.Errorf("所选目录包含多个 Skill，请分别选择其中一个目录：%s", strings.Join(relativeCandidates, "；"))
+	return candidates, nil
 }
 
 func readLines(path string) ([]string, error) {

@@ -1,0 +1,167 @@
+package storage_plugins
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestMarketplaceParsesCurrentPlatformAndCompatibility(t *testing.T) {
+	data := testMarketplaceIndex(t, map[string]MarketplaceArtifact{
+		currentPlatformKey(): {
+			URL:    "https://github.com/ushaio/mo-gallery-plugin/releases/download/v1.0.0/example.zip",
+			SHA256: strings.Repeat("a", 64), Size: 123,
+		},
+	})
+	catalog, err := parseMarketplaceIndex(data, BuiltInPluginRepositoryURL, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Plugins) != 1 || !catalog.Plugins[0].Available || catalog.Plugins[0].CompatibilityStatus != "compatible" {
+		t.Fatalf("unexpected catalog: %#v", catalog)
+	}
+}
+
+func TestMarketplaceRejectsUnsupportedSchemaAndPlatform(t *testing.T) {
+	data := testMarketplaceIndex(t, map[string]MarketplaceArtifact{})
+	var index map[string]any
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatal(err)
+	}
+	index["schemaVersion"] = 2
+	unsupported, _ := json.Marshal(index)
+	if _, err := parseMarketplaceIndex(unsupported, BuiltInPluginRepositoryURL, time.Now()); err == nil {
+		t.Fatal("expected unsupported schema to be rejected")
+	}
+
+	data = testMarketplaceIndex(t, map[string]MarketplaceArtifact{
+		"windows-arm64": {URL: "https://github.com/ushaio/mo-gallery-plugin/releases/download/v1.0.0/example.zip", SHA256: strings.Repeat("b", 64), Size: 123},
+	})
+	if _, err := parseMarketplaceIndex(data, BuiltInPluginRepositoryURL, time.Now()); err == nil {
+		t.Fatal("expected unsupported platform to be rejected")
+	}
+}
+
+func TestMarketplaceFallsBackToValidatedDiskCache(t *testing.T) {
+	data := testMarketplaceIndex(t, map[string]MarketplaceArtifact{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	}))
+	marketplace := &Marketplace{
+		indexURL:            server.URL,
+		cachePath:           filepath.Join(t.TempDir(), marketplaceCacheFileName),
+		client:              server.Client(),
+		now:                 time.Now,
+		downloading:         make(map[string]bool),
+		validateIndexURL:    func(string) error { return nil },
+		validateArtifactURL: validateMarketplaceArtifactURL,
+	}
+	first, err := marketplace.Fetch(context.Background(), true)
+	if err != nil || first.Cached {
+		t.Fatalf("first fetch = %#v, %v", first, err)
+	}
+	server.Close()
+	second, err := marketplace.Fetch(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Cached || !second.Stale || second.Warning == "" {
+		t.Fatalf("expected stale cache fallback, got %#v", second)
+	}
+}
+
+func TestMarketplaceDownloadRejectsDigestMismatch(t *testing.T) {
+	payload := []byte("not the expected package")
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+	marketplace := &Marketplace{
+		cachePath:           filepath.Join(t.TempDir(), marketplaceCacheFileName),
+		downloadClient:      server.Client(),
+		validateArtifactURL: func(string) error { return nil },
+	}
+	_, err := marketplace.download(context.Background(), "example", "1.0.0", MarketplaceArtifact{
+		URL: server.URL, SHA256: strings.Repeat("0", sha256.Size*2), Size: int64(len(payload)),
+	})
+	if err == nil || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("expected digest mismatch, got %v", err)
+	}
+}
+
+func TestMarketplaceArtifactValidationRequiresTrustedReleaseURLAndDigest(t *testing.T) {
+	payload := sha256.Sum256([]byte("package"))
+	valid := MarketplaceArtifact{
+		URL:    "https://github.com/ushaio/mo-gallery-plugin/releases/download/v1.0.0/example.zip",
+		SHA256: "sha256:" + hex.EncodeToString(payload[:]), Size: 7,
+	}
+	if err := validateMarketplaceArtifact(valid); err != nil {
+		t.Fatal(err)
+	}
+	valid.URL = "https://example.com/example.zip"
+	if err := validateMarketplaceArtifact(valid); err == nil {
+		t.Fatal("expected untrusted URL to be rejected")
+	}
+}
+
+func TestMarketplaceInstallStillRequiresPackageSignature(t *testing.T) {
+	packageData, err := os.ReadFile(writeUnsignedTestPackage(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(packageData)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(packageData)
+	}))
+	defer server.Close()
+
+	manager, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	marketplace := &Marketplace{
+		manager:             manager,
+		cachePath:           filepath.Join(t.TempDir(), marketplaceCacheFileName),
+		downloadClient:      server.Client(),
+		now:                 func() time.Time { return now },
+		downloading:         make(map[string]bool),
+		validateArtifactURL: func(string) error { return nil },
+		cachedAt:            now,
+		cached: &MarketplaceCatalog{Plugins: []MarketplacePlugin{{
+			ID: "package.storage", Name: "Package", Version: "1.0.0",
+			CoreAPIVersion: pluginAPIVersion, Available: true, CompatibilityStatus: "compatible",
+			Platforms: map[string]MarketplaceArtifact{currentPlatformKey(): {
+				URL: server.URL, SHA256: hex.EncodeToString(digest[:]), Size: int64(len(packageData)),
+			}},
+		}}},
+	}
+	if _, err := marketplace.Install(context.Background(), "package.storage", "1.0.0"); err == nil || !strings.Contains(strings.ToLower(err.Error()), "signature") {
+		t.Fatalf("expected unsigned marketplace package to be rejected, got %v", err)
+	}
+}
+
+func testMarketplaceIndex(t *testing.T, platforms map[string]MarketplaceArtifact) []byte {
+	t.Helper()
+	data, err := json.Marshal(marketplaceIndex{
+		SchemaVersion: marketplaceSchemaVersion,
+		UpdatedAt:     "2026-08-17T00:00:00Z",
+		Plugins: []MarketplacePlugin{{
+			ID: "example", Name: "Example", Version: "1.0.0", CoreAPIVersion: pluginAPIVersion,
+			Platforms: platforms,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}

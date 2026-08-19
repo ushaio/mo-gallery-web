@@ -22,8 +22,13 @@ type PhotoDTO struct {
 	ThumbnailURL    *string    `json:"thumbnailUrl,omitempty"`
 	OriginFlag      string     `json:"originFlag"`
 	StorageProvider string     `json:"storageProvider"`
+	StorageRuntime  string     `json:"storageRuntime"`
+	StoragePluginID *string    `json:"storagePluginId,omitempty"`
 	StorageSourceID *string    `json:"storageSourceId,omitempty"`
-	StorageKey      *string    `json:"storageKey,omitempty"`
+	Path            *string    `json:"path,omitempty"`
+	ThumbPath       *string    `json:"thumbPath,omitempty"`
+	StorageURLType  string     `json:"storageUrlType"`
+	StorageURLExpiresAt *time.Time `json:"storageUrlExpiresAt,omitempty"`
 	Width           int        `json:"width"`
 	Height          int        `json:"height"`
 	Size            *int64     `json:"size,omitempty"`

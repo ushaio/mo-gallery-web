@@ -24,12 +24,17 @@ export interface UserInfo {
 export interface Photo {
   id: string
   title: string
-  url: string
-  thumbnailUrl?: string
+  url: string | null
+  thumbnailUrl?: string | null
   originFlag: string
   storageProvider: string
+  storageRuntime?: 'web' | 'desktop-plugin'
+  storagePluginId?: string
   storageSourceId?: string
-  storageKey?: string
+  path?: string
+  thumbPath?: string
+  storageUrlType?: string
+  storageUrlExpiresAt?: string
   width: number
   height: number
   size?: number

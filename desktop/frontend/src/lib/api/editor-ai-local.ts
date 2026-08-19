@@ -25,6 +25,7 @@ import {
   type EditorAiRuntimeTool,
   type EditorAiStreamEvent,
   type EditorAiTraceBlock,
+  type EditorAiUsage,
   reduceEditorAiTrace,
 } from '@mo-gallery/ai-agent'
 import { editorAiMessageMetadataSchema } from '@mo-gallery/ai-agent'
@@ -490,6 +491,7 @@ async function streamStoryAiGenerate(
 
   let partialContent = ''
   let traceBlocks: EditorAiTraceBlock[] = []
+  let generationUsage: EditorAiUsage | undefined
   const generationStartedAt = performance.now()
   const onEvent = (event: EditorAiStreamEvent) => {
     traceBlocks = reduceEditorAiTrace(traceBlocks, event)
@@ -507,6 +509,8 @@ async function streamStoryAiGenerate(
         type: 'assistant_trace',
         blocks,
         durationMs: Math.max(0, Math.round(performance.now() - generationStartedAt)),
+        ...(generationUsage ? { usage: generationUsage } : {}),
+        ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
       })
       return parsed.success ? parsed.data : undefined
     } catch {
@@ -663,7 +667,12 @@ async function streamStoryAiGenerate(
       messages,
       signal: handlers.signal,
       tools: runtimeTools,
+      reasoningEffort: input.reasoningEffort,
       onEvent,
+      onUsage: (usage) => {
+        generationUsage = usage
+        handlers.onUsage?.(usage)
+      },
       onChunk: (chunk) => {
         partialContent += chunk
         handlers.onChunk(chunk)

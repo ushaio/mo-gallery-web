@@ -3,8 +3,9 @@
 import {services} from '../models';
 import {local_library} from '../models';
 import {agent_extensions} from '../models';
-import {types} from '../models';
+import {storage_plugins} from '../models';
 import {config} from '../models';
+import {types} from '../models';
 import {main} from '../models';
 import {image} from '../models';
 
@@ -58,6 +59,8 @@ export function CreateAlbum(arg1:services.CreateAlbumParams):Promise<services.Al
 
 export function CreateBlog(arg1:services.CreateBlogParams):Promise<services.BlogDTO>;
 
+export function CreateDesktopStorageSource(arg1:storage_plugins.SourceInput):Promise<storage_plugins.SourceDTO>;
+
 export function CreateEditorAiConversation(arg1:services.EditorAiConversationCreateInput):Promise<services.EditorAiConversationDTO>;
 
 export function CreateFilmRoll(arg1:services.CreateFilmRollParams):Promise<services.FilmRollDTO>;
@@ -76,8 +79,6 @@ export function CreateLocalLibraryFolder(arg1:string,arg2:string):Promise<local_
 
 export function CreateLocalLibraryTag(arg1:string,arg2:string):Promise<local_library.TagDTO>;
 
-export function CreateStorageSource(arg1:Record<string, string>):Promise<types.StorageSourceDTO>;
-
 export function CreateStory(arg1:services.CreateStoryParams):Promise<services.StoryDTO>;
 
 export function DeleteAlbum(arg1:string):Promise<void>;
@@ -85,6 +86,8 @@ export function DeleteAlbum(arg1:string):Promise<void>;
 export function DeleteBlog(arg1:string):Promise<void>;
 
 export function DeleteComment(arg1:string):Promise<void>;
+
+export function DeleteDesktopStorageSource(arg1:string):Promise<void>;
 
 export function DeleteEditorAiConversation(arg1:string):Promise<void>;
 
@@ -107,8 +110,6 @@ export function DeleteLocalLibraryFolder(arg1:string):Promise<void>;
 export function DeleteLocalLibraryTag(arg1:string):Promise<void>;
 
 export function DeletePhoto(arg1:string,arg2:services.DeletePhotoParams):Promise<void>;
-
-export function DeleteStorageSource(arg1:string):Promise<void>;
 
 export function DeleteStory(arg1:string):Promise<void>;
 
@@ -155,6 +156,14 @@ export function GetCameras():Promise<Array<services.CameraDTO>>;
 export function GetCategories():Promise<Array<string>>;
 
 export function GetComments(arg1:services.ListCommentsParams):Promise<services.PaginatedResponse_mo_gallery_desktop_services_CommentDTO_>;
+
+export function GetDesktopPluginMarketplace(arg1:boolean):Promise<storage_plugins.MarketplaceCatalog>;
+
+export function GetDesktopStoragePlugins():Promise<Array<storage_plugins.PluginDescriptor>>;
+
+export function GetDesktopStorageSources():Promise<Array<storage_plugins.SourceDTO>>;
+
+export function GetDesktopSystemPlugins():Promise<Array<storage_plugins.PluginDescriptor>>;
 
 export function GetEditorAiConversation(arg1:string):Promise<services.EditorAiConversationWithMessagesDTO>;
 
@@ -242,7 +251,21 @@ export function ImportLocalLibraryFiles(arg1:Array<string>,arg2:string):Promise<
 
 export function InitializeLocalLibrary(arg1:string,arg2:string):Promise<local_library.LibrarySnapshot>;
 
+export function InstallDesktopMarketplacePlugin(arg1:string,arg2:string):Promise<storage_plugins.PluginDescriptor>;
+
+export function InstallDesktopStoragePlugin(arg1:string):Promise<storage_plugins.PluginDescriptor>;
+
+export function InstallDesktopStoragePluginPackage(arg1:string):Promise<storage_plugins.PluginDescriptor>;
+
+export function InstallDesktopSystemPlugin(arg1:string):Promise<storage_plugins.PluginDescriptor>;
+
+export function InstallDesktopSystemPluginPackage(arg1:string):Promise<storage_plugins.PluginDescriptor>;
+
 export function IsLinuxDoEnabled():Promise<boolean>;
+
+export function ListDesktopStoragePluginVersions(arg1:string):Promise<Array<storage_plugins.PluginVersionDescriptor>>;
+
+export function ListDesktopSystemPluginVersions(arg1:string):Promise<Array<storage_plugins.PluginVersionDescriptor>>;
 
 export function ListLocalAssets(arg1:local_library.AssetQuery):Promise<local_library.AssetPage>;
 
@@ -260,11 +283,15 @@ export function ListLocalLibraryTrashedFolders():Promise<Array<local_library.Fol
 
 export function ListZineProjects():Promise<Array<string>>;
 
-export function Login(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<services.LoginResult>;
+export function Login(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<services.LoginResult>;
 
 export function MoveLocalAssets(arg1:Array<string>,arg2:string):Promise<Array<local_library.AssetMoveResult>>;
 
 export function MoveLocalLibraryFolder(arg1:string,arg2:string,arg3:string):Promise<local_library.FolderDTO>;
+
+export function OpenDesktopStoragePluginLocation(arg1:string):Promise<void>;
+
+export function OpenDesktopSystemPluginLocation(arg1:string):Promise<void>;
 
 export function OpenDownloadedUpdate():Promise<void>;
 
@@ -338,6 +365,10 @@ export function RetryLocalAssetPreviews(arg1:Array<string>):Promise<Array<local_
 
 export function RevokeAgentAuthorization(arg1:string):Promise<void>;
 
+export function RollbackDesktopStoragePlugin(arg1:string,arg2:string):Promise<void>;
+
+export function RollbackDesktopSystemPlugin(arg1:string,arg2:string):Promise<void>;
+
 export function SaveAgentMCPServer(arg1:agent_extensions.MCPServerInput):Promise<agent_extensions.MCPServer>;
 
 export function SaveAiImageToAlbum(arg1:string):Promise<services.PhotoDTO>;
@@ -354,9 +385,13 @@ export function SaveZineProject(arg1:string):Promise<void>;
 
 export function ScanStorage(arg1:services.StorageScanParams):Promise<services.StorageScanResult>;
 
-export function SelectAndImportSkillArchive():Promise<agent_extensions.Skill>;
+export function SelectAndImportSkillArchive():Promise<Array<agent_extensions.Skill>>;
 
-export function SelectAndImportSkillDirectory():Promise<agent_extensions.Skill>;
+export function SelectAndImportSkillDirectory():Promise<Array<agent_extensions.Skill>>;
+
+export function SelectDesktopStoragePluginManifest():Promise<string>;
+
+export function SelectDesktopStoragePluginPackage():Promise<string>;
 
 export function SelectFiles():Promise<Array<string>>;
 
@@ -376,6 +411,8 @@ export function SetAlbumCover(arg1:string,arg2:string):Promise<services.AlbumDTO
 
 export function SetAuth(arg1:string,arg2:string):Promise<services.UserInfo>;
 
+export function SetDesktopStorageSourceEnabled(arg1:string,arg2:boolean):Promise<storage_plugins.SourceDTO>;
+
 export function SetFilmRollFrameOrder(arg1:string,arg2:Array<string>):Promise<services.FilmRollDTO>;
 
 export function SetLocalAssetCloudLink(arg1:string,arg2:string,arg3:string):Promise<void>;
@@ -390,7 +427,7 @@ export function StartLocalLibraryScan():Promise<void>;
 
 export function TestAgentMCPServer(arg1:string):Promise<agent_extensions.MCPServer>;
 
-export function TestDatabaseConnection(arg1:Record<string, any>):Promise<void>;
+export function TestDesktopStorageSource(arg1:string):Promise<storage_plugins.HealthResult>;
 
 export function ToggleFeatured(arg1:string):Promise<services.PhotoDTO>;
 
@@ -400,6 +437,10 @@ export function TrashLocalAssets(arg1:Array<string>):Promise<Array<local_library
 
 export function UnbindLinuxDoAccount():Promise<void>;
 
+export function UninstallDesktopStoragePlugin(arg1:string):Promise<void>;
+
+export function UninstallDesktopSystemPlugin(arg1:string):Promise<void>;
+
 export function UpdateAiConfig(arg1:config.AIConfig):Promise<void>;
 
 export function UpdateAlbum(arg1:string,arg2:services.UpdateAlbumParams):Promise<services.AlbumDTO>;
@@ -407,6 +448,8 @@ export function UpdateAlbum(arg1:string,arg2:services.UpdateAlbumParams):Promise
 export function UpdateBlog(arg1:string,arg2:services.UpdateBlogParams):Promise<services.BlogDTO>;
 
 export function UpdateCommentStatus(arg1:string,arg2:string):Promise<void>;
+
+export function UpdateDesktopStorageSource(arg1:storage_plugins.SourceInput):Promise<storage_plugins.SourceDTO>;
 
 export function UpdateEditorAiConversation(arg1:string,arg2:services.EditorAiConversationUpdateInput):Promise<services.EditorAiConversationDTO>;
 
@@ -430,8 +473,6 @@ export function UpdatePhoto(arg1:string,arg2:services.UpdatePhotoParams):Promise
 
 export function UpdateSettings(arg1:Record<string, string>):Promise<Record<string, string>>;
 
-export function UpdateStorageSource(arg1:string,arg2:Record<string, string>):Promise<types.StorageSourceDTO>;
-
 export function UpdateStory(arg1:string,arg2:services.UpdateStoryParams):Promise<services.StoryDTO>;
 
 export function UpdateWindowStyle(arg1:string):Promise<main.WindowAppearance>;
@@ -439,5 +480,3 @@ export function UpdateWindowStyle(arg1:string):Promise<main.WindowAppearance>;
 export function UploadFile(arg1:string,arg2:services.UploadSettings,arg3:string,arg4:image.ExifData):Promise<services.UploadResult>;
 
 export function UploadLocalAsset(arg1:string,arg2:services.UploadSettings,arg3:string,arg4:image.ExifData):Promise<services.UploadResult>;
-
-export function ValidateToken(arg1:string):Promise<services.UserInfo>;

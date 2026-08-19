@@ -383,9 +383,9 @@ export function UploadQueueProvider({
                 status: 'completed' as UploadTaskStatus,
                 progress: 100,
                 photoId: photo.id,
-                targetFileName: getFilenameFromStorageValue(photo.storageKey || photo.url) ?? t.targetFileName ?? fileToUpload.name,
+                targetFileName: getFilenameFromStorageValue(photo.path || photo.url || undefined) ?? t.targetFileName ?? fileToUpload.name,
                 targetFileSize: photo.size ?? t.targetFileSize ?? fileToUpload.size,
-                targetFileType: inferFileTypeFromName(photo.storageKey || photo.url, t.targetFileType ?? fileToUpload.type),
+                targetFileType: inferFileTypeFromName(photo.path || photo.url || undefined, t.targetFileType ?? fileToUpload.type),
                 compressedSize: photo.size ?? t.compressedSize,
                 fileSize: photo.size ?? t.fileSize,
               }

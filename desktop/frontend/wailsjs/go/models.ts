@@ -411,6 +411,7 @@ export namespace agent_extensions {
 	    }
 	}
 	export class SkillContent {
+	    readme: string;
 	    skill: Skill;
 	    instructions: string;
 	    references: SkillReference[];
@@ -421,6 +422,7 @@ export namespace agent_extensions {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.readme = source["readme"];
 	        this.skill = this.convertValues(source["skill"], Skill);
 	        this.instructions = source["instructions"];
 	        this.references = this.convertValues(source["references"], SkillReference);
@@ -1681,6 +1683,27 @@ export namespace main {
 
 }
 
+export namespace plugin_core {
+	
+	export class Contribution {
+	    domain: string;
+	    apiVersion: string;
+	    capabilities: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Contribution(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.apiVersion = source["apiVersion"];
+	        this.capabilities = source["capabilities"];
+	    }
+	}
+
+}
+
 export namespace services {
 	
 	export class LensDTO {
@@ -1718,8 +1741,14 @@ export namespace services {
 	    thumbnailUrl?: string;
 	    originFlag: string;
 	    storageProvider: string;
+	    storageRuntime: string;
+	    storagePluginId?: string;
 	    storageSourceId?: string;
-	    storageKey?: string;
+	    path?: string;
+	    thumbPath?: string;
+	    storageUrlType: string;
+	    // Go type: time
+	    storageUrlExpiresAt?: any;
 	    width: number;
 	    height: number;
 	    size?: number;
@@ -1762,8 +1791,13 @@ export namespace services {
 	        this.thumbnailUrl = source["thumbnailUrl"];
 	        this.originFlag = source["originFlag"];
 	        this.storageProvider = source["storageProvider"];
+	        this.storageRuntime = source["storageRuntime"];
+	        this.storagePluginId = source["storagePluginId"];
 	        this.storageSourceId = source["storageSourceId"];
-	        this.storageKey = source["storageKey"];
+	        this.path = source["path"];
+	        this.thumbPath = source["thumbPath"];
+	        this.storageUrlType = source["storageUrlType"];
+	        this.storageUrlExpiresAt = this.convertValues(source["storageUrlExpiresAt"], null);
 	        this.width = source["width"];
 	        this.height = source["height"];
 	        this.size = source["size"];
@@ -3622,6 +3656,8 @@ export namespace services {
 	export class UploadSettings {
 	    title: string;
 	    categories: string[];
+	    storageRuntime: string;
+	    storagePluginId: string;
 	    storageSourceId: string;
 	    storageProvider: string;
 	    storagePath: string;
@@ -3642,6 +3678,8 @@ export namespace services {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
 	        this.categories = source["categories"];
+	        this.storageRuntime = source["storageRuntime"];
+	        this.storagePluginId = source["storagePluginId"];
 	        this.storageSourceId = source["storageSourceId"];
 	        this.storageProvider = source["storageProvider"];
 	        this.storagePath = source["storagePath"];
@@ -3675,12 +3713,338 @@ export namespace services {
 
 }
 
+export namespace storage_plugins {
+	
+	export class HealthResult {
+	    status: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HealthResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.message = source["message"];
+	    }
+	}
+	export class MarketplaceArtifact {
+	    url: string;
+	    sha256: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MarketplaceArtifact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.sha256 = source["sha256"];
+	        this.size = source["size"];
+	    }
+	}
+	export class MarketplacePlugin {
+	    id: string;
+	    name: string;
+	    description?: string;
+	    author?: string;
+	    version: string;
+	    coreApiVersion: string;
+	    contributions?: plugin_core.Contribution[];
+	    homepage?: string;
+	    repository?: string;
+	    platforms?: Record<string, MarketplaceArtifact>;
+	    available: boolean;
+	    compatibilityStatus: string;
+	    installedVersion?: string;
+	    updateAvailable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MarketplacePlugin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.author = source["author"];
+	        this.version = source["version"];
+	        this.coreApiVersion = source["coreApiVersion"];
+	        this.contributions = this.convertValues(source["contributions"], plugin_core.Contribution);
+	        this.homepage = source["homepage"];
+	        this.repository = source["repository"];
+	        this.platforms = this.convertValues(source["platforms"], MarketplaceArtifact, true);
+	        this.available = source["available"];
+	        this.compatibilityStatus = source["compatibilityStatus"];
+	        this.installedVersion = source["installedVersion"];
+	        this.updateAvailable = source["updateAvailable"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MarketplaceCatalog {
+	    schemaVersion: number;
+	    sourceName: string;
+	    sourceUrl: string;
+	    updatedAt?: string;
+	    fetchedAt: string;
+	    cached: boolean;
+	    stale: boolean;
+	    warning?: string;
+	    plugins: MarketplacePlugin[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MarketplaceCatalog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemaVersion = source["schemaVersion"];
+	        this.sourceName = source["sourceName"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.updatedAt = source["updatedAt"];
+	        this.fetchedAt = source["fetchedAt"];
+	        this.cached = source["cached"];
+	        this.stale = source["stale"];
+	        this.warning = source["warning"];
+	        this.plugins = this.convertValues(source["plugins"], MarketplacePlugin);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class PluginDescriptor {
+	    id: string;
+	    version: string;
+	    apiVersion: string;
+	    coreApiVersion: string;
+	    name: string;
+	    description?: string;
+	    type: string;
+	    runtime?: string;
+	    platform?: string;
+	    platforms?: string[];
+	    command?: string;
+	    args?: string[];
+	    runtimeAvailable: boolean;
+	    runtimeStatus?: string;
+	    signatureStatus?: string;
+	    compatibilityStatus?: string;
+	    builtIn: boolean;
+	    official: boolean;
+	    installed: boolean;
+	    manifestPath?: string;
+	    capabilities?: string[];
+	    contributions?: plugin_core.Contribution[];
+	    permissions?: string[];
+	    configSchema?: Record<string, any>;
+	    credentialSchema?: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginDescriptor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.version = source["version"];
+	        this.apiVersion = source["apiVersion"];
+	        this.coreApiVersion = source["coreApiVersion"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.type = source["type"];
+	        this.runtime = source["runtime"];
+	        this.platform = source["platform"];
+	        this.platforms = source["platforms"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	        this.runtimeAvailable = source["runtimeAvailable"];
+	        this.runtimeStatus = source["runtimeStatus"];
+	        this.signatureStatus = source["signatureStatus"];
+	        this.compatibilityStatus = source["compatibilityStatus"];
+	        this.builtIn = source["builtIn"];
+	        this.official = source["official"];
+	        this.installed = source["installed"];
+	        this.manifestPath = source["manifestPath"];
+	        this.capabilities = source["capabilities"];
+	        this.contributions = this.convertValues(source["contributions"], plugin_core.Contribution);
+	        this.permissions = source["permissions"];
+	        this.configSchema = source["configSchema"];
+	        this.credentialSchema = source["credentialSchema"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PluginVersionDescriptor {
+	    pluginId: string;
+	    version: string;
+	    type: string;
+	    runtime?: string;
+	    platforms?: string[];
+	    active: boolean;
+	    runtimeAvailable: boolean;
+	    runtimeStatus?: string;
+	    signatureStatus?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginVersionDescriptor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pluginId = source["pluginId"];
+	        this.version = source["version"];
+	        this.type = source["type"];
+	        this.runtime = source["runtime"];
+	        this.platforms = source["platforms"];
+	        this.active = source["active"];
+	        this.runtimeAvailable = source["runtimeAvailable"];
+	        this.runtimeStatus = source["runtimeStatus"];
+	        this.signatureStatus = source["signatureStatus"];
+	    }
+	}
+	export class SourceDTO {
+	    id: string;
+	    name: string;
+	    pluginId: string;
+	    pluginVersion?: string;
+	    config?: Record<string, string>;
+	    enabled: boolean;
+	    status?: string;
+	    lastError?: string;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new SourceDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.pluginId = source["pluginId"];
+	        this.pluginVersion = source["pluginVersion"];
+	        this.config = source["config"];
+	        this.enabled = source["enabled"];
+	        this.status = source["status"];
+	        this.lastError = source["lastError"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SourceInput {
+	    id?: string;
+	    name: string;
+	    pluginId: string;
+	    config?: Record<string, string>;
+	    credentials?: Record<string, string>;
+	    command?: string;
+	    args?: string[];
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SourceInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.pluginId = source["pluginId"];
+	        this.config = source["config"];
+	        this.credentials = source["credentials"];
+	        this.command = source["command"];
+	        this.args = source["args"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+
+}
+
 export namespace types {
 	
 	export class StorageSourceDTO {
 	    id: string;
 	    name: string;
 	    type: string;
+	    runtime?: string;
+	    pluginId?: string;
+	    local?: boolean;
+	    enabled: boolean;
+	    status?: string;
+	    lastError?: string;
 	    accessKey?: string;
 	    secretKey?: string;
 	    bucket?: string;
@@ -3690,6 +4054,7 @@ export namespace types {
 	    basePath?: string;
 	    branch?: string;
 	    accessMethod?: string;
+	    config?: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new StorageSourceDTO(source);
@@ -3700,6 +4065,12 @@ export namespace types {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.type = source["type"];
+	        this.runtime = source["runtime"];
+	        this.pluginId = source["pluginId"];
+	        this.local = source["local"];
+	        this.enabled = source["enabled"];
+	        this.status = source["status"];
+	        this.lastError = source["lastError"];
 	        this.accessKey = source["accessKey"];
 	        this.secretKey = source["secretKey"];
 	        this.bucket = source["bucket"];
@@ -3709,6 +4080,7 @@ export namespace types {
 	        this.basePath = source["basePath"];
 	        this.branch = source["branch"];
 	        this.accessMethod = source["accessMethod"];
+	        this.config = source["config"];
 	    }
 	}
 

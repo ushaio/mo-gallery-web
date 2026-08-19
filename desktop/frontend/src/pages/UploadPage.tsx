@@ -66,6 +66,8 @@ interface UploadSettings {
   storyId: string
   filmRollId: string
   storageSourceId: string
+  storageRuntime: 'web' | 'desktop-plugin'
+  storagePluginId: string
   storagePath: string
   compressEnabled: boolean
   compressionFormat: 'webp' | 'avif'
@@ -83,6 +85,8 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   storyId: '',
   filmRollId: '',
   storageSourceId: '',
+  storageRuntime: 'desktop-plugin',
+  storagePluginId: '',
   storagePath: '',
   compressEnabled: true,
   compressionFormat: 'avif',
@@ -203,7 +207,12 @@ export function UploadPage() {
         const sources = r || []
         setStorageSources(sources)
         // 自动选中第一个存储源
-        if (sources.length > 0) setSettings(s => s.storageSourceId ? s : ({ ...s, storageSourceId: sources[0].id }))
+        if (sources.length > 0) setSettings(s => s.storageSourceId ? s : ({
+          ...s,
+          storageSourceId: sources[0].id,
+            storageRuntime: 'desktop-plugin',
+          storagePluginId: sources[0].pluginId || '',
+        }))
       } catch {
         // 存储源加载失败会导致上传按钮一直不可用，必须显式提示
         toast.error('存储源加载失败，无法上传。请检查服务器连接后重新进入本页')
@@ -359,6 +368,8 @@ export function UploadPage() {
         storyId: settings.storyId || undefined,
         filmRollId: uploadType === 'film' ? (settings.filmRollId || undefined) : undefined,
         storageSourceId: settings.storageSourceId,
+        storageRuntime: settings.storageRuntime,
+        storagePluginId: settings.storagePluginId,
         storagePath: settings.storagePath,
         compressEnabled: settings.compressEnabled,
         compressionFormat: settings.compressionFormat,
@@ -405,7 +416,7 @@ export function UploadPage() {
   const albumOptions = albums.map(a => ({ value: a.id, label: a.name }))
   const storyOptions = stories.map(s => ({ value: s.id, label: s.title }))
   const filmRollOptions = filmRolls.map(r => ({ value: r.id, label: `${r.name} · ${r.brand} · ${r.format}` }))
-  const storageSourceOptions = storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type})` }))
+  const storageSourceOptions = storageSources.map(s => ({ value: s.id, label: `${s.name} (${s.type}${s.runtime === 'desktop-plugin' ? ', Desktop' : ''})` }))
 
   const pendingCount = items.filter(i => i.status === 'pending').length
   const doneCount = items.filter(i => i.status === 'done').length
@@ -553,7 +564,14 @@ export function UploadPage() {
                         value={settings.storageSourceId}
                         options={storageSourceOptions}
                         onChange={(value) => {
-                          setSettings(prev => ({ ...prev, storageSourceId: value as string, storagePath: '' }))
+                          const source = storageSources.find(item => item.id === value)
+                          setSettings(prev => ({
+                            ...prev,
+                            storageSourceId: value as string,
+                            storageRuntime: 'desktop-plugin',
+                            storagePluginId: source?.pluginId || '',
+                            storagePath: '',
+                          }))
                           setUseCustomPrefix(false)
                         }}
                         placeholder="选择存储源"

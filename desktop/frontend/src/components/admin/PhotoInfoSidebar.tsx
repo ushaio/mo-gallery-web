@@ -110,7 +110,7 @@ export function PhotoInfoSidebar({
     )
   }
 
-  const storagePath = photo.storageKey ? photo.storageKey.replace(/\/[^/]+$/, '') : ''
+  const storagePath = photo.path ? photo.path.replace(/\/[^/]+$/, '') : ''
   const dominantColors = normalizeDominantColors(photo.dominantColors)
   const copyableUrls = [
     { label: t('admin.thumbnail_url'), key: 'thumb', value: photo.thumbnailUrl ? resolveAssetUrl(photo.thumbnailUrl) : '' },

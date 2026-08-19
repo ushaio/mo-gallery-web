@@ -243,7 +243,6 @@ func (d DatabaseConfig) DSN() string {
 type APIConfig struct {
 	BaseURL       string `json:"base_url"`       // mo-gallery-web API 地址
 	LoginURL      string `json:"login_url"`      // 根地址或 /login/<安全后缀>
-	JWTSecret     string `json:"jwt_secret"`     // JWT 密钥（需与 Web 端一致）
 	RememberLogin bool   `json:"remember_login"` // 是否记住登录凭据
 	SavedUsername string `json:"saved_username"` // 保存的用户名
 	SavedPassword string `json:"saved_password"` // 保存的密码（AES-256-GCM 加密）
@@ -256,10 +255,10 @@ const (
 
 // UIConfig 界面配置
 type UIConfig struct {
-	Language    string `json:"language"`     // zh / en
-	Theme       string `json:"theme"`        // light / dark / system
-	WindowStyle string `json:"window_style"` // native / integrated
-	SetupCompleted bool `json:"setup_completed"` // whether the first-run setup was completed
+	Language       string `json:"language"`        // zh / en
+	Theme          string `json:"theme"`           // light / dark / system
+	WindowStyle    string `json:"window_style"`    // native / integrated
+	SetupCompleted bool   `json:"setup_completed"` // whether the first-run setup was completed
 }
 
 // NormalizeWindowStyle returns a supported startup window style.
@@ -295,8 +294,7 @@ func defaultConfig() *Config {
 			SSLMode: "disable",
 		},
 		API: APIConfig{
-			BaseURL:   "http://localhost:3000",
-			JWTSecret: "secretKey",
+			BaseURL: "http://localhost:3000",
 		},
 		UI: UIConfig{
 			Language:    "zh",

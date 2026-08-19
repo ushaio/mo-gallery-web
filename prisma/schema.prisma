@@ -98,12 +98,15 @@ model Lens {
 model Photo {
   id              String   @id @default(uuid())
   title           String
-  url             String
-  thumbnailUrl    String?
   originFlag      String   @default("web")
   storageProvider String   @default("local")
+  storageRuntime  String   @default("web") // web | desktop-plugin
+  storagePluginId String?
   storageSourceId String?
-  storageKey      String?
+  path            String?  // original image relative path (authoritative)
+  thumbPath       String?  // thumbnail relative path (authoritative)
+  storageUrlType  String   @default("public") // public | signed | temporary | local
+  storageUrlExpiresAt DateTime?
   width           Int
   height          Int
   size            Int?
@@ -142,6 +145,7 @@ model Photo {
   @@index([cameraId])
   @@index([lensId])
   @@index([showFlag])
+  @@index([storageRuntime, storageSourceId])
 }
 
 model FilmRoll {

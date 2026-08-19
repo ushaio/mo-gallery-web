@@ -31,6 +31,7 @@ type Skill struct {
 }
 
 type SkillContent struct {
+	Readme       string           `json:"readme"`
 	Skill        Skill            `json:"skill"`
 	Instructions string           `json:"instructions"`
 	References   []SkillReference `json:"references"`

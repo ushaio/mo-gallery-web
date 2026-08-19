@@ -253,6 +253,9 @@
     top: var(--offset) !important;
     z-index: 60 !important;
   }
+  .integrated-window-frame .settings-modal-overlay {
+    top: 2.5rem;
+  }
   .desktop-toaster {
     --width: min(22.5rem, calc(100vw - 2rem));
   }

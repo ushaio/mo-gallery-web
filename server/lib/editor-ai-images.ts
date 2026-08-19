@@ -25,18 +25,17 @@ type ImageMetadata = {
 
 type PhotoCreateInput = {
   title: string
-  url: string
-  thumbnailUrl: string | null
+  path: string
+  thumbPath: string | null
   originFlag: 'web'
   storageProvider: string
-  storageKey: string
   width: number
   height: number
   size: number
   showFlag: true
 }
 
-type SavedPhoto = { id: string; url: string; thumbnailUrl: string | null }
+type SavedPhoto = { id: string }
 
 export type EditorAiImageStorage = Pick<StorageProvider, 'validateConfig' | 'download'> & {
   upload(file: UploadFileInput, thumbnail: UploadFileInput): Promise<UploadResult>
@@ -234,11 +233,10 @@ export async function saveEditorAiMessageImageCore(
     const photo = await dependencies.transaction(async (transaction) => {
       const createdPhoto = await transaction.createPhoto({
           title: truncate(target.title, 80),
-          url: uploadResult.url,
-          thumbnailUrl: uploadResult.thumbnailUrl || null,
+          path: uploadResult.key,
+          thumbPath: uploadResult.thumbnailKey || null,
           originFlag: 'web',
           storageProvider: provider,
-          storageKey: uploadResult.key,
           width: metadata.width || 0,
           height: metadata.height || 0,
           size: source.buffer.length,
@@ -249,7 +247,7 @@ export async function saveEditorAiMessageImageCore(
       return createdPhoto
     })
 
-    return { photoId: photo.id, url: photo.url, thumbnailUrl: photo.thumbnailUrl, alreadySaved: false }
+    return { photoId: photo.id, url: uploadResult.url, thumbnailUrl: uploadResult.thumbnailUrl || null, alreadySaved: false }
   } catch (error) {
     const cleanupKeys = [uploadResult.key, uploadResult.thumbnailKey].filter((key): key is string => Boolean(key))
     await Promise.all(cleanupKeys.map((key) => storage.delete(key).catch(() => {})))
@@ -272,7 +270,7 @@ const productionDependencies: EditorAiImageSaverDependencies = {
   transaction: (work) => db.$transaction(async (transaction) => work({
     createPhoto: (data) => transaction.photo.create({
       data,
-      select: { id: true, url: true, thumbnailUrl: true },
+      select: { id: true },
     }),
     updateMessageMetadata: async (messageId, metadata) => {
       await transaction.aiMessage.update({ where: { id: messageId }, data: { metadata: metadata as never } })

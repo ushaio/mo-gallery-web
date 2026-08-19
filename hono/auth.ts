@@ -101,6 +101,19 @@ auth.post('/login', async (c) => {
   })
 })
 
+auth.get('/me', authMiddleware, (c) => {
+  const user = c.get('user')
+  return c.json({
+    success: true,
+    data: {
+      id: user.sub,
+      username: user.username,
+      isAdmin: user.isAdmin === true,
+      avatarUrl: user.avatarUrl ?? null,
+    },
+  })
+})
+
 // Get Linux DO OAuth authorization URL
 auth.get('/linuxdo', (c) => {
   if (!LINUXDO_CLIENT_ID) {

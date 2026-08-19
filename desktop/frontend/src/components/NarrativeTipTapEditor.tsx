@@ -12,6 +12,7 @@ import type {
   NarrativeTipTapEditorHandle,
   NarrativeTipTapEditorProps as CoreEditorProps,
   NarrativeEditorRuntime,
+  EditorStory,
 } from '@mo-gallery/tiptap-editor'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -21,6 +22,24 @@ import { getAdminStory } from '@/lib/api/stories'
 import { editorAiLocal, getLocalEndpoint } from '@/lib/api/editor-ai-local'
 
 const editorAi: NarrativeEditorRuntime['ai'] = editorAiLocal
+
+async function getEditorStory(token: string, storyId: string): Promise<EditorStory> {
+  const story = await getAdminStory(token, storyId)
+  return {
+    id: story.id,
+    title: story.title,
+    content: story.content,
+    coverPhotoId: story.coverPhotoId,
+    isPublished: story.isPublished,
+    storyDate: story.storyDate,
+    createdAt: story.createdAt,
+    photos: story.photos.map((photo) => ({
+      id: photo.id,
+      url: photo.url ?? photo.path ?? '',
+      thumbnailUrl: photo.thumbnailUrl ?? undefined,
+    })),
+  }
+}
 
 // Agent 模式端点：本地 Go 代理（密钥在 Go 侧注入）
 const getAgentEndpoint: NarrativeEditorRuntime['getAgentEndpoint'] = async () => await getLocalEndpoint()
@@ -42,7 +61,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const { resolvedTheme } = useTheme()
 
     const runtime = useMemo<NarrativeEditorRuntime>(
-      () => ({ t, resolvedTheme, getAdminStory, ai: editorAi, getAgentEndpoint, copyToWechat }),
+      () => ({ t, resolvedTheme, getAdminStory: getEditorStory, ai: editorAi, getAgentEndpoint, copyToWechat }),
       [t, resolvedTheme],
     )
 

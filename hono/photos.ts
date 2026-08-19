@@ -14,7 +14,8 @@ import {
   type CompressionOutputFormat,
 } from '~/server/lib/image-processing'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
-import { resolvePhotoThumbnailUrl, resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
+import { resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
+import { invalidatePhotoUrlCache, resolvePhotoUrls } from '~/server/lib/photo-urls'
 import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
 import path from 'path'
@@ -72,37 +73,52 @@ function normalizeStorageKeyCandidate(value: string | null | undefined): string 
 }
 
 function deriveOriginalStorageKey(photo: {
-  storageKey?: string | null
-  url: string
+  path?: string | null
 }) {
-  return (
-    normalizeStorageKeyCandidate(photo.storageKey) ||
-    normalizeStorageKeyCandidate(photo.url)
-  )
+  return normalizeStorageKeyCandidate(photo.path)
 }
 
 function deriveThumbnailStorageKey(photo: {
-  storageKey?: string | null
-  thumbnailUrl?: string | null
+  path?: string | null
+  thumbPath?: string | null
 }) {
-  if (photo.thumbnailUrl) {
-    const thumbnailFromUrl = normalizeStorageKeyCandidate(photo.thumbnailUrl)
-    if (thumbnailFromUrl) return thumbnailFromUrl
+  if (photo.thumbPath) {
+    const thumbFromPath = normalizeStorageKeyCandidate(photo.thumbPath)
+    if (thumbFromPath) return thumbFromPath
   }
 
-  const originalKey = normalizeStorageKeyCandidate(photo.storageKey)
+  const originalKey = normalizeStorageKeyCandidate(photo.path)
   return originalKey ? buildThumbnailKey(originalKey) : undefined
 }
 
-function mapPhotoDto(
+function isDesktopPluginPhoto(photo: { storageRuntime?: string | null }): boolean {
+  return photo.storageRuntime === 'desktop-plugin'
+}
+
+function rejectDesktopPluginMutation(c: { json: (body: unknown, status?: number) => Response }) {
+  return c.json({
+    error: 'DESKTOP_PLUGIN_SOURCE_READ_ONLY',
+    message: 'Desktop plugin objects must be changed from the Desktop client',
+  }, 409)
+}
+
+async function mapPhotoDto(
   photo: {
     categories: { name: string }[]
     dominantColors: string | null
+    path?: string | null
+    thumbPath?: string | null
+    storageSourceId?: string | null
+    storageProvider?: string | null
+    storageUrlType?: string | null
     filmPhoto?: { filmRollId: string; filmRoll?: { name: string } | null } | null
   } & Record<string, unknown>
 ) {
+  const { url, thumbnailUrl } = await resolvePhotoUrls(photo)
   return {
     ...photo,
+    url,
+    thumbnailUrl,
     category: photo.categories.map((c) => c.name).join(','),
     dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
     photoType: photo.filmPhoto ? 'film' : 'digital',
@@ -169,19 +185,28 @@ function normalizeDisplayImageWidth(value: string | undefined): number {
 async function createDisplayImage(
   photo: {
     id: string
-    url: string
-    storageKey: string | null
+    url: string | null
+    path: string | null
     storageProvider: string
     storageSourceId: string | null
+    storageRuntime?: string | null
   },
   width: number,
 ): Promise<Buffer> {
   const storageKey = deriveOriginalStorageKey(photo)
   if (!storageKey) throw new Error(`Missing storage key for photo ${photo.id}`)
 
-  const storageConfig = await resolveStorageConfig(photo)
-  const storage = StorageProviderFactory.create(storageConfig)
-  const sourceBuffer = await storage.download(storageKey)
+  let sourceBuffer: Buffer
+  if (isDesktopPluginPhoto(photo)) {
+    if (!photo.url) throw new Error(`Missing public URL for desktop plugin photo ${photo.id}`)
+    const response = await fetch(photo.url)
+    if (!response.ok) throw new Error(`Unable to fetch desktop plugin object (${response.status})`)
+    sourceBuffer = Buffer.from(await response.arrayBuffer())
+  } else {
+    const storageConfig = await resolveStorageConfig(photo)
+    const storage = StorageProviderFactory.create(storageConfig)
+    sourceBuffer = await storage.download(storageKey)
+  }
 
   return withSharpTimeout(
     sharp(sourceBuffer)
@@ -223,7 +248,7 @@ photos.get('/photos', async (c) => {
         ],
       })
 
-      const data = photosList.map(mapPhotoDto)
+      const data = await Promise.all(photosList.map((p) => mapPhotoDto(p)))
 
       return c.json({
         success: true,
@@ -258,7 +283,7 @@ photos.get('/photos', async (c) => {
       })
     ])
 
-    const data = photosList.map(mapPhotoDto)
+    const data = await Promise.all(photosList.map((p) => mapPhotoDto(p)))
 
     return c.json({
       success: true,
@@ -323,10 +348,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
       if (formatSuffixes.length > 0) {
         where.AND = [{
           OR: formatSuffixes.flatMap((suffix) => [
-            { storageKey: { endsWith: suffix, mode: 'insensitive' as const } },
-            { url: { endsWith: suffix, mode: 'insensitive' as const } },
-            { url: { contains: `${suffix}?`, mode: 'insensitive' as const } },
-            { url: { contains: `${suffix}#`, mode: 'insensitive' as const } },
+            { path: { endsWith: suffix, mode: 'insensitive' as const } },
           ]),
         }]
       }
@@ -360,7 +382,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
       })
     ])
 
-    const data = photosList.map(mapPhotoDto)
+    const data = await Promise.all(photosList.map((p) => mapPhotoDto(p)))
 
     return c.json({
       success: true,
@@ -395,7 +417,7 @@ photos.get('/admin/photos/:id', authMiddleware, async (c) => {
     if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
     }
-    return c.json({ success: true, data: mapPhotoDto(photo) })
+    return c.json({ success: true, data: await mapPhotoDto(photo) })
   } catch (error) {
     console.error('Get admin photo error:', error)
     return c.json({ error: 'Internal server error' }, 500)
@@ -420,7 +442,7 @@ photos.get('/photos/featured', async (c) => {
       ],
     })
 
-    const data = photosList.map(mapPhotoDto)
+    const data = await Promise.all(photosList.map((p) => mapPhotoDto(p)))
 
     return c.json({
       success: true,
@@ -441,10 +463,11 @@ photos.get('/photos/:id/display', async (c) => {
       where: { id },
       select: {
         id: true,
-        url: true,
-        storageKey: true,
+        path: true,
         storageProvider: true,
         storageSourceId: true,
+        storageRuntime: true,
+        storageUrlType: true,
       },
     })
 
@@ -452,12 +475,13 @@ photos.get('/photos/:id/display', async (c) => {
       return c.json({ error: 'Photo not found' }, 404)
     }
 
-    const sourceKey = photo.storageKey || photo.url
+    const { url } = await resolvePhotoUrls(photo)
+    const sourceKey = photo.path || ''
     const cacheKey = `${photo.id}:${sourceKey}:${width}`
     let displayImagePromise = displayImageCache.get(cacheKey)
 
     if (!displayImagePromise) {
-      displayImagePromise = createDisplayImage(photo, width)
+      displayImagePromise = createDisplayImage({ ...photo, url }, width)
       displayImageCache.set(cacheKey, displayImagePromise)
 
       while (displayImageCache.size > DISPLAY_IMAGE_CACHE_LIMIT) {
@@ -521,23 +545,32 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
         select: {
           id: true,
           title: true,
-          thumbnailUrl: true,
-          url: true,
+          path: true,
+          thumbPath: true,
+          storageSourceId: true,
+          storageProvider: true,
+          storageUrlType: true,
           fileHash: true,
           createdAt: true,
         },
       })
+
+      // Resolve display URLs from storage paths + source config.
+      const resolvedPhotos = await Promise.all(existingPhotos.map(async (photo) => {
+        const { url, thumbnailUrl } = await resolvePhotoUrls(photo)
+        return { ...photo, url, thumbnailUrl }
+      }))
 
       // Create a map of hash -> photo for easy lookup
       const duplicateMap: Record<string, {
         id: string
         title: string
         thumbnailUrl: string | null
-        url: string
+        url: string | null
         createdAt: Date
       }> = {}
-      
-      existingPhotos.forEach((photo) => {
+
+      resolvedPhotos.forEach((photo) => {
         if (photo.fileHash) {
           duplicateMap[photo.fileHash] = {
             id: photo.id,
@@ -568,17 +601,27 @@ photos.post('/admin/photos/check-duplicate', async (c) => {
       select: {
         id: true,
         title: true,
-        thumbnailUrl: true,
-        url: true,
+        path: true,
+        thumbPath: true,
+        storageSourceId: true,
+        storageProvider: true,
+        storageUrlType: true,
         createdAt: true,
       },
     })
+
+    const existingPhotoDto = existingPhoto
+      ? {
+          ...existingPhoto,
+          ...(await resolvePhotoUrls(existingPhoto)),
+        }
+      : undefined
 
     return c.json({
       success: true,
       data: {
         isDuplicate: !!existingPhoto,
-        existingPhoto,
+        existingPhoto: existingPhotoDto,
       },
     })
   } catch (error) {
@@ -594,11 +637,14 @@ photos.post('/admin/photos/register', async (c) => {
 
     const {
       title: titleRaw,
-      url,
-      thumbnailUrl,
+      path,
+      thumbPath,
       storageProvider,
+      storageRuntime,
+      storagePluginId,
       storageSourceId,
-      storageKey,
+      storageUrlType,
+      storageUrlExpiresAt,
       width,
       height,
       size,
@@ -615,8 +661,30 @@ photos.post('/admin/photos/register', async (c) => {
 
     const title = titleRaw?.trim() || 'Untitled'
 
-    if (!url) {
-      return c.json({ error: 'url is required' }, 400)
+    if (storageRuntime !== undefined && storageRuntime !== null && storageRuntime !== 'web' && storageRuntime !== 'desktop-plugin') {
+      return c.json({ error: 'storageRuntime must be web or desktop-plugin' }, 400)
+    }
+    const normalizedStorageRuntime = storageRuntime === 'desktop-plugin' ? 'desktop-plugin' : 'web'
+    if (!path) {
+      return c.json({ error: 'path is required' }, 400)
+    }
+    if (normalizedStorageRuntime === 'desktop-plugin' && !storagePluginId) {
+      return c.json({ error: 'storagePluginId is required for desktop-plugin photos' }, 400)
+    }
+    if (normalizedStorageRuntime === 'desktop-plugin' && !storageSourceId) {
+      return c.json({ error: 'storageSourceId is required for desktop-plugin photos' }, 400)
+    }
+    const normalizedStorageUrlType = ['public', 'signed', 'temporary', 'local'].includes(storageUrlType)
+      ? storageUrlType
+      : storageUrlType
+        ? null
+        : 'public'
+    if (normalizedStorageUrlType === null) {
+      return c.json({ error: 'storageUrlType must be public, signed, temporary, or local' }, 400)
+    }
+    const parsedStorageUrlExpiresAt = storageUrlExpiresAt ? new Date(storageUrlExpiresAt) : null
+    if (storageUrlExpiresAt && !isValidDate(parsedStorageUrlExpiresAt ?? undefined)) {
+      return c.json({ error: 'storageUrlExpiresAt must be a valid date' }, 400)
     }
 
     // 重复检查
@@ -680,12 +748,15 @@ photos.post('/admin/photos/register', async (c) => {
     const createPhotoRecord = () => db.photo.create({
       data: {
         title,
-        url,
-        thumbnailUrl: thumbnailUrl || null,
+        path: path || null,
+        thumbPath: thumbPath || null,
         originFlag: ['web', 'mobile', 'desktop'].includes(originFlag) ? originFlag : 'web',
         storageProvider: storageProvider || 'local',
+        storageRuntime: normalizedStorageRuntime,
+        storagePluginId: normalizedStorageRuntime === 'desktop-plugin' ? storagePluginId : null,
         storageSourceId: storageSourceId || null,
-        storageKey: storageKey || null,
+        storageUrlType: normalizedStorageUrlType,
+        storageUrlExpiresAt: parsedStorageUrlExpiresAt,
         width: width || 0,
         height: height || 0,
         size: size || null,
@@ -752,11 +823,11 @@ photos.post('/admin/photos/register', async (c) => {
         },
       })
       if (withFilmRoll) {
-        return c.json({ success: true, data: mapPhotoDto(withFilmRoll) })
+        return c.json({ success: true, data: await mapPhotoDto(withFilmRoll) })
       }
     }
 
-    return c.json({ success: true, data: mapPhotoDto(photo) })
+    return c.json({ success: true, data: await mapPhotoDto(photo) })
   } catch (error) {
     console.error('Register photo error:', error)
     const message = error instanceof Error ? error.message : 'Internal server error'
@@ -1057,12 +1128,11 @@ photos.post('/admin/photos', async (c) => {
     const createPhotoRecord = () => db.photo.create({
       data: {
         title,
-        url: uploadResult.url,
-        thumbnailUrl: resolvePhotoThumbnailUrl(uploadResult, reuseUploadedFileAsThumbnail),
+        path: uploadResult.key,
+        thumbPath: uploadResult.thumbnailKey || null,
         originFlag,
         storageProvider: storageConfig.provider,
         storageSourceId: storageSourceId || null,
-        storageKey: uploadResult.key,
         width: metadata.width || 0,
         height: metadata.height || 0,
         size: buffer.length,
@@ -1142,14 +1212,14 @@ photos.post('/admin/photos', async (c) => {
       if (photoWithFilmRoll) {
         return c.json({
           success: true,
-          data: mapPhotoDto(photoWithFilmRoll),
+          data: await mapPhotoDto(photoWithFilmRoll),
         })
       }
     }
 
     return c.json({
       success: true,
-      data: mapPhotoDto(photo),
+      data: await mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Upload photo error:', error)
@@ -1191,6 +1261,10 @@ photos.delete('/admin/photos/:id', async (c) => {
         }, 400)
       }
 
+      if (isDesktopPluginPhoto(photo) && (deleteOriginal || deleteThumbnail)) {
+        return rejectDesktopPluginMutation(c)
+      }
+
       // Delete files from storage based on user selection
       if (deleteOriginal || deleteThumbnail) {
         // Get storage configuration for the provider used by this photo
@@ -1199,14 +1273,14 @@ photos.delete('/admin/photos/:id', async (c) => {
         // Create storage provider instance
         const storage = StorageProviderFactory.create(storageConfig)
 
-        // Derive thumbnail key from storage key
+        // Derive thumbnail key from the original path
         let thumbnailKey: string | undefined
-        if (deleteThumbnail && photo.storageKey) {
-          thumbnailKey = buildThumbnailKey(photo.storageKey)
+        if (deleteThumbnail && photo.path) {
+          thumbnailKey = buildThumbnailKey(photo.path)
         }
 
         // Delete based on user selection
-        const originalKey = deleteOriginal ? (photo.storageKey || photo.url) : undefined
+        const originalKey = deleteOriginal ? (photo.path || undefined) : undefined
         const thumbKey = deleteThumbnail ? thumbnailKey : undefined
 
         if (originalKey && thumbKey) {
@@ -1270,6 +1344,9 @@ photos.post('/admin/photos/batch-delete', async (c) => {
       if (photo.stories.length > 0 && !force) {
         errors.push(`Photo "${photo.title}" (${photo.id}) has associated stories`)
         failed++
+      } else if (isDesktopPluginPhoto(photo) && (deleteOriginal || deleteThumbnail)) {
+        errors.push(`Photo "${photo.title}" (${photo.id}) is owned by a Desktop storage plugin`)
+        failed++
       } else {
         photosToDelete.push(photo)
       }
@@ -1313,11 +1390,11 @@ photos.post('/admin/photos/batch-delete', async (c) => {
             // Delete files from storage if requested
             if (storage && (deleteOriginal || deleteThumbnail)) {
               let thumbnailKey: string | undefined
-              if (deleteThumbnail && photo.storageKey) {
-                thumbnailKey = buildThumbnailKey(photo.storageKey)
+              if (deleteThumbnail && photo.path) {
+                thumbnailKey = buildThumbnailKey(photo.path)
               }
 
-              const originalKey = deleteOriginal ? (photo.storageKey || photo.url) : undefined
+              const originalKey = deleteOriginal ? (photo.path || undefined) : undefined
               const thumbKey = deleteThumbnail ? thumbnailKey : undefined
 
               if (originalKey && thumbKey) {
@@ -1554,6 +1631,9 @@ photos.patch('/admin/photos/:id', async (c) => {
       if (!photo) {
         return c.json({ error: 'Photo not found' }, 404)
       }
+      if (isDesktopPluginPhoto(photo)) {
+        return rejectDesktopPluginMutation(c)
+      }
 
       const storageConfig = await resolveStorageConfig(photo)
       const storage = StorageProviderFactory.create(storageConfig)
@@ -1572,10 +1652,9 @@ photos.patch('/admin/photos/:id', async (c) => {
         thumbnailKey
       )
 
-      updateData.url = moveResult.newUrl
-      updateData.storageKey = moveResult.newKey
-      if (moveResult.newThumbnailUrl) {
-        updateData.thumbnailUrl = moveResult.newThumbnailUrl
+      updateData.path = moveResult.newKey
+      if (moveResult.newThumbnailKey) {
+        updateData.thumbPath = moveResult.newThumbnailKey
       }
     }
 
@@ -1640,7 +1719,7 @@ photos.patch('/admin/photos/:id', async (c) => {
 
     return c.json({
       success: true,
-      data: mapPhotoDto(photo),
+      data: await mapPhotoDto(photo),
     })
   } catch (error) {
     console.error('Update photo error:', error)
@@ -1733,6 +1812,10 @@ photos.post('/admin/photos/check-stories', async (c) => {
 })
 
 photos.post('/admin/photos/batch-update-urls', async (c) => {
+  // Photo URLs are now derived from the storage source's public config at read
+  // time, so changing e.g. `s3_public_url` re-derives every URL automatically
+  // without rewriting rows. This endpoint is kept as a compatibility no-op that
+  // drops the cached base-URL configs so the new base takes effect immediately.
   try {
     const body = await c.req.json()
     const { storageProvider, oldPublicUrl, newPublicUrl } = body
@@ -1741,43 +1824,11 @@ photos.post('/admin/photos/batch-update-urls', async (c) => {
       return c.json({ error: 'Missing required parameters' }, 400)
     }
 
-    // Find all photos using this storage provider
-    const photosList = await db.photo.findMany({
-      where: {
-        storageProvider: storageProvider as 'local' | 'github' | 's3',
-      },
-    })
-
-    let updated = 0
-    let failed = 0
-
-    // Update URLs for each photo
-    for (const photo of photosList) {
-      try {
-        // Replace old URL with new URL in both url and thumbnailUrl
-        const newUrl = photo.url.replace(oldPublicUrl, newPublicUrl)
-        const newThumbnailUrl = photo.thumbnailUrl
-          ? photo.thumbnailUrl.replace(oldPublicUrl, newPublicUrl)
-          : photo.thumbnailUrl
-
-        await db.photo.update({
-          where: { id: photo.id },
-          data: {
-            url: newUrl,
-            thumbnailUrl: newThumbnailUrl,
-          },
-        })
-
-        updated++
-      } catch (error) {
-        console.error(`Failed to update photo ${photo.id}:`, error)
-        failed++
-      }
-    }
+    invalidatePhotoUrlCache()
 
     return c.json({
       success: true,
-      data: { updated, failed },
+      data: { updated: 0, failed: 0 },
     })
   } catch (error) {
     console.error('Batch update URLs error:', error)
@@ -1795,11 +1846,15 @@ photos.post('/admin/photos/:id/reanalyze-colors', async (c) => {
       return c.json({ error: 'Photo not found' }, 404)
     }
 
+    if (isDesktopPluginPhoto(photo)) {
+      return rejectDesktopPluginMutation(c)
+    }
+
     // Get storage config and download the image
     const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
 
-    const buffer = await storage.download(photo.storageKey || photo.url)
+    const buffer = await storage.download(photo.path || '')
     if (!buffer) {
       return c.json({ error: 'Failed to download image' }, 500)
     }
@@ -1844,6 +1899,10 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
       return c.json({ error: 'Photo not found' }, 404)
     }
 
+    if (isDesktopPluginPhoto(photo)) {
+      return rejectDesktopPluginMutation(c)
+    }
+
     const formData = await c.req.formData()
     const file = formData.get('file') as File
     if (!file) {
@@ -1857,7 +1916,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     const storage = StorageProviderFactory.create(storageConfig)
     storage.validateConfig()
 
-    const storageKey = photo.storageKey || ''
+    const storageKey = photo.path || ''
     const lastSlash = storageKey.lastIndexOf('/')
     const storagePath = lastSlash >= 0 ? storageKey.substring(0, lastSlash) : ''
     const filename = lastSlash >= 0 ? storageKey.substring(lastSlash + 1) : storageKey
@@ -1895,8 +1954,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
 
     const updateData: Record<string, unknown> = {}
     if (uploadOriginal && uploadResult) {
-      updateData.url = uploadResult.url
-      updateData.storageKey = uploadResult.key
+      updateData.path = uploadResult.key
       updateData.width = metadata?.width || photo.width
       updateData.height = metadata?.height || photo.height
       updateData.size = buffer.length
@@ -1951,10 +2009,10 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
         }
       }
     }
-    if (uploadThumb && uploadResult?.thumbnailUrl) {
-      updateData.thumbnailUrl = uploadResult.thumbnailUrl
+    if (uploadThumb && uploadResult?.thumbnailKey) {
+      updateData.thumbPath = uploadResult.thumbnailKey
     } else if (uploadThumb && !uploadOriginal && uploadResult) {
-      updateData.thumbnailUrl = uploadResult.url
+      updateData.thumbPath = uploadResult.key
     }
 
     const updated = await db.photo.update({
@@ -1987,15 +2045,19 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
     const photo = await db.photo.findUnique({ where: { id } })
     if (!photo) return c.json({ error: 'Photo not found' }, 404)
 
+    if (isDesktopPluginPhoto(photo)) {
+      return rejectDesktopPluginMutation(c)
+    }
+
     const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)
 
-    const buffer = await storage.download(photo.storageKey || photo.url)
+    const buffer = await storage.download(photo.path || '')
     if (!buffer) return c.json({ error: 'Failed to download image' }, 500)
 
     const thumbnailBuffer = await generateThumbnailBuffer(buffer)
 
-    const storageKey = photo.storageKey || ''
+    const storageKey = photo.path || ''
     const lastSlash = storageKey.lastIndexOf('/')
     const storagePath = lastSlash >= 0 ? storageKey.substring(0, lastSlash) : ''
     const filename = lastSlash >= 0 ? storageKey.substring(lastSlash + 1) : storageKey
@@ -2010,7 +2072,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
 
     const updated = await db.photo.update({
       where: { id },
-      data: { thumbnailUrl: uploadResult.url },
+      data: { thumbPath: uploadResult.key },
       include: {
         categories: true,
         camera: true,
@@ -2021,7 +2083,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
 
     return c.json({
       success: true,
-      data: mapPhotoDto(updated),
+      data: await mapPhotoDto(updated),
     })
   } catch (error) {
     console.error('Generate thumbnail error:', error)

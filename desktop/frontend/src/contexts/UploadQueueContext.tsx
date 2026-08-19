@@ -42,6 +42,8 @@ interface UploadSettings {
   storyId?: string
   filmRollId?: string
   storageSourceId: string
+  storageRuntime?: 'web' | 'desktop-plugin'
+  storagePluginId?: string
   storagePath: string
   compressEnabled: boolean
   compressionFormat?: 'webp' | 'avif'
@@ -145,8 +147,10 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
         {
           title: settings.title || task.fileName,
           categories: settings.categories,
-          filmRollId: settings.filmRollId || '',
-          storageSourceId: settings.storageSourceId,
+           filmRollId: settings.filmRollId || '',
+            storageRuntime: 'desktop-plugin',
+           storagePluginId: settings.storagePluginId || '',
+           storageSourceId: settings.storageSourceId,
           storageProvider: '',
           storagePath: settings.storagePath || '',
           storagePathFull: Boolean(settings.storagePathFull),

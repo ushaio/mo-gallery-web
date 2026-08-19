@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import {
   Activity, Archive, Bot, Box, Check, ChevronRight, CircleAlert, Clock3,
@@ -79,11 +81,21 @@ export function AgentExtensionsTab() {
     }
   }
 
-  const importSkill = (source: 'directory' | 'archive') => run(
-    `import-${source}`,
-    source === 'directory' ? agentExtensions.importSkillDirectory : agentExtensions.importSkillArchive,
-    'Skill 已导入',
-  )
+  const importSkill = async (source: 'directory' | 'archive') => {
+    setBusy(`import-${source}`)
+    try {
+      const action = source === 'directory' ? agentExtensions.importSkillDirectory : agentExtensions.importSkillArchive
+      const imported = await action()
+      if (imported.length === 0) return
+      toast.success(`已导入 ${imported.length} 个 Skill`)
+      await refresh()
+      setSelected({ type: 'skill', id: imported[0].id })
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
@@ -204,7 +216,48 @@ function Toggle({ checked, disabled, onChange, label }: { checked: boolean; disa
 }
 
 function SkillDetail({ skill, busy, onToggle, onScriptToggle, onDelete }: { skill: AgentSkill; busy: string | null; onToggle: (enabled: boolean) => void; onScriptToggle: (enabled: boolean) => void; onDelete: () => void }) {
-  return <div><Header icon={Box} title={skill.name} description={skill.description} actions={<><button type="button" onClick={onDelete} className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[11px] hover:bg-secondary" style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}><Trash2 size={13} />移除</button><Toggle checked={skill.enabled} disabled={busy !== null} onChange={onToggle} label="启用 Skill" /></>} /><div className="max-w-3xl space-y-6 p-7"><DetailSection title="安装信息"><DetailRow label="版本" value={skill.version || '未声明'} /><DetailRow label="来源" value={skill.sourcePath} mono /><DetailRow label="管理目录" value={skill.installPath} mono /><DetailRow label="能力指纹" value={skill.contentHash} mono /></DetailSection><DetailSection title="安全策略" description="脚本权限独立于 Skill 启用状态。首次真实执行仍需用户确认。"><div className="flex items-center justify-between rounded-md border px-3 py-3" style={{ borderColor: 'var(--border)' }}><div><p className="text-xs font-medium">允许执行包内脚本</p><p className="mt-1 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>默认关闭；仅对当前 Skill 生效。</p></div><Toggle checked={skill.scriptExecutionEnabled} disabled={busy !== null} onChange={onScriptToggle} label="允许 Skill 脚本" /></div></DetailSection><DetailSection title="校验"><StatusCard healthy={skill.validationStatus === 'valid'} title={skill.validationStatus === 'valid' ? 'Skill 可用' : 'Skill 校验失败'} description={skill.validationError || 'SKILL.md 元数据与安装快照完整。'} /></DetailSection></div></div>
+  const [readme, setReadme] = useState('')
+  const [readmeLoading, setReadmeLoading] = useState(true)
+  const [readmeError, setReadmeError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    setReadme('')
+    setReadmeError('')
+    setReadmeLoading(true)
+    void agentExtensions.readSkill(skill.id).then(content => {
+      if (active) setReadme(content.readme)
+    }).catch(error => {
+      if (active) setReadmeError(getErrorMessage(error))
+    }).finally(() => {
+      if (active) setReadmeLoading(false)
+    })
+    return () => { active = false }
+  }, [skill.id])
+
+  return (
+    <div>
+      <Header icon={Box} title={skill.name} description={skill.description} actions={<><button type="button" onClick={onDelete} className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[11px] hover:bg-secondary" style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}><Trash2 size={13} />移除</button><Toggle checked={skill.enabled} disabled={busy !== null} onChange={onToggle} label="启用 Skill" /></>} />
+      <div className="max-w-4xl space-y-6 p-7">
+        <DetailSection title="介绍">
+          {readmeLoading ? (
+            <div className="space-y-2 py-2">{[0, 1, 2].map(item => <div key={item} className="h-3 animate-pulse rounded" style={{ width: item === 2 ? '68%' : '100%', backgroundColor: 'var(--muted)' }} />)}</div>
+          ) : readmeError ? (
+            <StatusCard healthy={false} title="README 读取失败" description={readmeError} />
+          ) : readme ? (
+            <div className="ai-markdown min-w-0 break-words text-sm leading-relaxed">
+              <Markdown remarkPlugins={[remarkGfm]}>{readme}</Markdown>
+            </div>
+          ) : (
+            <p className="rounded-md border border-dashed px-4 py-8 text-center text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>此 Skill 未提供 README.md</p>
+          )}
+        </DetailSection>
+        <DetailSection title="安装信息"><DetailRow label="版本" value={skill.version || '未声明'} /><DetailRow label="来源" value={skill.sourcePath} mono /><DetailRow label="管理目录" value={skill.installPath} mono /><DetailRow label="能力指纹" value={skill.contentHash} mono /></DetailSection>
+        <DetailSection title="安全策略" description="脚本权限独立于 Skill 启用状态。首次真实执行仍需用户确认。"><div className="flex items-center justify-between rounded-md border px-3 py-3" style={{ borderColor: 'var(--border)' }}><div><p className="text-xs font-medium">允许执行包内脚本</p><p className="mt-1 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>默认关闭；仅对当前 Skill 生效。</p></div><Toggle checked={skill.scriptExecutionEnabled} disabled={busy !== null} onChange={onScriptToggle} label="允许 Skill 脚本" /></div></DetailSection>
+        <DetailSection title="校验"><StatusCard healthy={skill.validationStatus === 'valid'} title={skill.validationStatus === 'valid' ? 'Skill 可用' : 'Skill 校验失败'} description={skill.validationError || 'SKILL.md 元数据与安装快照完整。'} /></DetailSection>
+      </div>
+    </div>
+  )
 }
 
 function McpDetail({ server, busy, onToggle, onTest, onEdit, onDelete }: { server: AgentMcpServer; busy: string | null; onToggle: (enabled: boolean) => void; onTest: () => void; onEdit: () => void; onDelete: () => void }) {

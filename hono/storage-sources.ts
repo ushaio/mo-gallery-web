@@ -32,7 +32,7 @@ storageSources.get('/admin/storage-sources', async (c) => {
 // Create a storage source
 storageSources.post('/admin/storage-sources', async (c) => {
   const body = await c.req.json()
-  const { name, type, accessKey, secretKey, bucket, region, endpoint, publicUrl, basePath, branch, accessMethod } = body
+  const { id, name, type, accessKey, secretKey, bucket, region, endpoint, publicUrl, basePath, branch, accessMethod } = body
 
   if (!name || !type) {
     return c.json({ error: 'name and type are required' }, 400)
@@ -49,8 +49,15 @@ storageSources.post('/admin/storage-sources', async (c) => {
     }
   }
 
+  // An explicit id is used when a Desktop plugin source mirrors its public
+  // config to the cloud so photos registered by the Desktop resolve their URLs.
+  if (id && await db.storageSource.findUnique({ where: { id } })) {
+    return c.json({ error: 'Storage source with this id already exists' }, 409)
+  }
+
   const source = await db.storageSource.create({
     data: {
+      ...(id ? { id } : {}),
       name,
       type,
       accessKey: encryptStoredSecret(accessKey),

@@ -106,8 +106,8 @@ export function PhotoDetailPanel({
   // Reset form when photo changes
   useEffect(() => {
     if (photo) {
-      // Extract path from storageKey (remove filename)
-      const storageKey = photo.storageKey || ''
+      // Extract path from the storage path (remove filename)
+      const storageKey = photo.path || ''
       const lastSlash = storageKey.lastIndexOf('/')
       const storagePath = lastSlash >= 0 ? storageKey.substring(0, lastSlash) : ''
       
@@ -211,7 +211,7 @@ export function PhotoDetailPanel({
     setSaving(true)
     try {
       // Check if path changed
-      const storageKey = photo.storageKey || ''
+      const storageKey = photo.path || ''
       const lastSlash = storageKey.lastIndexOf('/')
       const currentPath = lastSlash >= 0 ? storageKey.substring(0, lastSlash) : ''
       const pathChanged = editData.storagePath !== currentPath

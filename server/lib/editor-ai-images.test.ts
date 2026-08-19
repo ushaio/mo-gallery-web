@@ -82,8 +82,15 @@ function createFixture(options: FixtureOptions = {}) {
       if (options.transactionError) throw options.transactionError
       return work({
         createPhoto: async (data) => {
-          calls.push(`createPhoto:${data.storageKey}`)
-          return { id: 'photo-1', url: data.url, thumbnailUrl: data.thumbnailUrl }
+          calls.push(`createPhoto:${data.path}`)
+          return {
+            id: 'photo-1',
+            path: data.path,
+            thumbPath: data.thumbPath,
+            storageSourceId: null,
+            storageProvider: data.storageProvider,
+            storageUrlType: 'public',
+          }
         },
         updateMessageMetadata: async (messageId, metadata) => {
           calls.push(`updateMessage:${messageId}`)

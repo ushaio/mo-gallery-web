@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-
 	"mo-gallery-desktop/config"
 )
 
@@ -63,14 +61,6 @@ type UserInfo struct {
 	Username  string  `json:"username"`
 	IsAdmin   bool    `json:"isAdmin"`
 	AvatarURL *string `json:"avatarUrl,omitempty"`
-}
-
-// JWTClaims JWT 声明
-type JWTClaims struct {
-	Sub      string `json:"sub"`
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"isAdmin,omitempty"`
-	jwt.RegisteredClaims
 }
 
 // webLoginResponse Web 端 /api/auth/login 的响应
@@ -130,7 +120,7 @@ func ParseLoginEndpoint(raw string) (LoginEndpoint, error) {
 // Login 通过 Web API 验证管理员凭据
 // serverURL: Web 根地址或管理员登录地址，如 http://localhost:3000/login/private
 // rememberLogin: 是否记住登录凭据（仅开发使用，明文存储，不安全）
-func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rememberLogin bool) (*LoginResult, error) {
+func (s *AuthService) Login(serverURL, username, password string, rememberLogin bool) (*LoginResult, error) {
 	if serverURL == "" {
 		return nil, errors.New("请输入服务器地址")
 	}
@@ -147,15 +137,6 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 	if password == "" {
 		return nil, errors.New("用户名和密码不能为空")
 	}
-	jwtSecret = strings.TrimSpace(jwtSecret)
-	if jwtSecret == "" {
-		jwtSecret = strings.TrimSpace(s.cfg.API.JWTSecret)
-	}
-	if jwtSecret == "" {
-		return nil, errors.New("JWT Secret 不能为空")
-	}
-	s.cfg.API.JWTSecret = jwtSecret
-
 	endpoint, err := ParseLoginEndpoint(serverURL)
 	if err != nil {
 		return nil, err
@@ -194,7 +175,7 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 
 	var loginResp webLoginResponse
 	if err := json.Unmarshal(respBody, &loginResp); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %s", string(respBody))
+		return nil, unexpectedLoginResponseError(serverURL, resp.StatusCode, respBody)
 	}
 
 	// 检查结果
@@ -213,14 +194,9 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 	if loginResp.Token == "" {
 		return nil, errors.New("服务器未返回 token")
 	}
-	if _, err := s.ValidateToken(loginResp.Token); err != nil {
-		return nil, fmt.Errorf("服务器返回的 token 无效: %w", err)
-	}
-
 	// 保存配置到文件
 	s.cfg.API.BaseURL = serverURL
 	s.cfg.API.LoginURL = endpoint.LoginURL
-	s.cfg.API.JWTSecret = jwtSecret
 	if rememberLogin {
 		s.cfg.API.RememberLogin = true
 		s.cfg.API.SavedUsername = username
@@ -244,39 +220,34 @@ func (s *AuthService) Login(serverURL, username, password, jwtSecret string, rem
 	}, nil
 }
 
-// ValidateToken 验证 JWT token（本地签名校验，不请求网络）
-func (s *AuthService) ValidateToken(tokenStr string) (*UserInfo, error) {
-	secret := strings.TrimSpace(s.cfg.API.JWTSecret)
-	if secret == "" {
-		return nil, errors.New("未配置 JWT 密钥")
+func unexpectedLoginResponseError(serverURL string, statusCode int, body []byte) error {
+	const maxPreviewBytes = 256
+	preview := strings.TrimSpace(string(body))
+	lower := strings.ToLower(preview)
+	if strings.HasPrefix(lower, "<!doctype html") || strings.HasPrefix(lower, "<html") || strings.Contains(lower, "<head>") {
+		return fmt.Errorf("服务器地址 %s 未指向 MO Gallery API（HTTP %d），请检查地址、端口或管理员登录路径", serverURL, statusCode)
+	}
+	if len(preview) > maxPreviewBytes {
+		preview = preview[:maxPreviewBytes] + "..."
+	}
+	if preview == "" {
+		preview = "空响应"
+	}
+	return fmt.Errorf("服务器返回了无法识别的登录响应（HTTP %d）: %s", statusCode, preview)
+}
+
+// GetCurrentUser asks the Web API to validate the current bearer token. The
+// server owns JWT verification keys; Desktop must never require or store them.
+func (s *AuthService) GetCurrentUser() (*UserInfo, error) {
+	if s.proxy == nil || !s.proxy.IsReady() {
+		return nil, errors.New("未连接到服务器")
 	}
 
-	token, err := jwt.ParseWithClaims(tokenStr, &JWTClaims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %s", t.Header["alg"])
-		}
-		return []byte(secret), nil
-	})
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, errors.New("登录已过期，请重新登录")
-		}
-		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
-			return nil, errors.New("Token 签名无效，请检查 JWT 密钥配置后重新登录")
-		}
-		return nil, fmt.Errorf("invalid token: %w", err)
+	var user UserInfo
+	if err := s.proxy.GET("/auth/me", &user); err != nil {
+		return nil, err
 	}
-
-	claims, ok := token.Claims.(*JWTClaims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid token claims")
-	}
-
-	return &UserInfo{
-		ID:       claims.Sub,
-		Username: claims.Username,
-		IsAdmin:  claims.IsAdmin,
-	}, nil
+	return &user, nil
 }
 
 // ─── Linux DO OAuth ───────────────────────────────────

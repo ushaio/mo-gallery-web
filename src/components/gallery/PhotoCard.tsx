@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useMemo, useState } from 'react'
 import Image from 'next/image'
+import { ImageOff } from 'lucide-react'
 
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
@@ -80,16 +81,22 @@ export const PhotoCard = memo(function PhotoCard({
         className={`relative overflow-hidden bg-muted ${immersive ? '' : 'mb-4'}`}
         style={{ ...placeholderStyle, height: imageHeight }}
       >
-        <Image
-          src={coverUrl}
-          alt={photo.title}
-          fill
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-          className={`object-cover transition-[filter,transform,opacity] duration-300 group-hover:scale-[1.02] ${grayscale ? 'grayscale' : ''} ${revealed ? 'opacity-100' : 'opacity-0'}`}
-          loading={index < 6 ? 'eager' : 'lazy'}
-          decoding="async"
-          onLoad={handleImageLoad}
-        />
+        {coverUrl ? (
+          <Image
+            src={coverUrl}
+            alt={photo.title}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+            className={`object-cover transition-[filter,transform,opacity] duration-300 group-hover:scale-[1.02] ${grayscale ? 'grayscale' : ''} ${revealed ? 'opacity-100' : 'opacity-0'}`}
+            loading={index < 6 ? 'eager' : 'lazy'}
+            decoding="async"
+            onLoad={handleImageLoad}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground" aria-label="Image unavailable">
+            <ImageOff className="h-7 w-7" />
+          </div>
+        )}
 
         <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
       </div>

@@ -4,6 +4,7 @@ import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { z } from 'zod'
 import { Prisma } from '@/generated/prisma/client'
+import { resolvePhotoUrls, resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
 
 const albums = new Hono<{ Variables: AuthVariables }>()
 
@@ -67,14 +68,14 @@ albums.get('/albums', async (c) => {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     })
 
-    const data = albumsList.map((album) => ({
+    const data = await Promise.all(albumsList.map(async (album) => ({
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
-    }))
+      }))),
+    })))
 
     return c.json({
       success: true,
@@ -110,10 +111,10 @@ albums.get('/albums/:id', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -174,14 +175,14 @@ albums.get('/admin/albums', async (c) => {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     })
 
-    const data = albumsList.map((album) => ({
+    const data = await Promise.all(albumsList.map(async (album) => ({
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
-    }))
+      }))),
+    })))
 
     return c.json({
       success: true,
@@ -216,10 +217,10 @@ albums.get('/admin/albums/:id', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -263,10 +264,10 @@ albums.post('/admin/albums', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -300,10 +301,10 @@ albums.patch('/admin/albums/:id', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -359,10 +360,10 @@ albums.post('/admin/albums/:id/photos', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -400,10 +401,10 @@ albums.delete('/admin/albums/:albumId/photos/:photoId', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({
@@ -422,20 +423,28 @@ albums.patch('/admin/albums/:id/cover', async (c) => {
     const body = await c.req.json()
     const { photoId } = body
 
-    // Get photo URL
+    // Get photo display URL (derived from storage paths + source config)
     const photo = await db.photo.findUnique({
       where: { id: photoId },
-      select: { thumbnailUrl: true, url: true },
+      select: {
+        path: true,
+        thumbPath: true,
+        storageSourceId: true,
+        storageProvider: true,
+        storageUrlType: true,
+      },
     })
 
     if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
     }
 
+    const { url, thumbnailUrl } = await resolvePhotoUrls(photo)
+
     const album = await db.album.update({
       where: { id },
       data: {
-        coverUrl: photo.thumbnailUrl || photo.url,
+        coverUrl: thumbnailUrl || url,
       },
       include: {
         photos: {
@@ -450,10 +459,10 @@ albums.patch('/admin/albums/:id/cover', async (c) => {
     const data = {
       ...album,
       photoCount: album._count.photos,
-      photos: album.photos.map((p) => ({
-        ...p,
+      photos: await Promise.all(album.photos.map(async (p) => ({
+        ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
-      })),
+      }))),
     }
 
     return c.json({

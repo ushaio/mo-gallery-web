@@ -18,6 +18,7 @@ export type AgentSkill = {
 export type AgentSkillContent = {
   skill: AgentSkill
   instructions: string
+  readme: string
   references: Array<{ path: string; content: string }>
 }
 
@@ -130,8 +131,8 @@ export type AgentMcpToolCallResult = {
 
 type AgentExtensionBridge = {
   GetAgentExtensionSnapshot(): Promise<AgentExtensionSnapshot>
-  SelectAndImportSkillDirectory(): Promise<AgentSkill>
-  SelectAndImportSkillArchive(): Promise<AgentSkill>
+  SelectAndImportSkillDirectory(): Promise<AgentSkill[]>
+  SelectAndImportSkillArchive(): Promise<AgentSkill[]>
   ReadAgentSkill(id: string): Promise<AgentSkillContent>
   ReadAgentSkillResource(id: string, path: string): Promise<AgentSkillResource>
   SetAgentSkillEnabled(id: string, enabled: boolean): Promise<void>
@@ -174,6 +175,7 @@ function normalizeSnapshot(snapshot: AgentExtensionSnapshot | null | undefined):
 function normalizeSkillContent(content: AgentSkillContent): AgentSkillContent {
   return {
     ...content,
+    readme: content.readme ?? '',
     references: content.references ?? [],
   }
 }

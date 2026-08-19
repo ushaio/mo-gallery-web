@@ -82,8 +82,9 @@ type ContextMenuState = { photo: PhotoDto; x: number; y: number }
 type EditorState = { photo: PhotoDto; tab: 'info' | 'story' }
 type DeleteRequest = { ids: string[]; isBulk: boolean }
 
-function getPhotoFileFormat(photo: Pick<PhotoDto, 'storageKey' | 'url'>) {
-  const source = photo.storageKey || photo.url
+function getPhotoFileFormat(photo: Pick<PhotoDto, 'path' | 'url'>) {
+  const source = photo.path || photo.url
+  if (!source) return undefined
   const path = source.split(/[?#]/, 1)[0]
   const extension = path.match(/\.([a-z0-9]+)$/i)?.[1]?.toLocaleLowerCase()
   return extension === 'jpeg' ? 'jpg' : extension
@@ -236,6 +237,7 @@ const PhotoCard = memo(function PhotoCard({
 }: PhotoCardProps) {
   const masonry = mode === 'masonry'
   const visible = photo.showFlag ?? true
+  const assetPath = photo.thumbnailUrl || photo.url
 
   return (
     <div
@@ -258,14 +260,20 @@ const PhotoCard = memo(function PhotoCard({
         className={cn('relative min-h-0 w-full overflow-hidden bg-muted', !masonry && 'aspect-[5/4]')}
         style={masonry ? { aspectRatio: photo.width > 0 && photo.height > 0 ? `${photo.width} / ${photo.height}` : '4 / 3' } : undefined}
       >
-        <Thumb
-          src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)}
-          alt={photo.title || ''}
-          className={cn(
-            'w-full transition-[transform,opacity] duration-300',
-            masonry ? 'block h-full object-cover group-hover:scale-[1.015]' : mode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]',
-          )}
-        />
+        {assetPath ? (
+          <Thumb
+            src={resolveAssetUrl(assetPath, cdnDomain)}
+            alt={photo.title || ''}
+            className={cn(
+              'w-full transition-[transform,opacity] duration-300',
+              masonry ? 'block h-full object-cover group-hover:scale-[1.015]' : mode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]',
+            )}
+          />
+        ) : (
+          <div className="flex h-full min-h-24 items-center justify-center text-muted-foreground" aria-label={t('admin.resource_library_no_photo_selected')}>
+            <ImageOff size={28} />
+          </div>
+        )}
 
         <button
           type="button"

@@ -102,6 +102,10 @@ export function CreateBlog(arg1) {
   return window['go']['main']['App']['CreateBlog'](arg1);
 }
 
+export function CreateDesktopStorageSource(arg1) {
+  return window['go']['main']['App']['CreateDesktopStorageSource'](arg1);
+}
+
 export function CreateEditorAiConversation(arg1) {
   return window['go']['main']['App']['CreateEditorAiConversation'](arg1);
 }
@@ -138,10 +142,6 @@ export function CreateLocalLibraryTag(arg1, arg2) {
   return window['go']['main']['App']['CreateLocalLibraryTag'](arg1, arg2);
 }
 
-export function CreateStorageSource(arg1) {
-  return window['go']['main']['App']['CreateStorageSource'](arg1);
-}
-
 export function CreateStory(arg1) {
   return window['go']['main']['App']['CreateStory'](arg1);
 }
@@ -156,6 +156,10 @@ export function DeleteBlog(arg1) {
 
 export function DeleteComment(arg1) {
   return window['go']['main']['App']['DeleteComment'](arg1);
+}
+
+export function DeleteDesktopStorageSource(arg1) {
+  return window['go']['main']['App']['DeleteDesktopStorageSource'](arg1);
 }
 
 export function DeleteEditorAiConversation(arg1) {
@@ -200,10 +204,6 @@ export function DeleteLocalLibraryTag(arg1) {
 
 export function DeletePhoto(arg1, arg2) {
   return window['go']['main']['App']['DeletePhoto'](arg1, arg2);
-}
-
-export function DeleteStorageSource(arg1) {
-  return window['go']['main']['App']['DeleteStorageSource'](arg1);
 }
 
 export function DeleteStory(arg1) {
@@ -296,6 +296,22 @@ export function GetCategories() {
 
 export function GetComments(arg1) {
   return window['go']['main']['App']['GetComments'](arg1);
+}
+
+export function GetDesktopPluginMarketplace(arg1) {
+  return window['go']['main']['App']['GetDesktopPluginMarketplace'](arg1);
+}
+
+export function GetDesktopStoragePlugins() {
+  return window['go']['main']['App']['GetDesktopStoragePlugins']();
+}
+
+export function GetDesktopStorageSources() {
+  return window['go']['main']['App']['GetDesktopStorageSources']();
+}
+
+export function GetDesktopSystemPlugins() {
+  return window['go']['main']['App']['GetDesktopSystemPlugins']();
 }
 
 export function GetEditorAiConversation(arg1) {
@@ -470,8 +486,36 @@ export function InitializeLocalLibrary(arg1, arg2) {
   return window['go']['main']['App']['InitializeLocalLibrary'](arg1, arg2);
 }
 
+export function InstallDesktopMarketplacePlugin(arg1, arg2) {
+  return window['go']['main']['App']['InstallDesktopMarketplacePlugin'](arg1, arg2);
+}
+
+export function InstallDesktopStoragePlugin(arg1) {
+  return window['go']['main']['App']['InstallDesktopStoragePlugin'](arg1);
+}
+
+export function InstallDesktopStoragePluginPackage(arg1) {
+  return window['go']['main']['App']['InstallDesktopStoragePluginPackage'](arg1);
+}
+
+export function InstallDesktopSystemPlugin(arg1) {
+  return window['go']['main']['App']['InstallDesktopSystemPlugin'](arg1);
+}
+
+export function InstallDesktopSystemPluginPackage(arg1) {
+  return window['go']['main']['App']['InstallDesktopSystemPluginPackage'](arg1);
+}
+
 export function IsLinuxDoEnabled() {
   return window['go']['main']['App']['IsLinuxDoEnabled']();
+}
+
+export function ListDesktopStoragePluginVersions(arg1) {
+  return window['go']['main']['App']['ListDesktopStoragePluginVersions'](arg1);
+}
+
+export function ListDesktopSystemPluginVersions(arg1) {
+  return window['go']['main']['App']['ListDesktopSystemPluginVersions'](arg1);
 }
 
 export function ListLocalAssets(arg1) {
@@ -506,8 +550,8 @@ export function ListZineProjects() {
   return window['go']['main']['App']['ListZineProjects']();
 }
 
-export function Login(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4, arg5);
+export function Login(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4);
 }
 
 export function MoveLocalAssets(arg1, arg2) {
@@ -516,6 +560,14 @@ export function MoveLocalAssets(arg1, arg2) {
 
 export function MoveLocalLibraryFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveLocalLibraryFolder'](arg1, arg2, arg3);
+}
+
+export function OpenDesktopStoragePluginLocation(arg1) {
+  return window['go']['main']['App']['OpenDesktopStoragePluginLocation'](arg1);
+}
+
+export function OpenDesktopSystemPluginLocation(arg1) {
+  return window['go']['main']['App']['OpenDesktopSystemPluginLocation'](arg1);
 }
 
 export function OpenDownloadedUpdate() {
@@ -662,6 +714,14 @@ export function RevokeAgentAuthorization(arg1) {
   return window['go']['main']['App']['RevokeAgentAuthorization'](arg1);
 }
 
+export function RollbackDesktopStoragePlugin(arg1, arg2) {
+  return window['go']['main']['App']['RollbackDesktopStoragePlugin'](arg1, arg2);
+}
+
+export function RollbackDesktopSystemPlugin(arg1, arg2) {
+  return window['go']['main']['App']['RollbackDesktopSystemPlugin'](arg1, arg2);
+}
+
 export function SaveAgentMCPServer(arg1) {
   return window['go']['main']['App']['SaveAgentMCPServer'](arg1);
 }
@@ -702,6 +762,14 @@ export function SelectAndImportSkillDirectory() {
   return window['go']['main']['App']['SelectAndImportSkillDirectory']();
 }
 
+export function SelectDesktopStoragePluginManifest() {
+  return window['go']['main']['App']['SelectDesktopStoragePluginManifest']();
+}
+
+export function SelectDesktopStoragePluginPackage() {
+  return window['go']['main']['App']['SelectDesktopStoragePluginPackage']();
+}
+
 export function SelectFiles() {
   return window['go']['main']['App']['SelectFiles']();
 }
@@ -738,6 +806,10 @@ export function SetAuth(arg1, arg2) {
   return window['go']['main']['App']['SetAuth'](arg1, arg2);
 }
 
+export function SetDesktopStorageSourceEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetDesktopStorageSourceEnabled'](arg1, arg2);
+}
+
 export function SetFilmRollFrameOrder(arg1, arg2) {
   return window['go']['main']['App']['SetFilmRollFrameOrder'](arg1, arg2);
 }
@@ -766,8 +838,8 @@ export function TestAgentMCPServer(arg1) {
   return window['go']['main']['App']['TestAgentMCPServer'](arg1);
 }
 
-export function TestDatabaseConnection(arg1) {
-  return window['go']['main']['App']['TestDatabaseConnection'](arg1);
+export function TestDesktopStorageSource(arg1) {
+  return window['go']['main']['App']['TestDesktopStorageSource'](arg1);
 }
 
 export function ToggleFeatured(arg1) {
@@ -786,6 +858,14 @@ export function UnbindLinuxDoAccount() {
   return window['go']['main']['App']['UnbindLinuxDoAccount']();
 }
 
+export function UninstallDesktopStoragePlugin(arg1) {
+  return window['go']['main']['App']['UninstallDesktopStoragePlugin'](arg1);
+}
+
+export function UninstallDesktopSystemPlugin(arg1) {
+  return window['go']['main']['App']['UninstallDesktopSystemPlugin'](arg1);
+}
+
 export function UpdateAiConfig(arg1) {
   return window['go']['main']['App']['UpdateAiConfig'](arg1);
 }
@@ -800,6 +880,10 @@ export function UpdateBlog(arg1, arg2) {
 
 export function UpdateCommentStatus(arg1, arg2) {
   return window['go']['main']['App']['UpdateCommentStatus'](arg1, arg2);
+}
+
+export function UpdateDesktopStorageSource(arg1) {
+  return window['go']['main']['App']['UpdateDesktopStorageSource'](arg1);
 }
 
 export function UpdateEditorAiConversation(arg1, arg2) {
@@ -846,10 +930,6 @@ export function UpdateSettings(arg1) {
   return window['go']['main']['App']['UpdateSettings'](arg1);
 }
 
-export function UpdateStorageSource(arg1, arg2) {
-  return window['go']['main']['App']['UpdateStorageSource'](arg1, arg2);
-}
-
 export function UpdateStory(arg1, arg2) {
   return window['go']['main']['App']['UpdateStory'](arg1, arg2);
 }
@@ -864,8 +944,4 @@ export function UploadFile(arg1, arg2, arg3, arg4) {
 
 export function UploadLocalAsset(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UploadLocalAsset'](arg1, arg2, arg3, arg4);
-}
-
-export function ValidateToken(arg1) {
-  return window['go']['main']['App']['ValidateToken'](arg1);
 }

@@ -4,13 +4,13 @@
  * as the "thumbnail", which puts 12MP images into the gallery grid — each
  * costs 300-400ms of decode when scrolled into view and freezes scrolling).
  *
- * For every photo with thumbnailUrl missing or equal to url:
+ * For every photo with thumbPath missing:
  *   download original -> 800px AVIF q72 (same recipe as
  *   server/lib/image-processing.ts generateThumbnailBuffer) -> upload as
- *   thumb-<name>.avif next to the original -> update Photo.thumbnailUrl.
+ *   thumb-<name>.avif next to the original -> update Photo.thumbPath.
  *
- * Originals are never modified. Rollback: set thumbnailUrl back to url and
- * delete the thumb-* objects (the script prints every write it makes).
+ * Originals are never modified. Rollback: clear thumbPath and delete the
+ * thumb-* objects (the script prints every write it makes).
  *
  * Usage:
  *   npx tsx scripts/backfill-thumbnails.ts           # dry run (read-only)
@@ -87,18 +87,17 @@ async function main() {
     select: {
       id: true,
       title: true,
-      url: true,
-      thumbnailUrl: true,
+      path: true,
+      thumbPath: true,
       storageProvider: true,
       storageSourceId: true,
-      storageKey: true,
       width: true,
       height: true,
     },
     orderBy: { createdAt: 'desc' },
   })
 
-  const targets = photos.filter((p) => !p.thumbnailUrl || p.thumbnailUrl === p.url)
+  const targets = photos.filter((p) => !p.thumbPath)
   console.log(`photos total: ${photos.length}, need thumbnail backfill: ${targets.length}`)
   if (targets.length === 0) {
     await prisma.$disconnect()
@@ -163,14 +162,13 @@ async function main() {
       return
     }
 
-    const originalKey = normalizeKeyCandidate(photo.storageKey) ?? normalizeKeyCandidate(photo.url)
+    const originalKey = normalizeKeyCandidate(photo.path)
     if (!originalKey) {
       skipped++
-      console.log(`SKIP  ${label}: cannot derive storage key from "${photo.url}"`)
+      console.log(`SKIP  ${label}: cannot derive storage key from "${photo.path}"`)
       return
     }
     const thumbKey = buildThumbnailKey(originalKey)
-    const thumbUrl = `${target.publicUrl}/${thumbKey}`
 
     if (!APPLY) {
       let exists = false
@@ -200,9 +198,9 @@ async function main() {
         Body: thumb,
         ContentType: 'image/avif',
       }))
-      await prisma.photo.update({ where: { id: photo.id }, data: { thumbnailUrl: thumbUrl } })
+      await prisma.photo.update({ where: { id: photo.id }, data: { thumbPath: thumbKey } })
       ok++
-      console.log(`DONE  ${label}: ${(original.length / 1024).toFixed(0)}KB -> ${(thumb.length / 1024).toFixed(0)}KB  ${thumbUrl}`)
+      console.log(`DONE  ${label}: ${(original.length / 1024).toFixed(0)}KB -> ${(thumb.length / 1024).toFixed(0)}KB  ${thumbKey}`)
     } catch (error) {
       failed++
       console.error(`FAIL  ${label}:`, error instanceof Error ? error.message : error)

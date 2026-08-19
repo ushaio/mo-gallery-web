@@ -47,15 +47,6 @@ func main() {
 		log.Fatalf("初始化本地 Zine 数据库失败: %v", err)
 	}
 
-	// 初始化数据库连接
-	if cfg.Database.DSN() != "" {
-		if err := db.Connect(cfg.Database.DSN()); err != nil {
-			log.Printf("数据库连接失败: %v (部分功能不可用)", err)
-		} else {
-			log.Println("数据库连接成功")
-		}
-	}
-
 	// 创建 App 实例
 	app := NewApp(cfg)
 

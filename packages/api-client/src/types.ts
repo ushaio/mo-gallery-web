@@ -1,6 +1,7 @@
 import type {
   AiChangeSetState,
   EditorAiMessageMetadata,
+  EditorAiReasoningEffort,
 } from '@mo-gallery/ai-agent'
 
 export interface FilmRollDto {
@@ -47,8 +48,8 @@ export interface PhotoDto {
   photoType?: 'digital' | 'film'
   filmRollId?: string | null
   filmRollName?: string | null
-  url: string
-  thumbnailUrl?: string
+  url: string | null
+  thumbnailUrl?: string | null
   originFlag?: 'web' | 'mobile' | 'desktop'
   width: number
   height: number
@@ -57,7 +58,15 @@ export interface PhotoDto {
   showFlag?: boolean
   createdAt: string
   storageProvider?: string
-  storageKey?: string
+  storageRuntime?: 'web' | 'desktop-plugin'
+  storagePluginId?: string | null
+  storageSourceId?: string | null
+  /** Relative storage path of the original image (authoritative). */
+  path?: string
+  /** Relative storage path of the thumbnail (authoritative). */
+  thumbPath?: string | null
+  storageUrlType?: string
+  storageUrlExpiresAt?: string | null
   dominantColors?: string[]
   // Equipment relations
   cameraId?: string
@@ -176,6 +185,7 @@ export type StoryAiAction =
 export interface StoryAiGenerateInput {
   action?: StoryAiAction
   model?: string
+  reasoningEffort?: EditorAiReasoningEffort
   prompt?: string
   title?: string
   selectedText?: string

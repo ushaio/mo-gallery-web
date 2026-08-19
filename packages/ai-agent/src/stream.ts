@@ -23,7 +23,18 @@ export interface EditorAiRuntimeTool {
   execute: (input: unknown, context?: EditorAiRuntimeToolExecutionContext) => Promise<unknown>
 }
 
+export type EditorAiReasoningEffort = 'low' | 'medium' | 'high'
+
+export interface EditorAiUsage {
+  inputTokens?: number
+  outputTokens?: number
+  reasoningTokens?: number
+  cacheReadTokens?: number
+}
+
 export type EditorAiStreamEvent =
+  | { type: 'response-start'; id: string }
+  | { type: 'response-end'; id: string }
   | { type: 'text-delta'; id: string; text: string }
   | { type: 'reasoning-delta'; id: string; text: string }
   | { type: 'tool-input-start'; id: string; name: string }
@@ -33,6 +44,7 @@ export type EditorAiStreamEvent =
   | { type: 'tool-error'; id: string; name: string; input: unknown; error: string }
 
 export type EditorAiTraceBlock =
+  | { type: 'activity'; id: string; status: 'waiting' }
   | { type: 'text'; id: string; text: string }
   | { type: 'reasoning'; id: string; text: string }
   | {
@@ -86,9 +98,19 @@ export function reduceEditorAiTrace(
   blocks: EditorAiTraceBlock[],
   event: EditorAiStreamEvent,
 ): EditorAiTraceBlock[] {
+  if (event.type === 'response-start') {
+    return blocks.some(block => block.type === 'activity' && block.id === event.id)
+      ? blocks
+      : [...blocks, { type: 'activity', id: event.id, status: 'waiting' }]
+  }
+  if (event.type === 'response-end') {
+    return blocks.filter(block => block.type !== 'activity' || block.id !== event.id)
+  }
+
+  const visibleBlocks = blocks.filter(block => block.type !== 'activity')
   if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
     return appendTraceTextBlock(
-      blocks,
+      visibleBlocks,
       event.type === 'text-delta' ? 'text' : 'reasoning',
       event.id,
       event.text,
@@ -96,7 +118,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-input-start') {
     return updateTraceToolBlock(
-      blocks,
+      visibleBlocks,
       event.id,
       () => ({ type: 'tool', id: event.id, name: event.name, status: 'preparing' }),
       block => ({ ...block, name: event.name }),
@@ -104,7 +126,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-input-delta') {
     return updateTraceToolBlock(
-      blocks,
+      visibleBlocks,
       event.id,
       () => ({ type: 'tool', id: event.id, name: '', status: 'preparing', inputText: event.delta }),
       block => ({ ...block, inputText: (block.inputText ?? '') + event.delta }),
@@ -112,7 +134,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-call') {
     return updateTraceToolBlock(
-      blocks,
+      visibleBlocks,
       event.id,
       () => ({ type: 'tool', id: event.id, name: event.name, status: 'running', input: event.input }),
       block => ({ ...block, name: event.name, status: 'running', input: event.input }),
@@ -120,7 +142,7 @@ export function reduceEditorAiTrace(
   }
   if (event.type === 'tool-result') {
     return updateTraceToolBlock(
-      blocks,
+      visibleBlocks,
       event.id,
       () => ({
         type: 'tool', id: event.id, name: event.name, status: 'completed',
@@ -138,7 +160,7 @@ export function reduceEditorAiTrace(
     )
   }
   return updateTraceToolBlock(
-    blocks,
+    visibleBlocks,
     event.id,
     () => ({
       type: 'tool', id: event.id, name: event.name, status: 'failed',
@@ -158,6 +180,7 @@ export function readEditorAiAssistantTrace(value: unknown): EditorAiTraceBlock[]
     if (!block || typeof block !== 'object' || Array.isArray(block)) return false
     const item = block as { type?: unknown; id?: unknown; text?: unknown; name?: unknown; status?: unknown }
     if (typeof item.id !== 'string') return false
+    if (item.type === 'activity') return item.status === 'waiting'
     if (item.type === 'text' || item.type === 'reasoning') return typeof item.text === 'string'
     return item.type === 'tool'
       && typeof item.name === 'string'
@@ -170,9 +193,11 @@ export interface StreamEditorAiOptions {
   model: string
   messages: EditorAiChatMessage[]
   temperature?: number
+  reasoningEffort?: EditorAiReasoningEffort
   signal?: AbortSignal
   onChunk: (text: string) => void
   onEvent?: (event: EditorAiStreamEvent) => void
+  onUsage?: (usage: EditorAiUsage) => void
   tools?: Record<string, EditorAiRuntimeTool>
 }
 
@@ -183,6 +208,7 @@ export async function streamEditorAiText(
   return streamVercelAiText({
     ...options,
     temperature: options.temperature ?? 0.7,
+    reasoningEffort: options.reasoningEffort,
     tools: options.tools,
   })
 }

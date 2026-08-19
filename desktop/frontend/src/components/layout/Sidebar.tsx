@@ -27,7 +27,7 @@ const navGroups = [
     { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
   ],
   [
-    { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
+    { path: '/storage', icon: HardDrive, key: 'admin.storage_sources' },
     { path: '/friends', icon: Users, key: 'admin.friends' },
   ],
 ]
@@ -48,7 +48,11 @@ const languageOptions = [
   { value: 'en' as const, label: 'English' },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  onOpenSettings?: () => void
+}
+
+export function Sidebar({ onOpenSettings }: SidebarProps) {
   const { user, logout, isAuthenticated } = useAuth()
   const { language, theme, sidebarCollapsed, setLanguage, setTheme, setSidebarCollapsed } = usePreferences()
   const location = useLocation()
@@ -329,23 +333,16 @@ export function Sidebar() {
               </span>}
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
-              <NavLink
-                to={getMenuDestination('/settings')}
-                draggable={false}
+              <button
+                type="button"
+                onClick={onOpenSettings}
                 title={t('admin.config', language)}
                 aria-label={t('admin.config', language)}
-                className={({ isActive }) =>
-                  `flex size-6 items-center justify-center rounded-md transition-colors ${
-                    isActive ? '' : 'hover:bg-secondary'
-                  }`
-                }
-                style={({ isActive }) => ({
-                  backgroundColor: isActive ? 'var(--accent)' : 'transparent',
-                  color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-                })}
+                className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
               >
                 <Settings size={15} />
-              </NavLink>
+              </button>
               <button
                 onClick={() => setShowLogoutConfirm(true)}
                 className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
@@ -362,21 +359,16 @@ export function Sidebar() {
               {t('admin.offline_mode', language)}
             </span>}
             <div className="flex shrink-0 items-center gap-0.5">
-              <NavLink
-                to={getMenuDestination('/settings')}
-                draggable={false}
+              <button
+                type="button"
+                onClick={onOpenSettings}
                 title={t('admin.config', language)}
                 aria-label={t('admin.config', language)}
-                className={({ isActive }) =>
-                  `flex size-7 items-center justify-center rounded-md transition-colors ${isActive ? '' : 'hover:bg-secondary'}`
-                }
-                style={({ isActive }) => ({
-                  backgroundColor: isActive ? 'var(--accent)' : 'transparent',
-                  color: isActive ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-                })}
+                className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
               >
                 <Settings size={15} />
-              </NavLink>
+              </button>
               <NavLink
                 to="/login"
                 draggable={false}
