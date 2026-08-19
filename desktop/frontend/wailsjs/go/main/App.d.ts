@@ -37,6 +37,8 @@ export function CheckDuplicates(arg1:Array<string>):Promise<services.DuplicateCh
 
 export function CheckForUpdates(arg1:string,arg2:boolean):Promise<services.UpdateInfo>;
 
+export function CheckLocalLibraryUpgrade(arg1:string):Promise<Record<string, any>>;
+
 export function CleanupStorage(arg1:Array<string>,arg2:string):Promise<services.StorageCleanupResult>;
 
 export function ClearAuth():Promise<void>;
@@ -476,6 +478,8 @@ export function UpdateSettings(arg1:Record<string, string>):Promise<Record<strin
 export function UpdateStory(arg1:string,arg2:services.UpdateStoryParams):Promise<services.StoryDTO>;
 
 export function UpdateWindowStyle(arg1:string):Promise<main.WindowAppearance>;
+
+export function UpgradeLocalLibrary(arg1:string):Promise<Record<string, any>>;
 
 export function UploadFile(arg1:string,arg2:services.UploadSettings,arg3:string,arg4:image.ExifData):Promise<services.UploadResult>;
 

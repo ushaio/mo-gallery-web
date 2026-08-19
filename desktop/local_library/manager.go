@@ -126,6 +126,50 @@ func sessionClosed(done <-chan struct{}) bool {
 func (m *Manager) RecentLibraries() ([]RecentLibrary, error) { return m.registry.List() }
 func (m *Manager) RemoveRecent(path string) error            { return m.registry.Remove(path) }
 
+func (m *Manager) CheckUpgrade(root string) (LibraryUpgradeInfo, error) {
+	return inspectStoreUpgrade(root)
+}
+
+func (m *Manager) Upgrade(root string) (LibraryUpgradeInfo, error) {
+	m.openMu.Lock()
+	defer m.openMu.Unlock()
+
+	clean, err := cleanRoot(root)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	if _, err := readManifest(clean); err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	m.mu.RLock()
+	current := m.current
+	m.mu.RUnlock()
+	if current != nil && !sameLibraryRoot(current.root, clean) {
+		return LibraryUpgradeInfo{}, newError(ErrLibraryMaintenance, "请先关闭当前资源库后再升级其他资源库", nil)
+	}
+	lock, err := acquireLibraryLock(clean)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	defer lock.Release()
+
+	info, err := inspectStoreUpgrade(clean)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	if !info.Required {
+		return info, nil
+	}
+	database, err := openStore(clean)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	if err := database.Close(); err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	return inspectStoreUpgrade(clean)
+}
+
 func (m *Manager) RestoreLastLibrary() (LibrarySnapshot, bool, error) {
 	// Concurrent entry-state calls (e.g. React StrictMode double effects) must not
 	// both attempt Open: the second one would fail on the library lock held by the
@@ -151,6 +195,10 @@ func (m *Manager) RestoreLastLibrary() (LibrarySnapshot, bool, error) {
 		snapshot, openErr := m.Open(item.Path)
 		if openErr == nil {
 			return snapshot, true, nil
+		}
+		var appErr *AppError
+		if errors.As(openErr, &appErr) && appErr.Code == ErrLibraryUpgradeRequired {
+			return LibrarySnapshot{}, false, openErr
 		}
 	}
 	return LibrarySnapshot{}, false, nil
@@ -245,7 +293,7 @@ func (m *Manager) Open(root string) (LibrarySnapshot, error) {
 	if err != nil {
 		return LibrarySnapshot{}, err
 	}
-	database, err := openStore(clean)
+	database, err := openStoreForUse(clean)
 	if err != nil {
 		_ = lock.Release()
 		return LibrarySnapshot{}, err

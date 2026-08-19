@@ -3,12 +3,25 @@ package local_library
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
 type LibraryID string
 type AssetID string
 type RelativePath string
+
+const (
+	AssetUploadStatusNotUploaded = "not-uploaded"
+	AssetUploadStatusUploaded    = "uploaded"
+)
+
+func assetUploadStatus(cloudPhotoID string) string {
+	if strings.TrimSpace(cloudPhotoID) == "" {
+		return AssetUploadStatusNotUploaded
+	}
+	return AssetUploadStatusUploaded
+}
 
 type ErrorCode string
 
@@ -23,6 +36,7 @@ const (
 	ErrUnsupportedFile          ErrorCode = "UNSUPPORTED_FILE"
 	ErrScanState                ErrorCode = "INVALID_SCAN_STATE"
 	ErrLibrarySuspended         ErrorCode = "LIBRARY_SUSPENDED"
+	ErrLibraryUpgradeRequired   ErrorCode = "LIBRARY_UPGRADE_REQUIRED"
 	ErrImportModeNotConfigured  ErrorCode = "IMPORT_MODE_NOT_CONFIGURED"
 	ErrInvalidImportMode        ErrorCode = "INVALID_IMPORT_MODE"
 	ErrTagNotFound              ErrorCode = "TAG_NOT_FOUND"
@@ -70,6 +84,13 @@ type RecentLibrary struct {
 	LastOpenedAt time.Time `json:"lastOpenedAt"`
 	Available    bool      `json:"available"`
 	Reason       string    `json:"reason,omitempty"`
+}
+
+type LibraryUpgradeInfo struct {
+	RootPath       string `json:"rootPath"`
+	CurrentVersion int    `json:"currentVersion"`
+	TargetVersion  int    `json:"targetVersion"`
+	Required       bool   `json:"required"`
 }
 
 type ScanStatus struct {
@@ -190,7 +211,7 @@ type AssetDTO struct {
 	PreviewURL     string               `json:"previewUrl"`
 	OriginalURL    string               `json:"originalUrl"`
 	CloudPhotoID   string               `json:"cloudPhotoId,omitempty"`
-	CloudURL       string               `json:"cloudUrl,omitempty"`
+	UploadStatus   string               `json:"uploadStatus"`
 	IsUploaded     bool                 `json:"isUploaded"`
 	Tags           []TagDTO             `json:"tags"`
 	Collections    []AssetCollectionDTO `json:"collections"`

@@ -314,7 +314,11 @@ func (a *App) Login(serverURL, username, password string, rememberLogin bool) (*
 }
 
 func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
-	a.Proxy.SetServer(serverURL)
+	endpoint, err := services.ParseLoginEndpoint(serverURL)
+	if err != nil {
+		return nil, err
+	}
+	a.Proxy.SetServer(endpoint.BaseURL)
 	a.Proxy.SetToken(token)
 	a.Auth.SetProxy(a.Proxy)
 	user, err := a.Auth.GetCurrentUser()
@@ -393,11 +397,14 @@ func (a *App) GetSetupState() map[string]interface{} {
 func (a *App) CompleteSetup(data map[string]interface{}) error {
 	api, _ := data["api"].(map[string]interface{})
 
-	if value, ok := api["base_url"].(string); ok {
-		a.cfg.API.BaseURL = strings.TrimRight(strings.TrimSpace(value), "/")
-	}
 	if value, ok := api["login_url"].(string); ok {
-		a.cfg.API.LoginURL = strings.TrimRight(strings.TrimSpace(value), "/")
+		loginURL := strings.TrimRight(strings.TrimSpace(value), "/")
+		endpoint, err := services.ParseLoginEndpoint(loginURL)
+		if err != nil {
+			return err
+		}
+		a.cfg.API.LoginURL = endpoint.LoginURL
+		a.cfg.API.BaseURL = endpoint.BaseURL
 	}
 	if value, ok := api["remember_login"].(bool); ok {
 		a.cfg.API.RememberLogin = value
@@ -735,9 +742,10 @@ func (a *App) PrepareLocalAssetUpload(ids []string) ([]services.PreparedFile, er
 }
 
 func (a *App) setLocalAssetCloudLink(id, photoID, cloudURL string) error {
+	_ = cloudURL // URL is derived from the cloud photo and storage source; never persist it locally.
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		err = a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID, cloudURL)
+		err = a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID)
 		if err == nil {
 			return nil
 		}
@@ -1405,6 +1413,32 @@ func (a *App) OpenLocalLibrary(root string) (local_library.LibrarySnapshot, erro
 	return a.LocalLibrary.Open(root)
 }
 
+func (a *App) CheckLocalLibraryUpgrade(root string) (map[string]interface{}, error) {
+	info, err := a.LocalLibrary.CheckUpgrade(root)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"rootPath":       info.RootPath,
+		"currentVersion": info.CurrentVersion,
+		"targetVersion":  info.TargetVersion,
+		"required":       info.Required,
+	}, nil
+}
+
+func (a *App) UpgradeLocalLibrary(root string) (map[string]interface{}, error) {
+	info, err := a.LocalLibrary.Upgrade(root)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"rootPath":       info.RootPath,
+		"currentVersion": info.CurrentVersion,
+		"targetVersion":  info.TargetVersion,
+		"required":       info.Required,
+	}, nil
+}
+
 func (a *App) CloseLocalLibrary() error                   { return a.LocalLibrary.CloseManually() }
 func (a *App) RemoveRecentLocalLibrary(root string) error { return a.LocalLibrary.RemoveRecent(root) }
 func (a *App) GetLocalLibrarySnapshot() (local_library.LibrarySnapshot, error) {
@@ -1532,13 +1566,13 @@ func (a *App) UpdateLocalAsset(id, title, notes string, rating int, color string
 	return a.LocalLibrary.UpdateAsset(local_library.AssetID(id), title, notes, rating, color, favorite)
 }
 func (a *App) SetLocalAssetCloudLink(id, photoID, cloudURL string) error {
-	return a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID, cloudURL)
+	return a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID)
 }
 func (a *App) ClearLocalAssetCloudLink(id string) error {
 	return a.LocalLibrary.ClearAssetCloudLink(local_library.AssetID(id))
 }
 func (a *App) DeleteLocalAssetCloud(id string, force bool) error {
-	photoID, _, err := a.LocalLibrary.AssetCloudLink(local_library.AssetID(id))
+	photoID, err := a.LocalLibrary.AssetCloudLink(local_library.AssetID(id))
 	if err != nil {
 		return err
 	}

@@ -20,17 +20,9 @@ import { AUTH_ERROR_MESSAGE_KEY, getErrorMessage } from '@/lib/auth-errors'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { GetApiConfig, Login } from '../../wailsjs/go/main/App'
+import { configuredLoginUrl, type SavedAuthConfig } from '@/lib/auth-config'
 
 const CONFIG_RETRY_DELAYS_MS = [0, 300, 900, 1800]
-
-// GetApiConfig 返回结构（对应 Go 侧 App.GetApiConfig 的 map[string]interface{}）
-interface SavedConfig {
-  base_url?: string
-  login_url?: string
-  remember_login?: boolean
-  saved_username?: string
-  saved_password?: string
-}
 
 export function LoginPage() {
   const [server, setServer] = useState('')
@@ -79,9 +71,9 @@ export function LoginPage() {
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | undefined
 
-    const applyConfig = (config: SavedConfig) => {
+    const applyConfig = (config: SavedAuthConfig) => {
       if (cancelled) return
-      const configServer = config.login_url || config.base_url
+      const configServer = configuredLoginUrl(config)
       // 仅当配置里确实有值时覆盖，避免空值冲掉 localStorage 恢复的 server
       if (configServer) setServer(configServer)
       setRememberLogin(Boolean(config.remember_login))
@@ -93,7 +85,7 @@ export function LoginPage() {
 
     const restoreConfig = async (attempt: number) => {
       try {
-        const config = (await GetApiConfig()) as SavedConfig | null
+        const config = (await GetApiConfig()) as SavedAuthConfig | null
         if (cancelled) return
         if (config && Object.keys(config).length > 0) {
           applyConfig(config)
@@ -129,7 +121,7 @@ export function LoginPage() {
       const result = await Login(server, username, password, rememberLogin)
       if (result?.token) {
         // 保存服务器地址
-        login(result.token, result.user, result.server || server)
+        login(result.token, result.user)
         navigate('/', { replace: true })
       } else {
         setError(t('admin.loginFailed', language))

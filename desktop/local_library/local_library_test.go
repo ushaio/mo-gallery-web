@@ -1647,7 +1647,7 @@ func TestListAssetsStructuredFiltersAndSort(t *testing.T) {
 	focalMin, focalMax := 80.0, 90.0
 	widthMin, widthMax, heightMin, heightMax := 2500, 3500, 3500, 4500
 
-	if err := manager.SetAssetCloudLink(ids[0], "cloud-photo-1", "https://example.com/photo-1.jpg"); err != nil {
+	if err := manager.SetAssetCloudLink(ids[0], "cloud-photo-1"); err != nil {
 		t.Fatal(err)
 	}
 	assertIDs(AssetQuery{UploadStatus: "uploaded"}, ids[0])
@@ -1656,13 +1656,22 @@ func TestListAssetsStructuredFiltersAndSort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(uploadedPage.Items) != 1 || !uploadedPage.Items[0].IsUploaded || uploadedPage.Items[0].CloudPhotoID != "cloud-photo-1" || uploadedPage.Items[0].CloudURL != "https://example.com/photo-1.jpg" {
+	if len(uploadedPage.Items) != 1 || !uploadedPage.Items[0].IsUploaded || uploadedPage.Items[0].UploadStatus != AssetUploadStatusUploaded || uploadedPage.Items[0].CloudPhotoID != "cloud-photo-1" {
 		t.Fatalf("unexpected uploaded asset: %+v", uploadedPage.Items)
 	}
 	if err := manager.ClearAssetCloudLink(ids[0]); err != nil {
 		t.Fatal(err)
 	}
 	assertIDs(AssetQuery{UploadStatus: "not-uploaded"}, ids[0], ids[1], ids[2])
+	page, err := manager.ListAssets(AssetQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range page.Items {
+		if item.UploadStatus != AssetUploadStatusNotUploaded || item.IsUploaded {
+			t.Fatalf("cleared cloud link should be not-uploaded: %+v", item)
+		}
+	}
 
 	assertIDs(AssetQuery{RatingMin: &minRating, RatingMax: &maxRating}, ids[0], ids[1])
 	assertIDs(AssetQuery{ColorLabels: []string{"red", "blue"}}, ids[0], ids[1])

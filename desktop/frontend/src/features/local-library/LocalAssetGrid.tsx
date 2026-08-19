@@ -131,7 +131,7 @@ const AssetCard = memo(function AssetCard({
               </span>
             )}
             <span className="absolute left-2 top-2 rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">{asset.extension.replace('.', '')}</span>
-            {asset.isUploaded && <span title={copy.filterUploaded} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-sky-600/90 text-white shadow"><Cloud size={12} /></span>}
+            {(asset.uploadStatus === 'uploaded' || asset.isUploaded) && <span title={copy.filterUploaded} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-sky-600/90 text-white shadow"><Cloud size={12} /></span>}
             {asset.isAnimated && <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-white"><Play size={11} fill="currentColor" /></span>}
             {asset.isFavorite && <Heart size={15} fill="currentColor" className="absolute bottom-2 right-2 text-white drop-shadow" />}
           </span>

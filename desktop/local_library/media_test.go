@@ -227,8 +227,8 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "8" {
-		t.Fatalf("schema version=%q, want 8", version)
+	if version != "9" {
+		t.Fatalf("schema version=%q, want 9", version)
 	}
 	columns, err := store.db.Query(`PRAGMA table_info(assets)`)
 	if err != nil {
@@ -253,12 +253,106 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 	if !foundPreviewError {
 		t.Fatal("preview_error column was not added")
 	}
-	if !foundCloudPhotoID || !foundCloudURL {
-		t.Fatalf("cloud link columns missing: cloud_photo_id=%v cloud_url=%v", foundCloudPhotoID, foundCloudURL)
+	if !foundCloudPhotoID {
+		t.Fatalf("cloud link column missing: cloud_photo_id=%v", foundCloudPhotoID)
+	}
+	if foundCloudURL {
+		t.Fatal("obsolete cloud_url column should be removed")
 	}
 	var table string
 	if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='exif_metadata'`).Scan(&table); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStoreMigratesVersionEightCloudURLColumn(t *testing.T) {
+	root := createVersionTwoTestDatabase(t)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(internalPath(root, "library.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE assets ADD COLUMN cloud_photo_id TEXT;
+        ALTER TABLE assets ADD COLUMN cloud_url TEXT;
+        INSERT INTO assets(id,relative_path,path_key,file_name,extension,format,mime_type,byte_size,modified_at_ns,availability,discovered_at,technical_updated_at,cloud_photo_id,cloud_url)
+            VALUES('legacy-v8','legacy-v8.jpg','legacy-v8.jpg','legacy-v8.jpg','.jpg','jpeg','image/jpeg',1,1,'active',1,1,'photo-8','https://old.example/photo-8.jpg');
+        UPDATE library_meta SET value='8' WHERE key='schema_version'`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := openStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var version string
+	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != "9" {
+		t.Fatalf("schema version=%q, want 9", version)
+	}
+	var photoID string
+	if err := store.db.QueryRow(`SELECT cloud_photo_id FROM assets WHERE id='legacy-v8'`).Scan(&photoID); err != nil {
+		t.Fatal(err)
+	}
+	if photoID != "photo-8" {
+		t.Fatalf("cloud_photo_id=%q, want photo-8", photoID)
+	}
+	rows, err := store.db.Query(`PRAGMA table_info(assets)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatal(err)
+		}
+		if name == "cloud_url" {
+			t.Fatal("obsolete cloud_url column remains after M009")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStoreUseRequiresExplicitUpgrade(t *testing.T) {
+	root := createVersionTwoTestDatabase(t)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(internalPath(root, "library.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE assets ADD COLUMN cloud_photo_id TEXT;
+        ALTER TABLE assets ADD COLUMN cloud_url TEXT;
+        UPDATE library_meta SET value='8' WHERE key='schema_version'`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := openStoreForUse(root)
+	if !isAppErrorCode(err, ErrLibraryUpgradeRequired) {
+		if store != nil {
+			_ = store.Close()
+		}
+		t.Fatalf("openStoreForUse() error = %v, want %s", err, ErrLibraryUpgradeRequired)
+	}
+	check, err := inspectStoreUpgrade(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.Required || check.CurrentVersion != 8 {
+		t.Fatalf("upgrade check = %+v, want required v8", check)
 	}
 }
 

@@ -58,6 +58,10 @@ export function CheckForUpdates(arg1, arg2) {
   return window['go']['main']['App']['CheckForUpdates'](arg1, arg2);
 }
 
+export function CheckLocalLibraryUpgrade(arg1) {
+  return window['go']['main']['App']['CheckLocalLibraryUpgrade'](arg1);
+}
+
 export function CleanupStorage(arg1, arg2) {
   return window['go']['main']['App']['CleanupStorage'](arg1, arg2);
 }
@@ -936,6 +940,10 @@ export function UpdateStory(arg1, arg2) {
 
 export function UpdateWindowStyle(arg1) {
   return window['go']['main']['App']['UpdateWindowStyle'](arg1);
+}
+
+export function UpgradeLocalLibrary(arg1) {
+  return window['go']['main']['App']['UpgradeLocalLibrary'](arg1);
 }
 
 export function UploadFile(arg1, arg2, arg3, arg4) {

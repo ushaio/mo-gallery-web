@@ -195,7 +195,6 @@ func (s *AuthService) Login(serverURL, username, password string, rememberLogin 
 		return nil, errors.New("服务器未返回 token")
 	}
 	// 保存配置到文件
-	s.cfg.API.BaseURL = serverURL
 	s.cfg.API.LoginURL = endpoint.LoginURL
 	if rememberLogin {
 		s.cfg.API.RememberLogin = true
@@ -267,7 +266,11 @@ type linuxDoAuthUrlResponse struct {
 
 // IsLinuxDoEnabled 检查 Linux DO OAuth 是否已配置
 func (s *AuthService) IsLinuxDoEnabled() (bool, error) {
-	serverURL := s.cfg.API.BaseURL
+	endpoint, err := ParseLoginEndpoint(s.cfg.API.LoginURL)
+	if err != nil {
+		return false, nil
+	}
+	serverURL := endpoint.BaseURL
 	if serverURL == "" {
 		return false, nil
 	}
@@ -301,7 +304,11 @@ func (s *AuthService) GetLinuxDoBinding() (*LinuxDoBindingDTO, error) {
 
 // GetLinuxDoAuthUrl 获取 Linux DO OAuth 授权 URL
 func (s *AuthService) GetLinuxDoAuthUrl() (*LinuxDoAuthUrlDTO, error) {
-	serverURL := s.cfg.API.BaseURL
+	endpoint, err := ParseLoginEndpoint(s.cfg.API.LoginURL)
+	if err != nil {
+		return nil, errors.New("未连接到服务器")
+	}
+	serverURL := endpoint.BaseURL
 	if serverURL == "" {
 		return nil, errors.New("未连接到服务器")
 	}

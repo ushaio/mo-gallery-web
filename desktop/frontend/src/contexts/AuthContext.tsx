@@ -9,14 +9,15 @@ import {
   isAuthError,
 } from '@/lib/auth-errors'
 import type { UserInfo } from '@/types'
-import { ClearAuth, SetAuth } from '../../wailsjs/go/main/App'
+import { ClearAuth, GetApiConfig, SetAuth } from '../../wailsjs/go/main/App'
+import { configuredLoginUrl, type SavedAuthConfig } from '@/lib/auth-config'
 
 interface AuthContextType {
   token: string | null
   user: UserInfo | null
   isAuthenticated: boolean
   isReady: boolean
-  login: (token: string, user: UserInfo, server?: string) => void
+  login: (token: string, user: UserInfo) => void
   logout: () => void
 }
 
@@ -24,7 +25,6 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 const TOKEN_KEY = 'mo-gallery-token'
 const USER_KEY = 'mo-gallery-user'
-const SERVER_KEY = 'mo-gallery-server'
 
 // Go/Wails 重建耗时不固定。认证桥接暂时不可用时持续退避重试，
 // 但保留 localStorage 中的已登录会话，避免开发模式被误跳转到登录页。
@@ -62,9 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(USER_KEY)
   }, [])
 
-  const handleAuthFailure = useCallback((error?: unknown) => {
+  const handleAuthFailure = useCallback((error?: unknown, notice?: string) => {
     clearAuthState()
-    sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage(error))
+    setIsReady(true)
+    sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, notice ?? getAuthErrorMessage(error))
     navigate('/login', { replace: true })
   }, [clearAuthState, navigate])
 
@@ -150,9 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const tryRestore = async (attempt: number) => {
       const savedToken = localStorage.getItem(TOKEN_KEY)
       const savedUser = localStorage.getItem(USER_KEY)
-      const savedServer = localStorage.getItem(SERVER_KEY)
 
-      if (!savedToken || !savedUser || !savedServer) {
+      if (!savedToken || !savedUser) {
         authSyncPendingRef.current = false
         localStorage.removeItem(TOKEN_KEY)
         localStorage.removeItem(USER_KEY)
@@ -179,23 +179,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      // HMR 重新挂载 Provider 时先保留已有会话，避免等待 bridge 恢复期间路由跳转。
-      // 同步完成前发起的子页面请求即使返回 401，也不能抢先清理这份会话。
+      // HMR 重新挂载 Provider 时先保留已有会话，避免同步期间清空本地登录信息。
+      // 但在 Go 端代理完成同步前不能报告 ready，否则概览等页面会先发起请求，
+      // 得到“登录状态未就绪”并把启动过程误显示成业务错误。
       authSyncPendingRef.current = true
       if (!cancelled) {
         setToken(savedToken)
         setUser(parsedUser)
-        setIsReady(true)
       }
 
       try {
-        await SetAuth(savedServer, savedToken)
-        if (!cancelled) authSyncPendingRef.current = false
+        // The Go config is the single source shared by Setup and Login.
+        let configuredServer = ''
+        try {
+          const config = (await GetApiConfig()) as SavedAuthConfig | null
+          configuredServer = configuredLoginUrl(config)
+        } catch {
+          // The bridge may still be coming up; SetAuth/retry below handles it.
+        }
+        const server = configuredServer
+        if (!server) {
+          authSyncPendingRef.current = false
+          handleAuthFailure(undefined, '尚未配置服务器地址，请先完成连接设置。')
+          return
+        }
+        await SetAuth(server, savedToken)
+        if (!cancelled) {
+          authSyncPendingRef.current = false
+          setIsReady(true)
+        }
       } catch (error) {
         if (cancelled) return
         if (isAuthError(error)) {
           authSyncPendingRef.current = false
           handleAuthFailure(error)
+          return
+        }
+        // 地址失效、端口变更或服务器暂时不可达时，不能无限期阻塞启动页。
+        // 让用户回到登录页修正服务器地址（例如 3001 已切换为 3000）。
+        if (attempt >= RESTORE_RETRY_DELAYS_MS.length - 1) {
+          authSyncPendingRef.current = false
+          handleAuthFailure(undefined, '无法连接到服务器，请检查服务器地址、端口和网络后重新登录。')
           return
         }
         scheduleRetry(attempt)
@@ -210,14 +234,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (retryTimer) clearTimeout(retryTimer)
     }
   }, [handleAuthFailure])
-  const login = useCallback((newToken: string, newUser: UserInfo, server?: string) => {
+  const login = useCallback((newToken: string, newUser: UserInfo) => {
     authSyncPendingRef.current = false
     setToken(newToken)
     setUser(newUser)
     localStorage.setItem(TOKEN_KEY, newToken)
     localStorage.setItem(USER_KEY, JSON.stringify(newUser))
-    const normalizedServer = server?.trim().replace(/\/+$/, '')
-    if (normalizedServer) localStorage.setItem(SERVER_KEY, normalizedServer)
   }, [])
 
   const logout = useCallback(() => {

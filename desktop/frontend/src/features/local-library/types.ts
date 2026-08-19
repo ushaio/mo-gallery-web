@@ -1,5 +1,6 @@
 export type ScanState = 'idle' | 'running' | 'paused' | 'cancelled' | 'completed' | 'failed' | 'suspended'
 export type AssetAvailability = 'active' | 'missing' | 'trashed'
+export type AssetUploadStatus = 'not-uploaded' | 'uploaded' | 'pending-registration' | 'failed'
 export type AssetSort = 'captured' | 'discovered' | 'name' | 'modified' | 'size' | 'rating'
 export type AssetSortDirection = 'asc' | 'desc'
 
@@ -65,6 +66,13 @@ export interface EntryState {
   active: boolean
   recent: RecentLibrary[]
   snapshot?: LibrarySnapshot
+}
+
+export interface LibraryUpgradeInfo {
+  rootPath: string
+  currentVersion: number
+  targetVersion: number
+  required: boolean
 }
 
 export interface FolderItem {
@@ -179,7 +187,7 @@ export interface LocalAsset {
   previewUrl: string
   originalUrl: string
   cloudPhotoId?: string
-  cloudUrl?: string
+  uploadStatus: AssetUploadStatus
   isUploaded: boolean
   tags: LocalTag[]
   collections: AssetCollection[]

@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 8
+const currentSchemaVersion = 9
 
 var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
 	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
@@ -60,6 +60,24 @@ type unchangedAsset struct {
 }
 
 func openStore(root string) (*store, error) {
+	return openStoreWithMigration(root, nil)
+}
+
+func openStoreForUse(root string) (*store, error) {
+	info, err := inspectStoreUpgrade(root)
+	if err != nil {
+		return nil, err
+	}
+	if info.Required {
+		return nil, newError(ErrLibraryUpgradeRequired, "本地资源库需要升级数据库后才能使用", map[string]any{
+			"path":           info.RootPath,
+			"currentVersion": info.CurrentVersion,
+			"targetVersion":  info.TargetVersion,
+		})
+	}
+	// The caller has passed the upgrade gate. The regular opener still handles
+	// first-time/empty stores; for an existing older store the check above
+	// prevents opening until the explicit upgrade action has completed.
 	return openStoreWithMigration(root, nil)
 }
 
@@ -111,35 +129,67 @@ func openStoreWithMigration(root string, migrateStore func(*store) error) (*stor
 }
 
 func databaseNeedsMigration(db *sql.DB) (bool, error) {
+	_, needsMigration, err := readStoreSchemaVersion(db)
+	return needsMigration, err
+}
+
+func inspectStoreUpgrade(root string) (LibraryUpgradeInfo, error) {
+	clean, err := cleanRoot(root)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	dbPath := internalPath(clean, "library.db")
+	dsn := "file:" + filepath.ToSlash(dbPath) + "?mode=ro&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	defer db.Close()
+	if err := db.Ping(); err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	version, needsMigration, err := readStoreSchemaVersion(db)
+	if err != nil {
+		return LibraryUpgradeInfo{}, err
+	}
+	return LibraryUpgradeInfo{
+		RootPath:       clean,
+		CurrentVersion: version,
+		TargetVersion:  currentSchemaVersion,
+		Required:       needsMigration,
+	}, nil
+}
+
+func readStoreSchemaVersion(db *sql.DB) (int, bool, error) {
 	var userTableCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`).Scan(&userTableCount); err != nil {
-		return false, err
+		return 0, false, err
 	}
 	if userTableCount == 0 {
-		return false, nil
+		return 0, false, nil
 	}
 	var hasMetaTable int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='library_meta'`).Scan(&hasMetaTable); err != nil {
-		return false, err
+		return 0, false, err
 	}
 	if hasMetaTable == 0 {
-		return true, nil
+		return 0, true, nil
 	}
 	var rawVersion string
 	if err := db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&rawVersion); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return true, nil
+			return 0, true, nil
 		}
-		return false, err
+		return 0, false, err
 	}
 	version, err := strconv.Atoi(rawVersion)
 	if err != nil || version < 0 {
-		return false, fmt.Errorf("invalid local library schema version %q", rawVersion)
+		return 0, false, fmt.Errorf("invalid local library schema version %q", rawVersion)
 	}
 	if version > currentSchemaVersion {
-		return false, fmt.Errorf("local library schema version %d is newer than supported version %d", version, currentSchemaVersion)
+		return version, false, fmt.Errorf("local library schema version %d is newer than supported version %d", version, currentSchemaVersion)
 	}
-	return version < currentSchemaVersion, nil
+	return version, version < currentSchemaVersion, nil
 }
 
 func (s *store) Close() error { return s.db.Close() }
@@ -197,7 +247,7 @@ func (s *store) migrate() error {
             is_favorite INTEGER NOT NULL DEFAULT 0, captured_at INTEGER,
             discovered_at INTEGER NOT NULL, technical_updated_at INTEGER NOT NULL,
             scan_token TEXT NOT NULL DEFAULT '', trash_entry_id TEXT,
-            cloud_photo_id TEXT, cloud_url TEXT
+		    cloud_photo_id TEXT
         )`,
 		`CREATE TABLE IF NOT EXISTS exif_metadata (
             asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
@@ -278,6 +328,16 @@ func (s *store) migrate() error {
 			return fmt.Errorf("migrate local library: %w", err)
 		}
 	}
+	var rawVersion string
+	version := 0
+	if err := tx.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&rawVersion); err == nil {
+		version, err = strconv.Atoi(rawVersion)
+		if err != nil || version < 0 {
+			return fmt.Errorf("invalid local library schema version %q", rawVersion)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	if err := addColumnIfMissing(tx, "assets", "preview_error", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return fmt.Errorf("migrate local library preview error: %w", err)
 	}
@@ -287,8 +347,14 @@ func (s *store) migrate() error {
 	if err := addColumnIfMissing(tx, "assets", "cloud_photo_id", "TEXT"); err != nil {
 		return fmt.Errorf("migrate local library cloud photo id: %w", err)
 	}
-	if err := addColumnIfMissing(tx, "assets", "cloud_url", "TEXT"); err != nil {
-		return fmt.Errorf("migrate local library cloud url: %w", err)
+	if version == 8 {
+		// M009 is deliberately version-gated. If a database claims to be v8 but
+		// does not have this legacy column, fail and let the outer migration
+		// rollback restore the user's pre-upgrade backup.
+		if _, err := tx.Exec(`ALTER TABLE assets DROP COLUMN cloud_url`); err != nil {
+			return fmt.Errorf("M009 drop assets.cloud_url: %w", err)
+		}
+		version = 9
 	}
 	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_assets_cloud_photo ON assets(cloud_photo_id)`); err != nil {
 		return fmt.Errorf("migrate local library cloud photo index: %w", err)
@@ -870,7 +936,7 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		return AssetPage{}, err
 	}
 	args = append(args, limit+1)
-	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,a.cloud_url,
+	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,
         e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
         FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
         WHERE ` + baseWhere + ` ORDER BY ` + sortExpr + ` ` + direction + `,a.id ` + direction + ` LIMIT ?`
@@ -896,15 +962,15 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		var aperture, shutterSeconds, focalLengthMM, latitude, longitude sql.NullFloat64
 		var sortValue any
 		var dominantColors string
-		var cloudPhotoID, cloudURL sql.NullString
-		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cloudPhotoID, &cloudURL, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
+		var cloudPhotoID sql.NullString
+		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cloudPhotoID, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
 			return AssetPage{}, err
 		}
 		item.IsAnimated = animated != 0
 		item.IsFavorite = favorite != 0
 		item.CloudPhotoID = cloudPhotoID.String
-		item.CloudURL = cloudURL.String
-		item.IsUploaded = cloudPhotoID.Valid && cloudPhotoID.String != ""
+		item.UploadStatus = assetUploadStatus(item.CloudPhotoID)
+		item.IsUploaded = item.UploadStatus == AssetUploadStatusUploaded
 		item.CapturedAt = timeFromMillis(captured)
 		_ = json.Unmarshal([]byte(dominantColors), &item.DominantColors)
 		if cameraMake.Valid || cameraModel.Valid || lensModel.Valid || iso.Valid || aperture.Valid || shutterSeconds.Valid || focalLengthMM.Valid || latitude.Valid || longitude.Valid {
@@ -1188,12 +1254,12 @@ func (s *store) setDominantColors(ctx context.Context, id AssetID, colors []stri
 	return err
 }
 
-func (s *store) setAssetCloudLink(ctx context.Context, id AssetID, photoID, cloudURL string) error {
+func (s *store) setAssetCloudLink(ctx context.Context, id AssetID, photoID string) error {
 	photoID = strings.TrimSpace(photoID)
 	if photoID == "" {
 		return newError(ErrInvalidPath, "云端照片 ID 不能为空", nil)
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE assets SET cloud_photo_id=?,cloud_url=? WHERE id=?`, photoID, strings.TrimSpace(cloudURL), id)
+	result, err := s.db.ExecContext(ctx, `UPDATE assets SET cloud_photo_id=? WHERE id=?`, photoID, id)
 	if err != nil {
 		return err
 	}
@@ -1204,7 +1270,7 @@ func (s *store) setAssetCloudLink(ctx context.Context, id AssetID, photoID, clou
 }
 
 func (s *store) clearAssetCloudLink(ctx context.Context, id AssetID) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE assets SET cloud_photo_id=NULL,cloud_url=NULL WHERE id=?`, id)
+	result, err := s.db.ExecContext(ctx, `UPDATE assets SET cloud_photo_id=NULL WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
@@ -1214,8 +1280,8 @@ func (s *store) clearAssetCloudLink(ctx context.Context, id AssetID) error {
 	return nil
 }
 
-func (s *store) assetCloudLink(ctx context.Context, id AssetID) (photoID, cloudURL string, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(cloud_photo_id,''),COALESCE(cloud_url,'') FROM assets WHERE id=?`, id).Scan(&photoID, &cloudURL)
+func (s *store) assetCloudLink(ctx context.Context, id AssetID) (photoID string, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(cloud_photo_id,'') FROM assets WHERE id=?`, id).Scan(&photoID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = newError(ErrAssetNotFound, "资产不存在", map[string]any{"id": id})
 	}

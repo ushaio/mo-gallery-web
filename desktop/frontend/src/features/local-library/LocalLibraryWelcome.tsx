@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Archive, FolderInput, FolderOpen, LibraryBig, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { localLibraryApi, parseLocalLibraryError } from './api'
-import type { LibrarySnapshot, RecentLibrary } from './types'
+import type { LibrarySnapshot, LibraryUpgradeInfo, RecentLibrary } from './types'
 import type { LocalLibraryCopy } from './copy'
 
 interface Props {
@@ -10,14 +10,24 @@ interface Props {
   recent: RecentLibrary[]
   onOpened: (snapshot: LibrarySnapshot) => void
   onRecentChanged: () => void
+  onUpgradeRequired: (info: LibraryUpgradeInfo) => void
 }
 
 function libraryName(path: string) {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'MO Gallery Library'
 }
 
-export function LocalLibraryWelcome({ copy, recent, onOpened, onRecentChanged }: Props) {
+export function LocalLibraryWelcome({ copy, recent, onOpened, onRecentChanged, onUpgradeRequired }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
+
+  const openLibrary = async (path: string) => {
+    const info = await localLibraryApi.checkUpgrade(path)
+    if (info.required) {
+      onUpgradeRequired(info)
+      return
+    }
+    onOpened(await localLibraryApi.open(path))
+  }
 
   const runFolderAction = async (kind: 'create' | 'initialize' | 'open') => {
     setBusy(kind)
@@ -26,14 +36,25 @@ export function LocalLibraryWelcome({ copy, recent, onOpened, onRecentChanged }:
         kind === 'create' ? copy.create : kind === 'initialize' ? copy.initialize : copy.open,
       )
       if (!path) return
-      const snapshot = kind === 'create'
-        ? await localLibraryApi.create(path, libraryName(path))
-        : kind === 'initialize'
-          ? await localLibraryApi.initialize(path, libraryName(path))
-          : await localLibraryApi.open(path)
-      onOpened(snapshot)
+      if (kind === 'create') {
+        onOpened(await localLibraryApi.create(path, libraryName(path)))
+      } else if (kind === 'initialize') {
+        onOpened(await localLibraryApi.initialize(path, libraryName(path)))
+      } else {
+        await openLibrary(path)
+      }
     } catch (error) {
-      toast.error(parseLocalLibraryError(error).message)
+      const parsed = parseLocalLibraryError(error)
+      if (parsed.code === 'LIBRARY_UPGRADE_REQUIRED' && parsed.details) {
+        onUpgradeRequired({
+          rootPath: String(parsed.details.path ?? parsed.details.rootPath ?? ''),
+          currentVersion: Number(parsed.details.currentVersion ?? 0),
+          targetVersion: Number(parsed.details.targetVersion ?? 0),
+          required: true,
+        })
+      } else {
+        toast.error(parsed.message)
+      }
     } finally {
       setBusy(null)
     }
@@ -43,9 +64,19 @@ export function LocalLibraryWelcome({ copy, recent, onOpened, onRecentChanged }:
     if (!item.available) return
     setBusy(item.path)
     try {
-      onOpened(await localLibraryApi.open(item.path))
+      await openLibrary(item.path)
     } catch (error) {
-      toast.error(parseLocalLibraryError(error).message)
+      const parsed = parseLocalLibraryError(error)
+      if (parsed.code === 'LIBRARY_UPGRADE_REQUIRED' && parsed.details) {
+        onUpgradeRequired({
+          rootPath: String(parsed.details.path ?? parsed.details.rootPath ?? item.path),
+          currentVersion: Number(parsed.details.currentVersion ?? 0),
+          targetVersion: Number(parsed.details.targetVersion ?? 0),
+          required: true,
+        })
+      } else {
+        toast.error(parsed.message)
+      }
       onRecentChanged()
     } finally {
       setBusy(null)

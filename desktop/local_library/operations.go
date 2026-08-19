@@ -15,12 +15,12 @@ import (
 	"time"
 )
 
-func (m *Manager) SetAssetCloudLink(id AssetID, photoID, cloudURL string) error {
+func (m *Manager) SetAssetCloudLink(id AssetID, photoID string) error {
 	session, err := m.requireAvailableSession()
 	if err != nil {
 		return err
 	}
-	if err := session.store.setAssetCloudLink(session.ctx, id, photoID, cloudURL); err != nil {
+	if err := session.store.setAssetCloudLink(session.ctx, id, photoID); err != nil {
 		return err
 	}
 	m.emitEvent("asset_cloud_link_updated")
@@ -39,10 +39,10 @@ func (m *Manager) ClearAssetCloudLink(id AssetID) error {
 	return nil
 }
 
-func (m *Manager) AssetCloudLink(id AssetID) (photoID, cloudURL string, err error) {
+func (m *Manager) AssetCloudLink(id AssetID) (photoID string, err error) {
 	session, err := m.requireAvailableSession()
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	return session.store.assetCloudLink(session.ctx, id)
 }

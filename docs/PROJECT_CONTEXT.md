@@ -80,7 +80,8 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 - Desktop 本地图库不是 PostgreSQL 云端图库的镜像；本地原图归用户本地图库目录，SQLite 保存索引、组织和状态。
 - Desktop Zine 草稿及其本地导入图片由配置目录中的 `zine.db` 持久化；旧 IndexedDB 数据只补迁缺失记录，不覆盖 SQLite 中的新版本，迁移校验成功后自动删除旧库。
 - Desktop 文章与叙事编辑草稿由配置目录中的 `drafts.db` 持久化；`title`、`content`、`contentJson` 等正文属性使用独立列，`cloudSynced` 标记草稿是否已与云端保存版本同步，待上传图片与封面/照片选择等编辑期状态存入元数据。旧 IndexedDB 草稿逐条校验迁移成功后清理，浏览器开发模式仍使用 IndexedDB。
-- Desktop 云端能力通常经过 Go service / proxy；本地图库能力由 `desktop/local_library/` 直接处理。
+- Desktop 云端业务数据必须由 Go service / proxy 调用 Web API，不能直连 PostgreSQL；仅文件处理、桌面插件对象操作及本地数据通过 Go 直接处理。本地图库能力由 `desktop/local_library/` 负责。
+- Desktop 登录和会话恢复由 Web API 校验 token；客户端不得要求、保存或本地使用服务端 JWT 签名密钥。
 - Mobile 业务数据通过 HTTP API，上传任务和会话状态保存在设备本地。
 - Web API 统一位于 `/api/*`；Hono 处理领域路由和认证，响应通常使用 `{ success, data, meta }` envelope。
 - AI 的 prompt、领域模型和编排放在 `packages/ai-agent`；不要把 prompt 逻辑复制到 Go。宿主负责编辑器语义、持久化、历史和最终提交。
@@ -118,6 +119,7 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 - Wails 应用生命周期和绑定对象：`desktop/app.go`、`desktop/main.go`。
 - 配置：`desktop/config/`。
 - Go/GORM 数据库：`desktop/db/`。
+- Desktop 本地 SQLite 的版本迁移运行器：`desktop/db/migrate/`；`zine.db`、`drafts.db`、`editor-ai.db` 各自维护独立的 `schema_migrations` 历史，`library.db` 继续使用本地图库专用的 SQL 迁移、备份和资源对账流程。
 - 远程 API service：`desktop/services/`；通用代理在 `desktop/services/proxy.go`。
 - 上传：`desktop/services/upload.go`、`desktop/frontend/src/pages/UploadPage.tsx`。
 - 云端资源库：`desktop/frontend/src/pages/ResourceLibraryPage.tsx`、`CloudLibraryPage.tsx` 与 `features/local-library/` 的对照实现。
@@ -141,6 +143,13 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 - Zine：`components/zine/`、`pages/zine/`、`lib/zine/`、`store/zine.ts`。
 - Desktop AI：`lib/api/editor-ai-local.ts`、`lib/api/editor-ai-metadata.ts`、`components/zine/ZineAiAssistant.tsx`；Go 代理在 `desktop/services/editor-ai.go`，会话与消息持久化在配置目录的 `editor-ai.db` SQLite，Zine 和独立 AI 助手通过 `scopeId` 共用 `AiConversation` / `AiMessage` 表。
 
+### Desktop 系统插件
+
+- 产品定位与核心边界、首期规格、验证矩阵和已知问题记录：`docs/plugin-system/`。
+- 当前实现仍位于 `desktop/storage_plugins/`，作为系统插件 `storage@1` 能力域的迁移基线；在兼容层完成前不要直接批量重命名目录、Wails API 或 Photo 存储字段。
+- GitHub 与 S3 插件源码已迁出主仓库，分别位于 `../mo-gallery-plugin-github/`、`../mo-gallery-plugin-s3/`；插件可由内置官方仓库索引安装，也保留手动导入。
+- `desktop/agent_extensions/` 与系统插件共享运行时、凭据、权限和审计需求，但当前仍是独立领域；不要未经 ADR 直接合并 Skill/MCP 协议。
+
 ## 7. Mobile 读取索引
 
 - 应用入口、provider、路由、主题：`flutter/lib/main.dart`、`lib/app/`。
@@ -162,6 +171,7 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 | Web 上传/媒体 | `hono/photos.ts`、`server/lib/photo-upload-assets.ts`、`image-processing.ts` | storage provider、前端上传组件、EXIF/压缩工具 |
 | Desktop 云端功能 | 目标 `desktop/frontend/src/pages/`、对应 `desktop/services/*.go` | `desktop/app.go`、`lib/api/`、Wails bindings、测试 |
 | Desktop 本地图库 | 对应 `features/local-library/`、`desktop/local_library/public.go`、`manager.go` | `types.go`、`store.go`、操作/锁/媒体实现、相关 ADR/测试 |
+| Desktop 系统插件 | `docs/plugin-system/`、`desktop/storage_plugins/` | 对应 capability broker、SDK、Settings 插件入口、验证矩阵 |
 | TipTap/故事博客编辑 | `packages/tiptap-editor/src/index.ts`、`NarrativeTipTapEditor.tsx`、目标宿主 wrapper | `runtime.ts`、extensions、宿主草稿/保存、requirements ADR |
 | Zine | 目标页面/组件、`desktop/frontend/src/lib/zine/`、`store/zine.ts` | 导出器、AI host、相关单元测试、Zine 需求文档 |
 | AI 编辑 | `packages/ai-agent/README.md`、相关 `src/` 文件、目标 host | Web/Go bridge、metadata persistence、测试 |
@@ -232,3 +242,9 @@ cd flutter && flutter test
 - `packages/api-client/` contains the shared Web/Desktop HTTP API client, DTOs, endpoint modules, and request envelope/error handling.
 - `src/lib/api/` and `desktop/frontend/src/lib/api/` are compatibility entrypoints that re-export the package and configure platform runtime hooks.
 - Keep platform-specific authentication notifications, cache invalidation, local AI, and upload transport in the corresponding app adapter; keep endpoint paths and shared request/response contracts in `packages/api-client/`.
+
+## 14. Desktop Plugin Core
+
+- `desktop/plugin_core/` contains the system-level protocol version, contribution model, and capability broker.
+- `desktop/storage_plugins/` remains the compatibility implementation for the `storage@1` capability domain; do not move object/photo semantics into the core package.
+- Desktop Wails exposes system-plugin management names alongside the legacy storage-plugin methods during migration.

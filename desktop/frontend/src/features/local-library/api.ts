@@ -40,6 +40,8 @@ import {
   OpenLocalAssetInFileManager,
   OpenLocalLibraryFolderInFileManager,
   OpenLocalLibrary,
+  CheckLocalLibraryUpgrade,
+  UpgradeLocalLibrary,
   PauseLocalLibraryScan,
   PermanentDeleteLocalAssets,
   PermanentDeleteActiveLocalLibraryFolder,
@@ -76,6 +78,7 @@ import type {
   AssetPage,
   AssetQuery,
   AssetQueryToken,
+  AssetUploadStatus,
   BatchAssetOrganizationUpdate,
   BackupInfo,
   BackupOverview,
@@ -86,6 +89,7 @@ import type {
   FolderTrashEntry,
   ImportResult,
   LibrarySnapshot,
+  LibraryUpgradeInfo,
   LocalLibraryError,
   LocalLibraryImportMode,
   LocalLibraryPreferences,
@@ -138,6 +142,22 @@ function normalizeBackup(source: BackupSource): BackupInfo {
     createdAt: asIsoTime(source?.createdAt) || new Date(0).toISOString(),
     sizeBytes: Number(source?.sizeBytes ?? 0),
   }
+}
+
+function normalizeUpgradeInfo(source: Record<string, unknown> | undefined): LibraryUpgradeInfo {
+  return {
+    rootPath: String(source?.rootPath ?? ''),
+    currentVersion: Number(source?.currentVersion ?? 0),
+    targetVersion: Number(source?.targetVersion ?? 0),
+    required: Boolean(source?.required),
+  }
+}
+
+function normalizeAssetUploadStatus(value: unknown, cloudPhotoId: unknown): AssetUploadStatus {
+  if (value === 'uploaded' || value === 'pending-registration' || value === 'failed' || value === 'not-uploaded') {
+    return value
+  }
+  return cloudPhotoId ? 'uploaded' : 'not-uploaded'
 }
 
 export function parseLocalLibraryError(error: unknown): LocalLibraryError {
@@ -202,6 +222,12 @@ export const localLibraryApi = {
   async create(root: string, name: string) { return normalizeSnapshot(await CreateLocalLibrary(root, name)) },
   async initialize(root: string, name: string) { return normalizeSnapshot(await InitializeLocalLibrary(root, name)) },
   async open(root: string) { return normalizeSnapshot(await OpenLocalLibrary(root)) },
+  async checkUpgrade(root: string): Promise<LibraryUpgradeInfo> {
+    return normalizeUpgradeInfo(await CheckLocalLibraryUpgrade(root) as Record<string, unknown>)
+  },
+  async upgrade(root: string): Promise<LibraryUpgradeInfo> {
+    return normalizeUpgradeInfo(await UpgradeLocalLibrary(root) as Record<string, unknown>)
+  },
   close: () => CloseLocalLibrary(),
   removeRecent: (root: string) => RemoveRecentLocalLibrary(root),
   async listAssets(query: AssetQuery): Promise<AssetPage> {
@@ -219,7 +245,7 @@ export const localLibraryApi = {
         trashEntryId: item.trashEntryId || undefined,
         trashEntryKind: item.trashEntryKind || undefined,
         cloudPhotoId: item.cloudPhotoId || undefined,
-        cloudUrl: item.cloudUrl || undefined,
+        uploadStatus: normalizeAssetUploadStatus(item.uploadStatus, item.cloudPhotoId),
         isUploaded: Boolean(item.isUploaded || item.cloudPhotoId),
         previewError: item.previewError || undefined,
         exif: item.exif ? {

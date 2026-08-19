@@ -74,7 +74,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
   const getMenuDestination = (path: string) => lastMenuLocationsRef.current.get(path) ?? path
 
   // 站点标题 + 站点地址：标题与「系统设置-站点-站点信息」一致（来自服务端 SITE_TITLE），
-  // 地址取桌面端连接的服务器 base_url，即网站入口
+  // 地址取桌面端连接的登录地址
   useEffect(() => {
     if (!isAuthenticated) return
 
@@ -84,9 +84,9 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       if (settingsRes.status === 'fulfilled' && settingsRes.value?.site_title) {
         setSiteTitle(settingsRes.value.site_title)
       }
-      const baseUrl = apiRes.status === 'fulfilled' ? apiRes.value?.base_url : ''
-      if (typeof baseUrl === 'string' && baseUrl) {
-        setSiteUrl(baseUrl.replace(/\/+$/, ''))
+      const loginUrl = apiRes.status === 'fulfilled' ? apiRes.value?.login_url : ''
+      if (typeof loginUrl === 'string' && loginUrl) {
+        setSiteUrl(loginUrl.replace(/\/+$/, ''))
       }
     })
     return () => {

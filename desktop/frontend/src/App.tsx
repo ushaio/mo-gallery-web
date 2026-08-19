@@ -33,8 +33,7 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
 }
 
 function hasLoginConfiguration(setupState: SetupState) {
-  const serverUrl = setupState.api.login_url?.trim() || setupState.api.base_url?.trim()
-  return Boolean(serverUrl)
+  return Boolean(setupState.api.login_url?.trim() || setupState.api.base_url?.trim())
 }
 
 function AppRoutes() {

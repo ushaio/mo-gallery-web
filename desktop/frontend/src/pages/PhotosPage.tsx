@@ -33,8 +33,8 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
 import {
-  ArrowDown, ArrowUp, BookOpen, Columns3, LayoutGrid, Star, Eye, EyeOff, Trash2, Loader2, Check,
-  Maximize2, Minus, Pencil, Plus, RefreshCw, Search, X, CheckSquare, Film, ImageOff, Filter,
+  ArrowDown, ArrowUp, Columns3, LayoutGrid, Star, Eye, EyeOff, Trash2, Loader2, Check,
+  FileText, Maximize2, Minus, Pencil, Plus, RefreshCw, Search, X, CheckSquare, Film, ImageOff, Filter,
 } from 'lucide-react'
 
 // 三栏资源库中间区域较窄，8 列视图下 50 张可能不足以撑满一屏，导致没有滚动事件。
@@ -67,7 +67,7 @@ function CloudPhotoFilters({ language, categories, category, photoType, fileForm
   const [open, setOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const activeCount = (category !== '全部' ? 1 : 0) + (photoType ? 1 : 0) + (fileFormats.length ? 1 : 0)
+  const activeCount = (category === '全部' ? 0 : 1) + (photoType ? 1 : 0) + (fileFormats.length ? 1 : 0)
 
   useEffect(() => {
     if (!open) return
@@ -267,8 +267,9 @@ function PhotoContextTarget({
         <ContextMenuLabel className="max-w-64 truncate">{photo.title || (language === 'zh' ? '未命名照片' : 'Untitled photo')}</ContextMenuLabel>
         <ContextMenuSeparator />
         <ContextMenuItem disabled={isDeleting} onSelect={() => onCardDoubleClick(photo)}><Maximize2 size={14} />{language === 'zh' ? '大图预览' : 'Preview'}</ContextMenuItem>
-        <ContextMenuItem disabled={isDeleting} onSelect={() => onEditDetails(photo)}><Pencil size={14} />{t('admin.edit_photo', language)}</ContextMenuItem>
-        <ContextMenuItem disabled={isDeleting} onSelect={() => onEditStory(photo)}><BookOpen size={14} />{t('admin.edit_story', language)}</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onEditDetails(photo)}><Pencil size={14} />{language === 'zh' ? '编辑详情' : 'Edit details'}</ContextMenuItem>
+        <ContextMenuItem disabled={isDeleting} onSelect={() => onEditStory(photo)}><FileText size={14} />{language === 'zh' ? '编辑叙事' : 'Edit story'}</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem disabled={isDeleting} onSelect={() => onToggleSelect(photo.id)}><CheckSquare size={14} />{isSelected ? (language === 'zh' ? '取消选择' : 'Deselect') : t('admin.select_photos', language)}</ContextMenuItem>
         <ContextMenuItem disabled={isDeleting} onSelect={() => onToggleFeatured(photo.id)}><Star size={14} fill={photo.isFeatured ? 'currentColor' : 'none'} />{photo.isFeatured ? (language === 'zh' ? '取消精选' : 'Remove featured') : t('admin.featured', language)}</ContextMenuItem>
@@ -523,8 +524,11 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
 
       const newData = result.data || []
       setPhotos(prev => append ? [...prev, ...newData] : newData)
-      if (result.meta?.total !== undefined) setTotal(result.meta.total)
-      else setTotal(prev => append ? prev + newData.length : newData.length)
+      if (result.meta?.total === undefined) {
+        setTotal(prev => append ? prev + newData.length : newData.length)
+      } else {
+        setTotal(result.meta.total)
+      }
       // 某些旧服务响应可能不含 meta；满页时继续尝试下一页，空页后自然停止。
       setHasMore(result.meta?.hasMore ?? newData.length >= PAGE_SIZE)
       pageRef.current = pageNum
@@ -586,7 +590,9 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
           normalizePhotoCategories(await GetCategories())
         ))
         setCategories(result)
-      } catch {}
+      } catch (error) {
+        console.warn('加载照片分类失败:', error)
+      }
     })()
   }, [])
 
@@ -920,13 +926,13 @@ export function PhotosPage({ selectionMode = false, existingPhotoIds = [], onSel
     ? t('admin.featured', language)
     : filters.albumId
       ? (language === 'zh' ? '相册照片' : 'Album photos')
-      : filters.category !== '全部'
-        ? filters.category
-        : filters.photoType === 'digital'
+      : filters.category === '全部'
+        ? filters.photoType === 'digital'
           ? t('admin.photos_type_digital', language)
           : filters.photoType === 'film'
             ? t('admin.photos_type_film', language)
             : t('admin.resource_library_all_photos', language)
+        : filters.category
 
   return (
     <>

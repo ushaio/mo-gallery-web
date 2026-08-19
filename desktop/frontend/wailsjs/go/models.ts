@@ -731,7 +731,7 @@ export namespace local_library {
 	    previewUrl: string;
 	    originalUrl: string;
 	    cloudPhotoId?: string;
-	    cloudUrl?: string;
+	    uploadStatus: string;
 	    isUploaded: boolean;
 	    tags: TagDTO[];
 	    collections: AssetCollectionDTO[];
@@ -775,7 +775,7 @@ export namespace local_library {
 	        this.previewUrl = source["previewUrl"];
 	        this.originalUrl = source["originalUrl"];
 	        this.cloudPhotoId = source["cloudPhotoId"];
-	        this.cloudUrl = source["cloudUrl"];
+	        this.uploadStatus = source["uploadStatus"];
 	        this.isUploaded = source["isUploaded"];
 	        this.tags = this.convertValues(source["tags"], TagDTO);
 	        this.collections = this.convertValues(source["collections"], AssetCollectionDTO);

@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	_ "modernc.org/sqlite"
+
+	"mo-gallery-desktop/db/migrate"
 )
 
 const localAIFileName = "editor-ai.db"
@@ -72,23 +74,37 @@ func OpenLocalAI(path string) (*gorm.DB, error) {
 		}
 	}
 
-	if err := database.AutoMigrate(&AiConversation{}, &AiMessage{}); err != nil {
+	if err := migrate.Run(database, localAIMigrations()); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate local AI database: %w", err)
 	}
-	for _, statement := range []string{
-		`CREATE INDEX IF NOT EXISTS "idx_ai_conversation_scope_updated" ON "AiConversation" ("scopeId", "updatedAt")`,
-		`CREATE INDEX IF NOT EXISTS "idx_ai_conversation_updated" ON "AiConversation" ("updatedAt")`,
-		`CREATE INDEX IF NOT EXISTS "idx_ai_message_conversation_created" ON "AiMessage" ("conversationId", "createdAt")`,
-		`CREATE INDEX IF NOT EXISTS "idx_ai_message_status" ON "AiMessage" ("status")`,
-	} {
-		if err := database.Exec(statement).Error; err != nil {
-			_ = sqlDB.Close()
-			return nil, fmt.Errorf("index local AI database: %w", err)
-		}
-	}
 
 	return database, nil
+}
+
+func localAIMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{
+			Version: 1,
+			Name:    "baseline",
+			Up: func(tx *gorm.DB) error {
+				if err := tx.AutoMigrate(&AiConversation{}, &AiMessage{}); err != nil {
+					return err
+				}
+				for _, statement := range []string{
+					`CREATE INDEX IF NOT EXISTS "idx_ai_conversation_scope_updated" ON "AiConversation" ("scopeId", "updatedAt")`,
+					`CREATE INDEX IF NOT EXISTS "idx_ai_conversation_updated" ON "AiConversation" ("updatedAt")`,
+					`CREATE INDEX IF NOT EXISTS "idx_ai_message_conversation_created" ON "AiMessage" ("conversationId", "createdAt")`,
+					`CREATE INDEX IF NOT EXISTS "idx_ai_message_status" ON "AiMessage" ("status")`,
+				} {
+					if err := tx.Exec(statement).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+	}
 }
 
 func CloseLocalAI() {

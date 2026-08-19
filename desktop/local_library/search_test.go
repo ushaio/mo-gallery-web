@@ -136,8 +136,8 @@ func TestStoreMigratesVersionFiveSearchIndex(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "8" {
-		t.Fatalf("schema version=%q, want 8", version)
+	if version != "9" {
+		t.Fatalf("schema version=%q, want 9", version)
 	}
 	var count int
 	if err := store.db.QueryRow(`SELECT COUNT(*) FROM asset_search WHERE asset_search MATCH ?`, buildAssetSearchQuery("Legacy Travel Nikon")).Scan(&count); err != nil {

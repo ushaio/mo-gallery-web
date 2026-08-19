@@ -21,6 +21,7 @@ import { AuthBrandPanel } from '@/components/layout/AuthBrandPanel'
 import { useAuth } from '@/contexts/AuthContext'
 import { getErrorMessage } from '@/lib/auth-errors'
 import { usePreferences } from '@/store/preferences'
+import { configuredLoginUrl } from '@/lib/auth-config'
 
 export interface SetupState {
   completed: boolean
@@ -172,7 +173,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
 
     setSaving(true)
     try {
-      const server = api.login_url.trim() || api.base_url.trim()
+    const server = configuredLoginUrl(api)
       const result = await Login(server, credentials.username, credentials.password, credentials.rememberLogin)
       if (!result?.token) {
         setError(copy.loginError)
@@ -187,7 +188,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
       }
       await CompleteSetup({ api: setupApi, offline_only: false })
       onComplete(completedState())
-      login(result.token, result.user, result.server || server)
+      login(result.token, result.user)
       navigate('/overview', { replace: true })
     } catch (cause: unknown) {
       setError(getErrorMessage(cause) || copy.loginError)
@@ -302,7 +303,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
             <div className="mt-7 sm:min-h-[252px]">
               {step === 0 ? (
                 <div className="space-y-4">
-                  {field(copy.server, api.login_url || api.base_url, (value) => setApi((current) => ({ ...current, base_url: value, login_url: value })), { icon: Globe, placeholder: 'https://gallery.example.com', required: true, autoComplete: 'url' })}
+                  {field(copy.server, api.login_url, (value) => setApi((current) => ({ ...current, login_url: value })), { icon: Globe, placeholder: 'https://gallery.example.com/login/private', required: true, autoComplete: 'url' })}
                 </div>
               ) : (
                 <div className="space-y-4">

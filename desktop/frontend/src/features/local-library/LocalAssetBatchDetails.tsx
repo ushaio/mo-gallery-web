@@ -1,4 +1,5 @@
-import { FolderInput, Heart, Layers3, Star, Tags, X } from 'lucide-react'
+import { useState } from 'react'
+import { Check, ChevronDown, FolderInput, Heart, Minus, Plus, Star, Tag as TagIcon, X } from 'lucide-react'
 import type { BatchAssetOrganizationUpdate, LocalCollection, LocalTag } from './types'
 import type { LocalLibraryCopy } from './copy'
 
@@ -14,43 +15,303 @@ interface Props {
   onUpdate: (update: Omit<BatchAssetOrganizationUpdate, 'assetIds'>) => void
 }
 
-const COLORS = ['', 'red', 'yellow', 'green', 'blue', 'purple']
+const COLOR_SWATCHES: Array<{ value: string; bg: string; label: string; nameKey?: 'red' | 'yellow' | 'green' | 'blue' | 'purple' }> = [
+  { value: 'red', bg: '#EF4444', label: 'Red', nameKey: 'red' },
+  { value: 'orange', bg: '#F97316', label: 'Orange' },
+  { value: 'yellow', bg: '#EAB308', label: 'Yellow', nameKey: 'yellow' },
+  { value: 'green', bg: '#22C55E', label: 'Green', nameKey: 'green' },
+  { value: 'blue', bg: '#3B82F6', label: 'Blue', nameKey: 'blue' },
+  { value: 'purple', bg: '#A855F7', label: 'Purple', nameKey: 'purple' },
+]
+
+function BatchRow({
+  icon: Icon, label, addLabel, removeLabel, onAdd, onRemove, disabled, dotColor,
+}: {
+  icon: typeof TagIcon
+  label: string
+  addLabel: string
+  removeLabel: string
+  onAdd: () => void
+  onRemove: () => void
+  disabled?: boolean
+  dotColor?: string
+}) {
+  return (
+    <div
+      className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-secondary"
+    >
+      {dotColor
+        ? <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
+        : <Icon size={11} className="shrink-0" style={{ color: 'var(--muted-foreground)' }} />}
+      <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--foreground)' }}>{label}</span>
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          type="button"
+          disabled={disabled}
+          title={addLabel}
+          aria-label={`${addLabel}: ${label}`}
+          onClick={onAdd}
+          className="flex size-5 items-center justify-center rounded transition-colors hover:bg-primary/10 disabled:opacity-50"
+          style={{ color: 'var(--primary)' }}
+        >
+          <Plus size={11} />
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          title={removeLabel}
+          aria-label={`${removeLabel}: ${label}`}
+          onClick={onRemove}
+          className="flex size-5 items-center justify-center rounded transition-colors hover:bg-destructive/10 disabled:opacity-50"
+          style={{ color: 'var(--destructive)' }}
+        >
+          <Minus size={11} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ─── 折叠区块 ─── */
+
+function Section({
+  label, icon: Icon, open, onToggle, children,
+}: {
+  label: string
+  icon: typeof TagIcon
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <section className="border-b px-5 py-1" style={{ borderColor: 'var(--border)' }}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2.5 py-2.5 text-left">
+        <Icon size={14} strokeWidth={1.8} style={{ color: 'var(--muted-foreground)' }} />
+        <span className="flex-1 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--foreground)' }}>
+          {label}
+        </span>
+        <ChevronDown
+          size={14}
+          className="transition-transform duration-200"
+          style={{ color: 'var(--muted-foreground)', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+        />
+      </button>
+      {open && <div className="pb-4">{children}</div>}
+    </section>
+  )
+}
 
 export function LocalAssetBatchDetails({ selectedCount, tags, collections, copy, busy, canMove, onClear, onMove, onUpdate }: Props) {
+  const [classificationOpen, setClassificationOpen] = useState(true)
+  const [organizationOpen, setOrganizationOpen] = useState(true)
+  const [hoverRating, setHoverRating] = useState(0)
+
   return (
-    <aside className="custom-scrollbar hidden h-full w-[292px] shrink-0 overflow-y-auto border-l bg-card xl:block" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex items-start gap-3 border-b p-4" style={{ borderColor: 'var(--border)' }}>
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary"><Layers3 size={17} /></span>
-        <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">{copy.batchEdit}</h2><p className="mt-1 text-[10px] text-muted-foreground">{selectedCount} {copy.selectedItems}</p></div>
-        <button type="button" title={copy.clearSelection} aria-label={copy.clearSelection} onClick={onClear} className="rounded-md p-1.5 hover:bg-secondary"><X size={14} /></button>
+    <aside
+      className="custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex"
+      style={{ borderColor: 'var(--border)' }}
+      data-local-library-guide="batch-details"
+    >
+      {/* ── 头部：批量整理 + 已选数量 + 清除 ── */}
+      <div className="flex items-center gap-2.5 border-b px-5 py-4" style={{ borderColor: 'var(--border)' }}>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>{copy.batchEdit}</h2>
+          <p className="mt-0.5 text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+            {selectedCount} {copy.selectedItems}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          title={copy.clearSelection}
+          className="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-secondary"
+          style={{ color: 'var(--muted-foreground)' }}
+        >
+          <X size={14} />
+        </button>
       </div>
 
-      <div className="space-y-5 p-4">
-        <button type="button" disabled={busy || !canMove} onClick={onMove} className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary disabled:opacity-50"><FolderInput size={14} />{copy.moveAssetsToFolder}</button>
-        <section>
-          <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Star size={14} />{copy.rating}</div>
-          <div className="flex flex-wrap gap-1.5">{[0, 1, 2, 3, 4, 5].map((value) => <button key={value} type="button" disabled={busy} onClick={() => onUpdate({ rating: value })} className="flex size-8 items-center justify-center rounded-md border text-xs hover:bg-secondary disabled:opacity-50">{value || '?'}</button>)}</div>
-        </section>
+      {/* ── 标记（应用到全部选中） ── */}
+      <Section
+        label={`${copy.rating} / ${copy.color} / ${copy.favorite}`}
+        icon={Star}
+        open={classificationOpen}
+        onToggle={() => setClassificationOpen((v) => !v)}
+      >
+        <div className="space-y-3.5">
+          {/* 评分：hover 预览，点击应用到所有选中 */}
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--muted-foreground)' }}>
+              {copy.rating}
+            </p>
+            <div className="flex items-center gap-0.5" role="group" aria-label={copy.rating}>
+              {[1, 2, 3, 4, 5].map((value) => {
+                const isActive = value <= hoverRating
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={busy}
+                    title={`${copy.rating}: ${value}`}
+                    aria-label={`${copy.rating}: ${value}`}
+                    onMouseEnter={() => setHoverRating(value)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    onClick={() => onUpdate({ rating: value })}
+                    className="rounded p-0.5 transition-transform hover:scale-110 active:scale-95 disabled:opacity-50"
+                  >
+                    <Star
+                      size={15}
+                      fill={isActive ? 'currentColor' : 'none'}
+                      strokeWidth={isActive ? 2 : 1.6}
+                      style={{ color: isActive ? '#F59E0B' : 'var(--muted-foreground)', transition: 'all 0.12s ease' }}
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-        <section>
-          <div className="mb-2 text-xs font-medium">{copy.color}</div>
-          <div className="flex gap-2">{COLORS.map((value) => <button key={value || 'none'} type="button" disabled={busy} aria-label={value || copy.noColor} title={value || copy.noColor} onClick={() => onUpdate({ colorLabel: value })} className="size-7 rounded-full border-2 disabled:opacity-50" style={{ backgroundColor: value || 'transparent', borderColor: 'var(--border)' }} />)}</div>
-        </section>
+          {/* 颜色标记 */}
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--muted-foreground)' }}>
+              {copy.color}
+            </p>
+            <div className="flex items-center gap-1.5" role="group" aria-label={copy.color}>
+              {COLOR_SWATCHES.map((swatch) => {
+                const name = swatch.nameKey ? copy[swatch.nameKey] : swatch.label
+                return (
+                  <button
+                    key={swatch.value}
+                    type="button"
+                    disabled={busy}
+                    title={`${copy.color}: ${name}`}
+                    aria-label={`${copy.color}: ${name}`}
+                    onClick={() => onUpdate({ colorLabel: swatch.value })}
+                    className="size-5 rounded-full transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
+                    style={{
+                      backgroundColor: swatch.bg,
+                      boxShadow: '0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent)',
+                    }}
+                  />
+                )
+              })}
+              <button
+                type="button"
+                disabled={busy}
+                title={copy.noColor}
+                aria-label={copy.noColor}
+                onClick={() => onUpdate({ colorLabel: '' })}
+                className="flex size-5 items-center justify-center rounded-full border transition-all hover:scale-110 disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+              >
+                <X size={9} />
+              </button>
+            </div>
+          </div>
 
-        <section>
-          <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Heart size={14} />{copy.favorite}</div>
-          <div className="grid grid-cols-2 gap-2"><button type="button" disabled={busy} onClick={() => onUpdate({ isFavorite: true })} className="rounded-md border px-2 py-2 text-[11px] hover:bg-secondary disabled:opacity-50">{copy.markFavorite}</button><button type="button" disabled={busy} onClick={() => onUpdate({ isFavorite: false })} className="rounded-md border px-2 py-2 text-[11px] hover:bg-secondary disabled:opacity-50">{copy.unmarkFavorite}</button></div>
-        </section>
+          {/* 收藏 */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onUpdate({ isFavorite: true })}
+              className="flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[11px] font-medium transition-all active:scale-[0.98] disabled:opacity-40"
+              style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+            >
+              <Heart size={12} fill="currentColor" style={{ color: '#EF4444' }} />
+              {copy.markFavorite}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onUpdate({ isFavorite: false })}
+              className="flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[11px] font-medium transition-all active:scale-[0.98] disabled:opacity-40"
+              style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+            >
+              <Heart size={12} />
+              {copy.unmarkFavorite}
+            </button>
+          </div>
+        </div>
+      </Section>
 
-        <section>
-          <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Tags size={14} />{copy.tags}</div>
-          <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border p-2">{tags.length === 0 ? <p className="text-[10px] text-muted-foreground">{copy.noTags}</p> : tags.map((tag) => <div key={tag.id} className="flex items-center gap-2 rounded px-1 py-1"><span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: tag.color || 'var(--muted-foreground)' }} /><span className="min-w-0 flex-1 truncate text-[11px]">{tag.name}</span><button type="button" disabled={busy} onClick={() => onUpdate({ addTagIds: [tag.id] })} className="rounded border px-1.5 py-1 text-[9px] hover:bg-secondary disabled:opacity-50">{copy.add}</button><button type="button" disabled={busy} onClick={() => onUpdate({ removeTagIds: [tag.id] })} className="rounded border px-1.5 py-1 text-[9px] hover:bg-secondary disabled:opacity-50">{copy.remove}</button></div>)}</div>
-        </section>
+      {/* ── 标签与集合（+ 添加 / − 移除） ── */}
+      <Section
+        label={`${copy.tags} / ${copy.collections}`}
+        icon={TagIcon}
+        open={organizationOpen}
+        onToggle={() => setOrganizationOpen((v) => !v)}
+      >
+        <div className="space-y-3">
+          {tags.length === 0 && collections.length === 0 && (
+            <p className="text-[10px] italic" style={{ color: 'var(--muted-foreground)' }}>
+              {copy.noTags} · {copy.noCollections}
+            </p>
+          )}
+          {tags.length > 0 && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--muted-foreground)' }}>
+                {copy.tags}
+              </p>
+              <div className="custom-scrollbar max-h-44 space-y-0.5 overflow-y-auto">
+                {tags.map((tag) => (
+                  <BatchRow
+                    key={tag.id}
+                    icon={TagIcon}
+                    label={tag.name}
+                    addLabel={copy.add}
+                    removeLabel={copy.remove}
+                    dotColor={tag.color || undefined}
+                    disabled={busy}
+                    onAdd={() => onUpdate({ addTagIds: [tag.id] })}
+                    onRemove={() => onUpdate({ removeTagIds: [tag.id] })}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {collections.length > 0 && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--muted-foreground)' }}>
+                {copy.collections}
+              </p>
+              <div className="custom-scrollbar max-h-44 space-y-0.5 overflow-y-auto">
+                {collections.map((collection) => (
+                  <BatchRow
+                    key={collection.id}
+                    icon={TagIcon}
+                    label={collection.name}
+                    addLabel={copy.add}
+                    removeLabel={copy.remove}
+                    disabled={busy}
+                    onAdd={() => onUpdate({ addCollectionIds: [collection.id] })}
+                    onRemove={() => onUpdate({ removeCollectionIds: [collection.id] })}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Section>
 
-        <section>
-          <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Layers3 size={14} />{copy.collections}</div>
-          <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border p-2">{collections.length === 0 ? <p className="text-[10px] text-muted-foreground">{copy.noCollections}</p> : collections.map((collection) => <div key={collection.id} className="flex items-center gap-2 rounded px-1 py-1"><span className="min-w-0 flex-1 truncate text-[11px]">{collection.name}</span><button type="button" disabled={busy} onClick={() => onUpdate({ addCollectionIds: [collection.id] })} className="rounded border px-1.5 py-1 text-[9px] hover:bg-secondary disabled:opacity-50">{copy.add}</button><button type="button" disabled={busy} onClick={() => onUpdate({ removeCollectionIds: [collection.id] })} className="rounded border px-1.5 py-1 text-[9px] hover:bg-secondary disabled:opacity-50">{copy.remove}</button></div>)}</div>
-        </section>
+      {/* ── 操作区 ── */}
+      <div className="mt-auto space-y-2 px-5 pb-5 pt-4">
+        <button
+          type="button"
+          onClick={onMove}
+          disabled={busy || !canMove}
+          className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+        >
+          <FolderInput size={13} />
+          {copy.moveAssetsToFolder}
+        </button>
+        {busy && (
+          <p className="flex items-center justify-center gap-1.5 text-[9px]" style={{ color: 'var(--muted-foreground)' }}>
+            <Check size={9} className="animate-pulse" />
+            {copy.autoSaving}
+          </p>
+        )}
       </div>
     </aside>
   )

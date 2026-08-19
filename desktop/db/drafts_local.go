@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	_ "modernc.org/sqlite"
+
+	"mo-gallery-desktop/db/migrate"
 )
 
 const localDraftsFileName = "drafts.db"
@@ -75,11 +77,21 @@ func OpenLocalDrafts(path string) (*gorm.DB, error) {
 			return nil, fmt.Errorf("configure local drafts database: %w", err)
 		}
 	}
-	if err := migrateLocalDraftSchema(database); err != nil {
+	if err := migrate.Run(database, localDraftMigrations()); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate local drafts database: %w", err)
 	}
 	return database, nil
+}
+
+func localDraftMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{
+			Version: 1,
+			Name:    "baseline",
+			Up:      migrateLocalDraftSchema,
+		},
+	}
 }
 
 type legacyLocalDraftRecord struct {
@@ -108,46 +120,30 @@ func migrateLocalDraftSchema(database *gorm.DB) error {
 		return fmt.Errorf("read legacy draft rows: %w", err)
 	}
 
-	tx := database.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer func() {
-		if recoverValue := recover(); recoverValue != nil {
-			tx.Rollback()
-			panic(recoverValue)
-		}
-	}()
-	if err := tx.Exec(`ALTER TABLE "LocalDraft" RENAME TO "LocalDraftLegacy"`).Error; err != nil {
-		tx.Rollback()
+	if err := database.Exec(`ALTER TABLE "LocalDraft" RENAME TO "LocalDraftLegacy"`).Error; err != nil {
 		return err
 	}
 	// SQLite keeps explicit index names when a table is renamed. Drop the
 	// legacy GORM indexes before AutoMigrate creates indexes for the new table.
-	if err := tx.Exec(`DROP INDEX IF EXISTS "idx_LocalDraft_updated_at"`).Error; err != nil {
-		tx.Rollback()
+	if err := database.Exec(`DROP INDEX IF EXISTS "idx_LocalDraft_updated_at"`).Error; err != nil {
 		return err
 	}
-	if err := tx.AutoMigrate(&LocalDraftRecord{}); err != nil {
-		tx.Rollback()
+	if err := database.AutoMigrate(&LocalDraftRecord{}); err != nil {
 		return err
 	}
 	for _, legacy := range legacyRecords {
 		record, err := parseLocalDraft(legacy.Key, legacy.Payload)
 		if err != nil {
-			tx.Rollback()
 			return fmt.Errorf("convert legacy draft %q: %w", legacy.Key, err)
 		}
-		if err := tx.Save(&record).Error; err != nil {
-			tx.Rollback()
+		if err := database.Save(&record).Error; err != nil {
 			return fmt.Errorf("write converted draft %q: %w", legacy.Key, err)
 		}
 	}
-	if err := tx.Migrator().DropTable("LocalDraftLegacy"); err != nil {
-		tx.Rollback()
+	if err := database.Migrator().DropTable("LocalDraftLegacy"); err != nil {
 		return err
 	}
-	return tx.Commit().Error
+	return nil
 }
 
 func CloseLocalDrafts() {

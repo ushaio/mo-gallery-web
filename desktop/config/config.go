@@ -241,7 +241,7 @@ func (d DatabaseConfig) DSN() string {
 
 // APIConfig 外部 API 配置
 type APIConfig struct {
-	BaseURL       string `json:"base_url"`       // mo-gallery-web API 地址
+	BaseURL       string `json:"base_url"`       // 从 login_url 自动裁剪出的站点根地址
 	LoginURL      string `json:"login_url"`      // 根地址或 /login/<安全后缀>
 	RememberLogin bool   `json:"remember_login"` // 是否记住登录凭据
 	SavedUsername string `json:"saved_username"` // 保存的用户名
@@ -294,7 +294,8 @@ func defaultConfig() *Config {
 			SSLMode: "disable",
 		},
 		API: APIConfig{
-			BaseURL: "http://localhost:3000",
+			BaseURL:  "http://localhost:3000",
+			LoginURL: "http://localhost:3000",
 		},
 		UI: UIConfig{
 			Language:    "zh",
@@ -365,9 +366,18 @@ func Load(customPath string) (*Config, error) {
 	// already represent an established installation when cloud settings exist.
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) == nil {
+		// Migrate the former split API address to the single login_url field.
+		if cfg.API.LoginURL == "" {
+			var legacyBaseURL string
+			var rawAPI map[string]json.RawMessage
+			if json.Unmarshal(raw["api"], &rawAPI) == nil {
+				_ = json.Unmarshal(rawAPI["base_url"], &legacyBaseURL)
+			}
+			cfg.API.LoginURL = strings.TrimRight(strings.TrimSpace(legacyBaseURL), "/")
+		}
 		var rawUI map[string]json.RawMessage
 		if json.Unmarshal(raw["ui"], &rawUI) == nil {
-			if _, hasSetupFlag := rawUI["setup_completed"]; !hasSetupFlag && (cfg.API.BaseURL != "" || cfg.API.SavedUsername != "") {
+			if _, hasSetupFlag := rawUI["setup_completed"]; !hasSetupFlag && (cfg.API.LoginURL != "" || cfg.API.SavedUsername != "") {
 				cfg.UI.SetupCompleted = true
 			}
 		}

@@ -115,3 +115,8 @@ public/uploads
 .env*
 .tmp-go-cache/
 .claude/
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<

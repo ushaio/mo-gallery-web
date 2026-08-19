@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	_ "modernc.org/sqlite"
+
+	"mo-gallery-desktop/db/migrate"
 )
 
 const localZineFileName = "zine.db"
@@ -93,12 +95,27 @@ func OpenLocalZine(path string) (*gorm.DB, error) {
 		}
 	}
 
-	if err := database.AutoMigrate(&ZineProjectRecord{}, &ZineAssetRecord{}); err != nil {
+	if err := migrate.Run(database, localZineMigrations()); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate local Zine database: %w", err)
 	}
 
 	return database, nil
+}
+
+func localZineMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{
+			Version: 1,
+			Name:    "baseline",
+			Up: func(tx *gorm.DB) error {
+				if err := tx.AutoMigrate(&ZineProjectRecord{}, &ZineAssetRecord{}); err != nil {
+					return err
+				}
+				return tx.Exec(`CREATE INDEX IF NOT EXISTS "idx_ZineProject_updatedAt" ON "ZineProject" ("updatedAt")`).Error
+			},
+		},
+	}
 }
 
 func CloseLocalZine() {

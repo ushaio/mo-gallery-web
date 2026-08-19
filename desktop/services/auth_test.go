@@ -83,8 +83,8 @@ func TestLoginAcceptsServerIssuedOpaqueToken(t *testing.T) {
 	if result.Token != "opaque-server-token" || result.User.ID != "user-1" {
 		t.Fatalf("result = %+v", result)
 	}
-	if cfg.API.BaseURL != server.URL {
-		t.Fatalf("BaseURL = %q", cfg.API.BaseURL)
+	if cfg.API.LoginURL != server.URL {
+		t.Fatalf("LoginURL = %q", cfg.API.LoginURL)
 	}
 }
 

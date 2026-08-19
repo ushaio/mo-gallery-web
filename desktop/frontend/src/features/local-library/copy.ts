@@ -2,6 +2,7 @@
   zh: {
     title: '本地资源库', subtitle: '原始文件和索引集中存放在同一个资源库文件夹中',
     preparing: '正在读取本地资源库…', retry: '重试',
+    upgradeTitle: '需要升级本地资源库数据库', upgradeBody: '此资源库由旧版本创建，升级完成后才能使用。升级前会自动创建数据库备份，照片原文件不会被修改。', upgradeVersion: '数据库版本 {current} → {target}', upgradeStart: '开始升级', upgradeCancel: '暂不升级', upgradeRunning: '正在升级数据库…', upgradeDoneTitle: '数据库升级完成', upgradeDoneBody: '资源库已经升级，可以开始使用。', upgradeConfirm: '确认并打开', upgradeFailed: '数据库升级失败，请重试',
     guide: {
       label: '使用引导',
       skip: '跳过',
@@ -73,6 +74,7 @@
   en: {
     title: 'Local Library', subtitle: 'Originals and indexes stay together in one library folder',
     preparing: 'Reading local libraries...', retry: 'Try again',
+    upgradeTitle: 'Local library database upgrade required', upgradeBody: 'This library was created by an older version and must be upgraded before it can be used. A database backup is created first; photo originals are not changed.', upgradeVersion: 'Database version {current} → {target}', upgradeStart: 'Start upgrade', upgradeCancel: 'Not now', upgradeRunning: 'Upgrading database…', upgradeDoneTitle: 'Database upgrade complete', upgradeDoneBody: 'The library is upgraded and ready to use.', upgradeConfirm: 'Confirm and open', upgradeFailed: 'Database upgrade failed. Try again.',
     guide: {
       label: 'Usage guide',
       skip: 'Skip',
