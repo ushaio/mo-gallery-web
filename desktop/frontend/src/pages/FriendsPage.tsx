@@ -1303,21 +1303,19 @@ function Toggle({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
-      <span>{label}</span>
+      <span className="leading-none">{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className="relative h-5 w-9 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         style={{ backgroundColor: checked ? "var(--primary)" : "var(--muted)" }}
       >
         <span
-          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-          style={{
-            transform: checked ? "translateX(17px)" : "translateX(2px)",
-          }}
+          className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+          style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
         />
       </button>
     </div>
