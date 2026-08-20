@@ -69,8 +69,24 @@ func (s *FriendService) Create(params CreateFriendParams) (*FriendDTO, error) {
 	if params.Name == "" || params.URL == "" {
 		return nil, errors.New("名称和URL不能为空")
 	}
+	// Build request body manually so empty optional fields (avatar, description)
+	// are omitted instead of sent as "" — the server-side Zod schema requires
+	// avatar to be a valid URL, null, or undefined; an empty string fails.
+	body := map[string]any{
+		"name":      params.Name,
+		"url":       params.URL,
+		"featured":  params.Featured,
+		"sortOrder": params.SortOrder,
+		"isActive":  params.IsActive,
+	}
+	if params.Description != "" {
+		body["description"] = params.Description
+	}
+	if params.Avatar != "" {
+		body["avatar"] = params.Avatar
+	}
 	var friend FriendDTO
-	if err := s.proxy.POST("/admin/friends", params, &friend); err != nil {
+	if err := s.proxy.POST("/admin/friends", body, &friend); err != nil {
 		return nil, err
 	}
 	return &friend, nil
@@ -79,6 +95,14 @@ func (s *FriendService) Create(params CreateFriendParams) (*FriendDTO, error) {
 func (s *FriendService) Update(id string, params UpdateFriendParams) (*FriendDTO, error) {
 	if err := s.checkReady(); err != nil {
 		return nil, err
+	}
+	// Convert empty *string to nil so the server-side Zod schema
+	// doesn't reject empty strings for url-validated fields (avatar).
+	if params.Description != nil && *params.Description == "" {
+		params.Description = nil
+	}
+	if params.Avatar != nil && *params.Avatar == "" {
+		params.Avatar = nil
 	}
 	var friend FriendDTO
 	if err := s.proxy.PATCH("/admin/friends/"+id, params, &friend); err != nil {
@@ -92,4 +116,19 @@ func (s *FriendService) Delete(id string) error {
 		return err
 	}
 	return s.proxy.DELETE("/admin/friends/" + id)
+}
+
+type ReorderFriendItem struct {
+	ID        string `json:"id"`
+	SortOrder int    `json:"sortOrder"`
+}
+
+func (s *FriendService) Reorder(items []ReorderFriendItem) error {
+	if err := s.checkReady(); err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return s.proxy.PATCH("/admin/friends/reorder", map[string]any{"items": items}, nil)
 }

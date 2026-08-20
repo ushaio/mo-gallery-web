@@ -1,32 +1,36 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { SimpleDeleteDialog } from "@/components/admin/SimpleDeleteDialog";
 import { useCachedPageEffect } from "@/hooks/useCachedPageEffect";
 import { useDataRevision } from "@/hooks/useDataRevision";
 import { usePreferences } from "@/store/preferences";
-import { t } from "@/lib/i18n";
+import { t, type Locale } from "@/lib/i18n";
 import type { FriendLink } from "@/types";
 import { invalidateDesktopCache } from "@/lib/app-cache";
 import { loadPersistentResource } from "@/lib/persistent-cache";
-import { ListSkeleton } from "@/components/admin/Skeleton";
 import { toast } from "sonner";
 import {
   ArrowUpRight,
-  Check,
   Eye,
   EyeOff,
   GripVertical,
   Link2,
-  Pencil,
   Plus,
+  RefreshCw,
   Save,
+  Search,
   Star,
   Trash2,
   X,
+  Wand2,
 } from "lucide-react";
 import {
   CreateFriend,
   DeleteFriend,
+  FetchURLMetadata,
   GetFriends,
+  ReorderFriends,
   UpdateFriend,
 } from "../../wailsjs/go/main/App";
 import { getErrorMessage } from "@/lib/auth-errors";
@@ -39,6 +43,9 @@ type FriendForm = {
   featured: boolean;
   isActive: boolean;
 };
+
+type StatusFilter = "all" | "active" | "hidden" | "featured";
+
 const EMPTY_FORM: FriendForm = {
   name: "",
   url: "",
@@ -48,95 +55,79 @@ const EMPTY_FORM: FriendForm = {
   isActive: true,
 };
 
+const formInputClass =
+  "w-full rounded-lg border bg-input px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20";
+
+function formFromFriend(friend: FriendLink): FriendForm {
+  return {
+    name: friend.name,
+    url: friend.url,
+    description: friend.description || "",
+    avatar: friend.avatar || "",
+    featured: friend.featured,
+    isActive: friend.isActive,
+  };
+}
+
+function sameForm(left: FriendForm, right: FriendForm) {
+  return (
+    left.name === right.name &&
+    left.url === right.url &&
+    left.description === right.description &&
+    left.avatar === right.avatar &&
+    left.featured === right.featured &&
+    left.isActive === right.isActive
+  );
+}
+
+function hostOf(url: string) {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function normalizeUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function isValidUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function FriendsPage() {
   const { language } = usePreferences();
-  const zh = language === "zh";
   const friendsRevision = useDataRevision("friends");
   const [friends, setFriends] = useState<FriendLink[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FriendForm>(EMPTY_FORM);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState(false);
+  const [urlTouched, setUrlTouched] = useState(false);
+  const [fetchingInfo, setFetchingInfo] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<FriendLink | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const copy = zh
-    ? {
-        count: "个友链",
-        active: "已启用",
-        featured: "精选",
-        add: "添加友链",
-        newTitle: "新建友链",
-        editTitle: "编辑友链",
-        intro: "管理你想长期保持联系的创作者与站点。拖动行可调整展示顺序。",
-        emptyTitle: "还没有友链",
-        emptyText: "从一个你喜欢的独立站点开始，建立自己的小小网络。",
-        name: "站点名称",
-        url: "链接地址",
-        description: "一句话介绍",
-        avatar: "头像地址",
-        namePlaceholder: "例如：野地电台",
-        urlPlaceholder: "https://example.com",
-        descPlaceholder: "这是谁？他们在写什么？",
-        avatarPlaceholder: "https://…（可选）",
-        activeLabel: "在公开页面展示",
-        featuredLabel: "标记为精选",
-        cancel: "取消",
-        save: "保存友链",
-        create: "创建友链",
-        deletePrompt: "确认删除这个友链？",
-        keep: "保留",
-        confirmDelete: "确认删除",
-        order: "展示顺序",
-        edit: "编辑",
-        enabled: "已启用",
-        disabled: "已隐藏",
-        created: "友链已创建",
-        updated: "友链已更新",
-        deleted: "友链已删除",
-        required: "请填写名称和链接地址",
-        invalid: "请输入有效的 URL",
-      }
-    : {
-        count: "links",
-        active: "active",
-        featured: "featured",
-        add: "Add link",
-        newTitle: "New friend link",
-        editTitle: "Edit friend link",
-        intro:
-          "Keep your creative network tidy. Drag a row to change its public order.",
-        emptyTitle: "No friend links yet",
-        emptyText: "Start with one independent site you want to keep close.",
-        name: "Site name",
-        url: "Link URL",
-        description: "Short description",
-        avatar: "Avatar URL",
-        namePlaceholder: "e.g. Field Notes",
-        urlPlaceholder: "https://example.com",
-        descPlaceholder: "What do they make or write?",
-        avatarPlaceholder: "https://… (optional)",
-        activeLabel: "Show on public page",
-        featuredLabel: "Mark as featured",
-        cancel: "Cancel",
-        save: "Save link",
-        create: "Create link",
-        deletePrompt: "Delete this friend link?",
-        keep: "Keep",
-        confirmDelete: "Delete link",
-        order: "Display order",
-        edit: "Edit",
-        enabled: "Active",
-        disabled: "Hidden",
-        created: "Friend link created",
-        updated: "Friend link updated",
-        deleted: "Friend link deleted",
-        required: "Add a name and URL",
-        invalid: "Enter a valid URL",
-      };
+  const [previewOrder, setPreviewOrder] = useState<FriendLink[] | null>(null);
+  const snapshotRef = useRef<FriendForm>(EMPTY_FORM);
+  const didAutoSelectRef = useRef(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
   const fetchFriends = useCallback(
-    async (force = false) => {
-      setLoading(true);
+    async (force = false, silent = false) => {
+      if (!silent) setLoading(true);
       try {
         setFriends(
           (await loadPersistentResource<FriendLink[]>("friends", GetFriends, {
@@ -146,100 +137,222 @@ export function FriendsPage() {
       } catch (err: unknown) {
         toast.error(
           getErrorMessage(err) ||
-            (zh ? "获取友链列表失败" : "Could not load friend links"),
+            (language === "zh"
+              ? "获取友链列表失败"
+              : "Could not load friend links"),
         );
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
-    [zh],
+    [language],
   );
+
   useCachedPageEffect(() => {
     void fetchFriends();
   }, [fetchFriends, friendsRevision]);
-  const activeCount = useMemo(
-    () => friends.filter((friend) => friend.isActive).length,
-    [friends],
-  );
-  const featuredCount = useMemo(
-    () => friends.filter((friend) => friend.featured).length,
-    [friends],
-  );
-  const openCreate = () => {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-    setEditorOpen(true);
-  };
-  const openEdit = (friend: FriendLink) => {
-    setEditingId(friend.id);
-    setForm({
-      name: friend.name,
-      url: friend.url,
-      description: friend.description || "",
-      avatar: friend.avatar || "",
-      featured: friend.featured,
-      isActive: friend.isActive,
+
+  const displayList = previewOrder ?? friends;
+  const query = searchQuery.trim().toLowerCase();
+  const isFiltering = Boolean(query) || statusFilter !== "all";
+
+  const filteredFriends = useMemo(() => {
+    return displayList.filter((friend) => {
+      if (statusFilter === "active" && !friend.isActive) return false;
+      if (statusFilter === "hidden" && friend.isActive) return false;
+      if (statusFilter === "featured" && !friend.featured) return false;
+      if (!query) return true;
+      return [friend.name, friend.url, friend.description]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query));
     });
-    setEditorOpen(true);
-  };
-  const closeEditor = () => {
-    if (!saving) {
-      setEditorOpen(false);
-      setEditingId(null);
-    }
-  };
-  const handleSave = async () => {
-    if (!form.name.trim() || !form.url.trim()) {
-      toast.error(copy.required);
+  }, [displayList, query, statusFilter]);
+
+  const selectedFriend = useMemo(
+    () =>
+      selectedId
+        ? (friends.find((friend) => friend.id === selectedId) ?? null)
+        : null,
+    [friends, selectedId],
+  );
+
+  const editorOpen = creating || Boolean(selectedFriend);
+  const isDirty = editorOpen && !sameForm(form, snapshotRef.current);
+  const normalizedUrl = normalizeUrl(form.url);
+  const nameEmpty = !form.name.trim();
+  const urlInvalid = Boolean(form.url.trim()) && !isValidUrl(normalizedUrl);
+  const urlEmpty = !form.url.trim();
+  const canReorder = friends.length > 1 && !isFiltering && !saving;
+  const activeCount = friends.filter((friend) => friend.isActive).length;
+  const featuredCount = friends.filter((friend) => friend.featured).length;
+
+  useEffect(() => {
+    if (didAutoSelectRef.current || loading || creating) return;
+    if (selectedId) {
+      didAutoSelectRef.current = true;
       return;
     }
-    try {
-      new URL(form.url.trim());
-    } catch {
-      toast.error(copy.invalid);
+    if (friends.length === 0) return;
+    didAutoSelectRef.current = true;
+    const first = friends[0];
+    setSelectedId(first.id);
+    const next = formFromFriend(first);
+    snapshotRef.current = next;
+    setForm(next);
+  }, [creating, friends, loading, selectedId]);
+
+  const discardIfDirty = () => {
+    if (isDirty) toast.message(t("admin.friends_discarded", language));
+  };
+
+  const openCreate = () => {
+    discardIfDirty();
+    snapshotRef.current = EMPTY_FORM;
+    setForm(EMPTY_FORM);
+    setSelectedId(null);
+    setCreating(true);
+    setNameTouched(false);
+    setUrlTouched(false);
+  };
+
+  const openEdit = (friend: FriendLink, force = false) => {
+    if (!force && selectedId === friend.id && !creating) return;
+    if (!force) discardIfDirty();
+    const next = formFromFriend(friend);
+    snapshotRef.current = next;
+    setForm(next);
+    setSelectedId(friend.id);
+    setCreating(false);
+    setNameTouched(false);
+    setUrlTouched(false);
+  };
+
+  const closeEditor = () => {
+    if (saving) return;
+    discardIfDirty();
+    setCreating(false);
+    setNameTouched(false);
+    setUrlTouched(false);
+    if (selectedFriend) {
+      const next = formFromFriend(selectedFriend);
+      snapshotRef.current = next;
+      setForm(next);
+      return;
+    }
+    snapshotRef.current = EMPTY_FORM;
+    setForm(EMPTY_FORM);
+    setSelectedId(null);
+  };
+
+  const handleSave = async () => {
+    setNameTouched(true);
+    setUrlTouched(true);
+    if (nameEmpty || urlEmpty) {
+      toast.error(
+        nameEmpty
+          ? t("admin.friends_name_required", language)
+          : t("admin.friends_url_required", language),
+      );
+      return;
+    }
+    if (!isValidUrl(normalizedUrl)) {
+      toast.error(t("admin.friends_url_invalid", language));
       return;
     }
     setSaving(true);
     try {
-      if (editingId)
-        await UpdateFriend(editingId, {
-          ...form,
-          name: form.name.trim(),
-          url: form.url.trim(),
-        });
-      else
-        await CreateFriend({
-          ...form,
-          name: form.name.trim(),
-          url: form.url.trim(),
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        url: normalizedUrl,
+        description: form.description.trim(),
+        avatar: form.avatar.trim(),
+      };
+      if (creating || !selectedId) {
+        const created = await CreateFriend({
+          ...payload,
           sortOrder: friends.length,
         });
-      closeEditor();
-      await fetchFriends(true);
+        setCreating(false);
+        setSelectedId(created.id);
+        snapshotRef.current = payload;
+        setForm(payload);
+        toast.success(t("admin.friends_created", language));
+      } else {
+        await UpdateFriend(selectedId, payload);
+        snapshotRef.current = payload;
+        toast.success(t("admin.friends_updated", language));
+      }
+      await fetchFriends(true, true);
       invalidateDesktopCache(["overview"]);
-      toast.success(editingId ? copy.updated : copy.created);
     } catch (err: unknown) {
       toast.error(
-        getErrorMessage(err) || (zh ? "保存失败" : "Could not save link"),
+        getErrorMessage(err) ||
+          (language === "zh" ? "保存失败" : "Could not save link"),
       );
     } finally {
       setSaving(false);
     }
   };
-  const handleDelete = async (id: string) => {
+
+  const handleFetchInfo = async () => {
+    const normalized = normalizeUrl(form.url);
+    if (!isValidUrl(normalized)) {
+      toast.error(t("admin.friends_url_invalid", language));
+      return;
+    }
+    if (fetchingInfo) return;
+    setFetchingInfo(true);
     try {
-      await DeleteFriend(id);
-      setDeleteConfirmId(null);
-      await fetchFriends(true);
-      invalidateDesktopCache(["overview"]);
-      toast.success(copy.deleted);
+      const info = await FetchURLMetadata(normalized);
+      if (info) {
+        const next = { ...form, url: normalized };
+        if (info.title) next.name = info.title;
+        if (info.description) next.description = info.description;
+        if (info.avatar) next.avatar = info.avatar;
+        snapshotRef.current = { ...snapshotRef.current, ...next };
+        setForm(next);
+        setNameTouched(false);
+        setUrlTouched(false);
+        toast.success(t("admin.friends_fetch_success", language));
+      }
     } catch (err: unknown) {
       toast.error(
-        getErrorMessage(err) || (zh ? "删除友链失败" : "Could not delete link"),
+        getErrorMessage(err) ||
+          t("admin.friends_fetch_failed", language),
+      );
+    } finally {
+      setFetchingInfo(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const deletedId = pendingDelete.id;
+    try {
+      await DeleteFriend(deletedId);
+      setPendingDelete(null);
+      if (selectedId === deletedId) {
+        const remaining = friends.filter((friend) => friend.id !== deletedId);
+        const next = remaining[0] ?? null;
+        setCreating(false);
+        setSelectedId(next?.id ?? null);
+        const nextForm = next ? formFromFriend(next) : EMPTY_FORM;
+        snapshotRef.current = nextForm;
+        setForm(nextForm);
+      }
+      await fetchFriends(true, true);
+      invalidateDesktopCache(["overview"]);
+      toast.success(t("admin.friends_deleted", language));
+    } catch (err: unknown) {
+      toast.error(
+        getErrorMessage(err) ||
+          (language === "zh" ? "删除友链失败" : "Could not delete link"),
       );
     }
   };
-  const updateFriend = async (
+
+  const patchFriend = async (
     friend: FriendLink,
     patch: Partial<FriendLink>,
   ) => {
@@ -250,372 +363,587 @@ export function FriendsPage() {
           item.id === friend.id ? { ...item, ...patch } : item,
         ),
       );
+      if (selectedId === friend.id && !creating) {
+        setForm((current) => {
+          const next = { ...current, ...patch };
+          snapshotRef.current = { ...snapshotRef.current, ...patch };
+          return next;
+        });
+      }
       invalidateDesktopCache(["overview"]);
     } catch (err: unknown) {
       toast.error(
-        getErrorMessage(err) || (zh ? "更新失败" : "Could not update link"),
+        getErrorMessage(err) ||
+          (language === "zh" ? "更新失败" : "Could not update link"),
       );
     }
   };
-  const handleDrop = async (targetId: string) => {
-    if (!draggedId || draggedId === targetId) return;
-    const from = friends.findIndex((friend) => friend.id === draggedId),
-      to = friends.findIndex((friend) => friend.id === targetId);
-    if (from < 0 || to < 0) return;
-    const reordered = [...friends];
-    const [moved] = reordered.splice(from, 1);
-    reordered.splice(to, 0, moved);
-    const next = reordered.map((friend, index) => ({
+
+  const handleDrop = async () => {
+    if (!draggedId || !previewOrder) {
+      setDraggedId(null);
+      setPreviewOrder(null);
+      return;
+    }
+    const next = previewOrder.map((friend, index) => ({
       ...friend,
       sortOrder: index,
     }));
+    const unchanged = next.every(
+      (friend, index) => friend.id === friends[index]?.id,
+    );
     setFriends(next);
     setDraggedId(null);
+    setPreviewOrder(null);
+    if (unchanged) return;
     try {
-      await Promise.all(
-        next.map((friend) =>
-          UpdateFriend(friend.id, { sortOrder: friend.sortOrder }),
-        ),
+      await ReorderFriends(
+        next.map((friend) => ({ id: friend.id, sortOrder: friend.sortOrder })),
       );
-      toast.success(zh ? "展示顺序已保存" : "Display order saved");
+      toast.success(t("admin.friends_reordered", language));
     } catch (err: unknown) {
       toast.error(
-        getErrorMessage(err) || (zh ? "排序保存失败" : "Could not save order"),
+        getErrorMessage(err) ||
+          (language === "zh" ? "排序保存失败" : "Could not save order"),
       );
-      void fetchFriends(true);
+      void fetchFriends(true, true);
     }
   };
+
+  const handleDragEnter = (targetId: string) => {
+    if (!draggedId || draggedId === targetId || !previewOrder) return;
+    const from = previewOrder.findIndex((friend) => friend.id === draggedId);
+    const to = previewOrder.findIndex((friend) => friend.id === targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    const next = [...previewOrder];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setPreviewOrder(next);
+  };
+
+  useEffect(() => {
+    if (creating) nameInputRef.current?.focus();
+  }, [creating]);
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void handleSaveRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editorOpen]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+  };
+
+  const filters: { value: StatusFilter; label: string }[] = [
+    { value: "all", label: t("admin.friends_filter_all", language) },
+    { value: "active", label: t("admin.friends_active", language) },
+    { value: "hidden", label: t("admin.friends_filter_hidden", language) },
+    { value: "featured", label: t("admin.friends_featured", language) },
+  ];
+
   return (
     <>
       <PageHeader
         title={t("admin.page_friends", language)}
-        description={`${friends.length} ${copy.count}`}
         actions={
           <button
+            type="button"
             onClick={openCreate}
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-transform hover:-translate-y-0.5 active:translate-y-0"
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90"
             style={{
               backgroundColor: "var(--primary)",
               color: "var(--primary-foreground)",
             }}
           >
             <Plus size={14} />
-            {copy.add}
+            {t("admin.friends_add", language)}
           </button>
         }
       />
-      <main className="flex-1 overflow-auto p-5 md:p-7">
-        <div className="mx-auto max-w-6xl">
-          <section className="mb-6 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div>
-              <p
-                className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em]"
-                style={{ color: "var(--primary)" }}
-              >
-                LINK DIRECTORY / 01
-              </p>
-              <h2 className="max-w-xl text-3xl font-medium leading-tight tracking-[-0.03em] md:text-4xl">
-                {zh
-                  ? "把你的网络，整理成一页。"
-                  : "A considered network, in one place."}
-              </h2>
-              <p
-                className="mt-3 max-w-2xl text-sm leading-6"
+
+      <div className="flex min-h-0 flex-1">
+        <aside
+          className="flex w-[22rem] shrink-0 flex-col overflow-hidden border-r bg-card"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div
+            className="flex h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div className="relative min-w-0 flex-1">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
                 style={{ color: "var(--muted-foreground)" }}
-              >
-                {copy.intro}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {[
-                { label: copy.count, value: friends.length },
-                { label: copy.active, value: activeCount },
-                { label: copy.featured, value: featuredCount },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="min-w-[88px] border-l px-3 py-1"
-                  style={{ borderColor: "var(--border)" }}
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t("admin.friends_search", language)}
+                className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  aria-label={t("common.close", language)}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-secondary"
                 >
-                  <div className="font-serif text-2xl tabular-nums">
-                    {stat.value}
-                  </div>
-                  <div
-                    className="text-[10px] uppercase tracking-wider"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
-                    {stat.label}
-                  </div>
-                </div>
-              ))}
+                  <X size={13} />
+                </button>
+              )}
             </div>
-          </section>
-          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="min-w-0">
-              <div
-                className="mb-2 flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                style={{ color: "var(--muted-foreground)" }}
-              >
-                <span>{copy.order}</span>
-                <span>
-                  {friends.length ? `${friends.length} ${copy.count}` : ""}
-                </span>
-              </div>
-              {loading ? (
-                <ListSkeleton count={5} />
-              ) : friends.length === 0 ? (
-                <div
-                  className="flex min-h-[300px] flex-col items-center justify-center border border-dashed px-6 text-center"
+            <div
+              className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5"
+              style={{ borderColor: "var(--border)" }}
+            >
+              {filters.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.value)}
+                  className="h-7 rounded px-2.5 text-[11px] font-medium transition-colors"
                   style={{
-                    borderColor: "var(--border)",
-                    color: "var(--muted-foreground)",
+                    backgroundColor:
+                      statusFilter === filter.value ? "var(--secondary)" : undefined,
+                    color:
+                      statusFilter === filter.value
+                        ? "var(--foreground)"
+                        : "var(--muted-foreground)",
                   }}
                 >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+            {loading ? (
+              Array.from({ length: 6 }, (_, index) => (
+                <div
+                  key={index}
+                  className="mb-1 flex items-center gap-2.5 rounded-lg px-2 py-2"
+                >
                   <div
-                    className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-                    style={{ backgroundColor: "var(--secondary)" }}
-                  >
-                    <Link2 size={24} />
+                    className="size-10 shrink-0 animate-pulse rounded-md"
+                    style={{ backgroundColor: "var(--muted)" }}
+                  />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div
+                      className="h-3 w-3/4 animate-pulse rounded"
+                      style={{ backgroundColor: "var(--muted)" }}
+                    />
+                    <div
+                      className="h-2 w-1/2 animate-pulse rounded"
+                      style={{ backgroundColor: "var(--muted)" }}
+                    />
                   </div>
-                  <h3
-                    className="font-serif text-2xl"
-                    style={{ color: "var(--foreground)" }}
-                  >
-                    {copy.emptyTitle}
-                  </h3>
-                  <p className="mt-2 max-w-sm text-sm leading-6">
-                    {copy.emptyText}
-                  </p>
-                  <button
-                    onClick={openCreate}
-                    className="mt-5 flex items-center gap-2 border px-3 py-2 text-xs font-semibold transition-colors hover:bg-[var(--secondary)]"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    <Plus size={14} />
-                    {copy.add}
-                  </button>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {friends.map((friend) => (
-                    <article
-                      key={friend.id}
-                      draggable
-                      onDragStart={() => setDraggedId(friend.id)}
-                      onDragEnd={() => setDraggedId(null)}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={() => void handleDrop(friend.id)}
-                      className={`group relative flex items-center gap-3 border px-3 py-3 transition-all duration-200 hover:-translate-y-px hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--primary)_8%,transparent)] ${draggedId === friend.id ? "opacity-45" : ""}`}
-                      style={{
-                        borderColor: "var(--border)",
-                        backgroundColor: "var(--card)",
-                      }}
+              ))
+            ) : friends.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 p-6 text-center">
+                <span
+                  className="flex size-12 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: "var(--muted)" }}
+                >
+                  <Link2
+                    size={20}
+                    style={{ color: "var(--muted-foreground)" }}
+                  />
+                </span>
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {t("admin.friends_empty", language)}
+                </p>
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs"
+                  style={{
+                    borderColor: "var(--border)",
+                    color: "var(--foreground)",
+                  }}
+                >
+                  <Plus size={14} />
+                  {t("admin.friends_create_first", language)}
+                </button>
+              </div>
+            ) : filteredFriends.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-6 text-center">
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {t("admin.friends_no_match", language)}
+                </p>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-xs underline-offset-2 hover:underline"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {t("admin.clear_filters", language)}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {creating && (
+                  <div
+                    className="flex items-center gap-2.5 rounded-lg border border-dashed px-2 py-2"
+                    style={{
+                      borderColor: "var(--border)",
+                      backgroundColor: "var(--accent)",
+                    }}
+                  >
+                    <span
+                      className="flex size-10 shrink-0 items-center justify-center rounded-md"
+                      style={{ backgroundColor: "var(--muted)" }}
                     >
-                      <button
-                        aria-label={zh ? "拖动排序" : "Drag to reorder"}
-                        className="cursor-grab p-1 active:cursor-grabbing"
+                      <Plus
+                        size={16}
+                        style={{ color: "var(--muted-foreground)" }}
+                      />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-medium">
+                        {form.name.trim() || t("admin.friends_new", language)}
+                      </span>
+                      <span
+                        className="mt-0.5 block text-[10px]"
                         style={{ color: "var(--muted-foreground)" }}
                       >
-                        <GripVertical size={16} />
-                      </button>
-                      <div
-                        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-                        style={{
-                          backgroundColor: "var(--secondary)",
-                          color: "var(--secondary-foreground)",
-                        }}
-                      >
-                        {friend.avatar ? (
-                          <img
-                            src={friend.avatar}
-                            alt={friend.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <span className="font-serif text-xl">
-                            {friend.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="truncate text-sm font-semibold">
-                            {friend.name}
-                          </h3>
-                          {friend.featured && (
-                            <Star
-                              size={13}
-                              fill="currentColor"
-                              style={{ color: "var(--primary)" }}
-                            />
-                          )}
-                          {!friend.isActive && (
-                            <span
-                              className="text-[10px] uppercase tracking-wider"
-                              style={{ color: "var(--muted-foreground)" }}
-                            >
-                              {copy.disabled}
-                            </span>
-                          )}
-                        </div>
-                        <a
-                          href={friend.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-0.5 flex max-w-full items-center gap-1 truncate text-xs transition-colors hover:underline"
-                          style={{ color: "var(--muted-foreground)" }}
-                        >
-                          <span className="truncate">{friend.url}</span>
-                          <ArrowUpRight size={12} className="shrink-0" />
-                        </a>
-                        {friend.description && (
-                          <p
-                            className="mt-1 truncate text-xs"
-                            style={{ color: "var(--muted-foreground)" }}
-                          >
-                            {friend.description}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={() =>
-                            void updateFriend(friend, {
-                              isActive: !friend.isActive,
-                            })
-                          }
-                          title={friend.isActive ? copy.enabled : copy.disabled}
-                          className="rounded p-2 transition-colors hover:bg-[var(--secondary)]"
-                          style={{ color: "var(--muted-foreground)" }}
-                        >
-                          {friend.isActive ? (
-                            <Eye size={15} />
-                          ) : (
-                            <EyeOff size={15} />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => openEdit(friend)}
-                          title={copy.edit}
-                          className="rounded p-2 transition-colors hover:bg-[var(--secondary)]"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() =>
-                            setDeleteConfirmId(
-                              deleteConfirmId === friend.id ? null : friend.id,
-                            )
-                          }
-                          title={zh ? "删除" : "Delete"}
-                          className="rounded p-2 transition-colors hover:bg-[var(--destructive)]/10"
-                          style={{ color: "var(--destructive)" }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                      {deleteConfirmId === friend.id && (
-                        <div
-                          className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 border-t px-3 py-2 text-xs"
-                          style={{
-                            borderColor: "var(--border)",
-                            backgroundColor: "var(--background)",
-                          }}
-                        >
-                          <span>{copy.deletePrompt}</span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setDeleteConfirmId(null)}
-                              className="px-2 py-1"
-                              style={{ color: "var(--muted-foreground)" }}
-                            >
-                              {copy.keep}
-                            </button>
-                            <button
-                              onClick={() => void handleDelete(friend.id)}
-                              className="px-2 py-1 font-semibold"
-                              style={{ color: "var(--destructive)" }}
-                            >
-                              {copy.confirmDelete}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-            {editorOpen && (
-              <aside
-                className="sticky top-0 border p-5"
+                        {t("admin.friends_unsaved", language)}
+                      </span>
+                    </span>
+                  </div>
+                )}
+                {filteredFriends.map((friend) => (
+                  <FriendRow
+                    key={friend.id}
+                    friend={friend}
+                    selected={!creating && selectedId === friend.id}
+                    language={language}
+                    canReorder={canReorder}
+                    dragging={draggedId === friend.id}
+                    onSelect={() => openEdit(friend)}
+                    onToggleActive={() =>
+                      void patchFriend(friend, { isActive: !friend.isActive })
+                    }
+                    onToggleFeatured={() =>
+                      void patchFriend(friend, { featured: !friend.featured })
+                    }
+                    onDelete={() => setPendingDelete(friend)}
+                    onDragStart={() => {
+                      setDraggedId(friend.id);
+                      setPreviewOrder([...friends]);
+                    }}
+                    onDragEnter={() => handleDragEnter(friend.id)}
+                    onDragEnd={() => {
+                      setDraggedId(null);
+                      setPreviewOrder(null);
+                    }}
+                    onDrop={() => void handleDrop()}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {!editorOpen ? (
+            <div
+              className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              <span
+                className="flex size-14 items-center justify-center rounded-lg"
+                style={{ backgroundColor: "var(--muted)" }}
+              >
+                <Link2 size={24} />
+              </span>
+              <p className="max-w-sm text-center text-sm">
+                {t("admin.friends_select_hint", language)}
+              </p>
+              <button
+                type="button"
+                onClick={openCreate}
+                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs"
                 style={{
                   borderColor: "var(--border)",
-                  backgroundColor: "var(--card)",
+                  color: "var(--foreground)",
                 }}
               >
-                <div className="mb-5 flex items-start justify-between">
-                  <div>
-                    <p
-                      className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                      style={{ color: "var(--primary)" }}
-                    >
-                      {editingId ? "EDIT / 02" : "NEW / 02"}
-                    </p>
-                    <h3 className="font-serif text-2xl">
-                      {editingId ? copy.editTitle : copy.newTitle}
-                    </h3>
+                <Plus size={14} />
+                {t("admin.friends_add", language)}
+              </button>
+            </div>
+          ) : (
+            <>
+              <header
+                className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate font-serif text-base font-medium">
+                      {creating
+                        ? t("admin.friends_new", language)
+                        : form.name.trim() ||
+                          t("admin.friends_edit", language)}
+                    </h2>
+                    {isDirty && (
+                      <span
+                        className="shrink-0 text-[10px] uppercase tracking-wider"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        {t("admin.friends_unsaved", language)}
+                      </span>
+                    )}
                   </div>
-                  <button
-                    onClick={closeEditor}
-                    className="rounded p-1 transition-colors hover:bg-[var(--secondary)]"
-                    aria-label={copy.cancel}
+                  <p
+                    className="mt-0.5 truncate text-[11px]"
+                    style={{ color: "var(--muted-foreground)" }}
                   >
-                    <X size={17} />
+                    {creating
+                      ? t("admin.friends_add", language)
+                      : form.url
+                        ? hostOf(form.url)
+                        : t("admin.friends_edit", language)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {!creating && selectedFriend && (
+                    <a
+                      href={selectedFriend.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs transition-colors hover:bg-secondary"
+                      style={{
+                        borderColor: "var(--border)",
+                        color: "var(--muted-foreground)",
+                      }}
+                    >
+                      <ArrowUpRight size={13} />
+                      {t("admin.friends_open", language)}
+                    </a>
+                  )}
+                  {(creating || isDirty) && (
+                    <button
+                      type="button"
+                      onClick={closeEditor}
+                      disabled={saving}
+                      className="flex h-8 items-center rounded-md border px-3 text-xs transition-colors hover:bg-secondary disabled:opacity-50"
+                      style={{
+                        borderColor: "var(--border)",
+                        color: "var(--muted-foreground)",
+                      }}
+                    >
+                      {t("common.cancel", language)}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={saving}
+                    className="flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--primary)",
+                      color: "var(--primary-foreground)",
+                    }}
+                  >
+                    {saving ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      <Save size={14} />
+                    )}
+                    {creating
+                      ? t("admin.friends_add", language)
+                      : t("common.save", language)}
                   </button>
                 </div>
-                <div className="space-y-4">
-                  <Field
-                    label={`${copy.name} *`}
-                    value={form.name}
-                    placeholder={copy.namePlaceholder}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, name: value }))
-                    }
-                  />
-                  <Field
-                    label={`${copy.url} *`}
-                    value={form.url}
-                    placeholder={copy.urlPlaceholder}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, url: value }))
-                    }
-                    type="url"
-                  />
-                  <Field
-                    label={copy.description}
-                    value={form.description}
-                    placeholder={copy.descPlaceholder}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, description: value }))
-                    }
-                  />
-                  <Field
-                    label={copy.avatar}
-                    value={form.avatar}
-                    placeholder={copy.avatarPlaceholder}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, avatar: value }))
-                    }
-                    type="url"
-                  />
-                  <div
-                    className="space-y-2 border-t pt-4"
-                    style={{ borderColor: "var(--border)" }}
+              </header>
+
+              <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-5">
+                <div className="mx-auto max-w-xl space-y-5">
+                  <section
+                    className="space-y-4 rounded-lg border p-5"
+                    style={{
+                      borderColor: "var(--border)",
+                      backgroundColor: "var(--card)",
+                    }}
+                  >
+                    <Field
+                      label={t("admin.friends_name", language)}
+                      required
+                      error={
+                        nameTouched && nameEmpty
+                          ? t("admin.friends_name_required", language)
+                          : undefined
+                      }
+                    >
+                      <input
+                        ref={nameInputRef}
+                        value={form.name}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                        onBlur={() => setNameTouched(true)}
+                        placeholder={t(
+                          "admin.friends_name_placeholder",
+                          language,
+                        )}
+                        maxLength={80}
+                        className={formInputClass}
+                        style={{
+                          borderColor:
+                            nameTouched && nameEmpty
+                              ? "var(--destructive)"
+                              : "var(--border)",
+                        }}
+                      />
+                    </Field>
+                    <Field
+                      label={t("admin.friends_url", language)}
+                      required
+                      error={
+                        urlTouched && urlEmpty
+                          ? t("admin.friends_url_required", language)
+                          : urlTouched && urlInvalid
+                            ? t("admin.friends_url_invalid", language)
+                            : undefined
+                      }
+                    >
+                      <input
+                        type="url"
+                        value={form.url}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            url: event.target.value,
+                          }))
+                        }
+                        onBlur={() => {
+                          setUrlTouched(true);
+                          setForm((current) => ({
+                            ...current,
+                            url: normalizeUrl(current.url),
+                          }));
+                        }}
+                        placeholder="https://example.com"
+                        className={formInputClass}
+                        style={{
+                          borderColor:
+                            urlTouched && (urlEmpty || urlInvalid)
+                              ? "var(--destructive)"
+                              : "var(--border)",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleFetchInfo()}
+                        disabled={fetchingInfo || !form.url.trim()}
+                        title={`${t("admin.friends_fetch", language)} · ${t(
+                          "admin.friends_fetch_hint",
+                          language,
+                        )}`}
+                        className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors hover:bg-secondary disabled:cursor-wait disabled:opacity-50"
+                        style={{
+                          borderColor: "var(--border)",
+                          color: "var(--muted-foreground)",
+                        }}
+                      >
+                        {fetchingInfo ? (
+                          <RefreshCw size={13} className="animate-spin" />
+                        ) : (
+                          <Wand2 size={13} />
+                        )}
+                        {fetchingInfo
+                          ? t("admin.friends_fetching", language)
+                          : t("admin.friends_fetch", language)}
+                      </button>
+                    </Field>
+                    <Field
+                      label={t("admin.friends_description", language)}
+                    >
+                      <textarea
+                        value={form.description}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        placeholder={t(
+                          "admin.friends_description_placeholder",
+                          language,
+                        )}
+                        rows={3}
+                        maxLength={200}
+                        className={`${formInputClass} resize-none`}
+                        style={{ borderColor: "var(--border)" }}
+                      />
+                      <p
+                        className="mt-1 text-right text-[10px] tabular-nums"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        {form.description.length}/200
+                      </p>
+                    </Field>
+                    <Field label={t("admin.friends_avatar", language)}>
+                      <div className="flex items-start gap-3">
+                        <AvatarMark
+                          name={form.name}
+                          src={form.avatar}
+                          size={48}
+                        />
+                        <input
+                          type="url"
+                          value={form.avatar}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              avatar: event.target.value,
+                            }))
+                          }
+                          placeholder={t(
+                            "admin.friends_avatar",
+                            language,
+                          )}
+                          className={formInputClass}
+                          style={{ borderColor: "var(--border)" }}
+                        />
+                      </div>
+                    </Field>
+                  </section>
+
+                  <section
+                    className="space-y-3 rounded-lg border p-5"
+                    style={{
+                      borderColor: "var(--border)",
+                      backgroundColor: "var(--card)",
+                    }}
                   >
                     <Toggle
                       checked={form.isActive}
-                      label={copy.activeLabel}
+                      label={t("admin.friends_show_public", language)}
                       onChange={(checked) =>
                         setForm((current) => ({
                           ...current,
@@ -625,7 +953,7 @@ export function FriendsPage() {
                     />
                     <Toggle
                       checked={form.featured}
-                      label={copy.featuredLabel}
+                      label={t("admin.friends_mark_featured", language)}
                       onChange={(checked) =>
                         setForm((current) => ({
                           ...current,
@@ -633,80 +961,337 @@ export function FriendsPage() {
                         }))
                       }
                     />
-                  </div>
+                  </section>
+
+                  {!creating && selectedFriend && (
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(selectedFriend)}
+                      className="flex items-center gap-1.5 text-xs transition-colors hover:underline"
+                      style={{ color: "var(--destructive)" }}
+                    >
+                      <Trash2 size={13} />
+                      {t("common.delete", language)}
+                    </button>
+                  )}
                 </div>
-                <div className="mt-6 flex gap-2">
-                  <button
-                    onClick={closeEditor}
-                    className="flex-1 rounded-md border px-3 py-2 text-xs font-semibold transition-colors hover:bg-[var(--secondary)]"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    {copy.cancel}
-                  </button>
-                  <button
-                    onClick={() => void handleSave()}
-                    disabled={saving}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
-                    style={{
-                      backgroundColor: "var(--primary)",
-                      color: "var(--primary-foreground)",
-                    }}
-                  >
-                    {saving ? (
-                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    ) : editingId ? (
-                      <Save size={14} />
-                    ) : (
-                      <Check size={14} />
-                    )}
-                    {editingId ? copy.save : copy.create}
-                  </button>
-                </div>
-              </aside>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
-      </main>
+      </div>
+
+      <div
+        className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4"
+        style={{
+          borderColor: "var(--border)",
+          backgroundColor: "var(--card)",
+        }}
+      >
+        <div
+          className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"
+          style={{ color: "var(--muted-foreground)" }}
+        >
+          <span>
+            {friends.length} {t("admin.friends_unit", language)}
+          </span>
+          <span className="opacity-60">·</span>
+          <span>
+            {activeCount} {t("admin.friends_active", language)}
+          </span>
+          <span className="opacity-60">·</span>
+          <span>
+            {featuredCount} {t("admin.friends_featured", language)}
+          </span>
+          {isFiltering && filteredFriends.length !== friends.length && (
+            <>
+              <span className="opacity-60">·</span>
+              <span>
+                {filteredFriends.length}/{friends.length}
+              </span>
+            </>
+          )}
+          {isFiltering && (
+            <>
+              <span className="opacity-60">·</span>
+              <span>{t("admin.friends_reorder_locked", language)}</span>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void fetchFriends(true)}
+          className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary disabled:cursor-wait disabled:opacity-50"
+        >
+          <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+          {t("common.refresh", language)}
+        </button>
+      </div>
+
+      <SimpleDeleteDialog
+        isOpen={!!pendingDelete}
+        title={t("common.delete", language)}
+        message={
+          pendingDelete
+            ? `${t("admin.friends_delete_confirm", language)} ${pendingDelete.name}`
+            : ""
+        }
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+        t={(key) => t(key, language)}
+      />
     </>
+  );
+}
+
+function FriendRow({
+  friend,
+  selected,
+  language,
+  canReorder,
+  dragging,
+  onSelect,
+  onToggleActive,
+  onToggleFeatured,
+  onDelete,
+  onDragStart,
+  onDragEnter,
+  onDragEnd,
+  onDrop,
+}: {
+  friend: FriendLink;
+  selected: boolean;
+  language: Locale;
+  canReorder: boolean;
+  dragging: boolean;
+  onSelect: () => void;
+  onToggleActive: () => void;
+  onToggleFeatured: () => void;
+  onDelete: () => void;
+  onDragStart: () => void;
+  onDragEnter: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
+}) {
+  const muted = selected
+    ? "color-mix(in srgb, var(--accent-foreground) 70%, transparent)"
+    : "var(--muted-foreground)";
+
+  return (
+    <div
+      onDragOver={(event) => {
+        if (canReorder) event.preventDefault();
+      }}
+      onDragEnter={onDragEnter}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+      className={`group relative flex w-full items-center gap-1 rounded-lg border border-transparent px-1 py-1.5 transition-colors ${
+        dragging ? "opacity-45" : ""
+      } ${!friend.isActive && !selected ? "opacity-70" : ""}`}
+      style={{ backgroundColor: selected ? "var(--accent)" : undefined }}
+    >
+      <button
+        type="button"
+        draggable={canReorder}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          onDragStart();
+        }}
+        onDragEnd={onDragEnd}
+        aria-label={t("admin.friends_drag", language)}
+        title={
+          canReorder
+            ? t("admin.friends_drag", language)
+            : t("admin.friends_reorder_locked", language)
+        }
+        className={`shrink-0 rounded p-1 ${
+          canReorder ? "cursor-grab active:cursor-grabbing" : "cursor-default"
+        }`}
+        style={{ color: muted }}
+      >
+        <GripVertical size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <AvatarMark name={friend.name} src={friend.avatar} size={40} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="truncate text-xs font-medium"
+              style={{
+                color: selected ? "var(--accent-foreground)" : "var(--foreground)",
+              }}
+            >
+              {friend.name}
+            </span>
+            {friend.featured && (
+              <Star
+                size={11}
+                fill="currentColor"
+                className="shrink-0"
+                style={{ color: "var(--primary)" }}
+              />
+            )}
+            {!friend.isActive && (
+              <span
+                className="shrink-0 text-[10px] uppercase tracking-wider"
+                style={{ color: muted }}
+              >
+                {t("admin.friends_inactive", language)}
+              </span>
+            )}
+          </span>
+          <span className="mt-0.5 block truncate text-[10px]" style={{ color: muted }}>
+            {hostOf(friend.url)}
+          </span>
+        </span>
+      </button>
+      <div
+        className={`flex shrink-0 items-center ${
+          selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+        }`}
+      >
+        <IconAction
+          label={
+            friend.isActive
+              ? t("admin.friends_disable", language)
+              : t("admin.friends_enable", language)
+          }
+          onClick={onToggleActive}
+        >
+          {friend.isActive ? <Eye size={13} /> : <EyeOff size={13} />}
+        </IconAction>
+        <IconAction
+          label={
+            friend.featured
+              ? t("admin.friends_unfeature", language)
+              : t("admin.friends_feature", language)
+          }
+          onClick={onToggleFeatured}
+        >
+          <Star
+            size={13}
+            fill={friend.featured ? "currentColor" : "none"}
+          />
+        </IconAction>
+        <IconAction label={t("common.delete", language)} onClick={onDelete} danger>
+          <Trash2 size={13} />
+        </IconAction>
+      </div>
+    </div>
+  );
+}
+
+function IconAction({
+  label,
+  onClick,
+  danger,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className="rounded-md p-1.5 transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      style={{ color: danger ? "var(--destructive)" : "var(--muted-foreground)" }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AvatarMark({
+  name,
+  src,
+  size,
+}: {
+  name: string;
+  src?: string;
+  size: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(src) && !failed;
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-md"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: "var(--muted)",
+        color: "var(--muted-foreground)",
+      }}
+    >
+      {showImage ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className="font-serif text-sm">
+          {(name.trim().charAt(0) || "?").toUpperCase()}
+        </span>
+      )}
+    </span>
   );
 }
 
 function Field({
   label,
-  value,
-  placeholder,
-  onChange,
-  type = "text",
+  required,
+  error,
+  children,
 }: {
   label: string;
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-  type?: string;
+  required?: boolean;
+  error?: string;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
       <span
-        className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em]"
+        className="mb-1.5 block text-xs font-medium"
         style={{ color: "var(--muted-foreground)" }}
       >
         {label}
+        {required && (
+          <span className="ml-0.5" style={{ color: "var(--destructive)" }}>
+            *
+          </span>
+        )}
       </span>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--primary)]"
-        style={{
-          borderColor: "var(--border)",
-          backgroundColor: "var(--background)",
-          color: "var(--foreground)",
-        }}
-      />
+      {children}
+      {error && (
+        <p className="mt-1.5 text-xs" style={{ color: "var(--destructive)" }}>
+          {error}
+        </p>
+      )}
     </label>
   );
 }
+
 function Toggle({
   checked,
   label,
@@ -717,14 +1302,15 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+    <div className="flex items-center justify-between gap-3 text-sm">
       <span>{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
-        className="relative h-5 w-9 rounded-full transition-colors"
+        className="relative h-5 w-9 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         style={{ backgroundColor: checked ? "var(--primary)" : "var(--muted)" }}
       >
         <span
@@ -734,6 +1320,6 @@ function Toggle({
           }}
         />
       </button>
-    </label>
+    </div>
   );
 }
