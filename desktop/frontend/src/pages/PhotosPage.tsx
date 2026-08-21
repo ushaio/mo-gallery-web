@@ -10,7 +10,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SelectDropdown } from "@/components/ui/SelectDropdown";
-import { PhotoDetailPanel } from "@/components/admin/PhotoDetailPanel";
 import { PhotoInfoSidebar } from "@/components/admin/PhotoInfoSidebar";
 import { PhotoPreviewOverlay } from "@/components/admin/PhotoPreviewOverlay";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,14 +33,16 @@ import {
   DeletePhoto,
   GetAlbum,
   GetCategories,
+  GetDesktopStorageSources,
   GetPhotos,
   ToggleFeatured,
   ToggleShowFlag,
 } from "../../wailsjs/go/main/App";
-import type { services } from "../../wailsjs/go/models";
+import type { services, storage_plugins } from "../../wailsjs/go/models";
 import { getErrorMessage } from "@/lib/auth-errors";
 import { ThumbGridSkeleton } from "@/components/admin/Skeleton";
 import { SimpleDeleteDialog } from "@/components/admin/SimpleDeleteDialog";
+import { StorageMoveDialog } from "@/components/admin/StorageMoveDialog";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -61,9 +62,8 @@ import {
   Trash2,
   Loader2,
   Check,
-  FileText,
+  FolderInput,
   Maximize2,
-  Pencil,
   RefreshCw,
   X,
   CheckSquare,
@@ -420,8 +420,6 @@ interface PhotoCardActions {
   onCardClick: (event: React.MouseEvent, photo: Photo) => void;
   onCardDoubleClick: (photo: Photo) => void;
   onContextOpen: (photo: Photo) => void;
-  onEditDetails: (photo: Photo) => void;
-  onEditStory: (photo: Photo) => void;
   onToggleSelect: (id: string) => void;
   onToggleFeatured: (id: string) => void;
   onToggleShow: (id: string) => void;
@@ -445,8 +443,6 @@ function PhotoContextTarget({
   children,
   onCardDoubleClick,
   onContextOpen,
-  onEditDetails,
-  onEditStory,
   onToggleSelect,
   onToggleFeatured,
   onToggleShow,
@@ -473,22 +469,6 @@ function PhotoContextTarget({
           <Maximize2 size={14} />
           {language === "zh" ? "大图预览" : "Preview"}
         </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          disabled={isDeleting}
-          onSelect={() => onEditDetails(photo)}
-        >
-          <Pencil size={14} />
-          {language === "zh" ? "编辑详情" : "Edit details"}
-        </ContextMenuItem>
-        <ContextMenuItem
-          disabled={isDeleting}
-          onSelect={() => onEditStory(photo)}
-        >
-          <FileText size={14} />
-          {language === "zh" ? "编辑叙事" : "Edit story"}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
         <ContextMenuItem
           disabled={isDeleting}
           onSelect={() => onToggleSelect(photo.id)}
@@ -547,8 +527,6 @@ const PhotoGridCard = memo(function PhotoGridCard({
   onCardClick,
   onCardDoubleClick,
   onContextOpen,
-  onEditDetails,
-  onEditStory,
   onToggleSelect,
   onToggleFeatured,
   onToggleShow,
@@ -564,8 +542,6 @@ const PhotoGridCard = memo(function PhotoGridCard({
       language={language}
       onCardDoubleClick={onCardDoubleClick}
       onContextOpen={onContextOpen}
-      onEditDetails={onEditDetails}
-      onEditStory={onEditStory}
       onToggleSelect={onToggleSelect}
       onToggleFeatured={onToggleFeatured}
       onToggleShow={onToggleShow}
@@ -801,13 +777,11 @@ export function PhotosPage({
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false);
   const [batchUpdating, setBatchUpdating] = useState(false);
   const [detailPhoto, setDetailPhoto] = useState<Photo | null>(null);
+  // R2 存储源（桌面插件）照片的「移动到」功能
+  const [storageSources, setStorageSources] = useState<storage_plugins.SourceDTO[]>([]);
+  const [moveOpen, setMoveOpen] = useState(false);
   // 大图预览（双击卡片/点击侧栏缩略图打开）
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null);
-  // 完整编辑/叙事弹层（从右侧信息栏打开，信息页签或叙事页签）
-  const [editorState, setEditorState] = useState<{
-    photo: Photo;
-    mode: "info" | "story";
-  } | null>(null);
   // 搜索输入本地回显，300ms 防抖后才写入筛选（避免每键一次全量请求）
   const [searchInput, setSearchInput] = useState(filters.search);
   const [photoGridWidth, setPhotoGridWidth] = useState(900);
@@ -1165,11 +1139,6 @@ export function PhotosPage({
     setPreviewPhoto(photo);
   }, []);
 
-  // 右侧信息栏按钮：打开完整编辑弹层（info/story 页签）
-  const openEditor = useCallback((photo: Photo, mode: "info" | "story") => {
-    setEditorState({ photo, mode });
-  }, []);
-
   // 详情面板保存后把更新合并回列表（接口 JSON 不含 undefined 键，直接展开安全）
   const handleDetailSave = useCallback(
     (updated: PhotoDto) => {
@@ -1181,11 +1150,6 @@ export function PhotosPage({
       setDetailPhoto((prev) =>
         prev && prev.id === updated.id
           ? ({ ...prev, ...updated } as Photo)
-          : prev,
-      );
-      setEditorState((prev) =>
-        prev && prev.photo.id === updated.id
-          ? { ...prev, photo: { ...prev.photo, ...updated } as Photo }
           : prev,
       );
       invalidateAfterLocalMutation([
@@ -1311,7 +1275,6 @@ export function PhotosPage({
       });
       setDetailPhoto((prev) => (prev && prev.id === id ? null : prev));
       setPreviewPhoto((prev) => (prev && prev.id === id ? null : prev));
-      setEditorState((prev) => (prev && prev.photo.id === id ? null : prev));
       setTotal((prev) => prev - 1);
       invalidateAfterLocalMutation([
         "overview",
@@ -1411,7 +1374,6 @@ export function PhotosPage({
       if (
         e.key === "Escape" &&
         !detailPhoto &&
-        !editorState &&
         !previewPhoto &&
         !batchDeleteDialogOpen &&
         !deleteTarget
@@ -1424,7 +1386,6 @@ export function PhotosPage({
   }, [
     selected.size,
     detailPhoto,
-    editorState,
     previewPhoto,
     batchDeleteDialogOpen,
     deleteTarget,
@@ -1433,7 +1394,7 @@ export function PhotosPage({
   // 右侧信息栏键盘导航：←/→ 切换上一张/下一张选中照片，Esc 取消选中；
   // 输入控件聚焦时不拦截，接近已加载末尾时预取下一页
   useEffect(() => {
-    if (!detailPhoto || previewPhoto || editorState) return;
+    if (!detailPhoto || previewPhoto) return;
     const onKey = (e: KeyboardEvent) => {
       if (batchDeleteDialogOpen || deleteTarget) return;
       const target = e.target as HTMLElement | null;
@@ -1471,7 +1432,6 @@ export function PhotosPage({
   }, [
     detailPhoto,
     previewPhoto,
-    editorState,
     batchDeleteDialogOpen,
     deleteTarget,
   ]);
@@ -1490,8 +1450,6 @@ export function PhotosPage({
         selectionMode ? () => undefined : handlePhotoDoubleClick
       }
       onContextOpen={setDetailPhoto}
-      onEditDetails={(item) => openEditor(item, "info")}
-      onEditStory={(item) => openEditor(item, "story")}
       onToggleSelect={toggleSelect}
       onToggleFeatured={toggleFeatured}
       onToggleShow={toggleShowFlag}
@@ -1712,22 +1670,6 @@ export function PhotosPage({
                 <LibrarySelectionBar
                   countLabel={`${t("admin.selected", language)} ${selected.size}`}
                 >
-                  {selected.size > 1 && detailPhoto && !selectionMode && (
-                    <>
-                      <LibrarySelectionButton
-                        icon={Pencil}
-                        label={t("admin.edit_details", language)}
-                        title={t("admin.edit_details", language)}
-                        onClick={() => openEditor(detailPhoto, "info")}
-                      />
-                      <LibrarySelectionButton
-                        icon={FileText}
-                        label={t("admin.edit_story", language)}
-                        title={t("admin.edit_story", language)}
-                        onClick={() => openEditor(detailPhoto, "story")}
-                      />
-                    </>
-                  )}
                   <LibrarySelectionButton
                     icon={CheckSquare}
                     label={
@@ -1830,14 +1772,11 @@ export function PhotosPage({
           t={tForPanel}
           notify={notifyForPanel}
           onOpenPreview={handlePhotoDoubleClick}
-          onEditDetails={(photo) => openEditor(photo, "info")}
-          onEditStory={(photo) => openEditor(photo, "story")}
           onToggleFeatured={toggleFeatured}
           onToggleShow={toggleShowFlag}
           onDelete={requestDeletePhoto}
           onSave={handleDetailSave}
           onUnauthorized={logout}
-          hideEditActions={selectionMode || selected.size > 1}
         />
       </div>
 
@@ -1858,21 +1797,6 @@ export function PhotosPage({
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
         t={(key) => t(key, language)}
-      />
-
-      {/* 完整编辑/叙事弹层（从右侧信息栏打开） */}
-      <PhotoDetailPanel
-        photo={editorState ? (editorState.photo as unknown as PhotoDto) : null}
-        isOpen={!!editorState}
-        initialTab={editorState?.mode}
-        categories={categories}
-        allPhotos={photos as unknown as PhotoDto[]}
-        token={token}
-        onClose={() => setEditorState(null)}
-        onSave={handleDetailSave}
-        onUnauthorized={logout}
-        t={tForPanel}
-        notify={notifyForPanel}
       />
 
       {/* 大图预览（双击卡片/点击侧栏缩略图打开） */}
