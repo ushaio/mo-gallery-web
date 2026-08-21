@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Manager struct {
@@ -275,9 +276,10 @@ func (m *Manager) RollbackPlugin(pluginID, version string) error {
 	return nil
 }
 
-// UninstallPlugin removes an externally installed plugin package. A plugin
-// with configured sources cannot be removed because those sources would become
-// unusable and their credential references would be orphaned.
+// UninstallPlugin removes an externally installed plugin package while keeping
+// its storage source records and credentials. Sources become temporarily
+// unavailable until the same plugin ID is installed again, at which point
+// their configuration can be used without re-entering it.
 func (m *Manager) UninstallPlugin(pluginID string) error {
 	pluginID = strings.TrimSpace(pluginID)
 	if pluginID == "" {
@@ -302,11 +304,10 @@ func (m *Manager) UninstallPlugin(pluginID string) error {
 	if filepath.Clean(filepath.Dir(pluginRoot)) != filepath.Clean(m.pluginDir) {
 		return errors.New("bundled storage plugins cannot be uninstalled")
 	}
-	for _, source := range m.registry.list() {
-		if source.PluginID == pluginID {
-			return fmt.Errorf("storage plugin %s is still used by source %s", pluginID, source.Name)
-		}
-	}
+	// Stop all source runtimes before removing the package. The registry and
+	// credential store intentionally remain untouched so reinstalling this
+	// plugin restores the existing sources automatically.
+	m.stopRuntimesForPlugin(pluginID)
 	if err := os.RemoveAll(pluginRoot); err != nil {
 		return fmt.Errorf("remove storage plugin: %w", err)
 	}
@@ -353,6 +354,24 @@ func (m *Manager) ListSources() []SourceDTO {
 
 func (m *Manager) GetSource(id string) (Source, bool) {
 	return m.registry.get(strings.TrimSpace(id))
+}
+
+// GetSourceCredentials reads the persisted credentials for one source on
+// demand. Credentials are intentionally excluded from SourceDTO/list calls.
+func (m *Manager) GetSourceCredentials(id string) (map[string]string, error) {
+	source, ok := m.GetSource(id)
+	if !ok {
+		return nil, fmt.Errorf("storage source not found: %s", strings.TrimSpace(id))
+	}
+	result := make(map[string]string, len(source.CredentialRefs))
+	for name, reference := range source.CredentialRefs {
+		value, err := m.registry.credentials.Get(reference)
+		if err != nil {
+			return nil, fmt.Errorf("read credential %s: %w", name, err)
+		}
+		result[name] = value
+	}
+	return result, nil
 }
 
 func (m *Manager) PluginID(sourceID string) string {
@@ -462,8 +481,11 @@ func (m *Manager) TestSource(ctx context.Context, sourceID string) (HealthResult
 	if !runtime.supports(capabilityHealth) {
 		return HealthResult{Status: "error", Message: "storage plugin does not support health checks"}, errors.New("storage plugin does not support health checks")
 	}
+	healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	var result HealthResult
-	if err := runtime.request(ctx, "plugin.health", map[string]any{"sourceId": source.ID}, &result); err != nil {
+	if err := runtime.request(healthCtx, "plugin.health", map[string]any{"sourceId": source.ID}, &result); err != nil {
+		m.stopRuntime(source.ID)
 		m.registry.updateStatus(source.ID, "error", err.Error())
 		return HealthResult{Status: "error", Message: err.Error()}, err
 	}

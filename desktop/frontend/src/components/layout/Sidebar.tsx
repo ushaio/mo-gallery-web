@@ -8,8 +8,9 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
-import { GetApiConfig, GetSettings } from '../../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
+import { useDesktopSiteIdentity } from './useDesktopSiteIdentity'
+import { useWindowChrome } from './window-chrome'
 
 const navGroups = [
   [
@@ -55,12 +56,12 @@ interface SidebarProps {
 export function Sidebar({ onOpenSettings }: SidebarProps) {
   const { user, logout, isAuthenticated } = useAuth()
   const { language, theme, sidebarCollapsed, setLanguage, setTheme, setSidebarCollapsed } = usePreferences()
+  const { integrated, styleReady } = useWindowChrome()
+  const { siteTitle, siteUrl } = useDesktopSiteIdentity()
   const location = useLocation()
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
-  const [siteTitle, setSiteTitle] = useState('MO Gallery')
-  const [siteUrl, setSiteUrl] = useState('')
   const menuRef = useRef<HTMLDivElement | null>(null)
   const lastMenuLocationsRef = useRef(new Map<string, string>())
 
@@ -73,28 +74,6 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
   const getMenuDestination = (path: string) => lastMenuLocationsRef.current.get(path) ?? path
 
-  // 站点标题 + 站点地址：标题与「系统设置-站点-站点信息」一致（来自服务端 SITE_TITLE），
-  // 地址取桌面端连接的登录地址
-  useEffect(() => {
-    if (!isAuthenticated) return
-
-    let cancelled = false
-    Promise.allSettled([GetSettings(), GetApiConfig()]).then(([settingsRes, apiRes]) => {
-      if (cancelled) return
-      if (settingsRes.status === 'fulfilled' && settingsRes.value?.site_title) {
-        setSiteTitle(settingsRes.value.site_title)
-      }
-      const loginUrl = apiRes.status === 'fulfilled' ? apiRes.value?.login_url : ''
-      if (typeof loginUrl === 'string' && loginUrl) {
-        setSiteUrl(loginUrl.replace(/\/+$/, ''))
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [isAuthenticated])
-
-  // 点击站点标题：浏览器打开网站
   const handleOpenSite = () => {
     if (siteUrl) BrowserOpenURL(siteUrl)
   }
@@ -136,41 +115,44 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
         transition: 'width 180ms ease',
       }}
     >
-      {/* Logo（点击站点标题 → 浏览器打开网站）+ 侧栏折叠入口 */}
-      <div className="relative h-16 shrink-0 border-b" style={{ borderColor: 'var(--border)' }}>
-        <button
-          type="button"
-          onClick={handleOpenSite}
-          title={siteUrl ? `打开网站：${siteUrl}` : undefined}
-          disabled={!siteUrl}
-          className={`flex h-full w-full min-w-0 items-center text-left transition-[padding,gap,opacity] hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-5 pr-10'}`}
-          style={{ backgroundColor: 'transparent', color: 'var(--foreground)' }}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-serif text-sm font-bold"
-            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
-            {displayedSiteTitle.charAt(0).toUpperCase() || 'M'}
-          </div>
-          {!sidebarCollapsed && <span className="truncate font-serif text-sm font-bold uppercase tracking-widest">{displayedSiteTitle}</span>}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setOpenMenu(null)
-            setSidebarCollapsed(!sidebarCollapsed)
-          }}
-          className="absolute -right-3 top-1/2 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border shadow-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          style={{
-            backgroundColor: 'var(--card)',
-            borderColor: 'var(--border)',
-            color: 'var(--muted-foreground)',
-          }}
-          title={collapseLabel}
-          aria-label={collapseLabel}
-          aria-pressed={sidebarCollapsed}
-        >
-          {sidebarCollapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
-        </button>
-      </div>
+      {styleReady && !integrated && (
+        <div className="relative h-16 shrink-0 border-b" style={{ borderColor: 'var(--border)' }}>
+          <button
+            type="button"
+            onClick={handleOpenSite}
+            title={siteUrl ? t('admin.open_site', language, { url: siteUrl }) : undefined}
+            disabled={!siteUrl}
+            className={`flex h-full w-full min-w-0 items-center text-left transition-[padding,gap,opacity] hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-5 pr-10'}`}
+            style={{ backgroundColor: 'transparent', color: 'var(--foreground)' }}
+          >
+            <img
+              src="/logo.png"
+              alt=""
+              aria-hidden="true"
+              className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain p-0.5"
+            />
+            {!sidebarCollapsed && <span className="truncate font-serif text-sm font-bold uppercase tracking-widest">{displayedSiteTitle}</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpenMenu(null)
+              setSidebarCollapsed(!sidebarCollapsed)
+            }}
+            className="absolute -right-3 top-1/2 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border shadow-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{
+              backgroundColor: 'var(--card)',
+              borderColor: 'var(--border)',
+              color: 'var(--muted-foreground)',
+            }}
+            title={collapseLabel}
+            aria-label={collapseLabel}
+            aria-pressed={sidebarCollapsed}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+          </button>
+        </div>
+      )}
 
       {/* 导航 */}
       <nav className="flex-1 overflow-y-auto px-2 py-2">

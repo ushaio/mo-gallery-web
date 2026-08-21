@@ -23,7 +23,32 @@ const (
 	transferChunkSize = 256 * 1024
 	maxRPCLineBytes   = 4 * 1024 * 1024
 	maxTransferBytes  = int64(8 * 1024 * 1024 * 1024)
+	maxPluginStderr   = 8 * 1024
 )
+
+type pluginStderrCapture struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (capture *pluginStderrCapture) Write(data []byte) (int, error) {
+	capture.mu.Lock()
+	defer capture.mu.Unlock()
+	if len(capture.data) < maxPluginStderr {
+		remaining := maxPluginStderr - len(capture.data)
+		if len(data) > remaining {
+			data = data[:remaining]
+		}
+		capture.data = append(capture.data, data...)
+	}
+	return len(data), nil
+}
+
+func (capture *pluginStderrCapture) String() string {
+	capture.mu.Lock()
+	defer capture.mu.Unlock()
+	return strings.TrimSpace(string(capture.data))
+}
 
 type rpcRequest struct {
 	JSONRPC string `json:"jsonrpc"`
@@ -57,6 +82,7 @@ type pluginRuntime struct {
 	transfers    map[string]transfer
 	nextID       atomic.Int64
 	closed       chan struct{}
+	exited       chan struct{}
 	closeOnce    sync.Once
 	capabilities map[string]struct{}
 }
@@ -94,12 +120,23 @@ func startPluginRuntime(command string, args, environment []string) (*pluginRunt
 		responses: make(map[int64]chan rpcResponse),
 		transfers: make(map[string]transfer),
 		closed:    make(chan struct{}),
+		exited:    make(chan struct{}),
 	}
+	stderrCapture := &pluginStderrCapture{}
+	stderrDone := make(chan struct{})
 	go runtime.readLoop(stdout)
-	go func() { _, _ = io.Copy(io.Discard, stderr) }()
 	go func() {
+		_, _ = io.Copy(stderrCapture, stderr)
+		close(stderrDone)
+	}()
+	go func() {
+		defer close(runtime.exited)
 		waitErr := process.Wait()
+		<-stderrDone
 		if waitErr != nil {
+			if detail := stderrCapture.String(); detail != "" {
+				waitErr = fmt.Errorf("%w: %s", waitErr, detail)
+			}
 			runtime.failPending(&PluginError{Code: ErrorPluginCrashed, Message: "storage plugin exited", Cause: waitErr})
 		} else {
 			runtime.failPending(errors.New("storage plugin exited"))
@@ -314,7 +351,7 @@ func (r *pluginRuntime) request(ctx context.Context, method string, params any, 
 	select {
 	case response := <-channel:
 		if response.Error != nil {
-			return fmt.Errorf("storage plugin %s failed (%d): %s", method, response.Error.Code, response.Error.Message)
+			return fmt.Errorf("storage plugin %s failed (%v): %s", method, response.Error.Code, response.Error.Message)
 		}
 		if result == nil || len(response.Result) == 0 {
 			return nil
@@ -486,6 +523,12 @@ func (r *pluginRuntime) stop() error {
 	}
 	if command != nil && command.Process != nil {
 		_ = command.Process.Kill()
+		if r.exited != nil {
+			select {
+			case <-r.exited:
+			case <-time.After(5 * time.Second):
+			}
+		}
 	}
 	return nil
 }

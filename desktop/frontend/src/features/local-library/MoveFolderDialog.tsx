@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FolderInput, Loader2, X } from 'lucide-react'
-import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { FolderTreeSelect } from './FolderTreeSelect'
 import type { LocalLibraryCopy } from './copy'
 import type { FolderFileOperationPlan, FolderItem } from './types'
 
@@ -57,15 +57,15 @@ export function MoveFolderDialog({ mode, relativePath, currentName, folders, cop
             <div>
               <label className="text-[11px] font-medium">{copy.destinationFolder}</label>
               <div className="mt-2">
-                <SelectDropdown
+                <FolderTreeSelect
                   value={destinationParent}
-                  options={[
-                    { value: '', label: copy.root },
-                    ...destinations.map((folder) => ({ value: folder.relativePath, label: folder.relativePath })),
-                  ]}
-                  onChange={(value) => setDestinationParent(value as string)}
+                  folders={destinations}
+                  placeholder={copy.root}
+                  searchPlaceholder={copy.folderSearchPlaceholder}
+                  searchEmpty={copy.folderSearchEmpty}
                   disabled={busy}
                   ariaLabel={copy.destinationFolder}
+                  onChange={(value) => setDestinationParent(value)}
                 />
               </div>
             </div>

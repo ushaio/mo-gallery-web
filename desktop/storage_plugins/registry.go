@@ -154,7 +154,7 @@ func (r *sourceRegistry) upsert(input SourceInput) (Source, error) {
 		ID: id, Name: name, PluginID: pluginID, PluginVersion: previous.PluginVersion,
 		Config: cloneStringMap(input.Config), CredentialRefs: refs,
 		Command: strings.TrimSpace(input.Command), Args: append([]string(nil), input.Args...),
-		Enabled: input.Enabled, Status: previous.Status, LastError: previous.LastError,
+		Enabled: input.Enabled, Status: "", LastError: "",
 		CreatedAt: createdAt, UpdatedAt: now,
 	}
 	if !input.Enabled && previous.ID == "" {

@@ -6,15 +6,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -38,6 +43,8 @@ type App struct {
 	cfg                 *config.Config
 	authMu              sync.RWMutex
 	authenticatedUserID string
+	cloudSyncMu         sync.Mutex
+	cloudSyncCancel     context.CancelFunc
 	activeWindowStyle   string
 	Proxy               *services.ProxyClient
 	Auth                *services.AuthService
@@ -104,11 +111,19 @@ func (a *App) startup(ctx context.Context) {
 	a.Comment = services.NewCommentService(a.Proxy)
 	a.Upload = services.NewUploadService(a.Proxy)
 	a.Upload.SetStoragePlugins(a.StoragePlugins)
+	a.Upload.SetProgressCallback(func(event services.UploadProgress) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "upload:progress", event)
+		}
+	})
 	a.Storage = services.NewStorageService(a.Proxy)
 	a.Settings = services.NewSettingsService(a.Proxy)
 	a.EditorAi = services.NewEditorAiService(a.cfg, a.Upload)
 	a.EditorAi.SetLogger(a.Logger)
 	a.Overview = services.NewOverviewService(a.Proxy)
+	cloudSyncCtx, cloudSyncCancel := context.WithCancel(context.Background())
+	a.cloudSyncCancel = cloudSyncCancel
+	go a.runLocalLibraryCloudSyncLoop(cloudSyncCtx)
 	var extensionErr error
 	a.AgentExtensions, extensionErr = agent_extensions.NewManager(config.ConfigDir())
 	if extensionErr != nil {
@@ -205,6 +220,9 @@ func (a *App) startAiHTTPServer() {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.cloudSyncCancel != nil {
+		a.cloudSyncCancel()
+	}
 	if a.Upload != nil {
 		a.Upload.CleanupClipboardUploads()
 	}
@@ -306,6 +324,7 @@ func (a *App) Login(serverURL, username, password string, rememberLogin bool) (*
 	a.Proxy.SetToken(result.Token)
 	a.setAuthenticatedUser(result.User.ID)
 	a.syncAllStorageSourcesToCloud()
+	go a.syncLocalLibraryCloudInBackground()
 	if a.Upload != nil {
 		go a.Upload.RetryPendingRegistrations(context.Background())
 	}
@@ -331,6 +350,7 @@ func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
 
 	a.setAuthenticatedUser(user.ID)
 	a.syncAllStorageSourcesToCloud()
+	go a.syncLocalLibraryCloudInBackground()
 	if a.Upload != nil {
 		go a.Upload.RetryPendingRegistrations(context.Background())
 	}
@@ -555,6 +575,7 @@ func (a *App) deleteDesktopPhotoObjects(photo *services.PhotoDTO, params service
 func (a *App) BatchUpdateShowFlag(photoIDs []string, showFlag bool) (*services.BatchResult, error) {
 	return a.Photo.BatchUpdateShowFlag(photoIDs, showFlag)
 }
+
 func (a *App) GetAllPhotos() ([]services.PhotoDTO, error) {
 	return a.Photo.ListAll()
 }
@@ -696,6 +717,133 @@ func (a *App) UpdateFriend(id string, params services.UpdateFriendParams) (*serv
 	return a.Friend.Update(id, params)
 }
 func (a *App) DeleteFriend(id string) error { return a.Friend.Delete(id) }
+func (a *App) ReorderFriends(items []services.ReorderFriendItem) error {
+	return a.Friend.Reorder(items)
+}
+
+// FetchURLMetadataResult holds extracted metadata from a website.
+type FetchURLMetadataResult struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Avatar      string `json:"avatar"`
+}
+
+// FetchURLMetadata fetches a URL, parses the HTML, and extracts
+// title, description, and avatar (favicon / og:image).
+func (a *App) FetchURLMetadata(rawURL string) (*FetchURLMetadataResult, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; MoGallery/1.0)")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch url: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Limit body to 512KB to avoid abuse
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	result := &FetchURLMetadataResult{}
+	doc, err := html.Parse(strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("parse html: %w", err)
+	}
+
+	// Walk the DOM to extract title, meta tags, and favicon
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			switch n.DataAtom {
+			case atom.Title:
+				if n.FirstChild != nil && result.Title == "" {
+					result.Title = strings.TrimSpace(n.FirstChild.Data)
+				}
+			case atom.Link:
+				var rel, href string
+				for _, attr := range n.Attr {
+					if attr.Key == "rel" {
+						rel = attr.Val
+					}
+					if attr.Key == "href" {
+						href = attr.Val
+					}
+				}
+				if (rel == "icon" || rel == "shortcut icon") && href != "" && result.Avatar == "" {
+					result.Avatar = resolveURL(rawURL, href)
+				}
+			case atom.Meta:
+				var name, property, content string
+				for _, attr := range n.Attr {
+					switch attr.Key {
+					case "name":
+						name = attr.Val
+					case "property":
+						property = attr.Val
+					case "content":
+						content = attr.Val
+					}
+				}
+				content = strings.TrimSpace(content)
+				switch {
+				case strings.EqualFold(name, "description") && content != "" && result.Description == "":
+					result.Description = content
+				case strings.EqualFold(property, "og:title") && content != "" && result.Title == "":
+					result.Title = content
+				case strings.EqualFold(property, "og:description") && content != "" && result.Description == "":
+					result.Description = content
+				case strings.EqualFold(property, "og:image") && content != "" && result.Avatar == "":
+					result.Avatar = resolveURL(rawURL, content)
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+
+	// Trim long strings
+	if len(result.Title) > 200 {
+		result.Title = result.Title[:200]
+	}
+	if len(result.Description) > 500 {
+		result.Description = result.Description[:500]
+	}
+
+	return result, nil
+}
+
+// resolveURL resolves a relative URL against a base URL.
+func resolveURL(base, href string) string {
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+		return href
+	}
+	if strings.HasPrefix(href, "//") {
+		// Protocol-relative URL
+		parsed, err := url.Parse(base)
+		if err != nil {
+			return href
+		}
+		return parsed.Scheme + ":" + href
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return href
+	}
+	resolved, err := baseURL.Parse(href)
+	if err != nil {
+		return href
+	}
+	return resolved.String()
+}
 
 // ─── Comments ────────────────────────────────────────
 
@@ -741,11 +889,26 @@ func (a *App) PrepareLocalAssetUpload(ids []string) ([]services.PreparedFile, er
 	return prepared, nil
 }
 
-func (a *App) setLocalAssetCloudLink(id, photoID, cloudURL string) error {
-	_ = cloudURL // URL is derived from the cloud photo and storage source; never persist it locally.
+func (a *App) setLocalAssetCloudLink(id string, photo *services.PhotoDTO) error {
+	if photo == nil || photo.ID == "" {
+		return errors.New("云端照片详情不完整")
+	}
+	change := local_library.CloudPhotoChange{
+		ID: photo.ID, Path: photo.Path, ThumbPath: photo.ThumbPath,
+		StorageSourceID: photo.StorageSourceID, StoragePluginID: photo.StoragePluginID,
+		StorageURLType: photo.StorageURLType, UpdatedAt: photo.UpdatedAt,
+	}
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		err = a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID)
+		err = a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photo.ID)
+		if err == nil {
+			projectionErr := a.LocalLibrary.ApplyCloudPhotoChanges([]local_library.CloudPhotoChange{change}, "", false)
+			if projectionErr != nil {
+				// The identity link is already durable; leave it marked uploaded and
+				// let the periodic cloud sync repair projection metadata.
+				err = nil
+			}
+		}
 		if err == nil {
 			return nil
 		}
@@ -771,7 +934,7 @@ func (a *App) UploadLocalAsset(id string, settings services.UploadSettings, hash
 			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端上传成功，但本地关联写回失败", linkErr.Error())
 			return result, linkErr
 		}
-		if linkErr := a.setLocalAssetCloudLink(id, result.Photo.ID, result.Photo.URL); linkErr != nil {
+		if linkErr := a.setLocalAssetCloudLink(id, result.Photo); linkErr != nil {
 			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端上传成功，但本地关联写回失败", linkErr.Error())
 			return result, fmt.Errorf("云端上传成功，但本地关联写回失败: %w", linkErr)
 		}
@@ -787,7 +950,7 @@ func (a *App) UploadLocalAsset(id string, settings services.UploadSettings, hash
 		if existingPhoto == nil || existingPhoto.ID == "" {
 			return result, errors.New("云端照片已存在，但服务端未返回可关联的照片详情")
 		}
-		if linkErr := a.setLocalAssetCloudLink(id, existingPhoto.ID, existingPhoto.URL); linkErr != nil {
+		if linkErr := a.setLocalAssetCloudLink(id, existingPhoto); linkErr != nil {
 			a.Logger.Error(services.LogCategoryUpload, "local_cloud_link_failed", "云端照片已存在，但本地关联写回失败", linkErr.Error())
 			return result, fmt.Errorf("云端照片已存在，但本地关联写回失败: %w", linkErr)
 		}
@@ -897,6 +1060,16 @@ func (a *App) GetDesktopStorageSources() []storage_plugins.SourceDTO {
 		return []storage_plugins.SourceDTO{}
 	}
 	return a.StoragePlugins.ListSources()
+}
+
+// GetDesktopStorageSourceCredentials reads credentials only when the user
+// explicitly requests them from an editing form; list responses never expose
+// credential values.
+func (a *App) GetDesktopStorageSourceCredentials(sourceID string) (map[string]string, error) {
+	if a.StoragePlugins == nil {
+		return nil, errors.New("桌面存储插件未初始化")
+	}
+	return a.StoragePlugins.GetSourceCredentials(sourceID)
 }
 
 func (a *App) GetDesktopStoragePlugins() []storage_plugins.PluginDescriptor {
@@ -1373,6 +1546,7 @@ func (a *App) GetLocalLibraryEntryState() (map[string]interface{}, error) {
 	} else if restored {
 		state["active"] = true
 		state["snapshot"] = snapshot
+		go a.syncLocalLibraryCloudInBackground()
 	}
 	return state, nil
 }
@@ -1410,7 +1584,75 @@ func (a *App) InitializeLocalLibrary(root, name string) (local_library.LibrarySn
 }
 
 func (a *App) OpenLocalLibrary(root string) (local_library.LibrarySnapshot, error) {
-	return a.LocalLibrary.Open(root)
+	snapshot, err := a.LocalLibrary.Open(root)
+	if err == nil {
+		go a.syncLocalLibraryCloudInBackground()
+	}
+	return snapshot, err
+}
+
+func (a *App) syncLocalLibraryCloudInBackground() {
+	if a.Photo == nil || a.LocalLibrary == nil || !a.Proxy.IsReady() {
+		return
+	}
+	_, _ = a.SyncLocalLibraryCloud()
+}
+
+func (a *App) runLocalLibraryCloudSyncLoop(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.syncLocalLibraryCloudInBackground()
+		}
+	}
+}
+
+// SyncLocalLibraryCloud pulls the protected Photo change feed and applies only
+// the cloud projection. Local files and relative_path are deliberately never
+// changed by this operation.
+func (a *App) SyncLocalLibraryCloud() (local_library.CloudSyncStatus, error) {
+	a.cloudSyncMu.Lock()
+	defer a.cloudSyncMu.Unlock()
+	if a.Photo == nil || !a.Proxy.IsReady() {
+		return local_library.CloudSyncStatus{}, errors.New("云端服务尚未就绪")
+	}
+	status, err := a.LocalLibrary.CloudSyncStatus()
+	if err != nil {
+		return status, err
+	}
+	cursor := status.Cursor
+	for {
+		page, fetchErr := a.Photo.Changes(cursor, 200)
+		if fetchErr != nil {
+			return status, fetchErr
+		}
+		changes := make([]local_library.CloudPhotoChange, 0, len(page.Items))
+		for _, item := range page.Items {
+			changes = append(changes, local_library.CloudPhotoChange{
+				ID: item.ID, Path: item.Path, ThumbPath: item.ThumbPath,
+				StorageSourceID: item.StorageSourceID, StoragePluginID: item.StoragePluginID,
+				StorageURLType: item.StorageURLType, UpdatedAt: item.UpdatedAt, DeletedAt: item.DeletedAt,
+			})
+		}
+		nextCursor := page.NextCursor
+		if nextCursor == "" {
+			nextCursor = cursor
+		}
+		if err := a.LocalLibrary.ApplyCloudPhotoChanges(changes, nextCursor, !page.HasMore); err != nil {
+			return status, err
+		}
+		cursor = nextCursor
+		if !page.HasMore {
+			status.Cursor = cursor
+			now := time.Now().UTC()
+			status.LastSuccessAt = &now
+			return status, nil
+		}
+	}
 }
 
 func (a *App) CheckLocalLibraryUpgrade(root string) (map[string]interface{}, error) {
@@ -1566,7 +1808,17 @@ func (a *App) UpdateLocalAsset(id, title, notes string, rating int, color string
 	return a.LocalLibrary.UpdateAsset(local_library.AssetID(id), title, notes, rating, color, favorite)
 }
 func (a *App) SetLocalAssetCloudLink(id, photoID, cloudURL string) error {
-	return a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID)
+	_ = cloudURL // Cloud URLs are derived from storage metadata and are never persisted.
+	if a.Photo == nil {
+		return errors.New("云端服务尚未就绪")
+	}
+	photo, err := a.Photo.GetByID(photoID)
+	if err != nil {
+		// Keep the local upload state correct even when the detail endpoint is
+		// temporarily unavailable; cloud projection sync will fill metadata.
+		return a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(id), photoID)
+	}
+	return a.setLocalAssetCloudLink(id, photo)
 }
 func (a *App) ClearLocalAssetCloudLink(id string) error {
 	return a.LocalLibrary.ClearAssetCloudLink(local_library.AssetID(id))

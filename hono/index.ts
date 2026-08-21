@@ -16,6 +16,7 @@ import { walineHandler } from './waline'
 import storageSources from './storage-sources'
 import filmRolls from './film-rolls'
 import overview from './overview'
+import photoChanges from './photo-changes-route'
 import { originCheckMiddleware } from './middleware/origin-check'
 
 const route = new Hono()
@@ -55,6 +56,7 @@ route.route('/', editorAi)
 route.route('/', storageSources)
 route.route('/', filmRolls)
 route.route('/', overview)
+route.route('/', photoChanges)
 route.route('/settings', settings)
 route.route('/admin/settings', settings)
 

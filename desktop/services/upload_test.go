@@ -282,6 +282,39 @@ func TestUploadFileCompressesLocallyBeforeMultipartUpload(t *testing.T) {
 	}
 }
 
+func TestUploadChecksumMatchesTransformedUploadPath(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "source.jpg")
+	uploadPath := filepath.Join(dir, "compressed.avif")
+	if err := os.WriteFile(sourcePath, []byte("original-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(uploadPath, []byte("compressed-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourceHash, err := fileHash(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploadHash, err := fileHash(uploadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Same path reuses the source hash without re-reading the file.
+	if got := uploadChecksum(sourceHash, sourcePath, sourcePath); got != sourceHash {
+		t.Fatalf("same-path checksum = %q, want %q", got, sourceHash)
+	}
+	// Transformed path must hash the actual uploaded bytes, not the source.
+	if got := uploadChecksum(sourceHash, sourcePath, uploadPath); got != uploadHash {
+		t.Fatalf("transformed checksum = %q, want %q", got, uploadHash)
+	}
+	// Unreadable upload path falls back to the source hash rather than erroring.
+	if got := uploadChecksum(sourceHash, sourcePath, filepath.Join(dir, "missing.avif")); got != sourceHash {
+		t.Fatalf("fallback checksum = %q, want %q", got, sourceHash)
+	}
+}
+
 func TestUploadFileDelegatesWebPCompressionToServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(8 << 20); err != nil {

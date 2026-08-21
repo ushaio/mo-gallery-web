@@ -24,6 +24,7 @@ import { AlbumsPage } from "@/pages/AlbumsPage";
 import { FilmRollsPage } from "@/pages/FilmRollsPage";
 import { PhotosPage } from "@/pages/PhotosPage";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { LibraryNavItem, LibrarySidebarSection } from "@/components/ui/library";
 import { SimpleDeleteDialog } from "@/components/admin/SimpleDeleteDialog";
 import {
   ContextMenu,
@@ -68,58 +69,6 @@ function appApi(): AlbumAppAPI {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
-}
-
-function SectionHeader({
-  open,
-  onToggle,
-  label,
-  onRefresh,
-  refreshing = false,
-  refreshLabel,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  label: string;
-  onRefresh?: () => void;
-  refreshing?: boolean;
-  refreshLabel?: string;
-}) {
-  return (
-    <div className="mb-2 mt-5 flex items-center gap-1 px-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1.5 text-left text-[10px] font-medium uppercase tracking-[0.16em] transition-colors hover:bg-secondary"
-        style={{ color: "var(--muted-foreground)" }}
-      >
-        {open ? (
-          <ChevronDown size={12} className="shrink-0" />
-        ) : (
-          <ChevronRight size={12} className="shrink-0" />
-        )}
-        <span className="truncate">{label}</span>
-      </button>
-      {onRefresh && (
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          title={refreshLabel}
-          aria-label={refreshLabel}
-          className="flex size-6 shrink-0 items-center justify-center rounded hover:bg-secondary disabled:cursor-wait disabled:opacity-50"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          {refreshing ? (
-            <Loader2 size={11} className="animate-spin" />
-          ) : (
-            <RefreshCw size={11} />
-          )}
-        </button>
-      )}
-    </div>
-  );
 }
 
 interface CloudLibraryPageProps {
@@ -454,7 +403,7 @@ export function CloudLibraryPage({
         }}
       >
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
-          <CloudNavButton
+          <LibraryNavItem
             active={
               view === "photos" &&
               !albumId &&
@@ -466,7 +415,7 @@ export function CloudLibraryPage({
             label={t("admin.resource_library_all_photos", language)}
             onClick={showAllPhotos}
           />
-          <CloudNavButton
+          <LibraryNavItem
             active={
               view === "photos" && !albumId && featured === true && !photoType
             }
@@ -474,21 +423,21 @@ export function CloudLibraryPage({
             label={t("admin.featured", language)}
             onClick={showFeaturedPhotos}
           />
-          <CloudNavButton
+          <LibraryNavItem
             active={view === "film-rolls"}
             icon={Film}
             label={t("admin.film_rolls", language)}
             onClick={showFilmRolls}
           />
 
-          <SectionHeader
+          <LibrarySidebarSection
             open={sections.cloudPhotoType}
             onToggle={() => toggleSection("cloudPhotoType")}
             label={language === "zh" ? "照片类型" : "Photo type"}
           />
           {sections.cloudPhotoType && (
             <div className="space-y-0.5">
-              <CloudNavButton
+              <LibraryNavItem
                 active={
                   view === "photos" &&
                   !albumId &&
@@ -500,7 +449,7 @@ export function CloudLibraryPage({
                 label={t("admin.photos_type_digital", language)}
                 onClick={() => showPhotoType("digital")}
               />
-              <CloudNavButton
+              <LibraryNavItem
                 active={
                   view === "photos" &&
                   !albumId &&
@@ -515,7 +464,7 @@ export function CloudLibraryPage({
             </div>
           )}
 
-          <SectionHeader
+          <LibrarySidebarSection
             open={sections.cloudCategories}
             onToggle={() => toggleSection("cloudCategories")}
             label={t("ui.category_filter", language)}
@@ -526,7 +475,7 @@ export function CloudLibraryPage({
           {sections.cloudCategories && (
             <div className="space-y-0.5">
               {categories.map((item) => (
-                <CloudNavButton
+                <LibraryNavItem
                   key={item}
                   active={
                     view === "photos" &&
@@ -857,7 +806,7 @@ function CloudAlbumsBrowser({
                     style={{ borderColor: "var(--border)" }}
                   />
                   <span
-                    className="relative block aspect-[4/3] overflow-hidden rounded-lg rounded-tl-sm border bg-card shadow-[0_12px_24px_-22px_rgba(15,23,42,0.7)] transition group-hover:shadow-[0_16px_30px_-22px_rgba(15,23,42,0.75)]"
+                    className="relative block aspect-[4/3] overflow-hidden rounded-lg rounded-tl-sm border bg-background transition"
                     style={{
                       borderColor:
                         "color-mix(in srgb, var(--border) 78%, transparent)",
@@ -920,29 +869,3 @@ function CloudAlbumsBrowser({
   );
 }
 
-function CloudNavButton({
-  active,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  icon: typeof Images;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="mb-0.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-secondary"
-      style={{
-        backgroundColor: active ? "var(--accent)" : undefined,
-        color: active ? "var(--accent-foreground)" : undefined,
-      }}
-    >
-      <Icon size={15} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
-  );
-}

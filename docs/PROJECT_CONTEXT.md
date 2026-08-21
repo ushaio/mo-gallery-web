@@ -78,6 +78,7 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 ### 重要边界
 
 - Desktop 本地图库不是 PostgreSQL 云端图库的镜像；本地原图归用户本地图库目录，SQLite 保存索引、组织和状态。
+- Desktop 本地图库通过受保护的 Photo change feed 增量保存 `cloud_path`、云端存储源引用、远程更新时间与 tombstone 状态；同步只更新云端投影和 cursor，不改写或移动本地 `relative_path`/原图。
 - Desktop Zine 草稿及其本地导入图片由配置目录中的 `zine.db` 持久化；旧 IndexedDB 数据只补迁缺失记录，不覆盖 SQLite 中的新版本，迁移校验成功后自动删除旧库。
 - Desktop 文章与叙事编辑草稿由配置目录中的 `drafts.db` 持久化；`title`、`content`、`contentJson` 等正文属性使用独立列，`cloudSynced` 标记草稿是否已与云端保存版本同步，待上传图片与封面/照片选择等编辑期状态存入元数据。旧 IndexedDB 草稿逐条校验迁移成功后清理，浏览器开发模式仍使用 IndexedDB。
 - Desktop 云端业务数据必须由 Go service / proxy 调用 Web API，不能直连 PostgreSQL；仅文件处理、桌面插件对象操作及本地数据通过 Go 直接处理。本地图库能力由 `desktop/local_library/` 负责。
@@ -136,7 +137,7 @@ Mobile 另有：本地 SQLite 上传队列 + secure storage 会话
 ### Desktop 前端
 
 - 路由和 provider：`desktop/frontend/src/App.tsx`、`contexts/`。
-- 页面：`desktop/frontend/src/pages/`。
+- 页面：`desktop/frontend/src/pages/`。友链管理为 `FriendsPage.tsx`，采用与胶卷管理相同的左侧列表 + 右侧编辑主从布局。
 - 共享管理组件：`desktop/frontend/src/components/admin/`、`components/layout/`。
 - 本地图库 feature：`desktop/frontend/src/features/local-library/`。
 - API bridge：`desktop/frontend/src/lib/api/`、Wails 生成绑定 `desktop/frontend/wailsjs/`。

@@ -7,6 +7,7 @@ import {
   redactStoredSecret,
   REDACTED_SECRET,
 } from '~/server/lib/stored-secrets'
+import { invalidatePhotoUrlCache } from '~/server/lib/photo-urls'
 
 const storageSources = new Hono<{ Variables: AuthVariables }>()
 
@@ -27,6 +28,12 @@ storageSources.get('/admin/storage-sources', async (c) => {
     orderBy: { createdAt: 'asc' },
   })
   return c.json({ success: true, data: sources.map(serializeSource) })
+})
+
+storageSources.get('/admin/storage-sources/:id', async (c) => {
+  const source = await db.storageSource.findUnique({ where: { id: c.req.param('id') } })
+  if (!source) return c.json({ error: 'Not found' }, 404)
+  return c.json({ success: true, data: serializeSource(source) })
 })
 
 // Create a storage source
@@ -72,6 +79,11 @@ storageSources.post('/admin/storage-sources', async (c) => {
     },
   })
 
+  // Photo URLs are derived from the source configuration. Clear any cached
+  // source config so newly registered photos and existing links see the same
+  // base URL immediately.
+  invalidatePhotoUrlCache()
+
   return c.json({ success: true, data: serializeSource(source) }, 201)
 })
 
@@ -103,6 +115,10 @@ storageSources.patch('/admin/storage-sources/:id', async (c) => {
     },
   })
 
+  // Existing Photo rows keep only relative paths and this source id. The next
+  // URL resolution must use the updated public address/branch/path prefix.
+  invalidatePhotoUrlCache()
+
   return c.json({ success: true, data: serializeSource(updated) })
 })
 
@@ -124,6 +140,7 @@ storageSources.delete('/admin/storage-sources/:id', async (c) => {
   }
 
   await db.storageSource.delete({ where: { id } })
+  invalidatePhotoUrlCache()
   return c.json({ success: true })
 })
 

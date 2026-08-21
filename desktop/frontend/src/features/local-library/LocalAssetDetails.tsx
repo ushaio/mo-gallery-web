@@ -3,6 +3,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  Cloud,
   ExternalLink,
   EyeOff,
   FileText,
@@ -25,7 +26,6 @@ import {
 import { isPhotoAsset } from "./types";
 import type { LocalAsset, LocalCollection, LocalTag } from "./types";
 import type { LocalLibraryCopy } from "./copy";
-import { CameraParameters } from "@/components/CameraParameters";
 
 interface Props {
   asset: LocalAsset | null;
@@ -127,52 +127,46 @@ function Section({
 }) {
   return (
     <section
-      className="border-b px-4 py-1"
+      className="border-b px-5 py-1"
       style={{ borderColor: "var(--border)" }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="group flex w-full items-center gap-2.5 rounded-md px-1 py-2.5 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <span
-          className="flex size-6 shrink-0 items-center justify-center rounded-md"
-          style={{ backgroundColor: "var(--secondary)" }}
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-2.5 py-2.5 text-left"
         >
           <Icon
-            size={13}
+            size={14}
             strokeWidth={1.8}
             style={{ color: "var(--muted-foreground)" }}
           />
-        </span>
-        <span
-          className="flex-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
-          style={{ color: "var(--foreground)" }}
-        >
-          {label}
-        </span>
-        {count !== undefined && count > 0 && (
           <span
-            className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold tabular-nums"
-            style={{
-              backgroundColor: "var(--secondary)",
-              color: "var(--muted-foreground)",
-            }}
+            className="flex-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: "var(--foreground)" }}
           >
-            {count}
+            {label}
           </span>
-        )}
-        <ChevronDown
-          size={13}
-          className="transition-transform duration-200"
-          style={{
-            color: "var(--muted-foreground)",
-            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
-          }}
-        />
-      </button>
-      {open && <div className="px-1 pb-4 pt-1">{children}</div>}
+          {count !== undefined && count > 0 && (
+            <span
+              className="text-[10px] tabular-nums"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              {count}
+            </span>
+          )}
+          <ChevronDown
+            size={14}
+            className="transition-transform duration-200"
+            style={{
+              color: "var(--muted-foreground)",
+              transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            }}
+          />
+        </button>
+      </div>
+      {open && <div className="pb-4">{children}</div>}
     </section>
   );
 }
@@ -189,15 +183,15 @@ function MetaRow({
   mono?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-3 py-1.5">
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
       <span
-        className="text-[10px] uppercase tracking-wide"
+        className="shrink-0 text-[10px] uppercase tracking-wide"
         style={{ color: "var(--muted-foreground)" }}
       >
         {label}
       </span>
       <span
-        className={`min-w-0 truncate text-left text-[11px] font-medium ${mono ? "font-mono tabular-nums" : ""}`}
+        className={`min-w-0 truncate text-right text-[11px] font-medium ${mono ? "font-mono tabular-nums" : ""}`}
         title={value}
         style={{ color: "var(--foreground)" }}
       >
@@ -213,6 +207,7 @@ function ActionButton({
   icon: Icon,
   label,
   onClick,
+  primary,
   disabled,
   destructive,
   loading,
@@ -220,10 +215,28 @@ function ActionButton({
   icon: typeof Star;
   label: string;
   onClick: () => void;
+  primary?: boolean;
   disabled?: boolean;
   destructive?: boolean;
   loading?: boolean;
 }) {
+  if (primary) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        style={{
+          backgroundColor: "var(--primary)",
+          color: "var(--primary-foreground)",
+        }}
+      >
+        <Icon size={13} className={loading ? "animate-spin" : ""} />
+        {label}
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -319,6 +332,7 @@ function LocalAssetDetailsContent({
   const [shootingOpen, setShootingOpen] = useState(true);
   const [fileInfoOpen, setFileInfoOpen] = useState(true);
   const [hoverRating, setHoverRating] = useState(0);
+  const [cloudInfoOpen, setCloudInfoOpen] = useState(false);
   const [assignedTagIds, setAssignedTagIds] = useState<string[]>(
     () => asset?.tags.map((tag) => tag.id) || [],
   );
@@ -350,7 +364,10 @@ function LocalAssetDetailsContent({
   /* 标题：原位编辑，Enter/失焦保存，Esc 取消 */
   const commitTitle = useCallback(() => {
     setEditingTitle(false);
-    if (!asset || title === (asset.displayTitle || "")) return;
+    if (!asset) return;
+    const unchanged = title === (asset.displayTitle || "")
+      || (!asset.displayTitle && title === asset.fileName);
+    if (unchanged) return;
     void savePatch({ displayTitle: title });
   }, [asset, savePatch, title]);
 
@@ -459,10 +476,8 @@ function LocalAssetDetailsContent({
 
   return (
     <aside
-      className="custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-card/78 shadow-[-8px_0_24px_-28px_rgba(15,23,42,0.8)] xl:flex"
-      style={{
-        borderColor: "color-mix(in srgb, var(--border) 78%, transparent)",
-      }}
+      className="custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex"
+      style={{ borderColor: "var(--border)" }}
       data-local-library-guide="details"
     >
       {/* ── 预览图 ── */}
@@ -471,11 +486,10 @@ function LocalAssetDetailsContent({
           type="button"
           onClick={() => onPreview(asset)}
           disabled={previewPending || missing || trashed}
-          className="group relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-2xl border shadow-[0_16px_30px_-24px_rgba(15,23,42,0.72)] transition-[transform,box-shadow] duration-200 hover:-translate-y-px hover:shadow-[0_20px_36px_-24px_rgba(15,23,42,0.78)] active:translate-y-0 disabled:cursor-not-allowed"
+          className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border disabled:cursor-not-allowed"
           style={{
-            borderColor: "color-mix(in srgb, var(--border) 78%, transparent)",
-            backgroundColor:
-              "color-mix(in srgb, var(--secondary) 70%, var(--background))",
+            borderColor: "var(--border)",
+            backgroundColor: "var(--muted)",
           }}
         >
           {asset.previewStatus === "ready" && isPhoto ? (
@@ -510,34 +524,7 @@ function LocalAssetDetailsContent({
             </span>
           )}
 
-          {/* hover 放大提示 */}
-          {!previewPending && !missing && !trashed && (
-            <span className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
-              <span className="flex size-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
-                <Maximize2 size={15} />
-              </span>
-            </span>
-          )}
-
-          {/* 格式角标 */}
-          <span
-            className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
-            style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
-          >
-            {asset.format}
-          </span>
-
-          {/* 尺寸/大小角标 */}
-          {(dimensionLabel || asset.byteSize > 0) && (
-            <span
-              className="absolute bottom-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white"
-              style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
-            >
-              {dimensionLabel}
-              {dimensionLabel && asset.byteSize > 0 && " · "}
-              {asset.byteSize > 0 ? formatBytes(asset.byteSize) : ""}
-            </span>
-          )}
+          
         </button>
 
         {/* 异常状态提示（仅异常时出现） */}
@@ -619,7 +606,11 @@ function LocalAssetDetailsContent({
         ) : (
           <button
             type="button"
-            onClick={() => setEditingTitle(true)}
+            onClick={() => {
+              // 无自定义标题时，把原文件名带进编辑框，而不是从空白开始
+              setTitle((current) => current || asset.fileName);
+              setEditingTitle(true);
+            }}
             title={title ? `${copy.titleField}: ${title}` : copy.titleField}
             className="group flex w-full items-start gap-1.5 rounded text-left"
           >
@@ -734,10 +725,13 @@ function LocalAssetDetailsContent({
             <span className="flex-1" />
           )}
 
-          {/* 上传状态（仅已上传时显示） */}
-          {uploaded && (
-            <span
-              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium"
+          {/* 上传状态（已上传可点击查看云端信息；未上传灰色不可点击） */}
+          {uploaded ? (
+            <button
+              type="button"
+              onClick={() => setCloudInfoOpen(true)}
+              title={copy.filterUploaded}
+              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-opacity hover:opacity-80"
               style={{
                 color: "#16A34A",
                 backgroundColor: "color-mix(in srgb, #22C55E 10%, transparent)",
@@ -745,6 +739,17 @@ function LocalAssetDetailsContent({
             >
               <Upload size={9} />
               {copy.filterUploaded}
+            </button>
+          ) : (
+            <span
+              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--secondary)",
+              }}
+            >
+              <Upload size={9} />
+              {copy.filterNotUploaded}
             </span>
           )}
         </div>
@@ -1128,13 +1133,64 @@ function LocalAssetDetailsContent({
           open={shootingOpen}
           onToggle={() => setShootingOpen((v) => !v)}
         >
-          <CameraParameters
-            cameraLabel={copy.filterCamera}
-            cameraValue={cameraLabel}
-            lensLabel={copy.filterLens}
-            lensValue={exif?.lensModel}
-            parameters={cameraParameters}
-          />
+          <div className="grid grid-cols-2 gap-2">
+            {cameraLabel && (
+              <div className="min-w-0 rounded-md border px-2.5 py-2">
+                <p
+                  className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {copy.filterCamera}
+                </p>
+                <p
+                  className="mt-1 break-words text-[11px] font-medium leading-snug"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {cameraLabel}
+                </p>
+              </div>
+            )}
+            {exif?.lensModel && (
+              <div className="min-w-0 rounded-md border px-2.5 py-2">
+                <p
+                  className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {copy.filterLens}
+                </p>
+                <p
+                  className="mt-1 break-words text-[11px] font-medium leading-snug"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {exif.lensModel}
+                </p>
+              </div>
+            )}
+            {cameraParameters.map((parameter) => (
+              <div
+                key={`${parameter.label}-${parameter.value}`}
+                className="min-w-0 rounded-md border px-2.5 py-2"
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: "var(--background)",
+                }}
+              >
+                <p
+                  className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {parameter.label}
+                </p>
+                <p
+                  className="mt-1 truncate font-mono text-[11px] font-medium tabular-nums"
+                  title={parameter.value}
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {parameter.value}
+                </p>
+              </div>
+            ))}
+          </div>
         </Section>
       )}
 
@@ -1166,23 +1222,6 @@ function LocalAssetDetailsContent({
             />
           )}
           <MetaRow label={copy.format} value={asset.format.toUpperCase()} />
-          <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-3 py-1.5">
-            <span
-              className="text-[10px] uppercase tracking-wide"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {copy.filterUploadStatus}
-            </span>
-            <span
-              className="flex min-w-0 items-center gap-1 text-left text-[11px] font-medium"
-              style={{
-                color: uploaded ? "#16A34A" : "var(--muted-foreground)",
-              }}
-            >
-              <Upload size={9} />
-              {uploaded ? copy.filterUploaded : copy.filterNotUploaded}
-            </span>
-          </div>
 
           {/* 主色 */}
           {isPhoto &&
@@ -1235,12 +1274,7 @@ function LocalAssetDetailsContent({
 
       {/* ── 操作区（常驻，不折叠） ── */}
       <div
-        className="sticky bottom-0 mt-auto space-y-2 border-t px-5 pb-5 pt-4 backdrop-blur-sm"
-        style={{
-          borderColor: "var(--border)",
-          backgroundColor:
-            "color-mix(in srgb, var(--background) 92%, transparent)",
-        }}
+        className="mt-auto space-y-2 px-5 pb-5 pt-4"
       >
         {missing ? (
           <>
@@ -1261,18 +1295,12 @@ function LocalAssetDetailsContent({
           </>
         ) : trashed ? (
           <>
-            <button
-              type="button"
+            <ActionButton
+              icon={RotateCcw}
+              label={copy.restoreTrashedAsset}
               onClick={() => onRestore(asset)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-90"
-              style={{
-                backgroundColor: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
-            >
-              <RotateCcw size={13} />
-              {copy.restoreTrashedAsset}
-            </button>
+              primary
+            />
             <ActionButton
               icon={Trash2}
               label={copy.permanentTrashedAsset}
@@ -1316,6 +1344,111 @@ function LocalAssetDetailsContent({
           </>
         )}
       </div>
+
+      {/* ── 云端照片信息弹窗 ── */}
+      {cloudInfoOpen && (
+        <CloudInfoDialog
+          copy={copy}
+          asset={asset}
+          onClose={() => setCloudInfoOpen(false)}
+        />
+      )}
     </aside>
+  );
+}
+
+function CloudInfoDialog({
+  copy,
+  asset,
+  onClose,
+}: {
+  copy: LocalLibraryCopy;
+  asset: LocalAsset;
+  onClose: () => void;
+}) {
+  const rows = [
+    { label: "云端照片 ID", value: asset.cloudPhotoId || "—" },
+    { label: "存储源", value: [asset.cloudStoragePluginId, asset.cloudStorageSourceId].filter(Boolean).join(" / ") || "—" },
+    { label: "存储路径", value: asset.cloudPath || "—" },
+    { label: copy.format, value: asset.format.toUpperCase() },
+    { label: copy.fileSize, value: asset.byteSize > 0 ? formatBytes(asset.byteSize) : "—" },
+    { label: "URL 类型", value: asset.cloudUrlType || "—" },
+    { label: "同步状态", value: asset.cloudSyncState || "—" },
+  ];
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[9998]"
+        style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        onClick={onClose}
+        role="presentation"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed left-1/2 top-1/2 z-[9999] w-[min(92vw,24rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border shadow-2xl"
+        style={{ backgroundColor: "var(--card)", borderColor: "var(--border)" }}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="flex size-7 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: "color-mix(in srgb, #22C55E 12%, transparent)",
+                color: "#16A34A",
+              }}
+            >
+              <Cloud size={14} />
+            </span>
+            <span className="text-sm font-semibold">{copy.filterUploaded}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 transition-colors hover:bg-secondary"
+            style={{ color: "var(--muted-foreground)" }}
+            aria-label="关闭"
+          >
+            <X size={15} />
+          </button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto px-4 py-3">
+          <div className="space-y-1">
+            {rows.map((row) => (
+              <div
+                key={row.label}
+                className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-3 py-1.5"
+              >
+                <span
+                  className="text-[10px] uppercase tracking-wide"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {row.label}
+                </span>
+                <span
+                  className="min-w-0 break-words text-left text-[11px] font-medium"
+                  title={row.value}
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

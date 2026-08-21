@@ -227,8 +227,8 @@ func TestStoreMigratesPreviewErrorAndTypedEXIF(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "9" {
-		t.Fatalf("schema version=%q, want 9", version)
+	if version != "10" {
+		t.Fatalf("schema version=%q, want 10", version)
 	}
 	columns, err := store.db.Query(`PRAGMA table_info(assets)`)
 	if err != nil {
@@ -292,8 +292,8 @@ func TestStoreMigratesVersionEightCloudURLColumn(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "9" {
-		t.Fatalf("schema version=%q, want 9", version)
+	if version != "10" {
+		t.Fatalf("schema version=%q, want 10", version)
 	}
 	var photoID string
 	if err := store.db.QueryRow(`SELECT cloud_photo_id FROM assets WHERE id='legacy-v8'`).Scan(&photoID); err != nil {
@@ -359,8 +359,8 @@ func TestStoreMigratesVersionNineCloudURLDrift(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "9" {
-		t.Fatalf("schema version=%q, want 9", version)
+	if version != "10" {
+		t.Fatalf("schema version=%q, want 10", version)
 	}
 	foundCloudURL, err := tableHasColumn(store.db, "assets", "cloud_url")
 	if err != nil {

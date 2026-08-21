@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Aperture,
-  BookOpen,
   Camera,
   Check,
   Clock,
@@ -14,7 +13,6 @@ import {
   Focus,
   ImageOff,
   Maximize2,
-  Pencil,
   RefreshCw,
   Star,
   Sun,
@@ -34,8 +32,6 @@ interface LibraryPhotoInfoSidebarProps {
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   onClose: () => void
   onOpenPreview?: (photo: PhotoDto) => void
-  onOpenEditor: (photo: PhotoDto) => void
-  onEditStory?: (photo: PhotoDto) => void
   onDelete: (id: string) => void
   onToggleFeatured: (photo: PhotoDto) => Promise<void>
   onSave?: (photo: PhotoDto) => void
@@ -64,8 +60,6 @@ export function LibraryPhotoInfoSidebar({
   notify,
   onClose,
   onOpenPreview,
-  onOpenEditor,
-  onEditStory,
   onDelete,
   onToggleFeatured,
   onSave,
@@ -146,11 +140,11 @@ export function LibraryPhotoInfoSidebar({
   const details = [
     { label: t('admin.resource_library_dimensions'), value: photo.width && photo.height ? `${photo.width} × ${photo.height}` : '—' },
     { label: t('admin.storage_file_size'), value: formatBytes(photo.size) },
+    { label: t('admin.resource_library_photo_id'), value: photo.id },
     { label: t('admin.resource_library_captured_at'), value: formatDate(photo.takenAt) },
     { label: t('admin.storage_provider'), value: photo.storageProvider?.toUpperCase() || '—' },
   ]
   const copyRows = [
-    { key: 'id', label: t('admin.resource_library_photo_id'), value: photo.id },
     { key: 'storage-key', label: t('admin.resource_library_storage_path'), value: photo.path || '' },
     { key: 'thumbnail-url', label: t('admin.resource_library_thumbnail_url'), value: photo.thumbnailUrl ? resolveAssetUrl(photo.thumbnailUrl, cdnDomain) : '' },
     { key: 'original-url', label: t('admin.resource_library_original_url'), value: resolveAssetUrl(photo.url, cdnDomain) },
@@ -178,7 +172,7 @@ export function LibraryPhotoInfoSidebar({
           <button
             type="button"
             onClick={() => onOpenPreview?.(photo)}
-            className="group relative block aspect-[4/3] w-full overflow-hidden rounded-md bg-muted"
+            className="relative block aspect-[4/3] w-full overflow-hidden rounded-md bg-muted"
             title={t('admin.photo_preview')}
           >
             <img
@@ -186,9 +180,6 @@ export function LibraryPhotoInfoSidebar({
               alt={photo.title}
               className="h-full w-full object-contain"
             />
-            <span className="absolute bottom-2 right-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 transition-opacity group-hover:opacity-100">
-              <Maximize2 className="h-4 w-4" />
-            </span>
           </button>
         </div>
 
@@ -198,7 +189,10 @@ export function LibraryPhotoInfoSidebar({
               <h2 className="min-w-0 break-words text-sm font-semibold leading-5">
                 {photo.title || t('admin.resource_library_untitled_photo')}
               </h2>
-              <div className="flex shrink-0 items-center gap-0.5">
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
+                  {photo.photoType === 'film' ? t('admin.upload_type_film') : t('admin.upload_type_digital')}
+                </span>
                 <AdminButton
                   onClick={() => void onToggleFeatured(photo)}
                   adminVariant="icon"
@@ -228,9 +222,6 @@ export function LibraryPhotoInfoSidebar({
                   <span className="truncate">{photo.category}</span>
                 </span>
               )}
-              <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
-                {photo.photoType === 'film' ? t('admin.upload_type_film') : t('admin.upload_type_digital')}
-              </span>
               {photo.filmRollName && (
                 <span className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
                   <Film className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -319,14 +310,6 @@ export function LibraryPhotoInfoSidebar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border p-3">
-        <AdminButton onClick={() => onOpenEditor(photo)} adminVariant="outline" size="sm" className="min-w-0 flex-1 px-2 text-[10px]">
-          <Pencil className="h-3.5 w-3.5" />
-          {t('admin.edit_photo')}
-        </AdminButton>
-        <AdminButton onClick={() => onEditStory?.(photo)} disabled={!onEditStory} adminVariant="outline" size="sm" className="min-w-0 flex-1 px-2 text-[10px]">
-          <BookOpen className="h-3.5 w-3.5" />
-          {t('admin.edit_story')}
-        </AdminButton>
         <AdminButton
           onClick={() => {
             onDelete(photo.id)

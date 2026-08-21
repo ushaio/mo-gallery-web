@@ -8,7 +8,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
-    <div className="flex h-16 shrink-0 items-center justify-between border-b px-6"
+    <div className="flex h-14 shrink-0 items-center justify-between border-b px-6"
       style={{ borderColor: 'var(--border)' }}>
       <div>
         <h1 className="text-lg font-semibold">{title}</h1>

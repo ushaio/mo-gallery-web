@@ -144,16 +144,21 @@ func ReadDimensions(sourcePath string) (int, int, error) {
 	return bounds.Dx(), bounds.Dy(), nil
 }
 
-// GenerateThumbnailJPEG creates a temporary, orientation-corrected JPEG
-// rendition for a remote storage plugin upload.
-func GenerateThumbnailJPEG(sourcePath string, orientation int) (string, error) {
+// GenerateThumbnailAVIF creates a temporary, orientation-corrected AVIF
+// rendition for a remote storage plugin upload. AVIF thumbnails are much
+// smaller than JPEG at the same visual quality, which matters for gallery grids.
+func GenerateThumbnailAVIF(sourcePath string, orientation int) (string, error) {
 	decoded, err := decodeForCompression(sourcePath)
 	if err != nil {
 		return "", err
 	}
 	decoded = orientForCompression(decoded, orientation)
 	decoded = resizeForCompression(decoded, 512)
-	file, err := os.CreateTemp("", "mo-gallery-thumbnail-*.jpg")
+	encoded, err := encodeAVIF(decoded, 86)
+	if err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp("", "mo-gallery-thumbnail-*.avif")
 	if err != nil {
 		return "", err
 	}
@@ -164,10 +169,10 @@ func GenerateThumbnailJPEG(sourcePath string, orientation int) (string, error) {
 			_ = os.Remove(path)
 		}
 	}()
-	if encodeErr := jpeg.Encode(file, decoded, &jpeg.Options{Quality: 86}); encodeErr != nil {
+	if _, writeErr := file.Write(encoded); writeErr != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
-		return "", encodeErr
+		return "", writeErr
 	}
 	if closeErr := file.Close(); closeErr != nil {
 		_ = os.Remove(path)

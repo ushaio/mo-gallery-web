@@ -33,6 +33,7 @@ import {
   RollbackDesktopSystemPlugin,
   DeleteComment,
   DeleteDesktopStorageSource,
+  GetDesktopStorageSourceCredentials,
   SetDesktopStorageSourceEnabled,
   TestDesktopStorageSource,
   UpdateDesktopStorageSource,
@@ -272,7 +273,7 @@ const themeChoices = [
 
 const windowStyleChoices: { value: WindowStyle; label: string; description: string }[] = [
   { value: 'native', label: '原生', description: '使用操作系统提供的标题栏与窗口控制按钮。' },
-  { value: 'integrated', label: '一体化', description: '使用与应用界面一致的紧凑标题栏和窗口控制按钮。' },
+  { value: 'integrated', label: '一体化', description: '窗口控件与侧栏合为同一行，使用与应用界面一致的紧凑标题栏。' },
 ]
 
 function AppearanceTab() {
@@ -665,7 +666,16 @@ interface SchemaField {
   description?: string
 }
 
-function schemaFields(schema: Record<string, unknown> | undefined): SchemaField[] {
+function localizedSchemaText(field: Record<string, unknown>, key: 'title' | 'description', language: 'zh' | 'en'): string | undefined {
+  const translations = field['x-i18n']
+  if (isRecord(translations)) {
+    const locale = translations[language] || translations[language === 'zh' ? 'zh-CN' : 'en-US']
+    if (isRecord(locale) && typeof locale[key] === 'string') return locale[key] as string
+  }
+  return typeof field[key] === 'string' ? field[key] as string : undefined
+}
+
+function schemaFields(schema: Record<string, unknown> | undefined, language: 'zh' | 'en' = 'zh'): SchemaField[] {
   const properties = schema?.properties
   if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return []
   const requiredValues = Array.isArray(schema?.required) ? schema.required.filter((value): value is string => typeof value === 'string') : []
@@ -675,11 +685,11 @@ function schemaFields(schema: Record<string, unknown> | undefined): SchemaField[
     const field = value as Record<string, unknown>
     return [{
       key,
-      title: typeof field.title === 'string' ? field.title : key,
+      title: localizedSchemaText(field, 'title', language) || key,
       type: typeof field.type === 'string' ? field.type : 'string',
       secret: field.format === 'password' || field.secret === true,
       required: field.required === true || required.has(key),
-      description: typeof field.description === 'string' ? field.description : undefined,
+      description: localizedSchemaText(field, 'description', language),
     }]
   })
 }
@@ -911,7 +921,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
       setUninstallTarget(null)
       await fetchPlugins()
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err) || '插件卸载失败，请先删除使用该插件的存储源')
+      toast.error(getErrorMessage(err) || '插件卸载失败')
     }
   }
 
@@ -1127,26 +1137,15 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
             </div>
           )}
         </>
-      )}      {mode === 'sources' && <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold">存储源维护</h3>
-          <p className="mt-1 text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>配置照片原图与缩略图的存储位置。Desktop 存储源由已安装插件在本机管理。</p>
+      )}      {mode === 'sources' && <div className="space-y-6">
+        <div className="grid grid-cols-3 gap-px overflow-hidden border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--border)' }}>
+          <div className="min-w-0 bg-[var(--card)] px-4 py-3"><p className="font-mono text-xl font-semibold tabular-nums">{sources.length}</p><p className="mt-1 text-[10px] uppercase tracking-[0.08em]" style={{ color: 'var(--muted-foreground)' }}>全部来源</p></div>
+          <div className="min-w-0 bg-[var(--card)] px-4 py-3"><p className="font-mono text-xl font-semibold tabular-nums" style={{ color: '#346538' }}>{sources.filter(source => storagePlugins.some(plugin => plugin.id === (source.pluginId || source.type)) && source.enabled !== false && sourceStatus(source).tone !== 'error').length}</p><p className="mt-1 text-[10px] uppercase tracking-[0.08em]" style={{ color: 'var(--muted-foreground)' }}>运行正常</p></div>
+          <div className="min-w-0 bg-[var(--card)] px-4 py-3"><p className="font-mono text-xl font-semibold tabular-nums" style={{ color: '#956400' }}>{sources.filter(source => !storagePlugins.some(plugin => plugin.id === (source.pluginId || source.type)) || source.enabled === false || sourceStatus(source).tone === 'error').length}</p><p className="mt-1 text-[10px] uppercase tracking-[0.08em]" style={{ color: 'var(--muted-foreground)' }}>需要处理</p></div>
         </div>
-        <div className="grid grid-cols-3 divide-x rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}>
-          <div className="min-w-0 px-3 py-2"><p className="text-lg font-semibold tabular-nums">{sources.length}</p><p className="truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>存储源</p></div>
-          <div className="min-w-0 px-3 py-2"><p className="text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{sources.filter(source => storagePlugins.some(plugin => plugin.id === (source.pluginId || source.type)) && source.enabled !== false && sourceStatus(source).tone !== 'error').length}</p><p className="truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>已启用</p></div>
-          <div className="min-w-0 px-3 py-2"><p className="text-lg font-semibold tabular-nums text-amber-600 dark:text-amber-400">{sources.filter(source => !storagePlugins.some(plugin => plugin.id === (source.pluginId || source.type)) || source.enabled === false || sourceStatus(source).tone === 'error').length}</p><p className="truncate text-[10px]" style={{ color: 'var(--muted-foreground)' }}>需关注</p></div>
-        </div>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-3" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}>
-          <div className="min-w-0">
-            <p className="text-xs font-medium">桌面存储插件</p>
-            <p className="truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-              {storagePlugins.length ? `${storagePlugins.length} 个插件可用于创建存储源` : '尚未安装可用的存储插件'}
-            </p>
-          </div>
-        </div>
+        <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold">按插件查看</p><p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{storagePlugins.length ? '选择插件后管理它创建的来源。' : '尚未安装可用的存储插件。'}</p></div>{activePlugin && !validAdding && <button type="button" onClick={() => { setAdding(`plugin:${activePlugin.id}`); setEditingId(null) }} className={`${btnPrimary} shrink-0`} style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}><Plus size={14} />新增来源</button>}</div>
         {storagePlugins.length > 0 && (
-          <div className="mb-4 flex max-w-full items-center gap-1 overflow-x-auto border-b" style={{ borderColor: 'var(--border)' }} role="tablist" aria-label="存储插件">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto border-b" style={{ borderColor: 'var(--border)' }} role="tablist" aria-label="存储插件">
             {storagePlugins.map(plugin => (
               <button
                 key={plugin.id}
@@ -1154,7 +1153,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
                 role="tab"
                 aria-selected={resolvedPluginTab === plugin.id}
                 onClick={() => { setActivePluginTab(plugin.id); setAdding(null); setEditingId(null) }}
-                className="flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors"
+                className="flex items-center gap-2 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors"
                 style={{
                   borderColor: resolvedPluginTab === plugin.id ? 'var(--primary)' : 'transparent',
                   color: resolvedPluginTab === plugin.id ? 'var(--foreground)' : 'var(--muted-foreground)',
@@ -1162,6 +1161,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
               >
                 {plugin.id === 'github' ? <Github size={13} /> : plugin.id === 's3-compatible' ? <Cloud size={13} /> : <Puzzle size={13} />}
                 <span className="max-w-48 truncate">{plugin.name || plugin.id}</span>
+                <span className="font-mono text-[10px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{sources.filter(source => (source.pluginId || source.type) === plugin.id).length}</span>
               </button>
             ))}
           </div>
@@ -1174,8 +1174,8 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
         ) : (
           <div className="space-y-3">
             {storagePlugins.length === 0 && !validAdding && (
-              <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-10 text-center" style={{ borderColor: 'var(--border)' }}>
-                <span className="flex size-12 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--muted)' }}>
+              <div className="flex flex-col items-center gap-2 border border-dashed px-6 py-12 text-center" style={{ borderColor: 'var(--border)' }}>
+                <span className="flex size-10 items-center justify-center" style={{ backgroundColor: 'var(--muted)' }}>
                   <Database size={22} style={{ color: 'var(--muted-foreground)' }} />
                 </span>
                 <p className="text-sm font-medium">暂无存储插件</p>
@@ -1186,8 +1186,8 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
             )}
 
             {storagePlugins.length > 0 && activeSources.length === 0 && !validAdding && (
-              <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-10 text-center" style={{ borderColor: 'var(--border)' }}>
-                <span className="flex size-12 items-center justify-center rounded-full" style={{ backgroundColor: 'var(--muted)' }}>
+              <div className="flex flex-col items-center gap-2 border border-dashed px-6 py-12 text-center" style={{ borderColor: 'var(--border)' }}>
+                <span className="flex size-10 items-center justify-center" style={{ backgroundColor: 'var(--muted)' }}>
                   <Database size={22} style={{ color: 'var(--muted-foreground)' }} />
                 </span>
                 <p className="text-sm font-medium">暂无 {activePlugin?.name || resolvedPluginTab} 存储源</p>
@@ -1228,19 +1228,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
               </div>
             )}
 
-            {/* 新增按钮 */}
-            {!validAdding && activePlugin ? (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {storagePlugins.filter(plugin => plugin.id === resolvedPluginTab).map(plugin => (
-                  <button key={plugin.id} onClick={() => { setAdding(`plugin:${plugin.id}`); setEditingId(null) }}
-                    className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary"
-                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
-                    <Plus size={14} />
-                    新增
-                  </button>
-                ))}
-              </div>
-            ) : validAdding?.startsWith('plugin:') ? (
+            {validAdding?.startsWith('plugin:') ? (
                 <DesktopStorageSourceForm
                   plugin={storagePlugins.find(plugin => plugin.id === validAdding.slice('plugin:'.length))}
                   onCancel={() => setAdding(null)}
@@ -1262,7 +1250,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
       <SimpleDeleteDialog
         isOpen={!!uninstallTarget}
         title="卸载存储插件"
-        message={uninstallTarget ? `确定要卸载「${uninstallTarget.name || uninstallTarget.id}」吗？使用该插件的存储源必须先删除。` : ''}
+        message={uninstallTarget ? `确定要卸载「${uninstallTarget.name || uninstallTarget.id}」吗？现有存储源配置和凭据会保留，重新安装同一插件后可继续使用。` : ''}
         onConfirm={confirmUninstall}
         onCancel={() => setUninstallTarget(null)}
         t={(key) => t(key, language)}
@@ -1282,6 +1270,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
 function StorageSourceCard({ source, plugin, isEditing, onEdit, onDelete, onSaved }: {
   source: StorageSource; plugin?: PluginDescriptor; isEditing: boolean; onEdit: () => void; onDelete: () => void; onSaved: () => void
 }) {
+  const [testing, setTesting] = useState(false)
   if (isEditing) return <DesktopStorageSourceForm plugin={plugin} source={source} onCancel={onEdit} onSaved={onSaved} />
 
   const meta = storageTypeMeta(source.pluginId || source.type, plugin)
@@ -1313,26 +1302,30 @@ function StorageSourceCard({ source, plugin, isEditing, onEdit, onDelete, onSave
   }
 
   const testSource = async () => {
+    if (testing) return
+    setTesting(true)
     try {
       const result = await TestDesktopStorageSource(source.id)
       if (result?.status === 'ready') toast.success('存储源连接正常')
       else toast.error(result?.message || '存储源连接失败')
-      onSaved()
     } catch (err: unknown) {
       toast.error(getErrorMessage(err) || '存储源连接失败')
+    } finally {
+      setTesting(false)
+      onSaved()
     }
   }
 
   return (
-    <article className="rounded-lg border p-3 transition-colors hover:bg-secondary/30" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+    <article className="border p-4 transition-colors hover:bg-secondary/20" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
       <div className="flex min-w-0 flex-wrap items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
+        <span className="flex size-9 shrink-0 items-center justify-center" style={{ backgroundColor: 'var(--muted)' }}>
           <Icon size={17} style={{ color: 'var(--muted-foreground)' }} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="max-w-full truncate text-sm font-semibold">{source.name || '未命名存储源'}</span>
-            <span className="max-w-full truncate rounded border px-1.5 py-0.5 text-[10px]" title={meta.label}
+            <span className="max-w-full truncate border px-1.5 py-0.5 font-mono text-[10px]" title={meta.label}
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>{meta.label}</span>
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>
               <span className="size-1 rounded-full bg-current" />{status.label}
@@ -1341,8 +1334,8 @@ function StorageSourceCard({ source, plugin, isEditing, onEdit, onDelete, onSave
           <p className="mt-1 truncate font-mono text-[11px]" title={summary} style={{ color: 'var(--muted-foreground)' }}>{summary}</p>
           {source.lastError && <p className="mt-1 flex items-start gap-1 text-[11px] leading-4 text-red-600 dark:text-red-400"><TriangleAlert size={12} className="mt-0.5 shrink-0" />{source.lastError}</p>}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1" aria-label="存储源操作">
-          <button type="button" onClick={() => void testSource()} title="测试连接" aria-label="测试连接" className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-secondary" style={{ color: 'var(--muted-foreground)' }}><CircleCheck size={14} /></button>
+        <div className="ml-auto flex shrink-0 items-center gap-1 border-l pl-3" style={{ borderColor: 'var(--border)' }} aria-label="存储源操作">
+          <button type="button" onClick={() => void testSource()} disabled={testing} title={testing ? '测试中...' : '测试连接'} aria-label={testing ? '测试中...' : '测试连接'} className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-secondary disabled:cursor-wait disabled:opacity-50" style={{ color: 'var(--muted-foreground)' }}>{testing ? <Loader2 size={14} className="animate-spin" /> : <CircleCheck size={14} />}</button>
           <button type="button" onClick={() => void toggleEnabled()} title={source.enabled === false ? '启用' : '禁用'} aria-label={source.enabled === false ? '启用' : '禁用'} className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-secondary" style={{ color: source.enabled === false ? 'var(--muted-foreground)' : 'var(--primary)' }}><Power size={14} /></button>
           {plugin && <button type="button" onClick={onEdit} title="编辑" aria-label="编辑" className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-secondary" style={{ color: 'var(--muted-foreground)' }}><Pencil size={14} /></button>}
           <button type="button" onClick={onDelete} title="删除" aria-label="删除" className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-secondary" style={{ color: 'var(--destructive)' }}><Trash2 size={14} /></button>
@@ -1359,17 +1352,42 @@ function DesktopStorageSourceForm({ plugin, source, onCancel, onSaved }: {
   onSaved: () => void
 }) {
   const pluginId = plugin?.id || source?.pluginId || ''
-  const configFields = schemaFields(plugin?.configSchema)
-  const credentialFields = schemaFields(plugin?.credentialSchema)
+  const { language } = usePreferences()
+  const configFields = schemaFields(plugin?.configSchema, language)
+  const credentialFields = schemaFields(plugin?.credentialSchema, language)
   const [form, setForm] = useState({
     name: source?.name || plugin?.name || pluginId,
     config: Object.fromEntries(configFields.map(field => [field.key, source?.config?.[field.key] || ''])) as Record<string, string>,
     credentials: Object.fromEntries(credentialFields.map(field => [field.key, ''])) as Record<string, string>,
   })
+  const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>({})
+  const [credentialsLoaded, setCredentialsLoaded] = useState(false)
+  const [loadingCredentials, setLoadingCredentials] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const updateConfig = (key: string, value: string) => setForm(current => ({ ...current, config: { ...current.config, [key]: value } }))
   const updateCredential = (key: string, value: string) => setForm(current => ({ ...current, credentials: { ...current.credentials, [key]: value } }))
+  const toggleCredentialVisibility = async (key: string, loadStoredCredentials = false) => {
+    const currentlyVisible = visibleFields[key] === true
+    if (currentlyVisible) {
+      setVisibleFields(previous => ({ ...previous, [key]: false }))
+      return
+    }
+    if (loadStoredCredentials && source?.id && !credentialsLoaded) {
+      setLoadingCredentials(true)
+      try {
+        const credentials = await GetDesktopStorageSourceCredentials(source.id)
+        setForm(current => ({ ...current, credentials: { ...current.credentials, ...(credentials || {}) } }))
+        setCredentialsLoaded(true)
+      } catch (err: unknown) {
+        toast.error(getErrorMessage(err) || '读取凭据失败')
+        return
+      } finally {
+        setLoadingCredentials(false)
+      }
+    }
+    setVisibleFields(previous => ({ ...previous, [key]: true }))
+  }
   const handleSave = async () => {
     if (!form.name.trim() || !pluginId) return
     setSaving(true)
@@ -1392,20 +1410,34 @@ function DesktopStorageSourceForm({ plugin, source, onCancel, onSaved }: {
   }
 
   return (
-    <div className="rounded-lg border p-4" style={{ borderColor: 'var(--ring)', backgroundColor: 'var(--card)' }}>
+    <div className="border p-5" style={{ borderColor: 'var(--ring)', backgroundColor: 'var(--card)' }}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2 border-b pb-3" style={{ borderColor: 'var(--border)' }}>
-        <div className="min-w-0"><p className="text-sm font-semibold">{source?.id ? '编辑存储源' : '新增存储源'}</p><p className="mt-1 truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{plugin?.name || pluginId}</p></div>
-        <span className="rounded border px-1.5 py-0.5 text-[10px]" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>{plugin?.runtime || 'desktop plugin'}</span>
+        <div className="min-w-0"><p className="font-mono text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--muted-foreground)' }}>{source?.id ? 'Edit source' : 'New source'}</p><p className="mt-1 truncate text-sm font-semibold">{plugin?.name || pluginId}</p></div>
+        <span className="border px-1.5 py-0.5 font-mono text-[10px]" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>{plugin?.runtime || 'desktop plugin'}</span>
       </div>
       <div className="space-y-4">
         <Field label="名称"><input value={form.name} onChange={e => setForm(current => ({ ...current, name: e.target.value }))} placeholder="例如：主图床" className={inputClass} style={inputStyle} /></Field>
         {configFields.length > 0 ? <div className="grid gap-3 sm:grid-cols-2">{configFields.map(field => <Field key={field.key} label={`${field.title}${field.required ? ' *' : ''}`} description={field.description}>
-          <input type={field.secret ? 'password' : field.type === 'number' ? 'number' : 'text'} value={form.config[field.key] || ''} onChange={e => updateConfig(field.key, e.target.value)} className={inputClass} style={inputStyle} />
+          <div className="relative">
+            <input type={field.secret ? (visibleFields[`config:${field.key}`] ? 'text' : 'password') : field.type === 'number' ? 'number' : 'text'} value={form.config[field.key] || ''} onChange={e => updateConfig(field.key, e.target.value)} className={`${inputClass}${field.secret ? ' pr-9' : ''}`} style={inputStyle} />
+            {field.secret && <button type="button" onClick={() => void toggleCredentialVisibility(`config:${field.key}`)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors disabled:opacity-50" style={{ color: 'var(--muted-foreground)' }}
+              aria-label={visibleFields[`config:${field.key}`] ? `隐藏${field.title}` : `显示${field.title}`}>
+              {visibleFields[`config:${field.key}`] ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>}
+          </div>
         </Field>)}</div> : <p className="rounded-md border border-dashed px-3 py-2 text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>此插件没有额外配置项。</p>}
         {credentialFields.length > 0 && <div className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
           <div className="mb-3"><p className="text-xs font-semibold">凭据</p><p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>凭据只写入本机安全存储；编辑时留空表示保持原凭据。</p></div>
           <div className="grid gap-3 sm:grid-cols-2">{credentialFields.map(field => <Field key={field.key} label={`${field.title}${field.required ? ' *' : ''}`} description={field.description}>
-            <input type="password" autoComplete="new-password" value={form.credentials[field.key] || ''} onChange={e => updateCredential(field.key, e.target.value)} className={inputClass} style={inputStyle} />
+            <div className="relative">
+              <input type={visibleFields[`credential:${field.key}`] ? 'text' : 'password'} autoComplete="new-password" value={form.credentials[field.key] || ''} onChange={e => updateCredential(field.key, e.target.value)} className={`${inputClass} pr-9`} style={inputStyle} />
+              <button type="button" onClick={() => void toggleCredentialVisibility(`credential:${field.key}`, true)} disabled={loadingCredentials}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors disabled:opacity-50" style={{ color: 'var(--muted-foreground)' }}
+                aria-label={visibleFields[`credential:${field.key}`] ? `隐藏${field.title}` : `显示${field.title}`}>
+                {visibleFields[`credential:${field.key}`] ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
           </Field>)}</div>
         </div>}
       </div>

@@ -67,6 +67,7 @@ import {
   UpdateLocalLibraryCollection,
   UpdateLocalLibraryCollectionGroup,
   UpdateLocalLibraryTag,
+  SyncLocalLibraryCloud,
 } from '../../../wailsjs/go/main/App'
 import type {
   AssetMaintenanceResult,
@@ -198,6 +199,13 @@ export const localLibraryApi = {
     }
   },
   async snapshot() { return normalizeSnapshot(await GetLocalLibrarySnapshot()) },
+  async syncCloud() {
+    const source = await SyncLocalLibraryCloud()
+    return {
+      cursor: source?.cursor || '',
+      lastSuccessAt: asIsoTime(source?.lastSuccessAt),
+    }
+  },
   async backups(): Promise<BackupOverview> {
     const source = await GetLocalLibraryBackups()
     return {
@@ -245,6 +253,14 @@ export const localLibraryApi = {
         trashEntryId: item.trashEntryId || undefined,
         trashEntryKind: item.trashEntryKind || undefined,
         cloudPhotoId: item.cloudPhotoId || undefined,
+        cloudPath: item.cloudPath || undefined,
+        cloudThumbPath: item.cloudThumbPath || undefined,
+        cloudStorageSourceId: item.cloudStorageSourceId || undefined,
+        cloudStoragePluginId: item.cloudStoragePluginId || undefined,
+        cloudUrlType: item.cloudUrlType || undefined,
+        cloudRemoteUpdatedAt: asIsoTime(item.cloudRemoteUpdatedAt),
+        cloudSyncState: item.cloudSyncState || undefined,
+        cloudSyncError: item.cloudSyncError || undefined,
         uploadStatus: normalizeAssetUploadStatus(item.uploadStatus, item.cloudPhotoId),
         isUploaded: Boolean(item.isUploaded || item.cloudPhotoId),
         previewError: item.previewError || undefined,

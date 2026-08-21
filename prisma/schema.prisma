@@ -135,6 +135,7 @@ model Photo {
   software     String?
   exifRaw      String?
   gps          String?  // JSON: tags.gps raw data { latitude, longitude, altitude, dateStamp }
+  updatedAt    DateTime @updatedAt
 
   categories Category[]
   stories    Story[]    @relation("PhotoStories")
@@ -146,6 +147,23 @@ model Photo {
   @@index([lensId])
   @@index([showFlag])
   @@index([storageRuntime, storageSourceId])
+  @@index([updatedAt, id])
+}
+
+model PhotoChange {
+  id                String   @id @default(cuid())
+  photoId           String
+  path              String?
+  thumbPath         String?
+  storageSourceId   String?
+  storagePluginId   String?
+  storageUrlType    String
+  updatedAt         DateTime
+  deletedAt         DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([updatedAt, id])
+  @@index([photoId, updatedAt])
 }
 
 model FilmRoll {

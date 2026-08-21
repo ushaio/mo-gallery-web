@@ -4,19 +4,20 @@ import { useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
 import {
   ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleHelp, Columns3, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, FolderSearch2, Heart, Images, Info, LayoutGrid, Loader2, Palette, Star,
-  Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, Settings2, Square, Trash2, Upload, X,
+  Maximize2, Pause, Play, RefreshCw, Settings2, Square, Trash2, Upload, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { LibraryNavItem, LibrarySearchInput, LibrarySidebarSection, LibraryStatusBar, LibraryToolbar, LibraryViewToggle, LibraryZoomSlider } from '@/components/ui/library'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { useDataRevision } from '@/hooks/useDataRevision'
-import { useLibrarySections } from '@/store/preferences'
+import { useLibrarySections, usePreferences } from '@/store/preferences'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import { EventsOn, OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime'
 import { GetStorageSources, PrepareLocalAssetUpload } from '../../../wailsjs/go/main/App'
@@ -39,6 +40,7 @@ import { LocalLibraryBackupDialog } from './LocalLibraryBackupDialog'
 import { LocalLibraryGuide, LOCAL_LIBRARY_GUIDE_SEEN_KEY } from './LocalLibraryGuide'
 import { MoveFolderDialog } from './MoveFolderDialog'
 import { AssetFileOperationDialog } from './AssetFileOperationDialog'
+import { AssetMoveConflictDialog } from './AssetMoveConflictDialog'
 import { OrganizationEditorDialog } from './OrganizationEditorDialog'
 import type { OrganizationEditorTarget } from './OrganizationEditorDialog'
 import { OrganizationNavigation } from './OrganizationNavigation'
@@ -71,7 +73,6 @@ const EMPTY_PAGE: AssetPage = {
 
 const FOLDER_DRAG_TYPE = 'application/x-mo-gallery-folder-path'
 const SIDEBAR_COLORS = ['red', 'yellow', 'green', 'blue', 'purple'] as const
-const SIDEBAR_RATINGS = [5, 4, 3, 2, 1, 0] as const
 
 function scanLabel(snapshot: LibrarySnapshot, copy: LocalLibraryCopy) {
   if (snapshot.state === 'suspended' || snapshot.scan.state === 'suspended') return copy.librarySuspended
@@ -130,8 +131,22 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const [assetDropTargetFolder, setAssetDropTargetFolder] = useState<string | null>(null)
   const [draggedFolderPath, setDraggedFolderPath] = useState<string | null>(null)
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'crop' | 'fit' | 'masonry'>('fit')
-  const [gridSize, setGridSize] = useState(176)
+  // 视图模式与缩放级别与云端共用同一份持久化偏好（usePreferences），保证交互一致。
+  // 视图模式是点击切换，直接读写 store；缩放滑杆拖动频率高，
+  // 先本地 state 即时响应，停止 200ms 后再写回偏好，避免每次拖动同步写 localStorage 卡顿。
+  const viewMode = usePreferences((state) => state.photoViewMode)
+  const setViewMode = usePreferences((state) => state.setPhotoViewMode)
+  const persistedGridSize = usePreferences((state) => state.photoGridSize)
+  const setPhotoGridSize = usePreferences((state) => state.setPhotoGridSize)
+  const [gridSize, setGridSize] = useState(() => Math.min(280, Math.max(120, persistedGridSize)))
+  useEffect(() => {
+    const id = window.setTimeout(() => setPhotoGridSize(gridSize), 200)
+    return () => window.clearTimeout(id)
+  }, [gridSize, setPhotoGridSize])
+  // 云端等其他入口改动偏好时同步回本地（store 写回与本地值一致时是 no-op）
+  useEffect(() => {
+    setGridSize(Math.min(280, Math.max(120, persistedGridSize)))
+  }, [persistedGridSize])
   const [directFolderOnly, setDirectFolderOnly] = useState(false)
   const photosOnly = filters.photosOnly !== false
   const [importBusy, setImportBusy] = useState(false)
@@ -164,11 +179,12 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const [folderOperationBusy, setFolderOperationBusy] = useState(false)
   const [folderPropertiesLoading, setFolderPropertiesLoading] = useState(false)
   const [assetFileOperation, setAssetFileOperation] = useState<{ mode: 'rename', asset: LocalAsset } | { mode: 'move', assetIds: string[] } | null>(null)
-  const [assetMovePlan, setAssetMovePlan] = useState<AssetFileOperationPlan>()
+  const [assetMoveConflict, setAssetMoveConflict] = useState<{ assetIds: string[], destinationFolder: string, plan: AssetFileOperationPlan } | null>(null)
   const [assetFileOperationBusy, setAssetFileOperationBusy] = useState(false)
   const [storageSources, setStorageSources] = useState<wailsTypes.StorageSourceDTO[]>([])
   const storageSourcesRevision = useDataRevision('storage-sources')
   const [storageSourcesLoading, setStorageSourcesLoading] = useState(isAuthenticated)
+  const [cloudSyncBusy, setCloudSyncBusy] = useState(false)
   const storageSourcesLoadingRef = useRef(false)
   const storageSourcesRequestVersionRef = useRef(0)
   const [uploadSettingsAsset, setUploadSettingsAsset] = useState<LocalAsset | null>(null)
@@ -256,6 +272,19 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   }, [])
 
   const refreshAssets = useCallback(() => setRefreshKey((value) => value + 1), [])
+  const syncCloud = useCallback(async () => {
+    if (!isAuthenticated || cloudSyncBusy) return
+    setCloudSyncBusy(true)
+    try {
+      await localLibraryApi.syncCloud()
+      toast.success(copy.cloudSyncDone)
+      refreshAssets()
+    } catch (error) {
+      toast.error(`${copy.cloudSyncFailed}: ${parseLocalLibraryError(error).message}`)
+    } finally {
+      setCloudSyncBusy(false)
+    }
+  }, [cloudSyncBusy, copy.cloudSyncDone, copy.cloudSyncFailed, isAuthenticated, refreshAssets])
 
   const clearAssetSelection = useCallback(() => {
     setSelectedAssetIds([])
@@ -1035,7 +1064,6 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
 
   const openMoveAsset = useCallback((asset: LocalAsset) => {
     if (asset.availability === 'active') {
-      setAssetMovePlan(undefined)
       setAssetFileOperation({ mode: 'move', assetIds: [asset.id] })
     }
   }, [])
@@ -1043,7 +1071,6 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const openMoveSelectedAssets = useCallback(() => {
     const activeIds = selectedAssetIds.filter((id) => page.items.find((item) => item.id === id)?.availability === 'active')
     if (activeIds.length > 0) {
-      setAssetMovePlan(undefined)
       setAssetFileOperation({ mode: 'move', assetIds: activeIds })
     }
   }, [page.items, selectedAssetIds])
@@ -1064,25 +1091,18 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     }
   }
 
-  const performAssetMove = async (assetIds: string[], destinationFolder: string, conflictPolicy: 'skip' | 'rename', closeDialog: boolean) => {
+  // Plan a move and either execute it right away (no conflicts) or surface a
+  // conflict dialog so the user decides before anything moves.
+  const moveAssetsTo = async (assetIds: string[], destinationFolder: string) => {
     if (assetIds.length === 0) return
     setAssetFileOperationBusy(true)
     try {
-      const plan = await localLibraryApi.planAssetMove(assetIds, destinationFolder, conflictPolicy)
-      setAssetMovePlan(plan)
-      if (!closeDialog) return
-      const results = await localLibraryApi.executeAssetMovePlan(plan.id)
-      runResultsMessage(results.results, copy.assetsMoved, copy.assetsMovePartial)
-      setAssetMovePlan(undefined)
-      const failedIds = results.results.filter((result) => result.status === 'failed').map((result) => result.assetId)
-      if (closeDialog) setAssetFileOperation(null)
-      if (failedIds.length === 0) clearAssetSelection()
-      else {
-        setSelectedAssetIds(failedIds)
-        selectAsset(page.items.find((item) => item.id === failedIds[0]) ?? null)
+      const plan = await localLibraryApi.planAssetMove(assetIds, destinationFolder, 'skip')
+      if (plan.conflictCount > 0) {
+        setAssetMoveConflict({ assetIds, destinationFolder, plan })
+      } else {
+        await finishAssetMove(plan)
       }
-      await Promise.all([reloadFolders(), refreshSnapshot()])
-      refreshAssets()
     } catch (error) {
       toast.error(parseLocalLibraryError(error).message)
     } finally {
@@ -1090,22 +1110,42 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     }
   }
 
-  const executeAssetMovePlan = async () => {
-    if (!assetMovePlan) return
-    setAssetFileOperationBusy(true)
-    try {
-      const execution = await localLibraryApi.executeAssetMovePlan(assetMovePlan.id)
-      runResultsMessage(execution.results, copy.assetsMoved, copy.assetsMovePartial)
-      setAssetMovePlan(undefined)
-      setAssetFileOperation(null)
-      clearAssetSelection()
-    } catch (error) { toast.error(parseLocalLibraryError(error).message) }
-    finally { setAssetFileOperationBusy(false) }
+  const finishAssetMove = async (plan: AssetFileOperationPlan) => {
+    const execution = await localLibraryApi.executeAssetMovePlan(plan.id)
+    runResultsMessage(execution.results, copy.assetsMoved, copy.assetsMovePartial)
+    setAssetMoveConflict(null)
+    setAssetFileOperation(null)
+    const failedIds = execution.results.filter((result) => result.status === 'failed').map((result) => result.assetId)
+    if (failedIds.length === 0) clearAssetSelection()
+    else {
+      setSelectedAssetIds(failedIds)
+      selectAsset(page.items.find((item) => item.id === failedIds[0]) ?? null)
+    }
+    await Promise.all([reloadFolders(), refreshSnapshot()])
+    refreshAssets()
   }
 
-  const moveAssets = async (destinationFolder: string, conflictPolicy: 'skip' | 'rename') => {
+  // Called from the conflict dialog. 'skip' reuses the plan already computed
+  // with the skip policy; 'rename' re-plans so conflicts get fresh names.
+  const resolveAssetMoveConflict = async (conflictPolicy: 'skip' | 'rename') => {
+    if (!assetMoveConflict) return
+    const { assetIds, destinationFolder, plan } = assetMoveConflict
+    setAssetFileOperationBusy(true)
+    try {
+      const targetPlan = conflictPolicy === 'rename'
+        ? await localLibraryApi.planAssetMove(assetIds, destinationFolder, 'rename')
+        : plan
+      await finishAssetMove(targetPlan)
+    } catch (error) {
+      toast.error(parseLocalLibraryError(error).message)
+    } finally {
+      setAssetFileOperationBusy(false)
+    }
+  }
+
+  const moveAssets = async (destinationFolder: string) => {
     if (!assetFileOperation || assetFileOperation.mode !== 'move') return
-    await performAssetMove(assetFileOperation.assetIds, destinationFolder, conflictPolicy, false)
+    await moveAssetsTo(assetFileOperation.assetIds, destinationFolder)
   }
 
   const applyOrganizationDrop = async (assetIds: string[], target: { kind: 'tag' | 'collection' | 'favorite'; id?: string }) => {
@@ -1204,7 +1244,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
         setAssetDropTargetFolder(null)
         try {
           const ids = JSON.parse(assetPayload) as unknown
-          if (Array.isArray(ids) && ids.every((id): id is string => typeof id === 'string')) void performAssetMove(ids, destinationParent, 'skip', true)
+          if (Array.isArray(ids) && ids.every((id): id is string => typeof id === 'string')) void moveAssetsTo(ids, destinationParent)
         } catch { /* ignore malformed drag payload */ }
         return
       }
@@ -1594,7 +1634,6 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     catch (error) { toast.error(parseLocalLibraryError(error).message) }
   }
 
-  const currentLocation = folder || copy.root
   const previewIndex = previewAsset ? page.items.findIndex((item) => item.id === previewAsset.id) : -1
   const previewNeighbors = useMemo(() => {
     if (previewIndex < 0) return { previous: undefined, next: undefined }
@@ -1658,12 +1697,11 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   }
 
   return (
-    <div className="relative grid h-full min-h-0 grid-cols-[218px_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] bg-background" onDragEnd={() => { setAssetDropTargetFolder(null); setDraggedFolderPath(null); setFolderDropTarget(null) }}>
+    <div className="relative grid h-full min-h-0 grid-cols-[218px_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] bg-[color-mix(in_srgb,var(--background)_96%,var(--secondary))]" onDragEnd={() => { setAssetDropTargetFolder(null); setDraggedFolderPath(null); setFolderDropTarget(null) }}>
       <header className="col-span-2 col-start-2 row-start-1 shrink-0 border-b bg-card/70 backdrop-blur" style={{ borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)' }}>
-        <div className="flex h-[4.25rem] items-center gap-4 px-5">
+        <div className="flex h-14 items-center gap-4 px-5">
           <div className="min-w-0 flex-1" data-local-library-guide="library">
             <div className="flex items-center gap-2.5"><h1 className="truncate text-[1.05rem] font-semibold tracking-[-0.02em]">{snapshot.name}</h1><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isSuspended || isRepairRequired ? '#d97706' : isScanning ? 'var(--primary)' : '#4f9d69' }} /></div>
-            <p className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{snapshot.rootPath}</p>
           </div>
           <button type="button" data-local-library-guide="import" disabled={importBusy || isSuspended || isRepairRequired} onClick={chooseFiles} className="flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-medium shadow-sm transition hover:brightness-105 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{importBusy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{importBusy ? copy.importing : copy.import}</button>
           <button type="button" disabled={isSuspended || isRepairRequired} onClick={openBackups} className="flex items-center gap-2 rounded-lg border bg-background/50 px-3 py-2 text-xs transition hover:bg-secondary disabled:opacity-50"><DatabaseBackup size={13} />{copy.databaseBackups}</button>
@@ -1673,23 +1711,14 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       </header>
 
       <div className="contents">
-        <aside className="col-start-1 row-span-2 row-start-1 flex w-[218px] min-h-0 shrink-0 flex-col overflow-hidden border-r bg-card p-3" style={{ borderColor: 'var(--border)' }}>
-          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <aside className="col-start-1 row-span-2 row-start-1 flex w-[218px] min-h-0 shrink-0 flex-col overflow-hidden border-r bg-card/82 p-3 shadow-[4px_0_18px_-20px_rgba(15,23,42,0.65)]" style={{ borderColor: 'color-mix(in srgb, var(--border) 78%, transparent)' }}>
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
             <div data-local-library-guide="nav">
-              <NavButton active={availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} icon={Images} label={copy.allPhotos} count={snapshot.assetCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }} />
-              <div data-local-library-logical-target {...assetDropHandlers((ids) => void applyOrganizationDrop(ids, { kind: 'favorite' }), 'link')}><NavButton active={availability === 'active' && favoritesOnly} icon={Heart} label={copy.favorites} count={favoriteCount} onClick={() => { setAvailability('active'); setFavoritesOnly(true); setFolder('') }} /></div>
+              <LibraryNavItem active={availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} icon={Images} label={copy.allPhotos} count={snapshot.assetCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }} />
+              <div data-local-library-logical-target {...assetDropHandlers((ids) => void applyOrganizationDrop(ids, { kind: 'favorite' }), 'link')}><LibraryNavItem active={availability === 'active' && favoritesOnly} icon={Heart} label={copy.favorites} count={favoriteCount} onClick={() => { setAvailability('active'); setFavoritesOnly(true); setFolder('') }} /></div>
             </div>
             <div data-local-library-guide="folders">
-              <button
-                type="button"
-                onClick={() => toggleSection('localFolders')}
-                aria-expanded={foldersOpen}
-                className="mb-2 mt-5 flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[10px] font-medium uppercase tracking-[0.16em] transition hover:bg-secondary"
-                style={{ color: 'var(--muted-foreground)' }}
-              >
-                {foldersOpen ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-                <span className="truncate">{copy.folders}</span>
-              </button>
+              <LibrarySidebarSection open={foldersOpen} onToggle={() => toggleSection('localFolders')} label={copy.folders}>
               {foldersOpen && (<>
               <div data-local-library-import-folder="" style={{ '--wails-drop-target': 'drop' } as CSSProperties} {...folderDropHandlers('')}>
                 <FolderContextTarget
@@ -1705,11 +1734,12 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
               </div>
               {renderFolderTree()}
               </>)}
+              </LibrarySidebarSection>
             </div>
             <OrganizationNavigation copy={copy} tags={tags} groups={collectionGroups} collections={collections} selectedTagIds={tagIds} selectedCollectionIds={collectionIds}
               onSelectTags={(ids) => { setAvailability('active'); setFavoritesOnly(false); setTagIds(ids) }} onSelectCollections={(ids) => { setAvailability('active'); setFavoritesOnly(false); setCollectionIds(ids) }}
               onEdit={setOrganizationEditor} onDelete={setOrganizationDelete} onDropAssets={(ids, target) => void applyOrganizationDrop(ids, target)} />
-            <SidebarFilterSection title={copy.colors} icon={Palette} open={colorsOpen} onToggle={() => toggleSection('localColors')}>
+            <LibrarySidebarSection label={copy.colors} icon={Palette} open={colorsOpen} onToggle={() => toggleSection('localColors')}>
               <div className="space-y-0.5">
                 {SIDEBAR_COLORS.map((color) => {
                   const active = filters.colorLabels?.includes(color) ?? false
@@ -1719,20 +1749,18 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
                   </button>
                 })}
               </div>
-            </SidebarFilterSection>
-            <SidebarFilterSection title={copy.ratings} icon={Star} open={ratingsOpen} onToggle={() => toggleSection('localRatings')}>
-              <div className="space-y-0.5">
-                {SIDEBAR_RATINGS.map((rating) => {
-                  const active = filters.ratingMin === rating && (rating === 0 ? filters.ratingMax === 0 : filters.ratingMax === undefined)
-                  return <button key={rating} type="button" onClick={() => applySidebarFilter(active ? { ratingMin: undefined, ratingMax: undefined } : { ratingMin: rating, ratingMax: rating === 0 ? 0 : undefined })} className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition hover:bg-secondary" style={{ backgroundColor: active ? 'var(--accent)' : undefined }}>
-                    <span className="flex min-w-0 flex-1 items-center gap-0.5" aria-label={`${rating} ${copy.rating}`}>
-                      {rating === 0 ? <span className="text-[10px] text-muted-foreground">{copy.unrated}</span> : Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < rating ? 'currentColor' : 'none'} className={index < rating ? 'text-amber-500' : 'text-muted-foreground'} />)}
-                    </span>
-                    {rating > 0 && <span className="text-[9px] text-muted-foreground">{rating}+</span>}
-                  </button>
+            </LibrarySidebarSection>
+            <LibrarySidebarSection label={copy.ratings} icon={Star} open={ratingsOpen} onToggle={() => toggleSection('localRatings')}>
+              <div className="flex items-center gap-0.5 px-2.5 py-1.5">
+                {Array.from({ length: 5 }, (_, index) => {
+                  const rating = index + 1
+                  const active = filters.ratingMin === rating && filters.ratingMax === undefined
+                  const filled = (filters.ratingMin ?? 0) >= rating
+                  return <button key={rating} type="button" onClick={() => applySidebarFilter(active ? { ratingMin: undefined, ratingMax: undefined } : { ratingMin: rating, ratingMax: undefined })} title={`${rating}+ ${copy.rating}`} aria-label={`${rating}+ ${copy.rating}`} aria-pressed={active} className="rounded-sm p-0.5 transition hover:scale-110"><Star size={15} fill={filled ? 'currentColor' : 'none'} className={filled ? 'text-amber-500' : 'text-muted-foreground'} /></button>
                 })}
+                <button type="button" onClick={() => applySidebarFilter(filters.ratingMin === 0 && filters.ratingMax === 0 ? { ratingMin: undefined, ratingMax: undefined } : { ratingMin: 0, ratingMax: 0 })} aria-pressed={filters.ratingMin === 0 && filters.ratingMax === 0} className="ml-1 flex h-6 items-center rounded px-1.5 text-[10px] transition hover:bg-secondary" style={{ color: filters.ratingMin === 0 && filters.ratingMax === 0 ? 'var(--foreground)' : 'var(--muted-foreground)', backgroundColor: filters.ratingMin === 0 && filters.ratingMax === 0 ? 'var(--accent)' : undefined }}>{copy.unrated}</button>
               </div>
-            </SidebarFilterSection>
+            </LibrarySidebarSection>
           </div>
           <div className="mt-3 shrink-0 rounded-lg border p-3 text-[10px] leading-4" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
             <div className="grid grid-cols-3 gap-1 text-center">
@@ -1743,20 +1771,24 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
           </div>
         </aside>
 
-        <main data-local-library-import-folder={canImportIntoCurrentView ? folder : undefined} style={canImportIntoCurrentView ? { '--wails-drop-target': 'drop' } as CSSProperties : undefined} className="relative col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col overflow-hidden bg-background/55">
-          <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b bg-card/55 px-4 py-2.5 backdrop-blur" style={{ borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)' }} data-local-library-guide="toolbar">
-            <div className="relative min-w-[180px] flex-1"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} className="h-9 w-full rounded-lg border bg-background/75 pl-9 pr-9 text-xs outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/60 focus:ring-2 focus:ring-primary/15" />{search && <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 transition hover:bg-secondary"><X size={13} /></button>}</div>
+        <main data-local-library-import-folder={canImportIntoCurrentView ? folder : undefined} style={canImportIntoCurrentView ? { '--wails-drop-target': 'drop' } as CSSProperties : undefined} className="relative col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col overflow-hidden bg-[color-mix(in_srgb,var(--background)_94%,var(--secondary))]">
+          <LibraryToolbar data-local-library-guide="toolbar">
+            <LibrarySearchInput value={search} onChange={setSearch} placeholder={copy.search} />
             <LocalAssetFilters copy={copy} filters={filters} onChange={setFilters} onClear={clearFilters} />
             {page.total > page.items.length && <button type="button" onClick={() => void selectAllQueryResults()} className="h-8 shrink-0 rounded-md border px-2.5 text-[10px] hover:bg-secondary">{copy.selectAllResults} {page.total.toLocaleString()}</button>}
             <label className="flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-md border bg-input px-2.5 text-[10px]">
               <input type="checkbox" checked={directFolderOnly} onChange={(event) => setDirectFolderOnly(event.target.checked)} />
               {copy.hideSubfolderPhotos}
             </label>
-            <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5">
-              <button type="button" title={copy.croppedView} aria-label={copy.croppedView} onClick={() => setViewMode('crop')} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'crop' ? 'var(--secondary)' : undefined }}><LayoutGrid size={13} /></button>
-              <button type="button" title={copy.fittedView} aria-label={copy.fittedView} onClick={() => setViewMode('fit')} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'fit' ? 'var(--secondary)' : undefined }}><Maximize2 size={13} /></button>
-              <button type="button" title={copy.masonryView} aria-label={copy.masonryView} onClick={() => setViewMode('masonry')} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'masonry' ? 'var(--secondary)' : undefined }}><Columns3 size={13} /></button>
-            </div>
+            <LibraryViewToggle
+              value={viewMode}
+              onChange={(value) => setViewMode(value as typeof viewMode)}
+              options={[
+                { value: 'crop', icon: LayoutGrid, title: copy.croppedView },
+                { value: 'fit', icon: Maximize2, title: copy.fittedView },
+                { value: 'masonry', icon: Columns3, title: copy.masonryView },
+              ]}
+            />
             <SelectDropdown
               value={sort}
               options={[
@@ -1771,7 +1803,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
               className="w-28 shrink-0"
             />
             <button type="button" onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')} title={sortDirection === 'asc' ? copy.ascending : copy.descending} aria-label={sortDirection === 'asc' ? copy.ascending : copy.descending} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-input hover:bg-secondary">{sortDirection === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}</button>
-          </div>
+          </LibraryToolbar>
           {(isSuspended || isRepairRequired) && <div className="border-b px-4 py-2 text-[11px]" style={{ borderColor: 'var(--border)', color: '#b45309', backgroundColor: 'color-mix(in srgb, #f59e0b 10%, var(--card))' }}>{scanLabel(snapshot, copy)}</div>}
           {availability === 'trashed' && <FolderTrashSection entries={trashedFolders} copy={copy} loading={trashedFoldersLoading} busyId={trashFolderBusyId} onRestore={setRestoreFolderTarget} onPermanentDelete={setPermanentFolderTarget} />}
           <LocalAssetGrid assets={page.items} folders={currentChildFolders} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
@@ -1810,18 +1842,21 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
           {selectedCount > 1 && batchDetailsOpen && !selectionMode && (
             <LocalAssetBatchDetails selectedCount={selectedCount} tags={tags} collections={collections} copy={copy} busy={organizationBusy || assetFileOperationBusy} canMove={!selectedQueryToken && selectedAssetIds.every((id) => page.items.find((item) => item.id === id)?.availability === 'active')} onClear={clearAssetSelection} onMove={openMoveSelectedAssets} onUpdate={(update) => void batchUpdateOrganization(update)} floating />
           )}
-          <div className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }} data-local-library-guide="statusbar">
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"><span className={`shrink-0 ${isScanning ? 'animate-pulse' : ''}`} style={{ color: isScanning ? 'var(--primary)' : 'var(--muted-foreground)' }}>{scanLabel(snapshot, copy)}</span><span className="min-w-0 flex-1 truncate" style={{ color: 'var(--muted-foreground)' }}>{snapshot.scan.lastPath || currentLocation}</span></div>
+          <LibraryStatusBar data-local-library-guide="statusbar">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"><span className={`shrink-0 ${isScanning ? 'animate-pulse' : ''}`} style={{ color: isScanning ? 'var(--primary)' : 'var(--muted-foreground)' }}>{scanLabel(snapshot, copy)}</span>{['running', 'paused'].includes(snapshot.scan.state) && snapshot.scan.lastPath && <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--muted-foreground)' }}>{snapshot.scan.lastPath}</span>}</div>
             {snapshot.scan.state === 'running' && <><button disabled={scanBusy} onClick={() => runScanAction('pause')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Pause size={11} />{copy.pause}</button><button disabled={scanBusy} onClick={() => runScanAction('cancel')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Square size={10} />{copy.cancel}</button></>}
             {snapshot.scan.state === 'paused' && !isSuspended && !isRepairRequired && <button disabled={scanBusy} onClick={() => runScanAction('resume')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Play size={11} />{copy.resume}</button>}
             {!isSuspended && !isRepairRequired && !['running','paused'].includes(snapshot.scan.state) && <button disabled={scanBusy} onClick={() => runScanAction('start')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><RefreshCw size={11} />{copy.rescan}</button>}
-            <div className="ml-1 flex shrink-0 items-center gap-2 border-l pl-3" style={{ borderColor: 'var(--border)' }}>
-              <Minus size={11} style={{ color: 'var(--muted-foreground)' }} />
-              <input type="range" min={120} max={280} step={8} value={gridSize} onChange={(event) => setGridSize(Number(event.target.value))} aria-label={copy.gridZoom} title={copy.gridZoom} className="h-1 w-28 cursor-pointer accent-current" />
-              <Plus size={11} style={{ color: 'var(--muted-foreground)' }} />
-              <span className="w-8 text-right text-[9px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{Math.round(gridSize / 176 * 100)}%</span>
-            </div>
-          </div>
+            {isAuthenticated && <button disabled={cloudSyncBusy} onClick={() => void syncCloud()} title={copy.syncCloud} aria-label={copy.syncCloud} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><RefreshCw size={11} className={cloudSyncBusy ? 'animate-spin' : undefined} />{cloudSyncBusy ? copy.syncingCloud : copy.syncCloud}</button>}
+            <LibraryZoomSlider
+              value={gridSize}
+              min={120}
+              max={280}
+              onChange={setGridSize}
+              ariaLabel={copy.gridZoom}
+              title={copy.gridZoom}
+            />
+          </LibraryStatusBar>
         </main>
 
         <div className="col-start-3 row-start-2 min-h-0 overflow-hidden">
@@ -1854,7 +1889,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       />
       {createFolderParent && <CreateFolderDialog parentName={createFolderParent.name} copy={copy} busy={folderOperationBusy} onClose={() => setCreateFolderParent(null)} onCreate={createFolder} />}
       {organizeFolderTarget && <MoveFolderDialog mode={organizeFolderTarget.mode} relativePath={organizeFolderTarget.target.relativePath} currentName={organizeFolderTarget.target.name} folders={folders} copy={copy} busy={folderOperationBusy} plan={folderMovePlan} onClose={() => { setFolderMovePlan(undefined); setOrganizeFolderTarget(null) }} onConfirm={organizeFolder} onExecute={() => void executeFolderMovePlan()} />}
-      {assetFileOperation && <AssetFileOperationDialog mode={assetFileOperation.mode} asset={assetFileOperation.mode === 'rename' ? assetFileOperation.asset : undefined} selectedCount={assetFileOperation.mode === 'move' ? assetFileOperation.assetIds.length : 1} folders={folders} copy={copy} busy={assetFileOperationBusy} plan={assetMovePlan} onClose={() => { setAssetMovePlan(undefined); setAssetFileOperation(null) }} onRename={renameAsset} onMove={moveAssets} onConfirmPlan={() => void executeAssetMovePlan()} />}
+      {assetFileOperation && <AssetFileOperationDialog mode={assetFileOperation.mode} asset={assetFileOperation.mode === 'rename' ? assetFileOperation.asset : undefined} selectedCount={assetFileOperation.mode === 'move' ? assetFileOperation.assetIds.length : 1} folders={folders} copy={copy} busy={assetFileOperationBusy} onClose={() => setAssetFileOperation(null)} onRename={renameAsset} onMove={moveAssets} />}
+      {assetMoveConflict && <AssetMoveConflictDialog plan={assetMoveConflict.plan} copy={copy} busy={assetFileOperationBusy} onClose={() => { setAssetMoveConflict(null); setAssetFileOperation(null) }} onConfirm={(policy) => void resolveAssetMoveConflict(policy)} />}
       {propertiesFolder && <FolderPropertiesDialog copy={copy} properties={folderProperties} loading={folderPropertiesLoading} onClose={() => setPropertiesFolder(null)} />}
       {deleteFolderTarget && <DeleteFolderDialog name={deleteFolderTarget.name} copy={copy} preview={folderDeletionPreview} loading={folderDeletionPreviewLoading} error={folderDeletionPreviewError} busy={folderOperationBusy} onClose={() => setDeleteFolderTarget(null)} onTrash={() => void finishActiveFolderRemoval(false)} onPermanent={() => void finishActiveFolderRemoval(true)} />}
       {restoreFolderTarget && <RestoreFolderDialog entry={restoreFolderTarget} folders={folders} copy={copy} busy={trashFolderBusyId === restoreFolderTarget.id} onClose={() => setRestoreFolderTarget(null)} onConfirm={restoreFolderBatch} />}
@@ -1896,25 +1932,6 @@ function FolderContextTarget({ target, copy, children, onCreate, onOpenInFileMan
       </ContextMenuContent>
     </ContextMenu>
   )
-}
-
-function SidebarFilterSection({ title, icon: Icon, open, onToggle, children }: { title: string; icon: typeof Images; open: boolean; onToggle: () => void; children: ReactNode }) {
-  return <section className="mt-5">
-    <button type="button" onClick={onToggle} aria-expanded={open} className="mb-2 flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[10px] font-medium uppercase tracking-[0.16em] transition hover:bg-secondary" style={{ color: 'var(--muted-foreground)' }}>
-      {open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-      <Icon size={12} className="shrink-0" />
-      <span className="truncate">{title}</span>
-    </button>
-    {open && children}
-  </section>
-}
-
-function NavButton({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Images; label: string; count?: number; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition hover:bg-secondary" style={{ backgroundColor: active ? 'var(--accent)' : undefined, color: active ? 'var(--accent-foreground)' : undefined }}><Icon size={15} /><span className="min-w-0 flex-1 truncate">{label}</span>{count != null && <span className="text-[9px]" style={{ color: 'var(--muted-foreground)' }}>{count}</span>}</button>
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return <div><div className="font-medium" style={{ color: 'var(--foreground)' }}>{value.toLocaleString()}</div><div className="truncate">{label}</div></div>
 }
 
 function StatButton({ active, value, label, onClick }: { active: boolean; value: number; label: string; onClick: () => void }) {

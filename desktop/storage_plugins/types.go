@@ -378,7 +378,12 @@ func (e *PluginError) Error() string {
 func (e *PluginError) Unwrap() error { return e.Cause }
 
 type rpcError struct {
-	Code    int    `json:"code"`
+	// Code is `any` because the JSON-RPC transport carries both host-side
+	// numeric codes (e.g. -32601 for method-not-found) and plugin-side string
+	// codes (e.g. "request_timeout" from the SDK's PluginError). Unmarshaling a
+	// string code into an int field would fail and silently drop the whole
+	// response, so the field must accept both shapes.
+	Code    any    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data,omitempty"`
 }

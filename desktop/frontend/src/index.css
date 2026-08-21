@@ -245,16 +245,42 @@
   .window-drag-region { --wails-draggable: drag; }
   .window-no-drag { --wails-draggable: no-drag; }
   .integrated-window-frame {
+    --desktop-chrome-height: 2.25rem;
     border: 1px solid var(--border);
     box-shadow: 0 10px 30px rgb(0 0 0 / 0.12);
   }
   .integrated-window-frame [data-sonner-toaster][data-y-position='top'] {
-    --offset: 3.75rem;
+    --offset: calc(var(--desktop-chrome-height) + 1.25rem);
     top: var(--offset) !important;
     z-index: 60 !important;
   }
   .integrated-window-frame .settings-modal-overlay {
-    top: 2.5rem;
+    top: var(--desktop-chrome-height);
+  }
+  .desktop-caption-button {
+    color: var(--muted-foreground);
+  }
+  .desktop-caption-button:hover {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    color: var(--foreground);
+  }
+  .desktop-caption-close:hover,
+  .desktop-caption-close:focus-visible {
+    background: #C42B1C;
+    color: #fff;
+  }
+  .desktop-title-bar.is-unfocused .desktop-chrome-identity {
+    opacity: 0.45;
+  }
+  .desktop-title-bar.is-unfocused .desktop-caption-button {
+    color: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  }
+  .desktop-title-bar.is-unfocused .desktop-caption-button:hover {
+    color: var(--foreground);
+  }
+  .desktop-title-bar.is-unfocused .desktop-caption-close:hover,
+  .desktop-title-bar.is-unfocused .desktop-caption-close:focus-visible {
+    color: #fff;
   }
   .desktop-toaster {
     --width: min(22.5rem, calc(100vw - 2rem));

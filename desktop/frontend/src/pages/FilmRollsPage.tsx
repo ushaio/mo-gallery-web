@@ -5,6 +5,7 @@ import { Check, Film, Image as ImageIcon, LayoutGrid, List, Loader2, Pencil, Plu
 
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { LibrarySearchInput, LibraryStatusBar, LibraryToolbar, LibraryViewToggle } from '@/components/ui/library'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger,
@@ -474,22 +475,14 @@ export function FilmRollsPage() {
       />
 
       {/* 内容工具栏：与照片库保持一致的位置与样式 */}
-      <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
-        <div className="relative min-w-0 max-w-sm flex-1">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-foreground)' }} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={event => setSearchQuery(event.target.value)}
-            placeholder={`${t('admin.film_roll_name', language)} / ${t('admin.film_roll_brand', language)}`}
-            className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1"
-          />
-          {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} aria-label={t('common.close', language)} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-secondary">
-              <X size={13} />
-            </button>
-          )}
-        </div>
+      <LibraryToolbar>
+        <LibrarySearchInput
+          className="max-w-sm"
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={`${t('admin.film_roll_name', language)} / ${t('admin.film_roll_brand', language)}`}
+          clearLabel={t('common.close', language)}
+        />
         <SelectDropdown
           value={filterBrand}
           options={brands.map(brand => ({ value: brand, label: brand }))}
@@ -499,10 +492,14 @@ export function FilmRollsPage() {
           ariaLabel={t('admin.film_roll_brand', language)}
           className="w-32 shrink-0"
         />
-        <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5" style={{ borderColor: 'var(--border)' }}>
-          <button type="button" onClick={() => setViewMode('grid')} title={language === 'zh' ? '网格视图' : 'Grid view'} aria-label={language === 'zh' ? '网格视图' : 'Grid view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'grid' ? 'var(--secondary)' : undefined }}><LayoutGrid size={13} /></button>
-          <button type="button" onClick={() => setViewMode('list')} title={language === 'zh' ? '列表视图' : 'List view'} aria-label={language === 'zh' ? '列表视图' : 'List view'} className="flex size-7 items-center justify-center rounded" style={{ backgroundColor: viewMode === 'list' ? 'var(--secondary)' : undefined }}><List size={13} /></button>
-        </div>
+        <LibraryViewToggle
+          value={viewMode}
+          onChange={(value) => setViewMode(value as ViewMode)}
+          options={[
+            { value: 'grid', icon: LayoutGrid, title: language === 'zh' ? '网格视图' : 'Grid view' },
+            { value: 'list', icon: List, title: language === 'zh' ? '列表视图' : 'List view' },
+          ]}
+        />
         <SelectDropdown
           value={sort}
           options={SORT_OPTIONS.map(option => ({ value: option.value, label: t(option.labelKey, language) }))}
@@ -510,7 +507,7 @@ export function FilmRollsPage() {
           ariaLabel={language === 'zh' ? '排序' : 'Sort'}
           className="w-32 shrink-0"
         />
-      </div>
+      </LibraryToolbar>
 
       {/* 主区域：左侧胶卷列表 + 右侧详情（桌面 master-detail） */}
       <div className="flex min-h-0 flex-1">
@@ -673,7 +670,7 @@ export function FilmRollsPage() {
       </div>
 
       {/* 底部状态栏：与照片库一致 */}
-      <div className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+      <LibraryStatusBar>
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
           <span>{filteredRolls.length} {t('admin.film_roll_unit', language)}</span>
           <span className="opacity-60">·</span>
@@ -688,7 +685,7 @@ export function FilmRollsPage() {
         <button type="button" disabled={loading} onClick={() => void fetchRolls(true)} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary disabled:cursor-wait disabled:opacity-50">
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />{t('common.refresh', language)}
         </button>
-      </div>
+      </LibraryStatusBar>
 
       <SimpleDeleteDialog
         isOpen={!!pendingDelete}

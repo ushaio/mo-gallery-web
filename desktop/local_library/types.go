@@ -14,6 +14,11 @@ type RelativePath string
 const (
 	AssetUploadStatusNotUploaded = "not-uploaded"
 	AssetUploadStatusUploaded    = "uploaded"
+	CloudSyncStateSynced         = "synced"
+	CloudSyncStatePending        = "pending"
+	CloudSyncStateConflict       = "conflict"
+	CloudSyncStateDeletedRemote  = "deleted_remote"
+	CloudSyncStateError          = "error"
 )
 
 func assetUploadStatus(cloudPhotoID string) string {
@@ -178,43 +183,67 @@ type ExifMetadataDTO struct {
 }
 
 type AssetDTO struct {
-	ID             AssetID              `json:"id"`
-	RelativePath   string               `json:"relativePath"`
-	FileName       string               `json:"fileName"`
-	Extension      string               `json:"extension"`
-	Format         string               `json:"format"`
-	MimeType       string               `json:"mimeType"`
-	MediaKind      string               `json:"mediaKind"`
-	ByteSize       int64                `json:"byteSize"`
-	ModifiedAtNS   int64                `json:"modifiedAtNs"`
-	Width          int                  `json:"width"`
-	Height         int                  `json:"height"`
-	Orientation    int                  `json:"orientation"`
-	IsAnimated     bool                 `json:"isAnimated"`
-	FrameCount     int                  `json:"frameCount"`
-	Availability   string               `json:"availability"`
-	TrashEntryID   string               `json:"trashEntryId,omitempty"`
-	TrashEntryKind string               `json:"trashEntryKind,omitempty"`
-	PreviewStatus  string               `json:"previewStatus"`
-	PreviewError   string               `json:"previewError,omitempty"`
-	MetadataStatus string               `json:"metadataStatus"`
-	DominantColors []string             `json:"dominantColors,omitempty"`
-	DisplayTitle   string               `json:"displayTitle,omitempty"`
-	Notes          string               `json:"notes,omitempty"`
-	Rating         int                  `json:"rating"`
-	ColorLabel     string               `json:"colorLabel,omitempty"`
-	IsFavorite     bool                 `json:"isFavorite"`
-	CapturedAt     *time.Time           `json:"capturedAt,omitempty"`
-	EXIF           *ExifMetadataDTO     `json:"exif,omitempty"`
-	DiscoveredAt   time.Time            `json:"discoveredAt"`
-	ThumbnailURL   string               `json:"thumbnailUrl"`
-	PreviewURL     string               `json:"previewUrl"`
-	OriginalURL    string               `json:"originalUrl"`
-	CloudPhotoID   string               `json:"cloudPhotoId,omitempty"`
-	UploadStatus   string               `json:"uploadStatus"`
-	IsUploaded     bool                 `json:"isUploaded"`
-	Tags           []TagDTO             `json:"tags"`
-	Collections    []AssetCollectionDTO `json:"collections"`
+	ID                   AssetID              `json:"id"`
+	RelativePath         string               `json:"relativePath"`
+	FileName             string               `json:"fileName"`
+	Extension            string               `json:"extension"`
+	Format               string               `json:"format"`
+	MimeType             string               `json:"mimeType"`
+	MediaKind            string               `json:"mediaKind"`
+	ByteSize             int64                `json:"byteSize"`
+	ModifiedAtNS         int64                `json:"modifiedAtNs"`
+	Width                int                  `json:"width"`
+	Height               int                  `json:"height"`
+	Orientation          int                  `json:"orientation"`
+	IsAnimated           bool                 `json:"isAnimated"`
+	FrameCount           int                  `json:"frameCount"`
+	Availability         string               `json:"availability"`
+	TrashEntryID         string               `json:"trashEntryId,omitempty"`
+	TrashEntryKind       string               `json:"trashEntryKind,omitempty"`
+	PreviewStatus        string               `json:"previewStatus"`
+	PreviewError         string               `json:"previewError,omitempty"`
+	MetadataStatus       string               `json:"metadataStatus"`
+	DominantColors       []string             `json:"dominantColors,omitempty"`
+	DisplayTitle         string               `json:"displayTitle,omitempty"`
+	Notes                string               `json:"notes,omitempty"`
+	Rating               int                  `json:"rating"`
+	ColorLabel           string               `json:"colorLabel,omitempty"`
+	IsFavorite           bool                 `json:"isFavorite"`
+	CapturedAt           *time.Time           `json:"capturedAt,omitempty"`
+	EXIF                 *ExifMetadataDTO     `json:"exif,omitempty"`
+	DiscoveredAt         time.Time            `json:"discoveredAt"`
+	ThumbnailURL         string               `json:"thumbnailUrl"`
+	PreviewURL           string               `json:"previewUrl"`
+	OriginalURL          string               `json:"originalUrl"`
+	CloudPhotoID         string               `json:"cloudPhotoId,omitempty"`
+	CloudPath            string               `json:"cloudPath,omitempty"`
+	CloudThumbPath       string               `json:"cloudThumbPath,omitempty"`
+	CloudStorageSourceID string               `json:"cloudStorageSourceId,omitempty"`
+	CloudStoragePluginID string               `json:"cloudStoragePluginId,omitempty"`
+	CloudURLType         string               `json:"cloudUrlType,omitempty"`
+	CloudRemoteUpdatedAt *time.Time           `json:"cloudRemoteUpdatedAt,omitempty"`
+	CloudSyncState       string               `json:"cloudSyncState,omitempty"`
+	CloudSyncError       string               `json:"cloudSyncError,omitempty"`
+	UploadStatus         string               `json:"uploadStatus"`
+	IsUploaded           bool                 `json:"isUploaded"`
+	Tags                 []TagDTO             `json:"tags"`
+	Collections          []AssetCollectionDTO `json:"collections"`
+}
+
+type CloudPhotoChange struct {
+	ID              string     `json:"id"`
+	Path            *string    `json:"path,omitempty"`
+	ThumbPath       *string    `json:"thumbPath,omitempty"`
+	StorageSourceID *string    `json:"storageSourceId,omitempty"`
+	StoragePluginID *string    `json:"storagePluginId,omitempty"`
+	StorageURLType  string     `json:"storageUrlType"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	DeletedAt       *time.Time `json:"deletedAt,omitempty"`
+}
+
+type CloudSyncStatus struct {
+	Cursor        string     `json:"cursor,omitempty"`
+	LastSuccessAt *time.Time `json:"lastSuccessAt,omitempty"`
 }
 
 type AssetPage struct {

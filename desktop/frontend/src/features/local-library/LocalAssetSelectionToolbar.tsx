@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckSquare, FolderInput, Loader2, Pencil, Settings2, Trash2, Upload, X } from 'lucide-react'
+import { LibrarySelectionBar, LibrarySelectionButton } from '@/components/ui/library'
 import type { LocalLibraryCopy } from './copy'
 
 interface UploadSource {
@@ -71,29 +72,16 @@ export function LocalAssetSelectionToolbar({
 
   return (
     <div className="pointer-events-none absolute bottom-16 left-1/2 z-30 -translate-x-1/2">
-      <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border bg-card/95 px-1.5 py-1.5 shadow-[0_14px_35px_-18px_rgba(15,23,42,0.72)] backdrop-blur" style={{ borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)' }}>
-        <span className="whitespace-nowrap px-2 text-xs font-semibold tracking-[-0.01em]">{copy.selectedCountLabel} {selectedCount.toLocaleString()}</span>
-        <div className="mx-0.5 h-4 w-px" style={{ backgroundColor: 'var(--border)' }} />
-        {canEdit && <button
-          type="button"
-          disabled={busy}
-          onClick={onEdit}
-          title={copy.batchEdit}
-          aria-label={copy.batchEdit}
-          className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ color: 'var(--muted-foreground)' }}
-        ><Pencil size={15} /></button>}
-        <button
-          type="button"
-          disabled={busy || !canSelectLoaded}
-          onClick={onToggleSelectLoaded}
+      <LibrarySelectionBar countLabel={`${copy.selectedCountLabel} ${selectedCount.toLocaleString()}`}>
+        {canEdit && <LibrarySelectionButton icon={Pencil} label={copy.batchEdit} title={copy.batchEdit} disabled={busy} onClick={onEdit} />}
+        <LibrarySelectionButton
+          icon={CheckSquare}
+          label={allLoadedSelected ? copy.deselectLoaded : copy.selectLoaded}
           title={allLoadedSelected ? copy.deselectLoaded : copy.selectLoaded}
-          aria-label={allLoadedSelected ? copy.deselectLoaded : copy.selectLoaded}
-          className="rounded-md p-1.5 transition-colors hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ backgroundColor: allLoadedSelected ? 'var(--accent)' : 'transparent', color: allLoadedSelected ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}
-        >
-          <CheckSquare size={15} />
-        </button>
+          disabled={busy || !canSelectLoaded}
+          active={allLoadedSelected}
+          onClick={onToggleSelectLoaded}
+        />
         <div ref={menuRef} className="relative">
           <button
             type="button"
@@ -129,41 +117,30 @@ export function LocalAssetSelectionToolbar({
             </div>
           )}
         </div>
-        <button
-          type="button"
+        <LibrarySelectionButton
+          icon={FolderInput}
+          label={canMove ? copy.moveAssetsToFolder : moveHint || copy.moveSelectedUnavailable}
+          title={canMove ? copy.moveAssetsToFolder : moveHint || copy.moveSelectedUnavailable}
           disabled={busy || !canMove}
           onClick={onMove}
-          title={canMove ? copy.moveAssetsToFolder : moveHint || copy.moveSelectedUnavailable}
-          aria-label={copy.moveAssetsToFolder}
-          className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ color: 'var(--muted-foreground)' }}
-        >
-          <FolderInput size={15} />
-        </button>
-        <button
-          type="button"
+        />
+        <LibrarySelectionButton
+          icon={Trash2}
+          label={canDelete ? copy.deleteSelected : deleteHint || copy.deleteSelectedUnavailable}
+          title={canDelete ? copy.deleteSelected : deleteHint || copy.deleteSelectedUnavailable}
+          intent="destructive"
           disabled={busy || !canDelete}
           onClick={onDelete}
-          title={canDelete ? copy.deleteSelected : deleteHint || copy.deleteSelectedUnavailable}
-          aria-label={copy.deleteSelected}
-          className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ color: 'var(--destructive)' }}
-        >
-          <Trash2 size={15} />
-        </button>
+        />
         <div className="mx-0.5 h-4 w-px" style={{ backgroundColor: 'var(--border)' }} />
-        <button
-          type="button"
+        <LibrarySelectionButton
+          icon={X}
+          label={`${copy.clearSelection} (Esc)`}
+          title={`${copy.clearSelection} (Esc)`}
           disabled={busy}
           onClick={onClear}
-          title={`${copy.clearSelection} (Esc)`}
-          aria-label={copy.clearSelection}
-          className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ color: 'var(--muted-foreground)' }}
-        >
-          <X size={15} />
-        </button>
-      </div>
+        />
+      </LibrarySelectionBar>
     </div>
   )
 }

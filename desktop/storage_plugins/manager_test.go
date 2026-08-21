@@ -63,6 +63,13 @@ func TestManagerSourceLifecyclePersistsCredentialsAndEnabledState(t *testing.T) 
 	if !created.Enabled || created.ID == "" {
 		t.Fatalf("created source = %+v", created)
 	}
+	credentials, err := manager.GetSourceCredentials(created.ID)
+	if err != nil {
+		t.Fatalf("GetSourceCredentials() error = %v", err)
+	}
+	if credentials["token"] != "secret" {
+		t.Fatalf("credentials = %#v", credentials)
+	}
 	updated, err := manager.SetSourceEnabled(created.ID, false)
 	if err != nil {
 		t.Fatalf("SetSourceEnabled() error = %v", err)
@@ -289,8 +296,10 @@ func TestManagerUninstallPluginRemovesPackage(t *testing.T) {
 	}
 }
 
-func TestManagerRejectsUninstallWhileSourceUsesPlugin(t *testing.T) {
-	manager, err := NewManager(t.TempDir())
+func TestManagerUninstallKeepsSourcesForReinstall(t *testing.T) {
+	configDir := t.TempDir()
+	credentialsStore := &testCredentialStore{}
+	manager, err := NewManagerWithCredentialStore(configDir, credentialsStore)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,10 +319,39 @@ func TestManagerRejectsUninstallWhileSourceUsesPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.CreateSource(SourceInput{Name: "In use", PluginID: installed.ID, Enabled: true}); err != nil {
+	created, err := manager.CreateSource(SourceInput{
+		Name: "In use", PluginID: installed.ID, Enabled: true,
+		Config:      map[string]string{"repo": "owner/repo"},
+		Credentials: map[string]string{"token": "secret"},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.UninstallPlugin(installed.ID); err == nil {
-		t.Fatal("expected uninstall to reject plugin used by a source")
+	if err := manager.UninstallPlugin(installed.ID); err != nil {
+		t.Fatalf("UninstallPlugin() error = %v", err)
+	}
+	if _, ok := manager.GetSource(created.ID); !ok {
+		t.Fatal("storage source was removed during plugin uninstall")
+	}
+	credentials, err := manager.GetSourceCredentials(created.ID)
+	if err != nil {
+		t.Fatalf("GetSourceCredentials() after uninstall error = %v", err)
+	}
+	if credentials["token"] != "secret" {
+		t.Fatalf("credentials after uninstall = %#v", credentials)
+	}
+	restarted, err := NewManagerWithCredentialStore(configDir, credentialsStore)
+	if err != nil {
+		t.Fatalf("restart manager error = %v", err)
+	}
+	restarted.SetDeveloperMode(true)
+	if _, ok := restarted.GetSource(created.ID); !ok {
+		t.Fatal("storage source did not persist across manager restart")
+	}
+	if _, err := restarted.InstallPlugin(packageDir); err != nil {
+		t.Fatalf("reinstall plugin error = %v", err)
+	}
+	if _, ok := restarted.GetSource(created.ID); !ok {
+		t.Fatal("storage source was not available after reinstall")
 	}
 }

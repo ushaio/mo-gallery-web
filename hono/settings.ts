@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
 import { invalidateSettingsCache } from '~/server/lib/storage'
+import { invalidatePhotoUrlCache } from '~/server/lib/photo-urls'
 import {
   encryptStoredSecret,
   REDACTED_SECRET,
@@ -106,6 +107,7 @@ settings.patch('/', authMiddleware, async (c) => {
         ),
       )
       invalidateSettingsCache()
+      invalidatePhotoUrlCache()
     }
 
     const settingsList = await db.setting.findMany()

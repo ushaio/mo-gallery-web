@@ -4,9 +4,9 @@ import {services} from '../models';
 import {local_library} from '../models';
 import {agent_extensions} from '../models';
 import {storage_plugins} from '../models';
+import {main} from '../models';
 import {config} from '../models';
 import {types} from '../models';
-import {main} from '../models';
 import {image} from '../models';
 
 export function AddPhotosToAlbum(arg1:string,arg2:Array<string>):Promise<services.AlbumDTO>;
@@ -127,6 +127,8 @@ export function ExecuteLocalAssetMovePlan(arg1:string):Promise<local_library.Ass
 
 export function ExecuteLocalLibraryFolderMovePlan(arg1:string):Promise<local_library.FolderFileOperationExecution>;
 
+export function FetchURLMetadata(arg1:string):Promise<main.FetchURLMetadataResult>;
+
 export function FinishEditorAiMessage(arg1:services.EditorAiMessageFinishInput):Promise<services.EditorAiMessageDTO>;
 
 export function FixMissingPhotos(arg1:Array<string>):Promise<services.FixMissingPhotosResult>;
@@ -162,6 +164,8 @@ export function GetComments(arg1:services.ListCommentsParams):Promise<services.P
 export function GetDesktopPluginMarketplace(arg1:boolean):Promise<storage_plugins.MarketplaceCatalog>;
 
 export function GetDesktopStoragePlugins():Promise<Array<storage_plugins.PluginDescriptor>>;
+
+export function GetDesktopStorageSourceCredentials(arg1:string):Promise<Record<string, string>>;
 
 export function GetDesktopStorageSources():Promise<Array<storage_plugins.SourceDTO>>;
 
@@ -351,6 +355,8 @@ export function RenameLocalAsset(arg1:string,arg2:string):Promise<local_library.
 
 export function ReorderFilmRollFrames(arg1:string):Promise<services.FilmRollDTO>;
 
+export function ReorderFriends(arg1:Array<services.ReorderFriendItem>):Promise<void>;
+
 export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<services.StoryDTO>;
 
 export function RestartApplication():Promise<void>;
@@ -426,6 +432,8 @@ export function SetLocalAssetTags(arg1:string,arg2:Array<string>):Promise<void>;
 export function SetLocalLibraryImportMode(arg1:string):Promise<local_library.LocalLibraryPreferences>;
 
 export function StartLocalLibraryScan():Promise<void>;
+
+export function SyncLocalLibraryCloud():Promise<local_library.CloudSyncStatus>;
 
 export function TestAgentMCPServer(arg1:string):Promise<agent_extensions.MCPServer>;
 

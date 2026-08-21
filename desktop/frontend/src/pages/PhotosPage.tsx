@@ -63,17 +63,25 @@ import {
   Check,
   FileText,
   Maximize2,
-  Minus,
   Pencil,
-  Plus,
   RefreshCw,
-  Search,
   X,
   CheckSquare,
   Film,
   ImageOff,
   Filter,
 } from "lucide-react";
+import {
+  LibraryCountBar,
+  LibraryEmptyState,
+  LibrarySearchInput,
+  LibrarySelectionBar,
+  LibrarySelectionButton,
+  LibraryStatusBar,
+  LibraryToolbar,
+  LibraryViewToggle,
+  LibraryZoomSlider,
+} from "@/components/ui/library";
 
 // 三栏资源库中间区域较窄，8 列视图下 50 张可能不足以撑满一屏，导致没有滚动事件。
 // 与本地资源库保持一致，每页加载 100 张，并由视口填充逻辑按需继续请求。
@@ -574,9 +582,7 @@ const PhotoGridCard = memo(function PhotoGridCard({
               : "var(--border)",
           backgroundColor: isSelected || isFocused
             ? "var(--accent)"
-            : masonry
-              ? "transparent"
-              : "var(--card)",
+            : "transparent",
           boxShadow: isSelected || isFocused ? "0 0 0 1px var(--primary)" : undefined,
           breakInside: masonry ? "avoid" : undefined,
           contentVisibility: masonry ? undefined : "auto",
@@ -594,7 +600,7 @@ const PhotoGridCard = memo(function PhotoGridCard({
         }}
       >
         <div
-          className={`relative min-h-0 w-full overflow-hidden bg-secondary ${masonry ? "" : "aspect-[5/4]"}`}
+          className={`relative min-h-0 w-full overflow-hidden bg-background ${masonry ? "" : "aspect-[5/4]"}`}
           style={
             masonry
               ? {
@@ -713,15 +719,32 @@ export function PhotosPage({
 }: PhotosPageProps = {}) {
   const {
     language,
-    photoGridSize,
     photoViewMode: viewMode,
-    setPhotoGridSize,
     setPhotoViewMode: setViewMode,
   } = usePreferences();
-  const gridSize = Math.min(
-    MAX_PHOTO_GRID_SIZE,
-    Math.max(MIN_PHOTO_GRID_SIZE, photoGridSize),
+  // 与本地资源库一致：滑杆先本地 state 即时响应，停止 200ms 后再写回持久化偏好，
+  // 避免每次拖动同步写 localStorage 卡顿。
+  const persistedGridSize = usePreferences((state) => state.photoGridSize);
+  const setPhotoGridSize = usePreferences((state) => state.setPhotoGridSize);
+  const [gridSize, setGridSize] = useState(() =>
+    Math.min(
+      MAX_PHOTO_GRID_SIZE,
+      Math.max(MIN_PHOTO_GRID_SIZE, persistedGridSize),
+    ),
   );
+  useEffect(() => {
+    const id = window.setTimeout(() => setPhotoGridSize(gridSize), 200);
+    return () => window.clearTimeout(id);
+  }, [gridSize, setPhotoGridSize]);
+  // 本地等其他入口改动偏好时同步回云端（写回与本地值一致时是 no-op）
+  useEffect(() => {
+    setGridSize(
+      Math.min(
+        MAX_PHOTO_GRID_SIZE,
+        Math.max(MIN_PHOTO_GRID_SIZE, persistedGridSize),
+      ),
+    );
+  }, [persistedGridSize]);
   const filters = usePhotoFilters();
   const { token, logout } = useAuth();
   const navigate = useNavigate();
@@ -1498,33 +1521,13 @@ export function PhotosPage({
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           {/* 与本地资源库一致：搜索、筛选、视图和排序集中在内容工具栏。 */}
-          <div
-            className="relative flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <div className="relative min-w-0 flex-1">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--muted-foreground)" }}
-              />
-              <input
-                type="text"
-                placeholder={t("common.search", language)}
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                className="h-8 w-full rounded-md border bg-input pl-8 pr-8 text-xs outline-none focus:ring-1"
-              />
-              {searchInput && (
-                <button
-                  type="button"
-                  onClick={() => setSearchInput("")}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
+          <LibraryToolbar>
+            <LibrarySearchInput
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder={t("common.search", language)}
+              clearLabel={language === "zh" ? "清空搜索" : "Clear search"}
+            />
             <CloudPhotoFilters
               language={language}
               categories={categories}
@@ -1535,47 +1538,27 @@ export function PhotosPage({
               onPhotoTypeChange={filters.setPhotoType}
               onFileFormatsChange={filters.setFileFormats}
             />
-            <div className="flex h-8 shrink-0 items-center rounded-md border bg-input p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode("crop")}
-                title={language === "zh" ? "裁切填充" : "Cropped view"}
-                aria-label={language === "zh" ? "裁切填充" : "Cropped view"}
-                className="flex size-7 items-center justify-center rounded"
-                style={{
-                  backgroundColor:
-                    viewMode === "crop" ? "var(--secondary)" : undefined,
-                }}
-              >
-                <LayoutGrid size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("fit")}
-                title={language === "zh" ? "适应显示" : "Fitted view"}
-                aria-label={language === "zh" ? "适应显示" : "Fitted view"}
-                className="flex size-7 items-center justify-center rounded"
-                style={{
-                  backgroundColor:
-                    viewMode === "fit" ? "var(--secondary)" : undefined,
-                }}
-              >
-                <Maximize2 size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("masonry")}
-                title={language === "zh" ? "瀑布流" : "Masonry view"}
-                aria-label={language === "zh" ? "瀑布流" : "Masonry view"}
-                className="flex size-7 items-center justify-center rounded"
-                style={{
-                  backgroundColor:
-                    viewMode === "masonry" ? "var(--secondary)" : undefined,
-                }}
-              >
-                <Columns3 size={13} />
-              </button>
-            </div>
+            <LibraryViewToggle
+              value={viewMode}
+              onChange={(value) => setViewMode(value as typeof viewMode)}
+              options={[
+                {
+                  value: "crop",
+                  icon: LayoutGrid,
+                  title: language === "zh" ? "裁切填充" : "Cropped view",
+                },
+                {
+                  value: "fit",
+                  icon: Maximize2,
+                  title: language === "zh" ? "适应显示" : "Fitted view",
+                },
+                {
+                  value: "masonry",
+                  icon: Columns3,
+                  title: language === "zh" ? "瀑布流" : "Masonry view",
+                },
+              ]}
+            />
             <SelectDropdown
               value={filters.sortBy}
               options={[
@@ -1627,35 +1610,25 @@ export function PhotosPage({
                 <ArrowDown size={13} />
               )}
             </button>
-          </div>
+          </LibraryToolbar>
 
           <div
             ref={scrollRef}
             className="custom-scrollbar min-h-0 flex-1 overflow-auto px-3 pb-4"
             onScroll={handleScroll}
           >
-            <div
-              className="sticky top-0 z-10 flex h-8 items-center justify-between gap-3 bg-background/90 text-[10px] backdrop-blur"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              <div className="flex min-w-0 items-center gap-2">
+            <LibraryCountBar
+              icon={LayoutGrid}
+              title={
                 <span
-                  className="flex size-5 shrink-0 items-center justify-center rounded bg-secondary"
-                  style={{ color: "var(--foreground)" }}
-                >
-                  <LayoutGrid size={11} />
-                </span>
-                <span
-                  className="truncate font-medium"
+                  className="font-medium"
                   style={{ color: "var(--foreground)" }}
                 >
                   {collectionTitle}
                 </span>
-              </div>
-              <span className="shrink-0 rounded bg-secondary px-2 py-0.5 tabular-nums">
-                {total.toLocaleString()} {t("admin.photos", language)}
-              </span>
-            </div>
+              }
+              count={`${total.toLocaleString()} ${t("admin.photos", language)}`}
+            />
             {loading ? (
               <ThumbGridSkeleton
                 count={15}
@@ -1681,33 +1654,13 @@ export function PhotosPage({
                 </button>
               </div>
             ) : photos.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3">
-                <div
-                  className="flex h-12 w-12 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: "var(--muted)" }}
-                >
-                  <ImageOff
-                    size={20}
-                    style={{ color: "var(--muted-foreground)" }}
-                  />
-                </div>
-                <p
-                  className="text-sm"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  {t("admin.no_photos", language)}
-                </p>
-                <button
-                  onClick={() => navigate("/upload")}
-                  className="rounded-md px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-90"
-                  style={{
-                    backgroundColor: "var(--primary)",
-                    color: "var(--primary-foreground)",
-                  }}
-                >
-                  {t("admin.upload", language)}
-                </button>
-              </div>
+              <LibraryEmptyState
+                className="h-full"
+                icon={ImageOff}
+                title={t("admin.no_photos", language)}
+                actionLabel={t("admin.upload", language)}
+                onAction={() => navigate("/upload")}
+              />
             ) : (
               <>
                 {viewMode === "masonry" ? (
@@ -1756,46 +1709,36 @@ export function PhotosPage({
             {/* 保留原有多选交互：照片区域底部悬浮操作栏。 */}
             {selected.size > 0 && !selectionMode && (
               <div className="sticky bottom-4 z-20 mt-4 flex justify-center pointer-events-none">
-                <div
-                  className="pointer-events-auto flex items-center gap-0.5 rounded-lg border px-1.5 py-1.5 shadow-lg"
-                  style={{
-                    backgroundColor: "var(--card)",
-                    borderColor: "var(--border)",
-                  }}
+                <LibrarySelectionBar
+                  countLabel={`${t("admin.selected", language)} ${selected.size}`}
                 >
-                  <span className="whitespace-nowrap px-2 text-xs font-medium">
-                    {t("admin.selected", language)} {selected.size}
-                  </span>
-                  <div
-                    className="mx-0.5 h-4 w-px"
-                    style={{ backgroundColor: "var(--border)" }}
-                  />
                   {selected.size > 1 && detailPhoto && !selectionMode && (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => openEditor(detailPhoto, "info")}
+                      <LibrarySelectionButton
+                        icon={Pencil}
+                        label={t("admin.edit_details", language)}
                         title={t("admin.edit_details", language)}
-                        aria-label={t("admin.edit_details", language)}
-                        className="rounded-md p-1.5 hover:opacity-80"
-                        style={{ color: "var(--muted-foreground)" }}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditor(detailPhoto, "story")}
+                        onClick={() => openEditor(detailPhoto, "info")}
+                      />
+                      <LibrarySelectionButton
+                        icon={FileText}
+                        label={t("admin.edit_story", language)}
                         title={t("admin.edit_story", language)}
-                        aria-label={t("admin.edit_story", language)}
-                        className="rounded-md p-1.5 hover:opacity-80"
-                        style={{ color: "var(--muted-foreground)" }}
-                      >
-                        <FileText size={15} />
-                      </button>
+                        onClick={() => openEditor(detailPhoto, "story")}
+                      />
                     </>
                   )}
-                  <button
-                    onClick={toggleSelectAllLoaded}
+                  <LibrarySelectionButton
+                    icon={CheckSquare}
+                    label={
+                      selected.size === photos.length
+                        ? language === "zh"
+                          ? "取消全选"
+                          : "Deselect all"
+                        : language === "zh"
+                          ? "全选已加载"
+                          : "Select loaded"
+                    }
                     title={
                       selected.size === photos.length
                         ? language === "zh"
@@ -1805,68 +1748,42 @@ export function PhotosPage({
                           ? "全选已加载"
                           : "Select loaded"
                     }
-                    className="rounded-md p-1.5 transition-colors hover:opacity-80"
-                    style={{
-                      backgroundColor:
-                        selected.size === photos.length
-                          ? "var(--accent)"
-                          : "transparent",
-                      color:
-                        selected.size === photos.length
-                          ? "var(--accent-foreground)"
-                          : "var(--muted-foreground)",
-                    }}
-                  >
-                    <CheckSquare size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleBatchShowFlag(true)}
-                    disabled={batchUpdating}
+                    active={selected.size === photos.length}
+                    onClick={toggleSelectAllLoaded}
+                  />
+                  <LibrarySelectionButton
+                    icon={Eye}
+                    label={language === "zh" ? "设为展示" : "Show in gallery"}
                     title={language === "zh" ? "设为展示" : "Show in gallery"}
-                    className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
-                    {batchUpdating ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : (
-                      <Eye size={15} />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleBatchShowFlag(false)}
-                    disabled={batchUpdating}
+                    busy={batchUpdating}
+                    onClick={() => handleBatchShowFlag(true)}
+                  />
+                  <LibrarySelectionButton
+                    icon={EyeOff}
+                    label={language === "zh" ? "设为隐藏" : "Hide from gallery"}
                     title={language === "zh" ? "设为隐藏" : "Hide from gallery"}
-                    className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
-                    <EyeOff size={15} />
-                  </button>
-                  <button
-                    onClick={() => setBatchDeleteDialogOpen(true)}
-                    disabled={batchDeleting}
+                    busy={batchUpdating}
+                    onClick={() => handleBatchShowFlag(false)}
+                  />
+                  <LibrarySelectionButton
+                    icon={Trash2}
+                    label={t("admin.delete_selected", language)}
                     title={t("admin.delete_selected", language)}
-                    className="rounded-md p-1.5 hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
-                    style={{ color: "var(--destructive)" }}
-                  >
-                    {batchDeleting ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : (
-                      <Trash2 size={15} />
-                    )}
-                  </button>
+                    intent="destructive"
+                    busy={batchDeleting}
+                    onClick={() => setBatchDeleteDialogOpen(true)}
+                  />
                   <div
                     className="mx-0.5 h-4 w-px"
                     style={{ backgroundColor: "var(--border)" }}
                   />
-                  <button
-                    onClick={() => setSelected(new Set())}
+                  <LibrarySelectionButton
+                    icon={X}
+                    label={`${t("common.cancel", language)} (Esc)`}
                     title={`${t("common.cancel", language)} (Esc)`}
-                    className="rounded-md p-1.5 hover:opacity-80"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
+                    onClick={() => setSelected(new Set())}
+                  />
+                </LibrarySelectionBar>
               </div>
             )}
 
@@ -1877,13 +1794,7 @@ export function PhotosPage({
             />
           </div>
 
-          <div
-            className="flex min-h-10 shrink-0 items-center gap-3 border-t px-4"
-            style={{
-              borderColor: "var(--border)",
-              backgroundColor: "var(--card)",
-            }}
-          >
+          <LibraryStatusBar>
             <div
               className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"
               style={{ color: "var(--muted-foreground)" }}
@@ -1902,33 +1813,15 @@ export function PhotosPage({
               <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
               {t("common.refresh", language)}
             </button>
-            <div
-              className="ml-1 flex shrink-0 items-center gap-2 border-l pl-3"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <Minus size={11} style={{ color: "var(--muted-foreground)" }} />
-              <input
-                type="range"
-                min={MIN_PHOTO_GRID_SIZE}
-                max={MAX_PHOTO_GRID_SIZE}
-                step={8}
-                value={gridSize}
-                onChange={(event) =>
-                  setPhotoGridSize(Number(event.target.value))
-                }
-                aria-label={language === "zh" ? "网格缩放" : "Grid zoom"}
-                title={language === "zh" ? "网格缩放" : "Grid zoom"}
-                className="h-1 w-28 cursor-pointer accent-current"
-              />
-              <Plus size={11} style={{ color: "var(--muted-foreground)" }} />
-              <span
-                className="w-8 text-right text-[9px] tabular-nums"
-                style={{ color: "var(--muted-foreground)" }}
-              >
-                {Math.round((gridSize / 176) * 100)}%
-              </span>
-            </div>
-          </div>
+            <LibraryZoomSlider
+              value={gridSize}
+              min={MIN_PHOTO_GRID_SIZE}
+              max={MAX_PHOTO_GRID_SIZE}
+              onChange={setGridSize}
+              ariaLabel={language === "zh" ? "网格缩放" : "Grid zoom"}
+              title={language === "zh" ? "网格缩放" : "Grid zoom"}
+            />
+          </LibraryStatusBar>
         </main>
 
         <PhotoInfoSidebar

@@ -31,9 +31,12 @@ export function AuthBrandPanel({ language }: AuthBrandPanelProps) {
       />
 
       <div className="relative flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d4af37] font-serif text-lg font-bold text-black">
-          M
-        </div>
+        <img
+          src="/logo.png"
+          alt=""
+          aria-hidden="true"
+          className="h-10 w-10 rounded-xl bg-white object-contain p-0.5"
+        />
         <div>
           <p className="font-serif text-lg font-medium tracking-wide">MO Gallery</p>
           <p className="text-[10px] uppercase tracking-[0.3em] text-white/40">Desktop</p>

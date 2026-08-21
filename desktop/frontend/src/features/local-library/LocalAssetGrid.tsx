@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Check, ChevronRight, Cloud, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
+import { Check, ChevronRight, CircleAlert, Cloud, CloudOff, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -16,6 +16,7 @@ import {
 import { isPhotoAsset } from './types'
 import type { FolderItem, LocalAsset } from './types'
 import type { types as wailsTypes } from '../../../wailsjs/go/models'
+import { LibraryCountBar, LibraryEmptyState } from '@/components/ui/library'
 import type { LocalLibraryCopy } from './copy'
 
 const MASONRY_COLUMN_GAP = 6
@@ -123,16 +124,16 @@ const AssetCard = memo(function AssetCard({
             onSelect(asset, { toggle: true })
           }}
           onDoubleClick={() => { if (!missing && !trashed) onOpen(asset) }}
-          className={`group min-w-0 overflow-hidden rounded-xl border text-left focus:outline-none focus:ring-2 focus:ring-primary/45 ${masonry ? 'mb-1.5 inline-block w-full break-inside-avoid align-top' : 'flex h-full flex-col'}`}
+          className={`group min-w-0 overflow-hidden rounded-lg border text-left transition focus:outline-none ${masonry ? 'mb-1.5 inline-block w-full break-inside-avoid align-top' : 'flex h-full flex-col'}`}
           style={{
-            borderColor: selected || focused ? 'var(--primary)' : 'color-mix(in srgb, var(--border) 72%, transparent)',
-            backgroundColor: selected || focused ? 'var(--accent)' : 'color-mix(in srgb, var(--card) 92%, var(--background))',
-            boxShadow: selected || focused ? '0 0 0 1px var(--primary), 0 10px 24px -18px color-mix(in srgb, var(--primary) 70%, transparent)' : undefined,
+            borderColor: selected || focused ? 'var(--primary)' : 'var(--border)',
+            backgroundColor: selected || focused ? 'var(--accent)' : 'transparent',
+            boxShadow: selected || focused ? '0 0 0 1px var(--primary)' : undefined,
           }}
         >
-          <span className={`relative overflow-hidden bg-secondary ${masonry ? 'w-full' : 'min-h-0 flex-1'}`} style={aspectRatio ? { aspectRatio } : undefined}>
+          <span className={`relative overflow-hidden bg-background ${masonry ? 'w-full' : 'min-h-0 flex-1'}`} style={masonry && aspectRatio ? { aspectRatio } : undefined}>
             {isPhoto && !imageFailed && asset.previewStatus === 'ready' ? (
-              <img src={asset.thumbnailUrl} alt={label} loading="lazy" draggable={false} onError={() => setFailedThumbnailUrl(asset.thumbnailUrl)} className={`w-full ${viewMode === 'fit' ? 'object-contain p-1' : 'object-cover'} ${masonry ? 'block' : 'h-full'}`} />
+              <img src={asset.thumbnailUrl} alt={label} loading="lazy" draggable={false} onError={() => setFailedThumbnailUrl(asset.thumbnailUrl)} className={`w-full transition-[transform,opacity] duration-300 ${masonry ? 'block h-full object-cover group-hover:scale-[1.015]' : viewMode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]'}`} />
             ) : (
               <span className={`flex w-full flex-col items-center justify-center gap-2 ${masonry ? 'aspect-[4/3]' : 'h-full'}`} style={{ color: 'var(--muted-foreground)' }}>
                 {isPhoto ? <FileImage size={25} strokeWidth={1.4} /> : <File size={25} strokeWidth={1.4} />}
@@ -166,7 +167,11 @@ const AssetCard = memo(function AssetCard({
               <span className="rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">{asset.extension.replace('.', '')}</span>
               {asset.isAnimated && <span className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><Play size={11} fill="currentColor" /></span>}
             </span>
-            {(asset.uploadStatus === 'uploaded' || asset.isUploaded) && <span title={copy.filterUploaded} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-sky-600/90 text-white shadow"><Cloud size={12} /></span>}
+            {asset.cloudSyncState === 'deleted_remote'
+              ? <span title={copy.cloudDeletedRemote} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600/90 text-white shadow"><CloudOff size={12} /></span>
+              : asset.cloudSyncState === 'conflict'
+                ? <span title={copy.cloudSyncConflict} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-amber-600/90 text-white shadow"><CircleAlert size={12} /></span>
+                : (asset.uploadStatus === 'uploaded' || asset.isUploaded) && <span title={copy.filterUploaded} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-sky-600/90 text-white shadow"><Cloud size={12} /></span>}
             {asset.isFavorite && <Heart size={15} fill="currentColor" className="absolute bottom-2 right-2 text-white drop-shadow" />}
           </span>
           {!masonry && (
@@ -252,8 +257,8 @@ const FolderStripCard = memo(function FolderStripCard({ folder, copy, onOpen, ca
           onOpen(folder)
         }
       }}
-      className="group flex h-full shrink-0 flex-col overflow-hidden rounded-xl border bg-card/80 text-left focus:outline-none focus:ring-2 focus:ring-primary/45"
-      style={{ width: cardWidth, borderColor: 'color-mix(in srgb, var(--border) 72%, transparent)', '--wails-drop-target': 'drop' } as CSSProperties}
+      className="group flex h-full shrink-0 flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary/40"
+      style={{ width: cardWidth, borderColor: 'color-mix(in srgb, var(--border) 65%, transparent)', '--wails-drop-target': 'drop' } as CSSProperties}
     >
       <span className="flex min-h-0 flex-1 items-center justify-center bg-secondary/60">
         <Folder size={36} strokeWidth={1.25} style={{ color: 'var(--primary)' }} />
@@ -314,7 +319,9 @@ export function LocalAssetGrid({
 
   const columns = Math.max(1, Math.floor((width - 24) / gridSize))
   const columnWidth = Math.max(1, (width - 24 - Math.max(0, columns - 1) * 10) / columns)
-  const rowHeight = Math.round(columnWidth * 0.82) + 54
+  // 与云端照片库保持一致：卡片图像区为 5:4（columnWidth * 4/5），
+  // 加标题行(32px) + 卡片边框(2px)，再加行底 pb-2.5 行距(10px)，即 0.8w + 44。
+  const rowHeight = Math.round(columnWidth * (4 / 5)) + 44
   const rowCount = Math.ceil(assets.length / columns)
   const isMasonry = viewMode === 'masonry'
   // 文件夹区固定占用内容区约 1/4 高度，横向滚动展示
@@ -358,18 +365,35 @@ export function LocalAssetGrid({
 
   const gridStyle = useMemo(() => ({ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }), [columns])
   const locationHeader = (
-    <div className="sticky top-0 z-10 flex h-10 shrink-0 items-center justify-between gap-3 border-b bg-background/90 px-4 text-[10px] backdrop-blur" style={{ color: 'var(--muted-foreground)', borderColor: 'color-mix(in srgb, var(--border) 60%, transparent)' }}>
-      <div className="flex min-w-0 items-center gap-1" title={pathSegments.join(' > ')}>
-        <span className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary/80" style={{ color: 'var(--foreground)' }}><FolderOpen size={11} /></span>
-        {pathSegments.map((segment, index) => <span key={`${segment}-${index}`} className="contents">
-          {index > 0 && <ChevronRight size={10} className="shrink-0 opacity-45" />}
-          <span className={`min-w-0 truncate ${index === pathSegments.length - 1 ? 'font-medium' : ''}`} style={{ color: index === pathSegments.length - 1 ? 'var(--foreground)' : undefined }}>{segment}</span>
-        </span>)}
-      </div>
-      <span className="shrink-0 rounded-md bg-secondary/80 px-2 py-1 tabular-nums">
-        {folders.length > 0 && <>{folders.length.toLocaleString()} {copy.folders} · </>}{total.toLocaleString()} {copy.count}
-      </span>
-    </div>
+    <LibraryCountBar
+      className="px-3"
+      icon={FolderOpen}
+      title={
+        <span className="flex min-w-0 items-center overflow-hidden whitespace-nowrap" title={pathSegments.join(' > ')}>
+          {pathSegments.map((segment, index) => (
+            <span key={`${segment}-${index}`} className="contents">
+              {index > 0 && <ChevronRight size={10} className="shrink-0 opacity-45" />}
+              <span
+                className={`min-w-0 truncate ${index === pathSegments.length - 1 ? 'font-medium' : ''}`}
+                style={{ color: index === pathSegments.length - 1 ? 'var(--foreground)' : undefined }}
+              >
+                {segment}
+              </span>
+            </span>
+          ))}
+        </span>
+      }
+      count={
+        <>
+          {folders.length > 0 && (
+            <>
+              {folders.length.toLocaleString()} {copy.folders} ·{' '}
+            </>
+          )}
+          {total.toLocaleString()} {copy.count}
+        </>
+      }
+    />
   )
 
   const isEmpty = !loading && assets.length === 0
@@ -396,21 +420,21 @@ export function LocalAssetGrid({
       <div ref={assetScrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
         {locationHeader}
         {folderStrip}
-        <div className="px-4 pb-5 pt-1">
+        <div className="px-3 pb-4">
         {isEmpty ? (
           <div className="flex items-center justify-center px-8 py-16">
-            <div className="max-w-md text-center">
-              <FileImage size={34} strokeWidth={1.25} className="mx-auto mb-4" style={{ color: 'var(--muted-foreground)' }} />
-              <h3 className="font-sans text-sm font-medium">{emptyTitle || copy.empty}</h3>
-              <p className="mt-2 text-xs leading-5" style={{ color: 'var(--muted-foreground)' }}>{emptyHint || copy.emptyHint}</p>
-            </div>
+            <LibraryEmptyState
+              icon={FileImage}
+              title={emptyTitle || copy.empty}
+              description={emptyHint || copy.emptyHint}
+            />
           </div>
         ) : (
           <>
             {loading && assets.length === 0 ? (
               <div className="grid gap-2.5" style={gridStyle} aria-label={copy.loading}>
                 {Array.from({ length: Math.min(12, Math.max(columns * 2, 6)) }, (_, index) => (
-                  <div key={index} className="aspect-[4/3] animate-pulse overflow-hidden rounded-xl border bg-secondary/70" style={{ borderColor: 'color-mix(in srgb, var(--border) 60%, transparent)' }} />
+                  <div key={index} className="aspect-[5/4] animate-pulse overflow-hidden rounded-lg border bg-secondary/70" style={{ borderColor: 'var(--border)' }} />
                 ))}
               </div>
             ) : isMasonry ? (

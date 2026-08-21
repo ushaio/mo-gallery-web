@@ -20,6 +20,7 @@ import {
   PrepareClipboardUpload,
   PrepareLocalAssetUpload,
   PrepareUpload,
+  SetLocalAssetCloudLink,
   SelectFiles,
 } from '../../wailsjs/go/main/App'
 import type { services, types as wailsTypes } from '../../wailsjs/go/models'
@@ -52,7 +53,7 @@ interface PreparedFile {
 
 interface UploadItem {
   file: PreparedFile
-  status: 'pending' | 'checking' | 'compressing' | 'uploading' | 'done' | 'error' | 'duplicate'
+  status: 'pending' | 'checking' | 'syncing' | 'compressing' | 'uploading' | 'done' | 'error' | 'duplicate'
   progress: number
   error?: string
   photoId?: string
@@ -258,12 +259,31 @@ export function UploadPage() {
         duplicates = dupResult?.duplicates || {}
       } catch {}
     }
-    const newItems: UploadItem[] = prepared.map(f => ({
-      file: f,
-      status: f.error ? 'error' : (duplicates[f.hash] ? 'duplicate' : 'pending'),
-      progress: f.error || duplicates[f.hash] ? 100 : 0,
-      error: f.error || (duplicates[f.hash] ? `已存在: ${duplicates[f.hash].title || ''}` : undefined),
+    // A local-library asset that matches an existing cloud photo is already
+    // uploaded. Link it immediately so the local projection gets the cloud
+    // identity and storage metadata instead of leaving it as a duplicate.
+    const linkedDuplicateIds = new Set<string>()
+    await Promise.all(prepared.map(async (f) => {
+      const duplicate = duplicates[f.hash]
+      if (!f.assetId || !duplicate?.id) return
+      try {
+        await SetLocalAssetCloudLink(f.assetId, duplicate.id, duplicate.url || '')
+        linkedDuplicateIds.add(f.filePath)
+      } catch (error) {
+        console.error('本地资源重复照片关联失败:', error)
+      }
     }))
+    const newItems: UploadItem[] = prepared.map(f => {
+      const duplicate = duplicates[f.hash]
+      const linked = linkedDuplicateIds.has(f.filePath)
+      return {
+        file: f,
+        status: f.error ? 'error' : (duplicate ? (linked ? 'done' : 'duplicate') : 'pending'),
+        progress: f.error || duplicate ? 100 : 0,
+        error: f.error || (duplicate && !linked ? `已存在: ${duplicate.title || ''}` : undefined),
+        photoId: linked ? duplicate.id : undefined,
+      }
+    })
     setItems(prev => [...prev, ...newItems])
     setPreparingLabel('')
   }
@@ -820,6 +840,7 @@ function mapUploadTaskStatus(task: UploadTask): UploadItem['status'] {
   if (task.status === 'completed') return 'done'
   if (task.status === 'failed') return 'error'
   if (task.status === 'checking') return 'checking'
+  if (task.status === 'syncing') return 'syncing'
   if (task.status === 'compressing') return 'compressing'
   return task.status
 }
@@ -840,6 +861,7 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
   const statusIcon = {
     pending: <FileImage size={14} style={{ color: 'var(--muted-foreground)' }} />,
     checking: <Loader2 size={14} className="animate-spin text-sky-500" />,
+    syncing: <Loader2 size={14} className="animate-spin text-sky-500" />,
     compressing: <Loader2 size={14} className="animate-spin text-amber-500" />,
     uploading: <Loader2 size={14} className="animate-spin" />,
     done: <CheckCircle size={14} className="text-green-500" />,
@@ -851,6 +873,7 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
   const progressColor = {
     pending: 'transparent',
     checking: 'color-mix(in srgb, #0ea5e9 18%, transparent)',
+    syncing: 'color-mix(in srgb, #0ea5e9 18%, transparent)',
     compressing: 'color-mix(in srgb, #f59e0b 18%, transparent)',
     uploading: 'color-mix(in srgb, var(--primary) 22%, transparent)',
     done: 'rgba(34, 197, 94, 0.18)',
@@ -882,6 +905,7 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
         <p className="text-[11px] font-mono" style={{ color: 'var(--muted-foreground)' }}>
           {formatSize(item.file.fileSize)}
           {item.status === 'checking' && ' · 查重中'}
+          {item.status === 'syncing' && ' · 信息同步中'}
           {item.status === 'compressing' && ' · 压缩中'}
           {item.status === 'uploading' && ` · 上传中 ${progress}%`}
           {item.file.exif?.cameraModel && ` · ${item.file.exif.cameraModel}`}

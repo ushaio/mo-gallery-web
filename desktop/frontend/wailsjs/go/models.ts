@@ -731,6 +731,15 @@ export namespace local_library {
 	    previewUrl: string;
 	    originalUrl: string;
 	    cloudPhotoId?: string;
+	    cloudPath?: string;
+	    cloudThumbPath?: string;
+	    cloudStorageSourceId?: string;
+	    cloudStoragePluginId?: string;
+	    cloudUrlType?: string;
+	    // Go type: time
+	    cloudRemoteUpdatedAt?: any;
+	    cloudSyncState?: string;
+	    cloudSyncError?: string;
 	    uploadStatus: string;
 	    isUploaded: boolean;
 	    tags: TagDTO[];
@@ -775,6 +784,14 @@ export namespace local_library {
 	        this.previewUrl = source["previewUrl"];
 	        this.originalUrl = source["originalUrl"];
 	        this.cloudPhotoId = source["cloudPhotoId"];
+	        this.cloudPath = source["cloudPath"];
+	        this.cloudThumbPath = source["cloudThumbPath"];
+	        this.cloudStorageSourceId = source["cloudStorageSourceId"];
+	        this.cloudStoragePluginId = source["cloudStoragePluginId"];
+	        this.cloudUrlType = source["cloudUrlType"];
+	        this.cloudRemoteUpdatedAt = this.convertValues(source["cloudRemoteUpdatedAt"], null);
+	        this.cloudSyncState = source["cloudSyncState"];
+	        this.cloudSyncError = source["cloudSyncError"];
 	        this.uploadStatus = source["uploadStatus"];
 	        this.isUploaded = source["isUploaded"];
 	        this.tags = this.convertValues(source["tags"], TagDTO);
@@ -1247,6 +1264,39 @@ export namespace local_library {
 	        this.bytes = source["bytes"];
 	    }
 	}
+	export class CloudSyncStatus {
+	    cursor?: string;
+	    // Go type: time
+	    lastSuccessAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new CloudSyncStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cursor = source["cursor"];
+	        this.lastSuccessAt = this.convertValues(source["lastSuccessAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class CollectionDTO {
 	    id: string;
 	    groupId?: string;
@@ -1666,6 +1716,22 @@ export namespace local_library {
 
 export namespace main {
 	
+	export class FetchURLMetadataResult {
+	    title: string;
+	    description: string;
+	    avatar: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FetchURLMetadataResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.description = source["description"];
+	        this.avatar = source["avatar"];
+	    }
+	}
 	export class WindowAppearance {
 	    activeStyle: string;
 	    configuredStyle: string;
@@ -1758,6 +1824,8 @@ export namespace services {
 	    fileHash?: string;
 	    // Go type: time
 	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
 	    cameraId?: string;
 	    lensId?: string;
 	    camera?: CameraDTO;
@@ -1806,6 +1874,7 @@ export namespace services {
 	        this.dominantColors = source["dominantColors"];
 	        this.fileHash = source["fileHash"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	        this.cameraId = source["cameraId"];
 	        this.lensId = source["lensId"];
 	        this.camera = this.convertValues(source["camera"], CameraDTO);
@@ -3105,6 +3174,20 @@ export namespace services {
 	
 	
 	
+	export class ReorderFriendItem {
+	    id: string;
+	    sortOrder: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReorderFriendItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.sortOrder = source["sortOrder"];
+	    }
+	}
 	export class StorageCleanupResult {
 	    deleted: number;
 	    failed: number;
@@ -3654,6 +3737,7 @@ export namespace services {
 		}
 	}
 	export class UploadSettings {
+	    taskId?: string;
 	    title: string;
 	    categories: string[];
 	    storageRuntime: string;
@@ -3676,6 +3760,7 @@ export namespace services {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.taskId = source["taskId"];
 	        this.title = source["title"];
 	        this.categories = source["categories"];
 	        this.storageRuntime = source["storageRuntime"];

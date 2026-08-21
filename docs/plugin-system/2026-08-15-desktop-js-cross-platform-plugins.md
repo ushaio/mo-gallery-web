@@ -296,7 +296,7 @@ plugin-package.zip
 - 将 `InstallPlugin` 从“复制目录”扩展为“校验 zip -> 临时目录 -> 原子安装”。
 - 安装失败时保留原版本，不覆盖当前可用插件。
 - 升级前检查 source 是否兼容目标 API 和新插件能力。
-- 卸载前检查 source 引用；已有行为保留并覆盖测试。
+- 卸载时停止 source 运行时，但保留 source 配置和凭据；重新安装同一插件后恢复使用，并覆盖回归测试。
 - 支持安装目录版本化：`storage-plugins/<id>/<version>/`，通过 current pointer 或 registry 选择活动版本。
 - 增加回滚 API 和升级后的 health smoke test。
 

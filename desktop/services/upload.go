@@ -30,6 +30,37 @@ type UploadService struct {
 	pendingRetryMu       sync.Mutex
 	clipboardMu          sync.Mutex
 	clipboardTempDir     string
+	progressMu           sync.Mutex
+	progressFn           func(UploadProgress)
+}
+
+// UploadProgress reports the current upload phase to the renderer so the upload
+// queue can show the real "compressing" vs "uploading" state instead of a
+// simulated timer.
+type UploadProgress struct {
+	TaskID   string `json:"taskId"`
+	Phase    string `json:"phase"` // "compressing" | "uploading"
+	Progress int    `json:"progress"`
+	Error    string `json:"error,omitempty"`
+}
+
+// SetProgressCallback wires the upload phase reporter to the renderer event bus.
+func (s *UploadService) SetProgressCallback(fn func(UploadProgress)) {
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+	s.progressFn = fn
+}
+
+func (s *UploadService) emitProgress(taskID, phase string, progress int, errMsg string) {
+	if strings.TrimSpace(taskID) == "" {
+		return
+	}
+	s.progressMu.Lock()
+	fn := s.progressFn
+	s.progressMu.Unlock()
+	if fn != nil {
+		fn(UploadProgress{TaskID: taskID, Phase: phase, Progress: progress, Error: errMsg})
+	}
 }
 
 func NewUploadService(proxy *ProxyClient) *UploadService {
@@ -72,6 +103,7 @@ type DuplicateCheckResult struct {
 
 // UploadSettings 上传参数
 type UploadSettings struct {
+	TaskID            string   `json:"taskId,omitempty"`
 	Title             string   `json:"title"`
 	Categories        []string `json:"categories"`
 	StorageRuntime    string   `json:"storageRuntime"`
@@ -363,6 +395,7 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		compressionFormat = "avif"
 	}
 	if settings.CompressEnabled && compressionFormat == "avif" {
+		s.emitProgress(settings.TaskID, "compressing", 0, "")
 		targetBytes := int64(desktopCompressedUploadMaxBytes)
 		if settings.MaxSizeMB > 0 {
 			requestedBytes := int64(settings.MaxSizeMB * 1024 * 1024)
@@ -545,6 +578,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 	}
 	baseName := pluginObjectKey(uploadPath, hash)
 	contentType := contentTypeForPath(uploadPath)
+	s.emitProgress(settings.TaskID, "uploading", 5, "")
 	object, err := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
 		SourceID:       settings.StorageSourceID,
 		Key:            baseName,
@@ -552,7 +586,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		UseFullPath:    settings.StoragePathFull,
 		FilePath:       uploadPath,
 		ContentType:    contentType,
-		Checksum:       hash,
+		Checksum:       uploadChecksum(hash, sourcePath, uploadPath),
 		IdempotencyKey: strings.TrimSpace(hash) + ":" + settings.StorageSourceID,
 	})
 	if err != nil {
@@ -565,7 +599,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		return result, nil
 	}
 
-	thumbnailPath, err := image.GenerateThumbnailJPEG(uploadPath, exifOrientation(exifData))
+	thumbnailPath, err := image.GenerateThumbnailAVIF(uploadPath, exifOrientation(exifData))
 	if err != nil {
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
 		result.Error = "生成缩略图失败: " + err.Error()
@@ -578,7 +612,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		Key:            thumbnailKey,
 		UseFullPath:    true,
 		FilePath:       thumbnailPath,
-		ContentType:    "image/jpeg",
+		ContentType:    "image/avif",
 		Checksum:       "",
 		IdempotencyKey: strings.TrimSpace(hash) + ":thumbnail:" + settings.StorageSourceID,
 	})
@@ -809,7 +843,7 @@ func pluginObjectKey(filePath, hash string) string {
 
 func thumbnailObjectKey(key string) string {
 	directory := path.Dir(key)
-	name := strings.TrimSuffix(path.Base(key), path.Ext(key)) + ".jpg"
+	name := strings.TrimSuffix(path.Base(key), path.Ext(key)) + ".avif"
 	if directory == "." {
 		return path.Join(".thumbnails", name)
 	}
@@ -979,4 +1013,18 @@ func fileHash(path string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// uploadChecksum returns the SHA-256 checksum of the exact bytes streamed to the
+// provider. The S3 API validates this against the received body, so when
+// compression or GPS stripping rewrites the file (uploadPath != sourcePath) the
+// source hash no longer matches and must be recomputed from the upload path.
+func uploadChecksum(sourceHash, sourcePath, uploadPath string) string {
+	if uploadPath == sourcePath {
+		return strings.TrimSpace(sourceHash)
+	}
+	if computed, err := fileHash(uploadPath); err == nil {
+		return computed
+	}
+	return strings.TrimSpace(sourceHash)
 }

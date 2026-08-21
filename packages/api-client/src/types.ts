@@ -57,6 +57,7 @@ export interface PhotoDto {
   isFeatured: boolean
   showFlag?: boolean
   createdAt: string
+  updatedAt?: string
   storageProvider?: string
   storageRuntime?: 'web' | 'desktop-plugin'
   storagePluginId?: string | null

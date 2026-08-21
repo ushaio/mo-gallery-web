@@ -2,11 +2,9 @@
 
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter } from 'next/navigation'
 import {
   ArrowDown,
   ArrowUp,
-  BookOpen,
   Check,
   CheckSquare,
   Columns3,
@@ -19,7 +17,6 @@ import {
   LayoutGrid,
   Loader2,
   Maximize2,
-  Pencil,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -37,7 +34,6 @@ import {
   deletePhoto,
   getAdminAlbum,
   getAdminPhotos,
-  getAdminPhotoStory,
   resolveAssetUrl,
   updatePhoto,
 } from '@/lib/api'
@@ -46,7 +42,6 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { BatchPhotoActionDialog, type BatchPhotoActionInput } from '@/components/admin/BatchPhotoActionDialog'
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
 import { LibraryPhotoInfoSidebar } from '@/components/admin/LibraryPhotoInfoSidebar'
-import { PhotoDetailPanel } from '@/components/admin/PhotoDetailPanel'
 import { PhotoPreviewOverlay } from '@/components/admin/PhotoPreviewOverlay'
 import { useAdminPreferenceStore, type ResourceLibraryPhotoViewMode } from '@/lib/admin-preferences'
 import { cn } from '@/lib/utils'
@@ -79,7 +74,6 @@ type SortField = 'createdAt' | 'takenAt'
 type SortOrder = 'asc' | 'desc'
 
 type ContextMenuState = { photo: PhotoDto; x: number; y: number }
-type EditorState = { photo: PhotoDto; tab: 'info' | 'story' }
 type DeleteRequest = { ids: string[]; isBulk: boolean }
 
 function getPhotoFileFormat(photo: Pick<PhotoDto, 'path' | 'url'>) {
@@ -305,7 +299,6 @@ const PhotoCard = memo(function PhotoCard({
       {!masonry && (
         <div className="block w-full px-2.5 py-2">
           <span className="block truncate text-xs font-medium">{photo.title || t('admin.resource_library_untitled_photo')}</span>
-          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{photo.width && photo.height ? `${photo.width} × ${photo.height}` : photo.category || '—'}</span>
         </div>
       )}
     </div>
@@ -313,7 +306,6 @@ const PhotoCard = memo(function PhotoCard({
 })
 
 export function LibraryPhotoWorkspace({ token, categories, albums, settings, initialFilters = {}, t, notify, onUnauthorized }: LibraryPhotoWorkspaceProps) {
-  const router = useRouter()
   const viewMode = useAdminPreferenceStore((state) => state.resourceLibraryPhotoViewMode)
   const setViewMode = useAdminPreferenceStore((state) => state.setResourceLibraryPhotoViewMode)
   const gridSize = useAdminPreferenceStore((state) => state.resourceLibraryPhotoSize)
@@ -337,7 +329,6 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(null)
   const [previewPhoto, setPreviewPhoto] = useState<PhotoDto | null>(null)
-  const [editorState, setEditorState] = useState<EditorState | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set())
   const [batchDialogOpen, setBatchDialogOpen] = useState(false)
@@ -486,7 +477,6 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
     setPhotos((current) => current.map((photo) => photo.id === updated.id ? { ...photo, ...updated } : photo))
     setSelectedPhoto((current) => current?.id === updated.id ? { ...current, ...updated } : current)
     setPreviewPhoto((current) => current?.id === updated.id ? { ...current, ...updated } : current)
-    setEditorState((current) => current?.photo.id === updated.id ? { ...current, photo: { ...current.photo, ...updated } } : current)
   }, [])
 
   const toggleSelect = useCallback((id: string) => {
@@ -532,19 +522,6 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
     }
   }, [mergePhoto, notify, onUnauthorized, t, token, updatingIds])
 
-  const openStoryEditor = useCallback(async (photo: PhotoDto) => {
-    if (!token) return
-    setContextMenu(null)
-    try {
-      const story = await getAdminPhotoStory(token, photo.id)
-      if (story) router.push(`/admin/logs?editStory=${encodeURIComponent(story.id)}`)
-      else setEditorState({ photo, tab: 'story' })
-    } catch (err) {
-      if (err instanceof ApiUnauthorizedError) onUnauthorized(err)
-      else notify(err instanceof Error ? err.message : t('common.error'), 'error')
-    }
-  }, [notify, onUnauthorized, router, t, token])
-
   const requestDelete = useCallback(async (ids: string[]) => {
     if (!token || ids.length === 0) return
     setContextMenu(null)
@@ -575,7 +552,6 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
       setSelectedIds((current) => { const next = new Set(current); ids.forEach((id) => next.delete(id)); return next })
       setSelectedPhoto((current) => current && ids.has(current.id) ? null : current)
       setPreviewPhoto((current) => current && ids.has(current.id) ? null : current)
-      setEditorState((current) => current && ids.has(current.photo.id) ? null : current)
       setDeleteRequest(null)
       setPhotosWithStories([])
       notify(t('admin.notify_photo_deleted'))
@@ -730,7 +706,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         </div>
       </div>
 
-      <LibraryPhotoInfoSidebar photo={selectedPhoto} token={token} cdnDomain={cdnDomain} t={t} notify={notify} onClose={() => setSelectedPhoto(null)} onOpenPreview={setPreviewPhoto} onOpenEditor={(photo) => setEditorState({ photo, tab: 'info' })} onEditStory={(photo) => void openStoryEditor(photo)} onDelete={(id) => void requestDelete([id])} onToggleFeatured={async (photo) => { await runPhotoUpdate(photo, { isFeatured: !photo.isFeatured }) }} onSave={mergePhoto} onUnauthorized={onUnauthorized} />
+      <LibraryPhotoInfoSidebar photo={selectedPhoto} token={token} cdnDomain={cdnDomain} t={t} notify={notify} onClose={() => setSelectedPhoto(null)} onOpenPreview={setPreviewPhoto} onDelete={(id) => void requestDelete([id])} onToggleFeatured={async (photo) => { await runPhotoUpdate(photo, { isFeatured: !photo.isFeatured }) }} onSave={mergePhoto} onUnauthorized={onUnauthorized} />
 
       {selectedIds.size > 0 && <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-border bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur">
         <button type="button" onClick={() => setSelectedIds(selectedIds.size === photos.length ? new Set() : new Set(photos.map((photo) => photo.id)))} className="rounded p-1.5 hover:bg-muted" title={t('admin.resource_library_select_loaded')}><CheckSquare size={15} /></button>
@@ -743,11 +719,9 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         <button type="button" onClick={() => setSelectedIds(new Set())} className="rounded p-1.5 text-muted-foreground hover:bg-muted"><X size={15} /></button>
       </div>}
 
-      {contextMenu && <PhotoContextMenu state={contextMenu} selected={selectedIds.has(contextMenu.photo.id)} busy={updatingIds.has(contextMenu.photo.id)} t={t} onClose={() => setContextMenu(null)} onPreview={() => { setPreviewPhoto(contextMenu.photo); setContextMenu(null) }} onEdit={() => { setEditorState({ photo: contextMenu.photo, tab: 'info' }); setContextMenu(null) }} onEditStory={() => void openStoryEditor(contextMenu.photo)} onToggleSelect={() => { toggleSelect(contextMenu.photo.id); setContextMenu(null) }} onToggleFeatured={() => { void runPhotoUpdate(contextMenu.photo, { isFeatured: !contextMenu.photo.isFeatured }); setContextMenu(null) }} onToggleVisibility={() => { void runPhotoUpdate(contextMenu.photo, { showFlag: !(contextMenu.photo.showFlag ?? true) }); setContextMenu(null) }} onDelete={() => void requestDelete([contextMenu.photo.id])} />}
+      {contextMenu && <PhotoContextMenu state={contextMenu} selected={selectedIds.has(contextMenu.photo.id)} busy={updatingIds.has(contextMenu.photo.id)} t={t} onClose={() => setContextMenu(null)} onPreview={() => { setPreviewPhoto(contextMenu.photo); setContextMenu(null) }} onToggleSelect={() => { toggleSelect(contextMenu.photo.id); setContextMenu(null) }} onToggleFeatured={() => { void runPhotoUpdate(contextMenu.photo, { isFeatured: !contextMenu.photo.isFeatured }); setContextMenu(null) }} onToggleVisibility={() => { void runPhotoUpdate(contextMenu.photo, { showFlag: !(contextMenu.photo.showFlag ?? true) }); setContextMenu(null) }} onDelete={() => void requestDelete([contextMenu.photo.id])} />}
 
       {previewPhoto && <PhotoPreviewOverlay key={previewPhoto.id} photo={previewPhoto} cdnDomain={cdnDomain} t={t} onClose={() => setPreviewPhoto(null)} onPrevious={() => goPreview(-1)} onNext={() => goPreview(1)} hasPrevious={previewIndex > 0} hasNext={previewIndex >= 0 && previewIndex < photos.length - 1} />}
-
-      <PhotoDetailPanel photo={editorState?.photo || null} isOpen={editorState !== null} categories={categories} allPhotos={photos} cdnDomain={cdnDomain} token={token} onClose={() => setEditorState(null)} onSave={mergePhoto} onUnauthorized={() => onUnauthorized()} t={t} notify={notify} initialTab={editorState?.tab} />
 
       <BatchPhotoActionDialog isOpen={batchDialogOpen} count={selectedIds.size} isSubmitting={batchSaving} onConfirm={confirmBatchAction} onCancel={() => { if (!batchSaving) setBatchDialogOpen(false) }} t={t} notify={notify} />
 
@@ -760,15 +734,13 @@ function ViewButton({ active, icon: Icon, label, onClick }: { active: boolean; i
   return <button type="button" onClick={onClick} title={label} aria-label={label} className={cn('flex size-7 items-center justify-center rounded', active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted')}><Icon size={13} /></button>
 }
 
-function PhotoContextMenu({ state, selected, busy, t, onClose, onPreview, onEdit, onEditStory, onToggleSelect, onToggleFeatured, onToggleVisibility, onDelete }: {
+function PhotoContextMenu({ state, selected, busy, t, onClose, onPreview, onToggleSelect, onToggleFeatured, onToggleVisibility, onDelete }: {
   state: ContextMenuState
   selected: boolean
   busy: boolean
   t: (key: string) => string
   onClose: () => void
   onPreview: () => void
-  onEdit: () => void
-  onEditStory: () => void
   onToggleSelect: () => void
   onToggleFeatured: () => void
   onToggleVisibility: () => void
@@ -796,8 +768,6 @@ function PhotoContextMenu({ state, selected, busy, t, onClose, onPreview, onEdit
     <p className="max-w-52 truncate px-2.5 py-2 text-xs font-medium">{photo.title || t('admin.resource_library_untitled_photo')}</p>
     <div className="my-1 h-px bg-border" />
     <button type="button" disabled={busy} onClick={onPreview} className={itemClass}><Maximize2 size={14} />{t('admin.photo_preview')}</button>
-    <button type="button" disabled={busy} onClick={onEdit} className={itemClass}><Pencil size={14} />{t('admin.edit_photo')}</button>
-    <button type="button" disabled={busy} onClick={onEditStory} className={itemClass}><BookOpen size={14} />{t('admin.edit_story')}</button>
     <div className="my-1 h-px bg-border" />
     <button type="button" disabled={busy} onClick={onToggleSelect} className={itemClass}><CheckSquare size={14} />{selected ? t('admin.deselect_photo') : t('admin.select_photos')}</button>
     <button type="button" disabled={busy} onClick={onToggleFeatured} className={itemClass}><Star size={14} fill={photo.isFeatured ? 'currentColor' : 'none'} />{photo.isFeatured ? t('admin.remove_featured') : t('admin.featured')}</button>

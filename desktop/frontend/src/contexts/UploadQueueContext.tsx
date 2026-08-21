@@ -5,12 +5,13 @@ import { addPhotosToAlbum, addPhotosToStory } from '@/lib/api'
 import { getErrorMessage, isAuthError } from '@/lib/auth-errors'
 import { invalidateDesktopCache } from '@/lib/app-cache'
 import { useAuth } from '@/contexts/AuthContext'
-import { CheckDuplicates, UploadFile, UploadLocalAsset } from '../../wailsjs/go/main/App'
+import { CheckDuplicates, SetLocalAssetCloudLink, UploadFile, UploadLocalAsset } from '../../wailsjs/go/main/App'
 import { image } from '../../wailsjs/go/models'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 type UploadExifData = Omit<image.ExifData, 'convertValues'>
 
-export type UploadTaskStatus = 'pending' | 'checking' | 'compressing' | 'uploading' | 'completed' | 'failed'
+export type UploadTaskStatus = 'pending' | 'checking' | 'syncing' | 'compressing' | 'uploading' | 'completed' | 'failed'
 
 export interface UploadTask {
   id: string
@@ -93,6 +94,23 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     patchTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t))
   }, [patchTasks])
 
+  // Subscribe to the phase events emitted by the Go upload pipeline so the queue
+  // reflects the real "compressing" vs "uploading" state instead of a timer.
+  useEffect(() => {
+    const unsubscribe = EventsOn('upload:progress', (event: { taskId?: string; phase?: string; progress?: number }) => {
+      const taskId = event?.taskId
+      if (!taskId) return
+      const task = tasksRef.current.find(t => t.id === taskId)
+      if (!task || task.status === 'completed' || task.status === 'failed') return
+      if (event.phase === 'compressing') {
+        updateTask(taskId, { status: 'compressing', progress: 0, error: undefined })
+      } else if (event.phase === 'uploading') {
+        updateTask(taskId, { status: 'uploading', progress: 5 })
+      }
+    })
+    return () => { unsubscribe() }
+  }, [updateTask])
+
   const uploadSingleFile = useCallback(async (task: UploadTask, settings: UploadSettings) => {
     const hash = hashesRef.current.get(task.filePath) || ''
     try {
@@ -101,22 +119,34 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
         const duplicateResult = await CheckDuplicates([hash])
         const duplicate = duplicateResult?.duplicates?.[hash]
         if (duplicate) {
-          updateTask(task.id, {
-            status: 'completed',
-            progress: 100,
-            error: `已存在: ${duplicate.title || ''}`,
-          })
+          // For local library assets, update the cloud link even when the
+          // photo already exists on the server, so the local asset reflects
+          // its uploaded state.
+          if (task.assetId) {
+            updateTask(task.id, { status: 'syncing', progress: 50, error: undefined })
+            try {
+              await SetLocalAssetCloudLink(task.assetId, duplicate.id, '')
+            } catch {
+              // Cloud link update is best-effort; the periodic cloud sync
+              // will repair it later.
+            }
+          }
+          updateTask(task.id, task.assetId
+            ? { status: 'completed', progress: 100, error: undefined, photoId: duplicate.id }
+            : { status: 'completed', progress: 100, error: `已存在: ${duplicate.title || ''}` })
           activeCountRef.current--
           processQueue()
           return
         }
       }
 
+      // Baseline phase before the blocking upload call. The Go pipeline emits
+      // "upload:progress" events that refine this to the real phase.
       if (settings.compressEnabled) {
         updateTask(task.id, { status: 'compressing', progress: 0, error: undefined })
-        await new Promise(resolve => window.setTimeout(resolve, 0))
+      } else {
+        updateTask(task.id, { status: 'uploading', progress: 5 })
       }
-      updateTask(task.id, { status: 'uploading', progress: 5 })
     } catch (err: unknown) {
       if (isAuthError(err)) {
         tokenRef.current = ''
@@ -145,6 +175,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       const result = await uploadMethod(
         source,
         {
+          taskId: task.id,
           title: settings.title || task.fileName,
           categories: settings.categories,
            filmRollId: settings.filmRollId || '',
@@ -166,7 +197,10 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       )
 
       if (result?.isDuplicate) {
-        updateTask(task.id, { status: 'completed', progress: 100, error: `已存在: ${result.existing?.title || ''}` })
+        const existingPhotoId = result.existing?.id
+        updateTask(task.id, task.assetId && existingPhotoId
+          ? { status: 'completed', progress: 100, error: undefined, photoId: existingPhotoId }
+          : { status: 'completed', progress: 100, error: `已存在: ${result.existing?.title || ''}` })
       } else if (result?.success && result.photo?.id) {
         const photoId = result.photo.id
         updateTask(task.id, { status: 'completed', progress: 100, photoId })

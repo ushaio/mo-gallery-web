@@ -15,7 +15,7 @@
 - 无法按「已上传 / 未上传」筛选本地照片；
 - 无法从本地库直接删除云端副本。
 
-本次要为「本地照片 ⇄ 云端照片」建立关联状态，并补齐筛选与删除能力。
+本次要为「本地照片 ⇄ 云端照片」建立关联状态，并补齐筛选与删除能力。云端访问地址遵循 Web 端 Photo 的同一规则：只保存相对路径和存储源引用，展示 URL 按当前存储源配置动态派生。
 
 ## 决策
 
@@ -23,11 +23,14 @@
 
 一张本地 asset 最多关联一条云端 `Photo` 记录。本地 `assets` 表新增两列：
 
-- `cloud_photo_id TEXT` —— 云端 `Photo.id`（uuid），**非空即表示「已上传」**；
-- `cloud_url TEXT` —— 云端可访问地址（存储于云端 `Photo.url`）。
+- `cloud_photo_id TEXT` —— 云端 `Photo.id`（uuid），**非空即表示「已上传」**。
 
-重复上传同一张本地照片时，覆盖为最近一次上传的 `cloud_photo_id` / `cloud_url`，
+重复上传同一张本地照片时，覆盖为最近一次上传的 `cloud_photo_id`，
 不保留历史上传记录。符合「该照片已上传」的单一状态语义。
+
+本地库不保存 `cloud_url`：云端 `Photo` 通过 `storageSourceId` 关联 `StorageSource`，
+服务端根据 `path`/`thumbPath` 和存储源的当前公开配置派生 URL。修改存储源地址后，
+服务端清理 URL 配置缓存，现有照片无需逐行回写即可立即使用新地址。
 
 ### 2. 已上传状态建模：加两列，非空即已上传
 
@@ -36,10 +39,10 @@
 
 ### 3. 上传回写：同步重试并显式报告失败
 
-- 云端上传成功后，立即把 `cloud_photo_id` / `cloud_url` 写回本地 `assets` 表。
+- 云端上传成功后，立即把 `cloud_photo_id` 写回本地 `assets` 表；上传响应中的 URL 仅用于当前响应，不写入本地库。
 - SQLite 写回最多尝试 3 次，并采用 50/100/150ms 的递增等待，降低短暂写锁造成的失败概率。
 - 三次写回均失败时，记录 `local_cloud_link_failed` 日志，并让 `UploadLocalAsset` 返回错误；前端不得把该任务显示为完整成功。
-- 重复照片也必须查询已有云端照片详情，并经过同一重试路径写回 ID 与 URL。
+- 重复照片也必须查询已有云端照片详情，并经过同一重试路径写回 ID；URL 仍由云端按存储源动态派生。
 - 当前版本不实现后台对账任务；后续可按 `fileHash` 增加补偿机制，但不能以尚未实现的对账替代本次同步写回要求。
 
 ### 4. 删除云端：走 proxy 代理调用
@@ -48,7 +51,7 @@ desktop 通过 `ProxyClient` 调用云端 `DELETE /photos/:id`，复用现有 pr
 （与服务端同一会话），不直连云端存储/DB。删除成功后：
 
 - 云端 `Photo` 记录与其存储文件被删除；
-- 本地 `assets` 表**自动清除** `cloud_photo_id` / `cloud_url`，照片回到「未上传」状态，可重新上传。
+- 本地 `assets` 表**自动清除** `cloud_photo_id`，照片回到「未上传」状态，可重新上传。
 
 ### 5. 删除入口：弹窗让用户选
 
@@ -76,12 +79,12 @@ desktop 通过 `ProxyClient` 调用云端 `DELETE /photos/:id`，复用现有 pr
 
 ## 影响
 
-- **本地库 schema**：`currentSchemaVersion` 7 → 8，`assets` 表新增
-  `cloud_photo_id`、`cloud_url` 两列，并增加 `idx_assets_cloud_photo` 索引。
+- **本地库 schema**：`currentSchemaVersion` 7 → 9，`assets` 表新增
+  `cloud_photo_id` 列并移除历史 `cloud_url` 列，增加 `idx_assets_cloud_photo` 索引。
 - **local_library 包**：新增写回 API（`SetAssetCloudLink`）、清除 API（`ClearAssetCloudLink`）和关联读取 API（`AssetCloudLink`）。
 - **app.go 绑定**：新增按本地 asset 删除云端、按 asset 状态筛选等绑定方法。
 - **前端**：`LocalAssetFilters` 增加「已上传 / 未上传」筛选；删除弹窗提供三选项；
-  `AssetDTO` 增加 `cloudPhotoId` / `cloudUrl` 字段。
+  `AssetDTO` 增加 `cloudPhotoId` 和派生的上传状态字段，不再暴露 `cloudUrl`。
 - **上传链路**：`UploadLocalAsset` 成功后回写云端关联。
 - **proxy**：新增调用云端 `DELETE /photos/:id` 的封装。
 

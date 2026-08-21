@@ -1,6 +1,7 @@
 import 'server-only'
 import { cache } from 'react'
 import { db } from './db'
+import { resolvePhotoUrls } from './photo-urls'
 import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, PhotoPaginationMeta, FilmRollDto } from '@/lib/api/types'
 
 const PHOTO_INCLUDE = { categories: true, camera: true, lens: true } as const
@@ -20,9 +21,12 @@ function serializeDate(value: unknown): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapPhotoToDto(p: any): PhotoDto {
+async function mapPhotoToDto(p: any): Promise<PhotoDto> {
+  const { url, thumbnailUrl } = await resolvePhotoUrls(p)
   return {
     ...p,
+    url,
+    thumbnailUrl,
     category: p.categories?.map((c: { name: string }) => c.name).join(',') ?? '',
     dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
     createdAt: serializeDate(p.createdAt),
@@ -60,13 +64,13 @@ function mapBlogToListItemDto(b: any): BlogListItemDto {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapStoryToDto(s: any): StoryDto {
+async function mapStoryToDto(s: any): Promise<StoryDto> {
   return {
     ...s,
     createdAt: serializeDate(s.createdAt),
     updatedAt: serializeDate(s.updatedAt),
     storyDate: serializeDate(s.storyDate ?? s.createdAt),
-    photos: s.photos?.map(mapPhotoToDto) ?? [],
+    photos: s.photos?.length ? await Promise.all(s.photos.map(mapPhotoToDto)) : [],
   }
 }
 
@@ -81,7 +85,7 @@ export async function queryFeaturedPhotos(): Promise<PhotoDto[]> {
     take: 6,
     orderBy: PHOTO_ORDER,
   })
-  return photos.map(mapPhotoToDto)
+  return Promise.all(photos.map(mapPhotoToDto))
 }
 
 export async function queryPhotosWithMeta(params?: {
@@ -110,7 +114,7 @@ export async function queryPhotosWithMeta(params?: {
   ])
 
   return {
-    data: photos.map(mapPhotoToDto),
+    data: await Promise.all(photos.map(mapPhotoToDto)),
     meta: {
       total,
       page,
@@ -185,7 +189,7 @@ export async function queryStories(): Promise<StoryDto[]> {
     include: { photos: { where: { showFlag: true }, include: PHOTO_INCLUDE } },
     orderBy: { createdAt: 'desc' },
   })
-  return stories.map(mapStoryToDto)
+  return Promise.all(stories.map(mapStoryToDto))
 }
 
 export const queryStory = cache(async (id: string): Promise<StoryDto | null> => {
@@ -193,7 +197,7 @@ export const queryStory = cache(async (id: string): Promise<StoryDto | null> => 
     where: { id, isPublished: true },
     include: { photos: { where: { showFlag: true }, include: PHOTO_INCLUDE } },
   })
-  return story ? mapStoryToDto(story) : null
+  return story ? await mapStoryToDto(story) : null
 })
 
 // ---------------------------------------------------------------------------
@@ -214,7 +218,7 @@ export async function queryFilmRollsWithPhotos(): Promise<FilmRollDto[]> {
     },
   })
 
-  return rolls.map((r) => ({
+  return Promise.all(rolls.map(async (r) => ({
     id: r.id,
     name: r.name,
     brand: r.brand,
@@ -226,13 +230,13 @@ export async function queryFilmRollsWithPhotos(): Promise<FilmRollDto[]> {
     createdAt: serializeDate(r.createdAt),
     updatedAt: serializeDate(r.updatedAt),
     photoCount: r.filmPhotos.length,
-    filmPhotos: r.filmPhotos.map((fp) => ({
+    filmPhotos: await Promise.all(r.filmPhotos.map(async (fp) => ({
       id: fp.id,
       filmRollId: fp.filmRollId,
       photoId: fp.photoId,
       frameNumber: fp.frameNumber,
       createdAt: serializeDate(fp.createdAt),
-      photo: mapPhotoToDto(fp.photo),
-    })),
-  }))
+      photo: await mapPhotoToDto(fp.photo),
+    }))),
+  })))
 }

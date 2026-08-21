@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   X, ChevronDown, ChevronUp, Check, AlertCircle,
   RefreshCw, Image as ImageIcon, Upload, Trash2,
 } from 'lucide-react'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import type { UploadTask, UploadTaskStatus } from '@/contexts/UploadQueueContext'
+import { GetFileThumbnail } from '../../../wailsjs/go/main/App'
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -16,7 +17,7 @@ function formatFileSize(bytes: number): string {
 function StatusIcon({ status, progress }: { status: UploadTaskStatus; progress: number }) {
   if (status === 'completed') return <Check size={14} className="text-green-500" />
   if (status === 'failed') return <AlertCircle size={14} className="text-red-500" />
-  if (status === 'checking' || status === 'compressing' || status === 'uploading') {
+  if (status === 'checking' || status === 'syncing' || status === 'compressing' || status === 'uploading') {
     const r = 6
     const c = 2 * Math.PI * r
     const offset = c * (1 - progress / 100)
@@ -34,11 +35,33 @@ function StatusIcon({ status, progress }: { status: UploadTaskStatus; progress: 
 
 function getTaskStatusLabel(task: UploadTask): string {
   if (task.status === 'checking') return '查重中'
+  if (task.status === 'syncing') return '信息同步中'
   if (task.status === 'compressing') return '压缩中'
   if (task.status === 'uploading') return `上传中 · ${task.progress}%`
   if (task.status === 'pending') return '等待中'
-  if (task.status === 'completed') return task.error ? '已存在' : '已完成'
+  if (task.status === 'completed') {
+    if (task.photoId) return '信息同步完成'
+    if (task.error) return '已存在'
+    return '已完成'
+  }
   return '上传失败'
+}
+
+function TaskThumbnail({ filePath }: { filePath: string }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void GetFileThumbnail(filePath).then((url: string) => {
+      if (!cancelled) setDataUrl(url)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [filePath])
+
+  if (dataUrl) {
+    return <img src={dataUrl} alt="" className="w-full h-full object-cover" />
+  }
+  return <ImageIcon size={16} style={{ color: 'var(--muted-foreground)' }} />
 }
 
 function TaskRow({ task, onRetry }: { task: UploadTask; onRetry: (id: string) => void }) {
@@ -51,7 +74,7 @@ function TaskRow({ task, onRetry }: { task: UploadTask; onRetry: (id: string) =>
       {/* 缩略图 */}
       <div className="w-10 h-10 rounded overflow-hidden shrink-0 flex items-center justify-center"
         style={{ backgroundColor: 'var(--muted)' }}>
-        <ImageIcon size={16} style={{ color: 'var(--muted-foreground)' }} />
+        <TaskThumbnail filePath={task.filePath} />
       </div>
 
       {/* 文件信息 */}
@@ -106,13 +129,15 @@ export function UploadProgressPopup() {
   const hasFailed = failedCount > 0 && !isUploading
   const activeLabel = tasks.some(t => t.status === 'checking')
     ? '查重中'
-    : tasks.some(t => t.status === 'compressing')
-      ? '压缩中'
-      : isUploading
-        ? '上传中'
-        : allDone
-          ? '上传完成'
-          : '上传队列'
+    : tasks.some(t => t.status === 'syncing')
+      ? '信息同步中'
+      : tasks.some(t => t.status === 'compressing')
+        ? '压缩中'
+        : isUploading
+          ? '上传中'
+          : allDone
+            ? '上传完成'
+            : '上传队列'
 
   const overallProgress = totalCount > 0
     ? Math.round(tasks.reduce((sum, t) => sum + (t.status === 'completed' ? 100 : t.progress), 0) / totalCount)

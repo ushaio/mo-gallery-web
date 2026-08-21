@@ -238,6 +238,10 @@ export function ExecuteLocalLibraryFolderMovePlan(arg1) {
   return window['go']['main']['App']['ExecuteLocalLibraryFolderMovePlan'](arg1);
 }
 
+export function FetchURLMetadata(arg1) {
+  return window['go']['main']['App']['FetchURLMetadata'](arg1);
+}
+
 export function FinishEditorAiMessage(arg1) {
   return window['go']['main']['App']['FinishEditorAiMessage'](arg1);
 }
@@ -308,6 +312,10 @@ export function GetDesktopPluginMarketplace(arg1) {
 
 export function GetDesktopStoragePlugins() {
   return window['go']['main']['App']['GetDesktopStoragePlugins']();
+}
+
+export function GetDesktopStorageSourceCredentials(arg1) {
+  return window['go']['main']['App']['GetDesktopStorageSourceCredentials'](arg1);
 }
 
 export function GetDesktopStorageSources() {
@@ -686,6 +694,10 @@ export function ReorderFilmRollFrames(arg1) {
   return window['go']['main']['App']['ReorderFilmRollFrames'](arg1);
 }
 
+export function ReorderFriends(arg1) {
+  return window['go']['main']['App']['ReorderFriends'](arg1);
+}
+
 export function ReorderStoryPhotos(arg1, arg2) {
   return window['go']['main']['App']['ReorderStoryPhotos'](arg1, arg2);
 }
@@ -836,6 +848,10 @@ export function SetLocalLibraryImportMode(arg1) {
 
 export function StartLocalLibraryScan() {
   return window['go']['main']['App']['StartLocalLibraryScan']();
+}
+
+export function SyncLocalLibraryCloud() {
+  return window['go']['main']['App']['SyncLocalLibraryCloud']();
 }
 
 export function TestAgentMCPServer(arg1) {

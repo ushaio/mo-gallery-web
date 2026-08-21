@@ -187,6 +187,14 @@ export interface LocalAsset {
   previewUrl: string
   originalUrl: string
   cloudPhotoId?: string
+  cloudPath?: string
+  cloudThumbPath?: string
+  cloudStorageSourceId?: string
+  cloudStoragePluginId?: string
+  cloudUrlType?: string
+  cloudRemoteUpdatedAt?: string
+  cloudSyncState?: 'synced' | 'pending' | 'conflict' | 'deleted_remote' | 'error' | string
+  cloudSyncError?: string
   uploadStatus: AssetUploadStatus
   isUploaded: boolean
   tags: LocalTag[]

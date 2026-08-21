@@ -16,46 +16,64 @@ func NewPhotoService(proxy *ProxyClient) *PhotoService {
 }
 
 type PhotoDTO struct {
+	ID                  string     `json:"id"`
+	Title               string     `json:"title"`
+	URL                 string     `json:"url"`
+	ThumbnailURL        *string    `json:"thumbnailUrl,omitempty"`
+	OriginFlag          string     `json:"originFlag"`
+	StorageProvider     string     `json:"storageProvider"`
+	StorageRuntime      string     `json:"storageRuntime"`
+	StoragePluginID     *string    `json:"storagePluginId,omitempty"`
+	StorageSourceID     *string    `json:"storageSourceId,omitempty"`
+	Path                *string    `json:"path,omitempty"`
+	ThumbPath           *string    `json:"thumbPath,omitempty"`
+	StorageURLType      string     `json:"storageUrlType"`
+	StorageURLExpiresAt *time.Time `json:"storageUrlExpiresAt,omitempty"`
+	Width               int        `json:"width"`
+	Height              int        `json:"height"`
+	Size                *int64     `json:"size,omitempty"`
+	IsFeatured          bool       `json:"isFeatured"`
+	ShowFlag            bool       `json:"showFlag"`
+	DominantColors      []string   `json:"dominantColors,omitempty"`
+	FileHash            *string    `json:"fileHash,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	UpdatedAt           time.Time  `json:"updatedAt"`
+	CameraID            *string    `json:"cameraId,omitempty"`
+	LensID              *string    `json:"lensId,omitempty"`
+	Camera              *CameraDTO `json:"camera,omitempty"`
+	Lens                *LensDTO   `json:"lens,omitempty"`
+	CameraMake          *string    `json:"cameraMake,omitempty"`
+	CameraModel         *string    `json:"cameraModel,omitempty"`
+	LensModel           *string    `json:"lensModel,omitempty"`
+	FocalLength         *string    `json:"focalLength,omitempty"`
+	Aperture            *string    `json:"aperture,omitempty"`
+	ShutterSpeed        *string    `json:"shutterSpeed,omitempty"`
+	ISO                 *int       `json:"iso,omitempty"`
+	TakenAt             *time.Time `json:"takenAt,omitempty"`
+	Orientation         *int       `json:"orientation,omitempty"`
+	Software            *string    `json:"software,omitempty"`
+	GPS                 *string    `json:"gps,omitempty"`
+	Category            string     `json:"category"`
+	PhotoType           string     `json:"photoType"`
+	FilmRollID          *string    `json:"filmRollId,omitempty"`
+	FilmRollName        *string    `json:"filmRollName,omitempty"`
+}
+
+type PhotoChangeDTO struct {
 	ID              string     `json:"id"`
-	Title           string     `json:"title"`
-	URL             string     `json:"url"`
-	ThumbnailURL    *string    `json:"thumbnailUrl,omitempty"`
-	OriginFlag      string     `json:"originFlag"`
-	StorageProvider string     `json:"storageProvider"`
-	StorageRuntime  string     `json:"storageRuntime"`
-	StoragePluginID *string    `json:"storagePluginId,omitempty"`
-	StorageSourceID *string    `json:"storageSourceId,omitempty"`
 	Path            *string    `json:"path,omitempty"`
 	ThumbPath       *string    `json:"thumbPath,omitempty"`
+	StorageSourceID *string    `json:"storageSourceId,omitempty"`
+	StoragePluginID *string    `json:"storagePluginId,omitempty"`
 	StorageURLType  string     `json:"storageUrlType"`
-	StorageURLExpiresAt *time.Time `json:"storageUrlExpiresAt,omitempty"`
-	Width           int        `json:"width"`
-	Height          int        `json:"height"`
-	Size            *int64     `json:"size,omitempty"`
-	IsFeatured      bool       `json:"isFeatured"`
-	ShowFlag        bool       `json:"showFlag"`
-	DominantColors  []string   `json:"dominantColors,omitempty"`
-	FileHash        *string    `json:"fileHash,omitempty"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	CameraID        *string    `json:"cameraId,omitempty"`
-	LensID          *string    `json:"lensId,omitempty"`
-	Camera          *CameraDTO `json:"camera,omitempty"`
-	Lens            *LensDTO   `json:"lens,omitempty"`
-	CameraMake      *string    `json:"cameraMake,omitempty"`
-	CameraModel     *string    `json:"cameraModel,omitempty"`
-	LensModel       *string    `json:"lensModel,omitempty"`
-	FocalLength     *string    `json:"focalLength,omitempty"`
-	Aperture        *string    `json:"aperture,omitempty"`
-	ShutterSpeed    *string    `json:"shutterSpeed,omitempty"`
-	ISO             *int       `json:"iso,omitempty"`
-	TakenAt         *time.Time `json:"takenAt,omitempty"`
-	Orientation     *int       `json:"orientation,omitempty"`
-	Software        *string    `json:"software,omitempty"`
-	GPS             *string    `json:"gps,omitempty"`
-	Category        string     `json:"category"`
-	PhotoType       string     `json:"photoType"`
-	FilmRollID      *string    `json:"filmRollId,omitempty"`
-	FilmRollName    *string    `json:"filmRollName,omitempty"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	DeletedAt       *time.Time `json:"deletedAt,omitempty"`
+}
+
+type PhotoChangesPage struct {
+	Items      []PhotoChangeDTO `json:"items"`
+	NextCursor string           `json:"nextCursor"`
+	HasMore    bool             `json:"hasMore"`
 }
 
 func (p *PhotoDTO) UnmarshalJSON(data []byte) error {
@@ -150,6 +168,14 @@ type BatchResult struct {
 	Errors  []string `json:"errors,omitempty"`
 }
 
+// MoveMetadataItem carries the new storage path/thumbPath for a desktop-plugin photo.
+// The desktop process owns the object move; this updates the metadata record.
+type MoveMetadataItem struct {
+	ID        string `json:"id"`
+	Path      string `json:"path"`
+	ThumbPath string `json:"thumbPath"`
+}
+
 func (s *PhotoService) checkReady() error {
 	if s.proxy == nil || !s.proxy.IsReady() {
 		return errors.New("未连接到服务器")
@@ -213,6 +239,25 @@ func (s *PhotoService) ListAll() ([]PhotoDTO, error) {
 		return nil, err
 	}
 	return result.Data, nil
+}
+
+func (s *PhotoService) Changes(cursor string, limit int) (*PhotoChangesPage, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	q := url.Values{}
+	q.Set("limit", fmt.Sprintf("%d", limit))
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	var page PhotoChangesPage
+	if err := s.proxy.GET("/admin/photos/changes?"+q.Encode(), &page); err != nil {
+		return nil, err
+	}
+	return &page, nil
 }
 
 func (s *PhotoService) GetByID(id string) (*PhotoDTO, error) {
@@ -282,6 +327,20 @@ func (s *PhotoService) BatchUpdateShowFlag(photoIDs []string, showFlag bool) (*B
 	var result BatchResult
 	if err := s.proxy.POST("/admin/photos/batch-update-show-flag",
 		map[string]interface{}{"photoIds": photoIDs, "showFlag": showFlag}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// MoveMetadata persists new storage path/thumbPath for desktop-plugin photos.
+// The object move is performed by the desktop process before calling this.
+func (s *PhotoService) MoveMetadata(moves []MoveMetadataItem) (*BatchResult, error) {
+	if err := s.checkReady(); err != nil {
+		return nil, err
+	}
+	var result BatchResult
+	if err := s.proxy.POST("/admin/photos/move-metadata",
+		map[string]interface{}{"moves": moves}, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

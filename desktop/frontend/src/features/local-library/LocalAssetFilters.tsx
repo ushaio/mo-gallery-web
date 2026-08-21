@@ -83,12 +83,18 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
 
   const chips = (() => {
     const result: Array<{ key: string, label: string, remove: () => void }> = []
-    const range = (key: string, label: string, minKey: FilterKey, maxKey: FilterKey, suffix = '') => {
-      const min = filters[minKey] as number | undefined
-      const max = filters[maxKey] as number | undefined
-      if (min !== undefined || max !== undefined) result.push({ key, label: `${label}: ${min ?? '?'}?${max ?? '?'}${suffix}`, remove: () => removeMany(minKey, maxKey) })
+    const ratingMin = filters.ratingMin as number | undefined
+    const ratingMax = filters.ratingMax as number | undefined
+    if (ratingMin !== undefined || ratingMax !== undefined) {
+      const label = ratingMax === undefined
+        ? `${copy.filterRating}: ${ratingMin}+`
+        : ratingMin === undefined
+          ? `${copy.filterRating}: ≤${ratingMax}`
+          : ratingMin === ratingMax
+            ? ratingMin === 0 ? `${copy.filterRating}: ${copy.unrated}` : `${copy.filterRating}: ${ratingMin}`
+            : `${copy.filterRating}: ${ratingMin}–${ratingMax}`
+      result.push({ key: 'rating', label, remove: () => removeMany('ratingMin', 'ratingMax') })
     }
-    range('rating', copy.filterRating, 'ratingMin', 'ratingMax')
     if (filters.colorLabels?.length) result.push({ key: 'colors', label: `${copy.filterColor}: ${filters.colorLabels.join('/')}`, remove: () => update('colorLabels', undefined) })
     if (filters.uploadStatus && filters.uploadStatus !== 'all') result.push({ key: 'uploadStatus', label: filters.uploadStatus === 'uploaded' ? copy.filterUploaded : copy.filterNotUploaded, remove: () => update('uploadStatus', undefined) })
     if (filters.formats?.length) result.push({ key: 'formats', label: `${copy.filterFormat}: ${filters.formats.join('/')}`, remove: () => update('formats', undefined) })
@@ -108,12 +114,12 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
         title={copy.filters}
-        aria-label={copy.filters}
-        className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-input hover:bg-secondary"
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border bg-input px-2.5 text-xs hover:bg-secondary"
       >
         <Filter size={13} />
+        <span>{copy.filters}</span>
         {count > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-medium text-primary-foreground">
+          <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[9px] text-primary-foreground">
             {count}
           </span>
         )}

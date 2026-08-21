@@ -47,6 +47,26 @@ func (m *Manager) AssetCloudLink(id AssetID) (photoID string, err error) {
 	return session.store.assetCloudLink(session.ctx, id)
 }
 
+func (m *Manager) ApplyCloudPhotoChanges(changes []CloudPhotoChange, cursor string, completed bool) error {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return err
+	}
+	if err := session.store.applyCloudPhotoChanges(session.ctx, changes, cursor, completed); err != nil {
+		return err
+	}
+	m.emitEvent("cloud_projection_updated")
+	return nil
+}
+
+func (m *Manager) CloudSyncStatus() (CloudSyncStatus, error) {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return CloudSyncStatus{}, err
+	}
+	return session.store.cloudSyncStatus(session.ctx)
+}
+
 func (m *Manager) UpdateAsset(id AssetID, title, notes string, rating int, color string, favorite bool) error {
 	session, err := m.requireAvailableSession()
 	if err != nil {

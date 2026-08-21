@@ -1,6 +1,6 @@
 import { ArchiveRestore, Loader2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { FolderTreeSelect } from './FolderTreeSelect'
 import type { FolderItem, FolderTrashEntry } from './types'
 import type { LocalLibraryCopy } from './copy'
 
@@ -33,15 +33,15 @@ export function RestoreFolderDialog({ entry, folders, copy, busy, onClose, onCon
           <button type="button" disabled={busy} onClick={onClose} className="rounded-md p-1.5 hover:bg-secondary"><X size={15} /></button>
         </div>
         <div className="mt-5 space-y-4">
-          <label className="block text-xs"><span className="mb-1.5 block text-muted-foreground">{copy.restoreDestination}</span><SelectDropdown
+          <label className="block text-xs"><span className="mb-1.5 block text-muted-foreground">{copy.restoreDestination}</span><FolderTreeSelect
             value={destinationParent}
-            options={[
-              { value: '', label: copy.root },
-              ...folders.map((folder) => ({ value: folder.relativePath, label: folder.relativePath })),
-            ]}
-            onChange={(value) => setDestinationParent(value as string)}
+            folders={folders}
+            placeholder={copy.root}
+            searchPlaceholder={copy.folderSearchPlaceholder}
+            searchEmpty={copy.folderSearchEmpty}
             disabled={busy}
             ariaLabel={copy.restoreDestination}
+            onChange={(value) => setDestinationParent(value)}
           /></label>
           <label className="block text-xs"><span className="mb-1.5 block text-muted-foreground">{copy.folderName}</span><input value={topLevelName} onChange={(event) => setTopLevelName(event.target.value)} className="h-9 w-full rounded-md border bg-input px-2.5 outline-none" /></label>
           {!originalParentExists && <p className="rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-[10px] leading-4 text-amber-700 dark:text-amber-300">{copy.originalParentMissing}</p>}

@@ -36,6 +36,11 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s | ${siteTitle}`,
     },
     description: siteDescription,
+    icons: {
+      icon: '/logo.png',
+      shortcut: '/logo.png',
+      apple: '/logo.png',
+    },
     alternates: {
       canonical: siteUrl,
     },
