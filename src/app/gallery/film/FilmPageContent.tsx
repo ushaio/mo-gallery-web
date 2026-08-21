@@ -64,12 +64,14 @@ function FilmFrame({
   frameIndex,
   format,
   isExpanded,
+  isDecorative = false,
   onClick,
 }: {
   photo: PhotoDto
   frameIndex: number
   format: FilmRollDto['format']
   isExpanded: boolean
+  isDecorative?: boolean
   onClick: () => void
 }) {
   const { settings } = useSettings()
@@ -89,6 +91,8 @@ function FilmFrame({
     <button
       type="button"
       onClick={onClick}
+      tabIndex={isDecorative ? -1 : undefined}
+      aria-hidden={isDecorative || undefined}
       className={`group relative overflow-hidden border border-[#6b351a] bg-transparent text-left transition-colors duration-200 hover:border-[#b77a42] ${frameClassName}`}
       aria-label={`${t('gallery.film_open_frame')} ${frameTitle}`}
     >
@@ -131,6 +135,86 @@ function ArchiveRollRow({
   const expandedRows = useMemo(
     () => chunkPhotos(photos, expandedRowSize),
     [photos, expandedRowSize],
+  )
+
+  const marqueeViewportRef = useRef<HTMLDivElement>(null)
+  const marqueeTrackRef = useRef<HTMLDivElement>(null)
+  // Even rows drift left, odd rows drift right; slow enough to read as ambient motion
+  const marqueeDirection = rowIndex % 2 === 0 ? 1 : -1
+
+  useEffect(() => {
+    if (isExpanded) return
+    const viewport = marqueeViewportRef.current
+    const track = marqueeTrackRef.current
+    if (!viewport || !track || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const speedPxPerSecond = 18
+    // Fractional offset kept in a ref so wheel scrolling and the drift loop share position;
+    // translate3d renders sub-pixel, unlike scrollLeft which snaps and stutters
+    let offset = 0
+    let rafId = 0
+    let lastTime = performance.now()
+
+    const applyOffset = (period: number) => {
+      offset = (((offset % period) + period) % period)
+      track.style.transform = `translate3d(${-offset}px, 0, 0)`
+    }
+
+    const step = (time: number) => {
+      const delta = Math.min(time - lastTime, 100)
+      lastTime = time
+      // Pause the drift while hovered so the visitor can scroll manually
+      if (!viewport.matches(':hover')) {
+        const period = track.scrollWidth / 2
+        if (period > 0) {
+          offset += marqueeDirection * speedPxPerSecond * (delta / 1000)
+          applyOffset(period)
+        }
+      }
+      rafId = window.requestAnimationFrame(step)
+    }
+
+    // Shift+wheel / sideways trackpad scrolls the strip while the drift is paused
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+      const period = track.scrollWidth / 2
+      if (period <= 0) return
+      event.preventDefault()
+      offset += event.deltaX
+      applyOffset(period)
+    }
+
+    viewport.addEventListener('wheel', onWheel, { passive: false })
+    rafId = window.requestAnimationFrame(step)
+    return () => {
+      viewport.removeEventListener('wheel', onWheel)
+      window.cancelAnimationFrame(rafId)
+    }
+  }, [isExpanded, marqueeDirection])
+
+  const renderCollapsedStrip = (decorative: boolean) => (
+    <div
+      aria-hidden={decorative || undefined}
+      className="flex h-full flex-col rounded-[14px] border border-[#6b351a] bg-[#5a2d18] shadow-[inset_0_0_36px_rgba(55,24,10,0.38)]"
+    >
+      <SprocketRail format={rollFormat} frameCount={photos.length} />
+
+      <div className="flex flex-1 items-center gap-[4px] bg-[#7b4a2b] px-[8px] py-[6px] shadow-[inset_0_0_40px_rgba(55,24,10,0.38)] sm:px-[10px]">
+        {photos.map((photo, frameIndex) => (
+          <FilmFrame
+            key={photo.id}
+            photo={photo}
+            frameIndex={frameIndex}
+            format={rollFormat}
+            isExpanded={false}
+            isDecorative={decorative}
+            onClick={() => onPhotoClick(photo, frameIndex, photos)}
+          />
+        ))}
+      </div>
+
+      <SprocketRail format={rollFormat} frameCount={photos.length} />
+    </div>
   )
 
   return (
@@ -187,12 +271,16 @@ function ArchiveRollRow({
         </div>
       </div>
 
-      <div id={`film-roll-${roll.id}`} className={`h-full scrollbar-hide ${isExpanded ? 'overflow-x-auto bg-muted dark:bg-[#e7dcc8]' : 'overflow-x-auto'}`}>
+      <div
+        id={`film-roll-${roll.id}`}
+        ref={marqueeViewportRef}
+        className={`h-full ${isExpanded ? 'scrollbar-hide overflow-x-auto bg-muted dark:bg-[#e7dcc8]' : 'overflow-x-hidden'}`}
+      >
         <motion.div
           animate={{ opacity: 1 }}
           initial={false}
           transition={{ duration: 0.16, ease: 'easeOut' }}
-          className={isExpanded ? 'w-full' : 'h-full min-w-max'}
+          className={isExpanded ? 'w-full' : 'h-full'}
         >
           {isExpanded ? (
             <div className="flex w-full flex-col gap-1">
@@ -221,23 +309,13 @@ function ArchiveRollRow({
               ))}
             </div>
           ) : (
-            <div className="flex h-full min-w-max flex-col rounded-[14px] border border-[#6b351a] bg-[#5a2d18] shadow-[inset_0_0_36px_rgba(55,24,10,0.38)]">
-              <SprocketRail format={rollFormat} frameCount={photos.length} />
-
-              <div className="flex flex-1 items-center gap-[4px] bg-[#7b4a2b] px-[8px] py-[6px] shadow-[inset_0_0_40px_rgba(55,24,10,0.38)] sm:px-[10px]">
-                {photos.map((photo, frameIndex) => (
-                  <FilmFrame
-                    key={photo.id}
-                    photo={photo}
-                    frameIndex={frameIndex}
-                    format={rollFormat}
-                    isExpanded={false}
-                    onClick={() => onPhotoClick(photo, frameIndex, photos)}
-                  />
-                ))}
+            <div ref={marqueeTrackRef} className="flex h-full w-max will-change-transform">
+              <div className="flex h-full shrink-0 pr-5">
+                {renderCollapsedStrip(false)}
               </div>
-
-              <SprocketRail format={rollFormat} frameCount={photos.length} />
+              <div className="flex h-full shrink-0 pr-5" aria-hidden="true">
+                {renderCollapsedStrip(true)}
+              </div>
             </div>
           )}
         </motion.div>
