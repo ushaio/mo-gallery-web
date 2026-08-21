@@ -155,7 +155,7 @@ const AssetCard = memo(function AssetCard({
                 event.stopPropagation()
                 onSelect(asset, { toggle: true })
               }}
-              className="absolute left-2 top-2 z-20 flex h-5 w-5 cursor-pointer items-center justify-center rounded border"
+              className={`absolute left-2 top-2 z-20 flex h-5 w-5 cursor-pointer items-center justify-center rounded border transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
               style={{
                 backgroundColor: selected ? 'var(--primary)' : 'rgba(0,0,0,0.4)',
                 borderColor: selected ? 'var(--primary)' : 'rgba(255,255,255,0.7)',
