@@ -44,6 +44,7 @@ import {
   UpdateEditorAiConversation,
 } from '../../wailsjs/go/main/App'
 import {
+  ArrowUp,
   Eraser,
   BrainCircuit,
   Image as ImageIcon,
@@ -53,7 +54,6 @@ import {
   Paperclip,
   Pencil,
   Quote,
-  Send,
   Settings2,
   Sparkles,
   Square,
@@ -1252,217 +1252,216 @@ export function AiAssistantPage() {
           )}
         </div>
 
-        {/* ── Input area: flat, integrated, toolbar-style ── */}
-        <div className="border-t shrink-0" style={{ borderColor: 'var(--border)' }}>
-          <div className="max-w-[48rem] mx-auto">
-            {/* Quoted message */}
-            {quotedMessage && (
-              <div className="flex items-start gap-2 px-4 pt-3">
-                <div className="flex-1 flex items-start gap-2 px-3 py-2 rounded border-l-2" style={{ borderColor: 'var(--muted-foreground)', backgroundColor: 'var(--muted)/10' }}>
-                  <Quote size={11} className="shrink-0 mt-0.5" style={{ color: 'var(--muted-foreground)' }} />
-                  <p className="flex-1 text-[11px] line-clamp-1" style={{ color: 'var(--muted-foreground)' }}>{quotedMessage.content}</p>
-                  <button onClick={() => setQuotedMessage(null)} className="shrink-0 p-0.5 rounded hover:bg-accent" style={{ color: 'var(--muted-foreground)' }}><X size={11} /></button>
-                </div>
-              </div>
+        {/* ── Input area: rounded composer card (textarea on top, toolbar below) ── */}
+        <div className="shrink-0 px-4 pb-4 pt-1">
+          <div className="relative mx-auto max-w-[48rem]">
+            {/* Agent mention menu: positioned above the composer card */}
+            {agentMentionContext && agentExtensionSnapshot && (
+              <AgentMentionMenu
+                candidates={filteredAgentMentionCandidates}
+                activeIndex={Math.min(agentMentionActiveIndex, Math.max(0, filteredAgentMentionCandidates.length - 1))}
+                onSelect={selectAgentMention}
+              />
             )}
 
-            {/* Attached images */}
-            {attachedImages.length > 0 && (
-              <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
-                {attachedImages.map((img) => (
-                  <div key={img.id} className="relative group w-12 h-12 rounded overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
-                    <button onClick={() => removeAttachedImage(img.id)}
-                      className="absolute top-0.5 right-0.5 p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{ backgroundColor: 'var(--background)' }}><X size={9} /></button>
-                    {img.status === 'loading' && (
-                      <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
-                        <Loader2 size={14} className="animate-spin" style={{ color: 'var(--muted-foreground)' }} />
-                      </div>
-                    )}
+            <div
+              className="rounded-2xl border transition-colors focus-within:[border-color:var(--muted-foreground)]"
+              style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--muted) 35%, transparent)' }}
+            >
+              {/* Quoted message */}
+              {quotedMessage && (
+                <div className="px-3 pt-3">
+                  <div className="flex items-start gap-2 rounded-lg border-l-2 bg-muted/40 px-3 py-2" style={{ borderColor: 'var(--muted-foreground)' }}>
+                    <Quote size={11} className="mt-0.5 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
+                    <p className="line-clamp-1 flex-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{quotedMessage.content}</p>
+                    <button onClick={() => setQuotedMessage(null)} className="shrink-0 rounded p-0.5 hover:bg-accent" style={{ color: 'var(--muted-foreground)' }}><X size={11} /></button>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* Model + image controls row: model selector (left) → image toggle (center) → size selector (right, conditional) */}
-            <div className="flex items-center gap-2 px-4 pb-1 pt-3">
-              {/* Model selector: switches between chat/image models based on mode */}
-              {(imageMode ? imageModels : chatModels).length > 0 && (
-                <div className="w-48">
-                  <SelectDropdown
-                    value={imageMode ? selectedImageModel : selectedModel}
-                    options={(imageMode ? imageModels : chatModels).map(m => ({ value: m.id, label: m.label }))}
-                    onChange={(val) => imageMode ? setSelectedImageModel(val as string) : setSelectedModel(val as string)}
-                    placeholder="选择模型"
-                    size="sm"
-                    icon={Sparkles}
+              {/* Attached images */}
+              {attachedImages.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-3 pt-3">
+                  {attachedImages.map((img) => (
+                    <div key={img.id} className="relative group h-12 w-12 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+                      <img src={img.url} alt="" className="h-full w-full object-cover" />
+                      <button onClick={() => removeAttachedImage(img.id)}
+                        className="absolute right-0.5 top-0.5 rounded-full p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                        style={{ backgroundColor: 'var(--background)' }}><X size={9} /></button>
+                      {img.status === 'loading' && (
+                        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
+                          <Loader2 size={14} className="animate-spin" style={{ color: 'var(--muted-foreground)' }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Textarea */}
+              <div className="px-4 pt-3">
+                <div className="relative flex min-w-0 flex-col">
+                  {/* Highlighted text overlay */}
+                  <div
+                    className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-6"
+                    aria-hidden="true"
+                  >
+                    {input.split(/(\s+)/).map((segment, i) => {
+                      // Highlight /skill tokens
+                      if (/^\/[A-Za-z0-9_:-]+$/.test(segment)) {
+                        return (
+                          <span key={i} className="rounded bg-amber-500/20 px-0.5 text-amber-600 dark:text-amber-400">
+                            {segment}
+                          </span>
+                        )
+                      }
+                      // Highlight @mcp:server tokens
+                      if (/^@mcp:[^\s]+$/.test(segment)) {
+                        return (
+                          <span key={i} className="rounded bg-cyan-500/20 px-0.5 text-cyan-600 dark:text-cyan-400">
+                            {segment}
+                          </span>
+                        )
+                      }
+                      return <span key={i} style={{ color: 'var(--foreground)' }}>{segment}</span>
+                    })}
+                  </div>
+
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={autoResize}
+                    onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
+                    onSelect={refreshAgentMentionContext}
+                    onBlur={() => setAgentMentionContext(null)}
+                    role="combobox"
+                    aria-haspopup="listbox"
+                    aria-expanded={Boolean(agentMentionContext && agentExtensionSnapshot)}
+                    aria-controls={agentMentionContext ? 'agent-mention-listbox' : undefined}
+                    aria-activedescendant={agentMentionContext && filteredAgentMentionCandidates.length > 0 ? `agent-mention-option-${Math.min(agentMentionActiveIndex, filteredAgentMentionCandidates.length - 1)}` : undefined}
+                    aria-autocomplete="list"
+                    placeholder={t('admin.ai_input_placeholder')}
+                    rows={1}
                     disabled={sending}
-                    placement="top"
+                    className="relative z-10 w-full resize-none bg-transparent text-sm leading-6 outline-none disabled:opacity-40"
+                    style={{
+                      color: 'transparent',
+                      caretColor: 'var(--foreground)',
+                      maxHeight: 200,
+                      minHeight: 48,
+                    }}
                   />
                 </div>
-              )}
-
-              {!imageMode && (
-                <div className="w-28">
-                  <SelectDropdown
-                    value={reasoningEffort}
-                    options={[
-                      { value: 'default', label: t('admin.ai_reasoning_default') },
-                      { value: 'low', label: t('admin.ai_reasoning_low') },
-                      { value: 'medium', label: t('admin.ai_reasoning_medium') },
-                      { value: 'high', label: t('admin.ai_reasoning_high') },
-                    ]}
-                    onChange={(value) => setReasoningEffort(value as EditorAiReasoningEffort | 'default')}
-                    placeholder={t('admin.ai_reasoning_effort')}
-                    size="sm"
-                    icon={BrainCircuit}
-                    disabled={sending}
-                    placement="top"
-                  />
-                </div>
-              )}
-
-              {/* Image mode toggle: matches SelectDropdown style, icon only */}
-              <button
-                type="button"
-                onClick={() => setImageMode(prev => !prev)}
-                disabled={sending}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all disabled:opacity-30"
-                style={{
-                  borderColor: imageMode ? '#f59e0b' : 'var(--border)',
-                  backgroundColor: imageMode ? '#f59e0b/10' : 'var(--background)',
-                  color: imageMode ? '#f59e0b' : 'var(--muted-foreground)',
-                }}
-                title={t('admin.ai_image_mode')}
-              >
-                <ImageIcon size={14} />
-              </button>
-
-              {/* Size selector: only visible in image mode */}
-              {imageMode && (
-                <div className="w-32 transition-all duration-200 ease-out" style={{ animation: 'slideInFromRight 200ms ease-out' }}>
-                  <SelectDropdown
-                    value={selectedImageSize}
-                    options={[
-                      { value: 'auto', label: '⊡ 自动' },
-                      { value: '1024x1024', label: '□ 1:1' },
-                      { value: '1024x1792', label: '▯ 9:16' },
-                      { value: '1792x1024', label: '▬ 16:9' },
-                    ]}
-                    onChange={(val) => setSelectedImageSize(val as string)}
-                    size="sm"
-                    disabled={sending}
-                    placement="top"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Textarea + toolbar row */}
-            <div className="relative flex items-end gap-2 px-4 py-3">
-              {/* Agent mention menu: positioned above the textarea */}
-              {agentMentionContext && agentExtensionSnapshot && (
-                <AgentMentionMenu
-                  candidates={filteredAgentMentionCandidates}
-                  activeIndex={Math.min(agentMentionActiveIndex, Math.max(0, filteredAgentMentionCandidates.length - 1))}
-                  onSelect={selectAgentMention}
-                />
-              )}
-
-              <div className="flex-1 flex flex-col min-w-0 relative">
-                {/* Highlighted text overlay */}
-                <div
-                  className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-6 px-0"
-                  aria-hidden="true"
-                >
-                  {input.split(/(\s+)/).map((segment, i) => {
-                    // Highlight /skill tokens
-                    if (/^\/[A-Za-z0-9_:-]+$/.test(segment)) {
-                      return (
-                        <span key={i} className="rounded bg-amber-500/20 px-0.5 text-amber-600 dark:text-amber-400">
-                          {segment}
-                        </span>
-                      )
-                    }
-                    // Highlight @mcp:server tokens
-                    if (/^@mcp:[^\s]+$/.test(segment)) {
-                      return (
-                        <span key={i} className="rounded bg-cyan-500/20 px-0.5 text-cyan-600 dark:text-cyan-400">
-                          {segment}
-                        </span>
-                      )
-                    }
-                    return <span key={i} style={{ color: 'var(--foreground)' }}>{segment}</span>
-                  })}
-                </div>
-
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={autoResize}
-                  onKeyDown={handleKeyDown}
-                  onPaste={handlePaste}
-                  onSelect={refreshAgentMentionContext}
-                  onBlur={() => setAgentMentionContext(null)}
-                  role="combobox"
-                  aria-haspopup="listbox"
-                  aria-expanded={Boolean(agentMentionContext && agentExtensionSnapshot)}
-                  aria-controls={agentMentionContext ? 'agent-mention-listbox' : undefined}
-                  aria-activedescendant={agentMentionContext && filteredAgentMentionCandidates.length > 0 ? `agent-mention-option-${Math.min(agentMentionActiveIndex, filteredAgentMentionCandidates.length - 1)}` : undefined}
-                  aria-autocomplete="list"
-                  placeholder={t('admin.ai_input_placeholder')}
-                  rows={1}
-                  disabled={sending}
-                  className="relative z-10 w-full resize-none bg-transparent text-sm leading-6 outline-none disabled:opacity-40"
-                  style={{
-                    color: 'transparent',
-                    caretColor: 'var(--foreground)',
-                    maxHeight: 160,
-                    minHeight: 36,
-                  }}
-                />
               </div>
 
-              {/* Action buttons */}
-              <div className="flex items-center gap-1 shrink-0 pb-0.5">
-                <button
-                  type="button"
-                  onClick={handleSelectImages}
-                  disabled={sending || loadingImages}
-                  className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-accent disabled:opacity-30"
-                  style={{ color: 'var(--muted-foreground)' }}
-                  title={t('admin.ai_attach_image')}
-                >
-                  <Paperclip size={14} />
-                </button>
+              {/* Toolbar: model controls (left) → send (right) */}
+              <div className="flex items-end gap-2 px-3 pb-3 pt-1">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                  {/* Model selector: switches between chat/image models based on mode */}
+                  {(imageMode ? imageModels : chatModels).length > 0 && (
+                    <div className="w-40">
+                      <SelectDropdown
+                        value={imageMode ? selectedImageModel : selectedModel}
+                        options={(imageMode ? imageModels : chatModels).map(m => ({ value: m.id, label: m.label }))}
+                        onChange={(val) => imageMode ? setSelectedImageModel(val as string) : setSelectedModel(val as string)}
+                        placeholder="选择模型"
+                        size="sm"
+                        icon={Sparkles}
+                        disabled={sending}
+                        placement="top"
+                      />
+                    </div>
+                  )}
 
+                  {!imageMode && (
+                    <div className="w-24">
+                      <SelectDropdown
+                        value={reasoningEffort}
+                        options={[
+                          { value: 'default', label: t('admin.ai_reasoning_default') },
+                          { value: 'low', label: t('admin.ai_reasoning_low') },
+                          { value: 'medium', label: t('admin.ai_reasoning_medium') },
+                          { value: 'high', label: t('admin.ai_reasoning_high') },
+                        ]}
+                        onChange={(value) => setReasoningEffort(value as EditorAiReasoningEffort | 'default')}
+                        placeholder={t('admin.ai_reasoning_effort')}
+                        size="sm"
+                        icon={BrainCircuit}
+                        disabled={sending}
+                        placement="top"
+                      />
+                    </div>
+                  )}
+
+                  {/* Image mode toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setImageMode(prev => !prev)}
+                    disabled={sending}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-accent disabled:opacity-30"
+                    style={{ color: imageMode ? '#f59e0b' : 'var(--muted-foreground)' }}
+                    title={t('admin.ai_image_mode')}
+                  >
+                    <ImageIcon size={15} />
+                  </button>
+
+                  {/* Size selector: only visible in image mode */}
+                  {imageMode && (
+                    <div className="w-28" style={{ animation: 'slideInFromRight 200ms ease-out' }}>
+                      <SelectDropdown
+                        value={selectedImageSize}
+                        options={[
+                          { value: 'auto', label: '⊡ 自动' },
+                          { value: '1024x1024', label: '□ 1:1' },
+                          { value: '1024x1792', label: '▯ 9:16' },
+                          { value: '1792x1024', label: '▬ 16:9' },
+                        ]}
+                        onChange={(val) => setSelectedImageSize(val as string)}
+                        size="sm"
+                        disabled={sending}
+                        placement="top"
+                      />
+                    </div>
+                  )}
+
+                  {/* Attach image */}
+                  <button
+                    type="button"
+                    onClick={handleSelectImages}
+                    disabled={sending || loadingImages}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-accent disabled:opacity-30"
+                    style={{ color: 'var(--muted-foreground)' }}
+                    title={t('admin.ai_attach_image')}
+                  >
+                    <Paperclip size={15} />
+                  </button>
+                </div>
+
+                {/* Send / stop */}
                 {sending ? (
                   <button
+                    type="button"
                     onClick={handleStop}
-                    className="flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-accent"
-                    style={{ color: 'var(--muted-foreground)' }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+                    style={{ backgroundColor: 'var(--foreground)', color: 'var(--background)' }}
                     title={t('admin.ai_stop')}
                   >
-                    <Square size={13} fill="currentColor" />
+                    <Square size={12} fill="currentColor" />
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => void handleSend()}
                     disabled={!canSend}
-                    className="flex h-7 w-7 items-center justify-center rounded transition-colors disabled:opacity-20"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-20"
                     style={{ backgroundColor: 'var(--foreground)', color: 'var(--background)' }}
                     title={t('admin.ai_send')}
                   >
-                    <Send size={13} />
+                    <ArrowUp size={16} />
                   </button>
                 )}
               </div>
-            </div>
-
-            {/* Bottom bar: keyboard hints only */}
-            <div className="flex items-center justify-end px-4 pb-2.5">
-              <span className="text-[9px] select-none" style={{ color: 'var(--muted-foreground)', opacity: 0.5 }}>Enter 发送 · Shift+Enter 换行</span>
             </div>
           </div>
         </div>

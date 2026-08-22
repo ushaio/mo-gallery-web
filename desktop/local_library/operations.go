@@ -174,6 +174,83 @@ func (m *Manager) ImportFiles(paths []string, destination string) ([]ImportResul
 	return results, nil
 }
 
+// ImportDownloadedFile copies a downloaded temp file into the library using the
+// provided originalFileName. If a file with the same name already exists at the
+// destination, it is auto-renamed (e.g. "photo (1).jpg") so duplicates are allowed.
+// The copied file is then reconciled into the index. It does not require import
+// mode to be configured since the source temp file is always copied, never moved.
+func (m *Manager) ImportDownloadedFile(sourcePath, destination, originalFileName string) (ImportResult, error) {
+	result := ImportResult{Source: sourcePath, Status: "failed"}
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return result, err
+	}
+	target, err := resolveWithinRoot(session.root, destination)
+	if err != nil {
+		return result, err
+	}
+	info, statErr := os.Stat(target)
+	if statErr != nil || !info.IsDir() {
+		return result, newError(ErrInvalidPath, "导入目标必须是资源库内文件夹", nil)
+	}
+	sourceAbs, absErr := filepath.Abs(sourcePath)
+	if absErr != nil {
+		result.Error = absErr.Error()
+		return result, err
+	}
+	sourceInfo, statErr := os.Stat(sourceAbs)
+	if statErr != nil || sourceInfo.IsDir() {
+		result.Error = "当前仅支持导入文件"
+		return result, nil
+	}
+	if !isIndexableFile(sourceAbs) {
+		result.Error = "不支持导入该文件类型"
+		return result, nil
+	}
+	fileName := strings.TrimSpace(originalFileName)
+	if fileName == "" {
+		fileName = filepath.Base(sourceAbs)
+	}
+	destinationPath := filepath.Join(target, fileName)
+	// If the destination already has a file with the same name, auto-rename to
+	// allow duplicate downloads (e.g. "photo (1).jpg", "photo (2).jpg").
+	if _, conflict := os.Stat(destinationPath); conflict == nil {
+		relativeDest := filepath.ToSlash(filepath.Join(destination, fileName))
+		relativeDest = nextAvailableAssetName(session.root, relativeDest, map[string]struct{}{})
+		destinationPath = filepath.Join(session.root, filepath.FromSlash(relativeDest))
+		fileName = filepath.Base(destinationPath)
+	}
+	session.ignoreWatcherPath(destinationPath, 5*time.Second)
+	if copyErr := copyFileSafely(sourceAbs, destinationPath); copyErr != nil {
+		result.Error = copyErr.Error()
+		return result, nil
+	}
+	relative, relErr := filepath.Rel(session.root, destinationPath)
+	if relErr != nil {
+		result.Error = relErr.Error()
+		return result, nil
+	}
+	operationID := newID()
+	reconciled, reconcileErr := m.reconcilePath(
+		session.ctx,
+		session,
+		filepath.ToSlash(relative),
+		reconcileSourceImport,
+		operationID,
+		"",
+	)
+	if reconcileErr != nil {
+		result.Error = reconcileErr.Error()
+		return result, nil
+	}
+	result.Status = "imported"
+	result.Destination = reconciled.RelativePath
+	result.AssetID = reconciled.AssetID
+	m.queueThumbnail(session, reconciled.AssetID)
+	m.emitEvent("assets_imported")
+	return result, nil
+}
+
 func moveFileSafely(source, destination string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err

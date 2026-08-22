@@ -23,6 +23,113 @@ export function convertPlainTextToEditorHtml(input: string) {
     .join('')
 }
 
+type MarkdownListType = 'ordered' | 'bullet'
+
+interface MarkdownListItem {
+  type: MarkdownListType
+  text: string
+  children: MarkdownListNode[]
+}
+
+interface MarkdownListNode {
+  type: MarkdownListType
+  items: MarkdownListItem[]
+}
+
+interface MarkdownListLine {
+  indent: number
+  type: MarkdownListType
+  text: string
+}
+
+const MARKDOWN_LIST_LINE = /^([ \t]*)(?:(\d+)[.)]|[-+*])(?:[ \t]+(.*?))?[ \t]*$/
+
+function parseMarkdownListLine(line: string): MarkdownListLine | null {
+  const match = line.match(MARKDOWN_LIST_LINE)
+  if (!match) return null
+
+  const marker = match[2]
+  const indent = [...match[1]].reduce((total, character) => total + (character === '\t' ? 4 : 1), 0)
+  return {
+    indent,
+    type: marker ? 'ordered' : 'bullet',
+    text: match[3] || '',
+  }
+}
+
+function renderMarkdownListNode(node: MarkdownListNode): string {
+  const tag = node.type === 'ordered' ? 'ol' : 'ul'
+  return `<${tag}>${node.items.map((item) => (
+    `<li>${item.text}${item.children.map(renderMarkdownListNode).join('')}</li>`
+  )).join('')}</${tag}>`
+}
+
+/**
+ * Convert Markdown list runs without flattening their indentation. The old
+ * regex-based conversion treated every marker as a sibling, which made a
+ * nested bullet under an ordered item impossible to edit as a real list.
+ */
+function convertMarkdownLists(input: string): string {
+  const lines = input.split(/\r?\n/)
+  const output: string[] = []
+  let index = 0
+  let inCodeFence = false
+
+  const parseList = (start: number, indent: number, type: MarkdownListType): [MarkdownListNode, number] => {
+    const node: MarkdownListNode = { type, items: [] }
+    let cursor = start
+
+    while (cursor < lines.length) {
+      const current = parseMarkdownListLine(lines[cursor])
+      if (!current || current.indent !== indent || current.type !== type) break
+
+      const item: MarkdownListItem = { type, text: current.text, children: [] }
+      cursor += 1
+
+      while (cursor < lines.length) {
+        const child = parseMarkdownListLine(lines[cursor])
+        if (!child || child.indent <= indent) break
+
+        const [childNode, nextCursor] = parseList(cursor, child.indent, child.type)
+        item.children.push(childNode)
+        cursor = nextCursor
+      }
+
+      node.items.push(item)
+    }
+
+    return [node, cursor]
+  }
+
+  while (index < lines.length) {
+    if (/^\s*```/.test(lines[index])) {
+      inCodeFence = !inCodeFence
+      output.push(lines[index])
+      index += 1
+      continue
+    }
+
+    if (inCodeFence) {
+      output.push(lines[index])
+      index += 1
+      continue
+    }
+
+    const first = parseMarkdownListLine(lines[index])
+    if (!first) {
+      output.push(lines[index])
+      index += 1
+      continue
+    }
+
+    const [list, nextIndex] = parseList(index, first.indent, first.type)
+    output.push(renderMarkdownListNode(list))
+    index = nextIndex
+  }
+
+  return output.join('\n')
+}
+
 export function normalizeInlineStyleValue(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, ' ') || ''
 }
@@ -112,35 +219,8 @@ export function convertMarkdownToHtml(input: string): string {
     .replace(/~~(.+?)~~/g, '<s>$1</s>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
 
-  // Convert unordered lists (consecutive lines starting with - or *)
-  result = result.replace(
-    /^([ \t]*[-*][ \t]+.+\n?)+/gm,
-    (match) => {
-      const items = match
-        .trim()
-        .split(/\n/)
-        .map((line) => line.replace(/^[ \t]*[-*][ \t]+/, ''))
-        .filter(Boolean)
-        .map((item) => `<li>${item}</li>`)
-        .join('')
-      return `<ul>${items}</ul>`
-    }
-  )
-
-  // Convert ordered lists (consecutive lines starting with number.)
-  result = result.replace(
-    /^([ \t]*\d+\.[ \t]+.+\n?)+/gm,
-    (match) => {
-      const items = match
-        .trim()
-        .split(/\n/)
-        .map((line) => line.replace(/^[ \t]*\d+\.[ \t]+/, ''))
-        .filter(Boolean)
-        .map((item) => `<li>${item}</li>`)
-        .join('')
-      return `<ol>${items}</ol>`
-    }
-  )
+  // Convert ordered/unordered lists while preserving nesting and list type.
+  result = convertMarkdownLists(result)
 
   // Convert remaining newlines to <br>
   result = result.replace(/\n/g, '<br>')
@@ -202,8 +282,8 @@ export function isMarkdownContent(content: string): boolean {
     /\*[^*]+\*/,
     /~~.+~~/,
     /`[^`]+`/,
-    /^\s*[-*+]\s+/m,
-    /^\s*\d+\.\s+/m,
+    /^\s*[-*+](?:\s+|$)/m,
+    /^\s*\d+[.)](?:\s+|$)/m,
     /^>\s+/m,
     /^```[\s\S]*?```/m,
   ]

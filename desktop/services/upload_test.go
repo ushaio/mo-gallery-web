@@ -315,27 +315,27 @@ func TestUploadChecksumMatchesTransformedUploadPath(t *testing.T) {
 	}
 }
 
-func TestUploadFileDelegatesWebPCompressionToServer(t *testing.T) {
+func TestUploadFileCompressesWebPLocallyBeforeMultipartUpload(t *testing.T) {
+	var receivedFilename string
+	var receivedContentType string
+	var receivedHeader []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(8 << 20); err != nil {
 			t.Fatalf("ParseMultipartForm() error = %v", err)
 		}
-		if got := r.FormValue("compression_mode"); got != "compress" {
+		if got := r.FormValue("compression_mode"); got != "" {
 			t.Errorf("compression_mode = %q", got)
-		}
-		if got := r.FormValue("compression_format"); got != "webp" {
-			t.Errorf("compression_format = %q", got)
-		}
-		if got := r.FormValue("max_size_mb"); got != "3.5" {
-			t.Errorf("max_size_mb = %q", got)
 		}
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			t.Fatalf("FormFile() error = %v", err)
 		}
 		defer file.Close()
-		if header.Filename != "desktop-source.jpg" {
-			t.Errorf("uploaded filename = %q", header.Filename)
+		receivedFilename = header.Filename
+		receivedContentType = header.Header.Get("Content-Type")
+		receivedHeader = make([]byte, 12)
+		if _, err := io.ReadFull(file, receivedHeader); err != nil {
+			t.Fatalf("ReadFull() error = %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -346,7 +346,17 @@ func TestUploadFileDelegatesWebPCompressionToServer(t *testing.T) {
 	defer server.Close()
 
 	sourcePath := filepath.Join(t.TempDir(), "desktop-source.jpg")
-	if err := os.WriteFile(sourcePath, []byte{0xff, 0xd8, 0xff, 0xd9}, 0o600); err != nil {
+	source := stdimage.NewRGBA(stdimage.Rect(0, 0, 96, 64))
+	for y := 0; y < 64; y++ {
+		for x := 0; x < 96; x++ {
+			source.Set(x, y, color.RGBA{R: uint8(x * 2), G: uint8(y * 3), B: uint8(x + y), A: 255})
+		}
+	}
+	var jpegData bytes.Buffer
+	if err := jpeg.Encode(&jpegData, source, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourcePath, jpegData.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -364,5 +374,14 @@ func TestUploadFileDelegatesWebPCompressionToServer(t *testing.T) {
 	}
 	if result == nil || !result.Success || result.Photo == nil || result.Photo.ID != "webp-photo" {
 		t.Fatalf("UploadFile() result = %+v", result)
+	}
+	if receivedFilename != "desktop-source.webp" {
+		t.Fatalf("uploaded filename = %q", receivedFilename)
+	}
+	if receivedContentType != "image/webp" {
+		t.Fatalf("uploaded content type = %q", receivedContentType)
+	}
+	if len(receivedHeader) < 12 || string(receivedHeader[:4]) != "RIFF" || string(receivedHeader[8:12]) != "WEBP" {
+		t.Fatalf("uploaded WebP header = %x", receivedHeader)
 	}
 }

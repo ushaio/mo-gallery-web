@@ -156,3 +156,50 @@ export const useLibrarySections = create<LibrarySectionsState>()(
     { name: 'mo-gallery-library-sections' },
   ),
 )
+
+// 上传页参数（持久化：下次进入上传页时复用上次的设置；标题属于单次内容，不持久化）
+export interface UploadPageSettings {
+  uploadType: 'digital' | 'film'
+  categories: string[]
+  albumIds: string[]
+  storyId: string
+  filmRollId: string
+  storageSourceId: string
+  storagePath: string
+  compressEnabled: boolean
+  compressionFormat: 'webp' | 'avif'
+  maxSizeMB: number
+  showFlag: boolean
+  stripGPS: boolean
+  useCustomPrefix: boolean
+}
+
+interface UploadSettingsState extends UploadPageSettings {
+  setUploadSettings: (patch: Partial<UploadPageSettings>) => void
+}
+
+export const defaultUploadPageSettings: UploadPageSettings = {
+  uploadType: 'digital',
+  categories: [],
+  albumIds: [],
+  storyId: '',
+  filmRollId: '',
+  storageSourceId: '',
+  storagePath: '',
+  compressEnabled: true,
+  compressionFormat: 'avif',
+  maxSizeMB: 4,
+  showFlag: true,
+  stripGPS: false,
+  useCustomPrefix: false,
+}
+
+export const useUploadSettings = create<UploadSettingsState>()(
+  persist(
+    (set) => ({
+      ...defaultUploadPageSettings,
+      setUploadSettings: (patch) => set(patch),
+    }),
+    { name: 'mo-gallery-upload-settings' },
+  ),
+)

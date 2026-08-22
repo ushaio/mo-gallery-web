@@ -13,18 +13,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 // ProxyClient 通用 Web API 代理客户端
 type ProxyClient struct {
-	baseURL    string
-	httpClient *http.Client
+	// mu 保护 baseURL / token / authHold / authChanged：认证恢复在后台
+	// goroutine 进行时，业务请求 goroutine 也会并发读取这些字段。
+	mu           sync.RWMutex
+	baseURL      string
+	token        string
+	authHold     bool           // 认证同步进行中且 token 尚未就绪时为 true
+	authChanged  chan struct{}  // 认证状态变化广播，waitAuthReady 用它唤醒等待者
+	httpClient   *http.Client
 	// uploadClient 用于文件上传：服务端要做 AVIF 压缩 + 存储上传，
 	// 大文件耗时远超普通请求。30s 超时会导致客户端报错而服务端
 	// 仍完成入库，用户重试后产生重复记录。
 	uploadClient *http.Client
-	token        string
 	logger       *Logger
 }
 
@@ -40,19 +46,91 @@ func (p *ProxyClient) SetLogger(logger *Logger) {
 	p.logger = logger
 }
 
+// notifyAuthChangedLocked 广播认证状态变化（调用方需持有写锁）。
+func (p *ProxyClient) notifyAuthChangedLocked() {
+	if p.authChanged != nil {
+		close(p.authChanged)
+	}
+	p.authChanged = make(chan struct{})
+}
+
+// BeginAuthRestore 标记一次认证恢复开始。恢复早期 token 尚未写入，
+// 此时到达的业务请求会在 waitAuthReady 处短暂等待而不是因缺少
+// 认证头直接失败——这是前端刷新后能乐观渲染页面的前提。
+func (p *ProxyClient) BeginAuthRestore() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.authHold = true
+	p.notifyAuthChangedLocked()
+}
+
+// EndAuthRestore 结束认证恢复并放行所有等待中的请求。必须与
+// BeginAuthRestore 成对调用（建议 defer）。
+func (p *ProxyClient) EndAuthRestore() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.authHold = false
+	p.notifyAuthChangedLocked()
+}
+
+// waitAuthReady 若认证恢复正在进行且 token 尚未写入则等待，最多
+// authReadyMaxWait。token 写入或恢复结束都会立即放行；兜底超时
+// 避免桥接异常时请求被无限期挂起。
+func (p *ProxyClient) waitAuthReady() {
+	const authReadyMaxWait = 5 * time.Second
+	timer := time.NewTimer(authReadyMaxWait)
+	defer timer.Stop()
+	for {
+		p.mu.RLock()
+		ch := p.authChanged
+		hold := p.authHold && p.token == ""
+		p.mu.RUnlock()
+		if !hold {
+			return
+		}
+		select {
+		case <-ch:
+		case <-timer.C:
+			return
+		}
+	}
+}
+
 // SetServer 设置服务器地址
 func (p *ProxyClient) SetServer(url string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.baseURL = url
+	p.notifyAuthChangedLocked()
 }
 
 // SetToken 设置 JWT token
 func (p *ProxyClient) SetToken(token string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.token = token
+	p.notifyAuthChangedLocked()
 }
 
 // IsReady 是否已配置服务器和 token
 func (p *ProxyClient) IsReady() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	return p.baseURL != "" && p.token != ""
+}
+
+// BaseURL 返回当前服务器地址（线程安全）
+func (p *ProxyClient) BaseURL() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.baseURL
+}
+
+// Token 返回当前认证 token（线程安全）
+func (p *ProxyClient) Token() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.token
 }
 
 // apiResponse Web API 通用响应结构
@@ -72,6 +150,7 @@ func (p *ProxyClient) GET(path string, result interface{}) error {
 
 // GETWithMeta 发起 GET 请求，解析 data 和 meta
 func (p *ProxyClient) GETWithMeta(path string, data interface{}, meta interface{}) error {
+	p.waitAuthReady()
 	req, err := p.newRequest("GET", path, nil)
 	if err != nil {
 		log.Printf("[proxy] GETWithMeta newRequest error: %v", err)
@@ -190,6 +269,7 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 	}
 	writer.Close()
 
+	p.waitAuthReady()
 	fullURL := p.baseURL + "/api" + path
 	req, err := http.NewRequest("POST", fullURL, &buf)
 	if err != nil {
@@ -199,8 +279,8 @@ func (p *ProxyClient) POSTMultipart(path string, fields map[string]string, files
 	// transport 会静默重放整个 POST——上传接口非幂等，禁止重放。
 	req.GetBody = nil
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if p.token != "" {
-		req.Header.Set("Authorization", "Bearer "+p.token)
+	if token := p.currentToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	start := time.Now()
@@ -275,6 +355,7 @@ func (p *ProxyClient) DELETEWithResult(path string, result interface{}) error {
 
 // do 通用请求方法（500 错误自动重试一次）
 func (p *ProxyClient) do(method, path string, body interface{}, result interface{}) error {
+	p.waitAuthReady()
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		req, err := p.newRequest(method, path, body)
@@ -361,18 +442,29 @@ func (p *ProxyClient) newRequest(method, path string, body interface{}) (*http.R
 		bodyReader = bytes.NewReader(jsonBytes)
 	}
 
-	fullURL := p.baseURL + "/api" + path
+	p.mu.RLock()
+	baseURL, token := p.baseURL, p.token
+	p.mu.RUnlock()
+
+	fullURL := baseURL + "/api" + path
 	req, err := http.NewRequest(method, fullURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if p.token != "" {
-		req.Header.Set("Authorization", "Bearer "+p.token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	return req, nil
+}
+
+// currentToken 返回当前 token（并发安全）。
+func (p *ProxyClient) currentToken() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.token
 }
 
 // ApiUnauthorizedError 401 错误

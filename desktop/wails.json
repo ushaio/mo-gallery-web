@@ -13,11 +13,11 @@
     "email": "admin@mo.gallery"
   },
   "info": {
-    "companyName": "MO Gallery",
-    "productName": "MO Gallery Desktop",
+    "companyName": "Emulsion",
+    "productName": "Emulsion",
     "productVersion": "0.8.3",
     "copyright": "2026 ushaio",
-    "comments": "MO Gallery Desktop application"
+    "comments": "Emulsion desktop application"
   },
   "nsis": {
     "installMode": "perUser",

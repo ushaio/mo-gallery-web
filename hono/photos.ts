@@ -1604,6 +1604,62 @@ photos.post('/admin/photos/batch-update-show-flag', async (c) => {
   }
 })
 
+// 桌面端完成对象移动后登记新的存储键（仅 desktop-plugin 照片）。
+// 对象移动由桌面进程通过存储插件执行；此端点只更新照片记录的 path/thumbPath，
+// 不会在服务端移动任何对象。
+photos.post('/admin/photos/move-metadata', async (c) => {
+  try {
+    const body = await c.req.json()
+    const moves = Array.isArray(body.moves) ? body.moves : []
+    if (moves.length === 0) {
+      return c.json({ error: 'Moves are required' }, 400)
+    }
+
+    const errors: string[] = []
+    let updated = 0
+    for (const move of moves) {
+      const id = typeof move?.id === 'string' ? move.id.trim() : ''
+      const path = normalizeStorageKeyCandidate(typeof move.path === 'string' ? move.path : '')
+      const thumbPath = normalizeStorageKeyCandidate(typeof move.thumbPath === 'string' ? move.thumbPath : '')
+      if (!id || !path) {
+        errors.push(`${id || 'unknown'}: path is required`)
+        continue
+      }
+
+      const photo = await db.photo.findUnique({
+        where: { id },
+        select: { id: true, storageRuntime: true },
+      })
+      if (!photo) {
+        errors.push(`${id}: Photo not found`)
+        continue
+      }
+      if (photo.storageRuntime !== 'desktop-plugin') {
+        errors.push(`${id}: Only desktop-plugin photos can update storage keys`)
+        continue
+      }
+
+      await db.photo.update({
+        where: { id: photo.id },
+        data: { path, thumbPath: thumbPath || undefined },
+      })
+      updated++
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        updated,
+        failed: errors.length,
+        errors,
+      },
+    })
+  } catch (error) {
+    console.error('Update photo storage metadata error:', error)
+    return c.json({ error: error instanceof Error ? error.message : 'Internal server error' }, 500)
+  }
+})
+
 photos.patch('/admin/photos/:id', async (c) => {
   try {
     const id = c.req.param('id')

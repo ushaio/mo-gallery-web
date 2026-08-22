@@ -42,6 +42,9 @@ import {
   Copy,
   GripVertical,
   MoreHorizontal,
+  RotateCcw,
+  MoveHorizontal,
+  Trash2,
 } from 'lucide-react'
 import TipTapAiAssistant, { type TipTapAiAgentRunner } from './TipTapAiAssistant'
 import type { NarrativeEditorRuntime } from './runtime'
@@ -85,6 +88,7 @@ import {
 import {
   createEditorCommandRegistry,
   getCommandsForSurface,
+  type EditorCommandDescriptor,
 } from './tiptap-editor/editor-command-registry'
 import { BackgroundColorPicker, TextColorPicker, useColorPickerMenu } from './tiptap-editor/ColorPickerMenu'
 import { useNarrativeEditor } from './tiptap-editor/useNarrativeEditor'
@@ -358,6 +362,60 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       editor?.commands.focus()
     }, [editor])
 
+    // 斜杠菜单由段落开头的 '/' 触发；执行命令前先删掉触发字符，
+    // 否则选中的块级命令会作用在残留的 '/' 文本上。
+    const runFloatingCommand = useCallback((command: EditorCommandDescriptor) => {
+      if (!editor) return
+      const { $from } = editor.state.selection
+      if ($from.parent.type.name === 'paragraph' && $from.parent.textContent.startsWith('/')) {
+        const paragraphStart = $from.before($from.depth)
+        editor.view.dispatch(editor.state.tr.delete(paragraphStart + 1, paragraphStart + 2))
+      }
+      command.execute()
+    }, [editor])
+
+    const shouldShowImageBubbleMenu = useCallback<BubbleMenuShouldShow>(({ editor: currentEditor, state }) => (
+      !isAiTaskLocked
+      && currentEditor.isEditable
+      && state.selection instanceof NodeSelection
+      && state.selection.node.type.name === 'image'
+    ), [isAiTaskLocked])
+
+    const resetImageSize = useCallback(() => {
+      if (!editor || isAiTaskLocked) return
+      editor.chain().focus().updateAttributes('image', { width: null, height: null }).run()
+    }, [editor, isAiTaskLocked])
+
+    const fitImageToContentWidth = useCallback(() => {
+      if (!editor || isAiTaskLocked) return
+      const editorDom = editor.view.dom
+      const computedStyle = window.getComputedStyle(editorDom)
+      const contentWidth = editorDom.clientWidth
+        - (parseFloat(computedStyle.paddingLeft) || 0)
+        - (parseFloat(computedStyle.paddingRight) || 0)
+      editor
+        .chain()
+        .focus()
+        .updateAttributes('image', { width: Math.max(100, Math.round(contentWidth)), height: null })
+        .run()
+    }, [editor, isAiTaskLocked])
+
+    const deleteSelectedImage = useCallback(() => {
+      if (!editor || isAiTaskLocked) return
+      editor.chain().focus().deleteSelection().run()
+    }, [editor, isAiTaskLocked])
+
+    // 下拉（标题/字体/字号）收起且未产生变更时，把编辑器选区和焦点还回去，
+    // 避免选区变灰、下一次格式化丢失作用范围。
+    const restoreSelectionOnSelectBlur = useCallback((event: React.FocusEvent<HTMLSelectElement>) => {
+      const pendingSelection = pendingSelectionRef.current
+      if (!pendingSelection || !editor) return
+      const nextTarget = event.relatedTarget as HTMLElement | null
+      if (nextTarget && !nextTarget.isContentEditable) return
+      pendingSelectionRef.current = null
+      editor.chain().focus().setTextSelection(pendingSelection).run()
+    }, [editor])
+
     const syncAiSelectionState = useCallback(() => {
       if (!editor) return
       const { from, to } = editor.state.selection
@@ -403,15 +461,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const insertInlineImage = useCallback((attrs: { src: string; alt?: string; width?: number; photoId?: string }) => {
       if (!editor || isAiTaskLocked) return
 
-      // Compute default width from editor content width before inserting to avoid flicker
-      let width = attrs.width
-      if (!width) {
-        const editorDom = editor.view.dom
-        const computedStyle = window.getComputedStyle(editorDom)
-        const contentWidth = editorDom.clientWidth - (parseFloat(computedStyle.paddingLeft) || 0) - (parseFloat(computedStyle.paddingRight) || 0)
-        width = Math.max(40, Math.round(contentWidth * 0.5))
-      }
-
       // Focus first as a separate step so that ProseMirror's selection is
       // properly restored from EditorState before insertContent runs.
       // Previously focus() was in the same chain as insertContent, which could
@@ -428,7 +477,9 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               attrs: {
                 src: attrs.src,
                 alt: attrs.alt || '',
-                width,
+                // 未显式指定宽度时按原始尺寸展示（CSS max-width 兜底），
+                // 不再强制缩放到 50%，用户可后续拖拽或用图片气泡调整。
+                width: attrs.width ?? null,
                 ...(attrs.photoId ? { photoId: attrs.photoId } : {}),
               },
             }],
@@ -829,7 +880,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     }, [aiOptions?.title, aiOptions?.token, documentId, documentKind, editor, isAiTaskLocked, runtime])
 
     // The registry only stores callbacks for later user events; it never executes them during render.
-    /* eslint-disable react-hooks/refs */
     const editorCommands = createEditorCommandRegistry([
       { id: 'bold', group: 'inline', label: t('editor.bold'), keywords: ['bold', 'strong'], icon: Bold, shortcut: 'Mod+B', surfaces: ['main', 'bubble'] },
       { id: 'italic', group: 'inline', label: t('editor.italic'), keywords: ['italic', 'emphasis'], icon: Italic, shortcut: 'Mod+I', surfaces: ['main', 'bubble'] },
@@ -898,7 +948,6 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     const floatingCommands = getCommandsForSurface(editorCommands, 'floating')
     const insertCommands = getCommandsForSurface(editorCommands, 'insert')
     const formatCommands = getCommandsForSurface(editorCommands, 'format')
-    /* eslint-enable react-hooks/refs */
 
     const bubbleMenuOptions = useMemo(() => ({ placement: 'top' as const }), [])
     const floatingMenuOptions = useMemo(() => ({ placement: 'right-start' as const }), [])
@@ -954,6 +1003,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     const shouldShowFloatingMenu = useCallback<FloatingMenuShouldShow>(({ editor: currentEditor, state }) => {
       if (isAiTaskLocked || !currentEditor.isEditable || currentEditor.isActive('table')) return false
+      // 任意层级的空段落（含列表项、引用内）输入 '/' 均可唤出，仅排除表格等容器
       const { $from } = state.selection
       return state.selection.empty
         && $from.depth === 1
@@ -1081,6 +1131,41 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             </div>
           </BubbleMenu>
 
+          <BubbleMenu
+            editor={editor}
+            options={bubbleMenuOptions}
+            shouldShow={shouldShowImageBubbleMenu}
+          >
+            <div
+              role="toolbar"
+              aria-label={t('editor.image_toolbar')}
+              className="z-30 flex max-w-[calc(100vw-1rem)] items-center gap-0.5 overflow-x-auto rounded-md border border-border/80 bg-background/95 p-1 text-foreground shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur-md"
+            >
+              <FloatingToolbarButton
+                onClick={resetImageSize}
+                disabled={isAiTaskLocked}
+                title={t('editor.image_reset_width')}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </FloatingToolbarButton>
+              <FloatingToolbarButton
+                onClick={fitImageToContentWidth}
+                disabled={isAiTaskLocked}
+                title={t('editor.image_fit_width')}
+              >
+                <MoveHorizontal className="h-3.5 w-3.5" />
+              </FloatingToolbarButton>
+              <div className="mx-0.5 h-4 w-px bg-border/80" aria-hidden="true" />
+              <FloatingToolbarButton
+                onClick={deleteSelectedImage}
+                disabled={isAiTaskLocked}
+                title={t('editor.image_delete')}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </FloatingToolbarButton>
+            </div>
+          </BubbleMenu>
+
           <FloatingMenu
             editor={editor}
             options={floatingMenuOptions}
@@ -1100,7 +1185,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
                 return (
                   <FloatingToolbarButton
                     key={command.id}
-                    onClick={command.execute}
+                    onClick={() => runFloatingCommand(command)}
                     isActive={command.active}
                     disabled={command.disabled}
                     title={command.label}
@@ -1144,6 +1229,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               value={resolvedEditorUiState.headingLevel}
               onChange={setHeadingLevel}
               onMouseDown={preserveSelectionOnSelectMouseDown}
+              onBlur={restoreSelectionOnSelectBlur}
               title={t('editor.heading_level')}
               options={headingOptions}
               className="max-w-[4.5rem] min-[360px]:max-w-[5.5rem] sm:max-w-[7.5rem]"
@@ -1152,6 +1238,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               value={resolvedEditorUiState.fontFamily}
               onChange={setFontFamily}
               onMouseDown={preserveSelectionOnSelectMouseDown}
+              onBlur={restoreSelectionOnSelectBlur}
               title={t('editor.font_family')}
               options={fontFamilyOptions}
               className="max-w-[7rem]"
@@ -1160,6 +1247,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               value={resolvedEditorUiState.fontSize}
               onChange={setFontSize}
               onMouseDown={preserveSelectionOnSelectMouseDown}
+              onBlur={restoreSelectionOnSelectBlur}
               title={t('editor.font_size')}
               options={fontSizeOptions}
               className="max-w-[5.5rem]"

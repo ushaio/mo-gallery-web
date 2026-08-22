@@ -626,18 +626,20 @@ func (m *Manager) List(ctx context.Context, req ListRequest) (ListResult, error)
 	if strings.HasPrefix(prefix, "/") || strings.Split(prefix, "/")[0] == ".." || strings.Contains(prefix, "/../") || strings.Contains(prefix, "/./") {
 		return ListResult{}, errors.New("invalid storage object prefix")
 	}
-	if basePath := strings.Trim(strings.ReplaceAll(source.Config["basePath"], "\\", "/"), "/"); basePath != "" {
-		if prefix == "" {
-			prefix = basePath
-		} else {
-			prefix = path.Join(basePath, prefix)
-		}
-	}
 	if req.Limit < 0 || req.Limit > 1000 {
 		return ListResult{}, errors.New("storage object list limit must be between 0 and 1000")
 	}
+	// The prefix is a full bucket prefix: the source basePath is already part of
+	// the stored keys, and the plugin env carries basePath="" (see
+	// pluginEnvironment), so the worker never prepends it. Forwarding an empty
+	// cursor string would make S3-compatible backends reject the request with
+	// InvalidContinuation, so omit the key when there is no continuation token.
+	params := map[string]any{"sourceId": source.ID, "prefix": prefix, "limit": req.Limit}
+	if cursor := strings.TrimSpace(req.Cursor); cursor != "" {
+		params["cursor"] = cursor
+	}
 	var result ListResult
-	if err := runtime.request(ctx, "object.list", map[string]any{"sourceId": source.ID, "prefix": prefix, "cursor": req.Cursor, "limit": req.Limit}, &result); err != nil {
+	if err := runtime.request(ctx, "object.list", params, &result); err != nil {
 		return ListResult{}, err
 	}
 	return result, nil

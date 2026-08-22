@@ -114,12 +114,12 @@ function DesktopTitleBar() {
             style={{ backgroundColor: 'transparent', color: 'var(--foreground)' }}
             onDoubleClick={(event) => event.stopPropagation()}
           >
-            <span
-              className="flex size-6 shrink-0 items-center justify-center rounded-md font-serif text-xs font-bold"
-              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-            >
-              {siteTitle.charAt(0).toUpperCase() || 'M'}
-            </span>
+            <img
+              src="/logo.png"
+              alt=""
+              aria-hidden="true"
+              className="size-6 shrink-0 rounded-md bg-white object-contain p-0.5"
+            />
             {!sidebarCollapsed && (
               <span className="truncate font-serif text-xs font-bold uppercase tracking-widest">
                 {siteTitle}
@@ -145,12 +145,12 @@ function DesktopTitleBar() {
         </div>
       ) : (
         <div className="desktop-chrome-identity flex min-w-0 items-center gap-2.5 px-3">
-          <span
-            className="flex size-6 shrink-0 items-center justify-center rounded-md font-serif text-xs font-bold"
-            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-          >
-            {siteTitle.charAt(0).toUpperCase() || 'M'}
-          </span>
+          <img
+            src="/logo.png"
+            alt=""
+            aria-hidden="true"
+            className="size-6 shrink-0 rounded-md bg-white object-contain p-0.5"
+          />
           <span className="truncate font-serif text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--foreground)' }}>
             {siteTitle}
           </span>

@@ -34,7 +34,7 @@ import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
 import { CleanupStorage, FixMissingPhotos, GenerateThumbnail, ScanStorage } from '../../wailsjs/go/main/App'
 import type { services } from '../../wailsjs/go/models'
-import { StorageTab } from './SettingsPage'
+import { StorageTab } from './settings/StorageTab'
 
 // ── 工具函数 ─────────────────────────────────────────────────
 

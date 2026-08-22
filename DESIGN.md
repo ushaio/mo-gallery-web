@@ -40,6 +40,7 @@ rounded:
   sharp: "0rem"
   desktop-sm: "0.5rem"
   desktop-xs: "0.375rem"
+  desktop-card: "1rem"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -128,7 +129,7 @@ Responsive behavior follows the existing Tailwind breakpoint vocabulary. Mobile 
 
 ## Elevation & Depth
 
-The public Web is flat by default: depth comes from white/grey tonal changes, hairline borders, image scale, and hover opacity. Web Admin follows the same rule. Desktop permits restrained structural shadows for its integrated frame, transient toasts, dialogs, and the Zine workbench; shadows should clarify a floating layer, never decorate a resting card.
+The public Web is flat by default: depth comes from white/grey tonal changes, hairline borders, image scale, and hover opacity. Web Admin follows the same rule. Desktop permits restrained structural shadows for its integrated frame, transient toasts, dialogs, and the Zine workbench; shadows should clarify a floating layer, never decorate a resting card. The Desktop overview follows the same flat rule: its metric ledger and content sections are separated by hairlines and whitespace instead of resting cards.
 
 ### Shadow Vocabulary
 - **Desktop frame** (`0 10px 30px rgb(0 0 0 / 0.12)`): Separates the Wails window frame from its host surface.
@@ -136,7 +137,7 @@ The public Web is flat by default: depth comes from white/grey tonal changes, ha
 - **Control detail** (`0 1px 3px rgba(0, 0, 0, 0.25)`): Small Zine manipulation handles where a control must remain visible over artwork.
 
 ### Named Rules
-**The Flat-By-Default Rule.** A surface earns elevation through its role or state; resting cards and gallery images do not need a shadow.
+**The Flat-By-Default Rule.** A surface earns elevation through its role or state; resting cards and gallery images do not need a shadow — on every surface, including the Desktop overview.
 
 ## Shapes
 
@@ -155,7 +156,7 @@ Images clip to their media frame and may use subtle scale on hover. Do not intro
 ### Cards / Containers
 - **Corner Style:** Sharp on Web; small radius only where Desktop's utility surface already uses it.
 - **Background:** Paper/card neutrals in light mode; night/night-card in dark mode.
-- **Shadow Strategy:** Flat at rest; reserve shadows for Desktop frame and transient overlays.
+- **Shadow Strategy:** Flat at rest on every surface; reserve shadows for Desktop structure and transient overlays.
 - **Border:** Hairline `Line` or `Night Line` when a boundary improves scanning.
 - **Internal Padding:** Use the shared `8px`, `16px`, and `32px` rhythm; avoid stacking nested cards.
 

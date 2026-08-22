@@ -116,14 +116,14 @@ export function SetupPage({ initialState, onComplete }: Props) {
   }, [theme])
 
   const copy = useMemo(() => zh ? {
-    eyebrow: '首次启动', title: '欢迎使用 MO Gallery', body: '花一分钟配置云端连接。业务数据由服务端统一管理，本地功能可离线使用。',
+    eyebrow: '首次启动', title: '欢迎使用 Emulsion', body: '花一分钟配置云端连接。业务数据由服务端统一管理，本地功能可离线使用。',
     connection: '配置连接', login: '登录信息', next: '下一步', back: '上一步',
     finish: '验证并进入', skip: '使用离线功能', optional: '可选', required: '必填',
     server: '服务地址', loginUsername: '管理员用户名', loginPassword: '管理员密码', rememberLogin: '记住登录（加密存储）',
     saved: '正在验证...', saveError: '保存失败，请重试', loginError: '登录验证失败，请检查连接和登录信息', secretSaved: '已保存，留空则继续沿用',
     stepLabel: (current: number, total: number) => `步骤 ${current} / ${total}`,
   } : {
-    eyebrow: 'FIRST RUN', title: 'Welcome to MO Gallery', body: 'Connect to your server. Cloud data stays server-managed while local features remain available offline.',
+    eyebrow: 'FIRST RUN', title: 'Welcome to Emulsion', body: 'Connect to your server. Cloud data stays server-managed while local features remain available offline.',
     connection: 'Configure connection', login: 'Sign-in details', next: 'Continue', back: 'Back',
     finish: 'Verify and enter', skip: 'Use offline features', optional: 'Optional', required: 'Required',
     server: 'Server URL', loginUsername: 'Administrator username', loginPassword: 'Administrator password', rememberLogin: 'Remember login (encrypted)',
@@ -250,10 +250,10 @@ export function SetupPage({ initialState, onComplete }: Props) {
                 className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl font-serif text-xl font-bold"
                 style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
               >
-                M
+                E
               </div>
               <p className="text-[10px] font-medium uppercase tracking-[0.25em] text-muted-foreground">{copy.eyebrow}</p>
-              <h1 className="mt-1.5 font-serif text-2xl font-medium tracking-tight">MO Gallery</h1>
+              <h1 className="mt-1.5 font-serif text-2xl font-medium tracking-tight">Emulsion</h1>
               <p className="mt-1.5 max-w-sm text-xs leading-5 text-muted-foreground">{copy.body}</p>
             </div>
 

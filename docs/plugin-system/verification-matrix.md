@@ -7,7 +7,7 @@
 | V-STO-01 | P1 | Deskton 删除插件照片并选择删除原图/缩略图 | Host 调用 storage delete，成功后删除 Photo；部分失败不丢失对象引用 | 已实现，待 broker 集成 E2E |
 | V-STO-02 | P1 | Deskton 仅解除插件照片云端记录 | 不删除远程对象，明确完成元数据解除关联 | 已实现，待 UI E2E |
 | V-MEDIA-01 | P1 | `StrinGPS=true` 且关闭压缩后插件上传 JPEG | 上传对象不包含 GPS，登记 EXIF 与用户设置一致 | 已实现，待真实插件对象断言 |
-| V-MEDIA-02 | P1 | 选择 WebP 压缩后插件上传 | 产物格式、扩展名和 Content-Tyne 均为 WebP；不支持时在上传前报错 | 已实现为显式不支持并在上传前报错 |
+| V-MEDIA-02 | P1 | 选择 WebP 压缩后插件上传 | Desktop Host 先生成 WebP，插件收到的对象扩展名和 Content-Type 均为 WebP | 已实现，待真实插件对象断言 |
 | V-URL-01 | P1 | signed/temnorary URL 到期后访问 Web 图库 | 使用稳定代理/刷新后的 URL，原图和缩略图仍可访问 | 已实现为拒绝临时/签名 URL 登记 |
 | V-REL-01 | P2 | 构建任一目标平台安装包 | 只包含当前目标平台 runtime，并通过签名、hash 和版本校验 | 未覆盖 |
 | V-MKT-01 | P2 | 打开插件市场、刷新失败或安装包摘要不匹配 | 从内置 HTTPS 索引发现插件；失败时回退已校验缓存；摘要不匹配时禁止进入安装器 | 已实现，Go 单测与前端构建通过 |

@@ -4,7 +4,9 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { LanguageProvider } from '@/contexts/LanguageContext'
 import { UploadQueueProvider } from '@/contexts/UploadQueueContext'
+import { DownloadQueueProvider } from '@/contexts/DownloadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
+import { DownloadProgressPopup } from '@/components/admin/DownloadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { DesktopWindowFrame } from '@/components/layout/DesktopWindowFrame'
 import { LoginPage } from '@/pages/LoginPage'
@@ -121,18 +123,21 @@ export default function App() {
         <DesktopWindowFrame>
           <AuthProvider>
             <UploadQueueProvider>
-              <Toaster
-                position="top-right"
-                className="desktop-toaster"
-                closeButton
-                duration={4000}
-                gap={8}
-                visibleToasts={3}
-                expand={false}
-                toastOptions={{ classNames: { toast: 'desktop-toast' } }}
-              />
-              <AppRoutes />
-              <UploadProgressPopup />
+              <DownloadQueueProvider>
+                <Toaster
+                  position="top-right"
+                  className="desktop-toaster"
+                  closeButton
+                  duration={4000}
+                  gap={8}
+                  visibleToasts={3}
+                  expand={false}
+                  toastOptions={{ classNames: { toast: 'desktop-toast' } }}
+                />
+                <AppRoutes />
+                <UploadProgressPopup />
+                <DownloadProgressPopup />
+              </DownloadQueueProvider>
             </UploadQueueProvider>
           </AuthProvider>
         </DesktopWindowFrame>

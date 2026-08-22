@@ -180,12 +180,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // HMR 重新挂载 Provider 时先保留已有会话，避免同步期间清空本地登录信息。
-      // 但在 Go 端代理完成同步前不能报告 ready，否则概览等页面会先发起请求，
-      // 得到“登录状态未就绪”并把启动过程误显示成业务错误。
+      // 刷新优化：先从 localStorage 乐观恢复会话并立即放行页面渲染，与 Go 端
+      // 的 SetAuth 并行。Go 端在写入 token 前会挂起代理请求，因此页面首屏
+      // 请求不会因缺少认证头而失败；只有明确的认证错误才清理登录态。
       authSyncPendingRef.current = true
       if (!cancelled) {
         setToken(savedToken)
         setUser(parsedUser)
+        setIsReady(true)
       }
 
       try {
@@ -204,10 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         await SetAuth(server, savedToken)
-        if (!cancelled) {
-          authSyncPendingRef.current = false
-          setIsReady(true)
-        }
+        authSyncPendingRef.current = false
       } catch (error) {
         if (cancelled) return
         if (isAuthError(error)) {

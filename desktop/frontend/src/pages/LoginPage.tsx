@@ -174,9 +174,9 @@ export function LoginPage() {
               className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl font-serif text-xl font-bold"
               style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
             >
-              M
+              E
             </div>
-            <h1 className="font-serif text-2xl font-medium tracking-tight">MO Gallery</h1>
+            <h1 className="font-serif text-2xl font-medium tracking-tight">Emulsion</h1>
             <p className="mt-1 text-xs text-muted-foreground">
               {t('admin.login_subtitle', language)}
             </p>

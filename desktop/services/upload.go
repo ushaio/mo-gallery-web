@@ -12,7 +12,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -394,7 +393,7 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	if compressionFormat != "webp" {
 		compressionFormat = "avif"
 	}
-	if settings.CompressEnabled && compressionFormat == "avif" {
+	if settings.CompressEnabled {
 		s.emitProgress(settings.TaskID, "compressing", 0, "")
 		targetBytes := int64(desktopCompressedUploadMaxBytes)
 		if settings.MaxSizeMB > 0 {
@@ -410,19 +409,22 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 		}
 		defer os.RemoveAll(tempDir)
 		baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-		uploadPath = filepath.Join(tempDir, baseName+".avif")
+		extension := "." + compressionFormat
+		uploadPath = filepath.Join(tempDir, baseName+extension)
 		orientation := 1
 		if exifData != nil && exifData.Orientation > 0 {
 			orientation = exifData.Orientation
 		}
-		if err := image.CompressToAVIF(filePath, uploadPath, orientation, targetBytes); err != nil {
-			result.Error = "本地压缩失败: " + err.Error()
+		var compressErr error
+		if compressionFormat == "webp" {
+			compressErr = image.CompressToWebP(filePath, uploadPath, orientation, targetBytes)
+		} else {
+			compressErr = image.CompressToAVIF(filePath, uploadPath, orientation, targetBytes)
+		}
+		if compressErr != nil {
+			result.Error = "本地压缩失败: " + compressErr.Error()
 			return result, nil
 		}
-	}
-	if settings.StorageRuntime == storage_plugins.RuntimeDesktopPlugin && settings.CompressEnabled && compressionFormat == "webp" {
-		result.Error = "桌面存储插件上传暂不支持 WebP 压缩，请改用 AVIF 或关闭压缩"
-		return result, nil
 	}
 
 	// ── 构造表单字段 ───────────────────────────────────
@@ -467,14 +469,6 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	if settings.StripGPS {
 		fields["strip_gps"] = "true"
 	}
-	if settings.CompressEnabled && compressionFormat == "webp" {
-		fields["compression_mode"] = "compress"
-		fields["compression_format"] = "webp"
-		if settings.MaxSizeMB > 0 {
-			fields["max_size_mb"] = strconv.FormatFloat(settings.MaxSizeMB, 'f', -1, 64)
-		}
-	}
-
 	if settings.StorageRuntime == storage_plugins.RuntimeDesktopPlugin {
 		return s.uploadWithStoragePlugin(filePath, uploadPath, settings, hash, exifData)
 	}
@@ -548,11 +542,10 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "桌面存储插件标识不能为空"
 		return result, nil
 	}
-	if settings.CompressEnabled && strings.EqualFold(settings.CompressionFormat, "webp") {
-		result.Error = "桌面存储插件上传暂不支持 WebP 压缩，请改用 AVIF 或关闭压缩"
-		return result, nil
-	}
-	if settings.StripGPS && !(settings.CompressEnabled && strings.EqualFold(settings.CompressionFormat, "avif")) {
+	// Both Desktop compressors emit fresh files without source metadata, so no
+	// second re-encode is needed when compression is enabled. This keeps WebP
+	// output as WebP while still stripping GPS from uncompressed uploads.
+	if settings.StripGPS && !settings.CompressEnabled {
 		tempDir, err := os.MkdirTemp("", "mo-gallery-upload-sanitized-")
 		if err != nil {
 			result.Error = "创建隐私处理目录失败: " + err.Error()
@@ -904,6 +897,11 @@ func (s *UploadService) UploadAiImage(filePath string) (*AiImageUploadResult, er
 }
 
 func resolveUploadURL(baseURL string, rawURL string) string {
+	return ResolveUploadURL(baseURL, rawURL)
+}
+
+// ResolveUploadURL resolves a relative upload URL against the given base URL.
+func ResolveUploadURL(baseURL string, rawURL string) string {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.IsAbs() || baseURL == "" {
 		return rawURL

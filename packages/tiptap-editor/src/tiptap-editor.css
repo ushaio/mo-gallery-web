@@ -183,8 +183,13 @@
   list-style: decimal;
 }
 
-.tiptap-editor .tiptap li[data-list-marker-hidden='true'] {
+.tiptap-editor .tiptap li[data-list-marker-hidden='true']:has(> p:empty) {
   list-style-type: none;
+}
+
+.tiptap-editor .tiptap li::marker {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .tiptap-editor .tiptap li p {

@@ -9,7 +9,12 @@ export const IMAGE_WIDTH_PRESETS: Record<'sm' | 'md' | 'lg', number> = {
   lg: 0.75,
 }
 
-export const TAB_INDENT = '\u3000\u3000'
+/**
+ * The editor uses a real tab for plain-text indentation. List items are
+ * handled structurally by ProseMirror; this value is only used outside lists
+ * (and when pasting a literal tab into a text block).
+ */
+export const TAB_INDENT = '\t'
 export const DEFAULT_FONT_SIZE_LABEL = '18px'
 export const FONT_SIZE_VALUES = ['12px', '14px', '16px', '20px', '24px', '28px'] as const
 

@@ -3,6 +3,7 @@ module mo-gallery-desktop
 go 1.25.0
 
 require (
+	github.com/HugoSmits86/nativewebp v1.3.0
 	github.com/evanoberholster/imagemeta v1.0.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gen2brain/avif v0.6.0

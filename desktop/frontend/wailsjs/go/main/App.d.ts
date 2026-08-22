@@ -119,6 +119,8 @@ export function DeleteZineProject(arg1:string):Promise<void>;
 
 export function DiscoverAgentMCPServerTools(arg1:string):Promise<agent_extensions.MCPServer>;
 
+export function DownloadCloudPhotoToLocalLibrary(arg1:string,arg2:string,arg3:string):Promise<Array<local_library.ImportResult>>;
+
 export function DownloadMessageImageToLocal(arg1:string):Promise<string>;
 
 export function DownloadUpdate():Promise<services.UpdateDownloadResult>;
@@ -269,6 +271,8 @@ export function InstallDesktopSystemPluginPackage(arg1:string):Promise<storage_p
 
 export function IsLinuxDoEnabled():Promise<boolean>;
 
+export function ListDesktopStorageObjects(arg1:string,arg2:string,arg3:string,arg4:number):Promise<storage_plugins.ListResult>;
+
 export function ListDesktopStoragePluginVersions(arg1:string):Promise<Array<storage_plugins.PluginVersionDescriptor>>;
 
 export function ListDesktopSystemPluginVersions(arg1:string):Promise<Array<storage_plugins.PluginVersionDescriptor>>;
@@ -290,6 +294,8 @@ export function ListLocalLibraryTrashedFolders():Promise<Array<local_library.Fol
 export function ListZineProjects():Promise<Array<string>>;
 
 export function Login(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<services.LoginResult>;
+
+export function MoveDesktopPluginPhotos(arg1:main.MoveDesktopPhotosInput):Promise<services.BatchResult>;
 
 export function MoveLocalAssets(arg1:Array<string>,arg2:string):Promise<Array<local_library.AssetMoveResult>>;
 

@@ -38,7 +38,7 @@ export function AuthBrandPanel({ language }: AuthBrandPanelProps) {
           className="h-10 w-10 rounded-xl bg-white object-contain p-0.5"
         />
         <div>
-          <p className="font-serif text-lg font-medium tracking-wide">MO Gallery</p>
+          <p className="font-serif text-lg font-medium tracking-wide">Emulsion</p>
           <p className="text-[10px] uppercase tracking-[0.3em] text-white/40">Desktop</p>
         </div>
       </div>
@@ -58,7 +58,7 @@ export function AuthBrandPanel({ language }: AuthBrandPanelProps) {
       </div>
 
       <p className="relative text-[10px] uppercase tracking-[0.3em] text-white/30">
-        MO Gallery Desktop
+        Emulsion Desktop
       </p>
     </aside>
   )

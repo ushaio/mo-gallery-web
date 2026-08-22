@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react'
-import { GetApiConfig, GetSettings } from '../../../wailsjs/go/main/App'
+import { GetApiConfig } from '../../../wailsjs/go/main/App'
+
+// 桌面端应用身份写死为 "Emulsion"，不再根据站点名称显示。
+const APP_TITLE = 'Emulsion'
 
 export function useDesktopSiteIdentity() {
-  const [siteTitle, setSiteTitle] = useState('MO Gallery')
+  const [siteTitle] = useState(APP_TITLE)
   const [siteUrl, setSiteUrl] = useState('')
 
   useEffect(() => {
     let cancelled = false
-    Promise.allSettled([GetSettings(), GetApiConfig()]).then(([settingsRes, apiRes]) => {
+    GetApiConfig().then((apiRes) => {
       if (cancelled) return
-      if (settingsRes.status === 'fulfilled' && settingsRes.value?.site_title) {
-        setSiteTitle(settingsRes.value.site_title)
-      }
-      const loginUrl = apiRes.status === 'fulfilled' ? apiRes.value?.login_url : ''
+      const loginUrl = apiRes?.login_url
       if (typeof loginUrl === 'string' && loginUrl) {
         setSiteUrl(loginUrl.replace(/\/+$/, ''))
       }

@@ -102,7 +102,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
   const currentLanguageLabel = languageOptions.find((o) => o.value === language)?.label ?? '中文'
   const collapseLabel = t(sidebarCollapsed ? 'admin.expand_sidebar' : 'admin.collapse_sidebar', language)
   const visibleNavGroups = isAuthenticated ? navGroups : [navGroups[1].slice(0, 1), navGroups[2].slice(1, 2)]
-  const displayedSiteTitle = isAuthenticated ? siteTitle : 'MO Gallery'
+  const displayedSiteTitle = isAuthenticated ? siteTitle : 'Emulsion'
 
   return (
     <aside

@@ -60,12 +60,13 @@ interface ToolbarSelectProps {
   value: string
   onChange: (value: string) => void
   onMouseDown?: (event: React.MouseEvent<HTMLSelectElement>) => void
+  onBlur?: (event: React.FocusEvent<HTMLSelectElement>) => void
   title: string
   options: ReadonlyArray<{ label: string; value: string }>
   className?: string
 }
 
-export function ToolbarSelect({ value, onChange, onMouseDown, title, options, className = '' }: ToolbarSelectProps) {
+export function ToolbarSelect({ value, onChange, onMouseDown, onBlur, title, options, className = '' }: ToolbarSelectProps) {
   const selectWidth = useMemo(() => {
     const longestLabelLength = options.reduce((max, option) => {
       return Math.max(max, option.label.length)
@@ -80,6 +81,7 @@ export function ToolbarSelect({ value, onChange, onMouseDown, title, options, cl
       title={title}
       aria-label={title}
       onMouseDown={onMouseDown}
+      onBlur={onBlur}
       onChange={(event) => onChange(event.target.value)}
       style={{ width: selectWidth }}
       className={`h-11 max-w-[7.5rem] appearance-none rounded-md border border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground focus:border-primary/30 focus:bg-background focus:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-8 sm:rounded-sm sm:px-1.5 ${className}`}

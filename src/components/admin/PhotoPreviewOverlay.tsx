@@ -26,12 +26,20 @@ export function PhotoPreviewOverlay({
   hasPrevious = false,
   hasNext = false,
 }: PhotoPreviewOverlayProps) {
-  const [showOriginal, setShowOriginal] = useState(false)
+  const [showOriginal, setShowOriginal] = useState(true)
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const dragStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null)
+
+  useEffect(() => {
+    setShowOriginal(true)
+    setLoading(true)
+    setFailed(false)
+    setZoom(1)
+    setOffset({ x: 0, y: 0 })
+  }, [photo.id])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -58,7 +66,7 @@ export function PhotoPreviewOverlay({
           <p className="truncate text-[10px] text-white/50">{meta.join(' · ') || photo.id}</p>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={() => { setShowOriginal((value) => !value); setLoading(true); setFailed(false) }} className="flex h-9 items-center gap-2 rounded-md px-3 text-xs hover:bg-white/10">
+          <button type="button" onClick={() => { setShowOriginal((value) => !value); setLoading(true); setFailed(false); setZoom(1); setOffset({ x: 0, y: 0 }) }} className="flex h-9 items-center gap-2 rounded-md px-3 text-xs hover:bg-white/10">
             {showOriginal ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             {showOriginal ? t('admin.preview_fit') : t('admin.view_original')}
           </button>
@@ -96,11 +104,14 @@ export function PhotoPreviewOverlay({
               event.currentTarget.setPointerCapture(event.pointerId)
               dragStartRef.current = { x: event.clientX, y: event.clientY, offsetX: offset.x, offsetY: offset.y }
             }}
-            className={`max-w-none select-none object-contain touch-none transition-opacity ${loading ? 'opacity-0' : 'opacity-100'}`}
+            className={`select-none object-contain touch-none transition-opacity ${loading ? 'opacity-0' : 'opacity-100'}`}
             style={{
-              width: showOriginal ? 'auto' : `${zoom * 100}%`,
-              maxHeight: showOriginal ? 'none' : `${zoom * 100}%`,
-              transform: `translate(${offset.x}px, ${offset.y}px)`,
+              width: 'auto',
+              height: '100%',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+              transformOrigin: 'center center',
               cursor: zoom > 1 || showOriginal ? 'grab' : 'default',
             }}
           />

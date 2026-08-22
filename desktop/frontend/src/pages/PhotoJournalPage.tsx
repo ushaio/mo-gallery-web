@@ -477,7 +477,7 @@ function PhotoJournalContent() {
       {/* 桌面端页头 */}
       <div className={chromeVisible ? 'block' : 'hidden'}>
         <PageHeader
-          title={t('admin.page_photo_journal')}
+          title={t('admin.logs')}
         />
       </div>
 

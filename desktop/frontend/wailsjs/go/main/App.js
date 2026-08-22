@@ -222,6 +222,10 @@ export function DiscoverAgentMCPServerTools(arg1) {
   return window['go']['main']['App']['DiscoverAgentMCPServerTools'](arg1);
 }
 
+export function DownloadCloudPhotoToLocalLibrary(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadCloudPhotoToLocalLibrary'](arg1, arg2, arg3);
+}
+
 export function DownloadMessageImageToLocal(arg1) {
   return window['go']['main']['App']['DownloadMessageImageToLocal'](arg1);
 }
@@ -522,6 +526,10 @@ export function IsLinuxDoEnabled() {
   return window['go']['main']['App']['IsLinuxDoEnabled']();
 }
 
+export function ListDesktopStorageObjects(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ListDesktopStorageObjects'](arg1, arg2, arg3, arg4);
+}
+
 export function ListDesktopStoragePluginVersions(arg1) {
   return window['go']['main']['App']['ListDesktopStoragePluginVersions'](arg1);
 }
@@ -564,6 +572,10 @@ export function ListZineProjects() {
 
 export function Login(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4);
+}
+
+export function MoveDesktopPluginPhotos(arg1) {
+  return window['go']['main']['App']['MoveDesktopPluginPhotos'](arg1);
 }
 
 export function MoveLocalAssets(arg1, arg2) {

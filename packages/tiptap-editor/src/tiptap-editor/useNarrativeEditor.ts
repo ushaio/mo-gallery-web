@@ -5,12 +5,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useEditor } from '@tiptap/react'
-import { Extension, mergeAttributes, Node, type JSONContent } from '@tiptap/core'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state'
-import type { EditorView } from '@tiptap/pm/view'
-import { liftListItem, sinkListItem } from '@tiptap/pm/schema-list'
-import { canJoin } from '@tiptap/pm/transform'
+import type { JSONContent } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
@@ -21,95 +16,27 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { ResizableImage } from '../tiptap-extensions/ResizableImage'
+import { ListMarkerFontSize } from '../tiptap-extensions/ListMarkerFontSize'
 import { PastedStyleMark } from '../tiptap-extensions/PastedStyleMark'
+import { ContinuePastedStyle } from '../tiptap-extensions/ContinuePastedStyle'
 import { PastedBlockStyle } from '../tiptap-extensions/PastedBlockStyle'
 import { StyledHorizontalRule } from '../tiptap-extensions/StyledHorizontalRule'
 import { MediaEmbed } from '../tiptap-extensions/MediaEmbed'
 import { StoryLinkCard } from '../tiptap-extensions/StoryLinkCard'
 import { ImageUploadPlaceholder } from '../tiptap-extensions/ImageUploadPlaceholder'
+import type { EditorView } from '@tiptap/pm/view'
 import type { NarrativeEditorRuntime } from '../runtime'
 import { parseMediaEmbedInfo } from '../lib/media-embed'
 import { buildStoryLinkCardAttrs, parseStoryLink } from '../lib/story-link-card'
 import { convertMarkdownToHtml, isMarkdownContent } from './markdown-converter'
-import { TAB_INDENT } from './editor-constants'
+import {
+  MarkerHiddenListItem,
+  MergeAdjacentLists,
+  createListEditorHandlers,
+} from './narrative-list'
 
-const MarkerHiddenListItem = Node.create({
-  name: 'listItem',
-
-  content: 'paragraph block*',
-
-  defining: true,
-
-  addAttributes() {
-    return {
-      markerHidden: {
-        default: false,
-        parseHTML: element => element.getAttribute('data-list-marker-hidden') === 'true',
-        renderHTML: attributes => (
-          attributes.markerHidden ? { 'data-list-marker-hidden': 'true' } : {}
-        ),
-      },
-    }
-  },
-
-  parseHTML() {
-    return [{ tag: 'li' }]
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ['li', mergeAttributes(HTMLAttributes), 0]
-  },
-
-  addKeyboardShortcuts() {
-    return {
-      Enter: () => this.editor.commands.splitListItem(this.name),
-      Tab: () => this.editor.commands.sinkListItem(this.name),
-      'Shift-Tab': () => this.editor.commands.liftListItem(this.name),
-    }
-  },
-})
-
-function isMergeableListPair(first: ProseMirrorNode, second: ProseMirrorNode) {
-  return (
-    (first.type.name === 'orderedList' || first.type.name === 'bulletList')
-    && first.sameMarkup(second)
-  )
-}
-
-const MergeAdjacentLists = Extension.create({
-  name: 'mergeAdjacentLists',
-
-  addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: new PluginKey('mergeAdjacentLists'),
-        appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some(transaction => transaction.docChanged)) return null
-
-          const boundaries: number[] = []
-          newState.doc.descendants((node, pos, parent, index) => {
-            if (!parent || index >= parent.childCount - 1) return
-
-            const nextNode = parent.child(index + 1)
-            if (isMergeableListPair(node, nextNode)) {
-              boundaries.push(pos + node.nodeSize)
-            }
-          })
-
-          if (boundaries.length === 0) return null
-
-          // Join from the end so earlier positions remain valid as nodes collapse.
-          const transaction = newState.tr
-          for (const boundary of boundaries.sort((left, right) => right - left)) {
-            if (canJoin(transaction.doc, boundary)) transaction.join(boundary)
-          }
-
-          return transaction.steps.length > 0 ? transaction : null
-        },
-      }),
-    ]
-  },
-})
+// 纯文本粘贴的图片直链（可选查询参数），识别后直接插入图片节点而非纯文本
+const IMAGE_URL_PATTERN = /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?\S*)?$/i
 
 function updateStoryLinkCardNode(
   view: EditorView,
@@ -212,6 +139,8 @@ export function useNarrativeEditor({
       }),
       MarkerHiddenListItem,
       MergeAdjacentLists,
+      ContinuePastedStyle,
+      ListMarkerFontSize,
       StyledHorizontalRule,
       Placeholder.configure({
         placeholder: placeholder || t('editor.placeholder'),
@@ -354,149 +283,22 @@ export function useNarrativeEditor({
           return true
         }
 
+        const isImageUrl = IMAGE_URL_PATTERN.test(plainText)
+        const imageType = view.state.schema.nodes.image
+
+        if (isImageUrl && imageType) {
+          event.preventDefault()
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(imageType.create({ src: plainText, alt: '' }))
+              .scrollIntoView()
+          )
+          return true
+        }
+
         return false
       },
-      handleKeyDown: (view, event) => {
-        if (isAiTaskLockedRef.current) return true
-
-        const { $from, empty } = view.state.selection
-        const listItemType = view.state.schema.nodes.listItem
-        let listItemDepth = -1
-
-        if (listItemType) {
-          for (let depth = $from.depth; depth > 0; depth -= 1) {
-            if ($from.node(depth).type === listItemType) {
-              listItemDepth = depth
-              break
-            }
-          }
-        }
-
-        if (event.key === 'Backspace' || event.key === 'Delete') {
-          const paragraph = $from.parent
-          const parent = $from.node($from.depth - 1)
-          const paragraphIndex = $from.index($from.depth - 1)
-          const previousNode = paragraphIndex > 0 ? parent.child(paragraphIndex - 1) : null
-          const nextNode = paragraphIndex + 1 < parent.childCount ? parent.child(paragraphIndex + 1) : null
-          const isEmptyParagraphBetweenLists = empty
-            && paragraph.type.name === 'paragraph'
-            && paragraph.content.size === 0
-            && paragraphIndex > 0
-            && paragraphIndex < parent.childCount - 1
-            && previousNode
-            && nextNode
-            && isMergeableListPair(previousNode, nextNode)
-
-          if (isEmptyParagraphBetweenLists) {
-            const paragraphStart = $from.before($from.depth)
-            const previousListStart = paragraphStart - previousNode.nodeSize
-            const transaction = view.state.tr.delete(
-              paragraphStart,
-              paragraphStart + paragraph.nodeSize,
-            )
-            const listBoundary = previousListStart + previousNode.nodeSize
-
-            if (canJoin(transaction.doc, listBoundary)) {
-              transaction.join(listBoundary)
-              event.preventDefault()
-              view.dispatch(transaction.scrollIntoView())
-              return true
-            }
-          }
-
-          if (event.key === 'Delete') return false
-
-          const listDepth = listItemDepth - 1
-          const parentListItemDepth = listItemDepth - 2
-          const isAtNestedListItemStart = empty
-            && $from.parent.isTextblock
-            && $from.parentOffset === 0
-            && listItemType
-            && listDepth > 0
-            && parentListItemDepth > 0
-            && $from.node(parentListItemDepth).type === listItemType
-
-          if (!isAtNestedListItemStart) return false
-
-          const listItemStart = $from.before(listItemDepth)
-          const currentListItem = $from.node(listItemDepth)
-
-          // An empty nested item is a structural placeholder. Hiding its marker
-          // leaves it at the nested level, so the following item can be promoted
-          // when the user continues deleting. Lift it immediately instead.
-          if ($from.parent.content.size === 0) {
-            let liftedTransaction: Transaction | undefined
-            const lifted = liftListItem(listItemType)(view.state, transaction => {
-              liftedTransaction = transaction
-            })
-
-            if (!lifted || !liftedTransaction) return false
-
-            event.preventDefault()
-            view.dispatch(liftedTransaction)
-            return true
-          }
-
-          if (currentListItem.attrs.markerHidden === true) {
-            let liftedTransaction: Transaction | undefined
-            const lifted = liftListItem(listItemType)(view.state, transaction => {
-              liftedTransaction = transaction
-            })
-
-            if (!lifted || !liftedTransaction) return false
-
-            const liftedFrom = liftedTransaction.selection.$from
-            for (let depth = liftedFrom.depth; depth > 0; depth -= 1) {
-              if (liftedFrom.node(depth).type !== listItemType) continue
-
-              const liftedListItemStart = liftedFrom.before(depth)
-              const liftedListItem = liftedTransaction.doc.nodeAt(liftedListItemStart)
-              if (liftedListItem) {
-                liftedTransaction.setNodeMarkup(liftedListItemStart, undefined, {
-                  ...liftedListItem.attrs,
-                  markerHidden: false,
-                })
-              }
-              break
-            }
-
-            event.preventDefault()
-            view.dispatch(liftedTransaction)
-            return true
-          }
-
-          const transaction = view.state.tr.setNodeMarkup(listItemStart, undefined, {
-            ...currentListItem.attrs,
-            markerHidden: true,
-          })
-
-          event.preventDefault()
-          view.dispatch(transaction)
-          return true
-        }
-
-        if (event.key !== 'Tab') {
-          return false
-        }
-
-        for (let depth = $from.depth; depth > 0; depth -= 1) {
-          const nodeName = $from.node(depth).type.name
-          if (nodeName === 'tableCell' || nodeName === 'tableHeader') {
-            return false
-          }
-        }
-
-        if (listItemType && listItemDepth > 0) {
-          event.preventDefault()
-          const command = event.shiftKey ? liftListItem(listItemType) : sinkListItem(listItemType)
-          command(view.state, view.dispatch)
-          return true
-        }
-
-        event.preventDefault()
-        view.dispatch(view.state.tr.insertText(TAB_INDENT))
-        return true
-      },
+      ...createListEditorHandlers({ isAiTaskLocked: () => isAiTaskLockedRef.current }),
     },
   })
 

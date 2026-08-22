@@ -40,7 +40,7 @@ function LocalLibraryFolderTree({ folders, value, onChange, disabled, rootLabel,
   </div></>
 }
 
-export function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved }: { imageUrl: string; t: (key: string) => string; onClose: () => void; onSaved: () => void }) {
+export function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved, onSave }: { imageUrl: string; t: (key: string) => string; onClose: () => void; onSaved: () => void; onSave?: (destination: string) => Promise<void> }) {
   const [folders, setFolders] = useState<FolderItem[]>([])
   const [destination, setDestination] = useState('')
   const [loading, setLoading] = useState(true)
@@ -55,9 +55,13 @@ export function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved }: { imag
     if (saving || loading || error) return
     setSaving(true); setError('')
     try {
-      const results = await SaveMessageImageToLocalLibrary(imageUrl, destination)
-      const failed = results.filter((result) => result.status === 'failed')
-      if (failed.length > 0) throw new Error(failed[0]?.error || t('admin.ai_save_to_library_failed'))
+      if (onSave) {
+        await onSave(destination)
+      } else {
+        const results = await SaveMessageImageToLocalLibrary(imageUrl, destination)
+        const failed = results.filter((result) => result.status === 'failed')
+        if (failed.length > 0) throw new Error(failed[0]?.error || t('admin.ai_save_to_library_failed'))
+      }
       toast.success(t('admin.ai_saved_to_library')); onSaved(); onClose()
     } catch (cause) { setError(cause instanceof Error ? cause.message : t('admin.ai_save_to_library_failed')) } finally { setSaving(false) }
   }

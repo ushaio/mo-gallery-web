@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	nativewebp "github.com/HugoSmits86/nativewebp"
 	avifcodec "github.com/gen2brain/avif"
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/tiff"
@@ -50,6 +51,67 @@ func CompressToAVIF(sourcePath, destinationPath string, orientation int, maxByte
 			encoded, encodeErr := encodeAVIF(current, quality)
 			if encodeErr != nil {
 				return fmt.Errorf("AVIF 编码失败: %w", encodeErr)
+			}
+			if len(smallest) == 0 || len(encoded) < len(smallest) {
+				smallest = encoded
+			}
+			if int64(len(encoded)) <= maxBytes {
+				return os.WriteFile(destinationPath, encoded, 0o600)
+			}
+		}
+
+		currentBounds := current.Bounds()
+		longEdge := max(currentBounds.Dx(), currentBounds.Dy())
+		if longEdge <= minCompressionDimension {
+			break
+		}
+		ratio := math.Sqrt(float64(maxBytes)/float64(len(smallest))) * 0.92
+		ratio = math.Max(0.55, math.Min(0.8, ratio))
+		nextLongEdge := max(minCompressionDimension, int(float64(longEdge)*ratio))
+		if nextLongEdge >= longEdge {
+			break
+		}
+		current = resizeForCompression(current, nextLongEdge)
+	}
+
+	return fmt.Errorf(
+		"无法将图片压缩到 %.1f MB（最小结果 %.1f MB）",
+		float64(maxBytes)/(1024*1024),
+		float64(len(smallest))/(1024*1024),
+	)
+}
+
+// CompressToWebP decodes a desktop upload, applies its EXIF orientation,
+// bounds its dimensions, and iteratively encodes it below maxBytes. The
+// encoder is pure Go and does not depend on a storage plugin or system codec.
+func CompressToWebP(sourcePath, destinationPath string, orientation int, maxBytes int64) error {
+	if maxBytes <= 0 {
+		return fmt.Errorf("压缩目标大小必须大于 0")
+	}
+	source, err := decodeForCompression(sourcePath)
+	if err != nil {
+		return fmt.Errorf("无法解码图片: %w", err)
+	}
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 || int64(width)*int64(height) > maxCompressionPixels {
+		return fmt.Errorf("图片尺寸无效或像素数量超过限制: %dx%d", width, height)
+	}
+
+	current := orientForCompression(source, orientation)
+	current = resizeForCompression(current, maxCompressionDimension)
+	levels := []nativewebp.CompressionLevel{
+		nativewebp.BestCompression,
+		nativewebp.DefaultCompression,
+		nativewebp.BestSpeed,
+	}
+	var smallest []byte
+
+	for scaleRound := 0; scaleRound < 5; scaleRound++ {
+		for _, level := range levels {
+			encoded, encodeErr := encodeWebP(current, level)
+			if encodeErr != nil {
+				return fmt.Errorf("WebP 编码失败: %w", encodeErr)
 			}
 			if len(smallest) == 0 || len(encoded) < len(smallest) {
 				smallest = encoded
@@ -188,6 +250,14 @@ func encodeAVIF(source stdimage.Image, quality int) ([]byte, error) {
 		QualityAlpha:      quality,
 		Speed:             8,
 		ChromaSubsampling: stdimage.YCbCrSubsampleRatio420,
+	})
+	return output.Bytes(), err
+}
+
+func encodeWebP(source stdimage.Image, level nativewebp.CompressionLevel) ([]byte, error) {
+	var output bytes.Buffer
+	err := nativewebp.Encode(&output, source, &nativewebp.Options{
+		CompressionLevel: level,
 	})
 	return output.Bytes(), err
 }

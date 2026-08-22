@@ -66,7 +66,7 @@ func main() {
 
 	// 启动 Wails 应用
 		err = wails.Run(&options.App{
-			Title:     "MO Gallery Desktop",
+			Title:     "Emulsion",
 			Width:     1440,
 		Height:    900,
 		MinWidth:  1024,

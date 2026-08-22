@@ -104,6 +104,37 @@ type McpToolDiscoveryInFlight = {
 const mcpToolCache = new Map<string, McpToolCacheEntry>()
 const mcpToolDiscoveryInFlight = new Map<string, McpToolDiscoveryInFlight>()
 
+// 上游 prefix cache 要求请求前缀逐轮稳定：历史必须全量携带而不是滑动窗口，
+// 否则窗口前沿每轮前移都会改变前缀，连续对话永远缓存未命中。
+// 仅当超过上限时才从头部裁剪（该轮缓存重建一次，之后继续稳定）。
+const AI_HISTORY_PAGE_SIZE = 100
+const AI_HISTORY_MAX_MESSAGES = 200
+const AI_HISTORY_MAX_PAGES = 8
+
+async function fetchConversationHistory(conversationId: string): Promise<{
+  systemPrompt: string
+  messages: EditorAiMessageWireDto[]
+}> {
+  const messages: EditorAiMessageWireDto[] = []
+  let systemPrompt = ''
+  let beforeCreatedAt = ''
+  let beforeId = ''
+  for (let page = 0; page < AI_HISTORY_MAX_PAGES; page += 1) {
+    const result = await GetEditorAiConversationMessagesPage(
+      conversationId, beforeCreatedAt, beforeId, AI_HISTORY_PAGE_SIZE,
+    )
+    if (!result) break
+    if (page === 0) systemPrompt = result.systemPrompt || ''
+    const pageMessages = result.messages ?? []
+    messages.push(...pageMessages)
+    if (!result.hasMoreMessages || pageMessages.length === 0) break
+    const oldest = pageMessages[0]
+    beforeCreatedAt = oldest.createdAt
+    beforeId = oldest.id
+  }
+  return { systemPrompt, messages }
+}
+
 async function discoverMcpToolsCached(server: AgentMcpServer): Promise<AgentMcpServer> {
   const cached = mcpToolCache.get(server.id)
   if (cached?.fingerprint === server.capabilityFingerprint && cached.expiresAt > Date.now()) {
@@ -459,12 +490,13 @@ async function streamStoryAiGenerate(
   const action: EditorAiAction = input.action ?? 'custom'
   const [endpoint, model] = await Promise.all([getLocalEndpoint(), resolveModelId(input.model)])
 
-  // 历史消息与会话级系统提示（与 web hono 路由行为一致：取最近 8 条已完成消息）
-  const conversation = await GetEditorAiConversationMessagesPage(input.conversationId, '', '', 8)
-  const historyMessages: EditorAiHistoryMessage[] = (conversation?.messages ?? [])
-    .filter((m: { role: string; status: string; content?: string }) =>
+  // 历史消息与会话级系统提示：取全量已完成消息（分页拉齐）而非滑动窗口，
+  // 保证请求前缀（system + 历史）逐轮稳定以命中上游 prefix cache
+  const conversation = await fetchConversationHistory(input.conversationId)
+  const historyMessages: EditorAiHistoryMessage[] = conversation.messages
+    .filter((m) =>
       (m.role === 'user' || m.role === 'assistant') && m.status === 'completed' && !!m.content?.trim())
-    .slice(-8)
+    .slice(-AI_HISTORY_MAX_MESSAGES)
     .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }))
 
   // 持久化用户消息 + assistant 流式占位（内容选择与 web 端一致）
@@ -545,14 +577,18 @@ async function streamStoryAiGenerate(
       currentParagraph: input.currentParagraph,
       contextBefore: input.contextBefore,
       contextAfter: input.contextAfter,
-      systemPrompt: conversation?.systemPrompt || undefined,
+      systemPrompt: conversation.systemPrompt || undefined,
       images: input.images,
       historyMessages,
     })
     if (agentExtensionSystemContext) {
-      messages[0] = {
-        ...messages[0],
-        text: [messages[0].text, agentExtensionSystemContext].join('\n\n'),
+      // 追加到当前用户消息而不是首条 system 提示：技能匹配随每轮输入变化，
+      // 改动 system 会让请求前缀每轮不同，prefix cache 永远无法命中
+      // （AI SDK 会把所有 system 消息合并到最前，后置 system 也绕不开）。
+      const lastMessage = messages[messages.length - 1]
+      messages[messages.length - 1] = {
+        ...lastMessage,
+        text: [agentExtensionSystemContext, lastMessage.text].join('\n\n'),
       }
     }
 

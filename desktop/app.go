@@ -337,6 +337,10 @@ func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 前端刷新后会乐观渲染页面并与本调用并行发起业务请求。先挂起代理
+	// 请求，token 写入后自动放行，避免首屏请求因缺少认证头而失败。
+	a.Proxy.BeginAuthRestore()
+	defer a.Proxy.EndAuthRestore()
 	a.Proxy.SetServer(endpoint.BaseURL)
 	a.Proxy.SetToken(token)
 	a.Auth.SetProxy(a.Proxy)
@@ -349,7 +353,9 @@ func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
 	}
 
 	a.setAuthenticatedUser(user.ID)
-	a.syncAllStorageSourcesToCloud()
+	// 存储源镜像是 best-effort 同步，不能阻塞登录恢复——否则刷新时每个
+	// 源的网络往返都会叠加进启动 Loading 时长。
+	go a.syncAllStorageSourcesToCloud()
 	go a.syncLocalLibraryCloudInBackground()
 	if a.Upload != nil {
 		go a.Upload.RetryPendingRegistrations(context.Background())
@@ -1441,6 +1447,209 @@ func (a *App) SaveMessageImageToLocalLibrary(imageURL string, destination string
 		return nil, err
 	}
 	return a.LocalLibrary.ImportFiles([]string{tempPath}, destination)
+}
+
+// DownloadCloudPhotoToLocalLibrary downloads the original image of a cloud photo
+// into a local library. If libraryPath differs from the currently open session,
+// the target library is opened first. The imported asset is then linked to the
+// cloud photo and marked as uploaded. Progress is emitted via "download:progress"
+// events so the renderer can show a download queue popup.
+func (a *App) DownloadCloudPhotoToLocalLibrary(photoID string, destination string, libraryPath string) ([]local_library.ImportResult, error) {
+	if a.LocalLibrary == nil {
+		return nil, errors.New("本地资源库未初始化")
+	}
+	if a.Photo == nil || !a.Proxy.IsReady() {
+		return nil, errors.New("云端服务尚未就绪")
+	}
+	taskID := photoID + "-" + time.Now().Format("20060102150405.000000000")
+	a.emitDownloadProgress(taskID, "fetching", 0, "", photoID, cloudPhotoTitle(nil), 0)
+	photo, err := a.Photo.GetByID(photoID)
+	if err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("获取云端照片失败: %w", err).Error(), photoID, "", 0)
+		return nil, fmt.Errorf("获取云端照片失败: %w", err)
+	}
+	if photo.URL == "" {
+		a.emitDownloadProgress(taskID, "failed", 0, "云端照片没有可下载的原图地址", photoID, cloudPhotoTitle(photo), 0)
+		return nil, errors.New("云端照片没有可下载的原图地址")
+	}
+	// Resolve relative URL to absolute, using the proxy's base URL.
+	downloadURL := services.ResolveUploadURL(a.Proxy.BaseURL(), photo.URL)
+	// Derive the original file name from the photo's path or URL.
+	originalFileName := cloudPhotoFileName(photo)
+	fileSize := int64(0)
+	if photo.Size != nil {
+		fileSize = *photo.Size
+	}
+	// Download the original to a temp file.
+	a.emitDownloadProgress(taskID, "downloading", 0, "", photoID, cloudPhotoTitle(photo), fileSize)
+	extension := suggestedAiImageExtension(downloadURL)
+	tempFile, err := os.CreateTemp("", "mo-gallery-cloud-*"+extension)
+	if err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, err.Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return nil, err
+	}
+	tempPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempPath)
+		a.emitDownloadProgress(taskID, "failed", 0, err.Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return nil, err
+	}
+	defer os.Remove(tempPath)
+	if err := downloadFileWithAuth(a.ctx, downloadURL, tempPath, a.Proxy, taskID, func(read int64, total int64) {
+		if total > 0 {
+			a.emitDownloadProgress(taskID, "downloading", int(float64(read)/float64(total)*80), "", photoID, cloudPhotoTitle(photo), total)
+		}
+	}); err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("下载原图失败: %w", err).Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return nil, fmt.Errorf("下载原图失败: %w", err)
+	}
+	a.emitDownloadProgress(taskID, "importing", 85, "", photoID, cloudPhotoTitle(photo), fileSize)
+	// Open the target library if it is not the current session.
+	if libraryPath != "" {
+		if snapshot, snapshotErr := a.LocalLibrary.Snapshot(); snapshotErr != nil || !strings.EqualFold(snapshot.RootPath, libraryPath) {
+			if _, openErr := a.LocalLibrary.Open(libraryPath); openErr != nil {
+				a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("打开目标资源库失败: %w", openErr).Error(), photoID, cloudPhotoTitle(photo), fileSize)
+				return nil, fmt.Errorf("打开目标资源库失败: %w", openErr)
+			}
+		}
+	}
+	result, err := a.LocalLibrary.ImportDownloadedFile(tempPath, destination, originalFileName)
+	results := []local_library.ImportResult{result}
+	if err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, err.Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return results, err
+	}
+	// Link the imported asset to the cloud photo and update cloud projection.
+	if result.AssetID != "" && result.Status != "failed" {
+		_ = a.LocalLibrary.SetAssetCloudLink(local_library.AssetID(result.AssetID), photoID)
+		if photo.Path != nil {
+			changes := []local_library.CloudPhotoChange{{
+				ID:              photoID,
+				Path:            photo.Path,
+				ThumbPath:       photo.ThumbPath,
+				StorageSourceID: photo.StorageSourceID,
+				StoragePluginID: photo.StoragePluginID,
+				StorageURLType:  photo.StorageURLType,
+				UpdatedAt:       photo.UpdatedAt,
+			}}
+			_ = a.LocalLibrary.ApplyCloudPhotoChanges(changes, "", true)
+		}
+	}
+	a.emitDownloadProgress(taskID, "completed", 100, "", photoID, cloudPhotoTitle(photo), fileSize)
+	return results, nil
+}
+
+// DownloadProgress reports the current download phase to the renderer so the
+// download queue popup can show real-time progress.
+type DownloadProgress struct {
+	TaskID   string `json:"taskId"`
+	Phase    string `json:"phase"` // "fetching" | "downloading" | "importing" | "completed" | "failed"
+	Progress int    `json:"progress"`
+	Error    string `json:"error,omitempty"`
+	PhotoID  string `json:"photoId"`
+	FileName string `json:"fileName"`
+	FileSize int64  `json:"fileSize"`
+}
+
+func (a *App) emitDownloadProgress(taskID, phase string, progress int, errMsg, photoID, fileName string, fileSize int64) {
+	if a.ctx == nil || strings.TrimSpace(taskID) == "" {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
+		TaskID:   taskID,
+		Phase:    phase,
+		Progress: progress,
+		Error:    errMsg,
+		PhotoID:  photoID,
+		FileName: fileName,
+		FileSize: fileSize,
+	})
+}
+
+func cloudPhotoTitle(photo *services.PhotoDTO) string {
+	if photo == nil {
+		return ""
+	}
+	if photo.Title != "" {
+		return photo.Title
+	}
+	return cloudPhotoFileName(photo)
+}
+
+// cloudPhotoFileName derives the original file name from the photo's storage
+// path (preferred) or URL. Falls back to the photo title + extension.
+func cloudPhotoFileName(photo *services.PhotoDTO) string {
+	if photo.Path != nil {
+		if name := filepath.Base(*photo.Path); name != "" && name != "." && name != "/" {
+			return name
+		}
+	}
+	urlPath := strings.SplitN(photo.URL, "?", 2)[0]
+	urlPath = strings.SplitN(urlPath, "#", 2)[0]
+	if name := filepath.Base(urlPath); name != "" && name != "." && name != "/" {
+		if filepath.Ext(name) != "" {
+			return name
+		}
+	}
+	if photo.Title != "" {
+		ext := suggestedAiImageExtension(photo.URL)
+		return photo.Title + ext
+	}
+	return "photo" + suggestedAiImageExtension(photo.URL)
+}
+
+// downloadFileWithAuth downloads a file from the given URL. If the URL is on the
+// proxy's base server, the auth token is attached. The onProgress callback is
+// called with bytes read and total bytes (if known) as the download proceeds.
+func downloadFileWithAuth(ctx context.Context, imageURL string, filePath string, proxy *services.ProxyClient, taskID string, onProgress func(read int64, total int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return err
+	}
+	baseURL := proxy.BaseURL()
+	if baseURL != "" && strings.HasPrefix(imageURL, baseURL) {
+		if token := proxy.Token(); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	total := resp.ContentLength
+	out, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	buf := make([]byte, 32*1024)
+	var read int64
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			read += int64(n)
+			if onProgress != nil {
+				onProgress(read, total)
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			return readErr
+		}
+	}
+	if total > 0 && read > 100*1024*1024 {
+		return errors.New("原图超过 100MB 限制")
+	}
+	return nil
 }
 
 // ─── Zine ─────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { useDataRevision } from '@/hooks/useDataRevision'
-import { usePreferences } from '@/store/preferences'
+import { usePreferences, useUploadSettings } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { loadPersistentResource } from '@/lib/persistent-cache'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
@@ -119,15 +119,35 @@ export function UploadPage() {
   const relatedDataRevision = useDataRevision('albums', 'stories', 'film-rolls', 'storage-sources')
   const { tasks, addTasks } = useUploadQueue()
   const [items, setItems] = useState<UploadItem[]>(() => uploadPageDraftState.items)
-  const [uploadType, setUploadType] = useState<UploadType>(() => uploadPageDraftState.uploadType)
-  const [settings, setSettings] = useState<UploadSettings>(() => uploadPageDraftState.settings)
+  // 上传参数从持久化 store 恢复（标题属于单次内容不恢复），会话内仍由 draft state 兜底
+  const [uploadType, setUploadType] = useState<UploadType>(() => useUploadSettings.getState().uploadType)
+  const [settings, setSettings] = useState<UploadSettings>(() => {
+    const stored = useUploadSettings.getState()
+    return {
+      ...DEFAULT_UPLOAD_SETTINGS,
+      title: '',
+      categories: [...stored.categories],
+      albumIds: [...stored.albumIds],
+      storyId: stored.storyId,
+      filmRollId: stored.filmRollId,
+      storageSourceId: stored.storageSourceId,
+      storageRuntime: 'desktop-plugin',
+      storagePluginId: '',
+      storagePath: stored.storagePath,
+      compressEnabled: stored.compressEnabled,
+      compressionFormat: stored.compressionFormat,
+      maxSizeMB: stored.maxSizeMB,
+      showFlag: stored.showFlag,
+      stripGPS: stored.stripGPS,
+    }
+  })
   const [preparing, setPreparing] = useState(false)
   const [preparingLabel, setPreparingLabel] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(uploadPageDraftState.selectedIds))
   const [categoryInput, setCategoryInput] = useState(() => uploadPageDraftState.categoryInput)
   const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null)
-  const [useCustomPrefix, setUseCustomPrefix] = useState(() => uploadPageDraftState.useCustomPrefix)
+  const [useCustomPrefix, setUseCustomPrefix] = useState(() => useUploadSettings.getState().useCustomPrefix)
   const [showPrefixDropdown, setShowPrefixDropdown] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const clipboardPasteInFlightRef = useRef(false)
@@ -141,6 +161,22 @@ export function UploadPage() {
       categoryInput,
       useCustomPrefix,
     }
+    // 持久化上传参数（标题属于单次内容，不持久化）
+    useUploadSettings.getState().setUploadSettings({
+      uploadType,
+      categories: settings.categories,
+      albumIds: settings.albumIds,
+      storyId: settings.storyId,
+      filmRollId: settings.filmRollId,
+      storageSourceId: settings.storageSourceId,
+      storagePath: settings.storagePath,
+      compressEnabled: settings.compressEnabled,
+      compressionFormat: settings.compressionFormat,
+      maxSizeMB: settings.maxSizeMB,
+      showFlag: settings.showFlag,
+      stripGPS: settings.stripGPS,
+      useCustomPrefix,
+    })
   }, [items, uploadType, settings, selectedIds, categoryInput, useCustomPrefix])
 
   // Wails 原生文件拖放（可获取完整路径）
@@ -207,13 +243,18 @@ export function UploadPage() {
         const r = await GetStorageSources()
         const sources = r || []
         setStorageSources(sources)
-        // 自动选中第一个存储源
-        if (sources.length > 0) setSettings(s => s.storageSourceId ? s : ({
-          ...s,
-          storageSourceId: sources[0].id,
-            storageRuntime: 'desktop-plugin',
-          storagePluginId: sources[0].pluginId || '',
-        }))
+        // 恢复的存储源仍存在时保留；否则自动选中第一个
+        if (sources.length > 0) {
+          setSettings(s => {
+            if (s.storageSourceId && sources.some(source => source.id === s.storageSourceId)) return s
+            return {
+              ...s,
+              storageSourceId: sources[0].id,
+              storageRuntime: 'desktop-plugin',
+              storagePluginId: sources[0].pluginId || '',
+            }
+          })
+        }
       } catch {
         // 存储源加载失败会导致上传按钮一直不可用，必须显式提示
         toast.error('存储源加载失败，无法上传。请检查服务器连接后重新进入本页')
@@ -653,21 +694,25 @@ export function UploadPage() {
 
                 {/* 压缩 */}
                 <div className="pt-3 border-t space-y-3" style={{ borderColor: 'var(--border)' }}>
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input type="checkbox" checked={settings.compressEnabled}
-                      onChange={e => setSettings(s => ({ ...s, compressEnabled: e.target.checked }))}
-                      className="rounded" />
-                    <span className="text-sm">压缩格式</span>
-                  </label>
-                  {settings.compressEnabled && (
-                    <div className="pl-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="flex shrink-0 cursor-pointer items-center gap-2.5">
+                      <input type="checkbox" checked={settings.compressEnabled}
+                        onChange={e => setSettings(s => ({ ...s, compressEnabled: e.target.checked }))}
+                        className="rounded" />
+                      <span className="text-sm">压缩格式</span>
+                    </label>
+                    {settings.compressEnabled && (
                       <SelectDropdown
                         value={settings.compressionFormat}
                         options={[{ value: 'avif', label: 'AVIF' }, { value: 'webp', label: 'WebP' }]}
                         onChange={value => setSettings(s => ({ ...s, compressionFormat: value as 'webp' | 'avif' }))}
                         ariaLabel="压缩格式"
-                        className="mb-3"
+                        className="w-24"
                       />
+                    )}
+                  </div>
+                  {settings.compressEnabled && (
+                    <div className="pl-6">
                       <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                         目标大小: {settings.maxSizeMB > 0 ? `${settings.maxSizeMB.toFixed(1)} MB` : '不限'}
                       </label>

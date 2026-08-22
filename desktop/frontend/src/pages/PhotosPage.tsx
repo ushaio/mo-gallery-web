@@ -49,8 +49,18 @@ import {
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/ContextMenu";
+import {
+  localLibraryApi,
+  parseLocalLibraryError,
+} from "@/features/local-library/api";
+import type { RecentLibrary } from "@/features/local-library/types";
+import { LocalLibrarySaveDialog } from "@/components/ai/image/LibrarySaveDialog";
+import { useDownloadQueue } from "@/contexts/DownloadQueueContext";
 import {
   ArrowDown,
   ArrowUp,
@@ -62,6 +72,7 @@ import {
   Trash2,
   Loader2,
   Check,
+  Download,
   FolderInput,
   Maximize2,
   RefreshCw,
@@ -424,6 +435,7 @@ interface PhotoCardActions {
   onToggleFeatured: (id: string) => void;
   onToggleShow: (id: string) => void;
   onRequestDelete: (photo: Photo) => void;
+  onDownloadToLocal: (photo: Photo, library: RecentLibrary) => void;
 }
 
 interface PhotoCardProps extends PhotoCardActions {
@@ -433,6 +445,69 @@ interface PhotoCardProps extends PhotoCardActions {
   isDeleting: boolean;
   language: "zh" | "en";
   viewMode: "crop" | "fit" | "masonry";
+}
+
+function DownloadToLocalSub({
+  language,
+  onSelectLibrary,
+}: {
+  language: "zh" | "en";
+  onSelectLibrary: (library: RecentLibrary) => void;
+}) {
+  const [libraries, setLibraries] = useState<RecentLibrary[]>([]);
+  const [librariesLoading, setLibrariesLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const loadLibraries = useCallback(async () => {
+    if (librariesLoading || loaded) return;
+    setLibrariesLoading(true);
+    try {
+      const state = await localLibraryApi.entryState();
+      setLibraries(state.recent);
+      setLoaded(true);
+    } catch {
+      // ignore — empty submenu shown
+    } finally {
+      setLibrariesLoading(false);
+    }
+  }, [librariesLoading, loaded]);
+
+  return (
+    <ContextMenuSub onOpenChange={(open) => { if (open) void loadLibraries(); }}>
+      <ContextMenuSubTrigger>
+        <Download size={14} />
+        {language === "zh" ? "下载至" : "Download to"}
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent>
+        {librariesLoading ? (
+          <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+            <Loader2 size={13} className="animate-spin" />
+            {t("admin.loading", language)}
+          </div>
+        ) : libraries.length === 0 ? (
+          <div className="px-2.5 py-2 text-xs text-muted-foreground">
+            {t("admin.ai_no_local_libraries", language)}
+          </div>
+        ) : (
+          libraries.map((library) => (
+            <ContextMenuItem
+              key={library.path}
+              disabled={!library.available}
+              onSelect={() => onSelectLibrary(library)}
+              className="flex flex-col items-start"
+            >
+              <span className="truncate">{library.name}</span>
+              <span className="truncate text-[10px] text-muted-foreground">
+                {library.available
+                  ? library.path
+                  : t("admin.ai_library_unavailable", language)}
+              </span>
+            </ContextMenuItem>
+          ))
+        )}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  );
 }
 
 function PhotoContextTarget({
@@ -447,6 +522,7 @@ function PhotoContextTarget({
   onToggleFeatured,
   onToggleShow,
   onRequestDelete,
+  onDownloadToLocal,
 }: Omit<PhotoCardProps, "onCardClick" | "viewMode" | "isFocused"> & {
   children: React.ReactElement;
 }) {
@@ -502,6 +578,11 @@ function PhotoContextTarget({
           )}
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <DownloadToLocalSub
+          language={language}
+          onSelectLibrary={(library) => onDownloadToLocal(photo, library)}
+        />
+        <ContextMenuSeparator />
         <ContextMenuItem
           disabled={isDeleting}
           variant="destructive"
@@ -531,6 +612,7 @@ const PhotoGridCard = memo(function PhotoGridCard({
   onToggleFeatured,
   onToggleShow,
   onRequestDelete,
+  onDownloadToLocal,
 }: PhotoCardProps) {
   const masonry = viewMode === "masonry";
 
@@ -546,6 +628,7 @@ const PhotoGridCard = memo(function PhotoGridCard({
       onToggleFeatured={onToggleFeatured}
       onToggleShow={onToggleShow}
       onRequestDelete={onRequestDelete}
+      onDownloadToLocal={onDownloadToLocal}
     >
       <div
         tabIndex={0}
@@ -785,6 +868,10 @@ export function PhotosPage({
   // 搜索输入本地回显，300ms 防抖后才写入筛选（避免每键一次全量请求）
   const [searchInput, setSearchInput] = useState(filters.search);
   const [photoGridWidth, setPhotoGridWidth] = useState(900);
+  // 下载至本地资源库：选择目标库后打开保存位置对话框，选择后关闭弹窗并在下载队列中显示进度
+  const [downloadTargetPhoto, setDownloadTargetPhoto] = useState<Photo | null>(null);
+  const [downloadLibrary, setDownloadLibrary] = useState<RecentLibrary | null>(null);
+  const { startDownload } = useDownloadQueue();
 
   const pageRef = useRef(cacheHitRef.current ? photosPageCache!.page : 1);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -802,6 +889,47 @@ export function PhotosPage({
   // 渲染期同步最新状态，供卸载写缓存和稳定回调（滚动/键盘）读取
   const latestRef = useRef({ photos, total, hasMore, filterKey });
   latestRef.current = { photos, total, hasMore, filterKey };
+
+  // 加载存储源，识别 R2 源（桌面插件照片的「移动到」仅对 R2 可用）
+  useEffect(() => {
+    let active = true;
+    void GetDesktopStorageSources()
+      .then((result) => {
+        if (active) setStorageSources(result || []);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const r2SourceIds = useMemo(
+    () =>
+      new Set(
+        storageSources
+          .filter((source) => {
+            const endpoint = (source.config?.endpoint || "").toLowerCase();
+            return (
+              endpoint.includes("r2.cloudflarestorage.com") ||
+              endpoint.includes(".r2.cloudflare")
+            );
+          })
+          .map((source) => source.id),
+      ),
+    [storageSources],
+  );
+
+  const moveablePhotos = useMemo(
+    () =>
+      photos.filter(
+        (p) =>
+          selected.has(p.id) &&
+          p.storageRuntime === "desktop-plugin" &&
+          Boolean(p.storageSourceId) &&
+          r2SourceIds.has(p.storageSourceId as string),
+      ),
+    [photos, selected, r2SourceIds],
+  );
 
   const masonryColumnCount = Math.max(
     1,
@@ -1436,6 +1564,44 @@ export function PhotosPage({
     deleteTarget,
   ]);
 
+  const handleDownloadToLocal = useCallback(
+    async (photo: Photo, library: RecentLibrary) => {
+      if (!library.available) {
+        toast.error(t("admin.ai_library_unavailable", language));
+        return;
+      }
+      try {
+        await localLibraryApi.open(library.path);
+      } catch (cause) {
+        toast.error(parseLocalLibraryError(cause).message);
+        return;
+      }
+      setDownloadTargetPhoto(photo);
+      setDownloadLibrary(library);
+    },
+    [language],
+  );
+
+  const confirmDownloadToLocal = useCallback(
+    (destination: string) => {
+      const photo = downloadTargetPhoto;
+      const library = downloadLibrary;
+      if (!photo || !library) return;
+      // Close the save dialog immediately — the download runs in the background
+      // and progress is shown in the download queue popup.
+      setDownloadTargetPhoto(null);
+      setDownloadLibrary(null);
+      startDownload(
+        photo.id,
+        destination,
+        library.path,
+        photo.title || photo.id,
+        photo.size || 0,
+      );
+    },
+    [downloadLibrary, downloadTargetPhoto, startDownload],
+  );
+
   const renderPhotoCard = (photo: Photo) => (
     <PhotoGridCard
       key={photo.id}
@@ -1454,6 +1620,7 @@ export function PhotosPage({
       onToggleFeatured={toggleFeatured}
       onToggleShow={toggleShowFlag}
       onRequestDelete={requestDeletePhoto}
+      onDownloadToLocal={handleDownloadToLocal}
     />
   );
 
@@ -1707,6 +1874,14 @@ export function PhotosPage({
                     busy={batchUpdating}
                     onClick={() => handleBatchShowFlag(false)}
                   />
+                  {moveablePhotos.length > 0 && (
+                    <LibrarySelectionButton
+                      icon={FolderInput}
+                      label={language === "zh" ? "移动到" : "Move to"}
+                      title={language === "zh" ? "移动到 (R2 存储源)" : "Move to (R2 source)"}
+                      onClick={() => setMoveOpen(true)}
+                    />
+                  )}
                   <LibrarySelectionButton
                     icon={Trash2}
                     label={t("admin.delete_selected", language)}
@@ -1791,6 +1966,29 @@ export function PhotosPage({
         t={(key) => t(key, language)}
       />
 
+      {/* 移动到 R2 目录（桌面存储插件照片） */}
+      {moveOpen && (
+        <StorageMoveDialog
+          photos={moveablePhotos}
+          sources={storageSources}
+          onClose={() => setMoveOpen(false)}
+          onMoved={() => {
+            setMoveOpen(false);
+            setSelected(new Set());
+            pageRef.current = 1;
+            void fetchPhotos(1, false);
+            invalidateAfterLocalMutation([
+              "overview",
+              "equipment",
+              "photos",
+              "albums",
+              "film-rolls",
+              "stories",
+            ]);
+          }}
+        />
+      )}
+
       <SimpleDeleteDialog
         isOpen={!!deleteTarget}
         message={t("admin.photos_delete_confirm", language)}
@@ -1798,6 +1996,25 @@ export function PhotosPage({
         onCancel={() => setDeleteTarget(null)}
         t={(key) => t(key, language)}
       />
+
+      {/* 下载至本地资源库：选择保存位置 */}
+      {downloadTargetPhoto && downloadLibrary && (
+        <LocalLibrarySaveDialog
+          imageUrl={resolveAssetUrl(downloadTargetPhoto.url)}
+          t={(key) => t(key, language)}
+          onClose={() => {
+            setDownloadTargetPhoto(null);
+            setDownloadLibrary(null);
+          }}
+          onSaved={() => {
+            setDownloadTargetPhoto(null);
+            setDownloadLibrary(null);
+          }}
+          onSave={async (destination) => {
+            confirmDownloadToLocal(destination);
+          }}
+        />
+      )}
 
       {/* 大图预览（双击卡片/点击侧栏缩略图打开） */}
       {previewPhoto && (
