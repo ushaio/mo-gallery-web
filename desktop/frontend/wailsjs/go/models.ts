@@ -3196,6 +3196,7 @@ export namespace services {
 	    fileSize: number;
 	    hash: string;
 	    exif?: image.ExifData;
+	    isLivePhoto: boolean;
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -3210,6 +3211,7 @@ export namespace services {
 	        this.fileSize = source["fileSize"];
 	        this.hash = source["hash"];
 	        this.exif = this.convertValues(source["exif"], image.ExifData);
+	        this.isLivePhoto = source["isLivePhoto"];
 	        this.error = source["error"];
 	    }
 	

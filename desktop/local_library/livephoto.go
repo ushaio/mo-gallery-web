@@ -401,3 +401,20 @@ func extractLivePhotoVideo(sourcePath string, desc livePhotoDescriptor, destinat
 func livePhotoVideoFileName(id AssetID, modifiedAtNS, byteSize int64) string {
 	return fmt.Sprintf("%s-%x-%x.mp4", string(id), modifiedAtNS, byteSize)
 }
+
+// IsLivePhotoFile reports whether the given file path contains an embedded
+// motion-video segment (Live Photo / Motion Photo). It is a convenience
+// wrapper around detectLivePhoto for use outside the local_library package.
+func IsLivePhotoFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	if _, ok := supportedMotionPhotoExtensions[ext]; !ok {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	format, _ := formatForExtension(ext)
+	_, ok := detectLivePhoto(path, format, ext, info.Size())
+	return ok
+}

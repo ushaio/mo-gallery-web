@@ -9,6 +9,7 @@ import { loadPersistentResource } from '@/lib/persistent-cache'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import { useUploadIntentStore } from '@/store/upload-intent'
 import type { UploadTask } from '@/contexts/UploadQueueContext'
+import { LivePhotoIcon } from '@/components/icons/LivePhotoIcon'
 import { OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime'
 import {
   CheckDuplicates,
@@ -48,6 +49,7 @@ interface PreparedFile {
     takenAt?: string
     orientation?: number
   }
+  isLivePhoto?: boolean
   error?: string
 }
 
@@ -939,6 +941,11 @@ function FileItem({ item, selected, onSelect, onRemove, onPreview }: {
 
       <div className="relative z-10 w-10 h-10 rounded-md overflow-hidden shrink-0 group/thumb" style={{ backgroundColor: 'var(--muted)' }}>
         {thumbnail ? <img src={thumbnail} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={14} style={{ color: 'var(--muted-foreground)' }} className="opacity-30" /></div>}
+        {item.file.isLivePhoto && (
+          <div className="absolute top-0.5 right-0.5 z-20">
+            <LivePhotoIcon size={10} className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" />
+          </div>
+        )}
         <button onClick={onPreview}
           className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity rounded-md">
           <Maximize2 size={12} className="text-white" />

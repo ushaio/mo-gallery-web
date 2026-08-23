@@ -18,6 +18,7 @@ import (
 
 	"mo-gallery-desktop/config"
 	"mo-gallery-desktop/image"
+	"mo-gallery-desktop/local_library"
 	"mo-gallery-desktop/storage_plugins"
 )
 
@@ -99,13 +100,14 @@ func (s *UploadService) SetStoragePlugins(manager *storage_plugins.Manager) {
 
 // PreparedFile 预处理后的文件信息
 type PreparedFile struct {
-	AssetID  string          `json:"assetId,omitempty"`
-	FilePath string          `json:"filePath"`
-	FileName string          `json:"fileName"`
-	FileSize int64           `json:"fileSize"`
-	Hash     string          `json:"hash"`
-	Exif     *image.ExifData `json:"exif,omitempty"`
-	Error    string          `json:"error,omitempty"`
+	AssetID     string          `json:"assetId,omitempty"`
+	FilePath    string          `json:"filePath"`
+	FileName    string          `json:"fileName"`
+	FileSize    int64           `json:"fileSize"`
+	Hash        string          `json:"hash"`
+	Exif        *image.ExifData `json:"exif,omitempty"`
+	IsLivePhoto bool            `json:"isLivePhoto"`
+	Error       string          `json:"error,omitempty"`
 }
 
 // DuplicateInfo 重复照片信息
@@ -377,6 +379,9 @@ func (s *UploadService) PrepareUpload(filePaths []string) ([]PreparedFile, error
 		} else {
 			pf.Exif = exifData
 		}
+
+		// Live Photo 检测
+		pf.IsLivePhoto = local_library.IsLivePhotoFile(fp)
 
 		results[i] = pf
 	}
