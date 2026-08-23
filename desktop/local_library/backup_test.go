@@ -239,8 +239,8 @@ func TestOpenStoreCreatesUpgradeBackupBeforeMigration(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT value FROM library_meta WHERE key='schema_version'`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "10" {
-		t.Fatalf("schema version=%q, want 10", version)
+	if version != "11" {
+		t.Fatalf("schema version=%q, want 11", version)
 	}
 }
 

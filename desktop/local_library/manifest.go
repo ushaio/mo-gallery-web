@@ -91,7 +91,7 @@ func readManifest(root string) (Manifest, error) {
 func prepareLibraryStructure(root string) error {
 	directories := []string{
 		internalPath(root), internalPath(root, "operations"), internalPath(root, "thumbnails"),
-		internalPath(root, "previews"), internalPath(root, "trash"), internalPath(root, "backups"),
+		internalPath(root, "previews"), internalPath(root, "livephoto"), internalPath(root, "trash"), internalPath(root, "backups"),
 	}
 	for _, dir := range directories {
 		if err := os.MkdirAll(dir, 0o700); err != nil {

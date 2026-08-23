@@ -3,7 +3,6 @@ import {
   Camera,
   Check,
   ChevronDown,
-  Cloud,
   ExternalLink,
   EyeOff,
   FileText,
@@ -20,9 +19,9 @@ import {
   Star,
   Tag as TagIcon,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
+import { CloudIcon, CloudOffIcon } from "@/components/icons/CloudIcons";
 import { isPhotoAsset } from "./types";
 import type { LocalAsset, LocalCollection, LocalTag } from "./types";
 import type { LocalLibraryCopy } from "./copy";
@@ -737,7 +736,7 @@ function LocalAssetDetailsContent({
                 backgroundColor: "color-mix(in srgb, #22C55E 10%, transparent)",
               }}
             >
-              <Upload size={9} />
+              <CloudIcon size={9} />
               {copy.filterUploaded}
             </button>
           ) : (
@@ -748,7 +747,7 @@ function LocalAssetDetailsContent({
                 backgroundColor: "var(--secondary)",
               }}
             >
-              <Upload size={9} />
+              <CloudOffIcon size={9} />
               {copy.filterNotUploaded}
             </span>
           )}
@@ -1410,7 +1409,7 @@ function CloudInfoDialog({
                 color: "#16A34A",
               }}
             >
-              <Cloud size={14} />
+              <CloudIcon size={14} />
             </span>
             <span className="text-sm font-semibold">{copy.filterUploaded}</span>
           </div>

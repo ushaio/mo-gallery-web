@@ -115,6 +115,20 @@ func (m *Manager) reconcileKnownFile(
 			// for thumbnail generation even though their preview stays unavailable.
 			needPreview := isSupportedMedia(absolutePath) &&
 				(unchanged.PreviewStatus != "ready" || unchanged.DominantColors == "" || unchanged.DominantColors == "[]")
+			// Backfill Live Photo detection for assets indexed before the
+			// feature existed. live_photo_video_length=0 (or NULL) means
+			// "never probed"; -1 means "probed, not a live photo". Only
+			// files that were never probed are opened, so the slow path
+			// runs at most once per file across all scans.
+			neverProbed := !unchanged.LivePhotoVideoLength.Valid || unchanged.LivePhotoVideoLength.Int64 == 0
+			if neverProbed && isLivePhotoCandidate(absolutePath) {
+				ext := filepath.Ext(absolutePath)
+				candidateFormat, _ := formatForExtension(ext)
+				desc, _ := detectLivePhoto(absolutePath, candidateFormat, ext, info.Size())
+				if updateErr := session.store.updateLivePhoto(ctx, unchanged.ID, desc); updateErr != nil {
+					return reconcileResult{}, updateErr
+				}
+			}
 			return reconcileResult{
 				AssetID: unchanged.ID, RelativePath: string(normalized),
 				NeedsPreview: needPreview,
@@ -128,6 +142,10 @@ func (m *Manager) reconcileKnownFile(
 	file.FolderPath = filepath.ToSlash(filepath.Dir(string(normalized)))
 	if file.FolderPath == "." {
 		file.FolderPath = ""
+	}
+	if desc, ok := detectLivePhoto(absolutePath, file.Format, file.Extension, info.Size()); ok {
+		file.LivePhoto = desc
+		file.MediaKind = "live-photo"
 	}
 
 	var id AssetID

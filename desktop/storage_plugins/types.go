@@ -292,6 +292,9 @@ type PutRequest struct {
 	ContentType    string
 	Checksum       string
 	IdempotencyKey string
+	// Progress, when set, is invoked with the bytes served to the plugin while
+	// it reads the uploaded file, so callers can report a live transfer speed.
+	Progress func(done, total int64)
 }
 
 type GetRequest struct {

@@ -38,6 +38,7 @@ export function LocalLibraryPreview({ asset, copy, onClose, onPrevious, onNext, 
     subtitle={asset.relativePath}
     originalSrc={isPhoto ? asset.originalUrl : undefined}
     previewSrc={isPhoto && (asset.previewStatus === 'ready' || asset.mimeType === 'image/gif') ? asset.previewUrl : undefined}
+    livePhotoVideoSrc={isPhoto && asset.isLivePhoto ? asset.livePhotoVideoUrl : undefined}
     alt={asset.displayTitle || asset.fileName}
     copy={frameCopy}
     onClose={onClose}

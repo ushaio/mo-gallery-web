@@ -78,8 +78,8 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
   const collectionsOpen = useLibrarySections((state) => state.sections.localCollections)
   const tagsOpen = useLibrarySections((state) => state.sections.localTags)
   const toggleSection = useLibrarySections((state) => state.toggleSection)
-  // 进入本地资源库时文件夹默认不展开（初始为空集合）
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
   const byParent = useMemo(() => {
     const map = new Map<string, CollectionGroup[]>()
     for (const group of groups) {
@@ -99,12 +99,22 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
   const selectCollection = (id: string) => onSelectCollections(selectedCollectionIds.includes(id) ? [] : [id])
   const selectTag = (id: string) => onSelectTags(selectedTagIds.includes(id) ? [] : [id])
   const dropHandlers = (target: { kind: 'tag' | 'collection'; id: string }) => ({
+    onDragEnter: (event: DragEvent) => {
+      if (!event.dataTransfer.types.includes('application/x-mo-gallery-asset-ids')) return
+      event.preventDefault()
+      setDragOverId(target.id)
+    },
     onDragOver: (event: DragEvent) => {
       if (!event.dataTransfer.types.includes('application/x-mo-gallery-asset-ids')) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'link'
     },
+    onDragLeave: (event: DragEvent) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+      setDragOverId((current) => current === target.id ? null : current)
+    },
     onDrop: (event: DragEvent) => {
+      setDragOverId(null)
       const raw = event.dataTransfer.getData('application/x-mo-gallery-asset-ids')
       if (!raw) return
       event.preventDefault()
@@ -117,30 +127,34 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
   })
   const renderCollections = (parentId = '', depth = 0): ReactNode => <>
     {(collectionsByGroup.get(parentId) || []).map((collection) => (
-      <OrganizationContextTarget
-        key={collection.id}
-        label={collection.name}
-        editLabel={copy.renameCollection}
-        deleteLabel={copy.deleteCollection}
-        onEdit={() => onEdit({ kind: 'collection', item: collection })}
-        onDelete={() => onDelete({ kind: 'collection', id: collection.id, name: collection.name })}
-      >
-        <button
-          type="button"
-          onClick={() => selectCollection(collection.id)}
-          {...dropHandlers({ kind: 'collection', id: collection.id })}
-          data-local-library-logical-target
-          className="mb-0.5 flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-xs hover:bg-secondary"
-          style={{
-            paddingLeft: `${10 + Math.min(5, depth) * 12}px`,
-            backgroundColor: selectedCollectionIds.includes(collection.id) ? 'var(--accent)' : undefined,
-          }}
+      <div key={collection.id} {...dropHandlers({ kind: 'collection', id: collection.id })} data-local-library-logical-target className="mb-0.5 rounded-md">
+        <OrganizationContextTarget
+          label={collection.name}
+          editLabel={copy.renameCollection}
+          deleteLabel={copy.deleteCollection}
+          onEdit={() => onEdit({ kind: 'collection', item: collection })}
+          onDelete={() => onDelete({ kind: 'collection', id: collection.id, name: collection.name })}
         >
-          <FolderHeart size={14} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{collection.name}</span>
-          <span className="text-[9px] text-muted-foreground">{collection.assetCount}</span>
-        </button>
-      </OrganizationContextTarget>
+          <div
+            className="flex w-full items-center rounded-md py-1.5 pr-2 text-xs transition-colors hover:bg-secondary"
+            style={{
+              paddingLeft: `${10 + Math.min(5, depth) * 12}px`,
+              backgroundColor: dragOverId === collection.id ? 'var(--primary)' : selectedCollectionIds.includes(collection.id) ? 'var(--accent)' : undefined,
+              color: dragOverId === collection.id ? 'var(--primary-foreground)' : undefined,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => selectCollection(collection.id)}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            >
+              <FolderHeart size={14} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{collection.name}</span>
+              <span className="text-[9px] text-muted-foreground">{collection.assetCount}</span>
+            </button>
+          </div>
+        </OrganizationContextTarget>
+      </div>
     ))}
     {(byParent.get(parentId) || []).map((group) => {
       const expanded = expandedGroups.has(group.id)
@@ -213,29 +227,28 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
       {tagsOpen && (
         <div>
           {tags.length > 0 ? tags.map((tag) => (
-            <OrganizationContextTarget
-              key={tag.id}
-              label={tag.name}
-              editLabel={copy.renameTag}
-              deleteLabel={copy.deleteTag}
-              onEdit={() => onEdit({ kind: 'tag', item: tag })}
-              onDelete={() => onDelete({ kind: 'tag', id: tag.id, name: tag.name })}
-            >
-              <button
-                type="button"
-                onClick={() => selectTag(tag.id)}
-                {...dropHandlers({ kind: 'tag', id: tag.id })}
-                data-local-library-logical-target
-                className="mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-secondary"
-                style={{ backgroundColor: selectedTagIds.includes(tag.id) ? 'var(--accent)' : undefined }}
+            <div key={tag.id} {...dropHandlers({ kind: 'tag', id: tag.id })} data-local-library-logical-target className="mb-0.5 rounded-md">
+              <OrganizationContextTarget
+                label={tag.name}
+                editLabel={copy.renameTag}
+                deleteLabel={copy.deleteTag}
+                onEdit={() => onEdit({ kind: 'tag', item: tag })}
+                onDelete={() => onDelete({ kind: 'tag', id: tag.id, name: tag.name })}
               >
-                {selectedTagIds.includes(tag.id)
-                  ? <Check size={14} className="shrink-0" />
-                  : <Tags size={14} className="shrink-0" style={{ color: tag.color || undefined }} />}
-                <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-                <span className="text-[9px] text-muted-foreground">{tag.assetCount}</span>
-              </button>
-            </OrganizationContextTarget>
+                <button
+                  type="button"
+                  onClick={() => selectTag(tag.id)}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-secondary"
+                  style={{ backgroundColor: dragOverId === tag.id ? 'var(--primary)' : selectedTagIds.includes(tag.id) ? 'var(--accent)' : undefined, color: dragOverId === tag.id ? 'var(--primary-foreground)' : undefined }}
+                >
+                  {selectedTagIds.includes(tag.id)
+                    ? <Check size={14} className="shrink-0" />
+                    : <Tags size={14} className="shrink-0" style={{ color: tag.color || undefined }} />}
+                  <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+                  <span className="text-[9px] text-muted-foreground">{tag.assetCount}</span>
+                </button>
+              </OrganizationContextTarget>
+            </div>
           )) : <p className="px-2 py-1.5 text-[11px] text-muted-foreground">{copy.noTags}</p>}
         </div>
       )}

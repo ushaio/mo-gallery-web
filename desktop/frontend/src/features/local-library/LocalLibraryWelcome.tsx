@@ -22,6 +22,8 @@ interface Props {
   onOpened: (snapshot: LibrarySnapshot) => void;
   onRecentChanged: () => void;
   onUpgradeRequired: (info: LibraryUpgradeInfo) => void;
+  onOpening: (path: string) => void;
+  onOpeningEnd: () => void;
 }
 
 function libraryName(path: string) {
@@ -39,16 +41,32 @@ export function LocalLibraryWelcome({
   onOpened,
   onRecentChanged,
   onUpgradeRequired,
+  onOpening,
+  onOpeningEnd,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const openLibrary = async (path: string) => {
-    const info = await localLibraryApi.checkUpgrade(path);
-    if (info.required) {
-      onUpgradeRequired(info);
-      return;
+    onOpening(path);
+    try {
+      const info = await localLibraryApi.checkUpgrade(path);
+      if (info.required) {
+        onUpgradeRequired(info);
+        return;
+      }
+      onOpened(await localLibraryApi.open(path));
+    } finally {
+      onOpeningEnd();
     }
-    onOpened(await localLibraryApi.open(path));
+  };
+
+  const openWith = async (path: string, fn: () => Promise<LibrarySnapshot>) => {
+    onOpening(path);
+    try {
+      onOpened(await fn());
+    } finally {
+      onOpeningEnd();
+    }
   };
 
   const runFolderAction = async (kind: "create" | "initialize" | "open") => {
@@ -63,9 +81,9 @@ export function LocalLibraryWelcome({
       );
       if (!path) return;
       if (kind === "create") {
-        onOpened(await localLibraryApi.create(path, libraryName(path)));
+        await openWith(path, () => localLibraryApi.create(path, libraryName(path)));
       } else if (kind === "initialize") {
-        onOpened(await localLibraryApi.initialize(path, libraryName(path)));
+        await openWith(path, () => localLibraryApi.initialize(path, libraryName(path)));
       } else {
         await openLibrary(path);
       }

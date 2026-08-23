@@ -35,12 +35,15 @@ type UploadService struct {
 
 // UploadProgress reports the current upload phase to the renderer so the upload
 // queue can show the real "compressing" vs "uploading" state instead of a
-// simulated timer.
+// simulated timer. During the "uploading" phase Uploaded/Total carry the bytes
+// actually sent to the storage plugin so the popup can show a live speed.
 type UploadProgress struct {
 	TaskID   string `json:"taskId"`
 	Phase    string `json:"phase"` // "compressing" | "uploading"
 	Progress int    `json:"progress"`
 	Error    string `json:"error,omitempty"`
+	Uploaded int64  `json:"uploaded,omitempty"`
+	Total    int64  `json:"total,omitempty"`
 }
 
 // SetProgressCallback wires the upload phase reporter to the renderer event bus.
@@ -51,6 +54,10 @@ func (s *UploadService) SetProgressCallback(fn func(UploadProgress)) {
 }
 
 func (s *UploadService) emitProgress(taskID, phase string, progress int, errMsg string) {
+	s.emitProgressBytes(taskID, phase, progress, errMsg, 0, 0)
+}
+
+func (s *UploadService) emitProgressBytes(taskID, phase string, progress int, errMsg string, uploaded, total int64) {
 	if strings.TrimSpace(taskID) == "" {
 		return
 	}
@@ -58,8 +65,24 @@ func (s *UploadService) emitProgress(taskID, phase string, progress int, errMsg 
 	fn := s.progressFn
 	s.progressMu.Unlock()
 	if fn != nil {
-		fn(UploadProgress{TaskID: taskID, Phase: phase, Progress: progress, Error: errMsg})
+		fn(UploadProgress{TaskID: taskID, Phase: phase, Progress: progress, Error: errMsg, Uploaded: uploaded, Total: total})
 	}
+}
+
+// uploadPercent maps the bytes sent to a 0..95 progress value; the final 100 is
+// set by the renderer when the upload actually completes.
+func uploadPercent(done, total int64) int {
+	if total <= 0 {
+		return 5
+	}
+	p := int(float64(done) / float64(total) * 95)
+	if p < 0 {
+		return 0
+	}
+	if p > 95 {
+		return 95
+	}
+	return p
 }
 
 func NewUploadService(proxy *ProxyClient) *UploadService {
@@ -572,6 +595,10 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 	baseName := pluginObjectKey(uploadPath, hash)
 	contentType := contentTypeForPath(uploadPath)
 	s.emitProgress(settings.TaskID, "uploading", 5, "")
+	originalSize := int64(0)
+	if info, statErr := os.Stat(uploadPath); statErr == nil {
+		originalSize = info.Size()
+	}
 	object, err := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
 		SourceID:       settings.StorageSourceID,
 		Key:            baseName,
@@ -581,6 +608,9 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		ContentType:    contentType,
 		Checksum:       uploadChecksum(hash, sourcePath, uploadPath),
 		IdempotencyKey: strings.TrimSpace(hash) + ":" + settings.StorageSourceID,
+		Progress: func(done, total int64) {
+			s.emitProgressBytes(settings.TaskID, "uploading", uploadPercent(done, total), "", done, total)
+		},
 	})
 	if err != nil {
 		result.Error = "插件上传原图失败: " + err.Error()
@@ -600,6 +630,14 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 	}
 	defer os.Remove(thumbnailPath)
 	thumbnailKey := thumbnailObjectKey(object.Key)
+	thumbnailSize := int64(0)
+	if info, statErr := os.Stat(thumbnailPath); statErr == nil {
+		thumbnailSize = info.Size()
+	}
+	// Report cumulative bytes across both objects so the popup speed counter
+	// stays monotonic (original, then original + thumbnail).
+	uploadedBase := originalSize
+	uploadedTotal := originalSize + thumbnailSize
 	thumbnail, thumbErr := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
 		SourceID:       settings.StorageSourceID,
 		Key:            thumbnailKey,
@@ -608,6 +646,9 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		ContentType:    "image/avif",
 		Checksum:       "",
 		IdempotencyKey: strings.TrimSpace(hash) + ":thumbnail:" + settings.StorageSourceID,
+		Progress: func(done, total int64) {
+			s.emitProgressBytes(settings.TaskID, "uploading", uploadPercent(uploadedBase+done, uploadedTotal), "", uploadedBase+done, uploadedTotal)
+		},
 	})
 	if thumbErr != nil {
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})

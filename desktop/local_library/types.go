@@ -197,6 +197,10 @@ type AssetDTO struct {
 	Orientation          int                  `json:"orientation"`
 	IsAnimated           bool                 `json:"isAnimated"`
 	FrameCount           int                  `json:"frameCount"`
+	IsLivePhoto          bool                 `json:"isLivePhoto"`
+	LivePhotoVideoMIME   string               `json:"livePhotoVideoMime,omitempty"`
+	LivePhotoVideoURL    string               `json:"livePhotoVideoUrl,omitempty"`
+	LivePhotoVideoLength  int64                `json:"livePhotoVideoLength,omitempty"`
 	Availability         string               `json:"availability"`
 	TrashEntryID         string               `json:"trashEntryId,omitempty"`
 	TrashEntryKind       string               `json:"trashEntryKind,omitempty"`
@@ -264,6 +268,7 @@ type AssetQuery struct {
 	UploadStatus     string   `json:"uploadStatus,omitempty"`
 	FavoritesOnly    bool     `json:"favoritesOnly,omitempty"`
 	PhotosOnly       bool     `json:"photosOnly,omitempty"`
+	LivePhotoOnly    bool     `json:"livePhotoOnly,omitempty"`
 	TagIDs           []string `json:"tagIds,omitempty"`
 	CollectionIDs    []string `json:"collectionIds,omitempty"`
 	RatingMin        *int     `json:"ratingMin,omitempty"`

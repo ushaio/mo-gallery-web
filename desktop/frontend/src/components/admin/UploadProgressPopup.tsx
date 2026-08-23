@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   X, ChevronDown, ChevronUp, Check, AlertCircle,
   RefreshCw, Image as ImageIcon, Upload, Trash2,
@@ -6,6 +6,7 @@ import {
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
 import type { UploadTask, UploadTaskStatus } from '@/contexts/UploadQueueContext'
 import { GetFileThumbnail } from '../../../wailsjs/go/main/App'
+import { useTransferSpeed, formatSpeed } from '@/hooks/useTransferSpeed'
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -120,6 +121,14 @@ export function UploadProgressPopup() {
   const { tasks, isUploading, retryTask, retryAllFailed, removeTask, clearCompleted } = useUploadQueue()
   const [minimized, setMinimized] = useState(false)
 
+  const hasActiveUpload = tasks.some(t => t.status === 'uploading')
+  const speedSources = useMemo(() => tasks.map(t => ({
+    id: t.id,
+    bytes: t.uploaded ?? 0,
+    active: t.status === 'uploading',
+  })), [tasks])
+  const speed = useTransferSpeed(speedSources, hasActiveUpload)
+
   if (tasks.length === 0) return null
 
   const completedCount = tasks.filter(t => t.status === 'completed').length
@@ -155,6 +164,11 @@ export function UploadProgressPopup() {
           {activeLabel} {completedCount}/{totalCount}
           {failedCount > 0 && <span className="text-red-500 ml-1">({failedCount} 失败)</span>}
         </span>
+        {speed > 0 && (
+          <span className="text-[10px] font-normal shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+            {formatSpeed(speed)}
+          </span>
+        )}
         <button onClick={(e) => { e.stopPropagation(); setMinimized(!minimized) }}
           className="p-0.5 rounded hover:opacity-80"
           style={{ color: 'var(--muted-foreground)' }}>

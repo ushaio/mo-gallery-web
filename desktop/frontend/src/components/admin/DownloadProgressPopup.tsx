@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  X, ChevronDown, ChevronUp, Check, AlertCircle,
+  X, ChevronDown, ChevronUp, Check, AlertCircle, SkipForward,
   Download as DownloadIcon,
 } from 'lucide-react'
 import { useDownloadQueue } from '@/contexts/DownloadQueueContext'
 import type { DownloadTask, DownloadTaskStatus } from '@/contexts/DownloadQueueContext'
+import { useTransferSpeed, formatSpeed } from '@/hooks/useTransferSpeed'
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -15,6 +16,7 @@ function formatFileSize(bytes: number): string {
 
 function StatusIcon({ status, progress }: { status: DownloadTaskStatus; progress: number }) {
   if (status === 'completed') return <Check size={14} className="text-green-500" />
+  if (status === 'skipped') return <SkipForward size={14} style={{ color: 'var(--muted-foreground)' }} />
   if (status === 'failed') return <AlertCircle size={14} className="text-red-500" />
   if (status === 'downloading' || status === 'importing' || status === 'pending') {
     const r = 6
@@ -37,6 +39,7 @@ function getTaskStatusLabel(task: DownloadTask): string {
   if (task.status === 'downloading') return `下载中 · ${task.progress}%`
   if (task.status === 'importing') return '导入资源库中'
   if (task.status === 'completed') return '已完成'
+  if (task.status === 'skipped') return '已跳过（同名文件已存在）'
   return '下载失败'
 }
 
@@ -67,7 +70,7 @@ function TaskRow({ task, onRemove }: { task: DownloadTask; onRemove: (id: string
 
       <div className="flex items-center gap-1.5 shrink-0">
         <StatusIcon status={task.status} progress={task.progress} />
-        {(task.status === 'completed' || task.status === 'failed') && (
+        {(task.status === 'completed' || task.status === 'skipped' || task.status === 'failed') && (
           <button onClick={() => onRemove(task.id)}
             className="p-1 rounded hover:opacity-80"
             style={{ color: 'var(--muted-foreground)' }}
@@ -83,6 +86,14 @@ function TaskRow({ task, onRemove }: { task: DownloadTask; onRemove: (id: string
 export function DownloadProgressPopup() {
   const { tasks, isDownloading, removeTask, clearCompleted } = useDownloadQueue()
   const [minimized, setMinimized] = useState(false)
+
+  const hasActiveDownload = tasks.some(t => t.status === 'downloading')
+  const speedSources = useMemo(() => tasks.map(t => ({
+    id: t.id,
+    bytes: t.downloaded ?? 0,
+    active: t.status === 'downloading',
+  })), [tasks])
+  const speed = useTransferSpeed(speedSources, hasActiveDownload)
 
   if (tasks.length === 0) return null
 
@@ -118,6 +129,11 @@ export function DownloadProgressPopup() {
           {activeLabel} {completedCount}/{totalCount}
           {failedCount > 0 && <span className="text-red-500 ml-1">({failedCount} 失败)</span>}
         </span>
+        {speed > 0 && (
+          <span className="text-[10px] font-normal shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+            {formatSpeed(speed)}
+          </span>
+        )}
         <button onClick={(e) => { e.stopPropagation(); setMinimized(!minimized) }}
           className="p-0.5 rounded hover:opacity-80"
           style={{ color: 'var(--muted-foreground)' }}>

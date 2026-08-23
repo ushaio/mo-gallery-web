@@ -40,7 +40,7 @@ function LocalLibraryFolderTree({ folders, value, onChange, disabled, rootLabel,
   </div></>
 }
 
-export function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved, onSave }: { imageUrl: string; t: (key: string) => string; onClose: () => void; onSaved: () => void; onSave?: (destination: string) => Promise<void> }) {
+export function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved, onSave }: { imageUrl: string; t: (key: string) => string; onClose: () => void; onSaved: () => void; onSave?: (destination: string) => Promise<void | boolean> }) {
   const [folders, setFolders] = useState<FolderItem[]>([])
   const [destination, setDestination] = useState('')
   const [loading, setLoading] = useState(true)
@@ -56,7 +56,10 @@ export function LocalLibrarySaveDialog({ imageUrl, t, onClose, onSaved, onSave }
     setSaving(true); setError('')
     try {
       if (onSave) {
-        await onSave(destination)
+        // Returning false means the caller took over (e.g. a conflict dialog
+        // is shown) — skip the success toast and close callbacks.
+        const handled = await onSave(destination)
+        if (handled === false) return
       } else {
         const results = await SaveMessageImageToLocalLibrary(imageUrl, destination)
         const failed = results.filter((result) => result.status === 'failed')

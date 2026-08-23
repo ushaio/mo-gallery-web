@@ -15,6 +15,14 @@ import (
 	"time"
 )
 
+// Conflict policies used when a downloaded file name already exists in the
+// target library folder.
+const (
+	DownloadConflictRename    = "rename"    // keep both: auto-rename to "name (1).ext"
+	DownloadConflictOverwrite = "overwrite" // replace the existing file
+	DownloadConflictSkip      = "skip"      // keep the existing file, do not import
+)
+
 func (m *Manager) SetAssetCloudLink(id AssetID, photoID string) error {
 	session, err := m.requireAvailableSession()
 	if err != nil {
@@ -175,12 +183,19 @@ func (m *Manager) ImportFiles(paths []string, destination string) ([]ImportResul
 }
 
 // ImportDownloadedFile copies a downloaded temp file into the library using the
-// provided originalFileName. If a file with the same name already exists at the
-// destination, it is auto-renamed (e.g. "photo (1).jpg") so duplicates are allowed.
+// provided originalFileName. When a file with the same name already exists at
+// the destination, conflictPolicy decides what happens:
+//   - "" or "rename": auto-rename to "photo (1).jpg" so duplicates are allowed.
+//   - "overwrite": replace the existing file on disk.
+//   - "skip": keep the existing file and return status "skipped".
+//
 // The copied file is then reconciled into the index. It does not require import
 // mode to be configured since the source temp file is always copied, never moved.
-func (m *Manager) ImportDownloadedFile(sourcePath, destination, originalFileName string) (ImportResult, error) {
+func (m *Manager) ImportDownloadedFile(sourcePath, destination, originalFileName, conflictPolicy string) (ImportResult, error) {
 	result := ImportResult{Source: sourcePath, Status: "failed"}
+	if conflictPolicy == "" {
+		conflictPolicy = DownloadConflictRename
+	}
 	session, err := m.requireAvailableSession()
 	if err != nil {
 		return result, err
@@ -212,13 +227,24 @@ func (m *Manager) ImportDownloadedFile(sourcePath, destination, originalFileName
 		fileName = filepath.Base(sourceAbs)
 	}
 	destinationPath := filepath.Join(target, fileName)
-	// If the destination already has a file with the same name, auto-rename to
-	// allow duplicate downloads (e.g. "photo (1).jpg", "photo (2).jpg").
+	// If the destination already has a file with the same name, apply the
+	// conflict policy chosen by the user in the download dialog.
 	if _, conflict := os.Stat(destinationPath); conflict == nil {
-		relativeDest := filepath.ToSlash(filepath.Join(destination, fileName))
-		relativeDest = nextAvailableAssetName(session.root, relativeDest, map[string]struct{}{})
-		destinationPath = filepath.Join(session.root, filepath.FromSlash(relativeDest))
-		fileName = filepath.Base(destinationPath)
+		switch conflictPolicy {
+		case DownloadConflictSkip:
+			result.Status = "skipped"
+			return result, nil
+		case DownloadConflictOverwrite:
+			if err := os.Remove(destinationPath); err != nil {
+				result.Error = fmt.Errorf("覆盖已有文件失败: %w", err).Error()
+				return result, nil
+			}
+		default: // DownloadConflictRename
+			relativeDest := filepath.ToSlash(filepath.Join(destination, fileName))
+			relativeDest = nextAvailableAssetName(session.root, relativeDest, map[string]struct{}{})
+			destinationPath = filepath.Join(session.root, filepath.FromSlash(relativeDest))
+			fileName = filepath.Base(destinationPath)
+		}
 	}
 	session.ignoreWatcherPath(destinationPath, 5*time.Second)
 	if copyErr := copyFileSafely(sourceAbs, destinationPath); copyErr != nil {
@@ -249,6 +275,37 @@ func (m *Manager) ImportDownloadedFile(sourcePath, destination, originalFileName
 	m.queueThumbnail(session, reconciled.AssetID)
 	m.emitEvent("assets_imported")
 	return result, nil
+}
+
+// CheckDownloadConflict reports whether importing a file named fileName into
+// the destination folder would collide with an existing library file, so the
+// renderer can ask the user how to resolve it before downloading.
+func (m *Manager) CheckDownloadConflict(destination, fileName string) (bool, error) {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return false, err
+	}
+	target, err := resolveWithinRoot(session.root, destination)
+	if err != nil {
+		return false, err
+	}
+	name := strings.TrimSpace(fileName)
+	if name == "" {
+		return false, newError(ErrInvalidPath, "文件名不能为空", nil)
+	}
+	name = filepath.Base(filepath.FromSlash(filepath.ToSlash(name)))
+	if name == "." || name == string(os.PathSeparator) || strings.ContainsAny(name, `/\`) {
+		return false, newError(ErrInvalidPath, "文件名不合法", map[string]any{"fileName": fileName})
+	}
+	destinationPath := filepath.Join(target, name)
+	_, statErr := os.Stat(destinationPath)
+	if statErr == nil {
+		return true, nil
+	}
+	if errors.Is(statErr, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, statErr
 }
 
 func moveFileSafely(source, destination string) error {
@@ -592,6 +649,52 @@ func (m *Manager) resolveAssetRequest(ctx context.Context, sessionID string, id 
 	return original, mimeType, err
 }
 
+// serveLivePhotoVideo returns the filesystem path to the embedded motion-video
+// segment of a Live Photo. The video bytes are extracted lazily on first
+// request and cached under .mo-library/livephoto so repeated requests do not
+// re-read the source file. requestedCacheKey mirrors the thumbnail cache-key
+// scheme: a stale key (after the source file changes) yields no video.
+func (m *Manager) serveLivePhotoVideo(ctx context.Context, session *librarySession, id AssetID, requestedCacheKey string) (string, string, error) {
+	source, err := session.store.derivativeSource(ctx, id)
+	if err != nil {
+		return "", "", err
+	}
+	if source.Availability != "active" {
+		return "", "", newError(ErrAssetNotFound, "asset is not active", map[string]any{"assetId": id})
+	}
+	expectedCacheKey := derivativeCacheKey(id, source.ModifiedAtNS, source.ByteSize, derivativeThumbnail)
+	if requestedCacheKey == "" || requestedCacheKey != expectedCacheKey {
+		return "", "", newError(ErrAssetNotFound, "live photo cache key is missing or stale", nil)
+	}
+	destination := internalPath(session.root, "livephoto", livePhotoVideoFileName(id, source.ModifiedAtNS, source.ByteSize))
+	if info, statErr := os.Stat(destination); statErr == nil && info.Mode().IsRegular() && info.Size() > 0 {
+		mime := "video/mp4"
+		if stored, mimeErr := session.store.livePhotoMime(ctx, id); mimeErr == nil && stored != "" {
+			mime = stored
+		}
+		return destination, mime, nil
+	}
+	relative, _, status, err := session.store.assetPath(ctx, id)
+	if err != nil {
+		return "", "", err
+	}
+	if status != "active" {
+		return "", "", newError(ErrAssetNotFound, "资产当前不可用", nil)
+	}
+	sourcePath, err := resolveWithinRoot(session.root, relative)
+	if err != nil {
+		return "", "", err
+	}
+	desc, ok := detectLivePhoto(sourcePath, source.Format, source.Extension, source.ByteSize)
+	if !ok {
+		return "", "", newError(ErrAssetNotFound, "asset does not contain a live photo video", map[string]any{"assetId": id})
+	}
+	if extractErr := extractLivePhotoVideo(sourcePath, desc, destination); extractErr != nil {
+		return "", "", extractErr
+	}
+	return destination, desc.VideoMIME, nil
+}
+
 func (m *Manager) AssetHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -605,7 +708,7 @@ func (m *Manager) AssetHandler() http.Handler {
 			return
 		}
 		kind, id := parts[0], AssetID(parts[1])
-		if kind != "thumbnail" && kind != "preview" && kind != "original" {
+		if kind != "thumbnail" && kind != "preview" && kind != "original" && kind != "livephoto" {
 			http.NotFound(w, r)
 			return
 		}
@@ -665,6 +768,36 @@ func (m *Manager) AssetHandler() http.Handler {
 			}
 			w.Header().Set("Cache-Control", "no-store")
 			http.ServeContent(w, r, filepath.Base(resolved), info.ModTime(), contextReadSeeker{ctx: r.Context(), ReadSeeker: file})
+			return
+		}
+		if kind == "livephoto" {
+			session, sessionErr := m.currentSession()
+			if sessionErr != nil || session.sessionID != r.URL.Query().Get("session") || session.ctx.Err() != nil {
+				http.Error(w, "asset unavailable", http.StatusNotFound)
+				return
+			}
+			videoPath, videoMIME, serveErr := m.serveLivePhotoVideo(r.Context(), session, id, r.URL.Query().Get("v"))
+			if serveErr != nil {
+				http.Error(w, "live photo video unavailable", http.StatusNotFound)
+				return
+			}
+			file, openErr := os.Open(videoPath)
+			if openErr != nil {
+				http.Error(w, "live photo video unavailable", http.StatusNotFound)
+				return
+			}
+			defer file.Close()
+			info, statErr := file.Stat()
+			if statErr != nil || !info.Mode().IsRegular() {
+				http.Error(w, "live photo video unavailable", http.StatusNotFound)
+				return
+			}
+			if videoMIME == "" {
+				videoMIME = "video/mp4"
+			}
+			w.Header().Set("Content-Type", videoMIME)
+			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+			http.ServeContent(w, r, filepath.Base(videoPath), info.ModTime(), contextReadSeeker{ctx: r.Context(), ReadSeeker: file})
 			return
 		}
 		session, sessionErr := m.currentSession()

@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 10
+const currentSchemaVersion = 11
 
 var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
 	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
@@ -51,12 +51,18 @@ type indexedFile struct {
 	MetadataStatus string
 	DominantColors []string
 	EXIF           exifMetadata
+	// LivePhoto describes the embedded motion-video segment, if any. A
+	// non-empty descriptor means the asset is a Live Photo / Motion Photo
+	// and the paired video can be served via /__local-library/livephoto/<id>.
+	LivePhoto livePhotoDescriptor
 }
 
 type unchangedAsset struct {
-	ID             AssetID
-	PreviewStatus  string
-	DominantColors string
+	ID                   AssetID
+	PreviewStatus        string
+	DominantColors       string
+	IsLivePhoto          bool
+	LivePhotoVideoLength sql.NullInt64
 }
 
 func openStore(root string) (*store, error) {
@@ -280,7 +286,10 @@ func (s *store) migrate() error {
 		    cloud_photo_id TEXT,
 		    cloud_storage_source_id TEXT, cloud_storage_plugin_id TEXT,
 		    cloud_path TEXT, cloud_thumb_path TEXT, cloud_url_type TEXT,
-		    cloud_remote_updated_at INTEGER, cloud_sync_state TEXT, cloud_sync_error TEXT
+		    cloud_remote_updated_at INTEGER, cloud_sync_state TEXT, cloud_sync_error TEXT,
+		    is_live_photo INTEGER NOT NULL DEFAULT 0,
+		    live_photo_video_mime TEXT NOT NULL DEFAULT '',
+		    live_photo_video_length INTEGER NOT NULL DEFAULT 0
         )`,
 		`CREATE TABLE IF NOT EXISTS exif_metadata (
             asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
@@ -393,6 +402,16 @@ func (s *store) migrate() error {
 	for _, column := range cloudColumns {
 		if err := addColumnIfMissing(tx, "assets", column.name, column.definition); err != nil {
 			return fmt.Errorf("M010 add assets.%s: %w", column.name, err)
+		}
+	}
+	livePhotoColumns := []struct{ name, definition string }{
+		{"is_live_photo", "INTEGER NOT NULL DEFAULT 0"},
+		{"live_photo_video_mime", "TEXT NOT NULL DEFAULT ''"},
+		{"live_photo_video_length", "INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, column := range livePhotoColumns {
+		if err := addColumnIfMissing(tx, "assets", column.name, column.definition); err != nil {
+			return fmt.Errorf("M011 add assets.%s: %w", column.name, err)
 		}
 	}
 	hasLegacyCloudURL, err := tableHasColumn(tx, "assets", "cloud_url")
@@ -535,11 +554,13 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 		created = true
 		_, err = tx.ExecContext(ctx, `INSERT INTO assets(
             id,folder_id,relative_path,path_key,file_name,extension,format,mime_type,media_kind,byte_size,modified_at_ns,width,height,orientation,is_animated,frame_count,
-            availability,preview_status,preview_error,metadata_status,dominant_colors,captured_at,discovered_at,technical_updated_at,scan_token
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)`,
+            availability,preview_status,preview_error,metadata_status,dominant_colors,captured_at,discovered_at,technical_updated_at,scan_token,
+            is_live_photo,live_photo_video_mime,live_photo_video_length
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?,?,?,?)`,
 			existingID, folderID, file.RelativePath, file.PathKey, file.FileName, file.Extension, file.Format, file.MimeType, mediaKindOrDefault(file.MediaKind),
 			file.ByteSize, file.ModifiedAtNS, file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount,
-			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, encodeDominantColors(file.DominantColors), capturedAt, now, now, scanToken)
+			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, encodeDominantColors(file.DominantColors), capturedAt, now, now, scanToken,
+			livePhotoFlag(file.LivePhoto), file.LivePhoto.VideoMIME, file.LivePhoto.VideoLength)
 	case nil:
 		previewStatus, previewError := file.PreviewStatus, boundedError(file.PreviewError)
 		dominantColors := "[]"
@@ -547,10 +568,10 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 			previewStatus, previewError = oldPreviewStatus, oldPreviewError
 			dominantColors = oldDominantColors
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,media_kind=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL WHERE id=?`,
+		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,media_kind=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL,is_live_photo=?,live_photo_video_mime=?,live_photo_video_length=? WHERE id=?`,
 			folderID, file.RelativePath, file.FileName, file.Extension, file.Format, file.MimeType, mediaKindOrDefault(file.MediaKind), file.ByteSize, file.ModifiedAtNS,
 			file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount, previewStatus, previewError,
-			file.MetadataStatus, dominantColors, capturedAt, now, scanToken, existingID)
+			file.MetadataStatus, dominantColors, capturedAt, now, scanToken, livePhotoFlag(file.LivePhoto), file.LivePhoto.VideoMIME, file.LivePhoto.VideoLength, existingID)
 	default:
 		return "", false, err
 	}
@@ -566,10 +587,12 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 	return AssetID(existingID), created, nil
 }
 
+// touchUnchangedAsset confirms an unchanged path is still the active asset and
+// stamps it with the current scan token. Called once per scanned file.
 func (s *store) touchUnchangedAsset(ctx context.Context, pathKey string, byteSize, modifiedAtNS int64, scanToken string) (*unchangedAsset, error) {
 	var item unchangedAsset
-	err := s.db.QueryRowContext(ctx, `SELECT id,preview_status,dominant_colors FROM assets WHERE path_key=? AND byte_size=? AND modified_at_ns=?`, pathKey, byteSize, modifiedAtNS).
-		Scan(&item.ID, &item.PreviewStatus, &item.DominantColors)
+	err := s.db.QueryRowContext(ctx, `SELECT id,preview_status,dominant_colors,is_live_photo,live_photo_video_length FROM assets WHERE path_key=? AND byte_size=? AND modified_at_ns=?`, pathKey, byteSize, modifiedAtNS).
+		Scan(&item.ID, &item.PreviewStatus, &item.DominantColors, &item.IsLivePhoto, &item.LivePhotoVideoLength)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -606,6 +629,13 @@ func mediaKindOrDefault(kind string) string {
 		return "image"
 	}
 	return kind
+}
+
+func livePhotoFlag(desc livePhotoDescriptor) int {
+	if desc.VideoOffset > 0 {
+		return 1
+	}
+	return 0
 }
 
 func nullableUnixMillis(value *time.Time) any {
@@ -807,7 +837,10 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 		return nil, nil, newError(ErrInvalidPath, "不支持的上传状态筛选值", map[string]any{"uploadStatus": query.UploadStatus})
 	}
 	if query.PhotosOnly {
-		where = append(where, "a.media_kind='image'")
+		where = append(where, "(a.media_kind='image' OR a.media_kind='live-photo')")
+	}
+	if query.LivePhotoOnly {
+		where = append(where, "a.is_live_photo=1")
 	}
 	if ids := uniqueIDs(query.TagIDs); len(ids) > 0 {
 		where = append(where, "EXISTS (SELECT 1 FROM asset_tags qat WHERE qat.asset_id=a.id AND qat.tag_id IN ("+queryPlaceholders(len(ids))+"))")
@@ -988,7 +1021,7 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		return AssetPage{}, err
 	}
 	args = append(args, limit+1)
-	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,a.cloud_path,a.cloud_thumb_path,a.cloud_storage_source_id,a.cloud_storage_plugin_id,a.cloud_url_type,a.cloud_remote_updated_at,a.cloud_sync_state,a.cloud_sync_error,
+	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.is_live_photo,a.live_photo_video_mime,a.live_photo_video_length,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,a.cloud_path,a.cloud_thumb_path,a.cloud_storage_source_id,a.cloud_storage_plugin_id,a.cloud_url_type,a.cloud_remote_updated_at,a.cloud_sync_state,a.cloud_sync_error,
         e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
         FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
         WHERE ` + baseWhere + ` ORDER BY ` + sortExpr + ` ` + direction + `,a.id ` + direction + ` LIMIT ?`
@@ -1006,7 +1039,9 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 			break
 		}
 		var item AssetDTO
-		var animated, favorite int
+		var animated, favorite, livePhoto int
+		var livePhotoVideoMIME sql.NullString
+		var livePhotoVideoLength sql.NullInt64
 		var captured sql.NullInt64
 		var discovered int64
 		var cameraMake, cameraModel, lensModel sql.NullString
@@ -1016,11 +1051,14 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		var dominantColors string
 		var cloudPhotoID, cloudPath, cloudThumbPath, cloudSourceID, cloudPluginID, cloudURLType, cloudSyncState, cloudSyncError sql.NullString
 		var cloudRemoteUpdatedAt sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cloudPhotoID, &cloudPath, &cloudThumbPath, &cloudSourceID, &cloudPluginID, &cloudURLType, &cloudRemoteUpdatedAt, &cloudSyncState, &cloudSyncError, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
+		if err := rows.Scan(&item.ID, &item.RelativePath, &item.FileName, &item.Extension, &item.Format, &item.MimeType, &item.MediaKind, &item.ByteSize, &item.ModifiedAtNS, &item.Width, &item.Height, &item.Orientation, &animated, &item.FrameCount, &livePhoto, &livePhotoVideoMIME, &livePhotoVideoLength, &item.Availability, &item.TrashEntryID, &item.TrashEntryKind, &item.PreviewStatus, &item.PreviewError, &item.MetadataStatus, &item.DisplayTitle, &item.Notes, &item.Rating, &item.ColorLabel, &favorite, &captured, &discovered, &dominantColors, &cloudPhotoID, &cloudPath, &cloudThumbPath, &cloudSourceID, &cloudPluginID, &cloudURLType, &cloudRemoteUpdatedAt, &cloudSyncState, &cloudSyncError, &cameraMake, &cameraModel, &lensModel, &iso, &aperture, &shutterSeconds, &focalLengthMM, &latitude, &longitude, &sortValue); err != nil {
 			return AssetPage{}, err
 		}
 		item.IsAnimated = animated != 0
 		item.IsFavorite = favorite != 0
+		item.IsLivePhoto = livePhoto != 0
+		item.LivePhotoVideoMIME = livePhotoVideoMIME.String
+		item.LivePhotoVideoLength = livePhotoVideoLength.Int64
 		item.CloudPhotoID = cloudPhotoID.String
 		item.CloudPath = cloudPath.String
 		item.CloudThumbPath = cloudThumbPath.String
@@ -1047,6 +1085,9 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		item.ThumbnailURL = "/__local-library/thumbnail/" + string(item.ID) + "?session=" + sessionID + "&v=" + thumbnailKey
 		item.PreviewURL = "/__local-library/preview/" + string(item.ID) + "?session=" + sessionID + "&v=" + previewKey
 		item.OriginalURL = "/__local-library/original/" + string(item.ID) + "?session=" + sessionID
+		if item.IsLivePhoto {
+			item.LivePhotoVideoURL = "/__local-library/livephoto/" + string(item.ID) + "?session=" + sessionID + "&v=" + thumbnailKey
+		}
 		items = append(items, item)
 		lastID = string(item.ID)
 		switch value := sortValue.(type) {
@@ -1061,6 +1102,13 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 		default:
 			lastValue = fmt.Sprint(value)
 		}
+	}
+	// Close the result rows before the follow-up organization query. Holding
+	// the rows open keeps a pool connection checked out; if several listAssets
+	// calls run at once the pool is exhausted and loadAssetOrganization's own
+	// query would wait forever (connection-pool deadlock).
+	if err := rows.Close(); err != nil {
+		return AssetPage{}, err
 	}
 	if err := s.loadAssetOrganization(ctx, items); err != nil {
 		return AssetPage{}, err
@@ -1232,6 +1280,36 @@ func (s *store) assetPath(ctx context.Context, id AssetID) (relative, mime, stat
 	return
 }
 
+func (s *store) livePhotoMime(ctx context.Context, id AssetID) (string, error) {
+	var mime string
+	err := s.db.QueryRowContext(ctx, `SELECT live_photo_video_mime FROM assets WHERE id=?`, id).Scan(&mime)
+	if err == sql.ErrNoRows {
+		err = newError(ErrAssetNotFound, "资产不存在", map[string]any{"assetId": id})
+	}
+	return mime, err
+}
+
+// updateLivePhoto persists the Live Photo descriptor for an asset that was
+// indexed before the feature existed. Called from the scan backfill path in
+// reconcileKnownFile when an unchanged file turns out to carry an embedded
+// motion-video segment. A sentinel length of -1 is written when the file is
+// NOT a Live Photo so the backfill never re-probes it on subsequent scans.
+func (s *store) updateLivePhoto(ctx context.Context, id AssetID, desc livePhotoDescriptor) error {
+	mediaKind := "image"
+	isLive := 0
+	mime := ""
+	length := int64(-1) // sentinel: probed, not a live photo
+	if desc.VideoOffset > 0 {
+		isLive = 1
+		mediaKind = "live-photo"
+		mime = desc.VideoMIME
+		length = desc.VideoLength
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE assets SET is_live_photo=?,live_photo_video_mime=?,live_photo_video_length=?,media_kind=CASE WHEN media_kind='file' THEN 'file' ELSE ? END,technical_updated_at=? WHERE id=? AND (live_photo_video_length=0 OR live_photo_video_length IS NULL)`,
+		isLive, mime, length, mediaKind, time.Now().UnixMilli(), id)
+	return err
+}
+
 type derivativeRecord struct {
 	AssetID      AssetID
 	Variant      derivativeVariant
@@ -1246,8 +1324,8 @@ type derivativeRecord struct {
 }
 
 func (s *store) derivativeSource(ctx context.Context, id AssetID) (source derivativeSource, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT relative_path,mime_type,availability,modified_at_ns,byte_size,orientation FROM assets WHERE id=?`, id).
-		Scan(&source.RelativePath, &source.MimeType, &source.Availability, &source.ModifiedAtNS, &source.ByteSize, &source.Orientation)
+	err = s.db.QueryRowContext(ctx, `SELECT relative_path,mime_type,availability,modified_at_ns,byte_size,orientation,format,extension FROM assets WHERE id=?`, id).
+		Scan(&source.RelativePath, &source.MimeType, &source.Availability, &source.ModifiedAtNS, &source.ByteSize, &source.Orientation, &source.Format, &source.Extension)
 	if err == sql.ErrNoRows {
 		err = newError(ErrAssetNotFound, "asset does not exist", map[string]any{"assetId": id})
 	}

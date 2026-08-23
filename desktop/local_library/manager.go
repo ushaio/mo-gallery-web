@@ -593,6 +593,8 @@ func (session *librarySession) upsertAssetForScan(ctx context.Context, file inde
 	return session.store.upsertAsset(ctx, file, token)
 }
 
+// touchUnchangedAssetForScan confirms an unchanged path is still active and
+// stamps it with the current scan token.
 func (session *librarySession) touchUnchangedAssetForScan(ctx context.Context, pathKey string, byteSize, modifiedAtNS int64, scanID, token string) (*unchangedAsset, error) {
 	session.mu.RLock()
 	defer session.mu.RUnlock()
@@ -610,6 +612,48 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 	folderPaths := make([]string, 0)
 	canPruneFolders := true
 	lastEvent := time.Now()
+
+	var total int64
+	_ = filepath.WalkDir(session.root, func(path string, entry fs.DirEntry, walkErr error) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if walkErr != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			if path != session.root && strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isIndexableFile(path) {
+			total++
+			if time.Since(lastEvent) > 200*time.Millisecond {
+				session.mu.Lock()
+				if session.scanID == scanID {
+					session.scan.LastPath = filepath.ToSlash(path)
+				}
+				session.mu.Unlock()
+				m.emitSessionEvent(session, "scan_progress")
+				lastEvent = time.Now()
+			}
+		}
+		return nil
+	})
+	session.mu.Lock()
+	if session.scanID == scanID {
+		session.scan.Total = &total
+		session.scan.Current = 0
+	}
+	session.mu.Unlock()
+	m.emitSessionEvent(session, "scan_progress")
+
 	err := filepath.WalkDir(session.root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if errors.Is(walkErr, fs.ErrPermission) {
@@ -624,7 +668,7 @@ func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, 
 		default:
 		}
 		if entry.IsDir() {
-			if path != session.root && strings.EqualFold(entry.Name(), internalDirName) {
+			if path != session.root && strings.HasPrefix(entry.Name(), ".") {
 				return filepath.SkipDir
 			}
 			if entry.Type()&os.ModeSymlink != 0 {
@@ -1010,7 +1054,7 @@ func (m *Manager) startWatcher(session *librarySession) error {
 			if !d.IsDir() {
 				return nil
 			}
-			if path != session.root && strings.EqualFold(d.Name(), internalDirName) {
+			if path != session.root && strings.HasPrefix(d.Name(), ".") {
 				return filepath.SkipDir
 			}
 			if d.Type()&os.ModeSymlink != 0 {

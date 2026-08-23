@@ -168,6 +168,10 @@ export interface LocalAsset {
   orientation: number
   isAnimated: boolean
   frameCount: number
+  isLivePhoto: boolean
+  livePhotoVideoMime?: string
+  livePhotoVideoUrl?: string
+  livePhotoVideoLength?: number
   availability: AssetAvailability | string
   trashEntryId?: string
   trashEntryKind?: 'asset' | 'folder' | string
@@ -247,6 +251,7 @@ export interface AssetQuery extends AssetStructuredFilters {
   uploadStatus?: 'all' | 'uploaded' | 'not-uploaded'
   favoritesOnly?: boolean
   photosOnly?: boolean
+  livePhotoOnly?: boolean
   tagIds?: string[]
   collectionIds?: string[]
   sort?: AssetSort
@@ -258,7 +263,7 @@ const PHOTO_FORMATS = new Set(['jpeg', 'png', 'gif', 'webp', 'tiff', 'heif', 'av
 /** True when the asset is a photo that supports an image preview (vs. a generic file). */
 export function isPhotoAsset(asset: Pick<LocalAsset, 'mediaKind' | 'format'>): boolean {
   if (asset.mediaKind === 'file') return false
-  if (asset.mediaKind === 'image') return true
+  if (asset.mediaKind === 'image' || asset.mediaKind === 'live-photo') return true
   // Fallback for assets reported by an older backend that does not emit mediaKind.
   return PHOTO_FORMATS.has(asset.format.toLowerCase())
 }

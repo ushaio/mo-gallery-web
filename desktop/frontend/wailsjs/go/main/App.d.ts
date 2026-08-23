@@ -33,6 +33,10 @@ export function CancelAgentMCPTool(arg1:string):Promise<boolean>;
 
 export function CancelLocalLibraryScan():Promise<void>;
 
+export function CheckCloudDownloadConflict(arg1:string,arg2:string,arg3:string):Promise<boolean>;
+
+export function CheckCloudDownloadConflictByFileName(arg1:string,arg2:string,arg3:string):Promise<boolean>;
+
 export function CheckDuplicates(arg1:Array<string>):Promise<services.DuplicateCheckResult>;
 
 export function CheckForUpdates(arg1:string,arg2:boolean):Promise<services.UpdateInfo>;
@@ -119,7 +123,9 @@ export function DeleteZineProject(arg1:string):Promise<void>;
 
 export function DiscoverAgentMCPServerTools(arg1:string):Promise<agent_extensions.MCPServer>;
 
-export function DownloadCloudPhotoToLocalLibrary(arg1:string,arg2:string,arg3:string):Promise<Array<local_library.ImportResult>>;
+export function DownloadCloudPhotoToFolder(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function DownloadCloudPhotoToLocalLibrary(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<Array<local_library.ImportResult>>;
 
 export function DownloadMessageImageToLocal(arg1:string):Promise<string>;
 

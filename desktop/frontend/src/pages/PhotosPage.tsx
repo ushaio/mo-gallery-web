@@ -30,11 +30,13 @@ import { toast } from "sonner";
 import {
   BatchDeletePhotos,
   BatchUpdateShowFlag,
+  CheckCloudDownloadConflictByFileName,
   DeletePhoto,
   GetAlbum,
   GetCategories,
   GetDesktopStorageSources,
   GetPhotos,
+  SelectFolder,
   ToggleFeatured,
   ToggleShowFlag,
 } from "../../wailsjs/go/main/App";
@@ -60,6 +62,11 @@ import {
 } from "@/features/local-library/api";
 import type { RecentLibrary } from "@/features/local-library/types";
 import { LocalLibrarySaveDialog } from "@/components/ai/image/LibrarySaveDialog";
+import {
+  DownloadConflictDialog,
+  type DownloadConflictPolicy,
+} from "@/components/admin/DownloadConflictDialog";
+import { BatchDownloadToDropdown } from "@/components/admin/BatchDownloadToDropdown";
 import { useDownloadQueue } from "@/contexts/DownloadQueueContext";
 import {
   ArrowDown,
@@ -74,6 +81,7 @@ import {
   Check,
   Download,
   FolderInput,
+  FolderOpen,
   Maximize2,
   RefreshCw,
   X,
@@ -436,6 +444,7 @@ interface PhotoCardActions {
   onToggleShow: (id: string) => void;
   onRequestDelete: (photo: Photo) => void;
   onDownloadToLocal: (photo: Photo, library: RecentLibrary) => void;
+  onDownloadToFolder: (photo: Photo, folderPath: string) => void;
 }
 
 interface PhotoCardProps extends PhotoCardActions {
@@ -450,9 +459,11 @@ interface PhotoCardProps extends PhotoCardActions {
 function DownloadToLocalSub({
   language,
   onSelectLibrary,
+  onDownloadToFolder,
 }: {
   language: "zh" | "en";
   onSelectLibrary: (library: RecentLibrary) => void;
+  onDownloadToFolder: (folderPath: string) => void;
 }) {
   const [libraries, setLibraries] = useState<RecentLibrary[]>([]);
   const [librariesLoading, setLibrariesLoading] = useState(false);
@@ -472,6 +483,16 @@ function DownloadToLocalSub({
     }
   }, [librariesLoading, loaded]);
 
+  const handleSelectFolder = useCallback(async () => {
+    let path: string;
+    try {
+      path = await SelectFolder();
+    } catch {
+      return;
+    }
+    if (path) onDownloadToFolder(path);
+  }, [onDownloadToFolder]);
+
   return (
     <ContextMenuSub onOpenChange={(open) => { if (open) void loadLibraries(); }}>
       <ContextMenuSubTrigger>
@@ -479,6 +500,19 @@ function DownloadToLocalSub({
         {language === "zh" ? "下载至" : "Download to"}
       </ContextMenuSubTrigger>
       <ContextMenuSubContent>
+        <ContextMenuItem
+          onSelect={() => void handleSelectFolder()}
+          className="flex flex-col items-start"
+        >
+          <span className="flex items-center gap-1.5">
+            <FolderOpen size={13} />
+            {language === "zh" ? "下载至本地文件夹" : "Download to folder"}
+          </span>
+          <span className="truncate text-[10px] text-muted-foreground">
+            {language === "zh" ? "选择系统目录保存原图" : "Pick a system folder for the original"}
+          </span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         {librariesLoading ? (
           <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
             <Loader2 size={13} className="animate-spin" />
@@ -523,6 +557,7 @@ function PhotoContextTarget({
   onToggleShow,
   onRequestDelete,
   onDownloadToLocal,
+  onDownloadToFolder,
 }: Omit<PhotoCardProps, "onCardClick" | "viewMode" | "isFocused"> & {
   children: React.ReactElement;
 }) {
@@ -581,6 +616,7 @@ function PhotoContextTarget({
         <DownloadToLocalSub
           language={language}
           onSelectLibrary={(library) => onDownloadToLocal(photo, library)}
+          onDownloadToFolder={(folderPath) => onDownloadToFolder(photo, folderPath)}
         />
         <ContextMenuSeparator />
         <ContextMenuItem
@@ -613,6 +649,7 @@ const PhotoGridCard = memo(function PhotoGridCard({
   onToggleShow,
   onRequestDelete,
   onDownloadToLocal,
+  onDownloadToFolder,
 }: PhotoCardProps) {
   const masonry = viewMode === "masonry";
 
@@ -629,6 +666,7 @@ const PhotoGridCard = memo(function PhotoGridCard({
       onToggleShow={onToggleShow}
       onRequestDelete={onRequestDelete}
       onDownloadToLocal={onDownloadToLocal}
+      onDownloadToFolder={onDownloadToFolder}
     >
       <div
         tabIndex={0}
@@ -870,8 +908,22 @@ export function PhotosPage({
   const [photoGridWidth, setPhotoGridWidth] = useState(900);
   // 下载至本地资源库：选择目标库后打开保存位置对话框，选择后关闭弹窗并在下载队列中显示进度
   const [downloadTargetPhoto, setDownloadTargetPhoto] = useState<Photo | null>(null);
+  const [batchDownloadPhotos, setBatchDownloadPhotos] = useState<Photo[] | null>(null);
   const [downloadLibrary, setDownloadLibrary] = useState<RecentLibrary | null>(null);
-  const { startDownload } = useDownloadQueue();
+  const [batchDownloadConflict, setBatchDownloadConflict] = useState<{
+    photos: Photo[];
+    conflictingNames: string[];
+    library: RecentLibrary;
+    destination: string;
+  } | null>(null);
+  const [downloadConflict, setDownloadConflict] = useState<{
+    photo: Photo;
+    library: RecentLibrary;
+    destination: string;
+    fileName: string;
+  } | null>(null);
+  const [conflictBusy, setConflictBusy] = useState(false);
+  const { startDownload, startFolderDownload } = useDownloadQueue();
 
   const pageRef = useRef(cacheHitRef.current ? photosPageCache!.page : 1);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1582,8 +1634,156 @@ export function PhotosPage({
     [language],
   );
 
+  const cloudPhotoFileNameOf = useCallback((photo: Photo): string => {
+    const source = photo.path || photo.url || "";
+    const base = source.split("?")[0].split("#")[0].replace(/\/+$/, "").split("/").pop() || "";
+    return base || photo.title || photo.id;
+  }, []);
+
+  const handleDownloadToFolder = useCallback(
+    async (photo: Photo, folderPath: string) => {
+      if (!folderPath) return;
+      startFolderDownload(
+        photo.id,
+        folderPath,
+        cloudPhotoFileNameOf(photo),
+        photo.size || 0,
+      );
+    },
+    [cloudPhotoFileNameOf, startFolderDownload],
+  );
+
+  const selectedPhotos = useMemo(
+    () => photos.filter((photo) => selected.has(photo.id)),
+    [photos, selected],
+  );
+
+  const handleBatchDownloadToFolder = useCallback(
+    (photosToDownload: Photo[], folderPath: string) => {
+      if (!folderPath || photosToDownload.length === 0) return;
+      for (const photo of photosToDownload) {
+        startFolderDownload(
+          photo.id,
+          folderPath,
+          cloudPhotoFileNameOf(photo),
+          photo.size || 0,
+        );
+      }
+    },
+    [cloudPhotoFileNameOf, startFolderDownload],
+  );
+
+  const handleBatchDownloadToLibrary = useCallback(
+    async (photosToDownload: Photo[], library: RecentLibrary) => {
+      if (photosToDownload.length === 0) return;
+      if (!library.available) {
+        toast.error(t("admin.ai_library_unavailable", language));
+        return;
+      }
+      try {
+        await localLibraryApi.open(library.path);
+      } catch (cause) {
+        toast.error(parseLocalLibraryError(cause).message);
+        return;
+      }
+      setBatchDownloadPhotos(photosToDownload);
+      setDownloadLibrary(library);
+    },
+    [language],
+  );
+
+  const startBatchDownloads = useCallback(
+    (photosToDownload: Photo[], destination: string, libraryPath: string, policy: DownloadConflictPolicy) => {
+      for (const photo of photosToDownload) {
+        startDownload(
+          photo.id,
+          destination,
+          libraryPath,
+          photo.title || photo.id,
+          photo.size || 0,
+          policy,
+        );
+      }
+    },
+    [startDownload],
+  );
+
+  const handleBatchSaveToLocal = useCallback(
+    async (destination: string) => {
+      const photosToDownload = batchDownloadPhotos;
+      const library = downloadLibrary;
+      if (!photosToDownload || photosToDownload.length === 0 || !library) return;
+      // 批量同名冲突检查：命中任一同名文件则交给冲突弹窗让用户选择处理策略
+      const conflictingNames: string[] = [];
+      for (const photo of photosToDownload) {
+        try {
+          const conflict = await CheckCloudDownloadConflictByFileName(
+            cloudPhotoFileNameOf(photo),
+            destination,
+            library.path,
+          );
+          if (conflict) conflictingNames.push(cloudPhotoFileNameOf(photo));
+        } catch (cause) {
+          toast.error(parseLocalLibraryError(cause).message);
+          return;
+        }
+      }
+      if (conflictingNames.length > 0) {
+        setBatchDownloadConflict({
+          photos: photosToDownload,
+          conflictingNames,
+          library,
+          destination,
+        });
+        setBatchDownloadPhotos(null);
+        setDownloadLibrary(null);
+        return false;
+      }
+      startBatchDownloads(photosToDownload, destination, library.path, "rename");
+      setBatchDownloadPhotos(null);
+      setDownloadLibrary(null);
+    },
+    [
+      batchDownloadPhotos,
+      cloudPhotoFileNameOf,
+      downloadLibrary,
+      startBatchDownloads,
+    ],
+  );
+
+  const handleBatchConflictResolve = useCallback(
+    (policy: DownloadConflictPolicy) => {
+      const conflict = batchDownloadConflict;
+      if (!conflict) return;
+      setBatchDownloadConflict(null);
+      if (policy === "skip") {
+        // 跳过冲突文件：仅下载无同名冲突的照片
+        const conflictNames = new Set(conflict.conflictingNames);
+        const toDownload = conflict.photos.filter(
+          (photo) => !conflictNames.has(cloudPhotoFileNameOf(photo)),
+        );
+        if (toDownload.length > 0) {
+          startBatchDownloads(
+            toDownload,
+            conflict.destination,
+            conflict.library.path,
+            "rename",
+          );
+        }
+        return;
+      }
+      startBatchDownloads(
+        conflict.photos,
+        conflict.destination,
+        conflict.library.path,
+        policy,
+      );
+    },
+    [batchDownloadConflict, cloudPhotoFileNameOf, startBatchDownloads],
+  );
+
   const confirmDownloadToLocal = useCallback(
-    (destination: string) => {
+    (destination: string, conflictPolicy: DownloadConflictPolicy = "rename") => {
       const photo = downloadTargetPhoto;
       const library = downloadLibrary;
       if (!photo || !library) return;
@@ -1597,9 +1797,63 @@ export function PhotosPage({
         library.path,
         photo.title || photo.id,
         photo.size || 0,
+        conflictPolicy,
       );
     },
     [downloadLibrary, downloadTargetPhoto, startDownload],
+  );
+
+  const handleSaveToLocal = useCallback(
+    async (destination: string) => {
+      const photo = downloadTargetPhoto;
+      const library = downloadLibrary;
+      if (!photo || !library) return;
+      try {
+        const fileName = cloudPhotoFileNameOf(photo);
+        const conflict = await CheckCloudDownloadConflictByFileName(fileName, destination, library.path);
+        if (conflict) {
+          setDownloadConflict({
+            photo,
+            library,
+            destination,
+            fileName: cloudPhotoFileNameOf(photo),
+          });
+          setDownloadTargetPhoto(null);
+          setDownloadLibrary(null);
+          // 告知保存弹窗由冲突弹窗接管，不再提示“已保存至资源库”
+          return false;
+        }
+      } catch (cause) {
+        // 冲突检查失败不阻断下载，回退为自动重命名策略
+        toast.error(parseLocalLibraryError(cause).message);
+      }
+      confirmDownloadToLocal(destination, "rename");
+    },
+    [cloudPhotoFileNameOf, confirmDownloadToLocal, downloadLibrary, downloadTargetPhoto],
+  );
+
+  const handleConflictResolve = useCallback(
+    (policy: DownloadConflictPolicy) => {
+      const conflict = downloadConflict;
+      if (!conflict) return;
+      if (policy === "skip") {
+        setDownloadConflict(null);
+        toast.success(t("admin.download_skipped_existing", language));
+        return;
+      }
+      setConflictBusy(true);
+      setDownloadConflict(null);
+      startDownload(
+        conflict.photo.id,
+        conflict.destination,
+        conflict.library.path,
+        conflict.photo.title || conflict.photo.id,
+        conflict.photo.size || 0,
+        policy,
+      );
+      setConflictBusy(false);
+    },
+    [downloadConflict, language, startDownload],
   );
 
   const renderPhotoCard = (photo: Photo) => (
@@ -1621,6 +1875,7 @@ export function PhotosPage({
       onToggleShow={toggleShowFlag}
       onRequestDelete={requestDeletePhoto}
       onDownloadToLocal={handleDownloadToLocal}
+      onDownloadToFolder={handleDownloadToFolder}
     />
   );
 
@@ -1882,6 +2137,15 @@ export function PhotosPage({
                       onClick={() => setMoveOpen(true)}
                     />
                   )}
+                  <BatchDownloadToDropdown
+                    language={language}
+                    onDownloadToFolder={(folderPath) =>
+                      handleBatchDownloadToFolder(selectedPhotos, folderPath)
+                    }
+                    onDownloadToLibrary={(library) =>
+                      handleBatchDownloadToLibrary(selectedPhotos, library)
+                    }
+                  />
                   <LibrarySelectionButton
                     icon={Trash2}
                     label={t("admin.delete_selected", language)}
@@ -1997,22 +2261,44 @@ export function PhotosPage({
         t={(key) => t(key, language)}
       />
 
-      {/* 下载至本地资源库：选择保存位置 */}
-      {downloadTargetPhoto && downloadLibrary && (
+      {/* 下载至本地资源库：选择保存位置（单张/批量共用） */}
+      {(downloadTargetPhoto || (batchDownloadPhotos && batchDownloadPhotos.length > 0)) && downloadLibrary && (
         <LocalLibrarySaveDialog
-          imageUrl={resolveAssetUrl(downloadTargetPhoto.url)}
+          imageUrl={resolveAssetUrl((downloadTargetPhoto || batchDownloadPhotos![0]).url)}
           t={(key) => t(key, language)}
           onClose={() => {
             setDownloadTargetPhoto(null);
+            setBatchDownloadPhotos(null);
             setDownloadLibrary(null);
           }}
           onSaved={() => {
             setDownloadTargetPhoto(null);
+            setBatchDownloadPhotos(null);
             setDownloadLibrary(null);
           }}
-          onSave={async (destination) => {
-            confirmDownloadToLocal(destination);
-          }}
+          onSave={downloadTargetPhoto ? handleSaveToLocal : handleBatchSaveToLocal}
+        />
+      )}
+
+      {/* 下载至本地资源库：同名文件冲突处理 */}
+      {downloadConflict && (
+        <DownloadConflictDialog
+          fileName={downloadConflict.fileName}
+          destination={downloadConflict.destination}
+          busy={conflictBusy}
+          onClose={() => setDownloadConflict(null)}
+          onConfirm={handleConflictResolve}
+        />
+      )}
+
+      {/* 批量下载：同名文件冲突处理 */}
+      {batchDownloadConflict && (
+        <DownloadConflictDialog
+          fileName={batchDownloadConflict.conflictingNames[0]}
+          destination={batchDownloadConflict.destination}
+          fileNames={batchDownloadConflict.conflictingNames}
+          onClose={() => setBatchDownloadConflict(null)}
+          onConfirm={handleBatchConflictResolve}
         />
       )}
 

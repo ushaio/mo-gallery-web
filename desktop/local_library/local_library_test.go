@@ -821,6 +821,76 @@ func TestScanSynchronizesExternalFolderChanges(t *testing.T) {
 	}
 }
 
+func TestScanExcludesDotPrefixedFolders(t *testing.T) {
+	manager, root := openTestManager(t)
+	if err := os.MkdirAll(filepath.Join(root, "Visible"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestJPEG(t, filepath.Join(root, "Visible", "photo.jpg"))
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestJPEG(t, filepath.Join(root, ".git", "config.jpg"))
+	if err := os.MkdirAll(filepath.Join(root, "Project", ".cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestJPEG(t, filepath.Join(root, "Project", ".cache", "thumb.jpg"))
+
+	if err := manager.StartScan(); err != nil {
+		t.Fatal(err)
+	}
+	waitForScanState(t, manager, "completed")
+
+	page, err := manager.ListAssets(AssetQuery{Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || page.Items[0].RelativePath != "Visible/photo.jpg" {
+		t.Fatalf("dot-folder assets were scanned: total=%d items=%+v", page.Total, page.Items)
+	}
+
+	folders, err := manager.ListFolders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{".git", "Project/.cache"} {
+		if _, found := findFolderByRelative(folders, relative); found {
+			t.Fatalf("dot-folder %q was indexed as a folder", relative)
+		}
+	}
+	if _, found := findFolderByRelative(folders, "Visible"); !found {
+		t.Fatal("visible folder was not indexed")
+	}
+	if _, found := findFolderByRelative(folders, "Project"); !found {
+		t.Fatal("parent folder of a dot-folder was not indexed")
+	}
+}
+
+func TestScanReportsTotalProgress(t *testing.T) {
+	manager, root := openTestManager(t)
+	if err := os.MkdirAll(filepath.Join(root, "Album"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestJPEG(t, filepath.Join(root, "Album", "a.jpg"))
+	writeTestJPEG(t, filepath.Join(root, "Album", "b.jpg"))
+	writeTestJPEG(t, filepath.Join(root, "Album", "c.jpg"))
+
+	if err := manager.StartScan(); err != nil {
+		t.Fatal(err)
+	}
+	waitForScanState(t, manager, "completed")
+	snapshot, err := manager.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Scan.Total == nil {
+		t.Fatal("scan total was not reported")
+	}
+	if *snapshot.Scan.Total != 3 {
+		t.Fatalf("scan total=%d, want 3", *snapshot.Scan.Total)
+	}
+}
+
 func TestGetFolderPropertiesExcludesInternalDirectory(t *testing.T) {
 	manager, root := openTestManager(t)
 	if _, err := manager.CreateFolder("", "2025"); err != nil {

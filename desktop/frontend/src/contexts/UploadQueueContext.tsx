@@ -24,6 +24,8 @@ export interface UploadTask {
   progress: number
   error?: string
   photoId?: string
+  uploaded?: number
+  uploadTotal?: number
 }
 
 interface UploadQueueContextType {
@@ -97,7 +99,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
   // Subscribe to the phase events emitted by the Go upload pipeline so the queue
   // reflects the real "compressing" vs "uploading" state instead of a timer.
   useEffect(() => {
-    const unsubscribe = EventsOn('upload:progress', (event: { taskId?: string; phase?: string; progress?: number }) => {
+    const unsubscribe = EventsOn('upload:progress', (event: { taskId?: string; phase?: string; progress?: number; uploaded?: number; total?: number }) => {
       const taskId = event?.taskId
       if (!taskId) return
       const task = tasksRef.current.find(t => t.id === taskId)
@@ -105,7 +107,13 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       if (event.phase === 'compressing') {
         updateTask(taskId, { status: 'compressing', progress: 0, error: undefined })
       } else if (event.phase === 'uploading') {
-        updateTask(taskId, { status: 'uploading', progress: 5 })
+        updateTask(taskId, {
+          status: 'uploading',
+          progress: 5,
+          uploaded: event.uploaded,
+          uploadTotal: event.total,
+          error: undefined,
+        })
       }
     })
     return () => { unsubscribe() }

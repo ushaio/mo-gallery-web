@@ -71,6 +71,7 @@ type transfer struct {
 	written     int64
 	destination string
 	temporary   string
+	progress    func(done, total int64)
 }
 
 type pluginRuntime struct {
@@ -232,6 +233,9 @@ func (r *pluginRuntime) handleTransferRead(request rpcRequest) {
 		return
 	}
 	buffer = buffer[:read]
+	if progress := item.progress; progress != nil {
+		progress(params.Offset+int64(read), item.size)
+	}
 	result := map[string]any{
 		"data":   base64.StdEncoding.EncodeToString(buffer),
 		"offset": params.Offset,
@@ -406,7 +410,7 @@ func (r *pluginRuntime) cleanupTransfers() {
 	}
 }
 
-func (r *pluginRuntime) registerTransfer(filePath string) (TransferHandle, error) {
+func (r *pluginRuntime) registerTransfer(filePath string, progress func(done, total int64)) (TransferHandle, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return TransferHandle{}, err
@@ -422,7 +426,7 @@ func (r *pluginRuntime) registerTransfer(filePath string) (TransferHandle, error
 		return TransferHandle{}, err
 	}
 	r.mu.Lock()
-	r.transfers[id] = transfer{file: file, size: info.Size()}
+	r.transfers[id] = transfer{file: file, size: info.Size(), progress: progress}
 	r.mu.Unlock()
 	return TransferHandle{ID: id, Size: info.Size()}, nil
 }

@@ -511,7 +511,7 @@ func (m *Manager) Put(ctx context.Context, req PutRequest) (ObjectInfo, error) {
 	if err != nil {
 		return ObjectInfo{}, err
 	}
-	handle, err := runtime.registerTransfer(req.FilePath)
+	handle, err := runtime.registerTransfer(req.FilePath, req.Progress)
 	if err != nil {
 		return ObjectInfo{}, fmt.Errorf("open upload transfer: %w", err)
 	}

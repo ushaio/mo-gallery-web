@@ -710,6 +710,10 @@ export namespace local_library {
 	    orientation: number;
 	    isAnimated: boolean;
 	    frameCount: number;
+	    isLivePhoto: boolean;
+	    livePhotoVideoMime?: string;
+	    livePhotoVideoUrl?: string;
+	    livePhotoVideoLength?: number;
 	    availability: string;
 	    trashEntryId?: string;
 	    trashEntryKind?: string;
@@ -765,6 +769,10 @@ export namespace local_library {
 	        this.orientation = source["orientation"];
 	        this.isAnimated = source["isAnimated"];
 	        this.frameCount = source["frameCount"];
+	        this.isLivePhoto = source["isLivePhoto"];
+	        this.livePhotoVideoMime = source["livePhotoVideoMime"];
+	        this.livePhotoVideoUrl = source["livePhotoVideoUrl"];
+	        this.livePhotoVideoLength = source["livePhotoVideoLength"];
 	        this.availability = source["availability"];
 	        this.trashEntryId = source["trashEntryId"];
 	        this.trashEntryKind = source["trashEntryKind"];
@@ -1046,6 +1054,7 @@ export namespace local_library {
 	    uploadStatus?: string;
 	    favoritesOnly?: boolean;
 	    photosOnly?: boolean;
+	    livePhotoOnly?: boolean;
 	    tagIds?: string[];
 	    collectionIds?: string[];
 	    ratingMin?: number;
@@ -1089,6 +1098,7 @@ export namespace local_library {
 	        this.uploadStatus = source["uploadStatus"];
 	        this.favoritesOnly = source["favoritesOnly"];
 	        this.photosOnly = source["photosOnly"];
+	        this.livePhotoOnly = source["livePhotoOnly"];
 	        this.tagIds = source["tagIds"];
 	        this.collectionIds = source["collectionIds"];
 	        this.ratingMin = source["ratingMin"];

@@ -1,9 +1,9 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ComponentType, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
 interface LibraryNavItemProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
-  icon: LucideIcon
+  icon: LucideIcon | ComponentType<{ size?: number | string; className?: string }>
   label: string
   active?: boolean
   count?: number

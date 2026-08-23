@@ -50,6 +50,14 @@ export function CancelLocalLibraryScan() {
   return window['go']['main']['App']['CancelLocalLibraryScan']();
 }
 
+export function CheckCloudDownloadConflict(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CheckCloudDownloadConflict'](arg1, arg2, arg3);
+}
+
+export function CheckCloudDownloadConflictByFileName(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CheckCloudDownloadConflictByFileName'](arg1, arg2, arg3);
+}
+
 export function CheckDuplicates(arg1) {
   return window['go']['main']['App']['CheckDuplicates'](arg1);
 }
@@ -222,8 +230,12 @@ export function DiscoverAgentMCPServerTools(arg1) {
   return window['go']['main']['App']['DiscoverAgentMCPServerTools'](arg1);
 }
 
-export function DownloadCloudPhotoToLocalLibrary(arg1, arg2, arg3) {
-  return window['go']['main']['App']['DownloadCloudPhotoToLocalLibrary'](arg1, arg2, arg3);
+export function DownloadCloudPhotoToFolder(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadCloudPhotoToFolder'](arg1, arg2, arg3);
+}
+
+export function DownloadCloudPhotoToLocalLibrary(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['DownloadCloudPhotoToLocalLibrary'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function DownloadMessageImageToLocal(arg1) {

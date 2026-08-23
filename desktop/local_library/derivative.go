@@ -46,6 +46,8 @@ type derivativeSource struct {
 	ModifiedAtNS int64
 	ByteSize     int64
 	Orientation  int
+	Format       string
+	Extension    string
 }
 
 type derivativeRequest struct {

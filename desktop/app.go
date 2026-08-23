@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"os/exec"
@@ -45,6 +46,7 @@ type App struct {
 	authenticatedUserID string
 	cloudSyncMu         sync.Mutex
 	cloudSyncCancel     context.CancelFunc
+	localDownloadMu     sync.Mutex
 	activeWindowStyle   string
 	Proxy               *services.ProxyClient
 	Auth                *services.AuthService
@@ -94,6 +96,15 @@ func NewApp(cfg *config.Config) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if runtime.Environment(ctx).BuildType == "dev" {
+		// Dev-only pprof listener so a wedged local library manager can be
+		// inspected via http://127.0.0.1:6060/debug/pprof/goroutine?debug=2
+		go func() {
+			if err := http.ListenAndServe("127.0.0.1:6060", nil); err != nil {
+				log.Printf("pprof listener stopped: %v", err)
+			}
+		}()
+	}
 	if a.StoragePlugins != nil {
 		// An unpacked plugin directory is only an explicit Wails development
 		// workflow. Production and debug builds must use signed packages.
@@ -1453,15 +1464,22 @@ func (a *App) SaveMessageImageToLocalLibrary(imageURL string, destination string
 // into a local library. If libraryPath differs from the currently open session,
 // the target library is opened first. The imported asset is then linked to the
 // cloud photo and marked as uploaded. Progress is emitted via "download:progress"
-// events so the renderer can show a download queue popup.
-func (a *App) DownloadCloudPhotoToLocalLibrary(photoID string, destination string, libraryPath string) ([]local_library.ImportResult, error) {
+// events so the renderer can show a download queue popup. taskID is the ID the
+// renderer already created for its download queue entry; it is reused for every
+// progress event so the renderer can match them. conflictPolicy decides what
+// happens when the destination already has a file with the same name: "rename"
+// (default) keeps both via auto-rename, "overwrite" replaces it, "skip" keeps
+// the existing file and reports status "skipped".
+func (a *App) DownloadCloudPhotoToLocalLibrary(taskID string, photoID string, destination string, libraryPath string, conflictPolicy string) ([]local_library.ImportResult, error) {
 	if a.LocalLibrary == nil {
 		return nil, errors.New("本地资源库未初始化")
 	}
 	if a.Photo == nil || !a.Proxy.IsReady() {
 		return nil, errors.New("云端服务尚未就绪")
 	}
-	taskID := photoID + "-" + time.Now().Format("20060102150405.000000000")
+	if strings.TrimSpace(taskID) == "" {
+		taskID = photoID + "-" + time.Now().Format("20060102150405.000000000")
+	}
 	a.emitDownloadProgress(taskID, "fetching", 0, "", photoID, cloudPhotoTitle(nil), 0)
 	photo, err := a.Photo.GetByID(photoID)
 	if err != nil {
@@ -1497,13 +1515,19 @@ func (a *App) DownloadCloudPhotoToLocalLibrary(photoID string, destination strin
 	defer os.Remove(tempPath)
 	if err := downloadFileWithAuth(a.ctx, downloadURL, tempPath, a.Proxy, taskID, func(read int64, total int64) {
 		if total > 0 {
-			a.emitDownloadProgress(taskID, "downloading", int(float64(read)/float64(total)*80), "", photoID, cloudPhotoTitle(photo), total)
+			a.emitDownloadProgressBytes(taskID, "downloading", int(float64(read)/float64(total)*80), "", photoID, cloudPhotoTitle(photo), total, read, total)
 		}
 	}); err != nil {
 		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("下载原图失败: %w", err).Error(), photoID, cloudPhotoTitle(photo), fileSize)
 		return nil, fmt.Errorf("下载原图失败: %w", err)
 	}
 	a.emitDownloadProgress(taskID, "importing", 85, "", photoID, cloudPhotoTitle(photo), fileSize)
+	// Serialize the library-mutation section. Batch downloads start many
+	// concurrent DownloadCloudPhotoToLocalLibrary calls; letting them all import,
+	// cloud-link, and queue thumbnails at once (while the initial scan of a large
+	// library is still walking the tree) can wedge the local library manager.
+	a.localDownloadMu.Lock()
+	defer a.localDownloadMu.Unlock()
 	// Open the target library if it is not the current session.
 	if libraryPath != "" {
 		if snapshot, snapshotErr := a.LocalLibrary.Snapshot(); snapshotErr != nil || !strings.EqualFold(snapshot.RootPath, libraryPath) {
@@ -1513,11 +1537,15 @@ func (a *App) DownloadCloudPhotoToLocalLibrary(photoID string, destination strin
 			}
 		}
 	}
-	result, err := a.LocalLibrary.ImportDownloadedFile(tempPath, destination, originalFileName)
+	result, err := a.LocalLibrary.ImportDownloadedFile(tempPath, destination, originalFileName, conflictPolicy)
 	results := []local_library.ImportResult{result}
 	if err != nil {
 		a.emitDownloadProgress(taskID, "failed", 0, err.Error(), photoID, cloudPhotoTitle(photo), fileSize)
 		return results, err
+	}
+	if result.Status == "skipped" {
+		a.emitDownloadProgress(taskID, "completed", 100, "", photoID, cloudPhotoTitle(photo), fileSize)
+		return results, nil
 	}
 	// Link the imported asset to the cloud photo and update cloud projection.
 	if result.AssetID != "" && result.Status != "failed" {
@@ -1539,30 +1567,167 @@ func (a *App) DownloadCloudPhotoToLocalLibrary(photoID string, destination strin
 	return results, nil
 }
 
+// DownloadCloudPhotoToFolder downloads the original image of a cloud photo into
+// an arbitrary local folder picked by the user via the system file manager.
+// Unlike DownloadCloudPhotoToLocalLibrary it does not index the file into a
+// local library; it is a plain file download. On a name collision the file is
+// auto-renamed ("name (1).jpg") so existing files are never overwritten.
+// Progress is emitted via "download:progress" events using taskID, and the
+// absolute path of the saved file is returned on success.
+func (a *App) DownloadCloudPhotoToFolder(taskID string, photoID string, targetDir string) (string, error) {
+	if a.Photo == nil || !a.Proxy.IsReady() {
+		return "", errors.New("云端服务尚未就绪")
+	}
+	if strings.TrimSpace(taskID) == "" {
+		taskID = photoID + "-" + time.Now().Format("20060102150405.000000000")
+	}
+	targetDir = filepath.Clean(strings.TrimSpace(targetDir))
+	if targetDir == "" || targetDir == "." {
+		return "", errors.New("目标目录无效")
+	}
+	a.emitDownloadProgress(taskID, "fetching", 0, "", photoID, cloudPhotoTitle(nil), 0)
+	photo, err := a.Photo.GetByID(photoID)
+	if err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("获取云端照片失败: %w", err).Error(), photoID, "", 0)
+		return "", fmt.Errorf("获取云端照片失败: %w", err)
+	}
+	if photo.URL == "" {
+		a.emitDownloadProgress(taskID, "failed", 0, "云端照片没有可下载的原图地址", photoID, cloudPhotoTitle(photo), 0)
+		return "", errors.New("云端照片没有可下载的原图地址")
+	}
+	downloadURL := services.ResolveUploadURL(a.Proxy.BaseURL(), photo.URL)
+	originalFileName := cloudPhotoFileName(photo)
+	fileSize := int64(0)
+	if photo.Size != nil {
+		fileSize = *photo.Size
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("创建目标目录失败: %w", err).Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return "", fmt.Errorf("创建目标目录失败: %w", err)
+	}
+	extension := suggestedAiImageExtension(downloadURL)
+	tempFile, err := os.CreateTemp(targetDir, ".mo-gallery-download-*"+extension)
+	if err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("创建临时文件失败: %w", err).Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return "", fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tempPath := tempFile.Name()
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempPath)
+		a.emitDownloadProgress(taskID, "failed", 0, err.Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return "", err
+	}
+	defer os.Remove(tempPath)
+	a.emitDownloadProgress(taskID, "downloading", 0, "", photoID, cloudPhotoTitle(photo), fileSize)
+	if err := downloadFileWithAuth(a.ctx, downloadURL, tempPath, a.Proxy, taskID, func(read int64, total int64) {
+		if total > 0 {
+			a.emitDownloadProgressBytes(taskID, "downloading", int(float64(read)/float64(total)*90), "", photoID, cloudPhotoTitle(photo), total, read, total)
+		}
+	}); err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("下载原图失败: %w", err).Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return "", fmt.Errorf("下载原图失败: %w", err)
+	}
+	destinationPath := filepath.Join(targetDir, originalFileName)
+	if _, statErr := os.Stat(destinationPath); statErr == nil {
+		destinationPath = nextAvailableDownloadPath(targetDir, originalFileName)
+	}
+	if err := os.Rename(tempPath, destinationPath); err != nil {
+		a.emitDownloadProgress(taskID, "failed", 0, fmt.Errorf("保存文件失败: %w", err).Error(), photoID, cloudPhotoTitle(photo), fileSize)
+		return "", fmt.Errorf("保存文件失败: %w", err)
+	}
+	a.emitDownloadProgress(taskID, "completed", 100, "", photoID, cloudPhotoTitle(photo), fileSize)
+	return destinationPath, nil
+}
+
+// nextAvailableDownloadPath returns a file path in dir that does not collide
+// with an existing file by appending " (n)" before the extension.
+func nextAvailableDownloadPath(dir string, fileName string) string {
+	ext := filepath.Ext(fileName)
+	name := strings.TrimSuffix(fileName, ext)
+	for i := 1; ; i++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s (%d)%s", name, i, ext))
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
+}
+
+// CheckCloudDownloadConflict reports whether downloading the given cloud photo
+// into the destination folder of the target library would collide with an
+// existing file of the same name, so the renderer can ask how to resolve it.
+func (a *App) CheckCloudDownloadConflict(photoID string, destination string, libraryPath string) (bool, error) {
+	if a.LocalLibrary == nil {
+		return false, errors.New("本地资源库未初始化")
+	}
+	if a.Photo == nil {
+		return false, errors.New("云端服务尚未就绪")
+	}
+	photo, err := a.Photo.GetByID(photoID)
+	if err != nil {
+		return false, fmt.Errorf("获取云端照片失败: %w", err)
+	}
+	if libraryPath != "" {
+		if snapshot, snapshotErr := a.LocalLibrary.Snapshot(); snapshotErr != nil || !strings.EqualFold(snapshot.RootPath, libraryPath) {
+			if _, openErr := a.LocalLibrary.Open(libraryPath); openErr != nil {
+				return false, fmt.Errorf("打开目标资源库失败: %w", openErr)
+			}
+		}
+	}
+	return a.LocalLibrary.CheckDownloadConflict(destination, cloudPhotoFileName(photo))
+}
+
+// CheckCloudDownloadConflictByFileName checks whether importing a file named
+// fileName into the destination folder of the target library would collide
+// with an existing file. Unlike CheckCloudDownloadConflict it does not fetch
+// the cloud photo again — the renderer already holds the photo metadata from
+// the list API and derives the file name itself, so this is a local-only
+// (os.Stat) check and avoids a network round-trip.
+func (a *App) CheckCloudDownloadConflictByFileName(fileName string, destination string, libraryPath string) (bool, error) {
+	if a.LocalLibrary == nil {
+		return false, errors.New("本地资源库未初始化")
+	}
+	if libraryPath != "" {
+		if snapshot, snapshotErr := a.LocalLibrary.Snapshot(); snapshotErr != nil || !strings.EqualFold(snapshot.RootPath, libraryPath) {
+			if _, openErr := a.LocalLibrary.Open(libraryPath); openErr != nil {
+				return false, fmt.Errorf("打开目标资源库失败: %w", openErr)
+			}
+		}
+	}
+	return a.LocalLibrary.CheckDownloadConflict(destination, fileName)
+}
+
 // DownloadProgress reports the current download phase to the renderer so the
-// download queue popup can show real-time progress.
+// download queue popup can show real-time progress and transfer speed.
 type DownloadProgress struct {
-	TaskID   string `json:"taskId"`
-	Phase    string `json:"phase"` // "fetching" | "downloading" | "importing" | "completed" | "failed"
-	Progress int    `json:"progress"`
-	Error    string `json:"error,omitempty"`
-	PhotoID  string `json:"photoId"`
-	FileName string `json:"fileName"`
-	FileSize int64  `json:"fileSize"`
+	TaskID     string `json:"taskId"`
+	Phase      string `json:"phase"` // "fetching" | "downloading" | "importing" | "completed" | "failed"
+	Progress   int    `json:"progress"`
+	Error      string `json:"error,omitempty"`
+	PhotoID    string `json:"photoId"`
+	FileName   string `json:"fileName"`
+	FileSize   int64  `json:"fileSize"`
+	Downloaded int64  `json:"downloaded,omitempty"`
+	Total      int64  `json:"total,omitempty"`
 }
 
 func (a *App) emitDownloadProgress(taskID, phase string, progress int, errMsg, photoID, fileName string, fileSize int64) {
+	a.emitDownloadProgressBytes(taskID, phase, progress, errMsg, photoID, fileName, fileSize, 0, 0)
+}
+
+func (a *App) emitDownloadProgressBytes(taskID, phase string, progress int, errMsg, photoID, fileName string, fileSize, downloaded, total int64) {
 	if a.ctx == nil || strings.TrimSpace(taskID) == "" {
 		return
 	}
 	runtime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
-		TaskID:   taskID,
-		Phase:    phase,
-		Progress: progress,
-		Error:    errMsg,
-		PhotoID:  photoID,
-		FileName: fileName,
-		FileSize: fileSize,
+		TaskID:     taskID,
+		Phase:      phase,
+		Progress:   progress,
+		Error:      errMsg,
+		PhotoID:    photoID,
+		FileName:   fileName,
+		FileSize:   fileSize,
+		Downloaded: downloaded,
+		Total:      total,
 	})
 }
 
