@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/ContextMenu'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { LibraryNavItem, LibrarySearchInput, LibrarySidebarSection, LibraryStatusBar, LibraryToolbar, LibraryViewToggle, LibraryZoomSlider } from '@/components/ui/library'
+import { LivePhotoIcon } from '@/components/icons/LivePhotoIcon'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useUploadQueue } from '@/contexts/UploadQueueContext'
@@ -41,6 +42,7 @@ import { LocalLibraryGuide, LOCAL_LIBRARY_GUIDE_SEEN_KEY } from './LocalLibraryG
 import { MoveFolderDialog } from './MoveFolderDialog'
 import { AssetFileOperationDialog } from './AssetFileOperationDialog'
 import { AssetMoveConflictDialog } from './AssetMoveConflictDialog'
+import { AddToCollectionConfirmDialog } from './AddToCollectionConfirmDialog'
 import { OrganizationEditorDialog } from './OrganizationEditorDialog'
 import type { OrganizationEditorTarget } from './OrganizationEditorDialog'
 import { OrganizationNavigation } from './OrganizationNavigation'
@@ -148,6 +150,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     setGridSize(Math.min(280, Math.max(120, persistedGridSize)))
   }, [persistedGridSize])
   const [directFolderOnly, setDirectFolderOnly] = useState(false)
+  const [livePhotoOnly, setLivePhotoOnly] = useState(false)
   const photosOnly = filters.photosOnly !== false
   const [importBusy, setImportBusy] = useState(false)
   const importBusyRef = useRef(false)
@@ -163,8 +166,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const [backupLoading, setBackupLoading] = useState(false)
   const [backupOperation, setBackupOperation] = useState<'create' | 'restore' | null>(null)
   const [createFolderParent, setCreateFolderParent] = useState<FolderTarget | null>(null)
-  const [organizeFolderTarget, setOrganizeFolderTarget] = useState<{ target: FolderTarget, mode: 'rename' | 'move' } | null>(null)
+  const [organizeFolderTarget, setOrganizeFolderTarget] = useState<{ target: FolderTarget, mode: 'rename' | 'move', initialDestinationParent?: string } | null>(null)
   const [folderMovePlan, setFolderMovePlan] = useState<FolderFileOperationPlan>()
+  const [pendingCollectionDrop, setPendingCollectionDrop] = useState<{ assetIds: string[]; collectionId: string } | null>(null)
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<FolderTarget | null>(null)
   const [propertiesFolder, setPropertiesFolder] = useState<FolderTarget | null>(null)
   const [folderProperties, setFolderProperties] = useState<FolderProperties | undefined>()
@@ -213,8 +217,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const toggleFolderCollapsed = toggleFolderExpanded
 
   const query = useMemo(() => ({
-    folder, directFolderOnly, search: deferredSearch, sort, sortDirection, availability, favoritesOnly, tagIds, collectionIds, ...filters, photosOnly, limit: 100,
-  }), [availability, collectionIds, deferredSearch, directFolderOnly, favoritesOnly, filters, folder, sort, sortDirection, tagIds])
+    folder, directFolderOnly, search: deferredSearch, sort, sortDirection, availability, favoritesOnly, livePhotoOnly, tagIds, collectionIds, ...filters, photosOnly, limit: 100,
+  }), [availability, collectionIds, deferredSearch, directFolderOnly, favoritesOnly, filters, folder, livePhotoOnly, sort, sortDirection, tagIds])
   const queryKey = useMemo(() => JSON.stringify(query), [query])
   const activeQueryKeyRef = useRef(queryKey)
   const requestedQueryKeyRef = useRef(queryKey)
@@ -1149,16 +1153,15 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   }
 
   const applyOrganizationDrop = async (assetIds: string[], target: { kind: 'tag' | 'collection' | 'favorite'; id?: string }) => {
-    const activeIds = assetIds.filter((id) => page.items.find((item) => item.id === id)?.availability === 'active')
-    if (activeIds.length === 0) return
+    if (assetIds.length === 0) return
     setOrganizationBusy(true)
     try {
       if (target.kind === 'tag' && target.id) {
-        await localLibraryApi.batchUpdateAssetOrganization({ assetIds: activeIds, addTagIds: [target.id] })
+        await localLibraryApi.batchUpdateAssetOrganization({ assetIds, addTagIds: [target.id] })
       } else if (target.kind === 'collection' && target.id) {
-        await localLibraryApi.batchUpdateAssetOrganization({ assetIds: activeIds, addCollectionIds: [target.id] })
+        await localLibraryApi.batchUpdateAssetOrganization({ assetIds, addCollectionIds: [target.id] })
       } else if (target.kind === 'favorite') {
-        await localLibraryApi.batchUpdateAssetOrganization({ assetIds: activeIds, isFavorite: true })
+        await localLibraryApi.batchUpdateAssetOrganization({ assetIds, isFavorite: true })
       }
       toast.success(copy.organizationUpdated)
       refreshAssets()
@@ -1167,6 +1170,16 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       toast.error(parseLocalLibraryError(error).message)
     } finally {
       setOrganizationBusy(false)
+    }
+  }
+
+  const confirmCollectionDrop = async () => {
+    const pending = pendingCollectionDrop
+    if (!pending || organizationBusy) return
+    try {
+      await applyOrganizationDrop(pending.assetIds, { kind: 'collection', id: pending.collectionId })
+    } finally {
+      setPendingCollectionDrop(null)
     }
   }
 
@@ -1257,11 +1270,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       if (!source || !canMoveFolderTo(source, destinationParent)) return
       const sourceFolder = folders.find((item) => item.relativePath === source)
       if (!sourceFolder) return
-      void performFolderMove(
-        { relativePath: sourceFolder.relativePath, name: sourceFolder.name, isRoot: false },
-        destinationParent,
-        sourceFolder.name,
-      )
+      const target = { relativePath: sourceFolder.relativePath, name: sourceFolder.name, isRoot: false }
+      setOrganizeFolderTarget({ target, mode: 'move', initialDestinationParent: destinationParent })
+      void performFolderMove(target, destinationParent, sourceFolder.name)
     },
   })
 
@@ -1278,6 +1289,8 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
             draggable
             onDragStart={(event) => {
               event.dataTransfer.setData(FOLDER_DRAG_TYPE, item.relativePath)
+              // WebView2 对纯自定义数据类型支持不稳定，写入标准类型确保文件夹路径能传送到投放目标。
+              event.dataTransfer.setData('application/json', item.relativePath)
               event.dataTransfer.effectAllowed = 'move'
               setDraggedFolderPath(item.relativePath)
             }}
@@ -1541,7 +1554,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
-      if (backupDialogOpen || batchDeleteDialogOpen || batchUploadSettingsOpen || createFolderParent || deleteAsset || deleteFolderTarget || guideOpen || organizeFolderTarget || organizationDelete || organizationEditor || pendingImportPaths || permanentFolderTarget || previewAsset || propertiesFolder || removeMissingAsset || restoreFolderTarget || assetFileOperation || uploadSettingsAsset) return
+      if (backupDialogOpen || batchDeleteDialogOpen || batchUploadSettingsOpen || createFolderParent || deleteAsset || deleteFolderTarget || guideOpen || organizeFolderTarget || organizationDelete || organizationEditor || pendingImportPaths || pendingCollectionDrop || permanentFolderTarget || previewAsset || propertiesFolder || removeMissingAsset || restoreFolderTarget || assetFileOperation || uploadSettingsAsset) return
 
       if (event.key === 'Escape') {
         clearAssetSelection()
@@ -1587,7 +1600,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [assetFileOperation, backupDialogOpen, batchDeleteDialogOpen, batchUpdateOrganization, batchUploadSettingsOpen, clearAssetSelection, createFolderParent, deleteAsset, deleteFolderTarget, fileOperationsBlockedByQuery, guideOpen, organizeFolderTarget, organizationDelete, organizationEditor, pendingImportPaths, permanentFolderTarget, previewAsset, propertiesFolder, removeMissingAsset, restoreFolderTarget, saveAsset, selectedAssetIds, selectedAssets, selectedCount, selectedQueryToken, selectAsset, uploadSettingsAsset])
+  }, [assetFileOperation, backupDialogOpen, batchDeleteDialogOpen, batchUpdateOrganization, batchUploadSettingsOpen, clearAssetSelection, createFolderParent, deleteAsset, deleteFolderTarget, fileOperationsBlockedByQuery, guideOpen, organizeFolderTarget, organizationDelete, organizationEditor, pendingImportPaths, pendingCollectionDrop, permanentFolderTarget, previewAsset, propertiesFolder, removeMissingAsset, restoreFolderTarget, saveAsset, selectedAssetIds, selectedAssets, selectedCount, selectedQueryToken, selectAsset, uploadSettingsAsset])
 
   const setAssetTags = async (assetId: string, ids: string[]) => {
     setOrganizationBusy(true)
@@ -1714,8 +1727,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
         <aside className="col-start-1 row-span-2 row-start-1 flex w-[218px] min-h-0 shrink-0 flex-col overflow-hidden border-r bg-card/82 p-3 shadow-[4px_0_18px_-20px_rgba(15,23,42,0.65)]" style={{ borderColor: 'color-mix(in srgb, var(--border) 78%, transparent)' }}>
           <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
             <div data-local-library-guide="nav">
-              <LibraryNavItem active={availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} icon={Images} label={copy.allPhotos} count={snapshot.assetCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }} />
-              <div data-local-library-logical-target {...assetDropHandlers((ids) => void applyOrganizationDrop(ids, { kind: 'favorite' }), 'link')}><LibraryNavItem active={availability === 'active' && favoritesOnly} icon={Heart} label={copy.favorites} count={favoriteCount} onClick={() => { setAvailability('active'); setFavoritesOnly(true); setFolder('') }} /></div>
+              <LibraryNavItem active={availability === 'active' && !favoritesOnly && !livePhotoOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} icon={Images} label={copy.allPhotos} count={snapshot.assetCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setLivePhotoOnly(false); setFolder('') }} />
+              <LibraryNavItem active={availability === 'active' && livePhotoOnly} icon={LivePhotoIcon} label="Live Photo" onClick={() => { setAvailability('active'); setFavoritesOnly(false); setLivePhotoOnly(true); setFolder('') }} />
+              <div data-local-library-logical-target {...assetDropHandlers((ids) => void applyOrganizationDrop(ids, { kind: 'favorite' }), 'link')}><LibraryNavItem active={availability === 'active' && favoritesOnly} icon={Heart} label={copy.favorites} count={favoriteCount} onClick={() => { setAvailability('active'); setFavoritesOnly(true); setLivePhotoOnly(false); setFolder('') }} /></div>
             </div>
             <div data-local-library-guide="folders">
               <LibrarySidebarSection open={foldersOpen} onToggle={() => toggleSection('localFolders')} label={copy.folders}>
@@ -1738,7 +1752,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
             </div>
             <OrganizationNavigation copy={copy} tags={tags} groups={collectionGroups} collections={collections} selectedTagIds={tagIds} selectedCollectionIds={collectionIds}
               onSelectTags={(ids) => { setAvailability('active'); setFavoritesOnly(false); setTagIds(ids) }} onSelectCollections={(ids) => { setAvailability('active'); setFavoritesOnly(false); setCollectionIds(ids) }}
-              onEdit={setOrganizationEditor} onDelete={setOrganizationDelete} onDropAssets={(ids, target) => void applyOrganizationDrop(ids, target)} />
+              onEdit={setOrganizationEditor} onDelete={setOrganizationDelete} onDropAssets={(ids, target) => { if (target.kind === 'collection') setPendingCollectionDrop({ assetIds: ids, collectionId: target.id }); else void applyOrganizationDrop(ids, target) }} />
             <LibrarySidebarSection label={copy.colors} icon={Palette} open={colorsOpen} onToggle={() => toggleSection('localColors')}>
               <div className="space-y-0.5">
                 {SIDEBAR_COLORS.map((color) => {
@@ -1764,9 +1778,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
           </div>
           <div className="mt-3 shrink-0 rounded-lg border p-3 text-[10px] leading-4" style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}>
             <div className="grid grid-cols-3 gap-1 text-center">
-              <StatButton active={availability === 'active' && !favoritesOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} value={snapshot.assetCount} label={copy.allPhotos} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setFolder('') }} />
-              <StatButton active={availability === 'missing'} value={snapshot.missingCount} label={copy.missing} onClick={() => { setAvailability('missing'); setFavoritesOnly(false); setFolder('') }} />
-              <StatButton active={availability === 'trashed'} value={snapshot.trashCount} label={copy.inTrash} onClick={() => { setAvailability('trashed'); setFavoritesOnly(false); setFolder('') }} />
+              <StatButton active={availability === 'active' && !favoritesOnly && !livePhotoOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} value={snapshot.assetCount} label={copy.allPhotos} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setLivePhotoOnly(false); setFolder('') }} />
+              <StatButton active={availability === 'missing'} value={snapshot.missingCount} label={copy.missing} onClick={() => { setAvailability('missing'); setFavoritesOnly(false); setLivePhotoOnly(false); setFolder('') }} />
+              <StatButton active={availability === 'trashed'} value={snapshot.trashCount} label={copy.inTrash} onClick={() => { setAvailability('trashed'); setFavoritesOnly(false); setLivePhotoOnly(false); setFolder('') }} />
             </div>
           </div>
         </aside>
@@ -1808,7 +1822,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
           {availability === 'trashed' && <FolderTrashSection entries={trashedFolders} copy={copy} loading={trashedFoldersLoading} busyId={trashFolderBusyId} onRestore={setRestoreFolderTarget} onPermanentDelete={setPermanentFolderTarget} />}
           <LocalAssetGrid assets={page.items} folders={currentChildFolders} loading={loading || loadingMore} hasMore={Boolean(page.nextCursor)} total={page.total} copy={copy}
             emptyTitle={availability === 'missing' ? copy.missingEmpty : undefined} emptyHint={availability === 'missing' ? copy.missingEmptyHint : undefined}
-            canUpload={isAuthenticated} storageSources={storageSources} storageSourcesLoading={storageSourcesLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey}
+            canUpload={isAuthenticated} storageSources={storageSources} storageSourcesLoading={storageSourcesLoading} viewMode={viewMode} gridSize={gridSize} pathSegments={currentPathSegments} resetKey={queryKey} directFolderOnly={directFolderOnly} onToggleDirectFolderOnly={setDirectFolderOnly}
             selectedIds={selectionMode ? [...new Set([...selectedAssetIds, ...existingAssetIds])] : selectedAssetIds} focusedId={selectedAsset?.id} onSelect={selectGridAsset} onOpen={(asset) => { if (asset.availability === 'active') setPreviewAsset(asset) }} onOpenFolder={openFolderFromContent} onLoadMore={loadMore}
             onOpenInFileManager={(asset) => void openAssetInFileManager(asset)}
             onClipboard={copyAssetToClipboard} onUpload={uploadAsset} onUploadSettings={openUploadSettings} onUploadToStorage={uploadAssetToStorage} onRefreshStorageSources={() => void reloadStorageSources()} onDelete={(asset) => { selectAsset(asset); setDeleteAsset(asset) }} onRename={openRenameAsset} onMove={openMoveAsset} onRestore={restoreAsset}
@@ -1873,6 +1887,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       {backupDialogOpen && <LocalLibraryBackupDialog copy={copy} overview={backupOverview} loading={backupLoading} operation={backupOperation} onClose={() => setBackupDialogOpen(false)} onCreate={createBackup} onRestore={restoreBackup} />}
       {organizationEditor && <OrganizationEditorDialog target={organizationEditor} groups={collectionGroups} copy={copy} busy={organizationBusy} onClose={() => setOrganizationEditor(null)} onSubmit={(value) => void saveOrganization(value)} />}
       {organizationDelete && <DeleteOrganizationDialog copy={copy} busy={organizationBusy} title={organizationDelete.kind === 'tag' ? copy.deleteTagTitle : organizationDelete.kind === 'collection' ? copy.deleteCollectionTitle : copy.deleteCollectionGroupTitle} body={organizationDelete.kind === 'tag' ? copy.deleteTagBody : organizationDelete.kind === 'collection' ? copy.deleteCollectionBody : organizationDelete.nonEmpty ? copy.deleteCollectionGroupBody : copy.deleteEmptyCollectionGroupBody} dangerousLabel={organizationDelete.kind === 'group' && organizationDelete.nonEmpty ? copy.deleteGroupContents : copy.confirmPermanent} onClose={() => setOrganizationDelete(null)} onConfirm={() => void deleteOrganization(Boolean(organizationDelete.nonEmpty))} />}
+      {pendingCollectionDrop && <AddToCollectionConfirmDialog assetCount={pendingCollectionDrop.assetIds.length} collectionName={collections.find((item) => item.id === pendingCollectionDrop.collectionId)?.name ?? ''} copy={copy} busy={organizationBusy} onConfirm={() => void confirmCollectionDrop()} onClose={() => { if (!organizationBusy) setPendingCollectionDrop(null) }} />}
       {pendingImportPaths && <ImportModeDialog copy={copy} busy={importBusy} onClose={() => { setPendingImportPaths(null); setPendingImportDestination(null) }} onChoose={chooseImportMode} />}
       {removeMissingAsset && <RemoveMissingAssetDialog asset={removeMissingAsset} copy={copy} busy={missingMaintenanceBusy} onClose={() => setRemoveMissingAsset(null)} onConfirm={removeMissingRecord} />}
       {deleteAsset && <DeleteAssetDialog asset={deleteAsset} copy={copy} busy={deleteBusy} onClose={() => setDeleteAsset(null)} onTrash={trashSelected} onRestore={() => void restoreAsset(deleteAsset)} onPermanent={permanentlyDelete} onDeleteCloud={deleteCloud} onDeleteCloudAndLocal={deleteCloudAndLocal} />}
@@ -1888,7 +1903,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
         onConfirm={() => void executeBatchDelete()}
       />
       {createFolderParent && <CreateFolderDialog parentName={createFolderParent.name} copy={copy} busy={folderOperationBusy} onClose={() => setCreateFolderParent(null)} onCreate={createFolder} />}
-      {organizeFolderTarget && <MoveFolderDialog mode={organizeFolderTarget.mode} relativePath={organizeFolderTarget.target.relativePath} currentName={organizeFolderTarget.target.name} folders={folders} copy={copy} busy={folderOperationBusy} plan={folderMovePlan} onClose={() => { setFolderMovePlan(undefined); setOrganizeFolderTarget(null) }} onConfirm={organizeFolder} onExecute={() => void executeFolderMovePlan()} />}
+      {organizeFolderTarget && <MoveFolderDialog mode={organizeFolderTarget.mode} relativePath={organizeFolderTarget.target.relativePath} currentName={organizeFolderTarget.target.name} folders={folders} copy={copy} busy={folderOperationBusy} plan={folderMovePlan} initialDestinationParent={organizeFolderTarget.initialDestinationParent} onClose={() => { setFolderMovePlan(undefined); setOrganizeFolderTarget(null) }} onConfirm={organizeFolder} onExecute={() => void executeFolderMovePlan()} />}
       {assetFileOperation && <AssetFileOperationDialog mode={assetFileOperation.mode} asset={assetFileOperation.mode === 'rename' ? assetFileOperation.asset : undefined} selectedCount={assetFileOperation.mode === 'move' ? assetFileOperation.assetIds.length : 1} folders={folders} copy={copy} busy={assetFileOperationBusy} onClose={() => setAssetFileOperation(null)} onRename={renameAsset} onMove={moveAssets} />}
       {assetMoveConflict && <AssetMoveConflictDialog plan={assetMoveConflict.plan} copy={copy} busy={assetFileOperationBusy} onClose={() => { setAssetMoveConflict(null); setAssetFileOperation(null) }} onConfirm={(policy) => void resolveAssetMoveConflict(policy)} />}
       {propertiesFolder && <FolderPropertiesDialog copy={copy} properties={folderProperties} loading={folderPropertiesLoading} onClose={() => setPropertiesFolder(null)} />}

@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Check, ChevronRight, CircleAlert, Cloud, CloudOff, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
+import { Check, ChevronRight, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
+import { CloudIcon, CloudOffIcon, CloudWarningIcon } from '@/components/icons/CloudIcons'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -13,6 +14,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/ContextMenu'
+import { LivePhotoIcon } from '@/components/icons/LivePhotoIcon'
 import { isPhotoAsset } from './types'
 import type { FolderItem, LocalAsset } from './types'
 import type { types as wailsTypes } from '../../../wailsjs/go/models'
@@ -41,6 +43,8 @@ interface Props {
   gridSize: number
   pathSegments: string[]
   resetKey: string
+  directFolderOnly: boolean
+  onToggleDirectFolderOnly: (value: boolean) => void
   onSelect: (asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => void
   onOpen: (asset: LocalAsset) => void
   onOpenFolder: (folder: FolderItem) => void
@@ -92,10 +96,13 @@ const AssetCard = memo(function AssetCard({
   onSelect, onOpen, onOpenInFileManager, onClipboard, onUpload, onUploadSettings, onUploadToStorage, onRefreshStorageSources, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: AssetCardProps) {
   const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
+  const [hovering, setHovering] = useState(false)
+  const [liveVideoEnded, setLiveVideoEnded] = useState(false)
   const imageFailed = failedThumbnailUrl === asset.thumbnailUrl
 
   const label = asset.displayTitle || asset.fileName
   const isPhoto = isPhotoAsset(asset)
+  const isLive = asset.isLivePhoto && !!asset.livePhotoVideoUrl
   const masonry = viewMode === 'masonry'
   const unavailable = asset.availability !== 'active'
   const missing = asset.availability === 'missing'
@@ -103,6 +110,7 @@ const AssetCard = memo(function AssetCard({
   const previewUnavailable = asset.availability === 'active' && asset.previewStatus === 'unavailable'
 
   const aspectRatio = isPhoto && asset.width > 0 && asset.height > 0 ? `${asset.width} / ${asset.height}` : undefined
+  const showLiveVideo = isLive && hovering && asset.availability === 'active' && !liveVideoEnded
 
   return (
     <ContextMenu>
@@ -112,8 +120,13 @@ const AssetCard = memo(function AssetCard({
           draggable={asset.availability === 'active'}
           onDragStart={(event) => {
             if (asset.availability !== 'active') return
-            event.dataTransfer.effectAllowed = 'move'
-            event.dataTransfer.setData('application/x-mo-gallery-asset-ids', JSON.stringify(dragIds))
+            // 集合/标签/收藏目标使用 dropEffect='link'，文件夹目标使用 'move'，
+            // 因此源必须同时允许 link 与 move，否则引擎会取消投放（drop 不触发）。
+            event.dataTransfer.effectAllowed = 'linkMove'
+            const payload = JSON.stringify(dragIds)
+            event.dataTransfer.setData('application/x-mo-gallery-asset-ids', payload)
+            // WebView2 对纯自定义数据类型支持不稳定，写入标准类型确保负载能传送到投放目标。
+            event.dataTransfer.setData('application/json', payload)
           }}
           onClick={(event) => {
             onSelect(asset, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey })
@@ -124,6 +137,8 @@ const AssetCard = memo(function AssetCard({
             onSelect(asset, { toggle: true })
           }}
           onDoubleClick={() => { if (!missing && !trashed) onOpen(asset) }}
+          onMouseEnter={() => { setHovering(true); setLiveVideoEnded(false) }}
+          onMouseLeave={() => { setHovering(false); setLiveVideoEnded(false) }}
           className={`group min-w-0 overflow-hidden rounded-lg border text-left transition focus:outline-none ${masonry ? 'mb-1.5 inline-block w-full break-inside-avoid align-top' : 'flex h-full flex-col'}`}
           style={{
             borderColor: selected || focused ? 'var(--primary)' : 'var(--border)',
@@ -139,6 +154,16 @@ const AssetCard = memo(function AssetCard({
                 {isPhoto ? <FileImage size={25} strokeWidth={1.4} /> : <File size={25} strokeWidth={1.4} />}
                 <span className="max-w-[85%] truncate text-[10px] uppercase tracking-wider">{asset.format}</span>
               </span>
+            )}
+            {showLiveVideo && (
+              <video
+                src={asset.livePhotoVideoUrl}
+                autoPlay
+                muted
+                playsInline
+                onEnded={() => setLiveVideoEnded(true)}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
             )}
             <span
               role="checkbox"
@@ -164,14 +189,17 @@ const AssetCard = memo(function AssetCard({
               {selected && <Check size={12} className="text-white" />}
             </span>
             <span className="absolute right-2 top-2 z-20 flex items-center gap-1">
-              <span className="rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">{asset.extension.replace('.', '')}</span>
+              {isLive && <span className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><LivePhotoIcon size={13} /></span>}
               {asset.isAnimated && <span className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><Play size={11} fill="currentColor" /></span>}
+              {asset.cloudSyncState === 'deleted_remote'
+                ? <span title={copy.cloudDeletedRemote} className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-red-400"><CloudOffIcon size={13} /></span>
+                : asset.cloudSyncState === 'conflict'
+                  ? <span title={copy.cloudSyncConflict} className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-amber-400"><CloudWarningIcon size={13} /></span>
+                  : (asset.uploadStatus === 'uploaded' || asset.isUploaded)
+                    ? <span title={copy.filterUploaded} className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><CloudIcon size={13} /></span>
+                    : null}
+              <span className="rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">{asset.extension.replace('.', '')}</span>
             </span>
-            {asset.cloudSyncState === 'deleted_remote'
-              ? <span title={copy.cloudDeletedRemote} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600/90 text-white shadow"><CloudOff size={12} /></span>
-              : asset.cloudSyncState === 'conflict'
-                ? <span title={copy.cloudSyncConflict} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-amber-600/90 text-white shadow"><CircleAlert size={12} /></span>
-                : (asset.uploadStatus === 'uploaded' || asset.isUploaded) && <span title={copy.filterUploaded} className="absolute bottom-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-sky-600/90 text-white shadow"><Cloud size={12} /></span>}
             {asset.isFavorite && <Heart size={15} fill="currentColor" className="absolute bottom-2 right-2 text-white drop-shadow" />}
           </span>
           {!masonry && (
@@ -297,7 +325,7 @@ function distributeMasonryEntries(assets: LocalAsset[], columnCount: number, col
 }
 
 export function LocalAssetGrid({
-  assets, folders, selectedIds, focusedId, loading, hasMore, total, copy, emptyTitle, emptyHint, canUpload, storageSources, storageSourcesLoading, viewMode, gridSize, pathSegments, resetKey,
+  assets, folders, selectedIds, focusedId, loading, hasMore, total, copy, emptyTitle, emptyHint, canUpload, storageSources, storageSourcesLoading, viewMode, gridSize, pathSegments, resetKey, directFolderOnly, onToggleDirectFolderOnly,
   onSelect, onOpen, onOpenFolder, onLoadMore, onOpenInFileManager, onClipboard, onUpload, onUploadSettings, onUploadToStorage, onRefreshStorageSources, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)

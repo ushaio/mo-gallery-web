@@ -12,15 +12,18 @@ interface Props {
   copy: LocalLibraryCopy
   busy: boolean
   plan?: FolderFileOperationPlan
+  /** 拖拽移动场景下预设的目标文件夹（相对路径，空字符串表示资源库根目录）。
+   *  提供时目标位置只读展示，不再显示目录选择器。 */
+  initialDestinationParent?: string
   onClose: () => void
   onConfirm: (destinationParent: string, topLevelName: string) => void
   onExecute: () => void
 }
 
-export function MoveFolderDialog({ mode, relativePath, currentName, folders, copy, busy, plan, onClose, onConfirm, onExecute }: Props) {
+export function MoveFolderDialog({ mode, relativePath, currentName, folders, copy, busy, plan, initialDestinationParent, onClose, onConfirm, onExecute }: Props) {
   const currentParent = relativePath.includes('/') ? relativePath.slice(0, relativePath.lastIndexOf('/')) : ''
   const [name, setName] = useState(currentName)
-  const [destinationParent, setDestinationParent] = useState(currentParent)
+  const [destinationParent, setDestinationParent] = useState(initialDestinationParent ?? currentParent)
   const inputRef = useRef<HTMLInputElement>(null)
   const destinations = useMemo(() => folders.filter((folder) => (
     folder.relativePath !== relativePath && !folder.relativePath.startsWith(`${relativePath}/`)
@@ -57,16 +60,22 @@ export function MoveFolderDialog({ mode, relativePath, currentName, folders, cop
             <div>
               <label className="text-[11px] font-medium">{copy.destinationFolder}</label>
               <div className="mt-2">
-                <FolderTreeSelect
-                  value={destinationParent}
-                  folders={destinations}
-                  placeholder={copy.root}
-                  searchPlaceholder={copy.folderSearchPlaceholder}
-                  searchEmpty={copy.folderSearchEmpty}
-                  disabled={busy}
-                  ariaLabel={copy.destinationFolder}
-                  onChange={(value) => setDestinationParent(value)}
-                />
+                {initialDestinationParent !== undefined ? (
+                  <div className="flex h-9 items-center rounded-md border bg-input px-3 text-xs text-foreground">
+                    {folders.find((folder) => folder.relativePath === initialDestinationParent)?.name || initialDestinationParent || copy.root}
+                  </div>
+                ) : (
+                  <FolderTreeSelect
+                    value={destinationParent}
+                    folders={destinations}
+                    placeholder={copy.root}
+                    searchPlaceholder={copy.folderSearchPlaceholder}
+                    searchEmpty={copy.folderSearchEmpty}
+                    disabled={busy}
+                    ariaLabel={copy.destinationFolder}
+                    onChange={(value) => setDestinationParent(value)}
+                  />
+                )}
               </div>
             </div>
           )}
