@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   Calendar,
   Check,
@@ -10,7 +10,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
-import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
+import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { countStoryCharacters, hydrateStoryContentImages, hydrateStoryContentJsonImages, normalizeStoryContentImages, normalizeStoryContentJsonImages } from '@/lib/story-rich-content'
@@ -46,6 +46,8 @@ interface StoryEditorViewProps {
   dragOverItemId: string | null
   openMenuPhotoId: string | null
   openMenuPendingId: string | null
+  isAiTaskLocked: boolean
+  onAiTaskLockChange: (locked: boolean) => void
 
   showPreview: () => void
 
@@ -104,6 +106,8 @@ export function StoryEditorView({
   dragOverItemId,
   openMenuPhotoId,
   openMenuPendingId,
+  isAiTaskLocked,
+  onAiTaskLockChange,
   showPreview,
   onClose,
   onSave,
@@ -132,7 +136,6 @@ export function StoryEditorView({
   notify,
   setCurrentStory,
 }: StoryEditorViewProps) {
-  const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
   const editorCharacterCount = countStoryCharacters(currentStory.content)
   const materialCount = currentStory.photos?.length || 0
   const hydratedEditorContent = useMemo(
@@ -210,21 +213,32 @@ export function StoryEditorView({
             )}
           </div>
         }
-        metaRight={
-          <>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-              <FileText className="h-3.5 w-3.5" />
-              {editorCharacterCount} {t('admin.characters')}
+        metaRight={null}
+        bottomBar={
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                <FileText className="h-3.5 w-3.5" />
+                {editorCharacterCount} {t('admin.characters')}
+              </span>
+              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                <ImageIcon className="h-3.5 w-3.5" />
+                {materialCount} {t('story.materials_suffix')}
+              </span>
+            </div>
+            <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+              {draftSaved ? (
+                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                  <Check className="h-3 w-3" />
+                  {t('story.draft_saved')}
+                </span>
+              ) : null}
             </span>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-              <ImageIcon className="h-3.5 w-3.5" />
-              {materialCount} {t('story.materials_suffix')}
-            </span>
-          </>
+          </div>
         }
         t={t}
       >
-        <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
+<div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
           <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
             <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
               <NarrativeTipTapEditor
@@ -245,7 +259,7 @@ export function StoryEditorView({
                 className="overflow-hidden bg-background"
                 documentId={currentStory.id}
                 documentKind="story"
-                onAiTaskLockChange={setIsAiTaskLocked}
+                onAiTaskLockChange={onAiTaskLockChange}
                 aiOptions={{
                   enabled: true,
                   token,
@@ -255,10 +269,6 @@ export function StoryEditorView({
               />
             </div>
           </div>
-
-          <fieldset disabled={isAiTaskLocked} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-0' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
-            <StoryPhotoPanel disabled={isAiTaskLocked} isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenMaterialLibrary} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
-          </fieldset>
         </div>
       </EditorShell>
     </div>

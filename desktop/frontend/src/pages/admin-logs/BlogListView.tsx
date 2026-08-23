@@ -73,6 +73,28 @@ export function BlogListView({
   const hasNoBlogs = blogs.length === 0
   const hasNoMatches = blogs.length > 0 && filteredBlogs.length === 0
 
+  const timeGroups = useMemo(() => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay())
+    const groups: { today: BlogDto[]; week: BlogDto[]; earlier: BlogDto[] } = { today: [], week: [], earlier: [] }
+    for (const blog of filteredBlogs) {
+      const date = new Date(blog.updatedAt)
+      const day = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      if (day >= today) groups.today.push(blog)
+      else if (day >= startOfWeek) groups.week.push(blog)
+      else groups.earlier.push(blog)
+    }
+    return groups
+  }, [filteredBlogs])
+
+  const timeSectionLabels = [
+    { key: 'today' as const, label: t('story.today') },
+    { key: 'week' as const, label: t('story.this_week') },
+    { key: 'earlier' as const, label: t('story.earlier') },
+  ]
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       {/* 工具栏：搜索 ｜ 筛选 / 刷新 / 新建 全部在搜索框右侧（单行） */}
@@ -174,7 +196,16 @@ export function BlogListView({
           </div>
         ) : (
           <div className="space-y-2 pb-2">
-            {filteredBlogs.map((blog) => {
+            {timeSectionLabels.map(({ key, label }) => {
+              const items = timeGroups[key]
+              if (items.length === 0) return null
+              return (
+                <div key={key}>
+                  <div className="mb-2 flex items-center gap-2 px-1 pt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">{label}</span>
+                    <div className="h-px flex-1 bg-border/40" />
+                  </div>
+                  {items.map((blog) => {
               const isSelected = selectedBlogId === blog.id
               return (
                 <ContextMenu key={blog.id}>
@@ -244,6 +275,9 @@ export function BlogListView({
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
+              )
+            })}
+                </div>
               )
             })}
           </div>

@@ -16,7 +16,7 @@ import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import { PhotoLibraryDialog } from '@/components/zine/PhotoLibraryDialog'
-import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
+import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { normalizeCompressionFormat, normalizeCompressionMode } from '@/lib/image-compress'
@@ -96,6 +96,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [showPreview, setShowPreview] = useState(false)
   const [previewPhotoIndex, setPreviewPhotoIndex] = useState<number | null>(null)
   const [showCoverCropEditor, setShowCoverCropEditor] = useState(false)
+  const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
 
   const initialLoadRef = useRef(false)
   const savingRef = useRef(false)
@@ -606,9 +607,10 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         />
       </CollapsibleListPane>
 
-      {/* 右栏：编辑器 / 空状态 */}
-      <main className="min-w-0 flex-1 overflow-hidden">
-        {storyEditMode === 'editor' && currentStory ? (
+      {/* 右栏：编辑器 + 素材库（无间隙） */}
+      <div className="flex min-w-0 flex-1 overflow-hidden">
+        <main className="min-w-0 flex-1 overflow-hidden">
+          {storyEditMode === 'editor' && currentStory ? (
           <StoryEditorView
           token={token}
           currentStory={currentStory}
@@ -626,6 +628,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           setUseCustomDate={setUseCustomDate}
           isPhotoPanelCollapsed={isPhotoPanelCollapsed}
           togglePhotoPanelCollapse={togglePhotoPanelCollapse}
+          isAiTaskLocked={isAiTaskLocked}
+          onAiTaskLockChange={setIsAiTaskLocked}
           settingsCdnDomain={settings?.cdn_domain}
           isUploading={isUploading}
           uploadProgress={uploadProgress}
@@ -677,6 +681,56 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         />
       )}
       </main>
+
+      {/* 右栏：素材库 - 仅在编辑态显示，与编辑区域联动 */}
+      {storyEditMode === 'editor' && currentStory ? (
+        <aside className="w-[340px] shrink-0 overflow-hidden border-l border-border xl:w-[390px]">
+          <StoryPhotoPanel
+            disabled={isAiTaskLocked}
+            isCollapsed={false}
+            isImmersiveMode={false}
+            currentStory={currentStory}
+            editorContent={currentStory.content || ''}
+            pendingImages={pendingImages}
+            pendingCoverId={pendingCoverId}
+            cdnDomain={settings?.cdn_domain}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            isDraggingOver={isDraggingOver}
+            draggedItemId={draggedItemId}
+            draggedItemType={draggedItemType}
+            dragOverItemId={dragOverItemId}
+            openMenuPhotoId={openMenuPhotoId}
+            openMenuPendingId={openMenuPendingId}
+            t={t}
+            notify={notify}
+            onAddPhotos={() => setShowMaterialLibrary(true)}
+            onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
+            onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
+            onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
+            onRemovePhoto={handleRemovePhoto}
+            onRemovePendingImage={handleRemovePendingImage}
+            onSetCover={handleSetCover}
+            onSetPendingCover={handleSetPendingCover}
+            onSetPhotoDate={handleSetPhotoDate}
+            onRetryFailedUploads={handleRetryFailedUploads}
+            onPhotoPanelDragOver={handlePhotoPanelDragOver}
+            onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
+            onPhotoPanelDrop={async (event) => {
+              handlePhotoPanelDragLeave(event)
+              await handlePhotoPanelDrop(event)
+            }}
+            onItemDragStart={handleItemDragStart}
+            onItemDragEnd={handleItemDragEnd}
+            onItemDragOver={handleItemDragOver}
+            onItemDragLeave={handleItemDragLeave}
+            onItemDrop={handleItemDrop}
+            onOpenMenuPhoto={setOpenMenuPhotoId}
+            onOpenMenuPending={setOpenMenuPendingId}
+          />
+        </aside>
+      ) : null}
+      </div>
 
       <PhotoLibraryDialog
         source={showMaterialLibrary ? 'cloud' : null}

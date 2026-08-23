@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Plus,
   Image as ImageIcon,
@@ -162,6 +162,23 @@ export function StoryPhotoPanel({
     return [...photoItems, ...pendingItems]
   }
 
+  const [filterTab, setFilterTab] = useState<'all' | 'used' | 'unused'>('all')
+
+  const filteredItems = getCombinedItems().filter((item) => {
+    if (filterTab === 'all') return true
+    if (item.type === 'pending') return filterTab === 'unused'
+    const photo = currentStory?.photos?.find((p) => p.id === item.id)
+    if (!photo) return false
+    const inserted = isPhotoInserted(photo)
+    return filterTab === 'used' ? inserted : !inserted
+  })
+
+  const filterTabs = [
+    { key: 'all' as const, label: t('story.material_all') },
+    { key: 'used' as const, label: t('story.material_used') },
+    { key: 'unused' as const, label: t('story.material_unused') },
+  ]
+
   if (isCollapsed) {
     return null
   }
@@ -250,10 +267,28 @@ export function StoryPhotoPanel({
         </div>
       ) : null}
 
+      {/* 素材筛选标签：全部 / 已使用 / 未使用 */}
+      <div className="flex shrink-0 gap-0.5 border-b border-border/50 bg-card px-4 py-1.5">
+        {filterTabs.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setFilterTab(key)}
+            className={`rounded-md px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+              filterTab === key
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-        {(currentStory?.photos && currentStory.photos.length > 0) || pendingImages.length > 0 ? (
+        {filteredItems.length > 0 ? (
           <div className="grid grid-cols-2 gap-3">
-            {getCombinedItems().map((item, idx) => {
+            {filteredItems.map((item, idx) => {
               if (item.type === 'photo') {
                 const photo = currentStory?.photos?.find((current) => current.id === item.id)
                 if (!photo) return null
@@ -530,12 +565,20 @@ export function StoryPhotoPanel({
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-            <Upload className="mb-3 h-12 w-12 opacity-20" />
-            <p className="mb-1 text-center text-xs">{t('admin.drag_images_here')}</p>
-            <p className="mb-3 text-center text-[10px] opacity-60">{t('admin.drag_images_insert_hint')}</p>
-            <AdminButton onClick={onAddPhotos} adminVariant="link" className="text-xs text-primary">
-              {t('admin.select_from_library')}
-            </AdminButton>
+            {filterTab === 'used' ? (
+              <p className="mb-1 text-center text-xs">{t('story.material_no_used')}</p>
+            ) : filterTab === 'unused' ? (
+              <p className="mb-1 text-center text-xs">{t('story.material_no_unused')}</p>
+            ) : (
+              <>
+                <Upload className="mb-3 h-12 w-12 opacity-20" />
+                <p className="mb-1 text-center text-xs">{t('admin.drag_images_here')}</p>
+                <p className="mb-3 text-center text-[10px] opacity-60">{t('admin.drag_images_insert_hint')}</p>
+                <AdminButton onClick={onAddPhotos} adminVariant="link" className="text-xs text-primary">
+                  {t('admin.select_from_library')}
+                </AdminButton>
+              </>
+            )}
           </div>
         )}
         </div>

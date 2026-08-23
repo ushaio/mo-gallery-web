@@ -19,12 +19,15 @@ import {
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { BlogListView } from './BlogListView'
-import { BlogEditorView, type BlogFormData } from './BlogEditorView'
+import { BlogEditorView, type BlogFormData, type BlogEditorHandle } from './BlogEditorView'
+import { BlogPhotoPanel, BLOG_PHOTO_PANEL_COLLAPSED_KEY } from './shared/BlogPhotoPanel'
 import { EditorEmptyState } from './shared/EditorEmptyState'
 import { CollapsibleListPane } from './shared/CollapsibleListPane'
 import { useDirtyLeaveGuard, useSaveShortcut } from './shared/useDirtyLeaveGuard'
 import { useImmersiveMode } from './shared/useImmersiveMode'
 import { cn } from '@/lib/utils'
+import { resolveAssetUrl } from '@/lib/api/core'
+import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
 import { BookText } from 'lucide-react'
 
 const AUTO_SAVE_DELAY = 2000 // 自动保存防抖延迟（毫秒）
@@ -98,6 +101,38 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
 
   const editing = currentBlog !== null
+
+  const blogEditorRef = useRef<BlogEditorHandle>(null)
+  const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(BLOG_PHOTO_PANEL_COLLAPSED_KEY) === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const togglePhotoPanelCollapse = () => {
+    setIsPhotoPanelCollapsed((prev) => {
+      const next = !prev
+      try {
+        window.localStorage.setItem(BLOG_PHOTO_PANEL_COLLAPSED_KEY, String(next))
+      } catch {
+      }
+      return next
+    })
+  }
+
+  const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
+
+  const handleInsertPhoto = useCallback((photo: PhotoDto) => {
+    if (isAiTaskLocked) return
+    const markdown = buildStoryMarkdownImage({
+      url: resolveAssetUrl(photo.url, resolvedCdnDomain),
+      alt: photo.title,
+    })
+    blogEditorRef.current?.insertMarkdown(markdown)
+    notify(t('admin.notify_photo_inserted'), 'info')
+  }, [isAiTaskLocked, resolvedCdnDomain, t, notify])
 
   // 沉浸全屏/Esc 放在稳定的页签层持有：切换文章时编辑器不再重挂载
   // （内容经 contentVersion 原地重置），若放在编辑器内会反复退/进全屏，表现为页面刷新。
@@ -484,7 +519,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
     })
   }, [editBlogFromDraft, notify, onDraftConsumed, t])
 
-  const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
   const blogDocumentId = resolveBlogDocumentId(currentBlog?.id, draftDocumentId)
 
   return (
@@ -511,10 +545,12 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
         />
       </CollapsibleListPane>
 
-      {/* 右栏：编辑器 / 空状态 */}
-      <main className="min-w-0 flex-1 overflow-hidden">
-        {currentBlog ? (
+      {/* 右栏：编辑器 + 素材库（无间隙） */}
+      <div className="flex min-w-0 flex-1 overflow-hidden">
+        <main className="min-w-0 flex-1 overflow-hidden">
+          {currentBlog ? (
           <BlogEditorView
+            ref={blogEditorRef}
             blog={currentBlog}
             onChange={handleBlogChange}
             editorRevision={editorRevision}
@@ -525,8 +561,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
             onAiTaskLockChange={setIsAiTaskLocked}
             onSave={() => void handleSaveBlog()}
             onClose={handleCloseEditor}
-            photos={photos}
-            cdnDomain={resolvedCdnDomain}
             token={token}
             documentId={blogDocumentId}
             t={t}
@@ -546,6 +580,22 @@ export function BlogTab({ photos, settings, t, notify, refreshKey, editBlogFromD
           />
         )}
       </main>
+
+      {/* 右栏：素材库 - 仅在编辑态显示 */}
+      {currentBlog ? (
+        <aside className="w-[260px] shrink-0 overflow-hidden border-l border-border xl:w-[300px]">
+          <BlogPhotoPanel
+            photos={photos}
+            cdnDomain={resolvedCdnDomain}
+            isCollapsed={isPhotoPanelCollapsed}
+            onToggleCollapse={togglePhotoPanelCollapse}
+            onInsertPhoto={handleInsertPhoto}
+            disabled={isAiTaskLocked}
+            t={t}
+          />
+        </aside>
+      ) : null}
+      </div>
 
       <SimpleDeleteDialog isOpen={!!deleteBlogId} onConfirm={confirmDeleteBlog} onCancel={() => setDeleteBlogId(null)} t={t} />
       <DraftRestoreDialog

@@ -425,7 +425,7 @@ export const adminMessages: LocaleDictionaryGroup = {
       edit_log: '编辑日志',
       log_title: '日志标题',
       log_content: '日志内容 (Markdown)',
-      preview: '实时预览',
+      preview: '预览',
       save_and_process_pasted_images: '保存并处理粘贴图片',
       associate_photos: '关联照片',
       insert_photo: '插入照片',

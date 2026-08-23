@@ -121,6 +121,28 @@ export function StoryListView({
   // master-detail 窄栏下强制列表视图（grid 卡片在窄栏无意义）
   const effectiveViewMode: StoryViewMode = compact ? 'list' : viewMode
 
+  const timeGroups = useMemo(() => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay())
+    const groups: { today: StoryDto[]; week: StoryDto[]; earlier: StoryDto[] } = { today: [], week: [], earlier: [] }
+    for (const story of filteredStories) {
+      const date = new Date(story.updatedAt || story.createdAt)
+      const day = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      if (day >= today) groups.today.push(story)
+      else if (day >= startOfWeek) groups.week.push(story)
+      else groups.earlier.push(story)
+    }
+    return groups
+  }, [filteredStories])
+
+  const timeSectionLabels = [
+    { key: 'today' as const, label: t('story.today') },
+    { key: 'week' as const, label: t('story.this_week') },
+    { key: 'earlier' as const, label: t('story.earlier') },
+  ]
+
   const inputStyle = {
     borderColor: 'var(--border)',
     backgroundColor: 'var(--card)',
@@ -423,7 +445,16 @@ export function StoryListView({
           </div>
         ) : (
           <div className="space-y-2 pb-2">
-            {filteredStories.map((story) => {
+            {timeSectionLabels.map(({ key, label }) => {
+              const items = timeGroups[key]
+              if (items.length === 0) return null
+              return (
+                <div key={key}>
+                  <div className="mb-2 flex items-center gap-2 px-1 pt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">{label}</span>
+                    <div className="h-px flex-1 bg-border/40" />
+                  </div>
+                  {items.map((story) => {
               const coverPhoto = getStoryCoverPhoto(story)
               const isSelected = selectedStoryId === story.id
               return (
@@ -510,6 +541,9 @@ export function StoryListView({
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
+              )
+            })}
+                </div>
               )
             })}
           </div>

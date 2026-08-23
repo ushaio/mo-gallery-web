@@ -1,15 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { FileText } from 'lucide-react'
-import type { BlogDto, PhotoDto } from '@/lib/api/types'
-import { resolveAssetUrl } from '@/lib/api/core'
-import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
+import { Check, FileText } from 'lucide-react'
+import type { BlogDto } from '@/lib/api/types'
 import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
 import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
 import { EditorShell } from './shared/EditorShell'
-import { BlogPhotoPanel, BLOG_PHOTO_PANEL_COLLAPSED_KEY } from './shared/BlogPhotoPanel'
 import { BlogPreviewModal } from './shared/BlogPreviewModal'
 
 export interface BlogFormData {
@@ -20,6 +17,10 @@ export interface BlogFormData {
   category: string
   tags: string
   isPublished: boolean
+}
+
+export interface BlogEditorHandle {
+  insertMarkdown: (markdown: string) => void
 }
 
 interface BlogEditorViewProps {
@@ -33,8 +34,6 @@ interface BlogEditorViewProps {
   onAiTaskLockChange: (locked: boolean) => void
   onSave: () => void
   onClose: () => void
-  photos: PhotoDto[]
-  cdnDomain?: string
   token: string | null
   documentId: string
   t: (key: string) => string
@@ -45,10 +44,7 @@ interface BlogEditorViewProps {
   setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
 }
 
-/**
- * 博客右栏编辑器：共用 EditorShell + Tiptap 编辑器 + 可折叠照片素材面板 + 预览。
- */
-export function BlogEditorView({
+export const BlogEditorView = forwardRef<BlogEditorHandle, BlogEditorViewProps>(function BlogEditorView({
   blog,
   onChange,
   editorRevision,
@@ -59,8 +55,6 @@ export function BlogEditorView({
   onAiTaskLockChange,
   onSave,
   onClose,
-  photos,
-  cdnDomain,
   token,
   documentId,
   t,
@@ -69,45 +63,23 @@ export function BlogEditorView({
   onToggleListPane,
   isImmersiveMode,
   setIsImmersiveMode,
-}: BlogEditorViewProps) {
+}, ref) {
   const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
   const [showPreview, setShowPreview] = useState(false)
-  const [isPhotoPanelCollapsed, setIsPhotoPanelCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(BLOG_PHOTO_PANEL_COLLAPSED_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
 
-  const togglePhotoPanelCollapse = () => {
-    setIsPhotoPanelCollapsed((prev) => {
-      const next = !prev
-      try {
-        window.localStorage.setItem(BLOG_PHOTO_PANEL_COLLAPSED_KEY, String(next))
-      } catch {
-        // ignore quota / privacy mode errors
+  useImperativeHandle(ref, () => ({
+    insertMarkdown: (markdown: string) => {
+      if (isAiTaskLocked) return
+      if (editorRef.current) {
+        editorRef.current.insertMarkdown(markdown)
+        const nextValue = editorRef.current.getValue()
+        const nextJsonValue = editorRef.current.getJsonValue()
+        onChange({ content: nextValue, contentJson: nextJsonValue })
+      } else {
+        onChange({ content: blog.content + markdown })
       }
-      return next
-    })
-  }
-
-  const insertPhotoIntoBlog = (photo: PhotoDto) => {
-    if (isAiTaskLocked) return
-    const markdown = buildStoryMarkdownImage({
-      url: resolveAssetUrl(photo.url, cdnDomain),
-      alt: photo.title,
-    })
-    if (editorRef.current) {
-      editorRef.current.insertMarkdown(markdown)
-      const nextValue = editorRef.current.getValue()
-      const nextJsonValue = editorRef.current.getJsonValue()
-      onChange({ content: nextValue, contentJson: nextJsonValue })
-    } else {
-      onChange({ content: blog.content + markdown })
-    }
-    notify(t('admin.notify_photo_inserted'), 'info')
-  }
+    },
+  }), [isAiTaskLocked, onChange, blog.content])
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -157,11 +129,22 @@ export function BlogEditorView({
             />
           </div>
         }
-        metaRight={
-          <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
-            <FileText className="h-3.5 w-3.5" />
-            {blog.content.length} {t('admin.characters')}
-          </span>
+        metaRight={null}
+        bottomBar={
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+              <FileText className="h-3.5 w-3.5" />
+              {blog.content.length} {t('admin.characters')}
+            </span>
+            <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+              {draftSaved ? (
+                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                  <Check className="h-3 w-3" />
+                  {t('story.draft_saved')}
+                </span>
+              ) : null}
+            </span>
+          </div>
         }
         t={t}
       >
@@ -187,15 +170,6 @@ export function BlogEditorView({
               }}
             />
           </div>
-          <BlogPhotoPanel
-            photos={photos}
-            cdnDomain={cdnDomain}
-            isCollapsed={isPhotoPanelCollapsed}
-            onToggleCollapse={togglePhotoPanelCollapse}
-            onInsertPhoto={insertPhotoIntoBlog}
-            disabled={isAiTaskLocked}
-            t={t}
-          />
         </div>
       </EditorShell>
 
@@ -209,4 +183,4 @@ export function BlogEditorView({
       )}
     </div>
   )
-}
+})

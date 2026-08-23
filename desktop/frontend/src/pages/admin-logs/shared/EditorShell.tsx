@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Check, ChevronLeft, ChevronRight, Clock, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -50,6 +50,9 @@ export interface EditorShellProps {
   metaLeft?: ReactNode
   metaRight?: ReactNode
 
+  // 底部信息栏
+  bottomBar?: ReactNode
+
   disabled?: boolean
   className?: string
   children: ReactNode
@@ -83,6 +86,7 @@ export function EditorShell({
   onToggleListPane,
   metaLeft,
   metaRight,
+  bottomBar,
   disabled,
   className,
   children,
@@ -127,18 +131,8 @@ export function EditorShell({
             placeholder={titlePlaceholder}
             className="min-w-0 flex-1 border-0 border-b border-border/40 bg-transparent px-0 py-1 font-serif text-xl font-light leading-none tracking-tight shadow-none transition-colors placeholder:font-serif placeholder:text-muted-foreground/35 hover:border-foreground/25 focus:border-primary focus-visible:ring-0 md:text-2xl"
           />
-          {draftSaved ? (
-            <span className="hidden shrink-0 items-center gap-1 rounded border border-green-500/25 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600 sm:flex dark:text-green-400">
-              <Check className="h-3 w-3" />
-              {t('story.draft_saved')}
-            </span>
-          ) : null}
-          {!draftSaved && lastSavedAt ? (
-            <span className="hidden shrink-0 items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground/70 sm:flex">
-              <Clock className="h-3 w-3" />
-              {new Date(lastSavedAt).toLocaleTimeString()}
-            </span>
-          ) : null}
+          {draftSaved ? null : null}
+          {!draftSaved && lastSavedAt ? null : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-4">
@@ -211,6 +205,13 @@ export function EditorShell({
 
       {/* 内容区：编辑器 + 素材面板 */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+
+      {/* 底部信息栏 */}
+      {bottomBar ? (
+        <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-1.5">
+          {bottomBar}
+        </div>
+      ) : null}
     </div>
   )
 }
