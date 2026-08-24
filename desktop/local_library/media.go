@@ -11,6 +11,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"log"
 	"mime"
 	"os"
 	"path/filepath"
@@ -779,6 +780,8 @@ func renderJPEGThumbnail(ctx context.Context, sourcePath, destination string, ma
 }
 
 func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, maxDimension, orientation int) (err error) {
+	startedAt := time.Now()
+	decodeStartedAt := startedAt
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("thumbnail decoder panic: %v", recovered)
@@ -788,18 +791,26 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	if err != nil {
 		return err
 	}
-	source = orientedImage(source, orientation)
+	decodeElapsed := time.Since(decodeStartedAt)
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if err := validateDimensions(width, height); err != nil {
 		return err
 	}
-	targetWidth, targetHeight := width, height
-	if width > maxDimension || height > maxDimension {
-		if width >= height {
-			targetWidth, targetHeight = maxDimension, max(1, height*maxDimension/width)
+	// Compute the post-orientation dimensions without materializing a rotated
+	// full-size copy. EXIF orientations >= 5 transpose (swap) width and height;
+	// the remaining orientations only mirror or rotate 180° and preserve the
+	// aspect ratio.
+	orientedWidth, orientedHeight := width, height
+	if orientation >= 5 {
+		orientedWidth, orientedHeight = height, width
+	}
+	targetWidth, targetHeight := orientedWidth, orientedHeight
+	if orientedWidth > maxDimension || orientedHeight > maxDimension {
+		if orientedWidth >= orientedHeight {
+			targetWidth, targetHeight = maxDimension, max(1, orientedHeight*maxDimension/orientedWidth)
 		} else {
-			targetHeight, targetWidth = maxDimension, max(1, width*maxDimension/height)
+			targetHeight, targetWidth = maxDimension, max(1, orientedWidth*maxDimension/orientedHeight)
 		}
 	}
 	select {
@@ -807,8 +818,32 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 		return ctx.Err()
 	default:
 	}
-	target := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
-	xdraw.CatmullRom.Scale(target, target.Bounds(), source, bounds, xdraw.Over, nil)
+	// Resize the unrotated source to the pre-orientation size first, then apply
+	// the EXIF orientation to the small result. Orienting the full-resolution
+	// source before scaling performs an O(width*height) per-pixel copy that is
+	// as expensive as the decode itself for typical multi-megapixel photos, so
+	// defer it until after the downscale. Bilinear filtering is also cheaper
+	// than Catmull-Rom while staying suitable for a 512px browsing preview.
+	resizeStartedAt := time.Now()
+	preWidth, preHeight := targetWidth, targetHeight
+	if orientation >= 5 {
+		preWidth, preHeight = targetHeight, targetWidth
+	}
+	resized := image.NewRGBA(image.Rect(0, 0, preWidth, preHeight))
+	// ApproxBiLinear is ~60x faster than BiLinear when downscaling a decoded
+	// *image.YCbCr, because BiLinear re-runs chroma interpolation and color
+	// conversion per sampled pixel while ApproxBiLinear uses an accelerated
+	// path. The approximation is visually negligible for a 512px grid
+	// thumbnail, so reserve exact BiLinear for the much larger preview variant.
+	scaler := xdraw.Scaler(xdraw.BiLinear)
+	if maxDimension <= thumbnailMaxDimension {
+		scaler = xdraw.ApproxBiLinear
+	}
+	scaler.Scale(resized, resized.Bounds(), source, bounds, xdraw.Over, nil)
+	resizeElapsed := time.Since(resizeStartedAt)
+	orientStartedAt := time.Now()
+	target := orientedImage(resized, orientation)
+	orientElapsed := time.Since(orientStartedAt)
 	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
 		return err
 	}
@@ -817,7 +852,9 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	if err != nil {
 		return err
 	}
+	encodeStartedAt := time.Now()
 	encodeErr := jpeg.Encode(file, target, &jpeg.Options{Quality: 88})
+	encodeElapsed := time.Since(encodeStartedAt)
 	closeErr := file.Close()
 	if encodeErr != nil {
 		_ = os.Remove(temp)
@@ -830,6 +867,9 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	if err := os.Rename(temp, destination); err != nil {
 		_ = os.Remove(temp)
 		return err
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
+		log.Printf("[local-library] derivative slow source=%s total=%s decode=%s orient=%s resize=%s encode=%s", filepath.Base(sourcePath), elapsed.Round(time.Millisecond), decodeElapsed.Round(time.Millisecond), orientElapsed.Round(time.Millisecond), resizeElapsed.Round(time.Millisecond), encodeElapsed.Round(time.Millisecond))
 	}
 	return nil
 }

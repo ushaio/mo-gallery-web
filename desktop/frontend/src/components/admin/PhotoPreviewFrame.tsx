@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, ExternalLink, Loader2, Maximize2, Minimize2, Square, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, Loader2, Maximize2, Minimize2, RotateCcw, RotateCw, Square, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { LivePhotoIcon } from '@/components/icons/LivePhotoIcon'
+
+const LIVE_PHOTO_SOUND_KEY = 'mo-gallery.live-photo-sound-enabled'
+
+function getLivePhotoSoundPreference() {
+  try {
+    return window.localStorage.getItem(LIVE_PHOTO_SOUND_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
 
 export interface PhotoPreviewFrameCopy {
   viewOriginal: string
@@ -16,6 +26,8 @@ export interface PhotoPreviewFrameCopy {
   originalUnavailable?: string
   retry?: string
   openSystem?: string
+  rotateClockwise?: string
+  rotateCounterclockwise?: string
 }
 
 interface Props {
@@ -23,6 +35,7 @@ interface Props {
   subtitle?: string
   originalSrc?: string
   previewSrc?: string
+  originalOrientation?: number
   livePhotoVideoSrc?: string
   alt?: string
   copy: PhotoPreviewFrameCopy
@@ -40,6 +53,7 @@ export function PhotoPreviewFrame({
   subtitle,
   originalSrc,
   previewSrc,
+  originalOrientation = 1,
   livePhotoVideoSrc,
   alt = '',
   copy,
@@ -57,8 +71,10 @@ export function PhotoPreviewFrame({
   const [loading, setLoading] = useState(Boolean(originalSrc || previewSrc))
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [rotation, setRotation] = useState(0)
   const [showLiveVideo, setShowLiveVideo] = useState(false)
-  const [liveVideoEnded, setLiveVideoEnded] = useState(false)
+  const [livePhotoSoundEnabled, setLivePhotoSoundEnabled] = useState(getLivePhotoSoundPreference)
+  const liveVideoRef = useRef<HTMLVideoElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const dragStartRef = useRef<{ x: number, y: number, offsetX: number, offsetY: number } | null>(null)
@@ -75,7 +91,7 @@ export function PhotoPreviewFrame({
     setLoading(Boolean(originalSrc || previewSrc))
     setZoom(1)
     setOffset({ x: 0, y: 0 })
-    setLiveVideoEnded(false)
+    setRotation(0)
     setShowLiveVideo(Boolean(livePhotoVideoSrc))
   }, [originalSrc, previewSrc, livePhotoVideoSrc])
 
@@ -86,8 +102,36 @@ export function PhotoPreviewFrame({
   }, [])
 
   useEffect(() => {
+    const video = liveVideoRef.current
+    if (!video) return
+    if (!showLiveVideo) {
+      video.pause()
+      video.currentTime = 0
+      return
+    }
+    void video.play().catch(() => {})
+  }, [livePhotoVideoSrc, showLiveVideo])
+
+  useEffect(() => {
+    const video = liveVideoRef.current
+    if (!video) return
+    video.muted = !livePhotoSoundEnabled
+    if (showLiveVideo) void video.play().catch(() => {})
+  }, [livePhotoSoundEnabled, showLiveVideo])
+
+  const toggleLivePhotoSound = () => {
+    const next = !livePhotoSoundEnabled
+    setLivePhotoSoundEnabled(next)
+    try {
+      window.localStorage.setItem(LIVE_PHOTO_SOUND_KEY, String(next))
+    } catch {
+      // localStorage may be unavailable in restricted WebView contexts.
+    }
+  }
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      switch (event.key) {
+      switch (event.key.toLowerCase()) {
         case 'Escape':
           event.preventDefault()
           onClose()
@@ -101,9 +145,16 @@ export function PhotoPreviewFrame({
         case ' ':
           if (livePhotoVideoSrc) {
             event.preventDefault()
-            setLiveVideoEnded(false)
             setShowLiveVideo((value) => !value)
           }
+          break
+        case 'q':
+          event.preventDefault()
+          setRotation((value) => value - 90)
+          break
+        case 'e':
+          event.preventDefault()
+          setRotation((value) => value + 90)
           break
       }
     }
@@ -118,7 +169,10 @@ export function PhotoPreviewFrame({
   const resetView = () => {
     setZoom(1)
     setOffset({ x: 0, y: 0 })
+    setRotation(0)
   }
+
+  const exifRotation = originalOrientation === 3 ? 180 : originalOrientation === 6 ? 90 : originalOrientation === 8 ? 270 : 0
 
   const toggleSource = () => {
     const nextOriginal = !showOriginal || originalFailed
@@ -148,9 +202,20 @@ export function PhotoPreviewFrame({
           {hasImage && (
             <>
               {livePhotoVideoSrc && (
-                <button type="button" onClick={() => { setLiveVideoEnded(false); setShowLiveVideo((value) => !value) }} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs hover:bg-white/10 ${showLiveVideo && !liveVideoEnded ? 'text-emerald-300' : 'text-white/70'}`} aria-label="Toggle Live Photo video">
-                  {showLiveVideo && !liveVideoEnded ? <Square size={14} /> : <LivePhotoIcon size={15} />}
+                <button type="button" onClick={() => setShowLiveVideo((value) => !value)} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs hover:bg-white/10 ${showLiveVideo ? 'text-emerald-300' : 'text-white/70'}`} aria-label="Toggle Live Photo video">
+                  {showLiveVideo ? <Square size={14} /> : <LivePhotoIcon size={15} />}
                   Live
+                </button>
+              )}
+              {livePhotoVideoSrc && (
+                <button
+                  type="button"
+                  onClick={toggleLivePhotoSound}
+                  className={`rounded-md p-2 hover:bg-white/10 ${livePhotoSoundEnabled ? 'text-emerald-300' : 'text-white/70'}`}
+                  title={livePhotoSoundEnabled ? 'Mute Live Photo' : 'Enable Live Photo sound'}
+                  aria-label={livePhotoSoundEnabled ? 'Mute Live Photo' : 'Enable Live Photo sound'}
+                >
+                  {livePhotoSoundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 </button>
               )}
               <button type="button" onClick={toggleSource} className="flex items-center gap-2 rounded-md px-3 py-2 text-xs hover:bg-white/10" aria-label={showOriginal && !originalFailed ? copy.fitWindow : copy.viewOriginal}>
@@ -158,6 +223,8 @@ export function PhotoPreviewFrame({
                 {showOriginal && !originalFailed ? copy.fitWindow : copy.viewOriginal}
               </button>
               <button type="button" onClick={() => setZoomLevel(zoom - 0.25)} className="rounded-md p-2 hover:bg-white/10" aria-label={copy.zoomOut}><ZoomOut size={17} /></button>
+              {copy.rotateCounterclockwise && <button type="button" onClick={() => setRotation((value) => value - 90)} className="rounded-md p-2 hover:bg-white/10" title={copy.rotateCounterclockwise} aria-label={copy.rotateCounterclockwise}><RotateCcw size={17} /></button>}
+              {copy.rotateClockwise && <button type="button" onClick={() => setRotation((value) => value + 90)} className="rounded-md p-2 hover:bg-white/10" title={copy.rotateClockwise} aria-label={copy.rotateClockwise}><RotateCw size={17} /></button>}
               <button type="button" onClick={resetView} className="w-12 rounded-md px-1 text-center text-[10px] text-white/60 hover:bg-white/10" aria-label={copy.resetZoom}>{Math.round(zoom * 100)}%</button>
               <button type="button" onClick={() => setZoomLevel(zoom + 0.25)} className="rounded-md p-2 hover:bg-white/10" aria-label={copy.zoomIn}><ZoomIn size={17} /></button>
             </>
@@ -204,15 +271,18 @@ export function PhotoPreviewFrame({
                 dragStartRef.current = { x: event.clientX, y: event.clientY, offsetX: offset.x, offsetY: offset.y }
               }}
               className={`select-none object-contain touch-none transition-opacity ${loading ? 'opacity-0' : 'opacity-100'}`}
-              style={{ width: 'auto', height: '100%', maxWidth: '100%', maxHeight: '100%', transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: 'center center', cursor: zoom > 1 ? 'grab' : 'default' }}
+              style={{ width: 'auto', height: '100%', maxWidth: '100%', maxHeight: '100%', transform: `translate(${offset.x}px, ${offset.y}px) rotate(${exifRotation + rotation}deg) scale(${zoom})`, transformOrigin: 'center center', cursor: zoom > 1 ? 'grab' : 'default' }}
             />
-            {livePhotoVideoSrc && showLiveVideo && !liveVideoEnded && (
+            {livePhotoVideoSrc && (
               <video
+                ref={liveVideoRef}
+                key={livePhotoVideoSrc}
                 src={livePhotoVideoSrc}
-                autoPlay
+                muted={!livePhotoSoundEnabled}
                 playsInline
-                onEnded={() => { setLiveVideoEnded(true); setShowLiveVideo(false) }}
-                className="pointer-events-none absolute inset-0 m-auto h-full max-h-full max-w-full object-contain"
+                preload="auto"
+                onEnded={() => setShowLiveVideo(false)}
+                className={`pointer-events-none absolute inset-0 m-auto h-full max-h-full max-w-full object-contain transition-opacity duration-200 ${showLiveVideo ? 'opacity-100' : 'opacity-0'}`}
               />
             )}
           </>

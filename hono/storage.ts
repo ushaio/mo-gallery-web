@@ -2,7 +2,7 @@ import 'server-only'
 import { Hono } from 'hono'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { StorageProviderFactory, getStorageConfig } from '~/server/lib/storage'
+import { StorageProviderFactory, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import path from 'path'
 
 const storage = new Hono<{ Variables: AuthVariables }>()
@@ -35,7 +35,15 @@ storage.get('/admin/storage/scan', async (c) => {
   const statusFilter = c.req.query('status') as FileStatus | undefined
   const search = c.req.query('search')?.toLowerCase()
 
-  const storageConfig = await getStorageConfig(provider)
+  const BUILTIN_PROVIDERS = new Set(['local', 's3', 'github'])
+  let storageConfig
+  let scanProvider = provider
+  if (BUILTIN_PROVIDERS.has(provider)) {
+    storageConfig = await getStorageConfig(provider)
+  } else {
+    storageConfig = await getStorageConfigBySourceId(provider)
+    scanProvider = storageConfig.provider || provider
+  }
   const storageProvider = StorageProviderFactory.create(storageConfig)
 
   const listResult = await storageProvider.list({ fullScan: true })
@@ -43,7 +51,7 @@ storage.get('/admin/storage/scan', async (c) => {
   const dbPhotos = await db.photo.findMany({
     // Desktop plugin objects are owned by the Desktop process and must not be
     // interpreted as Web storage files during scans or cleanup.
-    where: { storageProvider: provider, storageRuntime: 'web' },
+    where: { storageProvider: scanProvider, storageRuntime: 'web' },
     select: { id: true, title: true, path: true, thumbPath: true },
   })
 
@@ -145,7 +153,13 @@ storage.post('/admin/storage/cleanup', async (c) => {
     }, 409)
   }
 
-  const storageConfig = await getStorageConfig(provider || 'local')
+  const BUILTIN_PROVIDERS_SET = new Set(['local', 's3', 'github'])
+  let storageConfig
+  if (BUILTIN_PROVIDERS_SET.has(provider || 'local')) {
+    storageConfig = await getStorageConfig(provider || 'local')
+  } else {
+    storageConfig = await getStorageConfigBySourceId(provider)
+  }
   const storageProvider = StorageProviderFactory.create(storageConfig)
 
   let deleted = 0

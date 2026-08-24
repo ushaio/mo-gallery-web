@@ -276,7 +276,7 @@ func TestOpenStoreRestoresUpgradeBackupWhenMigrationFails(t *testing.T) {
 			return err
 		}
 		return errors.New("injected migration failure")
-	})
+	}, false)
 	if err == nil || !strings.Contains(err.Error(), "injected migration failure") {
 		t.Fatalf("openStoreWithMigration error=%v", err)
 	}

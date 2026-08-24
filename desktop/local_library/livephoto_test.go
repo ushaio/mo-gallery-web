@@ -207,4 +207,3 @@ func TestExtractLivePhotoVideoWritesBytes(t *testing.T) {
 		}
 	}
 }
-

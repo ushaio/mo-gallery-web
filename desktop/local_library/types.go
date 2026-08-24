@@ -99,13 +99,16 @@ type LibraryUpgradeInfo struct {
 }
 
 type ScanStatus struct {
-	State      string     `json:"state"`
-	Current    int64      `json:"current"`
-	Total      *int64     `json:"total,omitempty"`
-	LastPath   string     `json:"lastPath,omitempty"`
-	Error      string     `json:"error,omitempty"`
-	StartedAt  *time.Time `json:"startedAt,omitempty"`
-	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+	Phase            string     `json:"phase,omitempty"`
+	ThumbnailCurrent int64      `json:"thumbnailCurrent,omitempty"`
+	ThumbnailTotal   *int64     `json:"thumbnailTotal,omitempty"`
+	State            string     `json:"state"`
+	Current          int64      `json:"current"`
+	Total            *int64     `json:"total,omitempty"`
+	LastPath         string     `json:"lastPath,omitempty"`
+	Error            string     `json:"error,omitempty"`
+	StartedAt        *time.Time `json:"startedAt,omitempty"`
+	FinishedAt       *time.Time `json:"finishedAt,omitempty"`
 }
 
 type LibrarySnapshot struct {
@@ -200,7 +203,7 @@ type AssetDTO struct {
 	IsLivePhoto          bool                 `json:"isLivePhoto"`
 	LivePhotoVideoMIME   string               `json:"livePhotoVideoMime,omitempty"`
 	LivePhotoVideoURL    string               `json:"livePhotoVideoUrl,omitempty"`
-	LivePhotoVideoLength  int64                `json:"livePhotoVideoLength,omitempty"`
+	LivePhotoVideoLength int64                `json:"livePhotoVideoLength,omitempty"`
 	Availability         string               `json:"availability"`
 	TrashEntryID         string               `json:"trashEntryId,omitempty"`
 	TrashEntryKind       string               `json:"trashEntryKind,omitempty"`

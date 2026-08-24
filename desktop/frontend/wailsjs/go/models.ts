@@ -963,6 +963,9 @@ export namespace local_library {
 	}
 	
 	export class ScanStatus {
+	    phase?: string;
+	    thumbnailCurrent?: number;
+	    thumbnailTotal?: number;
 	    state: string;
 	    current: number;
 	    total?: number;
@@ -979,6 +982,9 @@ export namespace local_library {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.phase = source["phase"];
+	        this.thumbnailCurrent = source["thumbnailCurrent"];
+	        this.thumbnailTotal = source["thumbnailTotal"];
 	        this.state = source["state"];
 	        this.current = source["current"];
 	        this.total = source["total"];

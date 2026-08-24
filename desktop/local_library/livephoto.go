@@ -49,6 +49,18 @@ func isLivePhotoCandidate(path string) bool {
 // reads metadata (XMP / APP segments / trailing micro-video directory) and
 // never extracts the video bytes; extraction happens lazily on first request.
 func detectLivePhoto(path, format, ext string, totalSize int64) (livePhotoDescriptor, bool) {
+	return detectLivePhotoWithTrailingScan(path, format, ext, totalSize, true)
+}
+
+// detectLivePhotoQuick checks only image metadata. The trailing ftyp scan is
+// intentionally omitted during the initial library walk because it can read
+// several megabytes from every ordinary JPEG before proving it is not a Live
+// Photo. Unchanged assets are fully probed by the backfill path on a later scan.
+func detectLivePhotoQuick(path, format, ext string, totalSize int64) (livePhotoDescriptor, bool) {
+	return detectLivePhotoWithTrailingScan(path, format, ext, totalSize, false)
+}
+
+func detectLivePhotoWithTrailingScan(path, format, ext string, totalSize int64, scanTrailing bool) (livePhotoDescriptor, bool) {
 	if _, ok := supportedMotionPhotoExtensions[ext]; !ok && format != "jpeg" && format != "heif" {
 		return livePhotoDescriptor{}, false
 	}
@@ -61,6 +73,9 @@ func detectLivePhoto(path, format, ext string, totalSize int64) (livePhotoDescri
 
 	if desc, ok := detectMotionPhotoXMP(file, totalSize); ok {
 		return desc, true
+	}
+	if !scanTrailing {
+		return livePhotoDescriptor{}, false
 	}
 
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
@@ -225,7 +240,7 @@ func detectEmbeddedMP4BySignature(file *os.File, totalSize int64) (livePhotoDesc
 		}
 		limit := read - 8
 		for index := 0; index <= limit; index++ {
-			if isFTYP(buffer[index:index+8]) {
+			if isFTYP(buffer[index : index+8]) {
 				boxSize := int64(binary.BigEndian.Uint32(buffer[index : index+4]))
 				offset := position + int64(index)
 				if offset <= 0 || offset >= totalSize {

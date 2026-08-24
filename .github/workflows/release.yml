@@ -234,14 +234,14 @@ jobs:
             throw 'Expected both a portable executable and an NSIS installer.'
           }
 
-          $baseName = 'mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}'
+          $baseName = 'emulsion-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}'
           Copy-Item $portable.FullName (Join-Path $destination "$baseName-portable.exe")
           Copy-Item $installer.FullName (Join-Path $destination "$baseName-setup.exe")
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mo-gallery-desktop-windows-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
+          name: emulsion-windows-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
           path: desktop/release-assets/*.exe
           if-no-files-found: error
 
@@ -341,39 +341,39 @@ jobs:
       - name: Sign macOS application
         if: ${{ env.MACOS_SIGNING_IDENTITY != '' && env.MACOS_CERTIFICATE_P12_BASE64 != '' }}
         working-directory: desktop
-        run: codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" build/bin/mo-gallery-desktop.app
+        run: codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" build/bin/emulsion.app
 
       - name: Notarize macOS application bundle
         if: ${{ env.APPLE_ID != '' && env.APPLE_TEAM_ID != '' && env.APPLE_APP_SPECIFIC_PASSWORD != '' && env.MACOS_SIGNING_IDENTITY != '' && env.MACOS_CERTIFICATE_P12_BASE64 != '' }}
         working-directory: desktop
         run: |
-          ditto -c -k --sequesterRsrc --keepParent build/bin/mo-gallery-desktop.app "$RUNNER_TEMP/mo-gallery-notarization.zip"
+          ditto -c -k --sequesterRsrc --keepParent build/bin/emulsion.app "$RUNNER_TEMP/mo-gallery-notarization.zip"
           xcrun notarytool submit "$RUNNER_TEMP/mo-gallery-notarization.zip" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --wait
-          xcrun stapler staple build/bin/mo-gallery-desktop.app
+          xcrun stapler staple build/bin/emulsion.app
 
       - name: Archive macOS application bundle
         working-directory: desktop
         run: |
-          APP_PATH='build/bin/mo-gallery-desktop.app'
+          APP_PATH='build/bin/emulsion.app'
           if [ ! -d "$APP_PATH" ]; then
             echo "Expected application bundle not found: $APP_PATH" >&2
             exit 1
           fi
           mkdir -p release-assets
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
-            "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.zip"
+            "release-assets/emulsion-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.zip"
           DMG_ROOT="$RUNNER_TEMP/mo-gallery-dmg-root"
           rm -rf "$DMG_ROOT"
           mkdir -p "$DMG_ROOT"
-          ditto "$APP_PATH" "$DMG_ROOT/MO Gallery Desktop.app"
+          ditto "$APP_PATH" "$DMG_ROOT/Emulsion.app"
           ln -s /Applications "$DMG_ROOT/Applications"
-          hdiutil create -volname "MO Gallery Desktop" -srcfolder "$DMG_ROOT" -ov -format UDZO \
-            "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.dmg"
-          PKG_PATH="release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.pkg"
+          hdiutil create -volname "Emulsion" -srcfolder "$DMG_ROOT" -ov -format UDZO \
+            "release-assets/emulsion-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.dmg"
+          PKG_PATH="release-assets/emulsion-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.pkg"
           if [ -n "$MACOS_INSTALLER_IDENTITY" ] && [ -n "$MACOS_CERTIFICATE_P12_BASE64" ]; then
             pkgbuild --component "$APP_PATH" --install-location /Applications --sign "$MACOS_INSTALLER_IDENTITY" "$PKG_PATH"
           else
@@ -396,7 +396,7 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mo-gallery-desktop-macos-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
+          name: emulsion-macos-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
           path: |
             desktop/release-assets/*.zip
             desktop/release-assets/*.dmg
@@ -485,16 +485,16 @@ jobs:
       - name: Archive Linux executable
         working-directory: desktop
         run: |
-          BINARY_PATH='build/bin/mo-gallery-desktop'
+          BINARY_PATH='build/bin/emulsion'
           if [ ! -f "$BINARY_PATH" ]; then
             echo "Expected executable not found: $BINARY_PATH" >&2
             exit 1
           fi
           mkdir -p release-assets/package
-          install -m 0755 "$BINARY_PATH" release-assets/package/mo-gallery-desktop
+          install -m 0755 "$BINARY_PATH" release-assets/package/emulsion
           tar -C release-assets/package -czf \
-            "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.tar.gz" \
-            mo-gallery-desktop
+            "release-assets/emulsion-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.tar.gz" \
+            emulsion
 
           PACKAGE_VERSION='${{ needs.prepare.outputs.version }}'
           DEB_VERSION="${PACKAGE_VERSION/-/~}"
@@ -502,72 +502,72 @@ jobs:
           DEB_ARCH='${{ matrix.deb_arch }}'
           DEB_ROOT="release-assets/deb-root"
           mkdir -p "$DEB_ROOT/usr/bin" "$DEB_ROOT/usr/share/applications" "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps" "$DEB_ROOT/DEBIAN"
-          install -m 0755 "$BINARY_PATH" "$DEB_ROOT/usr/bin/mo-gallery-desktop"
-          install -m 0644 build/appicon.png "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png"
-          cat > "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" <<'DESKTOP'
+          install -m 0755 "$BINARY_PATH" "$DEB_ROOT/usr/bin/emulsion"
+          install -m 0644 build/appicon.png "$DEB_ROOT/usr/share/icons/hicolor/512x512/apps/emulsion.png"
+          cat > "$DEB_ROOT/usr/share/applications/emulsion.desktop" <<'DESKTOP'
           [Desktop Entry]
-          Name=MO Gallery Desktop
-          Exec=mo-gallery-desktop
-          Icon=mo-gallery-desktop
+          Name=Emulsion
+          Exec=emulsion
+          Icon=emulsion
           Type=Application
           Categories=Graphics;Photography;
           DESKTOP
           cat > "$DEB_ROOT/DEBIAN/control" <<CONTROL
-          Package: mo-gallery-desktop
+          Package: emulsion
           Version: $DEB_VERSION
           Section: graphics
           Priority: optional
           Architecture: $DEB_ARCH
           Depends: libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0
           Maintainer: MO Gallery <admin@mo.gallery>
-          Description: MO Gallery Desktop administration client
+          Description: Emulsion desktop administration client
           CONTROL
-          dpkg-deb --build "$DEB_ROOT" "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.deb"
+          dpkg-deb --build "$DEB_ROOT" "release-assets/emulsion-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.deb"
 
           RPM_ARCH='${{ matrix.rpm_arch }}'
           RPM_TOP="$PWD/release-assets/rpm"
           mkdir -p "$RPM_TOP/BUILD" "$RPM_TOP/RPMS/$RPM_ARCH" "$RPM_TOP/SOURCES" "$RPM_TOP/SPECS" "$RPM_TOP/SRPMS"
           mkdir -p release-assets/rpm-root/usr/bin release-assets/rpm-root/usr/share/applications release-assets/rpm-root/usr/share/icons/hicolor/512x512/apps
-          install -m 0755 "$BINARY_PATH" release-assets/rpm-root/usr/bin/mo-gallery-desktop
-          install -m 0644 build/appicon.png release-assets/rpm-root/usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png
-          cp "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" release-assets/rpm-root/usr/share/applications/
-          tar -C release-assets -czf "$RPM_TOP/SOURCES/mo-gallery-desktop.tar.gz" rpm-root
-          cat > "$RPM_TOP/SPECS/mo-gallery-desktop.spec" <<SPEC
-          Name: mo-gallery-desktop
+          install -m 0755 "$BINARY_PATH" release-assets/rpm-root/usr/bin/emulsion
+          install -m 0644 build/appicon.png release-assets/rpm-root/usr/share/icons/hicolor/512x512/apps/emulsion.png
+          cp "$DEB_ROOT/usr/share/applications/emulsion.desktop" release-assets/rpm-root/usr/share/applications/
+          tar -C release-assets -czf "$RPM_TOP/SOURCES/emulsion.tar.gz" rpm-root
+          cat > "$RPM_TOP/SPECS/emulsion.spec" <<SPEC
+          Name: emulsion
           Version: $RPM_VERSION
           Release: 1
-          Summary: MO Gallery Desktop administration client
+          Summary: Emulsion desktop administration client
           License: Proprietary
-          Source0: mo-gallery-desktop.tar.gz
+          Source0: emulsion.tar.gz
           BuildArch: $RPM_ARCH
           Requires: gtk3
           Requires: webkit2gtk4.1
           %description
-          MO Gallery Desktop administration client.
+          Emulsion desktop administration client.
           %prep
           %setup -q -n rpm-root
           %install
           mkdir -p %{buildroot}
           cp -a usr %{buildroot}/
           %files
-          /usr/bin/mo-gallery-desktop
-          /usr/share/applications/mo-gallery-desktop.desktop
-          /usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png
+          /usr/bin/emulsion
+          /usr/share/applications/emulsion.desktop
+          /usr/share/icons/hicolor/512x512/apps/emulsion.png
           SPEC
-          rpmbuild --define "_topdir $RPM_TOP" -bb "$RPM_TOP/SPECS/mo-gallery-desktop.spec"
-          cp "$RPM_TOP/RPMS/$RPM_ARCH/"*.rpm "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.rpm"
+          rpmbuild --define "_topdir $RPM_TOP" -bb "$RPM_TOP/SPECS/emulsion.spec"
+          cp "$RPM_TOP/RPMS/$RPM_ARCH/"*.rpm "release-assets/emulsion-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.rpm"
 
-          APPDIR="$PWD/release-assets/mo-gallery-desktop.AppDir"
+          APPDIR="$PWD/release-assets/emulsion.AppDir"
           mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
-          install -m 0755 "$BINARY_PATH" "$APPDIR/usr/bin/mo-gallery-desktop"
-          install -m 0644 build/appicon.png "$APPDIR/mo-gallery-desktop.png"
-          install -m 0644 build/appicon.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/mo-gallery-desktop.png"
-          install -m 0644 "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" "$APPDIR/mo-gallery-desktop.desktop"
-          install -m 0644 "$DEB_ROOT/usr/share/applications/mo-gallery-desktop.desktop" "$APPDIR/usr/share/applications/mo-gallery-desktop.desktop"
+          install -m 0755 "$BINARY_PATH" "$APPDIR/usr/bin/emulsion"
+          install -m 0644 build/appicon.png "$APPDIR/emulsion.png"
+          install -m 0644 build/appicon.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/emulsion.png"
+          install -m 0644 "$DEB_ROOT/usr/share/applications/emulsion.desktop" "$APPDIR/emulsion.desktop"
+          install -m 0644 "$DEB_ROOT/usr/share/applications/emulsion.desktop" "$APPDIR/usr/share/applications/emulsion.desktop"
           cat > "$APPDIR/AppRun" <<'APPRUN'
           #!/bin/sh
           HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-          exec "$HERE/usr/bin/mo-gallery-desktop" "$@"
+          exec "$HERE/usr/bin/emulsion" "$@"
           APPRUN
           chmod +x "$APPDIR/AppRun"
           LINUXDEPLOY_ARCH='${{ matrix.appimage_arch }}'
@@ -576,12 +576,12 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy.AppImage --appdir "$APPDIR" --output appimage
           APPIMAGE_PATH=$(find . -maxdepth 1 -name '*.AppImage' -not -name 'linuxdeploy.AppImage' -print -quit)
           test -n "$APPIMAGE_PATH"
-          mv "$APPIMAGE_PATH" "release-assets/mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.AppImage"
+          mv "$APPIMAGE_PATH" "release-assets/emulsion-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.AppImage"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mo-gallery-desktop-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
+          name: emulsion-linux-${{ matrix.arch }}-${{ needs.prepare.outputs.tag }}
           path: |
             desktop/release-assets/*.tar.gz
             desktop/release-assets/*.deb
@@ -646,7 +646,7 @@ jobs:
       - name: Download desktop artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: mo-gallery-desktop-*-${{ needs.prepare.outputs.tag }}
+          pattern: emulsion-*-${{ needs.prepare.outputs.tag }}
           path: release-assets
           merge-multiple: true
 
@@ -659,25 +659,25 @@ jobs:
       - name: Verify release assets
         run: |
           expected_assets=(
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-portable.exe"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-windows-amd64-setup.exe"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.zip"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.dmg"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-amd64.pkg"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.zip"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.dmg"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-arm64.pkg"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.zip"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.dmg"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-macos-universal.pkg"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.deb"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.rpm"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-amd64.AppImage"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.tar.gz"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.deb"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.rpm"
-            "mo-gallery-desktop-${{ needs.prepare.outputs.version }}-linux-arm64.AppImage"
+            "emulsion-${{ needs.prepare.outputs.version }}-windows-amd64-portable.exe"
+            "emulsion-${{ needs.prepare.outputs.version }}-windows-amd64-setup.exe"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-amd64.zip"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-amd64.dmg"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-amd64.pkg"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-arm64.zip"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-arm64.dmg"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-arm64.pkg"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-universal.zip"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-universal.dmg"
+            "emulsion-${{ needs.prepare.outputs.version }}-macos-universal.pkg"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-amd64.tar.gz"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-amd64.deb"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-amd64.rpm"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-amd64.AppImage"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-arm64.tar.gz"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-arm64.deb"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-arm64.rpm"
+            "emulsion-${{ needs.prepare.outputs.version }}-linux-arm64.AppImage"
           )
           for asset in "${expected_assets[@]}"; do
             if [ ! -f "release-assets/$asset" ]; then

@@ -25,10 +25,15 @@ function formatBytes(value: number) {
 export function LocalLibraryPreview({ asset, copy, onClose, onPrevious, onNext, hasPrevious = false, hasNext = false }: Props) {
   const isPhoto = isPhotoAsset(asset)
   const previewPending = asset.previewStatus === 'pending' || asset.previewStatus === 'generating'
+  const rawFormats = new Set(['cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'rw2', 'orf', 'srw', 'pef'])
+  const isRaw = rawFormats.has(asset.format.toLowerCase())
+  const originalOrientation = 1
   const viewOriginalLabel = copy.original.startsWith('Original') ? 'View original' : '查看原图'
   const frameCopy = {
     viewOriginal: viewOriginalLabel, fitWindow: copy.fitted, zoomOut: copy.zoomOut, resetZoom: copy.resetZoom, zoomIn: copy.zoomIn,
     close: copy.close, previous: copy.previous, next: copy.next, loading: copy.loadingOriginal, originalUnavailable: copy.originalUnavailable,
+    rotateClockwise: copy.original.startsWith('Original') ? 'Rotate clockwise' : '顺时针旋转',
+    rotateCounterclockwise: copy.original.startsWith('Original') ? 'Rotate counterclockwise' : '逆时针旋转',
     retry: copy.retry,
   }
 
@@ -36,8 +41,9 @@ export function LocalLibraryPreview({ asset, copy, onClose, onPrevious, onNext, 
     key={asset.id}
     title={asset.displayTitle || asset.fileName}
     subtitle={asset.relativePath}
-    originalSrc={isPhoto ? asset.originalUrl : undefined}
-    previewSrc={isPhoto && (asset.previewStatus === 'ready' || asset.mimeType === 'image/gif') ? asset.previewUrl : undefined}
+    originalSrc={isPhoto ? (isRaw ? asset.previewUrl : asset.originalUrl) : undefined}
+    originalOrientation={originalOrientation}
+    previewSrc={isPhoto && !isRaw && (asset.previewStatus === 'ready' || asset.mimeType === 'image/gif') ? asset.previewUrl : undefined}
     livePhotoVideoSrc={isPhoto && asset.isLivePhoto ? asset.livePhotoVideoUrl : undefined}
     alt={asset.displayTitle || asset.fileName}
     copy={frameCopy}

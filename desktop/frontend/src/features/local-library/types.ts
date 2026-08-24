@@ -27,8 +27,11 @@ export interface RecentLibrary {
 
 export interface ScanStatus {
   state: ScanState | string
+  phase?: 'indexing' | 'thumbnails' | string
   current: number
   total?: number
+  thumbnailCurrent?: number
+  thumbnailTotal?: number
   lastPath?: string
   error?: string
   startedAt?: string

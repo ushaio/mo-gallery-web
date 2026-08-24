@@ -21,20 +21,17 @@ import {
   Trash2,
   X,
   XCircle,
-  Puzzle,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { getErrorMessage } from '@/lib/auth-errors'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
-import { CleanupStorage, FixMissingPhotos, GenerateThumbnail, ScanStorage } from '../../wailsjs/go/main/App'
-import type { services } from '../../wailsjs/go/models'
-import { StorageTab } from './settings/StorageTab'
+import { CleanupStorage, FixMissingPhotos, GenerateThumbnail, GetStorageSources, ScanStorage } from '../../wailsjs/go/main/App'
+import type { services, types } from '../../wailsjs/go/models'
 
 // ── 工具函数 ─────────────────────────────────────────────────
 
@@ -206,11 +203,22 @@ interface ProviderOption {
   icon: LucideIcon
 }
 
-const PROVIDERS: ProviderOption[] = [
+const BUILTIN_PROVIDERS: ProviderOption[] = [
   { value: 'local', labelKey: 'admin.storage_provider_local', icon: HardDrive },
   { value: 's3', label: 'S3', icon: Cloud },
   { value: 'github', labelKey: 'admin.storage_provider_github', icon: Github },
 ]
+
+function getProviders(sources: types.StorageSourceDTO[]): ProviderOption[] {
+  const sourceProviders: ProviderOption[] = sources
+    .filter(s => s.type !== 'local' && s.type)
+    .map(s => ({
+      value: s.id,
+      label: s.name || s.type,
+      icon: s.type === 'github' ? Github : Cloud,
+    }))
+  return [...BUILTIN_PROVIDERS, ...sourceProviders]
+}
 
 interface StatusMeta {
   labelKey: string
@@ -308,9 +316,10 @@ function FileThumb({ file }: { file: services.StorageFileDTO }) {
 
 function StorageCleanupPage() {
   const { language } = usePreferences()
+  const [storageSources, setStorageSources] = useState<types.StorageSourceDTO[]>([])
   const [provider, setProvider] = useState(() => {
     const stored = readLocal(PROVIDER_KEY, 'local')
-    return PROVIDERS.some(p => p.value === stored) ? stored : 'local'
+    return BUILTIN_PROVIDERS.some(p => p.value === stored) ? stored : 'local'
   })
   const [files, setFiles] = useState<services.StorageFileDTO[]>([])
   const [stats, setStats] = useState<services.StorageScanStats>({
@@ -363,11 +372,32 @@ function StorageCleanupPage() {
     }
   }, [provider, statusFilter, search])
 
+  const fetchSources = useCallback(async () => {
+    try {
+      const result = await GetStorageSources()
+      setStorageSources(result || [])
+    } catch {}
+  }, [])
+
+  const providers = useMemo(() => getProviders(storageSources), [storageSources])
+
+  // 同步存储源列表后检查 provider 有效性
+  useEffect(() => {
+    if (storageSources.length > 0 && !providers.some(p => p.value === provider)) {
+      const timer = window.setTimeout(() => {
+        setProvider('local')
+        writeLocal(PROVIDER_KEY, 'local')
+      }, 0)
+      return () => window.clearTimeout(timer)
+    }
+  }, [storageSources, providers, provider])
+
   // 首次进入自动扫描；菜单页常驻缓存后，切回本页不再重复扫描，
   // 需要最新结果时使用工具栏的「扫描 / 刷新」按钮（切换存储源或筛选条件仍会自动重扫）
   useCachedPageEffect(() => {
+    void fetchSources()
     void loadFiles()
-  }, [loadFiles])
+  }, [loadFiles, fetchSources])
 
   // 搜索防抖（400ms 自动触发扫描）
   useEffect(() => {
@@ -577,22 +607,6 @@ function StorageCleanupPage() {
 
   return (
     <>
-      <PageHeader
-        title={t('admin.page_storage', language)}
-        description={`${stats.total} ${t('admin.storage_file_unit', language)}`}
-        actions={
-          <button
-            onClick={() => void loadFiles()}
-            disabled={loading}
-            className="flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
-            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-          >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
-            {loading ? t('admin.storage_scanning', language) : t('admin.storage_scan', language)}
-          </button>
-        }
-      />
-
       {/* 内容工具栏：与照片库/胶卷保持一致的位置与样式 */}
       <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
         {/* 存储源切换 */}
@@ -602,7 +616,7 @@ function StorageCleanupPage() {
           role="tablist"
           aria-label={t('admin.storage_provider', language)}
         >
-          {PROVIDERS.map(({ value, label, labelKey, icon: Icon }) => {
+          {providers.map(({ value, label, labelKey, icon: Icon }) => {
             const active = provider === value
             return (
               <button
@@ -672,6 +686,16 @@ function StorageCleanupPage() {
             </button>
           )}
         </div>
+
+        <button
+          onClick={() => void loadFiles()}
+          disabled={loading}
+          className="ml-auto flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-50"
+          style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
+          {loading ? t('admin.storage_scanning', language) : t('admin.storage_scan', language)}
+        </button>
       </div>
 
       {/* 主区域：左侧概览/文件夹 + 右侧文件列表（桌面 master-detail） */}
@@ -1080,29 +1104,5 @@ function StorageCleanupPage() {
 }
 
 export function StoragePage() {
-  const { language } = usePreferences()
-  const [view, setView] = useState<'sources' | 'cleanup'>('sources')
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageHeader
-        title={t('admin.storage_sources', language)}
-        actions={(
-          <div className="flex h-9 items-center rounded-md border bg-background p-0.5" style={{ borderColor: 'var(--border)' }} role="tablist" aria-label={t('admin.storage_sources', language)}>
-            <button type="button" role="tab" aria-selected={view === 'sources'} onClick={() => setView('sources')} className="flex h-8 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors hover:bg-secondary sm:px-3" style={{ backgroundColor: view === 'sources' ? 'var(--accent)' : 'transparent', color: view === 'sources' ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}>
-              <Puzzle size={13} />
-              <span className="hidden sm:inline">{t('admin.storage_sources', language)}</span>
-            </button>
-            <button type="button" role="tab" aria-selected={view === 'cleanup'} onClick={() => setView('cleanup')} className="flex h-8 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors hover:bg-secondary sm:px-3" style={{ backgroundColor: view === 'cleanup' ? 'var(--accent)' : 'transparent', color: view === 'cleanup' ? 'var(--accent-foreground)' : 'var(--muted-foreground)' }}>
-              <HardDrive size={13} />
-              <span className="hidden sm:inline">{t('admin.storage_cleanup', language)}</span>
-            </button>
-          </div>
-        )}
-      />
-      <div className="min-h-0 flex-1 overflow-auto p-3 sm:p-6">
-        {view === 'sources' ? <StorageTab mode="sources" /> : <StorageCleanupPage />}
-      </div>
-    </div>
-  )
+  return <StorageCleanupPage />
 }

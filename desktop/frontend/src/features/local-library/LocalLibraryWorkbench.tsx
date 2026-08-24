@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
 import {
   ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleHelp, Columns3, DatabaseBackup, FileQuestion, Folder, FolderInput, FolderOpen, FolderPen, FolderPlus, FolderSearch2, Heart, Images, Info, LayoutGrid, Loader2, Palette, Star,
-  Maximize2, Pause, Play, RefreshCw, Settings2, Square, Trash2, Upload, X,
+  Maximize2, Pause, Play, RefreshCw, Settings2, Square, Trash2, Upload, Wrench, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -50,6 +50,7 @@ import type { OrganizationDeleteTarget } from './OrganizationNavigation'
 import { DeleteOrganizationDialog } from './DeleteOrganizationDialog'
 import { PermanentDeleteFolderDialog } from './PermanentDeleteFolderDialog'
 import { RemoveMissingAssetDialog } from './RemoveMissingAssetDialog'
+import { RepairThumbnailsDialog } from './RepairThumbnailsDialog'
 import { ImageUploadSettingsModal, type UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { loadLocalLibraryUploadSettings, normalizeLocalLibraryUploadSettings, saveLocalLibraryUploadSettings } from './upload-settings-persistence'
 import { RestoreFolderDialog } from './RestoreFolderDialog'
@@ -128,6 +129,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const [batchDeleteBusy, setBatchDeleteBusy] = useState(false)
   const [missingMaintenanceBusy, setMissingMaintenanceBusy] = useState(false)
   const [previewMaintenanceBusy, setPreviewMaintenanceBusy] = useState(false)
+  const [repairDialogOpen, setRepairDialogOpen] = useState(false)
+  const [repairMenuOpen, setRepairMenuOpen] = useState(false)
+  const [repairBusy, setRepairBusy] = useState(false)
   const [removeMissingAsset, setRemoveMissingAsset] = useState<LocalAsset | null>(null)
   const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null)
   const [assetDropTargetFolder, setAssetDropTargetFolder] = useState<string | null>(null)
@@ -1476,6 +1480,21 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     }
   }, [copy.previewRetryFailed, copy.previewRetrySucceeded, refreshAssets])
 
+  const runThumbnailRepair = useCallback(async (mode: 'missing' | 'all') => {
+    setRepairBusy(true)
+    try {
+      const count = await localLibraryApi.rebuildThumbnails(mode)
+      toast.success(count > 0 ? `${copy.thumbnailsRepairStarted}（${count} 项）` : copy.thumbnailsRepairStarted)
+      setRepairDialogOpen(false)
+      refreshAssets()
+      void refreshSnapshot()
+    } catch (error) {
+      toast.error(parseLocalLibraryError(error).message)
+    } finally {
+      setRepairBusy(false)
+    }
+  }, [copy.thumbnailsRepairStarted, refreshAssets, refreshSnapshot])
+
   const removeMissingRecord = async () => {
     if (!removeMissingAsset) return
     setMissingMaintenanceBusy(true)
@@ -1861,6 +1880,17 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
             {snapshot.scan.state === 'running' && <><button disabled={scanBusy} onClick={() => runScanAction('pause')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Pause size={11} />{copy.pause}</button><button disabled={scanBusy} onClick={() => runScanAction('cancel')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Square size={10} />{copy.cancel}</button></>}
             {snapshot.scan.state === 'paused' && !isSuspended && !isRepairRequired && <button disabled={scanBusy} onClick={() => runScanAction('resume')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Play size={11} />{copy.resume}</button>}
             {!isSuspended && !isRepairRequired && !['running','paused'].includes(snapshot.scan.state) && <button disabled={scanBusy} onClick={() => runScanAction('start')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><RefreshCw size={11} />{copy.rescan}</button>}
+            {!isSuspended && !isRepairRequired && <div className="relative">
+              <button disabled={scanBusy || repairBusy} onClick={() => setRepairMenuOpen((open) => !open)} title={copy.repair} aria-label={copy.repair} aria-haspopup="menu" aria-expanded={repairMenuOpen} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary disabled:opacity-50"><Wrench size={11} />{copy.repair}</button>
+              {repairMenuOpen && (
+                <>
+                  <button type="button" aria-label={copy.cancelAction} onClick={() => setRepairMenuOpen(false)} className="fixed inset-0 z-30 cursor-default" />
+                  <div className="absolute bottom-full right-0 z-40 mb-1 w-44 overflow-hidden rounded-lg border py-1 shadow-lg" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--popover)' }}>
+                    <button type="button" onClick={() => { setRepairMenuOpen(false); setRepairDialogOpen(true) }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-secondary" style={{ color: 'var(--foreground)' }}><Wrench size={14} />{copy.repairThumbnails}</button>
+                  </div>
+                </>
+              )}
+            </div>}
             {isAuthenticated && <button disabled={cloudSyncBusy} onClick={() => void syncCloud()} title={copy.syncCloud} aria-label={copy.syncCloud} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><RefreshCw size={11} className={cloudSyncBusy ? 'animate-spin' : undefined} />{cloudSyncBusy ? copy.syncingCloud : copy.syncCloud}</button>}
             <LibraryZoomSlider
               value={gridSize}
@@ -1890,6 +1920,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       {pendingCollectionDrop && <AddToCollectionConfirmDialog assetCount={pendingCollectionDrop.assetIds.length} collectionName={collections.find((item) => item.id === pendingCollectionDrop.collectionId)?.name ?? ''} copy={copy} busy={organizationBusy} onConfirm={() => void confirmCollectionDrop()} onClose={() => { if (!organizationBusy) setPendingCollectionDrop(null) }} />}
       {pendingImportPaths && <ImportModeDialog copy={copy} busy={importBusy} onClose={() => { setPendingImportPaths(null); setPendingImportDestination(null) }} onChoose={chooseImportMode} />}
       {removeMissingAsset && <RemoveMissingAssetDialog asset={removeMissingAsset} copy={copy} busy={missingMaintenanceBusy} onClose={() => setRemoveMissingAsset(null)} onConfirm={removeMissingRecord} />}
+      {repairDialogOpen && <RepairThumbnailsDialog copy={copy} busy={repairBusy} onClose={() => { if (!repairBusy) setRepairDialogOpen(false) }} onMissing={() => void runThumbnailRepair('missing')} onRebuildAll={() => void runThumbnailRepair('all')} />}
       {deleteAsset && <DeleteAssetDialog asset={deleteAsset} copy={copy} busy={deleteBusy} onClose={() => setDeleteAsset(null)} onTrash={trashSelected} onRestore={() => void restoreAsset(deleteAsset)} onPermanent={permanentlyDelete} onDeleteCloud={deleteCloud} onDeleteCloudAndLocal={deleteCloudAndLocal} />}
       <DeleteAssetsDialog
         open={batchDeleteDialogOpen}

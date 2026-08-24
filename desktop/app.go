@@ -2155,6 +2155,9 @@ func (a *App) CancelLocalLibraryScan() error { return a.LocalLibrary.CancelScan(
 func (a *App) ClearLocalLibraryPreviewCache() error {
 	return a.LocalLibrary.ClearPreviewCache()
 }
+func (a *App) RebuildLocalLibraryThumbnails(mode string) (int64, error) {
+	return a.LocalLibrary.RebuildThumbnails(mode)
+}
 func (a *App) GetLocalLibraryCacheStats() (local_library.LocalLibraryCacheStats, error) {
 	return a.LocalLibrary.CacheStats()
 }

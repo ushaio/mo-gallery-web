@@ -3,6 +3,7 @@ package local_library
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -131,19 +132,25 @@ func (m *Manager) reconcileKnownFile(
 			}
 			return reconcileResult{
 				AssetID: unchanged.ID, RelativePath: string(normalized),
-				NeedsPreview: needPreview,
+				NeedsPreview: needPreview && !isRAWExtension(filepath.Ext(absolutePath)),
 			}, nil
 		}
 	}
 
+	inspectStartedAt := time.Now()
 	file := inspectMedia(absolutePath, info)
+	inspectElapsed := time.Since(inspectStartedAt)
 	file.RelativePath = string(normalized)
 	file.PathKey = key
 	file.FolderPath = filepath.ToSlash(filepath.Dir(string(normalized)))
 	if file.FolderPath == "." {
 		file.FolderPath = ""
 	}
-	if desc, ok := detectLivePhoto(absolutePath, file.Format, file.Extension, info.Size()); ok {
+	detectPhoto := detectLivePhoto
+	if source == reconcileSourceScan {
+		detectPhoto = detectLivePhotoQuick
+	}
+	if desc, ok := detectPhoto(absolutePath, file.Format, file.Extension, info.Size()); ok {
 		file.LivePhoto = desc
 		file.MediaKind = "live-photo"
 	}
@@ -151,7 +158,11 @@ func (m *Manager) reconcileKnownFile(
 	var id AssetID
 	var created bool
 	if source == reconcileSourceScan {
+		upsertStartedAt := time.Now()
 		id, created, err = session.upsertAssetForScan(ctx, file, scanID, operationID)
+		if elapsed := time.Since(upsertStartedAt); elapsed >= 500*time.Millisecond || inspectElapsed >= 500*time.Millisecond {
+			log.Printf("[local-library] reconcile slow file=%s inspect=%s upsert=%s", filepath.Base(absolutePath), inspectElapsed.Round(time.Millisecond), elapsed.Round(time.Millisecond))
+		}
 	} else {
 		id, created, err = session.upsertAssetForOperationWithToken(ctx, file, operationID)
 	}
@@ -162,7 +173,7 @@ func (m *Manager) reconcileKnownFile(
 		AssetID:      id,
 		RelativePath: string(normalized),
 		Created:      created,
-		NeedsPreview: file.PreviewStatus == "pending",
+		NeedsPreview: file.PreviewStatus == "pending" && !isRAWExtension(file.Extension),
 	}, nil
 }
 

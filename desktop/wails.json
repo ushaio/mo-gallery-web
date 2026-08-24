@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "mo-gallery-desktop",
-  "outputfilename": "mo-gallery-desktop",
+  "name": "emulsion",
+  "outputfilename": "emulsion",
   "frontend:dir": "frontend",
   "frontend:install": "pnpm install --no-frozen-lockfile",
   "frontend:build": "pnpm build",

@@ -952,6 +952,45 @@ func (m *Manager) RetryAssetPreviews(ids []AssetID) ([]AssetMaintenanceResult, e
 	return results, nil
 }
 
+// RebuildThumbnails regenerates grid thumbnails. mode "missing" only requeues
+// photo assets whose preview is not ready (leaving existing thumbnails intact);
+// mode "all" deletes every thumbnail derivative and rebuilds the whole set from
+// scratch. Regeneration runs in the background through the derivative scheduler,
+// where visible assets are promoted ahead of the background warm-up via its
+// priority queue. It returns the number of assets queued for regeneration.
+func (m *Manager) RebuildThumbnails(mode string) (int64, error) {
+	session, err := m.requireAvailableSession()
+	if err != nil {
+		return 0, err
+	}
+	switch mode {
+	case "all":
+		_ = os.RemoveAll(internalPath(session.root, derivativeDirectory(derivativeThumbnail)))
+		if _, err := session.store.resetThumbnails(session.ctx); err != nil {
+			return 0, err
+		}
+	case "missing":
+		// Keep existing thumbnails; only queue assets that still lack one.
+	default:
+		return 0, newError(ErrInvalidPath, "unknown thumbnail rebuild mode", nil)
+	}
+	ids, err := session.store.thumbnailAssetIDs(session.ctx, mode == "missing")
+	if err != nil {
+		return 0, err
+	}
+	pending := ids
+	session.startWorker(func() {
+		for _, assetID := range pending {
+			if sessionClosed(session.done) || session.ctx.Err() != nil {
+				return
+			}
+			m.queueThumbnail(session, assetID)
+		}
+	})
+	m.emitSessionEvent(session, "thumbnails_rebuilt")
+	return int64(len(pending)), nil
+}
+
 // RemoveMissingAssets removes only stale index records. It never deletes a file from disk.
 func (m *Manager) RemoveMissingAssets(ids []AssetID) ([]AssetMaintenanceResult, error) {
 	session, err := m.requireAvailableSession()

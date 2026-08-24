@@ -28,7 +28,7 @@ const navGroups = [
     { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
   ],
   [
-    { path: '/storage', icon: HardDrive, key: 'admin.storage_sources' },
+    { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
     { path: '/friends', icon: Users, key: 'admin.friends' },
   ],
 ]

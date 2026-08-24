@@ -22,7 +22,7 @@ interface Props {
   onOpened: (snapshot: LibrarySnapshot) => void;
   onRecentChanged: () => void;
   onUpgradeRequired: (info: LibraryUpgradeInfo) => void;
-  onOpening: (path: string) => void;
+  onOpening: (path: string, label?: string) => void;
   onOpeningEnd: () => void;
 }
 
@@ -47,25 +47,22 @@ export function LocalLibraryWelcome({
   const [busy, setBusy] = useState<string | null>(null);
 
   const openLibrary = async (path: string) => {
-    onOpening(path);
+    onOpening(path, copy.open)
     try {
-      const info = await localLibraryApi.checkUpgrade(path);
-      if (info.required) {
-        onUpgradeRequired(info);
-        return;
-      }
       onOpened(await localLibraryApi.open(path));
-    } finally {
+    } catch (error) {
       onOpeningEnd();
+      throw error;
     }
   };
 
-  const openWith = async (path: string, fn: () => Promise<LibrarySnapshot>) => {
-    onOpening(path);
+  const openWith = async (path: string, fn: () => Promise<LibrarySnapshot>, label: string) => {
+    onOpening(path, label)
     try {
       onOpened(await fn());
-    } finally {
+    } catch (error) {
       onOpeningEnd();
+      throw error;
     }
   };
 
@@ -81,9 +78,9 @@ export function LocalLibraryWelcome({
       );
       if (!path) return;
       if (kind === "create") {
-        await openWith(path, () => localLibraryApi.create(path, libraryName(path)));
+        await openWith(path, () => localLibraryApi.create(path, libraryName(path)), copy.create);
       } else if (kind === "initialize") {
-        await openWith(path, () => localLibraryApi.initialize(path, libraryName(path)));
+        await openWith(path, () => localLibraryApi.initialize(path, libraryName(path)), copy.initialize);
       } else {
         await openLibrary(path);
       }

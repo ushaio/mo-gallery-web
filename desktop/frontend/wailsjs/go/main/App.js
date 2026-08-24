@@ -678,6 +678,10 @@ export function ReadAgentSkillResource(arg1, arg2) {
   return window['go']['main']['App']['ReadAgentSkillResource'](arg1, arg2);
 }
 
+export function RebuildLocalLibraryThumbnails(arg1) {
+  return window['go']['main']['App']['RebuildLocalLibraryThumbnails'](arg1);
+}
+
 export function RecheckMissingLocalAssets(arg1) {
   return window['go']['main']['App']['RecheckMissingLocalAssets'](arg1);
 }

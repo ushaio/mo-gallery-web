@@ -66,28 +66,14 @@ type unchangedAsset struct {
 }
 
 func openStore(root string) (*store, error) {
-	return openStoreWithMigration(root, nil)
+	return openStoreWithMigration(root, nil, false)
 }
 
 func openStoreForUse(root string) (*store, error) {
-	info, err := inspectStoreUpgrade(root)
-	if err != nil {
-		return nil, err
-	}
-	if info.Required {
-		return nil, newError(ErrLibraryUpgradeRequired, "本地资源库需要升级数据库后才能使用", map[string]any{
-			"path":           info.RootPath,
-			"currentVersion": info.CurrentVersion,
-			"targetVersion":  info.TargetVersion,
-		})
-	}
-	// The caller has passed the upgrade gate. The regular opener still handles
-	// first-time/empty stores; for an existing older store the check above
-	// prevents opening until the explicit upgrade action has completed.
-	return openStoreWithMigration(root, nil)
+	return openStoreWithMigration(root, nil, true)
 }
 
-func openStoreWithMigration(root string, migrateStore func(*store) error) (*store, error) {
+func openStoreWithMigration(root string, migrateStore func(*store) error, rejectMigration bool) (*store, error) {
 	dbPath := internalPath(root, "library.db")
 	// Acquire the WAL write reservation when a transaction begins. Deferred
 	// transactions can read an old snapshot and then fail with SQLITE_BUSY_SNAPSHOT
@@ -97,16 +83,28 @@ func openStoreWithMigration(root string, migrateStore func(*store) error) (*stor
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(2)
+	// Keep one SQLite connection per local library. The modernc driver keeps
+	// connection-local pager/cache state; several connections opening a large
+	// WAL database at once can surface SQLITE_CANTOPEN with a misleading
+	// "out of memory" message on Windows.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, err
 	}
-	needsMigration, err := databaseNeedsMigration(db)
+	version, needsMigration, err := readStoreSchemaVersion(db)
 	if err != nil {
 		db.Close()
 		return nil, err
+	}
+	if rejectMigration && needsMigration {
+		db.Close()
+		return nil, newError(ErrLibraryUpgradeRequired, "本地资源库需要升级数据库后才能使用", map[string]any{
+			"path":           root,
+			"currentVersion": version,
+			"targetVersion":  currentSchemaVersion,
+		})
 	}
 	if needsMigration {
 		if err := createUpgradeBackup(context.Background(), root, db); err != nil {
@@ -151,6 +149,8 @@ func inspectStoreUpgrade(root string) (LibraryUpgradeInfo, error) {
 		return LibraryUpgradeInfo{}, err
 	}
 	defer db.Close()
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	if err := db.Ping(); err != nil {
 		return LibraryUpgradeInfo{}, err
 	}
@@ -1386,6 +1386,44 @@ func (s *store) deleteDerivative(ctx context.Context, id AssetID, variant deriva
 func (s *store) setPreviewResult(ctx context.Context, id AssetID, status, previewError string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE assets SET preview_status=?,preview_error=?,technical_updated_at=? WHERE id=?`, status, boundedError(previewError), time.Now().UnixMilli(), id)
 	return err
+}
+
+// resetThumbnails invalidates every grid-thumbnail derivative and resets the
+// preview state of all photo-kind assets so their thumbnails regenerate on the
+// next render pass. It returns the number of affected assets.
+func (s *store) resetThumbnails(ctx context.Context) (int64, error) {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM asset_derivatives WHERE variant='thumbnail'`); err != nil {
+		return 0, err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE assets SET preview_status='pending', preview_error='', dominant_colors='[]', technical_updated_at=? WHERE media_kind IN ('image','live-photo')`, time.Now().UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// thumbnailAssetIDs returns the IDs of photo assets that need a grid thumbnail.
+// When onlyMissing is true it restricts to assets whose preview is not ready so
+// already-generated thumbnails are left untouched.
+func (s *store) thumbnailAssetIDs(ctx context.Context, onlyMissing bool) ([]AssetID, error) {
+	query := `SELECT id FROM assets WHERE media_kind IN ('image','live-photo')`
+	if onlyMissing {
+		query += ` AND preview_status <> 'ready'`
+	}
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]AssetID, 0)
+	for rows.Next() {
+		var id AssetID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (s *store) setDominantColors(ctx context.Context, id AssetID, colors []string) error {

@@ -347,6 +347,8 @@ export function ReadAgentSkill(arg1:string):Promise<agent_extensions.SkillConten
 
 export function ReadAgentSkillResource(arg1:string,arg2:string):Promise<agent_extensions.SkillResource>;
 
+export function RebuildLocalLibraryThumbnails(arg1:string):Promise<number>;
+
 export function RecheckMissingLocalAssets(arg1:Array<string>):Promise<Array<local_library.AssetMaintenanceResult>>;
 
 export function RemoveAgentMCPServer(arg1:string):Promise<void>;

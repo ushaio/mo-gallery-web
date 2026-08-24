@@ -488,7 +488,6 @@ export function UploadPage() {
     <>
       <PageHeader
         title={t('admin.page_upload', language)}
-        description={items.length > 0 ? `${items.length} 个文件 · ${doneCount} 已上传 · ${pendingCount} 待上传` : undefined}
       />
 
       {/* 数码/胶片切换 */}

@@ -27,14 +27,20 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
   const [entry, setEntry] = useState<EntryState>({ active: false, recent: [] })
   const [loading, setLoading] = useState(true)
   const [pendingPath, setPendingPath] = useState('')
+  const [pendingLabel, setPendingLabel] = useState('')
+  const [pendingSnapshot, setPendingSnapshot] = useState<LibrarySnapshot | null>(null)
   const [error, setError] = useState('')
   const [upgradeRequest, setUpgradeRequest] = useState<LibraryUpgradeInfo | null>(null)
   const [upgradePhase, setUpgradePhase] = useState<'confirm' | 'running' | 'completed' | 'failed'>('confirm')
   const [upgradeError, setUpgradeError] = useState('')
 
   const scanRunning = snapshot != null && snapshot.scan.state === 'running'
-  const startOpening = useCallback((path: string) => setPendingPath(path), [])
-  const endOpening = useCallback(() => setPendingPath(''), [])
+  const startOpening = useCallback((path: string, label?: string) => { setPendingPath(path); setPendingLabel(label ?? '') }, [])
+  const endOpening = useCallback(() => {
+    setPendingPath('')
+    setPendingLabel('')
+    setPendingSnapshot(null)
+  }, [])
 
   const upgradeFromError = (cause: unknown): LibraryUpgradeInfo | null => {
     const parsed = parseLocalLibraryError(cause)
@@ -91,10 +97,41 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
     return () => { disposed = true; window.clearInterval(timer) }
   }, [scanRunning, setSnapshot])
 
+  useEffect(() => {
+    if (!pendingSnapshot) return
+    let disposed = false
+    const refresh = async () => {
+      if (disposed) return
+      try {
+        const next = await localLibraryApi.snapshot()
+        if (disposed) return
+        if (next.scan.state === 'running') {
+          setPendingSnapshot(next)
+          return
+        }
+        setPendingSnapshot(null)
+        setPendingPath('')
+        setPendingLabel('')
+        setSnapshot(next)
+        setEntry((current) => ({ ...current, active: true, snapshot: next }))
+      } catch { /* opening session may still be initializing */ }
+    }
+    void refresh()
+    const timer = window.setInterval(refresh, 500)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [pendingSnapshot, setSnapshot])
+
   const handleOpened = (next: LibrarySnapshot) => {
     setUpgradeRequest(null)
     resetNavigation()
+    if (next.scan.state === 'running') {
+      setPendingPath(next.rootPath)
+      setPendingSnapshot(next)
+      return
+    }
     setPendingPath('')
+    setPendingLabel('')
+    setPendingSnapshot(null)
     setSnapshot(next)
     setEntry((current) => ({ ...current, active: true, snapshot: next }))
   }
@@ -168,10 +205,14 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
   }
 
   if (pendingPath) {
+    const openingSnapshot = pendingSnapshot ?? {
+      sessionId: '', libraryId: '', name: '', rootPath: pendingPath, state: 'open', assetCount: 0, missingCount: 0, trashCount: 0,
+      scan: { state: 'running' as const, current: 0 },
+    }
     return (
       <div className="relative h-full min-h-0">
         <LocalLibraryWelcome copy={copy} recent={entry.recent} onOpened={handleOpened} onRecentChanged={loadEntry} onUpgradeRequired={handleUpgradeRequired} onOpening={startOpening} onOpeningEnd={endOpening} />
-        <LocalLibraryOpeningOverlay copy={copy} snapshot={{ sessionId: '', libraryId: '', name: '', rootPath: pendingPath, state: 'open', assetCount: 0, missingCount: 0, trashCount: 0, scan: { state: 'running', current: 0 } }} scanningLabel={copy.openingDatabase} />
+        <LocalLibraryOpeningOverlay copy={copy} snapshot={openingSnapshot} operationLabel={pendingLabel} />
         {upgradeDialog}
       </div>
     )

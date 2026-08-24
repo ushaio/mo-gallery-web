@@ -31,13 +31,13 @@ func TestSelectReleaseAsset(t *testing.T) {
 			BrowserDownloadURL string `json:"browser_download_url"`
 			Size               int64  `json:"size"`
 			Digest             string `json:"digest"`
-		}{Name: "mo-gallery-desktop-0.8.2-windows-amd64-setup.exe"},
+		}{Name: "emulsion-0.8.2-windows-amd64-setup.exe"},
 		struct {
 			Name               string `json:"name"`
 			BrowserDownloadURL string `json:"browser_download_url"`
 			Size               int64  `json:"size"`
 			Digest             string `json:"digest"`
-		}{Name: "mo-gallery-desktop-0.8.2-linux-arm64.AppImage"},
+		}{Name: "emulsion-0.8.2-linux-arm64.AppImage"},
 	)
 
 	windowsAsset := selectReleaseAsset(release, "windows", "amd64")

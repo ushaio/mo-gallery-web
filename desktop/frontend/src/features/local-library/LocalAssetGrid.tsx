@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, ChevronRight, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
 import { CloudIcon, CloudOffIcon, CloudWarningIcon } from '@/components/icons/CloudIcons'
+import { LivePhotoCanvas } from '@/components/media/LivePhotoCanvas'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -147,7 +148,10 @@ const AssetCard = memo(function AssetCard({
           }}
         >
           <span className={`relative overflow-hidden bg-background ${masonry ? 'w-full' : 'min-h-0 flex-1'}`} style={masonry && aspectRatio ? { aspectRatio } : undefined}>
-            {isPhoto && !imageFailed && asset.previewStatus === 'ready' ? (
+            {isPhoto && !imageFailed && asset.previewStatus !== 'unavailable' ? (
+              // 只要不是明确生成失败，就渲染 img 去请求缩略图，让处于 pending/generating
+              // 的可见资产主动触发 /__local-library/thumbnail 请求，后端便以「可见」优先级
+              // 优先生成，而不是等后台预热按序补齐（否则可见优先形同虚设）。
               <img src={asset.thumbnailUrl} alt={label} loading="lazy" draggable={false} onError={() => setFailedThumbnailUrl(asset.thumbnailUrl)} className={`w-full transition-[transform,opacity] duration-300 ${masonry ? 'block h-full object-cover group-hover:scale-[1.015]' : viewMode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]'}`} />
             ) : (
               <span className={`flex w-full flex-col items-center justify-center gap-2 ${masonry ? 'aspect-[4/3]' : 'h-full'}`} style={{ color: 'var(--muted-foreground)' }}>
@@ -156,13 +160,11 @@ const AssetCard = memo(function AssetCard({
               </span>
             )}
             {showLiveVideo && (
-              <video
-                src={asset.livePhotoVideoUrl}
-                autoPlay
-                muted
-                playsInline
+              <LivePhotoCanvas
+                src={asset.livePhotoVideoUrl!}
+                active
                 onEnded={() => setLiveVideoEnded(true)}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
               />
             )}
             <span

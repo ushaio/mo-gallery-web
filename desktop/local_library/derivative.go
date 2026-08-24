@@ -260,6 +260,9 @@ func derivativePath(root string, id AssetID, variant derivativeVariant, cacheKey
 }
 
 func (m *Manager) queueThumbnail(session *librarySession, id AssetID) {
+	if source, err := session.store.derivativeSource(session.ctx, id); err != nil || isRAWFormat(source.Format) || isRAWExtension(source.Extension) {
+		return
+	}
 	_, _ = m.requestDerivative(session.ctx, session, id, derivativeThumbnail, derivativePriorityBackground, false)
 }
 
@@ -313,14 +316,20 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		return result
 	}
 	destination := derivativePath(session.root, request.assetID, request.variant, request.cacheKey)
+	var rawSlot chan struct{}
+	if request.variant == derivativeThumbnail && (isRAWFormat(request.source.Format) || isRAWExtension(request.source.Extension)) && session.rawDerivativeSem != nil {
+		rawSlot = session.rawDerivativeSem
+		select {
+		case rawSlot <- struct{}{}:
+		case <-ctx.Done():
+			result.err = ctx.Err()
+			return result
+		}
+		defer func() { <-rawSlot }()
+	}
 	if record, recordErr := session.store.derivativeRecord(ctx, request.assetID, request.variant); recordErr == nil && record.CacheKey == request.cacheKey && record.Status == "ready" {
 		if validDerivativeFile(destination, derivativeDimension(request.variant)) {
 			_ = session.store.touchDerivative(ctx, request.assetID, request.variant)
-			if request.variant == derivativeThumbnail {
-				if thumbnail, colorErr := decodeImage(destination); colorErr == nil {
-					_ = session.store.setDominantColors(ctx, request.assetID, extractDominantColors(thumbnail, 5))
-				}
-			}
 			result.path, result.mime, result.status = destination, "image/jpeg", "ready"
 			return result
 		}
@@ -330,9 +339,7 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		config, _ := decodeImageConfig(destination)
 		_ = session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), config.Width, config.Height, info.Size(), "ready", "")
 		if request.variant == derivativeThumbnail {
-			if thumbnail, colorErr := decodeImage(destination); colorErr == nil {
-				_ = session.store.setDominantColors(ctx, request.assetID, extractDominantColors(thumbnail, 5))
-			}
+			m.scheduleDominantColors(session, request.assetID, destination, request.variant)
 			_ = session.store.setPreviewResult(ctx, request.assetID, "ready", "")
 			m.emitPreviewStatus(session, request.assetID, "ready")
 		}
@@ -380,17 +387,13 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		m.recordDerivativeFailure(session, request, err)
 		return result
 	}
-	if request.variant == derivativeThumbnail {
-		if thumbnail, colorErr := decodeImage(destination); colorErr == nil {
-			_ = session.store.setDominantColors(ctx, request.assetID, extractDominantColors(thumbnail, 5))
-		}
-	}
 	if err := session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), config.Width, config.Height, generated.Size(), "ready", ""); err != nil {
 		result.err = err
 		return result
 	}
 	removeStaleDerivativeFiles(session.root, request.assetID, request.variant, destination)
 	if request.variant == derivativeThumbnail {
+		m.scheduleDominantColors(session, request.assetID, destination, request.variant)
 		if err := session.store.setPreviewResult(ctx, request.assetID, "ready", ""); err != nil {
 			result.err = err
 			return result
@@ -401,6 +404,18 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 	}
 	result.path, result.mime, result.status = destination, "image/jpeg", "ready"
 	return result
+}
+
+func (m *Manager) scheduleDominantColors(session *librarySession, id AssetID, path string, variant derivativeVariant) {
+	if variant != derivativeThumbnail {
+		return
+	}
+	session.startWorker(func() {
+		thumbnail, err := decodeImage(path)
+		if err == nil {
+			_ = session.store.setDominantColors(session.ctx, id, extractDominantColors(thumbnail, 5))
+		}
+	})
 }
 
 func (m *Manager) recordDerivativeFailure(session *librarySession, request derivativeRequest, cause error) {

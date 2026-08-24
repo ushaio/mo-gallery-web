@@ -118,6 +118,10 @@ public/uploads
 .env*
 .tmp-go-cache/
 .claude/
+
+# docs
+docs/
+
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*
