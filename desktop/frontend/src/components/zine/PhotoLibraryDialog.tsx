@@ -7,9 +7,9 @@ import { t } from '@/lib/i18n'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { ZineAsset } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
-import { CloudLibraryPage } from '@/pages/CloudLibraryPage'
-import { LocalLibraryPage } from '@/pages/LocalLibraryPage'
-import type { LocalAsset } from '@/features/local-library/types'
+import { CloudLibrary } from '@/features/library/cloud/CloudLibrary'
+import { LocalLibrary } from '@/features/library/local/LocalLibrary'
+import type { LocalAsset } from '@/features/library/local/types'
 import type { Photo } from '@/types'
 
 
@@ -148,9 +148,9 @@ export function PhotoLibraryDialog(props: PhotoLibraryDialogProps) {
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {cloud ? (
-              <CloudLibraryPage selectionMode existingPhotoIds={existingCloudIds} onSelectionChange={handleCloudSelection} />
+              <CloudLibrary selectionMode existingPhotoIds={existingCloudIds} onSelectionChange={handleCloudSelection} />
             ) : (
-              <LocalLibraryPage selectionMode existingAssetIds={existingLocalIds} onSelectionChange={handleLocalSelection} />
+              <LocalLibrary selectionMode existingAssetIds={existingLocalIds} onSelectionChange={handleLocalSelection} />
             )}
           </div>
           <div className="flex shrink-0 items-center justify-between gap-3 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>

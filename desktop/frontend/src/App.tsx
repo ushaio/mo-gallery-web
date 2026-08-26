@@ -10,7 +10,7 @@ import { DownloadProgressPopup } from '@/components/admin/DownloadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { DesktopWindowFrame } from '@/components/layout/DesktopWindowFrame'
 import { LoginPage } from '@/pages/LoginPage'
-import { ResourceLibraryPage } from '@/pages/ResourceLibraryPage'
+import { ResourceLibrary } from '@/features/library/ResourceLibrary'
 import { UploadPage } from '@/pages/UploadPage'
 import { PhotoJournalPage } from '@/pages/PhotoJournalPage'
 import { ZinePage } from '@/pages/ZinePage'
@@ -98,7 +98,7 @@ function AppRoutes() {
         <Route index element={<Navigate to={isAuthenticated ? '/home' : '/library?source=local'} replace />} />
         <Route path="home" element={<AuthenticatedRoute><HomePage /></AuthenticatedRoute>} />
         <Route path="overview" element={<Navigate to="/home" replace />} />
-        <Route path="library" element={<ResourceLibraryPage />} />
+        <Route path="library" element={<ResourceLibrary />} />
         <Route path="photos" element={<AuthenticatedRoute><Navigate to="/library?source=cloud" replace /></AuthenticatedRoute>} />
         <Route path="local-library" element={<Navigate to="/library?source=local" replace />} />
         <Route path="albums" element={<AuthenticatedRoute><Navigate to="/library?source=cloud&view=albums" replace /></AuthenticatedRoute>} />

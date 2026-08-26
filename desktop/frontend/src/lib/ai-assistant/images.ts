@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 import { DownloadMessageImageToLocal } from '../../../wailsjs/go/main/App'
-import { parseLocalLibraryError } from '@/features/local-library/api'
+import { parseLocalLibraryError } from '@/features/library/local/api'
 import type { MessageImageRef } from './types'
 
 export function getMessageImages(metadata: unknown): MessageImageRef[] {

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, FolderOpen, Loader2 } from 'lucide-react'
 import { LibrarySelectionButton } from '@/components/ui/library'
 import { SelectFolder } from '../../../wailsjs/go/main/App'
-import { localLibraryApi } from '@/features/local-library/api'
-import type { RecentLibrary } from '@/features/local-library/types'
+import { localLibraryApi } from '@/features/library/local/api'
+import type { RecentLibrary } from '@/features/library/local/types'
 import { t } from '@/lib/i18n'
 
 interface BatchDownloadToDropdownProps {

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, FolderOpen, Loader2, Search, X } from 'lucide-react'
 import { SaveMessageImageToLocalLibrary } from '../../../../wailsjs/go/main/App'
-import { localLibraryApi, parseLocalLibraryError } from '@/features/local-library/api'
-import type { FolderItem } from '@/features/local-library/types'
+import { localLibraryApi, parseLocalLibraryError } from '@/features/library/local/api'
+import type { FolderItem } from '@/features/library/local/types'
 
 function LocalLibraryFolderTree({ folders, value, onChange, disabled, rootLabel, t }: { folders: FolderItem[]; value: string; onChange: (path: string) => void; disabled: boolean; rootLabel: string; t: (key: string) => string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())

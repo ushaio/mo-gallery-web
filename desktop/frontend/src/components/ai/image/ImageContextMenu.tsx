@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronRight, Download, FolderOpen, Image as ImageIcon, Loader2 } from 'lucide-react'
-import { localLibraryApi, parseLocalLibraryError } from '@/features/local-library/api'
-import type { RecentLibrary } from '@/features/local-library/types'
+import { localLibraryApi, parseLocalLibraryError } from '@/features/library/local/api'
+import type { RecentLibrary } from '@/features/library/local/types'
 
 export function useImageContextMenu(
   savedInitially: boolean,
