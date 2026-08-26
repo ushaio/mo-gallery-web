@@ -122,6 +122,10 @@ public/uploads
 # docs
 docs/
 
+# merge/patch tool artifacts
+*.orig
+*.rej
+
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*
