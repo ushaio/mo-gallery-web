@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, LibraryBig, Upload, BookMarked,
+  Home, LibraryBig, Upload, BookMarked,
   BookImage, Bot, HardDrive, Settings, Users, LogOut,
   Sun, Moon, Monitor, Globe, Check, ChevronDown, LogIn, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
@@ -14,7 +14,7 @@ import { useWindowChrome } from './window-chrome'
 
 const navGroups = [
   [
-    { path: '/overview', icon: LayoutDashboard, key: 'admin.overview' },
+    { path: '/home', icon: Home, key: 'admin.home' },
   ],
   [
     { path: '/library', icon: LibraryBig, key: 'admin.resource_library' },

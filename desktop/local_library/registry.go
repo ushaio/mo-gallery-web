@@ -52,14 +52,14 @@ func (r *Registry) List() ([]RecentLibrary, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Per current product direction, the recent list is display-only: do not
+	// probe filesystem/manifest here. Validation is deferred to click time
+	// (Open -> cleanRoot/readManifest) so the list never shows a pre-judged
+	// "invalid, needs init" state and the user always gets the normal open
+	// flow vs. initialize confirm flow at click time.
 	for index := range items {
-		_, statErr := os.Stat(items[index].Path)
-		items[index].Available = statErr == nil
-		if statErr != nil {
-			items[index].Reason = "路径不可用"
-		} else {
-			items[index].Reason = ""
-		}
+		items[index].Available = true
+		items[index].Reason = ""
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].LastOpenedAt.After(items[j].LastOpenedAt) })
 	return items, nil
@@ -74,7 +74,7 @@ func (r *Registry) Touch(item RecentLibrary) error {
 	}
 	next := []RecentLibrary{item}
 	for _, existing := range items {
-		if existing.LibraryID == item.LibraryID || filepath.Clean(existing.Path) == filepath.Clean(item.Path) {
+		if existing.LibraryID == item.LibraryID || sameLibraryRoot(existing.Path, item.Path) {
 			continue
 		}
 		next = append(next, existing)
@@ -100,7 +100,7 @@ func (r *Registry) Remove(path string) error {
 	}
 	next := items[:0]
 	for _, item := range items {
-		if filepath.Clean(item.Path) != filepath.Clean(path) {
+		if !sameLibraryRoot(item.Path, path) {
 			next = append(next, item)
 		}
 	}

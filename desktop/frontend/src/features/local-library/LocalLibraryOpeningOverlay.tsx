@@ -8,9 +8,11 @@ interface LocalLibraryOpeningOverlayProps {
   snapshot: LibrarySnapshot
   scanningLabel?: string
   operationLabel?: string
+  /** When provided, the user can dismiss the overlay and let the remaining work finish in the background. */
+  onContinueInBackground?: () => void
 }
 
-export function LocalLibraryOpeningOverlay({ copy, snapshot, scanningLabel, operationLabel }: LocalLibraryOpeningOverlayProps) {
+export function LocalLibraryOpeningOverlay({ copy, snapshot, scanningLabel, operationLabel, onContinueInBackground }: LocalLibraryOpeningOverlayProps) {
   const scan = snapshot.scan
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -21,15 +23,16 @@ export function LocalLibraryOpeningOverlay({ copy, snapshot, scanningLabel, oper
   const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000))
   const elapsedLabel = `${Math.floor(elapsedSeconds / 60).toString().padStart(2, '0')}:${(elapsedSeconds % 60).toString().padStart(2, '0')}`
   const thumbnails = scan.phase === 'thumbnails'
-  const thumbnailsLabel = copy.openingScanning.startsWith('正在') ? '正在生成缩略图…' : 'Generating thumbnails…'
-  const thumbnailsProgress = copy.openingScanning.startsWith('正在') ? '已生成 {current} / {total} 张缩略图' : 'Generated {current} / {total} thumbnails'
   const current = Math.max(0, Number(thumbnails ? scan.thumbnailCurrent : scan.current) || 0)
   const totalValue = thumbnails ? scan.thumbnailTotal : scan.total
   const total = totalValue != null && Number(totalValue) > 0 ? Number(totalValue) : null
   const percent = total != null ? Math.min(100, Math.round((current / total) * 100)) : null
-  const detail = !thumbnails && scan.lastPath
-    ? copy.openingCurrent.replace('{path}', scan.lastPath)
-    : thumbnails ? thumbnailsLabel : scanningLabel ?? operationLabel ?? copy.openingScanning
+  const detail = thumbnails
+    ? copy.openingThumbnails
+    : scan.lastPath
+      ? copy.openingCurrent.replace('{path}', scan.lastPath)
+      : scanningLabel ?? operationLabel ?? copy.openingScanning
+  const progressTemplate = thumbnails ? copy.openingThumbnailsProgress : copy.openingProgress
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center p-6" style={{ backgroundColor: 'var(--background)' }}>
@@ -49,7 +52,7 @@ export function LocalLibraryOpeningOverlay({ copy, snapshot, scanningLabel, oper
           <div className="mb-2 flex items-baseline justify-between gap-3 text-[11px]">
             <span className="truncate" style={{ color: 'var(--muted-foreground)' }}>
               {total != null
-                ? (thumbnails ? thumbnailsProgress : copy.openingProgress).replace('{current}', current.toLocaleString()).replace('{total}', total.toLocaleString())
+                ? progressTemplate.replace('{current}', current.toLocaleString()).replace('{total}', total.toLocaleString())
                 : scanningLabel ?? operationLabel ?? copy.openingScanning}
             </span>
             {percent != null && <span className="shrink-0 font-medium tabular-nums">{percent}%</span>}
@@ -65,6 +68,16 @@ export function LocalLibraryOpeningOverlay({ copy, snapshot, scanningLabel, oper
           <Loader2 size={11} className="shrink-0 animate-spin" />
           <span className="min-w-0 flex-1 truncate" title={scan.lastPath}>{detail}</span>
         </div>
+        {onContinueInBackground && (
+          <button
+            type="button"
+            onClick={onContinueInBackground}
+            className="rounded-md border px-3 py-1.5 text-[11px] transition hover:bg-secondary"
+            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+          >
+            {copy.openingBackground}
+          </button>
+        )}
       </div>
     </div>
   )

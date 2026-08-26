@@ -189,7 +189,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
       await CompleteSetup({ api: setupApi, offline_only: false })
       onComplete(completedState())
       login(result.token, result.user)
-      navigate('/overview', { replace: true })
+      navigate('/home', { replace: true })
     } catch (cause: unknown) {
       setError(getErrorMessage(cause) || copy.loginError)
     } finally {

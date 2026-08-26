@@ -69,6 +69,7 @@ export interface EntryState {
   active: boolean
   recent: RecentLibrary[]
   snapshot?: LibrarySnapshot
+  upgrade?: LibraryUpgradeInfo
 }
 
 export interface LibraryUpgradeInfo {

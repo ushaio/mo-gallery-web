@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Check, Filter, X } from 'lucide-react'
 import type { AssetStructuredFilters } from './types'
@@ -59,15 +59,25 @@ function TextListInput({ value, placeholder, onCommit }: { value?: string[], pla
 
 export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
   const [open, setOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const count = activeCount(filters)
 
   useEffect(() => {
     if (!open) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!buttonRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false)
     }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      window.removeEventListener('keydown', onKeyDown)
+    }
   }, [open])
 
   const update = <K extends FilterKey>(key: K, value: AssetStructuredFilters[K]) => {
@@ -109,8 +119,9 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
   return (
     <>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={copy.filters}
@@ -124,24 +135,28 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
           </span>
         )}
       </button>
+      {open && chips.length > 0 && (
+        <div className="flex shrink-0 flex-wrap gap-1.5" aria-live="polite">
+          {chips.map((chip) => <button key={chip.key} type="button" onClick={chip.remove} className="flex items-center gap-1 rounded-full border bg-background px-2 py-1 text-[10px] hover:bg-secondary">{chip.label}<X size={10} /></button>)}
+        </div>
+      )}
       {open && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center p-5">
-          <button type="button" aria-label={copy.closeFilters} className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div role="dialog" aria-modal="true" aria-labelledby="local-library-filters-title" className="relative flex max-h-[86vh] w-full max-w-3xl flex-col rounded-xl border bg-background shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b px-5 py-4" style={{ borderColor: 'var(--border)' }}>
-              <div>
-                <h2 id="local-library-filters-title" className="text-sm font-semibold">{copy.filters}</h2>
-                <p className="mt-0.5 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{copy.filterLogicHint}</p>
-              </div>
-              <button type="button" onClick={() => setOpen(false)} aria-label={copy.closeFilters} className="rounded-md p-1.5 hover:bg-secondary"><X size={15} /></button>
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label={copy.filters}
+          className="absolute left-3 right-3 top-[calc(100%+4px)] z-30 max-h-[min(60vh,32rem)] overflow-auto rounded-md border bg-background p-4 shadow-xl"
+        >
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold">{copy.filters}</h2>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{copy.filterLogicHint}</p>
             </div>
-            {chips.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 border-b px-5 py-3" style={{ borderColor: 'var(--border)' }}>
-                {chips.map((chip) => <button key={chip.key} type="button" onClick={chip.remove} className="flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] hover:bg-secondary">{chip.label}<X size={10} /></button>)}
-              </div>
-            )}
-            <div className="custom-scrollbar grid min-h-0 flex-1 grid-cols-2 gap-x-5 gap-y-4 overflow-y-auto p-5">
-            <label className="col-span-2 flex cursor-pointer items-center gap-2 text-[11px]">
+            <button type="button" onClick={() => setOpen(false)} aria-label={copy.closeFilters} className="rounded-md p-1.5 hover:bg-secondary"><X size={15} /></button>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-x-6 gap-y-5">
+            <label className="col-span-full flex cursor-pointer items-center gap-2 text-[11px]">
               <input type="checkbox" checked={filters.photosOnly !== false} onChange={(event) => update('photosOnly', event.target.checked)} />
               {copy.photosOnly}
             </label>
@@ -192,11 +207,11 @@ export function LocalAssetFilters({ copy, filters, onChange, onClear }: Props) {
             <FilterSection title={copy.filterCamera}>
               <div className="space-y-2"><TextListInput value={filters.cameraMakes} placeholder={copy.filterCameraMake} onCommit={(value) => update('cameraMakes', value)} /><TextListInput value={filters.cameraModels} placeholder={copy.filterCameraModel} onCommit={(value) => update('cameraModels', value)} /><TextListInput value={filters.lensModels} placeholder={copy.filterLens} onCommit={(value) => update('lensModels', value)} /></div>
             </FilterSection>
-            </div>
-            <div className="flex items-center justify-between gap-3 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
-              <button type="button" disabled={count === 0} onClick={onClear} className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-[10px] hover:bg-secondary disabled:opacity-40"><X size={11} />{copy.clearFilters}</button>
-              <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-primary px-4 py-1.5 text-[10px] font-medium text-primary-foreground hover:opacity-90">{copy.filterDone}</button>
-            </div>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between border-t pt-3">
+            <button type="button" disabled={count === 0} onClick={onClear} className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-[10px] hover:bg-secondary disabled:opacity-40"><X size={11} />{copy.clearFilters}</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-primary px-4 py-1.5 text-[10px] font-medium text-primary-foreground hover:opacity-90">{copy.filterDone}</button>
           </div>
         </div>
       )}

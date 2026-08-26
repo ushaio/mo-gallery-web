@@ -16,7 +16,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 11
+const currentSchemaVersion = 14
+
+// sqliteBatchParameters caps how many bound parameters a generated statement
+// uses. SQLITE_MAX_VARIABLE_NUMBER defaults to 32766 in modern SQLite; staying
+// well below that keeps generated IN (...) filters safe.
+const sqliteBatchParameters = 500
 
 var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) error {
 	_, err := createBackupFile(ctx, root, BackupKindUpgrade, db)
@@ -26,6 +31,12 @@ var createUpgradeBackup = func(ctx context.Context, root string, db *sql.DB) err
 type store struct {
 	db       *sql.DB
 	upsertMu sync.Mutex
+	// derivatives keeps thumbnail/preview bookkeeping in its own database file
+	// so cache writes never take the library.db write lock.
+	derivatives *derivativeStore
+	// searchFlushMu serializes the batched FTS flush; the dirty queue itself is
+	// maintained by triggers inside the normal write transactions.
+	searchFlushMu sync.Mutex
 }
 
 type indexedFile struct {
@@ -78,7 +89,15 @@ func openStoreWithMigration(root string, migrateStore func(*store) error, reject
 	// Acquire the WAL write reservation when a transaction begins. Deferred
 	// transactions can read an old snapshot and then fail with SQLITE_BUSY_SNAPSHOT
 	// (517) when thumbnail workers commit before the scanner starts writing.
-	dsn := "file:" + filepath.ToSlash(dbPath) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate"
+	//
+	// cache_size is negative to express KiB instead of pages: 32 MiB of page
+	// cache keeps the assets/folders b-trees resident while a large library is
+	// indexed. temp_store=MEMORY keeps the sorter and the FTS merge scratch off
+	// disk, and a larger wal_autocheckpoint stops the bulk import from
+	// checkpointing every few hundred pages.
+	dsn := "file:" + filepath.ToSlash(dbPath) +
+		"?_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)" +
+		"&_pragma=cache_size(-32768)&_pragma=temp_store(2)&_pragma=wal_autocheckpoint(4000)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -117,10 +136,17 @@ func openStoreWithMigration(root string, migrateStore func(*store) error, reject
 		}
 	}
 	s := &store{db: db}
+	cache, err := openDerivativeStore(root)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("open derivative cache: %w", err)
+	}
+	s.derivatives = cache
 	if migrateStore == nil {
 		migrateStore = func(store *store) error { return store.migrate() }
 	}
 	if err := migrateStore(s); err != nil {
+		cache.Close()
 		db.Close()
 		if needsMigration {
 			if restoreErr := restoreLatestBackupFile(root, BackupKindUpgrade, dbPath); restoreErr != nil {
@@ -228,7 +254,16 @@ func tableHasColumn(queryer interface {
 	return false, nil
 }
 
-func (s *store) Close() error { return s.db.Close() }
+func (s *store) Close() error {
+	var cacheErr error
+	if s.derivatives != nil {
+		cacheErr = s.derivatives.Close()
+	}
+	if err := s.db.Close(); err != nil {
+		return err
+	}
+	return cacheErr
+}
 
 func addColumnIfMissing(tx *sql.Tx, table, column, definition string) error {
 	rows, err := tx.Query(`PRAGMA table_info(` + table + `)`)
@@ -269,7 +304,7 @@ func (s *store) migrate() error {
             discovered_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
         )`,
 		`CREATE TABLE IF NOT EXISTS assets (
-            id TEXT PRIMARY KEY, folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
+	            local_id INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
             relative_path TEXT NOT NULL, path_key TEXT NOT NULL UNIQUE, file_name TEXT NOT NULL,
             extension TEXT NOT NULL, format TEXT NOT NULL, mime_type TEXT NOT NULL, media_kind TEXT NOT NULL DEFAULT 'image',
             byte_size INTEGER NOT NULL, modified_at_ns INTEGER NOT NULL, width INTEGER NOT NULL DEFAULT 0,
@@ -286,25 +321,19 @@ func (s *store) migrate() error {
 		    cloud_photo_id TEXT,
 		    cloud_storage_source_id TEXT, cloud_storage_plugin_id TEXT,
 		    cloud_path TEXT, cloud_thumb_path TEXT, cloud_url_type TEXT,
-		    cloud_remote_updated_at INTEGER, cloud_sync_state TEXT, cloud_sync_error TEXT,
-		    is_live_photo INTEGER NOT NULL DEFAULT 0,
-		    live_photo_video_mime TEXT NOT NULL DEFAULT '',
-		    live_photo_video_length INTEGER NOT NULL DEFAULT 0
-        )`,
-		`CREATE TABLE IF NOT EXISTS exif_metadata (
+		    cloud_remote_updated_at INTEGER, cloud_sync_state TEXT, cloud_sync_error TEXT
+	        )`,
+		`CREATE TABLE IF NOT EXISTS asset_live_photos (
+			    asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+			    is_live_photo INTEGER NOT NULL DEFAULT 0,
+			    video_mime TEXT NOT NULL DEFAULT '',
+			    video_length INTEGER NOT NULL DEFAULT 0
+		        )`,
+		`CREATE TABLE IF NOT EXISTS exif (
             asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
             camera_make TEXT NOT NULL DEFAULT '', camera_model TEXT NOT NULL DEFAULT '', lens_model TEXT NOT NULL DEFAULT '',
             iso INTEGER, aperture REAL, shutter_seconds REAL, focal_length_mm REAL,
             latitude REAL, longitude REAL, raw_json TEXT NOT NULL DEFAULT ''
-        )`,
-		`CREATE TABLE IF NOT EXISTS asset_derivatives (
-            asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-            variant TEXT NOT NULL CHECK(variant IN ('thumbnail','preview')),
-            cache_key TEXT NOT NULL, content_version TEXT NOT NULL, decoder_version TEXT NOT NULL,
-            max_dimension INTEGER NOT NULL, width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
-            byte_size INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', error TEXT NOT NULL DEFAULT '',
-            generated_at INTEGER, last_accessed_at INTEGER NOT NULL,
-            PRIMARY KEY(asset_id, variant)
         )`,
 		`CREATE TABLE IF NOT EXISTS jobs (
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, state TEXT NOT NULL, progress_current INTEGER NOT NULL DEFAULT 0,
@@ -330,35 +359,20 @@ func (s *store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_assets_modified ON assets(availability, modified_at_ns DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_assets_favorite ON assets(availability, is_favorite, discovered_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_assets_rating ON assets(availability, rating DESC, id DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_asset_live_photos_live ON asset_live_photos(is_live_photo, asset_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id, name COLLATE NOCASE)`,
 		`CREATE INDEX IF NOT EXISTS idx_asset_tags_tag_asset ON asset_tags(tag_id, asset_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_collection_assets_asset_collection ON collection_assets(asset_id, collection_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_collection_groups_parent_position ON collection_groups(parent_id, position, name COLLATE NOCASE)`,
 		`CREATE INDEX IF NOT EXISTS idx_collections_group_position ON collections(group_id, position, name COLLATE NOCASE)`,
-		`CREATE VIRTUAL TABLE IF NOT EXISTS asset_search USING fts5(
-            asset_id UNINDEXED, file_name, relative_path, display_title, notes, tags, collections, camera,
-            tokenize='unicode61'
-        )`,
-		`CREATE VIEW IF NOT EXISTS asset_search_source AS
-        SELECT a.id AS asset_id,a.file_name,a.relative_path,a.display_title,a.notes,
-            COALESCE((SELECT group_concat(t.name, ' ') FROM asset_tags at JOIN tags t ON t.id=at.tag_id WHERE at.asset_id=a.id), '') AS tags,
-            COALESCE((SELECT group_concat(c.name, ' ') FROM collection_assets ca JOIN collections c ON c.id=ca.collection_id WHERE ca.asset_id=a.id), '') AS collections,
-            trim(COALESCE(e.camera_make,'') || ' ' || COALESCE(e.camera_model,'') || ' ' || COALESCE(e.lens_model,'')) AS camera
-        FROM assets a LEFT JOIN exif_metadata e ON e.asset_id=a.id`,
-		assetSearchTrigger("asset_search_assets_insert", "AFTER INSERT ON assets", "NEW.id"),
-		assetSearchTrigger("asset_search_assets_update", "AFTER UPDATE OF file_name,relative_path,display_title,notes ON assets", "NEW.id"),
-		`CREATE TRIGGER IF NOT EXISTS asset_search_assets_delete AFTER DELETE ON assets BEGIN
-            DELETE FROM asset_search WHERE asset_id=OLD.id;
-        END`,
-		assetSearchTrigger("asset_search_exif_insert", "AFTER INSERT ON exif_metadata", "NEW.asset_id"),
-		assetSearchTrigger("asset_search_exif_update", "AFTER UPDATE OF camera_make,camera_model,lens_model ON exif_metadata", "NEW.asset_id"),
-		assetSearchTrigger("asset_search_exif_delete", "AFTER DELETE ON exif_metadata", "OLD.asset_id"),
-		assetSearchTrigger("asset_search_asset_tags_insert", "AFTER INSERT ON asset_tags", "NEW.asset_id"),
-		assetSearchTrigger("asset_search_asset_tags_delete", "AFTER DELETE ON asset_tags", "OLD.asset_id"),
-		assetSearchRelatedTrigger("asset_search_tags_update", "AFTER UPDATE OF name ON tags", "asset_tags", "tag_id", "NEW.id"),
-		assetSearchTrigger("asset_search_collection_assets_insert", "AFTER INSERT ON collection_assets", "NEW.asset_id"),
-		assetSearchTrigger("asset_search_collection_assets_delete", "AFTER DELETE ON collection_assets", "OLD.asset_id"),
-		assetSearchRelatedTrigger("asset_search_collections_update", "AFTER UPDATE OF name ON collections", "collection_assets", "collection_id", "NEW.id"),
+	}
+	// M014: relocate the regenerable derivative cache into derivatives.db before
+	// the schema transaction. Two database files cannot share a transaction, so
+	// the move is written to be idempotent and safe to retry.
+	if s.derivatives != nil {
+		if err := migrateDerivativesFromLibrary(context.Background(), s.db, s.derivatives); err != nil {
+			return fmt.Errorf("migrate local library derivative cache: %w", err)
+		}
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -404,15 +418,26 @@ func (s *store) migrate() error {
 			return fmt.Errorf("M010 add assets.%s: %w", column.name, err)
 		}
 	}
-	livePhotoColumns := []struct{ name, definition string }{
-		{"is_live_photo", "INTEGER NOT NULL DEFAULT 0"},
-		{"live_photo_video_mime", "TEXT NOT NULL DEFAULT ''"},
-		{"live_photo_video_length", "INTEGER NOT NULL DEFAULT 0"},
+	if err := addColumnIfMissing(tx, "assets", "local_id", "INTEGER"); err != nil {
+		return fmt.Errorf("M012 add assets.local_id: %w", err)
 	}
-	for _, column := range livePhotoColumns {
-		if err := addColumnIfMissing(tx, "assets", column.name, column.definition); err != nil {
-			return fmt.Errorf("M011 add assets.%s: %w", column.name, err)
-		}
+	// Keep the existing UUID as the stable public identity while assigning a
+	// compact SQLite integer identity for local indexing and future joins.
+	if _, err := tx.Exec(`UPDATE assets SET local_id=rowid WHERE local_id IS NULL`); err != nil {
+		return fmt.Errorf("M012 backfill assets.local_id: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_local_id ON assets(local_id)`); err != nil {
+		return fmt.Errorf("M012 create assets.local_id index: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE TRIGGER IF NOT EXISTS assets_assign_local_id
+			AFTER INSERT ON assets
+			WHEN NEW.local_id IS NULL
+			BEGIN
+				UPDATE assets
+				SET local_id=COALESCE((SELECT MAX(local_id) FROM assets WHERE rowid<>NEW.rowid),0)+1
+				WHERE rowid=NEW.rowid;
+			END`); err != nil {
+		return fmt.Errorf("M012 create assets.local_id trigger: %w", err)
 	}
 	hasLegacyCloudURL, err := tableHasColumn(tx, "assets", "cloud_url")
 	if err != nil {
@@ -445,33 +470,16 @@ func (s *store) migrate() error {
 	if _, err := tx.Exec(`UPDATE trash_entries SET entry_kind='asset',managed_asset_count=1 WHERE entry_kind IS NULL OR entry_kind=''`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT INTO asset_search(asset_id,file_name,relative_path,display_title,notes,tags,collections,camera)
-        SELECT asset_id,file_name,relative_path,display_title,notes,tags,collections,camera FROM asset_search_source source
-        WHERE NOT EXISTS (SELECT 1 FROM asset_search search WHERE search.asset_id=source.asset_id)`); err != nil {
+	// M014: the search index is keyed by assets.local_id (the FTS rowid) instead
+	// of an UNINDEXED asset_id column, so maintenance is a rowid lookup rather
+	// than a full scan of the index.
+	if err := migrateAssetSearch(tx); err != nil {
 		return fmt.Errorf("migrate local library search index: %w", err)
 	}
 	if _, err := tx.Exec(`INSERT INTO library_meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(currentSchemaVersion)); err != nil {
 		return err
 	}
 	return tx.Commit()
-}
-
-func assetSearchTrigger(name, event, assetID string) string {
-	return fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %s %s BEGIN
-        DELETE FROM asset_search WHERE asset_id=%s;
-        INSERT INTO asset_search(asset_id,file_name,relative_path,display_title,notes,tags,collections,camera)
-            SELECT asset_id,file_name,relative_path,display_title,notes,tags,collections,camera
-            FROM asset_search_source WHERE asset_id=%s;
-    END`, name, event, assetID, assetID)
-}
-
-func assetSearchRelatedTrigger(name, event, relation, foreignKey, relatedID string) string {
-	return fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %s %s BEGIN
-        DELETE FROM asset_search WHERE asset_id IN (SELECT asset_id FROM %s WHERE %s=%s);
-        INSERT INTO asset_search(asset_id,file_name,relative_path,display_title,notes,tags,collections,camera)
-            SELECT source.asset_id,source.file_name,source.relative_path,source.display_title,source.notes,source.tags,source.collections,source.camera
-            FROM asset_search_source source JOIN %s relation ON relation.asset_id=source.asset_id WHERE relation.%s=%s;
-    END`, name, event, relation, foreignKey, relatedID, relation, foreignKey, relatedID)
 }
 
 func unixMillis(t time.Time) int64 { return t.UTC().UnixMilli() }
@@ -553,14 +561,12 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 		existingID = newID()
 		created = true
 		_, err = tx.ExecContext(ctx, `INSERT INTO assets(
-            id,folder_id,relative_path,path_key,file_name,extension,format,mime_type,media_kind,byte_size,modified_at_ns,width,height,orientation,is_animated,frame_count,
-            availability,preview_status,preview_error,metadata_status,dominant_colors,captured_at,discovered_at,technical_updated_at,scan_token,
-            is_live_photo,live_photo_video_mime,live_photo_video_length
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?,?,?,?)`,
+		            id,folder_id,relative_path,path_key,file_name,extension,format,mime_type,media_kind,byte_size,modified_at_ns,width,height,orientation,is_animated,frame_count,
+		            availability,preview_status,preview_error,metadata_status,dominant_colors,captured_at,discovered_at,technical_updated_at,scan_token
+					) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)`,
 			existingID, folderID, file.RelativePath, file.PathKey, file.FileName, file.Extension, file.Format, file.MimeType, mediaKindOrDefault(file.MediaKind),
 			file.ByteSize, file.ModifiedAtNS, file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount,
-			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, encodeDominantColors(file.DominantColors), capturedAt, now, now, scanToken,
-			livePhotoFlag(file.LivePhoto), file.LivePhoto.VideoMIME, file.LivePhoto.VideoLength)
+			file.PreviewStatus, boundedError(file.PreviewError), file.MetadataStatus, encodeDominantColors(file.DominantColors), capturedAt, now, now, scanToken)
 	case nil:
 		previewStatus, previewError := file.PreviewStatus, boundedError(file.PreviewError)
 		dominantColors := "[]"
@@ -568,14 +574,17 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 			previewStatus, previewError = oldPreviewStatus, oldPreviewError
 			dominantColors = oldDominantColors
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,media_kind=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL,is_live_photo=?,live_photo_video_mime=?,live_photo_video_length=? WHERE id=?`,
+		_, err = tx.ExecContext(ctx, `UPDATE assets SET folder_id=?,relative_path=?,file_name=?,extension=?,format=?,mime_type=?,media_kind=?,byte_size=?,modified_at_ns=?,width=?,height=?,orientation=?,is_animated=?,frame_count=?,availability='active',preview_status=?,preview_error=?,metadata_status=?,dominant_colors=?,captured_at=?,technical_updated_at=?,scan_token=?,trash_entry_id=NULL WHERE id=?`,
 			folderID, file.RelativePath, file.FileName, file.Extension, file.Format, file.MimeType, mediaKindOrDefault(file.MediaKind), file.ByteSize, file.ModifiedAtNS,
 			file.Width, file.Height, normalizedOrientation(file.Orientation), file.IsAnimated, file.FrameCount, previewStatus, previewError,
-			file.MetadataStatus, dominantColors, capturedAt, now, scanToken, livePhotoFlag(file.LivePhoto), file.LivePhoto.VideoMIME, file.LivePhoto.VideoLength, existingID)
+			file.MetadataStatus, dominantColors, capturedAt, now, scanToken, existingID)
 	default:
 		return "", false, err
 	}
 	if err != nil {
+		return "", false, err
+	}
+	if err := upsertLivePhoto(ctx, tx, AssetID(existingID), file.LivePhoto); err != nil {
 		return "", false, err
 	}
 	if err := upsertEXIF(ctx, tx, AssetID(existingID), file.EXIF); err != nil {
@@ -591,7 +600,9 @@ func (s *store) upsertAsset(ctx context.Context, file indexedFile, scanToken str
 // stamps it with the current scan token. Called once per scanned file.
 func (s *store) touchUnchangedAsset(ctx context.Context, pathKey string, byteSize, modifiedAtNS int64, scanToken string) (*unchangedAsset, error) {
 	var item unchangedAsset
-	err := s.db.QueryRowContext(ctx, `SELECT id,preview_status,dominant_colors,is_live_photo,live_photo_video_length FROM assets WHERE path_key=? AND byte_size=? AND modified_at_ns=?`, pathKey, byteSize, modifiedAtNS).
+	err := s.db.QueryRowContext(ctx, `SELECT a.id,a.preview_status,a.dominant_colors,COALESCE(lp.is_live_photo,0),lp.video_length
+		FROM assets a LEFT JOIN asset_live_photos lp ON lp.asset_id=a.id
+		WHERE a.path_key=? AND a.byte_size=? AND a.modified_at_ns=?`, pathKey, byteSize, modifiedAtNS).
 		Scan(&item.ID, &item.PreviewStatus, &item.DominantColors, &item.IsLivePhoto, &item.LivePhotoVideoLength)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -631,13 +642,6 @@ func mediaKindOrDefault(kind string) string {
 	return kind
 }
 
-func livePhotoFlag(desc livePhotoDescriptor) int {
-	if desc.VideoOffset > 0 {
-		return 1
-	}
-	return 0
-}
-
 func nullableUnixMillis(value *time.Time) any {
 	if value == nil {
 		return nil
@@ -645,12 +649,28 @@ func nullableUnixMillis(value *time.Time) any {
 	return unixMillis(*value)
 }
 
+func upsertLivePhoto(ctx context.Context, tx *sql.Tx, id AssetID, desc livePhotoDescriptor) error {
+	// A zero descriptor means this scan did not establish Live Photo metadata.
+	// Leave the row absent so unchanged assets can be probed later; the explicit
+	// non-Live sentinel is written only by updateLivePhoto after a full probe.
+	if desc.VideoOffset <= 0 {
+		return nil
+	}
+	isLive := 1
+	mime := desc.VideoMIME
+	length := desc.VideoLength
+	_, err := tx.ExecContext(ctx, `INSERT INTO asset_live_photos(asset_id,is_live_photo,video_mime,video_length)
+		VALUES(?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET
+		is_live_photo=excluded.is_live_photo,video_mime=excluded.video_mime,video_length=excluded.video_length`, id, isLive, mime, length)
+	return err
+}
+
 func upsertEXIF(ctx context.Context, tx *sql.Tx, id AssetID, metadata exifMetadata) error {
 	if metadata.empty() {
-		_, err := tx.ExecContext(ctx, `DELETE FROM exif_metadata WHERE asset_id=?`, id)
+		_, err := tx.ExecContext(ctx, `DELETE FROM exif WHERE asset_id=?`, id)
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO exif_metadata(
+	_, err := tx.ExecContext(ctx, `INSERT INTO exif(
         asset_id,camera_make,camera_model,lens_model,iso,aperture,shutter_seconds,focal_length_mm,latitude,longitude,raw_json
     ) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET
         camera_make=excluded.camera_make,camera_model=excluded.camera_model,lens_model=excluded.lens_model,
@@ -807,7 +827,9 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 	where := []string{"a.availability=?"}
 	args := []any{availability}
 	if search := buildAssetSearchQuery(query.Search); search != "" {
-		where = append(where, `EXISTS (SELECT 1 FROM asset_search search WHERE search.asset_id=a.id AND asset_search MATCH ?)`)
+		// One FTS lookup for the whole query. The previous correlated EXISTS
+		// re-evaluated the MATCH for every candidate asset row.
+		where = append(where, `a.local_id IN (SELECT rowid FROM asset_search WHERE asset_search MATCH ?)`)
 		args = append(args, search)
 	}
 	if query.Folder != "" || query.DirectFolderOnly {
@@ -840,7 +862,7 @@ func buildAssetWhere(query AssetQuery, availability string) ([]string, []any, er
 		where = append(where, "(a.media_kind='image' OR a.media_kind='live-photo')")
 	}
 	if query.LivePhotoOnly {
-		where = append(where, "a.is_live_photo=1")
+		where = append(where, "EXISTS (SELECT 1 FROM asset_live_photos lp WHERE lp.asset_id=a.id AND lp.is_live_photo=1)")
 	}
 	if ids := uniqueIDs(query.TagIDs); len(ids) > 0 {
 		where = append(where, "EXISTS (SELECT 1 FROM asset_tags qat WHERE qat.asset_id=a.id AND qat.tag_id IN ("+queryPlaceholders(len(ids))+"))")
@@ -967,6 +989,11 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 	if availability == "" {
 		availability = "active"
 	}
+	if buildAssetSearchQuery(query.Search) != "" {
+		if err := s.flushAssetSearch(ctx); err != nil {
+			return AssetPage{}, err
+		}
+	}
 	where, args, err := buildAssetWhere(query, availability)
 	if err != nil {
 		return AssetPage{}, err
@@ -1017,13 +1044,13 @@ func (s *store) listAssets(ctx context.Context, query AssetQuery, sessionID stri
 	if err != nil {
 		return AssetPage{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id WHERE `+strings.Join(countWhere, " AND "), countArgs...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif e ON e.asset_id=a.id WHERE `+strings.Join(countWhere, " AND "), countArgs...).Scan(&total); err != nil {
 		return AssetPage{}, err
 	}
 	args = append(args, limit+1)
-	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,a.is_live_photo,a.live_photo_video_mime,a.live_photo_video_length,a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,a.cloud_path,a.cloud_thumb_path,a.cloud_storage_source_id,a.cloud_storage_plugin_id,a.cloud_url_type,a.cloud_remote_updated_at,a.cloud_sync_state,a.cloud_sync_error,
-        e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
-        FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
+	sqlQuery := `SELECT a.id,a.relative_path,a.file_name,a.extension,a.format,a.mime_type,a.media_kind,a.byte_size,a.modified_at_ns,a.width,a.height,a.orientation,a.is_animated,a.frame_count,COALESCE(lp.is_live_photo,0),COALESCE(lp.video_mime,''),COALESCE(lp.video_length,0),a.availability,COALESCE(t.id,''),COALESCE(t.entry_kind,''),a.preview_status,a.preview_error,a.metadata_status,a.display_title,a.notes,a.rating,a.color_label,a.is_favorite,a.captured_at,a.discovered_at,a.dominant_colors,a.cloud_photo_id,a.cloud_path,a.cloud_thumb_path,a.cloud_storage_source_id,a.cloud_storage_plugin_id,a.cloud_url_type,a.cloud_remote_updated_at,a.cloud_sync_state,a.cloud_sync_error,
+	        e.camera_make,e.camera_model,e.lens_model,e.iso,e.aperture,e.shutter_seconds,e.focal_length_mm,e.latitude,e.longitude,` + sortExpr + `
+	        FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN asset_live_photos lp ON lp.asset_id=a.id LEFT JOIN exif e ON e.asset_id=a.id LEFT JOIN trash_entries t ON t.id=a.trash_entry_id
         WHERE ` + baseWhere + ` ORDER BY ` + sortExpr + ` ` + direction + `,a.id ` + direction + ` LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
@@ -1125,16 +1152,21 @@ func (s *store) assetIDsForQuery(ctx context.Context, query AssetQuery) ([]Asset
 	if availability == "" {
 		availability = "active"
 	}
+	if buildAssetSearchQuery(query.Search) != "" {
+		if err := s.flushAssetSearch(ctx); err != nil {
+			return nil, 0, err
+		}
+	}
 	where, args, err := buildAssetWhere(query, availability)
 	if err != nil {
 		return nil, 0, err
 	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id WHERE `+whereSQL, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif e ON e.asset_id=a.id WHERE `+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif_metadata e ON e.asset_id=a.id WHERE `+whereSQL+` ORDER BY a.id`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id FROM assets a LEFT JOIN folders f ON f.id=a.folder_id LEFT JOIN exif e ON e.asset_id=a.id WHERE `+whereSQL+` ORDER BY a.id`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1282,7 +1314,7 @@ func (s *store) assetPath(ctx context.Context, id AssetID) (relative, mime, stat
 
 func (s *store) livePhotoMime(ctx context.Context, id AssetID) (string, error) {
 	var mime string
-	err := s.db.QueryRowContext(ctx, `SELECT live_photo_video_mime FROM assets WHERE id=?`, id).Scan(&mime)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(lp.video_mime,'') FROM assets a LEFT JOIN asset_live_photos lp ON lp.asset_id=a.id WHERE a.id=?`, id).Scan(&mime)
 	if err == sql.ErrNoRows {
 		err = newError(ErrAssetNotFound, "资产不存在", map[string]any{"assetId": id})
 	}
@@ -1305,9 +1337,27 @@ func (s *store) updateLivePhoto(ctx context.Context, id AssetID, desc livePhotoD
 		mime = desc.VideoMIME
 		length = desc.VideoLength
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE assets SET is_live_photo=?,live_photo_video_mime=?,live_photo_video_length=?,media_kind=CASE WHEN media_kind='file' THEN 'file' ELSE ? END,technical_updated_at=? WHERE id=? AND (live_photo_video_length=0 OR live_photo_video_length IS NULL)`,
-		isLive, mime, length, mediaKind, time.Now().UnixMilli(), id)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var currentLength sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT video_length FROM asset_live_photos WHERE asset_id=?`, id).Scan(&currentLength); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if currentLength.Valid && currentLength.Int64 != 0 {
+		return tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_live_photos(asset_id,is_live_photo,video_mime,video_length)
+		VALUES(?,?,?,?) ON CONFLICT(asset_id) DO UPDATE SET
+		is_live_photo=excluded.is_live_photo,video_mime=excluded.video_mime,video_length=excluded.video_length`, id, isLive, mime, length); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE assets SET media_kind=CASE WHEN media_kind='file' THEN 'file' ELSE ? END,technical_updated_at=? WHERE id=?`, mediaKind, time.Now().UnixMilli(), id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 type derivativeRecord struct {
@@ -1333,54 +1383,23 @@ func (s *store) derivativeSource(ctx context.Context, id AssetID) (source deriva
 }
 
 func (s *store) derivativeRecord(ctx context.Context, id AssetID, variant derivativeVariant) (record derivativeRecord, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT asset_id,variant,cache_key,max_dimension,width,height,byte_size,status,error,last_accessed_at
-		FROM asset_derivatives WHERE asset_id=? AND variant=?`, id, variant).
-		Scan(&record.AssetID, &record.Variant, &record.CacheKey, &record.MaxDimension, &record.Width, &record.Height, &record.ByteSize, &record.Status, &record.Error, &record.LastAccessed)
-	return
+	return s.derivatives.record(ctx, id, variant)
 }
 
 func (s *store) setDerivativeResult(ctx context.Context, id AssetID, variant derivativeVariant, cacheKey string, maxDimension, width, height int, byteSize int64, status, derivativeError string) error {
-	now := time.Now().UTC().UnixMilli()
-	var generatedAt any
-	if status == "ready" {
-		generatedAt = now
-	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO asset_derivatives(
-		asset_id,variant,cache_key,content_version,decoder_version,max_dimension,width,height,byte_size,status,error,generated_at,last_accessed_at
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(asset_id,variant) DO UPDATE SET
-		cache_key=excluded.cache_key,content_version=excluded.content_version,decoder_version=excluded.decoder_version,
-		max_dimension=excluded.max_dimension,width=excluded.width,height=excluded.height,byte_size=excluded.byte_size,
-		status=excluded.status,error=excluded.error,generated_at=excluded.generated_at,last_accessed_at=excluded.last_accessed_at`,
-		id, variant, cacheKey, derivativeContentVersion, derivativeDecoderVersion, maxDimension, width, height, byteSize, status, boundedError(derivativeError), generatedAt, now)
-	return err
+	return s.derivatives.setResult(ctx, id, variant, cacheKey, maxDimension, width, height, byteSize, status, derivativeError)
 }
 
 func (s *store) touchDerivative(ctx context.Context, id AssetID, variant derivativeVariant) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE asset_derivatives SET last_accessed_at=? WHERE asset_id=? AND variant=?`, time.Now().UTC().UnixMilli(), id, variant)
-	return err
+	return s.derivatives.touch(ctx, id, variant)
 }
 
 func (s *store) previewDerivativeEntries(ctx context.Context) ([]derivativeRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT asset_id,variant,cache_key,max_dimension,width,height,byte_size,status,error,last_accessed_at
-		FROM asset_derivatives WHERE variant='preview' AND status='ready' ORDER BY last_accessed_at ASC, asset_id ASC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	entries := make([]derivativeRecord, 0)
-	for rows.Next() {
-		var entry derivativeRecord
-		if err := rows.Scan(&entry.AssetID, &entry.Variant, &entry.CacheKey, &entry.MaxDimension, &entry.Width, &entry.Height, &entry.ByteSize, &entry.Status, &entry.Error, &entry.LastAccessed); err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
-	}
-	return entries, rows.Err()
+	return s.derivatives.previewEntries(ctx)
 }
 
 func (s *store) deleteDerivative(ctx context.Context, id AssetID, variant derivativeVariant, cacheKey string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM asset_derivatives WHERE asset_id=? AND variant=? AND cache_key=?`, id, variant, cacheKey)
-	return err
+	return s.derivatives.delete(ctx, id, variant, cacheKey)
 }
 
 func (s *store) setPreviewResult(ctx context.Context, id AssetID, status, previewError string) error {
@@ -1392,7 +1411,7 @@ func (s *store) setPreviewResult(ctx context.Context, id AssetID, status, previe
 // preview state of all photo-kind assets so their thumbnails regenerate on the
 // next render pass. It returns the number of affected assets.
 func (s *store) resetThumbnails(ctx context.Context) (int64, error) {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM asset_derivatives WHERE variant='thumbnail'`); err != nil {
+	if err := s.derivatives.deleteVariant(ctx, derivativeThumbnail); err != nil {
 		return 0, err
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE assets SET preview_status='pending', preview_error='', dominant_colors='[]', technical_updated_at=? WHERE media_kind IN ('image','live-photo')`, time.Now().UnixMilli())
@@ -1400,35 +1419,6 @@ func (s *store) resetThumbnails(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-// thumbnailAssetIDs returns the IDs of photo assets that need a grid thumbnail.
-// When onlyMissing is true it restricts to assets whose preview is not ready so
-// already-generated thumbnails are left untouched.
-func (s *store) thumbnailAssetIDs(ctx context.Context, onlyMissing bool) ([]AssetID, error) {
-	query := `SELECT id FROM assets WHERE media_kind IN ('image','live-photo')`
-	if onlyMissing {
-		query += ` AND preview_status <> 'ready'`
-	}
-	rows, err := s.db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	ids := make([]AssetID, 0)
-	for rows.Next() {
-		var id AssetID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-func (s *store) setDominantColors(ctx context.Context, id AssetID, colors []string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE assets SET dominant_colors=?,technical_updated_at=? WHERE id=?`, encodeDominantColors(colors), time.Now().UnixMilli(), id)
-	return err
 }
 
 func (s *store) setAssetCloudLink(ctx context.Context, id AssetID, photoID string) error {

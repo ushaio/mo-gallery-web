@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePreferences } from '@/store/preferences'
@@ -30,11 +30,25 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
   const [pendingLabel, setPendingLabel] = useState('')
   const [pendingSnapshot, setPendingSnapshot] = useState<LibrarySnapshot | null>(null)
   const [error, setError] = useState('')
+  const [initializePath, setInitializePath] = useState<string | null>(null)
   const [upgradeRequest, setUpgradeRequest] = useState<LibraryUpgradeInfo | null>(null)
   const [upgradePhase, setUpgradePhase] = useState<'confirm' | 'running' | 'completed' | 'failed'>('confirm')
   const [upgradeError, setUpgradeError] = useState('')
 
   const scanRunning = snapshot != null && snapshot.scan.state === 'running'
+  // The library stays behind a progress overlay until its first scan finishes,
+  // so an initialized library opens with thumbnails already generated. Later
+  // watcher-triggered rescans never re-block the workbench.
+  const initializedSessions = useRef<Set<string>>(new Set())
+  const [backgroundedSession, setBackgroundedSession] = useState('')
+  useEffect(() => {
+    if (snapshot && snapshot.scan.state !== 'running') initializedSessions.current.add(snapshot.sessionId)
+  }, [snapshot])
+  const initializing = snapshot != null
+    && snapshot.scan.state === 'running'
+    && (snapshot.scan.phase === 'indexing' || snapshot.scan.phase === 'thumbnails')
+    && snapshot.sessionId !== backgroundedSession
+    && !initializedSessions.current.has(snapshot.sessionId)
   const startOpening = useCallback((path: string, label?: string) => { setPendingPath(path); setPendingLabel(label ?? '') }, [])
   const endOpening = useCallback(() => {
     setPendingPath('')
@@ -59,6 +73,13 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
     try {
       const state = await localLibraryApi.entryState()
       setEntry(state)
+      if (state.upgrade?.required) {
+        setUpgradeRequest(state.upgrade)
+        setUpgradePhase('confirm')
+        setUpgradeError('')
+      } else {
+        setUpgradeRequest(null)
+      }
       if (state.active && state.snapshot) {
         setSnapshot(state.snapshot)
       } else {
@@ -148,6 +169,27 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
     setUpgradeError('')
   }
 
+  const handleRequestInitialize = useCallback((path: string) => {
+    // Hoist the confirm dialog to the page so it survives pendingPath overlay and
+    // any Welcome remount caused by entry reload.
+    setInitializePath(path)
+  }, [])
+
+  const handleInitializeConfirm = useCallback(async () => {
+    if (!initializePath) return
+    const path = initializePath
+    setInitializePath(null)
+    const name = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'MO Gallery Library'
+    startOpening(path, copy.initialize)
+    try {
+      const snapshot = await localLibraryApi.initialize(path, name)
+      handleOpened(snapshot)
+    } catch (cause) {
+      endOpening()
+      toast.error(parseLocalLibraryError(cause).message)
+    }
+  }, [initializePath, copy.initialize, startOpening, endOpening])
+
   const handleUpgradeStart = async () => {
     if (!upgradeRequest) return
     setUpgradePhase('running')
@@ -191,15 +233,38 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
     />
   ) : null
 
+  const initializeDialog = initializePath ? (
+    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/45 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="initialize-library-title" className="relative w-full max-w-md rounded-xl border bg-background p-5 shadow-2xl" style={{ borderColor: 'var(--border)' }}>
+        <h2 id="initialize-library-title" className="text-base font-semibold">{copy.initializeConfirmTitle}</h2>
+        <p className="mt-2 text-sm leading-6" style={{ color: 'var(--muted-foreground)' }}>{copy.initializeConfirmBody}</p>
+        <p className="mt-3 truncate text-xs" style={{ color: 'var(--muted-foreground)' }} title={initializePath}>{initializePath}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={() => setInitializePath(null)} className="rounded-md border px-3 py-2 text-sm hover:bg-secondary">{copy.cancelAction}</button>
+          <button type="button" onClick={() => void handleInitializeConfirm()} className="rounded-md px-3 py-2 text-sm" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{copy.initializeConfirm}</button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   if (error) {
-    return <><div className="flex h-full items-center justify-center p-8"><div className="max-w-sm text-center"><p className="text-sm">{error}</p><button type="button" onClick={() => { toast.dismiss(); void loadEntry() }} className="mx-auto mt-4 flex items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary"><RefreshCw size={14} />{copy.retry}</button></div></div>{upgradeDialog}</>
+    return <><div className="flex h-full items-center justify-center p-8"><div className="max-w-sm text-center"><p className="text-sm">{error}</p><button type="button" onClick={() => { toast.dismiss(); void loadEntry() }} className="mx-auto mt-4 flex items-center gap-2 rounded-md border px-3 py-2 text-xs hover:bg-secondary"><RefreshCw size={14} />{copy.retry}</button></div></div>{upgradeDialog}{initializeDialog}</>
   }
 
   if (snapshot) {
     return (
       <div className="relative h-full min-h-0">
         <LocalLibraryWorkbench copy={copy} snapshot={snapshot} onSnapshot={setSnapshot} onClose={handleClosed} selectionMode={selectionMode} existingAssetIds={existingAssetIds} onSelectionChange={onSelectionChange} />
+        {initializing && (
+          <LocalLibraryOpeningOverlay
+            copy={copy}
+            snapshot={snapshot}
+            operationLabel={copy.initializingTitle}
+            onContinueInBackground={() => { initializedSessions.current.add(snapshot.sessionId); setBackgroundedSession(snapshot.sessionId) }}
+          />
+        )}
         {upgradeDialog}
+        {initializeDialog}
       </div>
     )
   }
@@ -211,12 +276,13 @@ export function LocalLibraryPage({ selectionMode = false, existingAssetIds = [],
     }
     return (
       <div className="relative h-full min-h-0">
-        <LocalLibraryWelcome copy={copy} recent={entry.recent} onOpened={handleOpened} onRecentChanged={loadEntry} onUpgradeRequired={handleUpgradeRequired} onOpening={startOpening} onOpeningEnd={endOpening} />
+        <LocalLibraryWelcome copy={copy} recent={entry.recent} onOpened={handleOpened} onRecentChanged={loadEntry} onUpgradeRequired={handleUpgradeRequired} onOpening={startOpening} onOpeningEnd={endOpening} onRequestInitialize={handleRequestInitialize} />
         <LocalLibraryOpeningOverlay copy={copy} snapshot={openingSnapshot} operationLabel={pendingLabel} />
         {upgradeDialog}
+        {initializeDialog}
       </div>
     )
   }
 
-  return <><LocalLibraryWelcome copy={copy} recent={entry.recent} onOpened={handleOpened} onRecentChanged={loadEntry} onUpgradeRequired={handleUpgradeRequired} onOpening={startOpening} onOpeningEnd={endOpening} />{upgradeDialog}</>
+  return <><LocalLibraryWelcome copy={copy} recent={entry.recent} onOpened={handleOpened} onRecentChanged={loadEntry} onUpgradeRequired={handleUpgradeRequired} onOpening={startOpening} onOpeningEnd={endOpening} onRequestInitialize={handleRequestInitialize} />{upgradeDialog}{initializeDialog}</>
 }

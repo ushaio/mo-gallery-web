@@ -546,7 +546,7 @@ func (m *Manager) PermanentDeleteAssets(ids []AssetID) ([]TrashResult, error) {
 			}
 			_ = os.Remove(internalPath(session.root, "permanent-delete"))
 		}
-		removeAssetDerivativeFiles(session.root, id)
+		session.forgetAssetDerivatives(id)
 		if trashEntryDir != "" {
 			_ = os.RemoveAll(trashEntryDir)
 		}
@@ -974,17 +974,17 @@ func (m *Manager) RebuildThumbnails(mode string) (int64, error) {
 	default:
 		return 0, newError(ErrInvalidPath, "unknown thumbnail rebuild mode", nil)
 	}
-	ids, err := session.store.thumbnailAssetIDs(session.ctx, mode == "missing")
+	candidates, err := session.store.pendingThumbnailAssets(session.ctx, mode == "missing")
 	if err != nil {
 		return 0, err
 	}
-	pending := ids
+	pending := candidates
 	session.startWorker(func() {
-		for _, assetID := range pending {
+		for _, candidate := range pending {
 			if sessionClosed(session.done) || session.ctx.Err() != nil {
 				return
 			}
-			m.queueThumbnail(session, assetID)
+			m.queueThumbnailCandidate(session, candidate)
 		}
 	})
 	m.emitSessionEvent(session, "thumbnails_rebuilt")
@@ -1031,7 +1031,7 @@ func (m *Manager) RemoveMissingAssets(ids []AssetID) ([]AssetMaintenanceResult, 
 			results = append(results, result)
 			continue
 		}
-		removeAssetDerivativeFiles(session.root, id)
+		session.forgetAssetDerivatives(id)
 		result.Status = "removed"
 		results = append(results, result)
 	}

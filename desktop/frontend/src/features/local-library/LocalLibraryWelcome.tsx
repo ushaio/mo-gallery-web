@@ -24,6 +24,7 @@ interface Props {
   onUpgradeRequired: (info: LibraryUpgradeInfo) => void;
   onOpening: (path: string, label?: string) => void;
   onOpeningEnd: () => void;
+  onRequestInitialize?: (path: string) => void;
 }
 
 function libraryName(path: string) {
@@ -43,8 +44,13 @@ export function LocalLibraryWelcome({
   onUpgradeRequired,
   onOpening,
   onOpeningEnd,
+  onRequestInitialize,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
+
+  const requestInitialize = (path: string) => {
+    if (onRequestInitialize) onRequestInitialize(path);
+  };
 
   const openLibrary = async (path: string) => {
     onOpening(path, copy.open)
@@ -68,6 +74,7 @@ export function LocalLibraryWelcome({
 
   const runFolderAction = async (kind: "create" | "initialize" | "open") => {
     setBusy(kind);
+    let selectedPath = "";
     try {
       const path = await localLibraryApi.selectFolder(
         kind === "create"
@@ -77,16 +84,31 @@ export function LocalLibraryWelcome({
             : copy.open,
       );
       if (!path) return;
+      selectedPath = path;
       if (kind === "create") {
         await openWith(path, () => localLibraryApi.create(path, libraryName(path)), copy.create);
       } else if (kind === "initialize") {
         await openWith(path, () => localLibraryApi.initialize(path, libraryName(path)), copy.initialize);
       } else {
-        await openLibrary(path);
+        // Avoid flashing the page-level opening overlay when the folder is
+        // not a valid library: call the API directly so INVALID_LIBRARY can
+        // go straight to the initialize confirm dialog without startOpening.
+        try {
+          const snapshot = await localLibraryApi.open(path);
+          onOpened(snapshot);
+        } catch (openError) {
+          // Repackage to outer catch so INVALID_LIBRARY -> requestInitialize.
+          throw openError;
+        }
       }
     } catch (error) {
       const parsed = parseLocalLibraryError(error);
-      if (parsed.code === "LIBRARY_UPGRADE_REQUIRED" && parsed.details) {
+      const invalidPath = parsed.details && typeof parsed.details.path === "string"
+        ? parsed.details.path
+        : selectedPath;
+      if (parsed.code === "INVALID_LIBRARY" && kind !== "initialize" && invalidPath) {
+        requestInitialize(invalidPath);
+      } else if (parsed.code === "LIBRARY_UPGRADE_REQUIRED" && parsed.details) {
         onUpgradeRequired({
           rootPath: String(
             parsed.details.path ?? parsed.details.rootPath ?? "",
@@ -104,13 +126,22 @@ export function LocalLibraryWelcome({
   };
 
   const openRecent = async (item: RecentLibrary) => {
-    if (!item.available) return;
     setBusy(item.path);
     try {
-      await openLibrary(item.path);
+      // Do not use openLibrary() here: it triggers the page-level
+      // pending overlay (startOpening) before the open attempt. For an
+      // invalid library that would flash "打开已有资源库" and then
+      // immediately close before the initialize dialog appears.
+      const snapshot = await localLibraryApi.open(item.path);
+      onOpened(snapshot);
     } catch (error) {
       const parsed = parseLocalLibraryError(error);
-      if (parsed.code === "LIBRARY_UPGRADE_REQUIRED" && parsed.details) {
+      const invalidPath = parsed.details && typeof parsed.details.path === "string"
+        ? parsed.details.path
+        : item.path;
+      if (parsed.code === "INVALID_LIBRARY" && invalidPath) {
+        requestInitialize(invalidPath);
+      } else if (parsed.code === "LIBRARY_UPGRADE_REQUIRED" && parsed.details) {
         onUpgradeRequired({
           rootPath: String(
             parsed.details.path ?? parsed.details.rootPath ?? item.path,
@@ -139,6 +170,12 @@ export function LocalLibraryWelcome({
 
   const actions = [
     {
+      kind: "open" as const,
+      icon: FolderOpen,
+      label: copy.open,
+      hint: copy.openHint,
+    },
+    {
       kind: "create" as const,
       icon: LibraryBig,
       label: copy.create,
@@ -149,12 +186,6 @@ export function LocalLibraryWelcome({
       icon: FolderInput,
       label: copy.initialize,
       hint: copy.initializeHint,
-    },
-    {
-      kind: "open" as const,
-      icon: FolderOpen,
-      label: copy.open,
-      hint: copy.openHint,
     },
   ];
 
@@ -253,7 +284,7 @@ export function LocalLibraryWelcome({
                 >
                   <button
                     type="button"
-                    disabled={!item.available || busy !== null}
+                    disabled={busy !== null}
                     onClick={() => openRecent(item)}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:opacity-50"
                   >
@@ -271,9 +302,7 @@ export function LocalLibraryWelcome({
                         className="block truncate text-xs"
                         style={{ color: "var(--muted-foreground)" }}
                       >
-                        {item.available
-                          ? item.path
-                          : `${copy.unavailable} \u00b7 ${item.path}`}
+                        {item.path}
                       </span>
                     </span>
                   </button>

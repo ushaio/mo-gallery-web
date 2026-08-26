@@ -1916,6 +1916,19 @@ func (a *App) GetLocalLibraryEntryState() (map[string]interface{}, error) {
 		state["active"] = true
 		state["snapshot"] = snapshot
 	} else if snapshot, restored, restoreErr := a.LocalLibrary.RestoreLastLibrary(); restoreErr != nil {
+		var appErr *local_library.AppError
+		if errors.As(restoreErr, &appErr) && appErr.Code == local_library.ErrLibraryUpgradeRequired {
+			rootPath, _ := appErr.Details["path"].(string)
+			currentVersion, _ := appErr.Details["currentVersion"].(int)
+			targetVersion, _ := appErr.Details["targetVersion"].(int)
+			state["upgrade"] = local_library.LibraryUpgradeInfo{
+				RootPath:       rootPath,
+				CurrentVersion: currentVersion,
+				TargetVersion:  targetVersion,
+				Required:       true,
+			}
+			return state, nil
+		}
 		return nil, restoreErr
 	} else if restored {
 		state["active"] = true

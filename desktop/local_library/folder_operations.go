@@ -673,7 +673,7 @@ func (m *Manager) permanentDeleteFolderUnlocked(trashID string) error {
 		return newError(ErrInvalidLibrary, "文件夹内容已永久删除，但索引清理失败，需要修复资源库", map[string]any{"cause": err.Error(), "trashId": trashID})
 	}
 	for _, id := range assetIDs {
-		removeAssetDerivativeFiles(session.root, id)
+		session.forgetAssetDerivatives(id)
 	}
 	_ = os.RemoveAll(trashEntryDir)
 	m.emitEvent("folder_permanently_deleted")

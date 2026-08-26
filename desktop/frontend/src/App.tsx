@@ -19,7 +19,7 @@ import { AiAssistantPage } from '@/pages/AiAssistantPage'
 import { StoragePage } from '@/pages/StoragePage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { FriendsPage } from '@/pages/FriendsPage'
-import { OverviewPage } from '@/pages/OverviewPage'
+import { HomePage } from '@/pages/HomePage'
 import { useEffect, useState, type ReactNode } from 'react'
 import { GetSetupState } from '../wailsjs/go/main/App'
 import { SetupPage, type SetupState } from '@/pages/SetupPage'
@@ -92,11 +92,12 @@ function AppRoutes() {
         />
       } />
       <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/overview" replace /> : <LoginPage />
+        isAuthenticated ? <Navigate to="/home" replace /> : <LoginPage />
       } />
       <Route path="/" element={<AdminLayout />}>
-        <Route index element={<Navigate to={isAuthenticated ? '/overview' : '/library?source=local'} replace />} />
-        <Route path="overview" element={<AuthenticatedRoute><OverviewPage /></AuthenticatedRoute>} />
+        <Route index element={<Navigate to={isAuthenticated ? '/home' : '/library?source=local'} replace />} />
+        <Route path="home" element={<AuthenticatedRoute><HomePage /></AuthenticatedRoute>} />
+        <Route path="overview" element={<Navigate to="/home" replace />} />
         <Route path="library" element={<ResourceLibraryPage />} />
         <Route path="photos" element={<AuthenticatedRoute><Navigate to="/library?source=cloud" replace /></AuthenticatedRoute>} />
         <Route path="local-library" element={<Navigate to="/library?source=local" replace />} />
@@ -111,7 +112,7 @@ function AppRoutes() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="friends" element={<AuthenticatedRoute><FriendsPage /></AuthenticatedRoute>} />
       </Route>
-      <Route path="*" element={<Navigate to={isAuthenticated ? '/overview' : '/library?source=local'} replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/home' : '/library?source=local'} replace />} />
     </Routes>
   )
 }

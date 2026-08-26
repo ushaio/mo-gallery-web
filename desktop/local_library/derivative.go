@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -112,9 +114,112 @@ type derivativeScheduler struct {
 	stop      chan struct{}
 	stopOnce  sync.Once
 	nextOrder uint64
+	writer    *derivativeWriter
 }
 
-func newDerivativeScheduler(session *librarySession, workers int, run func(context.Context, derivativeRequest) derivativeResult) *derivativeScheduler {
+// derivativeWriter coalesces the bookkeeping writes produced by thumbnail
+// generation. Warming a large library used to cost up to seven small write
+// transactions per image (two status rows, a preview status, a dominant-colour
+// update and cache touches), all serialized on the single library.db writer.
+// Batching them turns a 50k-image warm-up into a few hundred commits.
+type derivativeWriter struct {
+	store    *store
+	emit     func(id AssetID, status string)
+	mu       sync.Mutex
+	pending  map[string]derivativeWrite
+	previews map[AssetID]previewWrite
+	order    []AssetID
+	flushMu  sync.Mutex
+}
+
+const derivativeWriteBatchSize = 128
+
+func newDerivativeWriter(database *store, emit func(id AssetID, status string)) *derivativeWriter {
+	return &derivativeWriter{
+		store:    database,
+		emit:     emit,
+		pending:  make(map[string]derivativeWrite),
+		previews: make(map[AssetID]previewWrite),
+	}
+}
+
+func derivativeWriteKey(id AssetID, variant derivativeVariant) string {
+	return string(id) + "\x00" + string(variant)
+}
+
+// record queues a derivative row and, for thumbnails, the matching preview
+// state. It returns immediately; the batch is committed once it is full or when
+// flush is called. emitEvent is false for the bulk initialization warm-up, where
+// one event per image would flood the frontend with re-renders while the
+// progress overlay is showing.
+func (w *derivativeWriter) record(ctx context.Context, write derivativeWrite, preview *previewWrite, emitEvent bool) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.pending[derivativeWriteKey(write.AssetID, write.Variant)] = write
+	if preview != nil {
+		if _, exists := w.previews[preview.ID]; !exists {
+			w.order = append(w.order, preview.ID)
+		}
+		w.previews[preview.ID] = *preview
+	}
+	full := len(w.pending) >= derivativeWriteBatchSize || len(w.previews) >= derivativeWriteBatchSize
+	w.mu.Unlock()
+	if preview != nil && emitEvent && w.emit != nil {
+		w.emit(preview.ID, preview.Status)
+	}
+	if full {
+		w.flush(ctx)
+	}
+}
+
+// lookup reports a queued derivative row so a concurrent request does not
+// regenerate a thumbnail whose row has not been committed yet.
+func (w *derivativeWriter) lookup(id AssetID, variant derivativeVariant) (derivativeWrite, bool) {
+	if w == nil {
+		return derivativeWrite{}, false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	write, ok := w.pending[derivativeWriteKey(id, variant)]
+	return write, ok
+}
+
+func (w *derivativeWriter) flush(ctx context.Context) {
+	if w == nil {
+		return
+	}
+	w.flushMu.Lock()
+	defer w.flushMu.Unlock()
+	w.mu.Lock()
+	if len(w.pending) == 0 && len(w.previews) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	derivatives := make([]derivativeWrite, 0, len(w.pending))
+	for _, write := range w.pending {
+		derivatives = append(derivatives, write)
+	}
+	previews := make([]previewWrite, 0, len(w.previews))
+	for _, id := range w.order {
+		if write, ok := w.previews[id]; ok {
+			previews = append(previews, write)
+		}
+	}
+	w.pending = make(map[string]derivativeWrite)
+	w.previews = make(map[AssetID]previewWrite)
+	w.order = w.order[:0]
+	w.mu.Unlock()
+	if err := w.store.derivatives.setResults(ctx, derivatives); err != nil {
+		log.Printf("[local-library] flush derivative rows: %v", err)
+	}
+	if err := w.store.setPreviewResults(ctx, previews); err != nil {
+		log.Printf("[local-library] flush preview states: %v", err)
+	}
+}
+
+func newDerivativeScheduler(session *librarySession, workers int, run func(context.Context, derivativeRequest) derivativeResult, writer *derivativeWriter) *derivativeScheduler {
 	if workers < 1 {
 		workers = 1
 	}
@@ -124,12 +229,40 @@ func newDerivativeScheduler(session *librarySession, workers int, run func(conte
 		flights: make(map[string]*derivativeFlight),
 		wake:    make(chan struct{}, 1),
 		stop:    make(chan struct{}),
+		writer:  writer,
 	}
 	heap.Init(&scheduler.queue)
 	for range workers {
 		session.startWorker(scheduler.worker)
 	}
+	session.startWorker(scheduler.flushLoop)
 	return scheduler
+}
+
+// flushLoop commits coalesced bookkeeping while generation is in flight so an
+// interactive session never keeps ready thumbnails unrecorded for long.
+func (s *derivativeScheduler) flushLoop() {
+	ticker := time.NewTicker(400 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.stop:
+			s.flushWrites(context.Background())
+			return
+		case <-s.ctx.Done():
+			s.flushWrites(context.Background())
+			return
+		case <-ticker.C:
+			s.flushWrites(s.ctx)
+		}
+	}
+}
+
+func (s *derivativeScheduler) flushWrites(ctx context.Context) {
+	if s == nil || s.writer == nil {
+		return
+	}
+	s.writer.flush(ctx)
 }
 
 func (s *derivativeScheduler) close() {
@@ -266,6 +399,15 @@ func (m *Manager) queueThumbnail(session *librarySession, id AssetID) {
 	_, _ = m.requestDerivative(session.ctx, session, id, derivativeThumbnail, derivativePriorityBackground, false)
 }
 
+// queueThumbnailCandidate skips the asset lookup when the caller already knows
+// the format, which is the case for every asset the scan just indexed.
+func (m *Manager) queueThumbnailCandidate(session *librarySession, candidate thumbnailCandidate) {
+	if isRAWFormat(candidate.Format) || isRAWExtension(candidate.Extension) {
+		return
+	}
+	_, _ = m.requestDerivative(session.ctx, session, candidate.ID, derivativeThumbnail, derivativePriorityBackground, false)
+}
+
 func (m *Manager) ensureThumbnail(session *librarySession, id AssetID) (string, error) {
 	result, err := m.requestDerivative(session.ctx, session, id, derivativeThumbnail, derivativePrioritySelected, true)
 	return result.status, err
@@ -277,23 +419,42 @@ func (m *Manager) requestDerivative(ctx context.Context, session *librarySession
 		if err != nil {
 			return derivativeResult{status: "unavailable", err: err}, err
 		}
-		if source.Availability != "active" {
-			err = newError(ErrAssetNotFound, "asset is not active", map[string]any{"assetId": id})
-			return derivativeResult{status: "unavailable", err: err}, err
-		}
-		request := derivativeRequest{
-			assetID:  id,
-			variant:  variant,
-			priority: priority,
-			cacheKey: derivativeCacheKey(id, source.ModifiedAtNS, source.ByteSize, variant),
-			source:   source,
-		}
-		result := session.derivatives.submit(ctx, request, wait)
-		if !errors.Is(result.err, errDerivativeSourceChanged) || !wait {
+		result, retry := m.submitDerivative(ctx, session, id, source, variant, priority, wait)
+		if !retry {
 			return result, result.err
 		}
 	}
 	return derivativeResult{status: "unavailable", err: errDerivativeSourceChanged}, errDerivativeSourceChanged
+}
+
+// submitDerivative queues one derivative for an already-loaded asset row. The
+// initialization warm-up prefetches sources in bulk, which removes one indexed
+// query per image from the hot path.
+func (m *Manager) submitDerivative(ctx context.Context, session *librarySession, id AssetID, source derivativeSource, variant derivativeVariant, priority derivativePriority, wait bool) (derivativeResult, bool) {
+	if source.Availability != "active" {
+		err := newError(ErrAssetNotFound, "asset is not active", map[string]any{"assetId": id})
+		return derivativeResult{status: "unavailable", err: err}, false
+	}
+	request := derivativeRequest{
+		assetID:  id,
+		variant:  variant,
+		priority: priority,
+		cacheKey: derivativeCacheKey(id, source.ModifiedAtNS, source.ByteSize, variant),
+		source:   source,
+	}
+	result := session.derivatives.submit(ctx, request, wait)
+	return result, wait && errors.Is(result.err, errDerivativeSourceChanged)
+}
+
+// warmDerivative generates a thumbnail from a prefetched asset row, falling back
+// to a fresh lookup when the source turns out to have changed in the meantime.
+func (m *Manager) warmDerivative(ctx context.Context, session *librarySession, id AssetID, source derivativeSource) {
+	result, retry := m.submitDerivative(ctx, session, id, source, derivativeThumbnail, derivativePriorityBackground, true)
+	if !retry {
+		_ = result
+		return
+	}
+	_, _ = m.requestDerivative(ctx, session, id, derivativeThumbnail, derivativePriorityBackground, true)
 }
 
 func (m *Manager) generateDerivative(ctx context.Context, session *librarySession, request derivativeRequest) (result derivativeResult) {
@@ -305,17 +466,40 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		}
 	}()
 
-	current, err := session.store.derivativeSource(ctx, request.assetID)
-	if err != nil {
-		result.err = err
-		return result
-	}
-	currentKey := derivativeCacheKey(request.assetID, current.ModifiedAtNS, current.ByteSize, request.variant)
-	if currentKey != request.cacheKey || current.Availability != "active" {
-		result.err = errDerivativeSourceChanged
-		return result
-	}
+	dimension := derivativeDimension(request.variant)
 	destination := derivativePath(session.root, request.assetID, request.variant, request.cacheKey)
+	writer := session.derivatives.writer
+
+	// A row that is queued for the next batched commit is as good as committed:
+	// without this check a grid request could regenerate a thumbnail that was
+	// just produced by the initialization warm-up.
+	if write, ok := writer.lookup(request.assetID, request.variant); ok && write.CacheKey == request.cacheKey && write.Status == "ready" {
+		if info, statErr := os.Stat(destination); statErr == nil && info.Mode().IsRegular() && info.Size() > 0 {
+			result.path, result.mime, result.status = destination, "image/jpeg", "ready"
+			return result
+		}
+	}
+	// Trust a committed ready row when the file on disk still matches its
+	// recorded size. The previous implementation decoded the JPEG header of
+	// every cached thumbnail before serving it.
+	previousCacheKey := ""
+	if record, recordErr := session.store.derivativeRecord(ctx, request.assetID, request.variant); recordErr == nil {
+		if record.CacheKey != request.cacheKey {
+			previousCacheKey = record.CacheKey
+		}
+		if record.CacheKey == request.cacheKey && record.Status == "ready" && record.Width > 0 && record.ByteSize > 0 {
+			if info, statErr := os.Stat(destination); statErr == nil && info.Mode().IsRegular() && info.Size() == record.ByteSize {
+				if request.variant == derivativePreview {
+					// Only previews are trimmed by an LRU sweep, so only previews
+					// need their access time refreshed.
+					_ = session.store.touchDerivative(ctx, request.assetID, request.variant)
+				}
+				result.path, result.mime, result.status = destination, "image/jpeg", "ready"
+				return result
+			}
+		}
+	}
+
 	var rawSlot chan struct{}
 	if request.variant == derivativeThumbnail && (isRAWFormat(request.source.Format) || isRAWExtension(request.source.Extension)) && session.rawDerivativeSem != nil {
 		rawSlot = session.rawDerivativeSem
@@ -327,44 +511,48 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		}
 		defer func() { <-rawSlot }()
 	}
-	if record, recordErr := session.store.derivativeRecord(ctx, request.assetID, request.variant); recordErr == nil && record.CacheKey == request.cacheKey && record.Status == "ready" {
-		if validDerivativeFile(destination, derivativeDimension(request.variant)) {
-			_ = session.store.touchDerivative(ctx, request.assetID, request.variant)
-			result.path, result.mime, result.status = destination, "image/jpeg", "ready"
-			return result
-		}
-	}
-	if validDerivativeFile(destination, derivativeDimension(request.variant)) {
-		info, _ := os.Stat(destination)
-		config, _ := decodeImageConfig(destination)
-		_ = session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), config.Width, config.Height, info.Size(), "ready", "")
-		if request.variant == derivativeThumbnail {
-			m.scheduleDominantColors(session, request.assetID, destination, request.variant)
-			_ = session.store.setPreviewResult(ctx, request.assetID, "ready", "")
-			m.emitPreviewStatus(session, request.assetID, "ready")
-		}
-		result.path, result.mime, result.status = destination, "image/jpeg", "ready"
-		return result
-	}
-	_ = os.Remove(destination)
-	if err := session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), 0, 0, 0, "generating", ""); err != nil {
-		result.err = err
-		return result
-	}
-	if request.variant == derivativeThumbnail {
-		if err := session.store.setPreviewResult(ctx, request.assetID, "generating", ""); err != nil {
-			result.err = err
-			return result
-		}
-		m.emitPreviewStatus(session, request.assetID, "generating")
-	}
+
 	resolved, err := resolveWithinRoot(session.root, request.source.RelativePath)
 	if err != nil {
 		result.err = err
 		m.recordDerivativeFailure(session, request, err)
 		return result
 	}
-	if err := derivativeRenderer(ctx, resolved, destination, derivativeDimension(request.variant), request.source.Orientation); err != nil {
+	// Validate the source before decoding instead of re-reading the asset row.
+	// A mismatch means the queued request is stale, and the caller retries with
+	// a fresh cache key.
+	sourceInfo, statErr := os.Stat(resolved)
+	if statErr != nil || sourceInfo.Size() != request.source.ByteSize || sourceInfo.ModTime().UnixNano() != request.source.ModifiedAtNS {
+		result.err = errDerivativeSourceChanged
+		return result
+	}
+
+	// An orphaned file from an interrupted run can be adopted without decoding
+	// the source again.
+	if adopted, ok := adoptDerivativeFile(destination, dimension, request.variant); ok {
+		m.recordDerivativeSuccess(session, request, destination, previousCacheKey, adopted)
+		result.path, result.mime, result.status = destination, "image/jpeg", "ready"
+		return result
+	}
+	_ = os.Remove(destination)
+	// Only interactive requests advertise a "generating" state. The background
+	// warm-up would otherwise pay two extra write transactions and one event per
+	// image just to describe work that finishes milliseconds later.
+	if request.priority > derivativePriorityBackground {
+		if err := session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, dimension, 0, 0, 0, "generating", ""); err != nil {
+			result.err = err
+			return result
+		}
+		if request.variant == derivativeThumbnail {
+			if err := session.store.setPreviewResult(ctx, request.assetID, "generating", ""); err != nil {
+				result.err = err
+				return result
+			}
+			m.emitPreviewStatus(session, request.assetID, "generating")
+		}
+	}
+	rendered, err := derivativeRenderer(ctx, resolved, destination, dimension, request.source.Orientation)
+	if err != nil {
 		result.err = err
 		m.recordDerivativeFailure(session, request, err)
 		return result
@@ -375,47 +563,138 @@ func (m *Manager) generateDerivative(ctx context.Context, session *librarySessio
 		result.err = errDerivativeSourceChanged
 		return result
 	}
-	generated, err := os.Stat(destination)
-	if err != nil {
-		result.err = err
-		m.recordDerivativeFailure(session, request, err)
-		return result
-	}
-	config, err := decodeImageConfig(destination)
-	if err != nil {
-		result.err = err
-		m.recordDerivativeFailure(session, request, err)
-		return result
-	}
-	if err := session.store.setDerivativeResult(ctx, request.assetID, request.variant, request.cacheKey, derivativeDimension(request.variant), config.Width, config.Height, generated.Size(), "ready", ""); err != nil {
-		result.err = err
-		return result
-	}
-	removeStaleDerivativeFiles(session.root, request.assetID, request.variant, destination)
-	if request.variant == derivativeThumbnail {
-		m.scheduleDominantColors(session, request.assetID, destination, request.variant)
-		if err := session.store.setPreviewResult(ctx, request.assetID, "ready", ""); err != nil {
-			result.err = err
-			return result
-		}
-		m.emitPreviewStatus(session, request.assetID, "ready")
-	} else {
+	m.recordDerivativeSuccess(session, request, destination, previousCacheKey, rendered)
+	if request.variant == derivativePreview {
 		_ = m.trimPreviewCache(ctx, session, defaultPreviewCacheBytes)
 	}
 	result.path, result.mime, result.status = destination, "image/jpeg", "ready"
 	return result
 }
 
-func (m *Manager) scheduleDominantColors(session *librarySession, id AssetID, path string, variant derivativeVariant) {
+// recordDerivativeSuccess queues the bookkeeping for a generated derivative.
+// Dominant colours come from the image that was just resized in memory; the old
+// implementation spawned a goroutine that re-read and re-decoded the thumbnail
+// from disk for every asset.
+func (m *Manager) recordDerivativeSuccess(session *librarySession, request derivativeRequest, destination, previousCacheKey string, rendered derivativeRender) {
+	write := derivativeWrite{
+		AssetID:      request.assetID,
+		Variant:      request.variant,
+		CacheKey:     request.cacheKey,
+		MaxDimension: derivativeDimension(request.variant),
+		Width:        rendered.Width,
+		Height:       rendered.Height,
+		ByteSize:     rendered.ByteSize,
+		Status:       "ready",
+	}
+	var preview *previewWrite
+	if request.variant == derivativeThumbnail {
+		preview = &previewWrite{ID: request.assetID, Status: "ready", Colors: rendered.Colors, SetColors: len(rendered.Colors) > 0}
+	}
+	interactive := request.priority > derivativePriorityBackground
+	session.derivatives.writer.record(session.ctx, write, preview, interactive || !session.bulkThumbnails.Load())
+	if interactive {
+		// Interactive requests are observed immediately by the UI and by
+		// maintenance APIs, so their bookkeeping is committed right away. Only
+		// the bulk warm-up relies on the coalesced batch.
+		session.derivatives.flushWrites(session.ctx)
+	}
+	// Remove only the file the record just superseded. Globbing the derivative
+	// directory once per generated image turned a full warm-up into O(n^2)
+	// directory scans.
+	if previousCacheKey != "" && previousCacheKey != request.cacheKey {
+		superseded := derivativePath(session.root, request.assetID, request.variant, previousCacheKey)
+		if !sameFilePath(superseded, destination) {
+			_ = os.Remove(superseded)
+		}
+	}
+	_ = os.Remove(internalPath(session.root, derivativeDirectory(request.variant), string(request.assetID)+".jpg"))
+}
+
+// adoptDerivativeFile reuses a derivative file that already exists on disk but
+// has no committed row, which happens after a crash or an interrupted warm-up.
+func adoptDerivativeFile(path string, maxDimension int, variant derivativeVariant) (derivativeRender, bool) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return derivativeRender{}, false
+	}
 	if variant != derivativeThumbnail {
+		config, configErr := decodeImageConfig(path)
+		if configErr != nil || config.Width <= 0 || config.Height <= 0 || config.Width > maxDimension || config.Height > maxDimension {
+			return derivativeRender{}, false
+		}
+		return derivativeRender{Width: config.Width, Height: config.Height, ByteSize: info.Size()}, true
+	}
+	// Thumbnails also carry the dominant colours, so the adopted file has to be
+	// decoded once to avoid re-queueing the asset on every later scan.
+	image, decodeErr := decodeImage(path)
+	if decodeErr != nil {
+		return derivativeRender{}, false
+	}
+	bounds := image.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 || bounds.Dx() > maxDimension || bounds.Dy() > maxDimension {
+		return derivativeRender{}, false
+	}
+	return derivativeRender{
+		Width:    bounds.Dx(),
+		Height:   bounds.Dy(),
+		ByteSize: info.Size(),
+		Colors:   extractDominantColors(image, 5),
+	}, true
+}
+
+// sweepOrphanDerivativeFiles removes derivative files that no longer match the
+// recorded cache keys. It runs once per scan as a single directory pass, which
+// replaces the per-image glob the generator used to perform.
+func (m *Manager) sweepOrphanDerivativeFiles(session *librarySession) {
+	// Commit queued rows first so freshly generated files are represented in the
+	// recorded cache keys. The sweep uses an uncancellable context: interrupting
+	// a statement mid-flight can leave the database file briefly locked on
+	// Windows, which breaks a library that is being closed at the same time.
+	sweepCtx := context.WithoutCancel(session.ctx)
+	if sessionClosed(session.done) || session.ctx.Err() != nil {
 		return
 	}
-	session.startWorker(func() {
-		thumbnail, err := decodeImage(path)
-		if err == nil {
-			_ = session.store.setDominantColors(session.ctx, id, extractDominantColors(thumbnail, 5))
+	session.derivatives.flushWrites(sweepCtx)
+	// Files younger than this are left alone: an interactive request may have
+	// written one after the cache keys were read.
+	cutoff := time.Now().Add(-2 * time.Minute)
+	for _, variant := range []derivativeVariant{derivativeThumbnail, derivativePreview} {
+		if sessionClosed(session.done) || session.ctx.Err() != nil {
+			return
 		}
-	})
+		current, err := session.store.derivatives.readyCacheKeys(sweepCtx, variant)
+		if err != nil {
+			return
+		}
+		directory := internalPath(session.root, derivativeDirectory(variant))
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			continue
+		}
+		removed := 0
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jpg") {
+				continue
+			}
+			info, infoErr := entry.Info()
+			if infoErr != nil || info.ModTime().After(cutoff) {
+				continue
+			}
+			name := strings.TrimSuffix(entry.Name(), ".jpg")
+			id, cacheKey, found := strings.Cut(name, "-")
+			if found {
+				if expected, ok := current[AssetID(id)]; ok && expected == cacheKey {
+					continue
+				}
+			}
+			if os.Remove(filepath.Join(directory, entry.Name())) == nil {
+				removed++
+			}
+		}
+		if removed > 0 {
+			log.Printf("[local-library] swept orphan %s files root=%s removed=%d", variant, session.root, removed)
+		}
+	}
 }
 
 func (m *Manager) recordDerivativeFailure(session *librarySession, request derivativeRequest, cause error) {
@@ -428,11 +707,6 @@ func (m *Manager) recordDerivativeFailure(session *librarySession, request deriv
 		_ = session.store.setPreviewResult(context.Background(), request.assetID, "unavailable", message)
 		m.emitPreviewStatus(session, request.assetID, "unavailable")
 	}
-}
-
-func validDerivativeFile(path string, maxDimension int) bool {
-	config, err := decodeImageConfig(path)
-	return err == nil && config.Width > 0 && config.Height > 0 && config.Width <= maxDimension && config.Height <= maxDimension
 }
 
 func removeStaleDerivativeFiles(root string, id AssetID, variant derivativeVariant, keep string) {
@@ -454,6 +728,18 @@ func sameFilePath(left, right string) bool {
 func removeAssetDerivativeFiles(root string, id AssetID) {
 	for _, variant := range []derivativeVariant{derivativeThumbnail, derivativePreview} {
 		removeStaleDerivativeFiles(root, id, variant, "")
+	}
+}
+
+// forgetAssetDerivatives removes both the cached files and the cache rows of a
+// deleted asset. The rows live in derivatives.db, so they are no longer removed
+// by an ON DELETE CASCADE from assets.
+func (session *librarySession) forgetAssetDerivatives(ids ...AssetID) {
+	for _, id := range ids {
+		removeAssetDerivativeFiles(session.root, id)
+	}
+	if session.store != nil && session.store.derivatives != nil {
+		_ = session.store.derivatives.deleteAssets(context.Background(), ids)
 	}
 }
 

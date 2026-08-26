@@ -120,6 +120,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const [loadingMore, setLoadingMore] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [favoriteCount, setFavoriteCount] = useState(0)
+  const [livePhotoCount, setLivePhotoCount] = useState(0)
   const [saving, setSaving] = useState(false)
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const pendingSaveCountRef = useRef(0)
@@ -268,6 +269,13 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     } catch { /* the active asset request reports session errors */ }
   }, [])
 
+  const reloadLivePhotoCount = useCallback(async () => {
+    try {
+      const result = await localLibraryApi.listAssets({ availability: 'active', livePhotoOnly: true, limit: 1 })
+      setLivePhotoCount(result.total)
+    } catch { /* the active asset request reports session errors */ }
+  }, [])
+
   const reloadOrganization = useCallback(async () => {
     try {
       const [nextTags, nextGroups, nextCollections] = await Promise.all([localLibraryApi.listTags(), localLibraryApi.listCollectionGroups(), localLibraryApi.listCollections()])
@@ -405,7 +413,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
       if (activeAssetRequestsRef.current === 0) previewStatusOverridesRef.current.clear()
       if (requestId === assetQueryRequestIdRef.current) setLoading(false)
     })
-  }, [query, refreshKey]) // selection is intentionally reconciled against each fresh page
+  }, [query, refreshKey, snapshot.sessionId]) // selection is intentionally reconciled against each fresh page
 
   useEffect(() => {
     if (selectionQueryKeyRef.current === queryKey) return
@@ -453,13 +461,20 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
     selectAsset(page.items.at(-1) ?? null)
   }, [allLoadedSelected, clearAssetSelection, page.items, selectAsset, selectedQueryToken])
 
-  useCachedPageEffect(() => { void reloadFolders() }, [reloadFolders, refreshKey])
-  useCachedPageEffect(() => { void reloadFavoriteCount() }, [reloadFavoriteCount, refreshKey])
-  useCachedPageEffect(() => { void reloadOrganization() }, [reloadOrganization])
+  // snapshot.sessionId participates in every cached reload: asset/preview/original
+  // URLs embed `?session=<sessionID>`, and the Go asset handler rejects a request
+  // whose session no longer matches the open library. Because the workbench stays
+  // mounted across a close/reopen (<Activity> keeps menu pages alive) the cached
+  // effect would otherwise keep serving rows built for the previous session, and
+  // every thumbnail request would 404 into the file-format placeholder.
+  useCachedPageEffect(() => { void reloadFolders() }, [reloadFolders, refreshKey, snapshot.sessionId])
+  useCachedPageEffect(() => { void reloadFavoriteCount() }, [reloadFavoriteCount, refreshKey, snapshot.sessionId])
+  useCachedPageEffect(() => { void reloadLivePhotoCount() }, [reloadLivePhotoCount, refreshKey, snapshot.sessionId])
+  useCachedPageEffect(() => { void reloadOrganization() }, [reloadOrganization, snapshot.sessionId])
 
   useEffect(() => {
     if (availability === 'trashed') void reloadTrashedFolders()
-  }, [availability, refreshKey, reloadTrashedFolders])
+  }, [availability, refreshKey, reloadTrashedFolders, snapshot.sessionId])
 
   const reloadStorageSources = useCallback(async () => {
     if (storageSourcesLoadingRef.current) return
@@ -1710,6 +1725,12 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
   const isSuspended = snapshot.state === 'suspended'
   const isRepairRequired = snapshot.state === 'repair_required'
   const isScanning = snapshot.scan.state === 'running'
+  const thumbnailsGenerating = useMemo(() => {
+    if (isSuspended || isRepairRequired) return false
+    // Prefer event-driven detection (asset_preview_updated with generating/ready)
+    // but fall back to previewStatus so the bottom bar still reflects background work.
+    return page.items.some((item) => item.availability === 'active' && item.previewStatus === 'generating')
+  }, [isRepairRequired, isSuspended, page.items])
   const hasStructuredFilters = Object.values(filters).some((value) => Array.isArray(value) ? value.length > 0 : value !== undefined && value !== '')
   const canBrowsePhysicalFolders = availability === 'active' && !favoritesOnly && tagIds.length === 0 && collectionIds.length === 0 && !deferredSearch && !hasStructuredFilters
   const currentChildFolders = useMemo(() => {
@@ -1747,7 +1768,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
           <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
             <div data-local-library-guide="nav">
               <LibraryNavItem active={availability === 'active' && !favoritesOnly && !livePhotoOnly && !folder && tagIds.length === 0 && collectionIds.length === 0} icon={Images} label={copy.allPhotos} count={snapshot.assetCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setLivePhotoOnly(false); setFolder('') }} />
-              <LibraryNavItem active={availability === 'active' && livePhotoOnly} icon={LivePhotoIcon} label="Live Photo" onClick={() => { setAvailability('active'); setFavoritesOnly(false); setLivePhotoOnly(true); setFolder('') }} />
+              <LibraryNavItem active={availability === 'active' && livePhotoOnly} icon={LivePhotoIcon} label="Live Photo" count={livePhotoCount} onClick={() => { setAvailability('active'); setFavoritesOnly(false); setLivePhotoOnly(true); setFolder('') }} />
               <div data-local-library-logical-target {...assetDropHandlers((ids) => void applyOrganizationDrop(ids, { kind: 'favorite' }), 'link')}><LibraryNavItem active={availability === 'active' && favoritesOnly} icon={Heart} label={copy.favorites} count={favoriteCount} onClick={() => { setAvailability('active'); setFavoritesOnly(true); setLivePhotoOnly(false); setFolder('') }} /></div>
             </div>
             <div data-local-library-guide="folders">
@@ -1876,7 +1897,7 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
             <LocalAssetBatchDetails selectedCount={selectedCount} tags={tags} collections={collections} copy={copy} busy={organizationBusy || assetFileOperationBusy} canMove={!selectedQueryToken && selectedAssetIds.every((id) => page.items.find((item) => item.id === id)?.availability === 'active')} onClear={clearAssetSelection} onMove={openMoveSelectedAssets} onUpdate={(update) => void batchUpdateOrganization(update)} floating />
           )}
           <LibraryStatusBar data-local-library-guide="statusbar">
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"><span className={`shrink-0 ${isScanning ? 'animate-pulse' : ''}`} style={{ color: isScanning ? 'var(--primary)' : 'var(--muted-foreground)' }}>{scanLabel(snapshot, copy)}</span>{['running', 'paused'].includes(snapshot.scan.state) && snapshot.scan.lastPath && <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--muted-foreground)' }}>{snapshot.scan.lastPath}</span>}</div>
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[11px]"><span className={`shrink-0 ${isScanning ? 'animate-pulse' : ''}`} style={{ color: isScanning ? 'var(--primary)' : snapshot.scan.state === 'failed' ? '#b45309' : scanLabel(snapshot, copy) === copy.scanDone ? '#5a8a5f' : 'var(--muted-foreground)' }}>{scanLabel(snapshot, copy)}</span>{thumbnailsGenerating && !isScanning && <span className="flex shrink-0 items-center gap-1.5" style={{ color: 'var(--muted-foreground)' }}><Loader2 size={11} className="animate-spin" />{copy.thumbnailsGenerating}</span>}{['running', 'paused'].includes(snapshot.scan.state) && snapshot.scan.lastPath && <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--muted-foreground)' }}>{snapshot.scan.lastPath}</span>}</div>
             {snapshot.scan.state === 'running' && <><button disabled={scanBusy} onClick={() => runScanAction('pause')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Pause size={11} />{copy.pause}</button><button disabled={scanBusy} onClick={() => runScanAction('cancel')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Square size={10} />{copy.cancel}</button></>}
             {snapshot.scan.state === 'paused' && !isSuspended && !isRepairRequired && <button disabled={scanBusy} onClick={() => runScanAction('resume')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><Play size={11} />{copy.resume}</button>}
             {!isSuspended && !isRepairRequired && !['running','paused'].includes(snapshot.scan.state) && <button disabled={scanBusy} onClick={() => runScanAction('start')} className="flex items-center gap-1.5 rounded px-2 py-1 text-[10px] hover:bg-secondary"><RefreshCw size={11} />{copy.rescan}</button>}

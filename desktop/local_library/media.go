@@ -776,10 +776,22 @@ func findBytesContext(ctx context.Context, data []byte, offset int, needle []byt
 }
 
 func renderJPEGThumbnail(ctx context.Context, sourcePath, destination string, maxDimension int) error {
-	return renderJPEGDerivative(ctx, sourcePath, destination, maxDimension, 1)
+	_, err := renderJPEGDerivative(ctx, sourcePath, destination, maxDimension, 1)
+	return err
 }
 
-func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, maxDimension, orientation int) (err error) {
+// derivativeRender describes a generated derivative. Returning the geometry and
+// the dominant colours avoids re-reading and re-decoding the file that was just
+// written: the previous implementation decoded the destination twice (once for
+// its dimensions, once in a goroutine for the colours) for every asset.
+type derivativeRender struct {
+	Width    int
+	Height   int
+	ByteSize int64
+	Colors   []string
+}
+
+func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, maxDimension, orientation int) (rendered derivativeRender, err error) {
 	startedAt := time.Now()
 	decodeStartedAt := startedAt
 	defer func() {
@@ -789,13 +801,13 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	}()
 	source, err := decodeImage(sourcePath)
 	if err != nil {
-		return err
+		return derivativeRender{}, err
 	}
 	decodeElapsed := time.Since(decodeStartedAt)
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if err := validateDimensions(width, height); err != nil {
-		return err
+		return derivativeRender{}, err
 	}
 	// Compute the post-orientation dimensions without materializing a rotated
 	// full-size copy. EXIF orientations >= 5 transpose (swap) width and height;
@@ -815,7 +827,7 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	}
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return derivativeRender{}, ctx.Err()
 	default:
 	}
 	// Resize the unrotated source to the pre-orientation size first, then apply
@@ -844,13 +856,20 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	orientStartedAt := time.Now()
 	target := orientedImage(resized, orientation)
 	orientElapsed := time.Since(orientStartedAt)
+	// The dominant colours are sampled from the downscaled image that is already
+	// in memory, so the palette costs a few hundred microseconds instead of a
+	// second decode pass per asset.
+	var colors []string
+	if maxDimension <= thumbnailMaxDimension {
+		colors = extractDominantColors(target, 5)
+	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
-		return err
+		return derivativeRender{}, err
 	}
 	temp := destination + ".tmp-" + newID()
 	file, err := os.Create(temp)
 	if err != nil {
-		return err
+		return derivativeRender{}, err
 	}
 	encodeStartedAt := time.Now()
 	encodeErr := jpeg.Encode(file, target, &jpeg.Options{Quality: 88})
@@ -858,20 +877,25 @@ func renderJPEGDerivative(ctx context.Context, sourcePath, destination string, m
 	closeErr := file.Close()
 	if encodeErr != nil {
 		_ = os.Remove(temp)
-		return encodeErr
+		return derivativeRender{}, encodeErr
 	}
 	if closeErr != nil {
 		_ = os.Remove(temp)
-		return closeErr
+		return derivativeRender{}, closeErr
+	}
+	written := int64(0)
+	if info, statErr := os.Stat(temp); statErr == nil {
+		written = info.Size()
 	}
 	if err := os.Rename(temp, destination); err != nil {
 		_ = os.Remove(temp)
-		return err
+		return derivativeRender{}, err
 	}
 	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
 		log.Printf("[local-library] derivative slow source=%s total=%s decode=%s orient=%s resize=%s encode=%s", filepath.Base(sourcePath), elapsed.Round(time.Millisecond), decodeElapsed.Round(time.Millisecond), orientElapsed.Round(time.Millisecond), resizeElapsed.Round(time.Millisecond), encodeElapsed.Round(time.Millisecond))
 	}
-	return nil
+	targetBounds := target.Bounds()
+	return derivativeRender{Width: targetBounds.Dx(), Height: targetBounds.Dy(), ByteSize: written, Colors: colors}, nil
 }
 
 func writePlaceholderPNG(w io.Writer) error {

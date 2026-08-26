@@ -107,6 +107,7 @@ type EntryStateSource = {
   active?: unknown
   snapshot?: SnapshotSource
   recent?: Array<Record<string, unknown>>
+  upgrade?: Record<string, unknown>
 }
 
 function asIsoTime(value: unknown): string | undefined {
@@ -192,6 +193,7 @@ export const localLibraryApi = {
     return {
       active: Boolean(source?.active),
       snapshot: source?.snapshot ? normalizeSnapshot(source.snapshot) : undefined,
+      upgrade: source?.upgrade ? normalizeUpgradeInfo(source.upgrade) : undefined,
       recent: Array.isArray(source?.recent) ? source.recent.map((item) => ({
         libraryId: String(item?.libraryId ?? ''),
         name: String(item?.name ?? ''),

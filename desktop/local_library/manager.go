@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -42,6 +42,11 @@ type librarySession struct {
 	workers             sync.WaitGroup
 	derivatives         *derivativeScheduler
 	rawDerivativeSem    chan struct{}
+	// bulkThumbnails is set while initialization generates thumbnails in bulk.
+	// Per-asset preview events are suppressed then: the progress overlay reports
+	// the phase, and one event per image would re-render the grid thousands of
+	// times for no visible benefit.
+	bulkThumbnails atomic.Bool
 }
 
 type libraryProbeStatus string
@@ -338,9 +343,12 @@ func (m *Manager) newLibrarySession(root string, manifest Manifest, database *st
 		ignoredWatcherPaths: make(map[string]time.Time),
 	}
 	workers := max(2, min(runtime.GOMAXPROCS(0), 8))
+	writer := newDerivativeWriter(database, func(id AssetID, status string) {
+		m.emitPreviewStatus(session, id, status)
+	})
 	session.derivatives = newDerivativeScheduler(session, workers, func(ctx context.Context, request derivativeRequest) derivativeResult {
 		return m.generateDerivative(ctx, session, request)
-	})
+	}, writer)
 	session.rawDerivativeSem = make(chan struct{}, max(1, workers/2))
 	if active, missing, trashed, countErr := database.counts(ctx); countErr == nil {
 		session.lastActiveCount = active
@@ -623,215 +631,6 @@ func (session *librarySession) touchUnchangedAssetForScan(ctx context.Context, p
 		return nil, context.Canceled
 	}
 	return session.store.touchUnchangedAsset(ctx, pathKey, byteSize, modifiedAtNS, token)
-}
-
-func (m *Manager) runScan(ctx context.Context, session *librarySession, scanID, token string) {
-	m.folderMutationMu.Lock()
-	defer m.folderMutationMu.Unlock()
-	scanStartedAt := time.Now()
-	var count int64
-	changed := false
-	folderPaths := make([]string, 0)
-	thumbnailIDs := make([]AssetID, 0)
-	canPruneFolders := true
-
-	var total int64
-	countStartedAt := time.Now()
-	_ = filepath.WalkDir(session.root, func(path string, entry fs.DirEntry, walkErr error) error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		if walkErr != nil {
-			return nil
-		}
-		if entry.IsDir() {
-			if path != session.root && strings.HasPrefix(entry.Name(), ".") {
-				return filepath.SkipDir
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if isIndexableFile(path) {
-			total++
-		}
-		return nil
-	})
-	log.Printf("[local-library] scan discovery root=%s files=%d elapsed=%s", session.root, total, time.Since(countStartedAt).Round(time.Millisecond))
-	session.mu.Lock()
-	if session.scanID == scanID {
-		session.scan.Phase = "indexing"
-		session.scan.Total = &total
-		session.scan.Current = 0
-		session.scan.ThumbnailCurrent = 0
-		session.scan.ThumbnailTotal = nil
-	}
-	session.mu.Unlock()
-	m.emitSessionEvent(session, "scan_progress")
-
-	indexingStartedAt := time.Now()
-	err := filepath.WalkDir(session.root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if errors.Is(walkErr, fs.ErrPermission) {
-				canPruneFolders = false
-				return nil
-			}
-			return walkErr
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		if entry.IsDir() {
-			if path != session.root && strings.HasPrefix(entry.Name(), ".") {
-				return filepath.SkipDir
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return filepath.SkipDir
-			}
-			if path != session.root {
-				relative, relErr := filepath.Rel(session.root, path)
-				if relErr == nil {
-					folderPaths = append(folderPaths, filepath.ToSlash(relative))
-				}
-			}
-			return nil
-		}
-		if !isIndexableFile(path) {
-			return nil
-		}
-		relative, err := filepath.Rel(session.root, path)
-		if err != nil {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		reconciled, err := m.reconcileKnownFile(
-			ctx,
-			session,
-			filepath.ToSlash(relative),
-			path,
-			info,
-			reconcileSourceScan,
-			token,
-			scanID,
-		)
-		if err != nil {
-			return err
-		}
-		count++
-		changed = changed || reconciled.Created
-		if reconciled.NeedsPreview {
-			thumbnailIDs = append(thumbnailIDs, reconciled.AssetID)
-		}
-		session.mu.Lock()
-		isCurrent := session.scanID == scanID
-		if isCurrent && count%100 == 0 {
-			session.scan.Current = count
-			session.scan.LastPath = filepath.ToSlash(relative)
-		}
-		session.mu.Unlock()
-		if !isCurrent {
-			return context.Canceled
-		}
-		if count%100 == 0 {
-			m.emitSessionEvent(session, "scan_progress")
-		}
-		return nil
-	})
-	if errors.Is(err, context.Canceled) {
-		session.mu.Lock()
-		if session.scanID == scanID && session.scan.State == "running" {
-			session.scan.State = "paused"
-		}
-		session.mu.Unlock()
-		return
-	}
-	log.Printf("[local-library] scan indexing root=%s files=%d elapsed=%s", session.root, count, time.Since(indexingStartedAt).Round(time.Millisecond))
-	if err != nil {
-		probe, probeErr := m.probeLibrary(session.root, session.manifest.LibraryID)
-		if probe != libraryProbeReady {
-			m.handleLibraryProbeFailure(session, probe, probeErr)
-			return
-		}
-		session.mu.Lock()
-		isCurrent := session.scanID == scanID
-		if isCurrent {
-			session.scan.State = "failed"
-			session.scan.Error = err.Error()
-		}
-		session.mu.Unlock()
-		if isCurrent {
-			m.emitSessionEvent(session, "scan_failed")
-		}
-		return
-	}
-	session.mu.Lock()
-	if session.scanID != scanID {
-		session.mu.Unlock()
-		return
-	}
-	probe, probeErr := m.probeLibrary(session.root, session.manifest.LibraryID)
-	if probe != libraryProbeReady {
-		session.mu.Unlock()
-		m.handleLibraryProbeFailure(session, probe, probeErr)
-		return
-	}
-	scanChanged, finishErr := session.store.finishScan(session.ctx, token, folderPaths, canPruneFolders)
-	if finishErr != nil {
-		session.scan.State = "failed"
-		session.scan.Error = finishErr.Error()
-		session.mu.Unlock()
-		m.emitSessionEvent(session, "scan_failed")
-		return
-	}
-	changed = changed || scanChanged
-	session.mu.Unlock()
-	// Warm thumbnails on a background worker instead of blocking scan completion
-	// so the library becomes "open" as soon as indexing finishes. The grid
-	// requests visible thumbnails on demand and the derivative scheduler
-	// promotes those ahead of this background warm-up via its priority queue.
-	pendingThumbnails := thumbnailIDs
-	session.startWorker(func() {
-		for _, assetID := range pendingThumbnails {
-			if sessionClosed(session.done) || session.ctx.Err() != nil {
-				return
-			}
-			m.queueThumbnail(session, assetID)
-		}
-	})
-	log.Printf("[local-library] scan queued thumbnails root=%s count=%d elapsed=%s", session.root, len(pendingThumbnails), time.Since(scanStartedAt).Round(time.Millisecond))
-	now := time.Now().UTC()
-	session.mu.Lock()
-	if session.scanID != scanID {
-		session.mu.Unlock()
-		return
-	}
-	session.state = "open"
-	session.scan.Phase = ""
-	session.scan.State = "completed"
-	session.scan.FinishedAt = &now
-	session.scan.Current = count
-	session.scan.Error = ""
-	session.mu.Unlock()
-	if active, missing, trashed, countErr := session.store.counts(session.ctx); countErr == nil {
-		session.mu.Lock()
-		session.lastActiveCount = active
-		session.lastMissingCount = missing
-		session.lastTrashCount = trashed
-		session.mu.Unlock()
-	}
-	m.emitSessionEvent(session, "scan_completed")
-	if changed {
-		m.scheduleDailyBackup(session)
-	}
-
 }
 
 func (m *Manager) emitEvent(kind string) {
