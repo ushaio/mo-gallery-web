@@ -93,22 +93,9 @@ public/uploads
 !/desktop/storage_plugins/runtime_assets/.gitkeep
 *.bak
 
-# flutter mobile client
+# flutter mobile client — now its own repository (github.com/ushaio/emulsion-app.git),
+# no longer tracked by this repo.
 /flutter/
-!/flutter/
-/flutter/*
-!/flutter/lib/
-!/flutter/lib/**
-!/flutter/test/
-!/flutter/test/**
-!/flutter/pubspec.yaml
-!/flutter/pubspec.lock
-/flutter/.dart_tool/
-/flutter/build/
-/flutter/.flutter-plugins
-/flutter/.flutter-plugins-dependencies
-/flutter/.packages
-/flutter/**/GeneratedPluginRegistrant.*
 
 # workspace package dependency links
 /packages/*/node_modules/
