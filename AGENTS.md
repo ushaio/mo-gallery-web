@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+** 不要编写测试代码 **
+
 ## Progressive Project Context
 - For every new task, read `docs/PROJECT_CONTEXT.md` before scanning implementation files.
 - Use its task-to-file index to identify the smallest relevant code area.
