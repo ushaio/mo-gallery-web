@@ -71,7 +71,6 @@ export function createEditor(content?: string) {
       MergeAdjacentLists,
     ],
     content: content || '<p></p>',
-    immediatelyRender: false,
     editorProps: handlers,
   })
   return { editor, handlers }
@@ -112,9 +111,12 @@ export function textInput(harness: TestEditor, text: string) {
   const { editor } = harness
   const view = editor.view
   const { from, to } = view.state.selection
-  const handled = view.someProp('handleTextInput', fn => fn(view, from, to, text))
+  // ProseMirror hands handlers a `deflt` factory that builds the transaction it
+  // would have applied; mirror that so handlers can defer to default insertion.
+  const deflt = () => view.state.tr.insertText(text, from, to).scrollIntoView()
+  const handled = view.someProp('handleTextInput', fn => fn(view, from, to, text, deflt))
   if (!handled) {
-    view.dispatch(view.state.tr.insertText(text, from, to).scrollIntoView())
+    view.dispatch(deflt())
   }
 }
 
