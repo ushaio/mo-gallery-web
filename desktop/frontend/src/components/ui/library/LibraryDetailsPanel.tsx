@@ -1,4 +1,5 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import type { ComponentType, HTMLAttributes, ReactNode } from 'react'
+import { Fragment } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ChevronDown, Loader2, Maximize2 } from 'lucide-react'
 import { LIBRARY_EMPTY_VALUE } from './format'
@@ -87,13 +88,13 @@ export function LibraryDetailsSection({
   children,
 }: LibraryDetailsSectionProps) {
   return (
-    <section className="border-b px-5 py-1" style={{ borderColor: 'var(--border)' }}>
+    <section className="border-b px-4 py-0.5" style={{ borderColor: 'var(--border)' }}>
       <div className="flex items-center gap-2.5">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex flex-1 items-center gap-2.5 py-2.5 text-left"
+          className="flex flex-1 items-center gap-2.5 py-2 text-left"
         >
           <Icon size={14} strokeWidth={1.8} style={{ color: 'var(--muted-foreground)' }} />
           <span
@@ -118,25 +119,55 @@ export function LibraryDetailsSection({
         </button>
         {action}
       </div>
-      {open && <div className="pb-4">{children}</div>}
+      {open && <div className="pb-3">{children}</div>}
     </section>
   )
 }
 
 /* ─── 元数据行 ─── */
 
-/** 元数据行：左侧小号大写标签，右侧值（`mono` 用于尺寸等等宽数字）。 */
+/**
+ * 元数据行：左侧小号大写标签，右侧值（`mono` 用于尺寸等等宽数字）。
+ *
+ * `card` 改为「标签在上、值在下」的描边卡片，供 `grid grid-cols-2 gap-2` 两列网格
+ * 使用：半栏宽度下横向排布会把日期这类长值截断，堆叠后值能占满整格，视觉上也与
+ * 拍摄参数的卡片网格统一。
+ */
 export function LibraryMetaRow({
   label,
   value,
   mono,
+  card,
 }: {
   label: string
   value: string
   mono?: boolean
+  card?: boolean
 }) {
+  if (card) {
+    return (
+      <div
+        className="min-w-0 rounded-md border px-2.5 py-2"
+        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+      >
+        <p
+          className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
+          style={{ color: 'var(--muted-foreground)' }}
+        >
+          {label}
+        </p>
+        <p
+          className={`mt-1 truncate text-[11px] font-medium ${mono ? 'font-mono tabular-nums' : ''}`}
+          title={value}
+          style={{ color: 'var(--foreground)' }}
+        >
+          {value}
+        </p>
+      </div>
+    )
+  }
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1.5">
+    <div className="flex items-baseline justify-between gap-3 py-1">
       <span
         className="shrink-0 text-[10px] uppercase tracking-wide"
         style={{ color: 'var(--muted-foreground)' }}
@@ -256,6 +287,13 @@ const STATUS_TONE_STYLE: Record<LibraryStatusTone, { color: string, backgroundCo
 }
 
 /**
+ * 胶囊图标：除 lucide 图标外，本地信息栏的上传状态用的是项目自有 SVG
+ * （`CloudIcon` / `CloudOffIcon`），两者都只需要 `size`，所以这里放宽到「接受
+ * size 的组件」，免得本地为了云图标再复制一份胶囊样式。
+ */
+type LibraryStatusIcon = ComponentType<{ size?: number | string, fill?: string }>
+
+/**
  * 状态胶囊：标记工具栏右侧的「已上传 / 未上传 / 已隐藏 / 精选」等状态。
  * 传入 `onClick` 时渲染为可点击按钮（本地已上传可查看云端信息）。
  */
@@ -266,16 +304,17 @@ export function LibraryStatusPill({
   onClick,
   title,
 }: {
-  icon: LucideIcon
+  icon: LibraryStatusIcon
   label: string
   tone?: LibraryStatusTone
   onClick?: () => void
   title?: string
 }) {
   const className = 'ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium'
+  // 只在需要时传 fill：显式传 undefined 会覆盖自有 SVG 自带的 fill="none"。
   const content = (
     <>
-      <Icon size={9} fill={tone === 'warning' ? 'currentColor' : undefined} />
+      <Icon size={9} {...(tone === 'warning' ? { fill: 'currentColor' } : {})} />
       {label}
     </>
   )
@@ -377,10 +416,6 @@ interface LibraryDetailsPreviewProps {
   openLabel?: string
   /** 图像或占位内容。 */
   children: ReactNode
-  /** 左上角角标（云端的成像方式）。 */
-  topLeft?: ReactNode
-  /** 左下角角标（云端的尺寸与体积）。 */
-  bottomLeft?: ReactNode
 }
 
 /**
@@ -393,8 +428,6 @@ export function LibraryDetailsPreview({
   title,
   openLabel,
   children,
-  topLeft,
-  bottomLeft,
 }: LibraryDetailsPreviewProps) {
   return (
     <button
@@ -416,23 +449,49 @@ export function LibraryDetailsPreview({
         </span>
       )}
 
-      {topLeft && (
-        <span
-          className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
-          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-        >
-          {topLeft}
-        </span>
-      )}
-      {bottomLeft && (
-        <span
-          className="absolute bottom-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white"
-          style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
-        >
-          {bottomLeft}
-        </span>
-      )}
     </button>
+  )
+}
+
+/* ─── 顶部合并卡片 ─── */
+
+/** 段间细分隔线：比区块 `border` 更淡，用于同一张卡片内部的视觉分隔。 */
+const HEADER_DIVIDER_COLOR = 'color-mix(in srgb, var(--border) 60%, transparent)'
+
+interface LibraryDetailsHeaderProps {
+  /** 预览图区域，通常是一个 `LibraryDetailsPreview`。 */
+  preview?: ReactNode
+  /** 标题区域（标题、ID、分类/胶卷等标识信息）。 */
+  title?: ReactNode
+  /** 标记工具条区域（精选 / 隐藏 / 评分等标记按钮与状态胶囊）。 */
+  marks?: ReactNode
+}
+
+/**
+ * 信息栏顶部合并卡片：预览图 + 标题 + 标记工具条。
+ *
+ * 两端此前把这三段拆成三个各自带边框的独立区块，边框叠加让信息栏顶部出现三条
+ * 横线、视觉上碎成三块。这里用一次外层 padding 包住三段，段间只留一条更淡的
+ * 细线，读起来是一张连续卡片。缺省的段不渲染，也不会留下多余分隔线。
+ */
+export function LibraryDetailsHeader({ preview, title, marks }: LibraryDetailsHeaderProps) {
+  const segments = ([
+    ['preview', preview],
+    ['title', title],
+    ['marks', marks],
+  ] as const).filter(([, node]) => node)
+
+  return (
+    <div className="border-b px-4 pt-4 pb-3.5" style={{ borderColor: 'var(--border)' }}>
+      {segments.map(([key, node], index) => (
+        <Fragment key={key}>
+          {index > 0 && (
+            <div className="my-3 h-px" style={{ backgroundColor: HEADER_DIVIDER_COLOR }} />
+          )}
+          {node}
+        </Fragment>
+      ))}
+    </div>
   )
 }
 

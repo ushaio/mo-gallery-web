@@ -94,6 +94,7 @@ export interface ZineState {
   addSlot: (spreadId: string, kind: SlotKind) => void
   removeSlot: (spreadId: string, slotId: string) => void
   addSpread: (templateId?: string) => void
+  addPlazaSpread: (spread: Spread) => void
   addCoverSpread: () => void
   moveSpread: (id: string, direction: -1 | 1) => void
   removeSpread: (id: string) => void
@@ -220,6 +221,21 @@ export const useZineStore = create<ZineState>()((set, get) => ({
       const selectedSlotId = state.selectedSlotId === slotId ? null : state.selectedSlotId
 
       return { project: withUpdatedProject(state.project, { spreads }), selectedSlotId, redoStack: [], ...markDirty() }
+    })
+  },
+  addPlazaSpread: (spread) => {
+    if (get().aiTaskId) return
+    get().pushHistory()
+    set((state) => {
+      if (!state.project) return state
+
+      return {
+        project: withUpdatedProject(state.project, { spreads: [...state.project.spreads, spread] }),
+        activeSpreadId: spread.id,
+        selectedSlotId: null,
+        redoStack: [],
+        ...markDirty(),
+      }
     })
   },
   addSpread: (templateId = DEFAULT_TEMPLATE_ID) => {

@@ -434,6 +434,10 @@ export function GetLogs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLogs'](arg1, arg2, arg3);
 }
 
+export function GetModelCatalog() {
+  return window['go']['main']['App']['GetModelCatalog']();
+}
+
 export function GetOverview() {
   return window['go']['main']['App']['GetOverview']();
 }
@@ -586,6 +590,10 @@ export function Login(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Login'](arg1, arg2, arg3, arg4);
 }
 
+export function LookupModelSpecs(arg1) {
+  return window['go']['main']['App']['LookupModelSpecs'](arg1);
+}
+
 export function MoveDesktopPluginPhotos(arg1) {
   return window['go']['main']['App']['MoveDesktopPluginPhotos'](arg1);
 }
@@ -684,6 +692,10 @@ export function RebuildLocalLibraryThumbnails(arg1) {
 
 export function RecheckMissingLocalAssets(arg1) {
   return window['go']['main']['App']['RecheckMissingLocalAssets'](arg1);
+}
+
+export function RefreshModelCatalog() {
+  return window['go']['main']['App']['RefreshModelCatalog']();
 }
 
 export function RemoveAgentMCPServer(arg1) {

@@ -49,6 +49,9 @@ type AIProviderConfig struct {
 	ToolModels             []string       `json:"tool_models,omitempty"`
 	StructuredOutputModels []string       `json:"structured_output_models,omitempty"`
 	ContextWindows         map[string]int `json:"context_windows,omitempty"`
+	// CatalogProvider 记录该模型源对应的 models.dev provider id，
+	// 供设置页自动填入模型能力与上下文窗口时优先按此源匹配。为空表示按 base_url 推断。
+	CatalogProvider string `json:"catalog_provider,omitempty"`
 }
 
 // Normalize 迁移旧版单源配置并补齐默认值
@@ -71,6 +74,7 @@ func (c *AIConfig) Normalize() {
 		}
 	}
 	for providerID, provider := range c.Providers {
+		provider.CatalogProvider = strings.TrimSpace(provider.CatalogProvider)
 		provider.VisionModels = normalizeModelIDs(provider.VisionModels)
 		provider.ToolModels = normalizeModelIDs(provider.ToolModels)
 		provider.StructuredOutputModels = normalizeModelIDs(provider.StructuredOutputModels)
@@ -109,6 +113,8 @@ func (c AIConfig) NormalizedCopy() AIConfig {
 	clone := c
 	clone.Providers = make(map[string]AIProviderConfig, len(c.Providers))
 	for providerID, provider := range c.Providers {
+		// provider 是按值复制的，CatalogProvider 等标量字段随之独立；
+		// 下面只需为共享底层数组/哈希表的 slice 与 map 做深拷贝。
 		provider.Models = append([]string(nil), provider.Models...)
 		provider.ImageModels = append([]string(nil), provider.ImageModels...)
 		provider.VisionModels = append([]string(nil), provider.VisionModels...)

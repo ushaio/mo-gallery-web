@@ -364,6 +364,10 @@ func (s *derivativeScheduler) cancelPending() {
 	}
 }
 
+// derivativeCacheKeyLength is the hex length of the digest derivativeCacheKey
+// returns (16 bytes of SHA-256).
+const derivativeCacheKeyLength = 32
+
 func derivativeCacheKey(id AssetID, modifiedAtNS, byteSize int64, variant derivativeVariant) string {
 	payload := fmt.Sprintf("%s\x00%d\x00%d\x00%s\x00%s\x00%s", id, modifiedAtNS, byteSize, derivativeContentVersion, variant, derivativeDecoderVersion)
 	sum := sha256.Sum256([]byte(payload))
@@ -390,6 +394,38 @@ func derivativeFileName(id AssetID, cacheKey string) string {
 
 func derivativePath(root string, id AssetID, variant derivativeVariant, cacheKey string) string {
 	return internalPath(root, derivativeDirectory(variant), derivativeFileName(id, cacheKey))
+}
+
+// parseDerivativeFileName splits "<assetID>-<cacheKey>.jpg" back into its parts.
+// Asset IDs are UUIDs, so they contain hyphens themselves: the separator is the
+// LAST hyphen, and the cache key is always a fixed-length hex digest. Splitting
+// on the first hyphen instead yields a truncated ID that never matches a
+// recorded cache key, which made the orphan sweep delete every valid file.
+// Legacy names without a cache key report found=false and stay sweepable.
+func parseDerivativeFileName(name string) (AssetID, string, bool) {
+	trimmed, ok := strings.CutSuffix(name, ".jpg")
+	if !ok {
+		return "", "", false
+	}
+	separator := strings.LastIndexByte(trimmed, '-')
+	if separator <= 0 {
+		return "", "", false
+	}
+	id, cacheKey := trimmed[:separator], trimmed[separator+1:]
+	if len(cacheKey) != derivativeCacheKeyLength || !isHexString(cacheKey) {
+		return "", "", false
+	}
+	return AssetID(id), cacheKey, true
+}
+
+func isHexString(value string) bool {
+	for index := 0; index < len(value); index++ {
+		c := value[index]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) queueThumbnail(session *librarySession, id AssetID) {
@@ -680,10 +716,9 @@ func (m *Manager) sweepOrphanDerivativeFiles(session *librarySession) {
 			if infoErr != nil || info.ModTime().After(cutoff) {
 				continue
 			}
-			name := strings.TrimSuffix(entry.Name(), ".jpg")
-			id, cacheKey, found := strings.Cut(name, "-")
+			id, cacheKey, found := parseDerivativeFileName(entry.Name())
 			if found {
-				if expected, ok := current[AssetID(id)]; ok && expected == cacheKey {
+				if expected, ok := current[id]; ok && expected == cacheKey {
 					continue
 				}
 			}

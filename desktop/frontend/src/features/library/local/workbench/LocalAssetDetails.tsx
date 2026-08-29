@@ -10,7 +10,6 @@ import {
   ImageOff,
   Info,
   Loader2,
-  Maximize2,
   Pencil,
   Plus,
   RefreshCw,
@@ -20,6 +19,20 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import {
+  LibraryColorStrip,
+  LibraryDetailsAction,
+  LibraryDetailsEmpty,
+  LibraryDetailsHeader,
+  LibraryDetailsPanel,
+  LibraryDetailsPreview,
+  LibraryDetailsSection,
+  LibraryFieldBlock,
+  LibraryMetaRow,
+  LibraryMonoValue,
+  LibrarySavingHint,
+  LibraryStatusPill,
+} from "@/components/ui/library";
 import { CloudIcon, CloudOffIcon } from "@/components/icons/CloudIcons";
 import { isPhotoAsset } from "../types";
 import type { LocalAsset, LocalCollection, LocalTag } from "../types";
@@ -62,12 +75,6 @@ import {
   formatFocalLength,
   TAG_PREVIEW_COUNT,
 } from "./details/format";
-import {
-  ActionButton,
-  EmptyState,
-  MetaRow,
-  Section,
-} from "./details/parts";
 import { CloudInfoDialog } from "./details/CloudInfoDialog";
 
 /* ─── 主组件 ─── */
@@ -109,6 +116,8 @@ function LocalAssetDetailsContent({
   const [tagQuery, setTagQuery] = useState("");
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagsExpanded, setTagsExpanded] = useState(true);
+  /* 标签录入与云端分类同构：默认收起，点加号才展开输入框 */
+  const [addingTag, setAddingTag] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(true);
   const [shootingOpen, setShootingOpen] = useState(true);
   const [fileInfoOpen, setFileInfoOpen] = useState(true);
@@ -220,7 +229,15 @@ function LocalAssetDetailsContent({
     await onSetCollections(asset.id, nextIds);
   };
 
-  if (!asset) return <EmptyState copy={copy} />;
+  if (!asset) {
+    return (
+      <LibraryDetailsEmpty
+        icon={ImageOff}
+        message={copy.noSelection}
+        data-local-library-guide="details"
+      />
+    );
+  }
 
   const previewPending =
     asset.previewStatus === "pending" || asset.previewStatus === "generating";
@@ -255,338 +272,496 @@ function LocalAssetDetailsContent({
   const hiddenTagCount = assignedTags.length - visibleTags.length;
   const hasCustomTitle = Boolean(title) && title !== asset.fileName;
 
-  return (
-    <aside
-      className="custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex"
-      style={{ borderColor: "var(--border)" }}
-      data-local-library-guide="details"
-    >
-      {/* ── 预览图 ── */}
-      <div className="px-4 pt-4">
-        <button
-          type="button"
-          onClick={() => onPreview(asset)}
-          disabled={previewPending || missing || trashed}
-          className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border disabled:cursor-not-allowed"
-          style={{
-            borderColor: "var(--border)",
-            backgroundColor: "var(--muted)",
-          }}
-        >
-          {asset.previewStatus === "ready" && isPhoto ? (
-            <img
-              src={asset.previewUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : previewPending && isPhoto ? (
-            <div
-              className="flex flex-col items-center gap-2.5"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              <Loader2 size={22} className="animate-spin" />
-              <span className="text-[10px]">{copy.generatingPreview}</span>
-            </div>
-          ) : isPhoto ? (
-            <ImageOff
-              size={26}
-              strokeWidth={1.2}
-              style={{ color: "var(--muted-foreground)" }}
-            />
-          ) : (
-            <span
-              className="flex flex-col items-center gap-2"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              <FileText size={28} strokeWidth={1.2} />
-              <span className="text-[10px] font-bold uppercase tracking-widest">
-                {asset.format}
-              </span>
-            </span>
-          )}
-
-          
-        </button>
-
-        {/* 异常状态提示（仅异常时出现） */}
-        {missing && (
+  /* ── 合并卡片第一段：预览图 + 异常状态提示 ── */
+  const previewSegment = (
+    <>
+      <LibraryDetailsPreview
+        onOpen={() => onPreview(asset)}
+        disabled={previewPending || missing || trashed}
+        title={copy.preview}
+      >
+        {asset.previewStatus === "ready" && isPhoto ? (
+          <img
+            src={asset.previewUrl}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : previewPending && isPhoto ? (
           <div
-            className="mt-2.5 flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[10px] leading-relaxed"
-            style={{
-              borderColor: "color-mix(in srgb, #F59E0B 30%, transparent)",
-              backgroundColor: "color-mix(in srgb, #F59E0B 8%, transparent)",
-              color: "#B45309",
-            }}
+            className="flex flex-col items-center gap-2.5"
+            style={{ color: "var(--muted-foreground)" }}
           >
-            <Info size={11} className="mt-0.5 shrink-0" />
-            <span>{copy.missingHint}</span>
+            <Loader2 size={22} className="animate-spin" />
+            <span className="text-[10px]">{copy.generatingPreview}</span>
           </div>
-        )}
-        {trashed && asset.trashEntryKind === "folder" && (
-          <div
-            className="mt-2.5 rounded-lg border px-3 py-2.5 text-[10px] leading-relaxed"
-            style={{
-              borderColor: "color-mix(in srgb, #F59E0B 30%, transparent)",
-              backgroundColor: "color-mix(in srgb, #F59E0B 8%, transparent)",
-              color: "#B45309",
-            }}
-          >
-            {copy.folderBatchHint}
-          </div>
-        )}
-        {!missing && unavailable && isPhoto && (
-          <div
-            className="mt-2.5 space-y-1 rounded-lg px-3 py-2.5 text-[10px] leading-relaxed"
-            style={{
-              backgroundColor: "var(--secondary)",
-              color: "var(--muted-foreground)",
-            }}
-          >
-            <p
-              className="flex items-center gap-1.5 font-medium"
-              style={{ color: "var(--foreground)" }}
-            >
-              <EyeOff size={11} />
-              {copy.unavailablePreview}
-            </p>
-            {asset.previewError && (
-              <p className="line-clamp-3 break-words pl-5">
-                {copy.previewFailureReason}: {asset.previewError}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── 标题：原位编辑 ── */}
-      <div className="px-5 pb-3 pt-4">
-        {editingTitle ? (
-          <input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={asset.fileName}
-            className="w-full rounded-md border bg-input px-2.5 py-1.5 text-sm font-semibold outline-none focus:ring-1"
-            style={{
-              borderColor: "var(--primary)",
-              color: "var(--foreground)",
-            }}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitTitle();
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setTitle(asset.displayTitle || "");
-                setEditingTitle(false);
-              }
-            }}
+        ) : isPhoto ? (
+          <ImageOff
+            size={26}
+            strokeWidth={1.2}
+            style={{ color: "var(--muted-foreground)" }}
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => {
-              // 无自定义标题时，把原文件名带进编辑框，而不是从空白开始
-              setTitle((current) => current || asset.fileName);
-              setEditingTitle(true);
-            }}
-            title={title ? `${copy.titleField}: ${title}` : copy.titleField}
-            className="group flex w-full items-start gap-1.5 rounded text-left"
-          >
-            <h2
-              className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug"
-              style={{ color: "var(--foreground)" }}
-            >
-              {title || asset.fileName}
-            </h2>
-            <Pencil
-              size={11}
-              className="mt-1 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-              style={{ color: "var(--muted-foreground)" }}
-            />
-          </button>
-        )}
-        {/* 文件名副标题：仅当自定义标题存在且不同于文件名时显示 */}
-        {hasCustomTitle && !editingTitle && (
-          <p
-            className="mt-1 truncate text-[10px]"
+          <span
+            className="flex flex-col items-center gap-2"
             style={{ color: "var(--muted-foreground)" }}
-            title={asset.fileName}
           >
-            {asset.fileName}
+            <FileText size={28} strokeWidth={1.2} />
+            <span className="text-[10px] font-bold uppercase tracking-widest">
+              {asset.format}
+            </span>
+          </span>
+        )}
+      </LibraryDetailsPreview>
+
+      {/* 异常状态提示（仅异常时出现） */}
+      {missing && (
+        <div
+          className="mt-2.5 flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[10px] leading-relaxed"
+          style={{
+            borderColor: "color-mix(in srgb, #F59E0B 30%, transparent)",
+            backgroundColor: "color-mix(in srgb, #F59E0B 8%, transparent)",
+            color: "#B45309",
+          }}
+        >
+          <Info size={11} className="mt-0.5 shrink-0" />
+          <span>{copy.missingHint}</span>
+        </div>
+      )}
+      {trashed && asset.trashEntryKind === "folder" && (
+        <div
+          className="mt-2.5 rounded-lg border px-3 py-2.5 text-[10px] leading-relaxed"
+          style={{
+            borderColor: "color-mix(in srgb, #F59E0B 30%, transparent)",
+            backgroundColor: "color-mix(in srgb, #F59E0B 8%, transparent)",
+            color: "#B45309",
+          }}
+        >
+          {copy.folderBatchHint}
+        </div>
+      )}
+      {!missing && unavailable && isPhoto && (
+        <div
+          className="mt-2.5 space-y-1 rounded-lg px-3 py-2.5 text-[10px] leading-relaxed"
+          style={{
+            backgroundColor: "var(--secondary)",
+            color: "var(--muted-foreground)",
+          }}
+        >
+          <p
+            className="flex items-center gap-1.5 font-medium"
+            style={{ color: "var(--foreground)" }}
+          >
+            <EyeOff size={11} />
+            {copy.unavailablePreview}
           </p>
+          {asset.previewError && (
+            <p className="line-clamp-3 break-words pl-5">
+              {copy.previewFailureReason}: {asset.previewError}
+            </p>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  /* ── 合并卡片第二段：标题原位编辑 ── */
+  const titleSegment = (
+    <div>
+      {editingTitle ? (
+        <input
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={asset.fileName}
+          className="w-full rounded-md border bg-input px-2.5 py-1.5 text-sm font-semibold outline-none focus:ring-1"
+          style={{
+            borderColor: "var(--primary)",
+            color: "var(--foreground)",
+          }}
+          onBlur={commitTitle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitTitle();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setTitle(asset.displayTitle || "");
+              setEditingTitle(false);
+            }
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            // 无自定义标题时，把原文件名带进编辑框，而不是从空白开始
+            setTitle((current) => current || asset.fileName);
+            setEditingTitle(true);
+          }}
+          title={title ? `${copy.titleField}: ${title}` : copy.titleField}
+          className="group flex w-full items-start gap-1.5 rounded text-left"
+        >
+          <h2
+            className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug"
+            style={{ color: "var(--foreground)" }}
+          >
+            {title || asset.fileName}
+          </h2>
+          <Pencil
+            size={11}
+            className="mt-1 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            style={{ color: "var(--muted-foreground)" }}
+          />
+        </button>
+      )}
+      {/* 文件名副标题：仅当自定义标题存在且不同于文件名时显示 */}
+      {hasCustomTitle && !editingTitle && (
+        <p
+          className="mt-1 truncate text-[10px]"
+          style={{ color: "var(--muted-foreground)" }}
+          title={asset.fileName}
+        >
+          {asset.fileName}
+        </p>
+      )}
+
+      {/* ── 标签：与云端分类同一套交互 ──
+          有标签显示 chip，无标签只留一个加号；点加号才展开输入框与自动补全。
+          放在标题下方而不是折叠区块里，让「这张照片是什么」一眼看完。 */}
+      <div className="relative mt-2">
+        {addingTag ? (
+          <div
+            className="flex items-center rounded-lg border transition-colors focus-within:border-primary"
+            style={{ borderColor: "var(--primary)" }}
+          >
+            <input
+              ref={tagInputRef}
+              autoFocus
+              value={tagQuery}
+              disabled={organizationBusy}
+              onFocus={() => setTagMenuOpen(true)}
+              onChange={(e) => {
+                setTagQuery(e.target.value);
+                setTagMenuOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addTag();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setTagQuery("");
+                  setTagMenuOpen(false);
+                  setAddingTag(false);
+                }
+              }}
+              placeholder={copy.tagInputPlaceholder}
+              className="h-7 min-w-0 flex-1 bg-transparent px-2.5 text-[11px] outline-none"
+              style={{ color: "var(--foreground)" }}
+            />
+            <button
+              type="button"
+              disabled={organizationBusy || !tagQuery.trim()}
+              title={copy.add}
+              aria-label={copy.add}
+              onClick={() => void addTag()}
+              className="flex size-7 items-center justify-center transition-colors hover:bg-secondary disabled:opacity-40"
+              style={{ color: "var(--primary)" }}
+            >
+              <Check size={12} />
+            </button>
+            <button
+              type="button"
+              title={copy.cancelAction}
+              aria-label={copy.cancelAction}
+              onClick={() => {
+                setTagQuery("");
+                setTagMenuOpen(false);
+                setAddingTag(false);
+              }}
+              className="flex size-7 items-center justify-center rounded-r-lg transition-colors hover:bg-secondary"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {visibleTags.map((tag) => (
+              <span
+                key={tag.id}
+                className="group/chip inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: "var(--secondary)",
+                }}
+              >
+                <span
+                  className="size-1.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor: tag.color || "var(--muted-foreground)",
+                  }}
+                />
+                <span className="truncate">{tag.name}</span>
+                <button
+                  type="button"
+                  disabled={organizationBusy}
+                  aria-label={`${copy.remove} ${tag.name}`}
+                  onClick={() =>
+                    void updateTags(
+                      assignedTagIds.filter((id) => id !== tag.id),
+                    )
+                  }
+                  className="flex size-3.5 shrink-0 items-center justify-center rounded-full opacity-0 transition-opacity hover:bg-destructive/15 group-hover/chip:opacity-100 disabled:opacity-50"
+                  style={{ color: "var(--destructive)" }}
+                >
+                  <X size={8} />
+                </button>
+              </span>
+            ))}
+            {hiddenTagCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setTagsExpanded(!tagsExpanded)}
+                className="rounded-full border px-2 py-0.5 text-[10px] transition-colors hover:bg-secondary"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--muted-foreground)",
+                }}
+              >
+                {tagsExpanded ? copy.collapse : `+${hiddenTagCount}`}
+              </button>
+            )}
+            {/* 无标签时这就是唯一可见的控件，与云端无分类时的加号一致 */}
+            <button
+              type="button"
+              disabled={organizationBusy}
+              title={copy.tags}
+              aria-label={copy.tags}
+              onClick={() => setAddingTag(true)}
+              className="flex size-5 items-center justify-center rounded-full border transition-colors hover:bg-secondary disabled:opacity-40"
+              style={{
+                borderColor: "var(--border)",
+                color: "var(--muted-foreground)",
+              }}
+            >
+              <Plus size={10} />
+            </button>
+          </div>
+        )}
+
+        {addingTag && tagMenuOpen && (matchingTags.length > 0 || tagQuery.trim()) && (
+          <div
+            className="absolute inset-x-0 top-full z-20 mt-1 max-h-44 overflow-y-auto rounded-lg border p-1 shadow-lg"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: "var(--popover)",
+            }}
+          >
+            {matchingTags.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void addTag(tag)}
+                className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[11px] transition-colors hover:bg-secondary"
+              >
+                <span
+                  className="size-2 rounded-full"
+                  style={{
+                    backgroundColor: tag.color || "var(--muted-foreground)",
+                  }}
+                />
+                <span className="truncate">{tag.name}</span>
+              </button>
+            ))}
+            {tagQuery.trim() &&
+              !tags.some(
+                (tag) =>
+                  tag.name.toLocaleLowerCase() ===
+                  tagQuery.trim().toLocaleLowerCase(),
+              ) && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void addTag()}
+                  className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors hover:bg-secondary"
+                  style={{ color: "var(--primary)" }}
+                >
+                  <Plus size={11} />
+                  {copy.createTagFromInput.replace("{name}", tagQuery.trim())}
+                </button>
+              )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  /* ── 合并卡片第三段：收藏 / 评分 / 颜色（都是“给照片打标记”，聚在一起） ── */
+  const marksSegment = (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-1">
+        {/* 收藏 */}
+        <button
+          type="button"
+          title={favorite ? copy.unmarkFavorite : copy.markFavorite}
+          aria-label={favorite ? copy.unmarkFavorite : copy.markFavorite}
+          aria-pressed={favorite}
+          onClick={() => {
+            const next = !favorite;
+            setFavorite(next);
+            void savePatch({ isFavorite: next });
+          }}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
+          style={{
+            backgroundColor: favorite
+              ? "color-mix(in srgb, var(--primary) 12%, transparent)"
+              : "transparent",
+            color: favorite ? "var(--primary)" : "var(--muted-foreground)",
+          }}
+          onMouseEnter={(e) => {
+            if (!favorite)
+              e.currentTarget.style.backgroundColor = "var(--secondary)";
+          }}
+          onMouseLeave={(e) => {
+            if (!favorite)
+              e.currentTarget.style.backgroundColor = "transparent";
+          }}
+        >
+          <Heart
+            size={15}
+            fill={favorite ? "currentColor" : "none"}
+            strokeWidth={favorite ? 2 : 1.6}
+          />
+        </button>
+
+        <span
+          className="mx-1 h-5 w-px shrink-0"
+          style={{ backgroundColor: "var(--border)" }}
+        />
+
+        {/* 评分：点击同星级 = 清除，无需额外按钮 */}
+        {isPhoto ? (
+          <div
+            className="flex items-center gap-0.5"
+            role="group"
+            aria-label={copy.rating}
+          >
+            {[1, 2, 3, 4, 5].map((value) => {
+              const isActive = value <= (hoverRating || rating);
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  title={`${copy.rating}: ${value}`}
+                  aria-label={`${copy.rating}: ${value}`}
+                  onMouseEnter={() => setHoverRating(value)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  onClick={() => {
+                    const next = rating === value ? 0 : value;
+                    setRating(next);
+                    void savePatch({ rating: next });
+                  }}
+                  className="rounded p-0.5 transition-transform hover:scale-110 active:scale-95"
+                >
+                  <Star
+                    size={15}
+                    fill={isActive ? "currentColor" : "none"}
+                    strokeWidth={isActive ? 2 : 1.6}
+                    style={{
+                      color: isActive ? "#F59E0B" : "var(--muted-foreground)",
+                      transition: "all 0.12s ease",
+                    }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <span className="flex-1" />
+        )}
+
+        {/* 上传状态（已上传可点击查看云端信息；未上传灰色不可点击） */}
+        {uploaded ? (
+          <LibraryStatusPill
+            icon={CloudIcon}
+            label={copy.filterUploaded}
+            tone="success"
+            onClick={() => setCloudInfoOpen(true)}
+          />
+        ) : (
+          <LibraryStatusPill
+            icon={CloudOffIcon}
+            label={copy.filterNotUploaded}
+          />
         )}
       </div>
 
-      {/* ── 标记工具栏：收藏 / 评分 / 颜色（都是“给照片打标记”，聚在一起） ── */}
-      <div
-        className="space-y-2.5 border-y px-5 py-3.5"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <div className="flex items-center gap-1">
-          {/* 收藏 */}
-          <button
-            type="button"
-            title={favorite ? copy.unmarkFavorite : copy.markFavorite}
-            aria-label={favorite ? copy.unmarkFavorite : copy.markFavorite}
-            aria-pressed={favorite}
-            onClick={() => {
-              const next = !favorite;
-              setFavorite(next);
-              void savePatch({ isFavorite: next });
-            }}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
-            style={{
-              backgroundColor: favorite
-                ? "color-mix(in srgb, var(--primary) 12%, transparent)"
-                : "transparent",
-              color: favorite ? "var(--primary)" : "var(--muted-foreground)",
-            }}
-            onMouseEnter={(e) => {
-              if (!favorite)
-                e.currentTarget.style.backgroundColor = "var(--secondary)";
-            }}
-            onMouseLeave={(e) => {
-              if (!favorite)
-                e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <Heart
-              size={15}
-              fill={favorite ? "currentColor" : "none"}
-              strokeWidth={favorite ? 2 : 1.6}
-            />
-          </button>
-
-          <span
-            className="mx-1 h-5 w-px shrink-0"
-            style={{ backgroundColor: "var(--border)" }}
-          />
-
-          {/* 评分：点击同星级 = 清除，无需额外按钮 */}
-          {isPhoto ? (
-            <div
-              className="flex items-center gap-0.5"
-              role="group"
-              aria-label={copy.rating}
-            >
-              {[1, 2, 3, 4, 5].map((value) => {
-                const isActive = value <= (hoverRating || rating);
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    title={`${copy.rating}: ${value}`}
-                    aria-label={`${copy.rating}: ${value}`}
-                    onMouseEnter={() => setHoverRating(value)}
-                    onMouseLeave={() => setHoverRating(0)}
-                    onClick={() => {
-                      const next = rating === value ? 0 : value;
-                      setRating(next);
-                      void savePatch({ rating: next });
-                    }}
-                    className="rounded p-0.5 transition-transform hover:scale-110 active:scale-95"
-                  >
-                    <Star
-                      size={15}
-                      fill={isActive ? "currentColor" : "none"}
-                      strokeWidth={isActive ? 2 : 1.6}
-                      style={{
-                        color: isActive ? "#F59E0B" : "var(--muted-foreground)",
-                        transition: "all 0.12s ease",
-                      }}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <span className="flex-1" />
-          )}
-
-          {/* 上传状态（已上传可点击查看云端信息；未上传灰色不可点击） */}
-          {uploaded ? (
-            <button
-              type="button"
-              onClick={() => setCloudInfoOpen(true)}
-              title={copy.filterUploaded}
-              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-opacity hover:opacity-80"
-              style={{
-                color: "#16A34A",
-                backgroundColor: "color-mix(in srgb, #22C55E 10%, transparent)",
-              }}
-            >
-              <CloudIcon size={9} />
-              {copy.filterUploaded}
-            </button>
-          ) : (
+      {/* 颜色标记：点击当前选中色 = 取消，无需额外按钮 */}
+      {isPhoto && (
+        <div
+          className="flex items-center gap-1.5"
+          role="group"
+          aria-label={copy.color}
+        >
+          {COLOR_SWATCHES.map((swatch) => {
+            const selected = color === swatch.value;
+            const name = swatch.nameKey ? copy[swatch.nameKey] : swatch.label;
+            return (
+              <button
+                key={swatch.value}
+                type="button"
+                title={`${copy.color}: ${name}${selected ? `（${copy.noColor}）` : ""}`}
+                aria-label={`${copy.color}: ${name}`}
+                aria-pressed={selected}
+                onClick={() => {
+                  const next = selected ? "" : swatch.value;
+                  setColor(next);
+                  void savePatch({ colorLabel: next });
+                }}
+                className="size-5 rounded-full transition-all hover:scale-110 active:scale-95"
+                style={{
+                  backgroundColor: swatch.bg,
+                  boxShadow: selected
+                    ? "0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground)"
+                    : "0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent)",
+                }}
+              />
+            );
+          })}
+          {color && (
             <span
-              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium"
-              style={{
-                color: "var(--muted-foreground)",
-                backgroundColor: "var(--secondary)",
-              }}
+              className="ml-1 text-[9px] uppercase tracking-wide"
+              style={{ color: "var(--muted-foreground)" }}
             >
-              <CloudOffIcon size={9} />
-              {copy.filterNotUploaded}
+              {COLOR_SWATCHES.find((s) => s.value === color)?.nameKey
+                ? copy[
+                    COLOR_SWATCHES.find((s) => s.value === color)!
+                      .nameKey as "red"
+                  ]
+                : copy.color}
             </span>
           )}
         </div>
+      )}
+    </div>
+  );
 
-        {/* 颜色标记：点击当前选中色 = 取消，无需额外按钮 */}
-        {isPhoto && (
-          <div
-            className="flex items-center gap-1.5"
-            role="group"
-            aria-label={copy.color}
-          >
-            {COLOR_SWATCHES.map((swatch) => {
-              const selected = color === swatch.value;
-              const name = swatch.nameKey ? copy[swatch.nameKey] : swatch.label;
-              return (
-                <button
-                  key={swatch.value}
-                  type="button"
-                  title={`${copy.color}: ${name}${selected ? `（${copy.noColor}）` : ""}`}
-                  aria-label={`${copy.color}: ${name}`}
-                  aria-pressed={selected}
-                  onClick={() => {
-                    const next = selected ? "" : swatch.value;
-                    setColor(next);
-                    void savePatch({ colorLabel: next });
-                  }}
-                  className="size-5 rounded-full transition-all hover:scale-110 active:scale-95"
-                  style={{
-                    backgroundColor: swatch.bg,
-                    boxShadow: selected
-                      ? "0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground)"
-                      : "0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent)",
-                  }}
-                />
-              );
-            })}
-            {color && (
-              <span
-                className="ml-1 text-[9px] uppercase tracking-wide"
-                style={{ color: "var(--muted-foreground)" }}
-              >
-                {COLOR_SWATCHES.find((s) => s.value === color)?.nameKey
-                  ? copy[
-                      COLOR_SWATCHES.find((s) => s.value === color)!
-                        .nameKey as "red"
-                    ]
-                  : copy.color}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+  return (
+    <LibraryDetailsPanel data-local-library-guide="details">
+      {/* ── 顶部合并卡片：预览图 + 标题 + 标记工具条 ── */}
+      <LibraryDetailsHeader
+        preview={previewSegment}
+        title={titleSegment}
+        marks={marksSegment}
+      />
 
       {/* ── 备注：原位编辑 ── */}
       <div
-        className="border-b px-5 py-3.5"
+        className="border-b px-4 py-3.5"
         style={{ borderColor: "var(--border)" }}
         ref={notesEditorRef}
       >
@@ -667,183 +842,20 @@ function LocalAssetDetailsContent({
             )}
           </button>
         )}
-        {saving && !editingNotes && (
-          <p
-            className="mt-1.5 flex items-center gap-1 text-[9px]"
-            style={{ color: "var(--muted-foreground)" }}
-          >
-            <Loader2 size={9} className="animate-spin" />
-            {copy.autoSaving}
-          </p>
-        )}
+        {saving && !editingNotes && <LibrarySavingHint label={copy.autoSaving} />}
       </div>
 
       {/* ── 标签与集合 ── */}
-      <Section
-        label={`${copy.tags} / ${copy.collections}`}
+      <LibraryDetailsSection
+        label={copy.collections}
         icon={TagIcon}
         open={organizationOpen}
         onToggle={() => setOrganizationOpen((v) => !v)}
-        count={assignedTags.length + asset.collections.length}
+        count={asset.collections.length}
       >
         <div className="space-y-4">
-          {/* 已打标签 */}
+          {/* 集合勾选列表（标签已移到标题下方，与云端分类同构） */}
           <div>
-            {assignedTags.length === 0 ? (
-              <p
-                className="text-[10px] italic"
-                style={{ color: "var(--muted-foreground)" }}
-              >
-                —
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {visibleTags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className="group/chip inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
-                    style={{
-                      borderColor: "var(--border)",
-                      backgroundColor: "var(--secondary)",
-                    }}
-                  >
-                    <span
-                      className="size-1.5 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor: tag.color || "var(--muted-foreground)",
-                      }}
-                    />
-                    <span className="truncate">{tag.name}</span>
-                    <button
-                      type="button"
-                      disabled={organizationBusy}
-                      aria-label={`${copy.remove} ${tag.name}`}
-                      onClick={() =>
-                        void updateTags(
-                          assignedTagIds.filter((id) => id !== tag.id),
-                        )
-                      }
-                      className="flex size-3.5 shrink-0 items-center justify-center rounded-full opacity-0 transition-opacity hover:bg-destructive/15 group-hover/chip:opacity-100 disabled:opacity-50"
-                      style={{ color: "var(--destructive)" }}
-                    >
-                      <X size={8} />
-                    </button>
-                  </span>
-                ))}
-                {hiddenTagCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTagsExpanded(!tagsExpanded)}
-                    className="rounded-full border px-2 py-0.5 text-[10px] transition-colors hover:bg-secondary"
-                    style={{
-                      borderColor: "var(--border)",
-                      color: "var(--muted-foreground)",
-                    }}
-                  >
-                    {tagsExpanded ? copy.collapse : `+${hiddenTagCount}`}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 添加标签输入框 */}
-          <div className="relative">
-            <div
-              className="flex items-center rounded-lg border transition-colors focus-within:border-primary"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <input
-                ref={tagInputRef}
-                value={tagQuery}
-                disabled={organizationBusy}
-                onFocus={() => setTagMenuOpen(true)}
-                onBlur={() =>
-                  window.setTimeout(() => setTagMenuOpen(false), 150)
-                }
-                onChange={(e) => {
-                  setTagQuery(e.target.value);
-                  setTagMenuOpen(true);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void addTag();
-                  }
-                }}
-                placeholder={copy.tagInputPlaceholder}
-                className="h-8 min-w-0 flex-1 bg-transparent px-3 text-[11px] outline-none"
-                style={{ color: "var(--foreground)" }}
-              />
-              <button
-                type="button"
-                disabled={organizationBusy || !tagQuery.trim()}
-                title={copy.add}
-                aria-label={copy.add}
-                onClick={() => void addTag()}
-                className="flex size-8 items-center justify-center rounded-r-lg transition-colors hover:bg-secondary disabled:opacity-40"
-                style={{ color: "var(--muted-foreground)" }}
-              >
-                <Plus size={13} />
-              </button>
-            </div>
-            {tagMenuOpen && (matchingTags.length > 0 || tagQuery.trim()) && (
-              <div
-                className="absolute inset-x-0 top-full z-20 mt-1 max-h-44 overflow-y-auto rounded-lg border p-1 shadow-lg"
-                style={{
-                  borderColor: "var(--border)",
-                  backgroundColor: "var(--popover)",
-                }}
-              >
-                {matchingTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => void addTag(tag)}
-                    className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[11px] transition-colors hover:bg-secondary"
-                  >
-                    <span
-                      className="size-2 rounded-full"
-                      style={{
-                        backgroundColor: tag.color || "var(--muted-foreground)",
-                      }}
-                    />
-                    <span className="truncate">{tag.name}</span>
-                  </button>
-                ))}
-                {tagQuery.trim() &&
-                  !tags.some(
-                    (tag) =>
-                      tag.name.toLocaleLowerCase() ===
-                      tagQuery.trim().toLocaleLowerCase(),
-                  ) && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => void addTag()}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors hover:bg-secondary"
-                      style={{ color: "var(--primary)" }}
-                    >
-                      <Plus size={11} />
-                      {copy.createTagFromInput.replace(
-                        "{name}",
-                        tagQuery.trim(),
-                      )}
-                    </button>
-                  )}
-              </div>
-            )}
-          </div>
-
-          {/* 集合勾选列表 */}
-          <div>
-            <p
-              className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {copy.collections}
-            </p>
             {collections.length === 0 ? (
               <p
                 className="text-[10px] italic"
@@ -904,11 +916,11 @@ function LocalAssetDetailsContent({
             )}
           </div>
         </div>
-      </Section>
+      </LibraryDetailsSection>
 
       {/* ── 拍摄信息（有 EXIF 才显示） ── */}
       {hasExif && (
-        <Section
+        <LibraryDetailsSection
           label={copy.filterCamera}
           icon={Camera}
           open={shootingOpen}
@@ -948,125 +960,90 @@ function LocalAssetDetailsContent({
               </div>
             )}
             {cameraParameters.map((parameter) => (
-              <div
+              <LibraryMetaRow
                 key={`${parameter.label}-${parameter.value}`}
-                className="min-w-0 rounded-md border px-2.5 py-2"
-                style={{
-                  borderColor: "var(--border)",
-                  backgroundColor: "var(--background)",
-                }}
-              >
-                <p
-                  className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  {parameter.label}
-                </p>
-                <p
-                  className="mt-1 truncate font-mono text-[11px] font-medium tabular-nums"
-                  title={parameter.value}
-                  style={{ color: "var(--foreground)" }}
-                >
-                  {parameter.value}
-                </p>
-              </div>
+                card
+                mono
+                label={parameter.label}
+                value={parameter.value}
+              />
             ))}
           </div>
-        </Section>
+        </LibraryDetailsSection>
       )}
 
       {/* ── 文件信息（默认展开） ── */}
-      <Section
+      <LibraryDetailsSection
         label={copy.details}
         icon={FileText}
         open={fileInfoOpen}
         onToggle={() => setFileInfoOpen((v) => !v)}
       >
-        <div>
+        {/*
+          时间/尺寸/体积/格式走两列卡片网格：逐行铺开会把这个区块拉得很长，
+          而这些值都短，半栏宽度足够，两列排布能把纵向长度砍掉近一半，
+          视觉上也与上面「拍摄信息」的参数网格统一。
+        */}
+        <div className="grid grid-cols-2 gap-2">
           {isPhoto && asset.capturedAt && (
-            <MetaRow
+            <LibraryMetaRow
+              card
               label={copy.captured}
               value={formatDate(asset.capturedAt)}
             />
           )}
-          <MetaRow
+          <LibraryMetaRow
+            card
             label={copy.modified}
             value={formatDate(asset.modifiedAtNs)}
           />
           {dimensionLabel && (
-            <MetaRow label={copy.dimensions} value={dimensionLabel} mono />
+            <LibraryMetaRow
+              card
+              mono
+              label={copy.dimensions}
+              value={dimensionLabel}
+            />
           )}
           {asset.byteSize > 0 && (
-            <MetaRow
+            <LibraryMetaRow
+              card
               label={copy.fileSize}
               value={formatBytes(asset.byteSize)}
             />
           )}
-          <MetaRow label={copy.format} value={asset.format.toUpperCase()} />
-
-          {/* 主色 */}
-          {isPhoto &&
-            asset.dominantColors &&
-            asset.dominantColors.length > 0 && (
-              <div className="mt-2">
-                <p
-                  className="mb-1 text-[10px] uppercase tracking-wide"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  {copy.dominantColors}
-                </p>
-                <div
-                  className="flex h-6 overflow-hidden rounded"
-                  style={{ border: "1px solid var(--border)" }}
-                >
-                  {asset.dominantColors.map((value, i) => (
-                    <span
-                      key={i}
-                      title={value}
-                      className="min-w-0 flex-1"
-                      style={{ backgroundColor: value }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-          {/* 路径 */}
-          <div className="mt-2">
-            <p
-              className="mb-1 text-[10px] uppercase tracking-wide"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {copy.originalPath}
-            </p>
-            <p
-              className="break-all rounded border px-2.5 py-1.5 font-mono text-[10px] leading-relaxed"
-              style={{
-                borderColor: "var(--border)",
-                backgroundColor: "var(--secondary)",
-                color: "var(--muted-foreground)",
-              }}
-            >
-              {asset.relativePath}
-            </p>
-          </div>
+          <LibraryMetaRow
+            card
+            label={copy.format}
+            value={asset.format.toUpperCase()}
+          />
         </div>
-      </Section>
+
+        {/* 主色 */}
+        {isPhoto && asset.dominantColors && asset.dominantColors.length > 0 && (
+          <LibraryFieldBlock label={copy.dominantColors}>
+            <LibraryColorStrip colors={asset.dominantColors} />
+          </LibraryFieldBlock>
+        )}
+
+        {/* 路径：长值不进网格，单独整宽一行才不会被挤成两三行 */}
+        <LibraryFieldBlock label={copy.originalPath}>
+          <LibraryMonoValue value={asset.relativePath} />
+        </LibraryFieldBlock>
+      </LibraryDetailsSection>
 
       {/* ── 操作区（常驻，不折叠） ── */}
-      <div
-        className="mt-auto space-y-2 px-5 pb-5 pt-4"
-      >
+      <div className="mt-auto space-y-2 px-4 pb-5 pt-4">
         {missing ? (
           <>
-            <ActionButton
+            <LibraryDetailsAction
               icon={RefreshCw}
               label={copy.recheckMissing}
               onClick={() => onRecheckMissing(asset)}
               disabled={maintenanceBusy}
               loading={maintenanceBusy}
             />
-            <ActionButton
+            <LibraryDetailsAction
               icon={Trash2}
               label={copy.removeMissingRecord}
               onClick={() => onRemoveMissing(asset)}
@@ -1076,13 +1053,13 @@ function LocalAssetDetailsContent({
           </>
         ) : trashed ? (
           <>
-            <ActionButton
+            <LibraryDetailsAction
               icon={RotateCcw}
               label={copy.restoreTrashedAsset}
               onClick={() => onRestore(asset)}
               primary
             />
-            <ActionButton
+            <LibraryDetailsAction
               icon={Trash2}
               label={copy.permanentTrashedAsset}
               onClick={() => onDelete(asset)}
@@ -1092,19 +1069,19 @@ function LocalAssetDetailsContent({
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <ActionButton
+              <LibraryDetailsAction
                 icon={ExternalLink}
                 label={copy.openSystem}
                 onClick={() => onOpenSystem(asset)}
               />
-              <ActionButton
+              <LibraryDetailsAction
                 icon={FolderInput}
                 label={copy.moveAssetsToFolder}
                 onClick={() => onMove(asset)}
               />
             </div>
             {asset.availability === "active" && unavailable && isPhoto && (
-              <ActionButton
+              <LibraryDetailsAction
                 icon={RefreshCw}
                 label={copy.retryPreview}
                 onClick={() => onRetryPreview(asset)}
@@ -1116,7 +1093,7 @@ function LocalAssetDetailsContent({
               className="h-px"
               style={{ backgroundColor: "var(--border)" }}
             />
-            <ActionButton
+            <LibraryDetailsAction
               icon={Trash2}
               label={copy.delete}
               onClick={() => onDelete(asset)}
@@ -1134,6 +1111,6 @@ function LocalAssetDetailsContent({
           onClose={() => setCloudInfoOpen(false)}
         />
       )}
-    </aside>
+    </LibraryDetailsPanel>
   );
 }

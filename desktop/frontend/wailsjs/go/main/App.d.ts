@@ -225,6 +225,8 @@ export function GetLogStats():Promise<Record<string, any>>;
 
 export function GetLogs(arg1:string,arg2:string,arg3:number):Promise<Array<services.LogEntry>>;
 
+export function GetModelCatalog():Promise<services.ModelCatalogDTO>;
+
 export function GetOverview():Promise<services.OverviewDTO>;
 
 export function GetPhoto(arg1:string):Promise<services.PhotoDTO>;
@@ -301,6 +303,8 @@ export function ListZineProjects():Promise<Array<string>>;
 
 export function Login(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<services.LoginResult>;
 
+export function LookupModelSpecs(arg1:services.ModelCatalogBatchLookupInput):Promise<services.ModelCatalogBatchLookupResult>;
+
 export function MoveDesktopPluginPhotos(arg1:main.MoveDesktopPhotosInput):Promise<services.BatchResult>;
 
 export function MoveLocalAssets(arg1:Array<string>,arg2:string):Promise<Array<local_library.AssetMoveResult>>;
@@ -350,6 +354,8 @@ export function ReadAgentSkillResource(arg1:string,arg2:string):Promise<agent_ex
 export function RebuildLocalLibraryThumbnails(arg1:string):Promise<number>;
 
 export function RecheckMissingLocalAssets(arg1:Array<string>):Promise<Array<local_library.AssetMaintenanceResult>>;
+
+export function RefreshModelCatalog():Promise<services.ModelCatalogDTO>;
 
 export function RemoveAgentMCPServer(arg1:string):Promise<void>;
 

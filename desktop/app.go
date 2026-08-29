@@ -60,6 +60,7 @@ type App struct {
 	Storage             *services.StorageService
 	Settings            *services.SettingsService
 	EditorAi            *services.EditorAiService
+	ModelCatalog        *services.ModelCatalogService
 	Logger              *services.Logger
 	ZineOperationLogger *services.ZineOperationLogger
 	Overview            *services.OverviewService
@@ -78,6 +79,7 @@ func NewApp(cfg *config.Config) *App {
 		Logger:              services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 		ZineOperationLogger: services.NewZineOperationLogger(config.ConfigDir()),
 		Updater:             services.NewUpdateService(config.ConfigDir()),
+		ModelCatalog:        services.NewModelCatalogService(config.ConfigDir()),
 	}
 	if storageManager, err := storage_plugins.NewManager(config.ConfigDir()); err != nil {
 		log.Printf("storage plugin manager init failed: %v", err)
@@ -130,6 +132,7 @@ func (a *App) startup(ctx context.Context) {
 	a.Settings = services.NewSettingsService(a.Proxy)
 	a.EditorAi = services.NewEditorAiService(a.cfg, a.Upload)
 	a.EditorAi.SetLogger(a.Logger)
+	a.ModelCatalog.SetLogger(a.Logger)
 	a.Overview = services.NewOverviewService(a.Proxy)
 	cloudSyncCtx, cloudSyncCancel := context.WithCancel(context.Background())
 	a.cloudSyncCancel = cloudSyncCancel
@@ -793,6 +796,23 @@ func (a *App) UpdateAiConfig(data config.AIConfig) error {
 	data.Normalize()
 	a.cfg.AI = data
 	return a.cfg.Save("")
+}
+
+// GetModelCatalog 返回 models.dev 模型目录概览（模型源列表 + 缓存新鲜度状态）。
+// 目录不可用时返回空列表与状态说明，由设置页提示手动填写，不作为错误上抛。
+func (a *App) GetModelCatalog() services.ModelCatalogDTO {
+	return a.ModelCatalog.GetCatalog(a.ctx)
+}
+
+// RefreshModelCatalog 强制刷新模型目录（忽略 TTL）。
+func (a *App) RefreshModelCatalog() services.ModelCatalogDTO {
+	return a.ModelCatalog.RefreshCatalog(a.ctx)
+}
+
+// LookupModelSpecs 按『可选 provider 提示 + 模型名列表』批量返回模型规格，
+// 供设置页自动填入模型能力与上下文窗口（用户仍可手动覆盖）。
+func (a *App) LookupModelSpecs(input services.ModelCatalogBatchLookupInput) services.ModelCatalogBatchLookupResult {
+	return a.ModelCatalog.LookupModelSpecs(a.ctx, input)
 }
 
 // Local AI conversations live in the desktop profile's SQLite database and

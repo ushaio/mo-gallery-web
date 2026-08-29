@@ -497,6 +497,7 @@ export namespace config {
 	    tool_models?: string[];
 	    structured_output_models?: string[];
 	    context_windows?: Record<string, number>;
+	    catalog_provider?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AIProviderConfig(source);
@@ -512,6 +513,7 @@ export namespace config {
 	        this.tool_models = source["tool_models"];
 	        this.structured_output_models = source["structured_output_models"];
 	        this.context_windows = source["context_windows"];
+	        this.catalog_provider = source["catalog_provider"];
 	    }
 	}
 	export class AIConfig {
@@ -2967,6 +2969,325 @@ export namespace services {
 		    return a;
 		}
 	}
+	export class ModelCatalogBatchLookupInput {
+	    catalogProviderId?: string;
+	    baseUrl?: string;
+	    modelNames: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogBatchLookupInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.catalogProviderId = source["catalogProviderId"];
+	        this.baseUrl = source["baseUrl"];
+	        this.modelNames = source["modelNames"];
+	    }
+	}
+	export class ModelCatalogCost {
+	    input: number;
+	    output: number;
+	    cacheRead: number;
+	    cacheWrite: number;
+	    reasoning: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogCost(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	        this.cacheRead = source["cacheRead"];
+	        this.cacheWrite = source["cacheWrite"];
+	        this.reasoning = source["reasoning"];
+	    }
+	}
+	export class ModelCatalogLimit {
+	    context: number;
+	    output: number;
+	    input: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogLimit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.context = source["context"];
+	        this.output = source["output"];
+	        this.input = source["input"];
+	    }
+	}
+	export class ModelCatalogModalities {
+	    input: string[];
+	    output: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogModalities(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.output = source["output"];
+	    }
+	}
+	export class ModelCatalogReasoningOptions {
+	    type?: string;
+	    values: string[];
+	    min: number;
+	    max: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogReasoningOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.values = source["values"];
+	        this.min = source["min"];
+	        this.max = source["max"];
+	    }
+	}
+	export class ModelCatalogSpec {
+	    catalogModelId: string;
+	    providerId: string;
+	    providerName?: string;
+	    id?: string;
+	    name?: string;
+	    description?: string;
+	    family?: string;
+	    attachment: boolean;
+	    vision: boolean;
+	    reasoning: boolean;
+	    reasoningOptions?: ModelCatalogReasoningOptions;
+	    toolCall: boolean;
+	    structuredOutput: boolean;
+	    temperature: boolean;
+	    openWeights: boolean;
+	    knowledge?: string;
+	    releaseDate?: string;
+	    lastUpdated?: string;
+	    status?: string;
+	    modalities: ModelCatalogModalities;
+	    limit: ModelCatalogLimit;
+	    cost: ModelCatalogCost;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogSpec(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.catalogModelId = source["catalogModelId"];
+	        this.providerId = source["providerId"];
+	        this.providerName = source["providerName"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.family = source["family"];
+	        this.attachment = source["attachment"];
+	        this.vision = source["vision"];
+	        this.reasoning = source["reasoning"];
+	        this.reasoningOptions = this.convertValues(source["reasoningOptions"], ModelCatalogReasoningOptions);
+	        this.toolCall = source["toolCall"];
+	        this.structuredOutput = source["structuredOutput"];
+	        this.temperature = source["temperature"];
+	        this.openWeights = source["openWeights"];
+	        this.knowledge = source["knowledge"];
+	        this.releaseDate = source["releaseDate"];
+	        this.lastUpdated = source["lastUpdated"];
+	        this.status = source["status"];
+	        this.modalities = this.convertValues(source["modalities"], ModelCatalogModalities);
+	        this.limit = this.convertValues(source["limit"], ModelCatalogLimit);
+	        this.cost = this.convertValues(source["cost"], ModelCatalogCost);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ModelCatalogBatchLookupItem {
+	    modelName: string;
+	    found: boolean;
+	    spec?: ModelCatalogSpec;
+	    matchedBy?: string;
+	    ambiguous: boolean;
+	    candidateCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogBatchLookupItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.modelName = source["modelName"];
+	        this.found = source["found"];
+	        this.spec = this.convertValues(source["spec"], ModelCatalogSpec);
+	        this.matchedBy = source["matchedBy"];
+	        this.ambiguous = source["ambiguous"];
+	        this.candidateCount = source["candidateCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ModelCatalogStatus {
+	    available: boolean;
+	    sourceUrl: string;
+	    fetchedAt?: string;
+	    providerCount: number;
+	    modelCount: number;
+	    fromCache: boolean;
+	    stale: boolean;
+	    warning?: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.fetchedAt = source["fetchedAt"];
+	        this.providerCount = source["providerCount"];
+	        this.modelCount = source["modelCount"];
+	        this.fromCache = source["fromCache"];
+	        this.stale = source["stale"];
+	        this.warning = source["warning"];
+	        this.error = source["error"];
+	    }
+	}
+	export class ModelCatalogBatchLookupResult {
+	    items: ModelCatalogBatchLookupItem[];
+	    status: ModelCatalogStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogBatchLookupResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], ModelCatalogBatchLookupItem);
+	        this.status = this.convertValues(source["status"], ModelCatalogStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ModelCatalogProvider {
+	    id: string;
+	    name?: string;
+	    api?: string;
+	    doc?: string;
+	    npm?: string;
+	    env: string[];
+	    modelCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogProvider(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.api = source["api"];
+	        this.doc = source["doc"];
+	        this.npm = source["npm"];
+	        this.env = source["env"];
+	        this.modelCount = source["modelCount"];
+	    }
+	}
+	export class ModelCatalogDTO {
+	    providers: ModelCatalogProvider[];
+	    status: ModelCatalogStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelCatalogDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.providers = this.convertValues(source["providers"], ModelCatalogProvider);
+	        this.status = this.convertValues(source["status"], ModelCatalogStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	
+	
 	export class RecentBlogDTO {
 	    id: string;
 	    title: string;

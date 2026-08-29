@@ -84,19 +84,11 @@ const defaultDesktopModelContextWindow = 8192
 const maxProviderModelsResponseBytes = 1024 * 1024
 const maxProviderModelsLogBodyBytes = 64 * 1024
 
-var desktopModelContextWindows = map[string]int{
-	"gpt-5.5": 272000,
-}
-
-func inferDesktopModelContextWindow(modelID string) int {
-	if contextWindow, ok := desktopModelContextWindows[strings.ToLower(strings.TrimSpace(modelID))]; ok {
-		return contextWindow
-	}
-	return defaultDesktopModelContextWindow
-}
-
+// resolveDesktopModelCapabilities 解析模型能力。配置即事实来源：
+// 能力标记与上下文窗口都由设置页写入（新增模型时按 models.dev 目录自动填入，用户可改），
+// 这里只读配置，不做运行时目录查询。
 func resolveDesktopModelCapabilities(provider config.AIProviderConfig, modelID string) desktopModelCapabilities {
-	contextWindow := inferDesktopModelContextWindow(modelID)
+	contextWindow := defaultDesktopModelContextWindow
 	if configured, ok := provider.ContextWindows[modelID]; ok && configured > 0 {
 		contextWindow = configured
 	}

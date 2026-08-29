@@ -157,6 +157,36 @@ export const useLibrarySections = create<LibrarySectionsState>()(
   ),
 )
 
+// 系统设置左侧导航（持久化：重新打开设置时回到上次停留的分区）
+export type SettingsTabKey =
+  | 'site'
+  | 'storage'
+  | 'plugins'
+  | 'comments'
+  | 'account'
+  | 'local-library'
+  | 'cache'
+  | 'ai'
+  | 'agent-extensions'
+  | 'appearance'
+  | 'log'
+  | 'about'
+
+interface SettingsNavState {
+  tab: SettingsTabKey
+  setTab: (tab: SettingsTabKey) => void
+}
+
+export const useSettingsNav = create<SettingsNavState>()(
+  persist(
+    (set) => ({
+      tab: 'site',
+      setTab: (tab) => set({ tab }),
+    }),
+    { name: 'mo-gallery-settings-nav' },
+  ),
+)
+
 // 上传页参数（持久化：下次进入上传页时复用上次的设置；标题属于单次内容，不持久化）
 export interface UploadPageSettings {
   uploadType: 'digital' | 'film'

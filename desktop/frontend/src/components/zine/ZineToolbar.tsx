@@ -79,6 +79,7 @@ export function ZineToolbar() {
   const undo = useZineStore((state) => state.undo)
   const redo = useZineStore((state) => state.redo)
   const addSpread = useZineStore((state) => state.addSpread)
+  const addPlazaSpread = useZineStore((state) => state.addPlazaSpread)
   const addSlot = useZineStore((state) => state.addSlot)
   const setPageNumbers = useZineStore((state) => state.setPageNumbers)
   const save = useZineStore((state) => state.save)
@@ -241,6 +242,10 @@ export function ZineToolbar() {
             <TemplateGallery
               onAddTemplate={(templateId) => {
                 addSpread(templateId)
+                setTemplatesOpen(false)
+              }}
+              onAddSpread={(spread) => {
+                addPlazaSpread(spread)
                 setTemplatesOpen(false)
               }}
             />
