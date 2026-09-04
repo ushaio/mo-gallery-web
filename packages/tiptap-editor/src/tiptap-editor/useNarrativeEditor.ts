@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useEditor } from '@tiptap/react'
 import type { JSONContent } from '@tiptap/core'
+import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
@@ -28,12 +29,14 @@ import type { EditorView } from '@tiptap/pm/view'
 import type { NarrativeEditorRuntime } from '../runtime'
 import { parseMediaEmbedInfo } from '../lib/media-embed'
 import { buildStoryLinkCardAttrs, parseStoryLink } from '../lib/story-link-card'
-import { convertMarkdownToHtml, isMarkdownContent } from './markdown-converter'
+import { isMarkdownContent } from './markdown-converter'
 import {
   MarkerHiddenListItem,
   MergeAdjacentLists,
   createListEditorHandlers,
 } from './narrative-list'
+import { TyporaInputRules } from './typora-input-rules'
+import { TyporaKeymap } from './typora-keymap'
 
 // 纯文本粘贴的图片直链（可选查询参数），识别后直接插入图片节点而非纯文本
 const IMAGE_URL_PATTERN = /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?\S*)?$/i
@@ -119,17 +122,16 @@ export function useNarrativeEditor({
   const lastContentVersionRef = useRef<string | number | undefined>(contentVersion)
 
   const processedContent = useCallback(() => {
-    if (jsonValue) return jsonValue
-    if (!value) return ''
-    if (isMarkdownContent(value)) {
-      return convertMarkdownToHtml(value)
-    }
-    return value
+    if (jsonValue) return { content: jsonValue, contentType: 'json' as const }
+    if (!value) return { content: '', contentType: 'html' as const }
+    if (isMarkdownContent(value)) return { content: value, contentType: 'markdown' as const }
+    return { content: value, contentType: 'html' as const }
   }, [jsonValue, value])
 
   const editor = useEditor({
     extensions: [
       PastedBlockStyle,
+      Markdown.configure({ indentation: { style: 'space', size: 2 } }),
       StarterKit.configure({
         horizontalRule: false,
         listItem: false,
@@ -139,6 +141,8 @@ export function useNarrativeEditor({
       }),
       MarkerHiddenListItem,
       MergeAdjacentLists,
+      TyporaInputRules,
+      TyporaKeymap,
       ContinuePastedStyle,
       ListMarkerFontSize,
       StyledHorizontalRule,
@@ -187,7 +191,8 @@ export function useNarrativeEditor({
         },
       }),
     ],
-    content: processedContent() || '',
+    content: processedContent().content || '',
+    contentType: processedContent().contentType,
     immediatelyRender: false,
     shouldRerenderOnTransaction: true,
     onUpdate: ({ editor }) => {
@@ -298,6 +303,9 @@ export function useNarrativeEditor({
 
         return false
       },
+      // The handler runs from ProseMirror event hooks, after render; the ref
+      // keeps the lock state current without rebuilding editor props.
+      // eslint-disable-next-line react-hooks/refs
       ...createListEditorHandlers({ isAiTaskLocked: () => isAiTaskLockedRef.current }),
     },
   })
@@ -313,11 +321,11 @@ export function useNarrativeEditor({
     if (lastContentVersionRef.current === contentVersion) return
     lastContentVersionRef.current = contentVersion
 
-    const nextContent = processedContent()
+    const next = processedContent()
     try {
       // emitUpdate:false —— 重置是「切换到另一篇文档」而非用户编辑，
       // 不向上游广播，避免宿主误判当前文档已被修改。
-      editor.commands.setContent(nextContent || '', { emitUpdate: false })
+      editor.commands.setContent(next.content || '', { emitUpdate: false, contentType: next.contentType })
     } catch (error) {
       console.error('Failed to reset editor content:', error)
     }

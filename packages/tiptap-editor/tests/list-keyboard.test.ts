@@ -67,6 +67,20 @@ function cursorInEmptyParagraph(h: TestEditor, nth = 0): number {
   h.editor.destroy()
 }
 
+{
+  const h = createEditor('<ol><li><span style="font-size: 24px">one</span></li><li><span style="font-size: 24px">two</span></li></ol>')
+  cursorInText(h, 'two', 3)
+  keydown(h, 'Enter')
+  const listItems = h.editor.view.dom.querySelectorAll('li')
+  assert.equal(listItems.length, 3, 'Enter creates ordered-list item 3')
+  assert.match(
+    listItems[2]?.getAttribute('style') ?? '',
+    /font-size:\s*24px/,
+    'the empty ordered-list marker inherits the active font size before text is typed',
+  )
+  h.editor.destroy()
+}
+
 // ─── 2. Enter on empty item at list end → exit list ─────────────────────
 {
   const h = createEditor('<ul><li>one</li><li></li></ul>')
@@ -86,7 +100,8 @@ function cursorInEmptyParagraph(h: TestEditor, nth = 0): number {
   cursorInEmptyParagraph(h)
   keydown(h, 'Backspace')
   const html = h.editor.getHTML()
-  assert.ok(hasHiddenMarker(html), 'first Backspace hides the marker (blank indented line)')
+  assert.equal(hasHiddenMarker(html), false, 'empty nested row exits instead of leaving a markerless list item')
+  assert.match(h.editor.state.doc.toString(), /paragraph\("\\t"\)/, 'the exited row remains as a Tab-indented placeholder')
   h.editor.destroy()
 }
 
@@ -96,12 +111,7 @@ function cursorInEmptyParagraph(h: TestEditor, nth = 0): number {
   cursorInEmptyParagraph(h)
   keydown(h, 'Backspace')
   keydown(h, 'Backspace')
-  // The empty row is deleted; "nested" stays as the only nested item.
-  // The trailing paragraph from TrailingNode may appear.
-  const shape = docShape(h)
-  assert.ok(!shape.includes('paragraph), listItem(paragraph)') &&
-    !shape.includes('listItem(paragraph), paragraph'),
-    'empty row deleted: ' + shape)
+  assert.match(h.editor.state.doc.toString(), /paragraph\("\\t"\)/, 'repeated Backspace keeps the editable Tab placeholder')
   h.editor.destroy()
 }
 
@@ -110,10 +120,8 @@ function cursorInEmptyParagraph(h: TestEditor, nth = 0): number {
   const h = createEditor('<ul><li>one<ul><li>child</li><li></li><li>after</li></ul></li></ul>')
   cursorInEmptyParagraph(h)
   keydown(h, 'Backspace')
-  assert.ok(
-    hasHiddenMarker(h.editor.getHTML()),
-    'first Backspace hides the marker for a middle empty row',
-  )
+  assert.equal(hasHiddenMarker(h.editor.getHTML()), false, 'empty nested middle row exits without a markerless item')
+  assert.match(h.editor.state.doc.toString(), /paragraph\("\\t"\)/, 'the exited middle row remains editable')
   h.editor.destroy()
 }
 
@@ -180,6 +188,15 @@ function cursorInEmptyParagraph(h: TestEditor, nth = 0): number {
     'doc(bulletList(listItem(paragraph("A"), bulletList(listItem(paragraph("B"))))), paragraph("C"))',
     'third Backspace exits the list',
   )
+  h.editor.destroy()
+}
+
+// ─── 3g. Backspace at list-item end deletes the preceding character ───────
+for (const listTag of ['ol', 'ul'] as const) {
+  const h = createEditor(`<${listTag}><li>one</li><li>two</li></${listTag}>`)
+  cursorInText(h, 'two', 3)
+  keydown(h, 'Backspace')
+  assert.equal(h.editor.state.doc.textContent, 'onetw', `${listTag} item-end Backspace deletes one character`)
   h.editor.destroy()
 }
 
@@ -260,7 +277,20 @@ function cursorInEmptyParagraph(h: TestEditor, nth = 0): number {
   h.editor.destroy()
 }
 
-// ─── 6c. Tab on plain text indents, Shift+Tab removes one indent unit ─────
+// ─── 6c. Backspace at the second list's start removes its spacer boundary ─
+for (const [firstTag, secondTag, expected] of [
+  ['ol', 'ol', 'doc(orderedList(listItem(paragraph("one")), listItem(paragraph("two"))))'],
+  ['ul', 'ul', 'doc(bulletList(listItem(paragraph("one")), listItem(paragraph("two"))))'],
+  ['ol', 'ul', 'doc(orderedList(listItem(paragraph("one"))), bulletList(listItem(paragraph("two"))))'],
+] as const) {
+  const h = createEditor(`<${firstTag}><li>one</li></${firstTag}><p></p><${secondTag}><li>two</li></${secondTag}>`)
+  cursorAtStartOfText(h, 'two')
+  keydown(h, 'Backspace')
+  assert.equal(docShape(h), expected, `${firstTag}/${secondTag} spacer deletion preserves list-item boundaries`)
+  h.editor.destroy()
+}
+
+// ─── 6d. Tab on plain text indents, Shift+Tab removes one indent unit ─────
 {
   const h = createEditor('<p>text</p>')
   cursorInText(h, 'text', 4)

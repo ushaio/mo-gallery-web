@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * 共享 TipTap 编辑器的 web 端包装层。
+ * TipTap 编辑器的 web 端包装层。
  *
  * 编辑器实现位于 packages/tiptap-editor（与 desktop 端共用同一份源码）；
  * 本文件只负责注入 web 应用自身的 i18n、主题与后端接口，对调用方保持
@@ -14,7 +14,6 @@ import type {
   NarrativeTipTapEditorHandle,
   NarrativeTipTapEditorProps as CoreEditorProps,
   NarrativeEditorRuntime,
-  EditorStory,
 } from '@mo-gallery/tiptap-editor'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -69,6 +68,7 @@ async function getEditorStory(token: string, storyId: string): Promise<EditorSto
 }
 
 type WithoutRuntime<T> = T extends unknown ? Omit<T, 'runtime'> : never
+type EditorStory = { id: string; title: string; content: string; coverPhotoId?: string; isPublished: boolean; storyDate: string; createdAt: string; photos: Array<{ id: string; url: string; thumbnailUrl?: string }> }
 
 export type NarrativeTipTapEditorProps = WithoutRuntime<CoreEditorProps>
 export type { NarrativeTipTapEditorHandle }

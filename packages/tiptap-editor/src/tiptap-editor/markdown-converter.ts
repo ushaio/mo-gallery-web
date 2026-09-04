@@ -34,6 +34,8 @@ interface MarkdownListItem {
 interface MarkdownListNode {
   type: MarkdownListType
   items: MarkdownListItem[]
+  /** Ordered-list start value from the first marker (Markdown allows 3. foo). */
+  start?: number
 }
 
 interface MarkdownListLine {
@@ -59,7 +61,10 @@ function parseMarkdownListLine(line: string): MarkdownListLine | null {
 
 function renderMarkdownListNode(node: MarkdownListNode): string {
   const tag = node.type === 'ordered' ? 'ol' : 'ul'
-  return `<${tag}>${node.items.map((item) => (
+  const start = node.type === 'ordered' && node.start && node.start !== 1
+    ? ` start="${node.start}"`
+    : ''
+  return `<${tag}${start}>${node.items.map((item) => (
     `<li>${item.text}${item.children.map(renderMarkdownListNode).join('')}</li>`
   )).join('')}</${tag}>`
 }
@@ -76,7 +81,14 @@ function convertMarkdownLists(input: string): string {
   let inCodeFence = false
 
   const parseList = (start: number, indent: number, type: MarkdownListType): [MarkdownListNode, number] => {
-    const node: MarkdownListNode = { type, items: [] }
+    const firstMarker = parseMarkdownListLine(lines[start])
+    const node: MarkdownListNode = {
+      type,
+      items: [],
+      start: type === 'ordered' && firstMarker
+        ? Number.parseInt(lines[start].match(/^(?:[ \t]*)(\d+)[.)]/)?.[1] || '1', 10)
+        : undefined,
+    }
     let cursor = start
 
     while (cursor < lines.length) {

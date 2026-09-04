@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
@@ -57,6 +57,40 @@ function listItemFontSize(listItem: ProseMirrorNode): string | null {
   return size
 }
 
+/** A newly split row has no text yet, so read its carried cursor style. */
+function emptySelectedListItemFontSize(
+  state: EditorState,
+  node: ProseMirrorNode,
+  pos: number,
+): string | null {
+  let empty = true
+  node.descendants((child) => {
+    if (child.isText && child.text) {
+      empty = false
+      return false
+    }
+    return true
+  })
+  if (!empty || state.selection.from <= pos || state.selection.from >= pos + node.nodeSize) {
+    return null
+  }
+
+  const resolved = state.doc.resolve(pos)
+  const index = resolved.index(resolved.depth)
+  if (index > 0) {
+    const previous = resolved.parent.child(index - 1)
+    const previousSize = previous.type.name === 'listItem' ? listItemFontSize(previous) : null
+    if (previousSize) return previousSize
+  }
+
+  if (state.selection.from > pos && state.selection.from < pos + node.nodeSize) {
+    const marks = state.storedMarks ?? state.selection.$from.marks()
+    const pastedStyle = marks.find(mark => mark.type.name === 'pastedStyle')
+    return (pastedStyle?.attrs?.fontSize as string | null | undefined) ?? null
+  }
+  return null
+}
+
 export const ListMarkerFontSize = Extension.create({
   name: 'listMarkerFontSize',
 
@@ -70,6 +104,7 @@ export const ListMarkerFontSize = Extension.create({
             state.doc.descendants((node, pos) => {
               if (node.type.name !== 'listItem') return
               const fontSize = listItemFontSize(node)
+                ?? emptySelectedListItemFontSize(state, node, pos)
               if (fontSize) {
                 decorations.push(
                   Decoration.node(pos, pos + node.nodeSize, {

@@ -6,21 +6,246 @@
  * 运行时只有一个消费者：useNarrativeEditor 组装 editorProps 时调用
  * createListEditorHandlers，把同一份逻辑同时用在上层编辑器。
  */
-import { Extension, mergeAttributes, Node } from '@tiptap/core'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { Extension, Mark, mergeAttributes, Node } from '@tiptap/core'
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
-import { liftListItem, sinkListItem } from '@tiptap/pm/schema-list'
-import { canJoin } from '@tiptap/pm/transform'
+import { liftListItem, sinkListItem, splitListItemKeepMarks } from '@tiptap/pm/schema-list'
+import { joinBackward, joinForward } from '@tiptap/pm/commands'
+import { canJoin, joinPoint } from '@tiptap/pm/transform'
 import { TAB_INDENT } from './editor-constants'
 
 const LEGACY_TAB_INDENTS = ['\t', '    ', '　　'] as const
+const LIST_MARKER_PATTERN = /^(?:[-+*]|\d+[.)])$/
+const LIST_MARKER_WITH_SPACE_PATTERN = /^(?:[-+*]|\d+[.)])[ \t]$/
+
+/** Semantic mark for the literal Tab used by an exited list-row placeholder. */
+export const TabPlaceholderMark = Mark.create({
+  name: 'tabPlaceholder',
+  inclusive: false,
+  parseHTML() {
+    return [{ tag: 'span[data-tab-placeholder="true"]' }]
+  },
+  renderHTML() {
+    return ['span', { 'data-tab-placeholder': 'true' }, 0]
+  },
+})
+
+type ListName = 'bulletList' | 'orderedList'
+
+interface ListMarker {
+  listName: ListName
+  start?: number
+}
+
+function parseListMarker(value: string): ListMarker | null {
+  if (!LIST_MARKER_PATTERN.test(value)) return null
+  if (/^\d/.test(value)) {
+    const start = Number.parseInt(value, 10)
+    return {
+      listName: 'orderedList',
+      start: Number.isFinite(start) && start > 0 ? start : 1,
+    }
+  }
+  return { listName: 'bulletList' }
+}
 
 function getIndentToRemove(textBeforeCursor: string) {
   for (const indent of LEGACY_TAB_INDENTS) {
     if (textBeforeCursor.endsWith(indent)) return indent
   }
   return ''
+}
+
+function getLeadingIndent(text: string) {
+  if (text.startsWith('\t')) return '\t'
+  if (text.startsWith('    ')) return '    '
+  if (text.startsWith('　　')) return '　　'
+  return ''
+}
+
+function selectedTextblockStarts(view: EditorView) {
+  const { from, to } = view.state.selection
+  const starts: Array<{ pos: number; node: ProseMirrorNode }> = []
+  view.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (node.isTextblock) starts.push({ pos, node })
+  })
+  return starts
+}
+
+function findListItemDepth(
+  $from: ResolvedPos,
+  listItemType: ProseMirrorNode['type'] | undefined,
+) {
+  if (!listItemType) return -1
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type === listItemType) return depth
+  }
+  return -1
+}
+
+/**
+ * Return whether there is a real block after the current list item. The
+ * editor's TrailingNode extension appends an empty paragraph after a list;
+ * treating that implementation detail as a forward deletion target creates
+ * a surprising new empty list row when Delete is pressed at the end of the
+ * final item.
+ */
+function hasMeaningfulNodeAfterListItem(
+  $from: ResolvedPos,
+  listItemDepth: number,
+) {
+  for (let depth = listItemDepth; depth > 0; depth -= 1) {
+    const parent = $from.node(depth - 1)
+    const index = $from.index(depth - 1)
+    for (let siblingIndex = index + 1; siblingIndex < parent.childCount; siblingIndex += 1) {
+      const sibling = parent.child(siblingIndex)
+      // Only the document-level trailing paragraph is synthetic. Empty
+      // paragraphs inside list items remain meaningful editing targets.
+      if (
+        parent.type.name === 'doc'
+        && siblingIndex === parent.childCount - 1
+        && sibling.type.name === 'paragraph'
+        && sibling.content.size === 0
+      ) {
+        continue
+      }
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Handle Delete while the caret is at the end of the first paragraph in a
+ * list item. The stock list keymap is intentionally conservative here: in a
+ * few boundary cases it treats the editor's trailing paragraph as another
+ * list item, or leaves the caret in a newly-created empty paragraph. The
+ * behavior layer owns those boundaries so one key press always produces one
+ * predictable transaction.
+ */
+function handleListDelete(
+  view: EditorView,
+  listItemType: ProseMirrorNode['type'],
+  listItemDepth: number,
+) {
+  const { state } = view
+  const { selection } = state
+  if (!selection.empty) return false
+
+  const { $from } = selection
+  if (!$from.parent.isTextblock || $from.parentOffset !== $from.parent.content.size) {
+    return false
+  }
+
+  // Delete at the end of a later paragraph is a normal paragraph operation;
+  // only the first paragraph marks the list-row boundary.
+  if ($from.index(listItemDepth) !== 0) return false
+
+  const currentItem = $from.node(listItemDepth)
+  const listDepth = listItemDepth - 1
+  const currentList = $from.node(listDepth)
+  const currentItemIndex = $from.index(listDepth)
+  const nextItem = currentItemIndex + 1 < currentList.childCount
+    ? currentList.child(currentItemIndex + 1)
+    : null
+
+  // A list item may contain multiple paragraphs. Delete at the end of its
+  // first paragraph should join that paragraph with the next paragraph using
+  // the normal textblock behavior; it must not be mistaken for the end of the
+  // list row.
+  const nextBlock = currentItem.childCount > 1 ? currentItem.child(1) : null
+  if (
+    nextBlock
+    && nextBlock.type.name !== 'bulletList'
+    && nextBlock.type.name !== 'orderedList'
+  ) {
+    return false
+  }
+
+  // A nested list immediately follows the paragraph. Joining forward here
+  // removes that boundary while retaining the nested item's text and marks.
+  // Keep the original caret position instead of the implicit near-selection
+  // chosen by ProseMirror.
+  const nestedList = nextBlock
+  if (nestedList && (nestedList.type.name === 'bulletList' || nestedList.type.name === 'orderedList')) {
+    let joinedTransaction: Transaction | undefined
+    const joined = joinForward(state, transaction => {
+      joinedTransaction = transaction
+    })
+    if (joined && joinedTransaction) {
+      const mappedCaret = joinedTransaction.mapping.map(selection.from, -1)
+      joinedTransaction.setSelection(
+        TextSelection.near(
+          joinedTransaction.doc.resolve(
+            Math.min(joinedTransaction.doc.content.size, Math.max(1, mappedCaret)),
+          ),
+          -1,
+        ),
+      )
+      revealListMarker(joinedTransaction, listItemType)
+      view.dispatch(joinedTransaction.scrollIntoView())
+      return true
+    }
+  }
+
+  // Adjacent rows in the same list are joined at list-item depth. This keeps
+  // nested lists and additional paragraphs intact, unlike a generic forward
+  // join which can flatten a child list into the parent row.
+  if (nextItem?.type === listItemType) {
+    if (joinListItemForward(view, listItemType)) return true
+    // A malformed/unsupported row should not fall through to the browser's
+    // Delete implementation and create an implicit empty list item.
+    return true
+  }
+
+  // There is no list row after this item. If no ancestor list has a following
+  // row/block, this is the end of the document from the list's perspective;
+  // consume Delete as a no-op so the TrailingNode paragraph is not converted
+  // into a new list item.
+  if (!hasMeaningfulNodeAfterListItem($from, listItemDepth)) return true
+
+  return false
+}
+
+/**
+ * Join the current list item with its next sibling and keep the caret at the
+ * original forward-deletion point. `joinItemForward` in Tiptap performs the
+ * same `joinPoint(..., 1)` + depth-2 join, but using the transaction directly
+ * lets this behavior layer normalize the selection in every host (Web and
+ * Desktop WebView) instead of relying on browser selection mapping.
+ */
+function joinListItemForward(view: EditorView, listItemType: ProseMirrorNode['type']) {
+  const { state } = view
+  const { selection } = state
+  if (!selection.empty) return false
+
+  const point = joinPoint(state.doc, selection.from, 1)
+  if (typeof point !== 'number' || !canJoin(state.doc, point)) return false
+  const $point = state.doc.resolve(point)
+  if ($point.nodeBefore?.type !== listItemType || $point.nodeAfter?.type !== listItemType) {
+    return false
+  }
+
+  let transaction: Transaction
+  try {
+    transaction = state.tr.join(point, 2)
+  } catch {
+    return false
+  }
+
+  const mappedCaret = transaction.mapping.map(selection.from, 1)
+  transaction.setSelection(
+    TextSelection.near(
+      transaction.doc.resolve(
+        Math.min(transaction.doc.content.size, Math.max(1, mappedCaret)),
+      ),
+      -1,
+    ),
+  )
+  revealListMarker(transaction, listItemType)
+  view.dispatch(transaction.scrollIntoView())
+  return true
 }
 
 /**
@@ -33,9 +258,34 @@ export function handlePlainTextIndent(view: EditorView, shiftKey: boolean) {
   const { state } = view
   const { selection } = state
 
-  if (!selection.empty || !selection.$from.parent.isTextblock) {
-    if (shiftKey) return false
+  if (!selection.$from.parent.isTextblock) {
+    if (shiftKey) return true
     view.dispatch(state.tr.insertText(TAB_INDENT).scrollIntoView())
+    return true
+  }
+
+  if (!selection.empty) {
+    const blocks = selectedTextblockStarts(view)
+    if (blocks.length === 0) return true
+
+    const transaction = state.tr
+    // Apply from the end so the original block positions remain valid. A
+    // selected range is indented line-by-line, preserving its text instead of
+    // replacing the entire selection with a single tab character.
+    for (const { pos, node } of [...blocks].sort((left, right) => right.pos - left.pos)) {
+      const blockStart = pos + 1
+      if (!shiftKey) {
+        transaction.insertText(TAB_INDENT, blockStart)
+        continue
+      }
+
+      const indent = getLeadingIndent(node.textContent)
+      if (indent) transaction.delete(blockStart, blockStart + indent.length)
+    }
+
+    if (transaction.steps.length > 0) {
+      view.dispatch(transaction.scrollIntoView())
+    }
     return true
   }
 
@@ -44,14 +294,26 @@ export function handlePlainTextIndent(view: EditorView, shiftKey: boolean) {
     return true
   }
 
+  // Shift+Tab is an outdent operation, not a browser focus shortcut. Prefer
+  // removing an indentation unit immediately before the caret (this keeps the
+  // historical `text\t|` behavior), then fall back to the current visual line's
+  // leading indentation so `\ttext|` and `    text|` work from any caret offset.
   const textBeforeCursor = selection.$from.parent.textBetween(0, selection.$from.parentOffset, '\n', '￼')
-  const indent = getIndentToRemove(textBeforeCursor)
+  let indent = getIndentToRemove(textBeforeCursor)
+  let deleteFrom = selection.from - indent.length
+
+  if (!indent) {
+    const lineStartOffset = textBeforeCursor.lastIndexOf('\n') + 1
+    const linePrefix = textBeforeCursor.slice(lineStartOffset)
+    indent = getLeadingIndent(linePrefix)
+    if (indent) deleteFrom = selection.from - linePrefix.length
+  }
 
   if (!indent) return true
 
   view.dispatch(
     state.tr
-      .delete(selection.from - indent.length, selection.from)
+      .delete(deleteFrom, deleteFrom + indent.length)
       .scrollIntoView(),
   )
   return true
@@ -74,9 +336,8 @@ export function revealListMarker(transaction: Transaction, listItemType: ProseMi
 }
 
 /**
- * Empty nested rows keep their indentation after the first Backspace, while
- * their marker disappears. A second Backspace can then remove the row without
- * unexpectedly lifting it into the parent list.
+ * Legacy helper for documents that still contain a markerless list item.
+ * New Backspace handling exits directly through the Tab-placeholder path.
  */
 export function hideListMarker(view: EditorView, listItemDepth: number) {
   const { state } = view
@@ -93,18 +354,336 @@ export function hideListMarker(view: EditorView, listItemDepth: number) {
   return true
 }
 
-/** Remove an empty list row, removing its now-empty list container as well. */
-export function deleteEmptyListItem(view: EditorView, listItemDepth: number) {
+/**
+ * Exit an empty nested list row into a literal Tab-indented paragraph.
+ *
+ * Keeping the Tab in the document is intentional: it gives the user a real
+ * editable placeholder (rather than an empty list node that swallows Delete)
+ * and lets the markdown handler turn `\t- ` / `\t1. ` back into a nested list.
+ */
+function convertEmptyNestedListItemToTabPlaceholder(
+  view: EditorView,
+  listItemDepth: number,
+) {
   const { state } = view
   const { $from } = state.selection
   const listDepth = listItemDepth - 1
+  if (listDepth <= 0) return false
+
   const currentList = $from.node(listDepth)
-  const itemStart = $from.before(listItemDepth)
-  const item = $from.node(listItemDepth)
-  const deleteFrom = currentList.childCount === 1 ? $from.before(listDepth) : itemStart
-  const deleteTo = currentList.childCount === 1 ? $from.after(listDepth) : itemStart + item.nodeSize
-  const transaction = state.tr.delete(deleteFrom, deleteTo).scrollIntoView()
-  view.dispatch(transaction)
+  const listStart = $from.before(listDepth)
+  const listEnd = $from.after(listDepth)
+  const currentItemIndex = $from.index(listDepth)
+  const paragraphType = state.schema.nodes.paragraph
+  if (!paragraphType) return false
+
+  const tabMark = state.schema.marks.tabPlaceholder?.create()
+  const placeholder = paragraphType.create(
+    null,
+    state.schema.text(TAB_INDENT, tabMark ? [tabMark] : undefined),
+  )
+  const transaction = state.tr
+
+  const parentItemDepth = listDepth - 1
+  const outerListDepth = listDepth - 2
+  const nestedListIndex = parentItemDepth > 0 ? $from.index(parentItemDepth) : -1
+
+  // When the empty row is the final block of its parent item, move the
+  // placeholder out of the list tree entirely. A literal Tab then represents
+  // exactly one source-level indentation instead of being added to the
+  // indentation already supplied by the outer <li>.
+  if (
+    currentItemIndex === currentList.childCount - 1
+    && parentItemDepth > 0
+    // Only a two-level list can be represented by a single document-level
+    // Tab. For deeper lists, keeping the placeholder inside its parent item
+    // preserves the ancestor list indentation and avoids dropping a level.
+    && outerListDepth === 1
+    && nestedListIndex === $from.node(parentItemDepth).childCount - 1
+  ) {
+    const parentItem = $from.node(parentItemDepth)
+    const outerList = $from.node(outerListDepth)
+    const outerItemIndex = $from.index(outerListDepth)
+    const parentChildren: ProseMirrorNode[] = []
+    parentItem.forEach((child) => parentChildren.push(child))
+    const nestedItemsBeforeCurrent = Array.from(
+      { length: currentItemIndex },
+      (_, index) => currentList.child(index),
+    )
+    const nestedListBeforeCurrent = nestedItemsBeforeCurrent.length > 0
+      ? currentList.copy(Fragment.fromArray(nestedItemsBeforeCurrent))
+      : null
+    parentChildren.splice(
+      nestedListIndex,
+      1,
+      ...(nestedListBeforeCurrent ? [nestedListBeforeCurrent] : []),
+    )
+    const parentItemWithoutNestedList = parentItem.type.create(
+      parentItem.attrs,
+      Fragment.fromArray(parentChildren),
+    )
+
+    const beforeItems = Array.from({ length: outerItemIndex }, (_, index) => outerList.child(index))
+    beforeItems.push(parentItemWithoutNestedList)
+    const afterItems = Array.from(
+      { length: outerList.childCount - outerItemIndex - 1 },
+      (_, index) => outerList.child(outerItemIndex + 1 + index),
+    )
+    const outerListStart = $from.before(outerListDepth)
+    const outerListEnd = $from.after(outerListDepth)
+    const replacement: ProseMirrorNode[] = [
+      outerList.copy(Fragment.fromArray(beforeItems)),
+      placeholder,
+    ]
+    if (afterItems.length > 0) {
+      replacement.push(outerList.copy(Fragment.fromArray(afterItems)))
+    }
+
+    transaction.replaceWith(outerListStart, outerListEnd, Fragment.fromArray(replacement))
+    const placeholderStart = outerListStart + replacement[0].nodeSize
+    transaction.setSelection(
+      TextSelection.near(
+        transaction.doc.resolve(Math.min(transaction.doc.content.size, placeholderStart + 2)),
+      ),
+    )
+    view.dispatch(transaction.scrollIntoView())
+    return true
+  }
+
+  const replacement: ProseMirrorNode[] = []
+
+  if (currentItemIndex > 0) {
+    replacement.push(currentList.copy(
+      Fragment.fromArray(Array.from({ length: currentItemIndex }, (_, index) => currentList.child(index))),
+    ))
+  }
+
+  // Keep the placeholder exactly where the removed list marker was. When
+  // there are rows on both sides, split the nested list instead of appending
+  // the paragraph after the whole list.
+  replacement.push(placeholder)
+
+  if (currentItemIndex + 1 < currentList.childCount) {
+    replacement.push(currentList.copy(
+      Fragment.fromArray(Array.from(
+        { length: currentList.childCount - currentItemIndex - 1 },
+        (_, index) => currentList.child(currentItemIndex + 1 + index),
+      )),
+    ))
+  }
+
+  transaction.replaceWith(listStart, listEnd, Fragment.fromArray(replacement))
+  const placeholderOffset = currentItemIndex > 0
+    ? replacement[0].nodeSize
+    : 0
+  transaction.setSelection(
+    TextSelection.near(
+      transaction.doc.resolve(
+        Math.min(transaction.doc.content.size, Math.max(1, listStart + placeholderOffset + 2)),
+      ),
+    ),
+  )
+
+  view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+function findParentListItemDepth($from: ResolvedPos, listItemType: ProseMirrorNode['type']) {
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type === listItemType) return depth
+  }
+  return -1
+}
+
+/** Convert a Tab-indented placeholder paragraph back into a nested list. */
+function restoreTabPlaceholderAsList(
+  view: EditorView,
+  marker: ListMarker,
+  typedMarker?: string,
+) {
+  const { state } = view
+  const { $from } = state.selection
+  const listItemType = state.schema.nodes.listItem
+  const listType = state.schema.nodes[marker.listName]
+  const paragraph = $from.parent
+  if (!listItemType || !listType || paragraph.type.name !== 'paragraph') return false
+
+  const parentListItemDepth = findParentListItemDepth($from, listItemType)
+  const expectedText = typedMarker ? `${TAB_INDENT}${typedMarker}` : TAB_INDENT
+  if (paragraph.textContent !== TAB_INDENT && paragraph.textContent !== expectedText) return false
+
+  // A placeholder that was lifted out of a completed nested list sits at the
+  // document level, immediately after the outer list. Reattach its marker
+  // as a nested list on that outer list's final item.
+  if (parentListItemDepth <= 0 && $from.depth === 1 && $from.index(0) > 0) {
+    const previousIndex = $from.index(0) - 1
+    const outerList = $from.node(0).child(previousIndex)
+    const outerLastItem = outerList.lastChild
+    if (
+      (outerList.type.name === 'bulletList' || outerList.type.name === 'orderedList')
+      && outerLastItem?.type === listItemType
+    ) {
+      const nestedItem = listItemType.create({}, [state.schema.nodes.paragraph.create()])
+      const nestedList = listType.create(
+        marker.listName === 'orderedList' ? { start: marker.start ?? 1 } : undefined,
+        [nestedItem],
+      )
+      const updatedOuterItem = outerLastItem.copy(
+        outerLastItem.content.append(Fragment.from(nestedList)),
+      )
+      const updatedOuterList = outerList.copy(
+        outerList.content.replaceChild(outerList.childCount - 1, updatedOuterItem),
+      )
+      const paragraphStart = $from.before($from.depth)
+      const paragraphEnd = $from.after($from.depth)
+      const outerListStart = paragraphStart - outerList.nodeSize
+      const transaction = state.tr.delete(paragraphStart, paragraphEnd)
+      const mappedOuterListStart = transaction.mapping.map(outerListStart, -1)
+      transaction.replaceWith(
+        mappedOuterListStart,
+        mappedOuterListStart + outerList.nodeSize,
+        updatedOuterList,
+      )
+      transaction.setSelection(
+        TextSelection.near(
+          transaction.doc.resolve(
+            Math.min(transaction.doc.content.size, mappedOuterListStart + updatedOuterList.nodeSize - 2),
+          ),
+        ),
+      )
+      view.dispatch(transaction.scrollIntoView())
+      return true
+    }
+    return false
+  }
+
+  if (parentListItemDepth <= 0 || $from.index(parentListItemDepth) === 0) return false
+
+  const paragraphStart = $from.before($from.depth)
+  const paragraphEnd = $from.after($from.depth)
+  const item = listItemType.create({}, [state.schema.nodes.paragraph.create()])
+  const nestedList = listType.create(
+    marker.listName === 'orderedList' ? { start: marker.start ?? 1 } : undefined,
+    [item],
+  )
+  const transaction = state.tr.replaceWith(paragraphStart, paragraphEnd, nestedList)
+  transaction.setSelection(
+    TextSelection.near(
+      transaction.doc.resolve(
+        Math.min(transaction.doc.content.size, Math.max(1, paragraphStart + 3)),
+      ),
+    ),
+  )
+  view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+/**
+ * Re-enable a marker typed on a markerless placeholder. Keeping this as a
+ * list-row operation (instead of lifting the row) preserves the visual Tab
+ * indentation and lets `- ` / `1. ` choose the nested list type in place.
+ */
+function restoreHiddenListItem(
+  view: EditorView,
+  listItemDepth: number,
+  marker: ListMarker,
+  markerRange?: { from: number; to: number },
+) {
+  const { state } = view
+  const { $from } = state.selection
+  const listDepth = listItemDepth - 1
+  if (listDepth <= 0) return false
+
+  const currentList = $from.node(listDepth)
+  const currentItemIndex = $from.index(listDepth)
+  const targetListType = state.schema.nodes[marker.listName]
+  if (!targetListType || currentItemIndex < 0 || currentItemIndex >= currentList.childCount) {
+    return false
+  }
+
+  const listStart = $from.before(listDepth)
+  const listEnd = $from.after(listDepth)
+  const transaction = state.tr
+  if (markerRange) transaction.delete(markerRange.from, markerRange.to)
+
+  const mappedListStart = transaction.mapping.map(listStart)
+  const mappedListEnd = transaction.mapping.map(listEnd)
+  const listNode = transaction.doc.nodeAt(mappedListStart)
+  if (!listNode || listNode.type !== currentList.type) return false
+
+  const currentItem = listNode.child(currentItemIndex)
+  const visibleItem = currentItem.type.create(
+    { ...currentItem.attrs, markerHidden: false },
+    currentItem.content,
+  )
+
+  // When the marker type is unchanged, only reveal the row. An ordered marker
+  // that restarts numbering in the middle of an existing list instead splits
+  // the list below, so earlier rows keep their numbering.
+  const isOrderedRestart = listNode.type === targetListType
+    && marker.listName === 'orderedList'
+    && marker.start !== Number(listNode.attrs.start ?? 1) + currentItemIndex
+  if (listNode.type === targetListType && !isOrderedRestart) {
+    const listAttrs = marker.listName === 'orderedList'
+      ? { ...listNode.attrs, start: marker.start ?? Number(listNode.attrs.start ?? 1) }
+      : listNode.attrs
+    transaction.setNodeMarkup(mappedListStart, targetListType, listAttrs)
+    const mappedItemStart = transaction.mapping.map($from.before(listItemDepth))
+    transaction.setNodeMarkup(mappedItemStart, currentItem.type, visibleItem.attrs)
+    const mappedCaret = transaction.mapping.map($from.pos, -1)
+    transaction.setSelection(
+      TextSelection.near(
+        transaction.doc.resolve(
+          Math.min(transaction.doc.content.size, Math.max(1, mappedCaret)),
+        ),
+      ),
+    )
+    view.dispatch(transaction.scrollIntoView())
+    return true
+  }
+
+  // A different marker (`1. ` on a bullet row, or `- ` on an ordered row)
+  // starts a sibling list at the same indentation. Split the current list
+  // around the placeholder so preceding/following rows keep their structure.
+  const children = Array.from({ length: listNode.childCount }, (_, index) => listNode.child(index))
+  const beforeChildren = children.slice(0, currentItemIndex)
+  const afterChildren = children.slice(currentItemIndex + 1)
+  const beforeList = beforeChildren.length > 0
+    ? listNode.copy(Fragment.fromArray(beforeChildren))
+    : null
+  const afterList = afterChildren.length > 0
+    ? listNode.type.create(
+        listNode.type.name === 'orderedList'
+          ? {
+              ...listNode.attrs,
+              start: Number(listNode.attrs.start ?? 1) + currentItemIndex + 1,
+            }
+          : listNode.attrs,
+        Fragment.fromArray(afterChildren),
+      )
+    : null
+
+  const targetList = targetListType.create(
+    marker.listName === 'orderedList'
+      ? { start: marker.start ?? 1 }
+      : undefined,
+    [visibleItem],
+  )
+  const replacement = [beforeList, targetList, afterList].filter(
+    (node): node is ProseMirrorNode => node !== null,
+  )
+  transaction.replaceWith(mappedListStart, mappedListEnd, Fragment.fromArray(replacement))
+
+  const targetListStart = mappedListStart + (beforeList?.nodeSize ?? 0)
+  const targetCaret = targetListStart + 3
+  transaction.setSelection(
+    TextSelection.near(
+      transaction.doc.resolve(
+        Math.min(transaction.doc.content.size, Math.max(1, targetCaret)),
+      ),
+    ),
+  )
+  view.dispatch(transaction.scrollIntoView())
   return true
 }
 
@@ -131,7 +710,44 @@ export function sinkListItemIntoPreviousList(view: EditorView, listItemDepth: nu
   const currentList = $from.node(listDepth)
   if (!['bulletList', 'orderedList'].includes(previousList.type.name)) return false
 
-  const currentItem = $from.node(listItemDepth)
+  return moveFirstListItemToPreviousList(view, listItemDepth, currentList.type.name as ListName, {
+    orderedStart: currentList.type.name === 'orderedList'
+      ? Number(currentList.attrs.start ?? 1)
+      : undefined,
+  })
+}
+
+/**
+ * Move the first row of a list below the last row of the preceding list. This
+ * is the missing half of ProseMirror's `sinkListItem`: a first row has no
+ * previous sibling in its own list, but Typora still lets it be indented under
+ * the previous adjacent list. The target list type is explicit so a bullet
+ * and ordered list can be mixed without flattening either one.
+ */
+function moveFirstListItemToPreviousList(
+  view: EditorView,
+  listItemDepth: number,
+  targetListName: ListName,
+  options: {
+    orderedStart?: number
+    markerRange?: { from: number; to: number }
+  } = {},
+) {
+  const { state } = view
+  const { $from } = state.selection
+  const listDepth = listItemDepth - 1
+  const parentDepth = listDepth - 1
+  if (listDepth <= 0 || parentDepth < 0 || $from.index(listDepth) !== 0) return false
+
+  const parent = $from.node(parentDepth)
+  const listIndex = $from.index(parentDepth)
+  if (listIndex <= 0) return false
+
+  const previousList = parent.child(listIndex - 1)
+  const currentList = $from.node(listDepth)
+  const targetListType = state.schema.nodes[targetListName]
+  if (!targetListType || !['bulletList', 'orderedList'].includes(previousList.type.name)) return false
+
   const currentListStart = $from.before(listDepth)
   const currentListEnd = $from.after(listDepth)
   const currentItemStart = $from.before(listItemDepth)
@@ -146,33 +762,66 @@ export function sinkListItemIntoPreviousList(view: EditorView, listItemDepth: nu
   }
   const previousItemEnd = previousItemStart + previousItem.nodeSize
   const existingNestedList = previousItem.lastChild
+  const canAppendToExistingList = Boolean(
+    existingNestedList && existingNestedList.type === targetListType,
+  )
+  const transaction = state.tr
+  if (options.markerRange) transaction.delete(options.markerRange.from, options.markerRange.to)
+
+  const mappedCurrentItemStart = transaction.mapping.map(currentItemStart)
+  const mappedCurrentItemEnd = transaction.mapping.map(currentItemEnd)
+  const currentItem = transaction.doc.nodeAt(mappedCurrentItemStart)
+  if (!currentItem) return false
   const itemToInsert = currentItem.attrs.markerHidden === true
     ? currentItem.type.create({ ...currentItem.attrs, markerHidden: false }, currentItem.content)
     : currentItem
-  const targetList = existingNestedList && existingNestedList.type === currentList.type
-    ? existingNestedList
-    : currentList.type.create(currentList.attrs, [itemToInsert])
-  const deleteFrom = currentList.childCount === 1 ? currentListStart : currentItemStart
-  const deleteTo = currentList.childCount === 1 ? currentListEnd : currentItemEnd
-  const canAppendToExistingList = Boolean(existingNestedList && existingNestedList.type === currentList.type)
-  // A list item must be inserted inside an existing nested list, not after
-  // that list as a sibling block of the parent item. When the nested list is
-  // newly created, the position before the parent item's closing token is the
-  // correct insertion point for the list node itself.
+  const orderedStart = options.orderedStart && options.orderedStart > 0
+    ? Math.floor(options.orderedStart)
+    : 1
+  const targetList = targetListType.create(
+    targetListName === 'orderedList'
+      ? {
+          ...(currentList.type === targetListType ? currentList.attrs : {}),
+          start: orderedStart,
+        }
+      : undefined,
+    [itemToInsert],
+  )
+
+  transaction.delete(
+    currentList.childCount === 1 ? transaction.mapping.map(currentListStart) : mappedCurrentItemStart,
+    currentList.childCount === 1 ? transaction.mapping.map(currentListEnd) : mappedCurrentItemEnd,
+  )
+
+  // Removing the first row from an ordered list must advance its start value,
+  // otherwise the remaining rows unexpectedly jump back to 1 after a Tab.
+  if (currentList.type.name === 'orderedList' && currentList.childCount > 1) {
+    const nextListStart = transaction.mapping.map(currentListStart)
+    const nextList = transaction.doc.nodeAt(nextListStart)
+    if (nextList?.type.name === 'orderedList') {
+      transaction.setNodeMarkup(nextListStart, undefined, {
+        ...nextList.attrs,
+        start: Math.max(1, Number(nextList.attrs.start ?? 1) + 1),
+      })
+    }
+  }
+
+  // The preceding list is before the deleted range, so its position is stable.
+  // Insert before the parent item's closing token (or before the nested list's
+  // closing token when appending to an existing list).
   const insertionPosition = canAppendToExistingList
     ? previousItemEnd - 2
     : previousItemEnd - 1
-
-  const transaction = state.tr.delete(deleteFrom, deleteTo)
-  if (canAppendToExistingList) {
-    transaction.insert(insertionPosition, itemToInsert)
-  } else {
-    transaction.insert(insertionPosition, targetList)
-  }
+  transaction.insert(insertionPosition, canAppendToExistingList ? itemToInsert : targetList)
 
   const insertedTextPosition = insertionPosition + (canAppendToExistingList ? 2 : 3)
-  const mappedPosition = Math.min(transaction.doc.content.size, Math.max(1, insertedTextPosition))
-  transaction.setSelection(TextSelection.near(transaction.doc.resolve(mappedPosition)))
+  transaction.setSelection(
+    TextSelection.near(
+      transaction.doc.resolve(
+        Math.min(transaction.doc.content.size, Math.max(1, insertedTextPosition)),
+      ),
+    ),
+  )
   view.dispatch(transaction.scrollIntoView())
   return true
 }
@@ -186,22 +835,49 @@ export function sinkListItemIntoPreviousList(view: EditorView, listItemDepth: nu
 export function nestListItemAsType(
   view: EditorView,
   listItemDepth: number,
-  targetListName: 'bulletList' | 'orderedList',
+  targetListName: ListName,
+  options: {
+    orderedStart?: number
+    markerRange?: { from: number; to: number }
+  } = {},
 ) {
   const { state } = view
   const { $from } = state.selection
   const listDepth = listItemDepth - 1
-  if (listDepth <= 0 || $from.index(listDepth) === 0) return false
+  if (listDepth <= 0) return false
 
   const currentList = $from.node(listDepth)
-  const currentItem = $from.node(listItemDepth)
   const currentItemIndex = $from.index(listDepth)
+
+  // A marker typed in the first item of a list has no previous sibling in the
+  // current list. If there is an adjacent list immediately before it, apply
+  // the same cross-list nesting used by Tab. This is what makes
+  // `- A\n1. |` and `1. A\n- |` behave like Typora instead of leaving the
+  // literal marker in a top-level row.
+  if (currentItemIndex === 0) {
+    return moveFirstListItemToPreviousList(view, listItemDepth, targetListName, options)
+  }
+
+  const currentItemStart = $from.before(listItemDepth)
+  const currentItemEnd = $from.after(listItemDepth)
+  const transaction = state.tr
+
+  // Some WebViews report the marker and the trailing space as two separate
+  // events. Remove the marker in the same transaction as the structural move
+  // so one user gesture remains one undo unit and the marker is never moved
+  // into the nested item by accident.
+  if (options.markerRange) {
+    transaction.delete(options.markerRange.from, options.markerRange.to)
+  }
+
+  const mappedCurrentItemStart = transaction.mapping.map(currentItemStart)
+  const mappedCurrentItemEnd = transaction.mapping.map(currentItemEnd)
+  const currentItem = transaction.doc.nodeAt(mappedCurrentItemStart)
+  if (!currentItem) return false
   const previousItem = currentList.child(currentItemIndex - 1)
   const targetListType = state.schema.nodes[targetListName]
   if (!targetListType || previousItem.type !== currentItem.type) return false
 
-  const currentItemStart = $from.before(listItemDepth)
-  const currentItemEnd = $from.after(listItemDepth)
   const currentListStart = $from.before(listDepth)
   let previousItemStart = currentListStart + 1
   for (let index = 0; index < currentItemIndex - 1; index += 1) {
@@ -215,7 +891,7 @@ export function nestListItemAsType(
   const canAppendToExistingList = Boolean(
     existingNestedList && existingNestedList.type === targetListType,
   )
-  const transaction = state.tr.delete(currentItemStart, currentItemEnd)
+  transaction.delete(mappedCurrentItemStart, mappedCurrentItemEnd)
 
   if (canAppendToExistingList && existingNestedList) {
     // The existing list ends immediately before the parent item's closing
@@ -227,8 +903,16 @@ export function nestListItemAsType(
       TextSelection.near(transaction.doc.resolve(insertionPosition + 2)),
     )
   } else {
+    const orderedStart = options.orderedStart && options.orderedStart > 0
+      ? Math.floor(options.orderedStart)
+      : 1
     const targetList = targetListType.create(
-      targetListName === 'orderedList' ? { order: 1 } : undefined,
+      targetListName === 'orderedList'
+        ? {
+            ...(currentList.type === targetListType ? currentList.attrs : {}),
+            start: orderedStart,
+          }
+        : undefined,
       [itemToInsert],
     )
     const insertionPosition = previousItemEnd - 1
@@ -339,17 +1023,18 @@ export const MarkerHiddenListItem = Node.create({
         const carriedMarks = empty
           ? $from.marks().filter(mark => mark.type.name === 'pastedStyle')
           : []
-        const split = editor.commands.splitListItem(this.name)
-        if (!split) return false
-        const transaction = editor.state.tr
-        // A hidden marker is only a temporary state for an empty placeholder
-        // row. A newly split row must always show its own list marker.
-        revealListMarker(transaction, this.type)
-        if (carriedMarks.length > 0) transaction.setStoredMarks(carriedMarks)
-        if (transaction.steps.length > 0 || carriedMarks.length > 0) {
+        // Use the ProseMirror command directly so the split, marker
+        // normalization and carried marks are committed as one transaction.
+        // Calling editor.commands.splitListItem() first would dispatch once,
+        // then require a second transaction for marker/mark repair, producing
+        // an unexpected extra undo step for a single Enter key.
+        return splitListItemKeepMarks(this.type)(state, transaction => {
+          // A hidden marker is only a temporary state for an empty placeholder
+          // row. A newly split row must always show its own list marker.
+          revealListMarker(transaction, this.type)
+          if (carriedMarks.length > 0) transaction.setStoredMarks(carriedMarks)
           editor.view.dispatch(transaction)
-        }
-        return true
+        })
       },
       // Tab/Shift-Tab are handled by editorProps.handleKeyDown below. Keeping
       // them here as well would steal Tab navigation from lists inside tables,
@@ -359,10 +1044,103 @@ export const MarkerHiddenListItem = Node.create({
 })
 
 function isMergeableListPair(first: ProseMirrorNode, second: ProseMirrorNode) {
-  return (
-    (first.type.name === 'orderedList' || first.type.name === 'bulletList')
-    && first.sameMarkup(second)
+  if (first.type !== second.type) return false
+  if (first.type.name === 'bulletList') return first.sameMarkup(second)
+  if (first.type.name !== 'orderedList') return false
+  if (first.sameMarkup(second)) return true
+
+  // `start` is presentation state, not a reason to keep two sequential
+  // ordered lists separate. Merge the common cases (`1.` + `1.` from HTML,
+  // and an explicit continuation such as `3.` + `4.`), while preserving an
+  // intentional restart (`3.` + `1.`).
+  const firstStart = Number(first.attrs.start ?? 1)
+  const secondStart = Number(second.attrs.start ?? 1)
+  const sameNonStartAttrs = Object.keys(first.attrs).every((key) => (
+    key === 'start' || first.attrs[key] === second.attrs[key]
+  )) && Object.keys(second.attrs).every((key) => (
+    key === 'start' || first.attrs[key] === second.attrs[key]
+  ))
+  if (!sameNonStartAttrs) return false
+  return secondStart === firstStart + first.childCount
+}
+
+function isListNode(node: ProseMirrorNode | null | undefined) {
+  return node?.type.name === 'bulletList' || node?.type.name === 'orderedList'
+}
+
+/**
+ * Backspace at the first character of a list item normally lifts that item.
+ * When an empty paragraph separates it from a preceding list, the paragraph
+ * is the boundary the user is deleting. Remove it first, and only join the
+ * lists when their list types are compatible.
+ */
+function removeSpacerBeforeListItem(
+  view: EditorView,
+  listItemType: ProseMirrorNode['type'],
+  listItemDepth: number,
+) {
+  const { state } = view
+  const { selection } = state
+  if (!selection.empty || !selection.$from.parent.isTextblock || selection.$from.parentOffset !== 0) {
+    return false
+  }
+
+  const { $from } = selection
+  if (listItemDepth <= 0 || $from.index(listItemDepth) !== 0) return false
+
+  const listDepth = listItemDepth - 1
+  const parentDepth = listDepth - 1
+  if (parentDepth < 0) return false
+
+  const parent = $from.node(parentDepth)
+  const listIndex = $from.index(parentDepth)
+  if (listIndex < 2) return false
+
+  const currentList = parent.child(listIndex)
+  const spacer = parent.child(listIndex - 1)
+  const previousList = parent.child(listIndex - 2)
+  if (
+    !isListNode(currentList)
+    || !isListNode(previousList)
+    || spacer.type.name !== 'paragraph'
+    || spacer.content.size !== 0
+  ) {
+    return false
+  }
+
+  const currentListStart = $from.before(listDepth)
+  const spacerStart = currentListStart - spacer.nodeSize
+  const previousListStart = spacerStart - previousList.nodeSize
+  const transaction = state.tr.delete(spacerStart, currentListStart)
+  const boundary = transaction.mapping.map(currentListStart, -1)
+  const canMerge = isMergeableListPair(previousList, currentList)
+
+  if (canMerge) {
+    if (
+      currentList.type.name === 'orderedList'
+      && !previousList.sameMarkup(currentList)
+    ) {
+      transaction.setNodeMarkup(boundary, currentList.type, previousList.attrs)
+    }
+    if (canJoin(transaction.doc, boundary)) transaction.join(boundary)
+  }
+
+  let lastTextEnd = -1
+  previousList.descendants((node, pos) => {
+    if (node.isText) lastTextEnd = pos + node.nodeSize
+  })
+  const targetPosition = lastTextEnd >= 0
+    ? transaction.mapping.map(previousListStart + 1 + lastTextEnd, -1)
+    : transaction.mapping.map(selection.from, -1)
+  transaction.setSelection(
+    TextSelection.near(
+      transaction.doc.resolve(
+        Math.min(transaction.doc.content.size, Math.max(1, targetPosition)),
+      ),
+    ),
   )
+  view.dispatch(transaction.scrollIntoView())
+  return true
 }
 
 export const MergeAdjacentLists = Extension.create({
@@ -375,13 +1153,17 @@ export const MergeAdjacentLists = Extension.create({
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some(transaction => transaction.docChanged)) return null
 
-          const boundaries: number[] = []
+          const boundaries: Array<{
+            position: number
+            first: ProseMirrorNode
+            second: ProseMirrorNode
+          }> = []
           newState.doc.descendants((node, pos, parent, index) => {
             if (!parent || index >= parent.childCount - 1) return
 
             const nextNode = parent.child(index + 1)
             if (isMergeableListPair(node, nextNode)) {
-              boundaries.push(pos + node.nodeSize)
+              boundaries.push({ position: pos + node.nodeSize, first: node, second: nextNode })
             }
           })
 
@@ -389,8 +1171,18 @@ export const MergeAdjacentLists = Extension.create({
 
           // Join from the end so earlier positions remain valid as nodes collapse.
           const transaction = newState.tr
-          for (const boundary of boundaries.sort((left, right) => right - left)) {
-            if (canJoin(transaction.doc, boundary)) transaction.join(boundary)
+          for (const boundary of boundaries.sort((left, right) => right.position - left.position)) {
+            // ProseMirror joins only nodes with identical markup. Normalize a
+            // sequential ordered list's start attr immediately before the
+            // join; the first list's start remains the source of truth.
+            if (
+              boundary.first.type.name === 'orderedList'
+              && !boundary.first.sameMarkup(boundary.second)
+            ) {
+              const secondPos = boundary.position
+              transaction.setNodeMarkup(secondPos, boundary.second.type, boundary.first.attrs)
+            }
+            if (canJoin(transaction.doc, boundary.position)) transaction.join(boundary.position)
           }
 
           return transaction.steps.length > 0 ? transaction : null
@@ -416,6 +1208,8 @@ export function createListEditorHandlers(options: {
   const { isAiTaskLocked } = options
 
   const handleTextInput: ListEditorHandlers['handleTextInput'] = (view, from, to, text) => {
+    if (view.composing) return false
+
     const { $from } = view.state.selection
     const listItemType = view.state.schema.nodes.listItem
     if (from !== to || !listItemType || !$from.parent.isTextblock) {
@@ -427,68 +1221,107 @@ export function createListEditorHandlers(options: {
     // separate events. Account for both forms so the conversion is
     // deterministic across Chromium/WebView versions.
     const textBeforeInput = $from.parent.textBetween(0, $from.parentOffset)
-    const completeMarker = /^(?:[-+*]|\d+[.)])\s$/.test(text)
-    const splitMarker = text === ' '
-      && /^(?:[-+*]|\d+[.)])$/.test(textBeforeInput)
+    const hasTabPlaceholder = textBeforeInput === TAB_INDENT
+      || textBeforeInput.startsWith(TAB_INDENT)
+    const markerTextBeforeInput = textBeforeInput.startsWith(TAB_INDENT)
+      ? textBeforeInput.slice(TAB_INDENT.length)
+      : textBeforeInput
+    const completeMarker = LIST_MARKER_WITH_SPACE_PATTERN.test(text)
+    const splitMarker = /^[ \t]$/.test(text) && LIST_MARKER_PATTERN.test(markerTextBeforeInput)
     if (!completeMarker && !splitMarker) return false
-    if (completeMarker && $from.parentOffset !== 0) return false
+    if (completeMarker && $from.parentOffset !== 0 && !hasTabPlaceholder) return false
+    if (completeMarker && $from.parent.content.size !== 0 && !hasTabPlaceholder) return false
 
-    let listItemDepth = -1
-    for (let depth = $from.depth; depth > 0; depth -= 1) {
-      if ($from.node(depth).type === listItemType) {
-        listItemDepth = depth
-        break
-      }
+    const marker = parseListMarker(splitMarker ? markerTextBeforeInput : text.trim())
+    if (!marker) return false
+
+    if (hasTabPlaceholder && $from.parent.textContent === TAB_INDENT) {
+      return restoreTabPlaceholderAsList(view, marker, completeMarker ? text.trim() : undefined)
     }
+    if (hasTabPlaceholder && splitMarker) {
+      return restoreTabPlaceholderAsList(view, marker, markerTextBeforeInput)
+    }
+
+    const listItemDepth = findListItemDepth($from, listItemType)
     if (listItemDepth <= 0 || $from.index(listItemDepth) !== 0) return false
 
-    const targetListName: 'bulletList' | 'orderedList' = /^\d/.test(text)
-      || /^\d/.test(textBeforeInput)
-        ? 'orderedList'
-        : 'bulletList'
-    if (splitMarker) {
-      view.dispatch(view.state.tr.delete(from - textBeforeInput.length, from))
+    const currentListItem = $from.node(listItemDepth)
+    if (currentListItem.attrs.markerHidden === true
+      && currentListItem.firstChild === $from.parent
+      && currentListItem.firstChild.content.size === 0) {
+      return restoreHiddenListItem(view, listItemDepth, marker, splitMarker
+        ? { from: from - textBeforeInput.length, to: from }
+        : undefined)
     }
-    return nestListItemAsType(view, listItemDepth, targetListName)
+
+    return nestListItemAsType(view, listItemDepth, marker.listName, {
+      orderedStart: marker.start,
+      markerRange: splitMarker
+        ? { from: from - textBeforeInput.length, to: from }
+        : undefined,
+    })
   }
 
   const handleKeyDown: ListEditorHandlers['handleKeyDown'] = (view, event) => {
+    if (view.composing) return false
+
     if (isAiTaskLocked()) return true
 
     const { $from, empty } = view.state.selection
     const listItemType = view.state.schema.nodes.listItem
-    let listItemDepth = -1
-
-    if (listItemType) {
-      for (let depth = $from.depth; depth > 0; depth -= 1) {
-        if ($from.node(depth).type === listItemType) {
-          listItemDepth = depth
-          break
-        }
-      }
-    }
+    const listItemDepth = findListItemDepth($from, listItemType)
 
     // WebViews can deliver the trailing space as a keydown without a
     // preceding handleTextInput callback. Mirror the input-rule path here
     // so `- ` still creates a nested bullet in those hosts.
-    if (event.key === ' ' && empty && listItemDepth > 0 && $from.parent.isTextblock) {
-      const marker = $from.parent.textBetween(0, $from.parentOffset)
+    if (event.key === ' ' && empty && $from.parent.isTextblock) {
+      const markerText = $from.parent.textBetween(0, $from.parentOffset)
+      const hasTabPlaceholder = markerText.startsWith(TAB_INDENT)
+      const markerWithoutTab = hasTabPlaceholder ? markerText.slice(TAB_INDENT.length) : markerText
+      const isDocumentTabPlaceholder = hasTabPlaceholder
+        && $from.depth === 1
+        && listItemDepth <= 0
       if (
-        /^(?:[-+*]|\d+[.)])$/.test(marker)
-        && $from.index(listItemDepth) === 0
-        && $from.index(listItemDepth - 1) > 0
+        LIST_MARKER_PATTERN.test(markerWithoutTab)
+        && $from.parent.content.size === markerText.length
+        && (listItemDepth > 0 || isDocumentTabPlaceholder)
       ) {
-        event.preventDefault()
-        view.dispatch(view.state.tr.delete($from.pos - marker.length, $from.pos))
-        return nestListItemAsType(
-          view,
-          listItemDepth,
-          /^\d/.test(marker) ? 'orderedList' : 'bulletList',
-        )
+        const marker = parseListMarker(markerWithoutTab)
+        if (!marker) return true
+        if (hasTabPlaceholder && $from.parent.textContent === `${TAB_INDENT}${markerWithoutTab}`) {
+          const handled = restoreTabPlaceholderAsList(view, marker, markerWithoutTab)
+          if (handled) {
+            event.preventDefault()
+            return true
+          }
+        }
+        // A document-level Tab placeholder has no list-item ancestor to
+        // mutate. If it is not immediately after a list, leave the event to
+        // ProseMirror instead of resolving an invalid negative depth below.
+        if (isDocumentTabPlaceholder) return false
+        const currentListItem = $from.node(listItemDepth)
+        const markerRange = { from: $from.pos - markerText.length, to: $from.pos }
+        const handled = currentListItem.attrs.markerHidden === true
+          ? restoreHiddenListItem(view, listItemDepth, marker, markerRange)
+          : nestListItemAsType(view, listItemDepth, marker.listName, {
+              orderedStart: marker.start,
+              markerRange,
+            })
+        if (handled) {
+          event.preventDefault()
+          return true
+        }
+        return false
       }
     }
 
     if (event.key === 'Backspace' || event.key === 'Delete') {
+      // Modified deletion shortcuts (Ctrl/Cmd/Alt + Delete/Backspace) retain
+      // ProseMirror's word/selection semantics. Structural list transitions
+      // are reserved for the unmodified keys so a Ctrl+Delete at an item end
+      // cannot unexpectedly merge two rows.
+      if (event.ctrlKey || event.metaKey || event.altKey) return false
+
       const paragraph = $from.parent
       const parent = $from.node($from.depth - 1)
       const paragraphIndex = $from.index($from.depth - 1)
@@ -512,6 +1345,16 @@ export function createListEditorHandlers(options: {
         )
         const listBoundary = previousListStart + previousNode.nodeSize
 
+        if (
+          previousNode.type.name === 'orderedList'
+          && !previousNode.sameMarkup(nextNode)
+        ) {
+          // The lists are semantically sequential but carry different `start`
+          // attrs. Normalize the second list before joining, matching the
+          // append-transaction merge path above.
+          transaction.setNodeMarkup(listBoundary, nextNode.type, previousNode.attrs)
+        }
+
         if (canJoin(transaction.doc, listBoundary)) {
           transaction.join(listBoundary)
           // 删除两列表间空段并合并后，把光标放到上一列表最后一项的
@@ -525,9 +1368,22 @@ export function createListEditorHandlers(options: {
               if (node.isText) lastTextEnd = pos + node.nodeSize
             })
             if (lastTextEnd >= 0) {
-              const mapped = transaction.mapping.map(previousListStart + lastTextEnd)
+              // Descendant positions are relative to the list's content, so
+              // include the list's opening token when converting to a document
+              // position. Map backwards to keep the caret on that text end.
+              const mapped = transaction.mapping.map(previousListStart + 1 + lastTextEnd, -1)
               transaction.setSelection(
                 TextSelection.near(transaction.doc.resolve(mapped)),
+              )
+            } else {
+              const mappedBoundary = transaction.mapping.map(listBoundary, -1)
+              transaction.setSelection(
+                TextSelection.near(
+                  transaction.doc.resolve(
+                    Math.min(transaction.doc.content.size, Math.max(0, mappedBoundary)),
+                  ),
+                  -1,
+                ),
               )
             }
           }
@@ -537,17 +1393,88 @@ export function createListEditorHandlers(options: {
         }
       }
 
-      if (event.key === 'Delete') return false
+      if (event.key === 'Backspace' && listItemType && listItemDepth > 0) {
+        if (removeSpacerBeforeListItem(view, listItemType, listItemDepth)) {
+          event.preventDefault()
+          return true
+        }
+      }
+
+      // Delete at an empty nested row exits directly to a literal Tab
+      // placeholder. Unlike Backspace, Delete has no marker-hidden
+      // intermediate state, so one press is enough to leave an editable
+      // indentation and the next input can be `- ` / `1. `.
+      const isEmptyNestedListItemForDelete = event.key === 'Delete'
+        && empty
+        && $from.parent.isTextblock
+        && $from.parentOffset === 0
+        && listItemDepth === $from.depth - 1
+        && $from.index(listItemDepth) === 0
+        && listItemDepth > 1
+        && $from.node(listItemDepth - 2).type === listItemType
+        && $from.node(listItemDepth).firstChild?.type.name === 'paragraph'
+        && $from.node(listItemDepth).firstChild?.content.size === 0
+
+      if (isEmptyNestedListItemForDelete) {
+        event.preventDefault()
+        convertEmptyNestedListItemToTabPlaceholder(view, listItemDepth)
+        return true
+      }
+
+      if (event.key === 'Delete' && listItemType && listItemDepth > 0) {
+        const handled = handleListDelete(view, listItemType, listItemDepth)
+        if (handled) {
+          event.preventDefault()
+          return true
+        }
+      }
+
+      // A list item may contain more than one paragraph. Backspace at the
+      // start of a later paragraph joins it to the paragraph above; it must
+      // not be interpreted as an outdent of the entire list item.
+      const isAtStartOfLaterListParagraph = empty
+        && $from.parent.isTextblock
+        && $from.parentOffset === 0
+        && listItemDepth === $from.depth - 1
+        && $from.index(listItemDepth) > 0
+
+      if (isAtStartOfLaterListParagraph) {
+        let joinedTransaction: Transaction | undefined
+        const joined = joinBackward(view.state, transaction => {
+          joinedTransaction = transaction
+        })
+        if (!joined || !joinedTransaction) return false
+        event.preventDefault()
+        view.dispatch(joinedTransaction.scrollIntoView())
+        return true
+      }
+
+      // Synthetic keyboard events used by desktop automation do not always
+      // reach ProseMirror's built-in text deletion keymap. Keep ordinary
+      // character deletion deterministic inside list paragraphs.
+      if (
+        event.key === 'Backspace'
+        && empty
+        && $from.parent.isTextblock
+        && $from.parentOffset > 0
+        && listItemDepth > 0
+      ) {
+        event.preventDefault()
+        view.dispatch(view.state.tr.delete(view.state.selection.from - 1, view.state.selection.from).scrollIntoView())
+        return true
+      }
 
       // 光标位于列表项第一个段落行首时接管 Backspace，行为与 Typora 一致：
-      // 空项且前面还有同级项时删除该行（上方分支），
-      // 其余情况提升一级 —— 嵌套项回到上级列表继续编号，顶层项转回普通段落。
+      // 空的嵌套项直接退出列表，恢复为原列表符号位置的 Tab 占位段落；
+      // 有内容的嵌套项仍按原有规则逐级退位，顶层项则转回普通段落。
       const isAtListItemTextStart = empty
         && $from.parent.isTextblock
         && $from.parentOffset === 0
         && listItemDepth === $from.depth - 1
-        // 注意：此处不要求 $from.index(listItemDepth) === 0，
-        // 因为 Backspace 应作用于列表中的任意行，不仅仅第一项。
+        // Only the first paragraph of a list item is a list row boundary.
+        // A later paragraph belongs to the same item and should use the
+        // editor's normal paragraph-join behavior instead of lifting the row.
+        && $from.index(listItemDepth) === 0
 
       if (!isAtListItemTextStart) return false
 
@@ -559,15 +1486,15 @@ export function createListEditorHandlers(options: {
 
       if (isNestedListItem && isEmptyListItem) {
         event.preventDefault()
-        if (currentListItem.attrs.markerHidden === true) {
-          deleteEmptyListItem(view, listItemDepth)
-        } else {
-          hideListMarker(view, listItemDepth)
-        }
+        // One Backspace is enough: replace the empty nested list row with a
+        // literal Tab-indented paragraph at the same visual depth. Typing
+        // `- ` or `1. ` afterwards can recreate a nested list in place.
+        convertEmptyNestedListItemToTabPlaceholder(view, listItemDepth)
         return true
       }
 
-
+      // Non-empty nested rows and top-level rows use the normal one-level lift
+      // command, matching Shift+Tab without merging or deleting a sibling row.
       let liftedTransaction: Transaction | undefined
       const lifted = liftListItem(listItemType)(view.state, transaction => {
         liftedTransaction = transaction
@@ -609,7 +1536,7 @@ export function createListEditorHandlers(options: {
 
     if (listItemType && listItemDepth > 0) {
       event.preventDefault()
-      if (!event.shiftKey && sinkListItemIntoPreviousList(view, listItemDepth)) {
+      if (empty && !event.shiftKey && sinkListItemIntoPreviousList(view, listItemDepth)) {
         return true
       }
 

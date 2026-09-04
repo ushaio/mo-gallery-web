@@ -13,6 +13,8 @@ import {
   MergeAdjacentLists,
   createListEditorHandlers,
 } from '../../src/tiptap-editor/narrative-list'
+import { ListMarkerFontSize } from '../../src/tiptap-extensions/ListMarkerFontSize'
+import { PastedStyleMark } from '../../src/tiptap-extensions/PastedStyleMark'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   pretendToBeVisual: true,
@@ -69,6 +71,8 @@ export function createEditor(content?: string) {
       }),
       MarkerHiddenListItem,
       MergeAdjacentLists,
+      PastedStyleMark,
+      ListMarkerFontSize,
     ],
     content: content || '<p></p>',
     editorProps: handlers,
