@@ -12,6 +12,9 @@ export interface SocialLink {
 export interface EnvConfig {
   socialLinks: SocialLink[]
   siteAuthor: string
+  mapProvider?: 'carto' | 'amap'
+  amapKey?: string
+  amapSecurityJsCode?: string
 }
 
 interface SettingsContextType {
@@ -39,7 +42,7 @@ export function SettingsProvider({ children, initialEnvConfig, initialSettings }
       waline_server_url: '',
     },
   )
-  const [envConfig] = useState<EnvConfig>(initialEnvConfig || { socialLinks: [], siteAuthor: 'MO' })
+  const [envConfig] = useState<EnvConfig>(initialEnvConfig || { socialLinks: [], siteAuthor: 'MO', mapProvider: 'carto' })
   const [isLoading] = useState(false)
 
   const refresh = async () => {}

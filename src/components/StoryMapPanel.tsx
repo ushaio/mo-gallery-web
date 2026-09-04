@@ -8,8 +8,10 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useTheme } from '@/contexts/ThemeContext'
+import { useSettings } from '@/contexts/SettingsContext'
 import { clusterMarkers, type ClusterPoint } from '@/lib/map-clustering'
 import { getPhotoCoordinates, type PhotoCoordinates } from '@/lib/photo-location'
+import { AmapStoryMap } from '@/components/AmapStoryMap'
 
 // High-contrast dark map style
 const MAP_STYLE: StyleSpecification = {
@@ -244,8 +246,11 @@ function ClusterMarker({ point, isDark, onFocusPhoto }: ClusterMarkerProps) {
 
 export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExpanded }: StoryMapPanelProps) {
   const { locale, t } = useLanguage()
+  const { envConfig } = useSettings()
   const { resolvedTheme } = useTheme()
   const mapRef = useRef<MapRef | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const resizeFrameRef = useRef<number | null>(null)
   const geotaggedPhotos = useMemo(
     () => photos.map(toGeotaggedPhoto).filter((photo): photo is GeotaggedPhoto => photo !== null),
     [photos]
@@ -402,6 +407,25 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     })
   }, [expanded, geotaggedPhotos, popupPhoto, selectedPhoto])
 
+  const handleMapLoad = useCallback(() => {
+    fitMapToPhotos()
+    const map = mapRef.current
+    if (!map) return
+
+    resizeObserverRef.current?.disconnect()
+    const container = map.getContainer()
+    resizeObserverRef.current = new ResizeObserver(() => {
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current)
+      resizeFrameRef.current = requestAnimationFrame(() => {
+        resizeFrameRef.current = null
+        map.resize()
+        fitMapToPhotos()
+        updatePopupLayout()
+      })
+    })
+    resizeObserverRef.current.observe(container)
+  }, [fitMapToPhotos, updatePopupLayout])
+
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       fitMapToPhotos()
@@ -420,6 +444,10 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
     return () => {
       window.cancelAnimationFrame(frame)
       window.removeEventListener('resize', handleResize)
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current)
+      resizeFrameRef.current = null
     }
   }, [fitMapToPhotos, updatePopupLayout])
 
@@ -558,7 +586,16 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
               : '[&_.maplibregl-ctrl-group]:border [&_.maplibregl-ctrl-group]:border-border/60 [&_.maplibregl-ctrl-group]:bg-background/92 [&_.maplibregl-ctrl-group]:shadow-lg [&_.maplibregl-ctrl-button]:bg-transparent [&_.maplibregl-ctrl-button]:text-foreground [&_.maplibregl-ctrl-button:hover]:bg-muted/60 [&_.maplibregl-popup-tip]:border-b-background [&_.maplibregl-popup-tip]:border-t-background'
           }`}
         >
-          <Map
+          {envConfig.mapProvider === 'amap' ? (
+            <AmapStoryMap
+              photos={geotaggedPhotos}
+              cdnDomain={cdnDomain}
+              expanded={expanded}
+              isDark={isDark}
+              amapKey={envConfig.amapKey}
+              amapSecurityJsCode={envConfig.amapSecurityJsCode}
+            />
+          ) : <Map
             ref={mapRef}
             initialViewState={{
               longitude: selectedPhoto?.coordinates.lng ?? geotaggedPhotos[0].coordinates.lng,
@@ -569,7 +606,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
             attributionControl={false}
             reuseMaps
             scrollZoom={expanded}
-            onLoad={fitMapToPhotos}
+            onLoad={handleMapLoad}
             onMove={(evt) => setCurrentZoom(evt.viewState.zoom)}
           >
             <NavigationControl position="top-right" showCompass={false} />
@@ -696,7 +733,7 @@ export function StoryMapPanel({ photos, cdnDomain, expanded = false, onToggleExp
                 </div>
               </Popup>
             ) : null}
-          </Map>
+          </Map>}
         </div>
       )}
     </section>

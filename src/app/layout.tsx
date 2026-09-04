@@ -82,6 +82,9 @@ function getBootConfig() {
     envConfig: {
       socialLinks,
       siteAuthor: process.env.SITE_AUTHOR || 'MO',
+      mapProvider: ((process.env.NEXT_MAP_PROVIDER || process.env.NEXT_PUBLIC_MAP_PROVIDER)?.toLowerCase() === 'amap' ? 'amap' : 'carto') as 'amap' | 'carto',
+      amapKey: process.env.NEXT_AMAP_KEY || '',
+      amapSecurityJsCode: process.env.NEXT_AMAP_SECURITY_JS_CODE || '',
     },
     publicSettings: {
       site_title: process.env.SITE_TITLE || 'MO GALLERY',
