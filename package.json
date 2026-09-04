@@ -13,6 +13,7 @@
     "test:story-ai-images": "node --conditions=react-server --import tsx server/lib/story-ai.test.ts",
     "test:security": "node --conditions=react-server --import tsx tests/security-crypto.test.ts",
     "desktop:plugin:package": "node desktop/build/package-desktop-plugin.mjs",
+    "desktop:mcp:build": "pnpm --filter @mo-gallery/emulsion-mcp build",
     "desktop:runtime:verify": "node desktop/build/verify-node-runtime.mjs",
     "lint": "eslint",
     "prisma:generate": "npx prisma generate",
@@ -63,7 +64,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@tiptap/pm": "3.27.1",
+    "@tiptap/pm": "3.30.6",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",

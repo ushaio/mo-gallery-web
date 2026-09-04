@@ -20,6 +20,7 @@ import {
 } from './editor-constants'
 
 interface ColorPickerMenuProps {
+  automationId: 'textColor' | 'backgroundColor'
   isOpen: boolean
   menuRef: Ref<HTMLDivElement>
   position: { top: number; left: number }
@@ -42,6 +43,7 @@ interface ColorPickerMenuProps {
 }
 
 function ColorPickerMenu({
+  automationId,
   isOpen,
   menuRef,
   position,
@@ -67,6 +69,7 @@ function ColorPickerMenu({
   return createPortal(
     <div
       ref={menuRef}
+      data-automation-color-menu={automationId}
       className="fixed z-40 flex max-h-[calc(100vh-1.5rem)] w-[min(360px,calc(100vw-1.5rem))] flex-col gap-3 overflow-y-auto rounded-md border border-border bg-background p-4 shadow-xl"
       style={{
         top: position.top,
@@ -78,6 +81,7 @@ function ColorPickerMenu({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            data-automation-color=""
             onMouseDown={onMouseDown}
             onClick={() => onSetColor('')}
             className={`h-8 w-8 rounded-sm border bg-[linear-gradient(135deg,transparent_46%,#ff6b6b_46%,#ff6b6b_54%,transparent_54%)] transition-colors ${currentColor
@@ -90,6 +94,7 @@ function ColorPickerMenu({
             <button
               key={color}
               type="button"
+              data-automation-color={color}
               onMouseDown={onMouseDown}
               onClick={() => onSetColor(color)}
               className={`h-8 w-8 rounded-sm border transition-colors ${currentColor === color
@@ -151,6 +156,7 @@ function ColorPickerMenu({
             <button
               key={`${tab}-${color}`}
               type="button"
+              data-automation-color={color}
               onMouseDown={onMouseDown}
               onClick={() => {
                 onSetCustomColor(color)
@@ -179,6 +185,7 @@ function ColorPickerMenu({
           />
           <input
             type="text"
+            data-automation-color-input={automationId}
             value={customColor}
             onChange={(event) => onSetCustomColor(event.target.value)}
             onKeyDown={(event) => {
@@ -190,6 +197,7 @@ function ColorPickerMenu({
           />
           <button
             type="button"
+            data-automation-color-confirm={automationId}
             onMouseDown={onMouseDown}
             onClick={() => onSetColor(customColor)}
             className="h-9 shrink-0 rounded-sm border border-border px-4 text-sm text-foreground transition-colors hover:border-foreground/30"
@@ -238,6 +246,7 @@ export function BackgroundColorPicker({
 }: BackgroundColorPickerProps) {
   return (
     <ColorPickerMenu
+      automationId="backgroundColor"
       isOpen={isOpen}
       menuRef={menuRef}
       position={position}
@@ -296,6 +305,7 @@ export function TextColorPicker({
 }: TextColorPickerProps) {
   return (
     <ColorPickerMenu
+      automationId="textColor"
       isOpen={isOpen}
       menuRef={menuRef}
       position={position}

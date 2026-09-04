@@ -64,22 +64,29 @@ type App struct {
 	Logger              *services.Logger
 	ZineOperationLogger *services.ZineOperationLogger
 	Overview            *services.OverviewService
+	Inspiration         *services.InspirationService
 	Updater             *services.UpdateService
+	Usage               *services.UsageService
 	LocalLibrary        *local_library.Manager
 	AgentExtensions     *agent_extensions.Manager
 	StoragePlugins      *storage_plugins.Manager
 	PluginMarketplace   *storage_plugins.Marketplace
+	automationEnabled   bool
+	automation          *automationBridge
 }
 
-func NewApp(cfg *config.Config) *App {
+func NewApp(cfg *config.Config, automationEnabled bool) *App {
 	app := &App{
 		cfg:                 cfg,
+		automationEnabled:   automationEnabled,
 		activeWindowStyle:   config.NormalizeWindowStyle(cfg.UI.WindowStyle),
 		Proxy:               services.NewProxyClient(),
 		Logger:              services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 		ZineOperationLogger: services.NewZineOperationLogger(config.ConfigDir()),
 		Updater:             services.NewUpdateService(config.ConfigDir()),
+		Usage:               services.NewUsageService(config.ConfigDir(), desktopAppVersion()),
 		ModelCatalog:        services.NewModelCatalogService(config.ConfigDir()),
+		Inspiration:         services.NewInspirationService(),
 	}
 	if storageManager, err := storage_plugins.NewManager(config.ConfigDir()); err != nil {
 		log.Printf("storage plugin manager init failed: %v", err)
@@ -148,8 +155,15 @@ func (a *App) startup(ctx context.Context) {
 
 	// 启动本地 AI 流式 HTTP 服务
 	a.startAiHTTPServer()
+	a.startAutomationServer()
 
 	a.Logger.Info(services.LogCategorySystem, "app_start", "应用启动", "")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer cancel()
+		_ = a.Usage.Report(ctx)
+	}()
 }
 
 // setAiCORSHeaders allows the Wails WebView to call the local AI HTTP server.
@@ -157,7 +171,7 @@ func (a *App) startup(ctx context.Context) {
 // preflight must allow those requested headers or WebView reports Connection error.
 func setAiCORSHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 
 	requestedHeaders := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers"))
 	if requestedHeaders != "" {
@@ -216,6 +230,68 @@ func (a *App) startAiHTTPServer() {
 		}
 	})
 
+	mux.HandleFunc("/ai/persist-input-images", func(w http.ResponseWriter, r *http.Request) {
+		setAiCORSHeaders(w, r)
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if _, err := a.requireAuthenticatedUserID(); err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		var input struct {
+			ConversationID string   `json:"conversationId"`
+			Images         []string `json:"images"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<20)).Decode(&input); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		images, err := a.EditorAi.PersistInputImages(input.Images, input.ConversationID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(struct {
+			Images []string `json:"images"`
+		}{Images: images}); err != nil {
+			log.Printf("写入 AI 图片持久化响应失败: %v", err)
+		}
+	})
+
+	mux.HandleFunc("/ai/input-image/", func(w http.ResponseWriter, r *http.Request) {
+		setAiCORSHeaders(w, r)
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if _, err := a.requireAuthenticatedUserID(); err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		filename := strings.TrimPrefix(r.URL.Path, "/ai/input-image/")
+		data, mimeType, err := a.EditorAi.ReadPersistedInputImage(filename)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", mimeType)
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		_, _ = w.Write(data)
+	})
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		log.Printf("启动 AI HTTP 服务失败: %v", err)
@@ -233,6 +309,9 @@ func (a *App) startAiHTTPServer() {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.automation != nil {
+		a.automation.close()
+	}
 	if a.cloudSyncCancel != nil {
 		a.cloudSyncCancel()
 	}
@@ -251,6 +330,7 @@ func (a *App) shutdown(ctx context.Context) {
 	db.CloseLocalAI()
 	db.CloseLocalDrafts()
 	db.CloseLocalZine()
+	db.CloseLocalDesignCanvas()
 }
 
 func (a *App) GetWindowAppearance() WindowAppearance {
@@ -756,9 +836,39 @@ func (a *App) GetFileThumbnail(filePath string) (string, error) {
 
 // ─── Settings ────────────────────────────────────────
 
-func (a *App) GetSettings() (map[string]string, error) { return a.Settings.GetSettings() }
+func (a *App) GetSettings() (map[string]string, error) {
+	settings, err := a.Settings.GetSettings()
+	if err != nil {
+		return nil, err
+	}
+	settings["official_site_url"] = a.cfg.Official.BaseURL
+	return settings, nil
+}
 func (a *App) UpdateSettings(data map[string]string) (map[string]string, error) {
-	return a.Settings.UpdateSettings(data)
+	remote := make(map[string]string, len(data))
+	for key, value := range data {
+		remote[key] = value
+	}
+	if value, ok := remote["official_site_url"]; ok {
+		value = strings.TrimRight(strings.TrimSpace(value), "/")
+		if value == "" {
+			value = "http://localhost:3001"
+		}
+		if _, err := url.ParseRequestURI(value); err != nil {
+			return nil, errors.New("官方站地址无效")
+		}
+		a.cfg.Official.BaseURL = value
+		delete(remote, "official_site_url")
+		if err := a.cfg.Save(""); err != nil {
+			return nil, err
+		}
+	}
+	result, err := a.Settings.UpdateSettings(remote)
+	if result == nil {
+		result = map[string]string{}
+	}
+	result["official_site_url"] = a.cfg.Official.BaseURL
+	return result, err
 }
 func (a *App) FixMissingPhotos(photoIDs []string) (*services.FixMissingPhotosResult, error) {
 	return a.Storage.FixMissing(photoIDs)
@@ -1310,6 +1420,36 @@ func (a *App) GetOverview() (*services.OverviewDTO, error) {
 		return nil, errors.New("登录状态未就绪，请稍后重试")
 	}
 	return a.Overview.GetOverview()
+}
+
+// ─── Inspiration feeds ──────────────────────────────
+
+func (a *App) ListInspirationSubscriptions() []services.InspirationSubscription {
+	if a.Inspiration == nil {
+		return []services.InspirationSubscription{}
+	}
+	return a.Inspiration.ListSubscriptions()
+}
+
+func (a *App) SubscribeInspirationFeed(feedURL string) (*services.InspirationSubscription, error) {
+	if a.Inspiration == nil {
+		return nil, errors.New("灵感订阅服务未初始化")
+	}
+	return a.Inspiration.Subscribe(feedURL)
+}
+
+func (a *App) UnsubscribeInspirationFeed(id string) error {
+	if a.Inspiration == nil {
+		return errors.New("灵感订阅服务未初始化")
+	}
+	return a.Inspiration.Unsubscribe(id)
+}
+
+func (a *App) RefreshInspirationFeeds() ([]services.InspirationFeedItem, error) {
+	if a.Inspiration == nil {
+		return nil, errors.New("灵感订阅服务未初始化")
+	}
+	return a.Inspiration.Refresh()
 }
 
 // ─── Logger ──────────────────────────────────────────

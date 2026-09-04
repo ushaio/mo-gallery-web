@@ -6,9 +6,9 @@
 import { useMemo } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { JSONContent } from '@tiptap/core'
+import { joinBackward } from '@tiptap/pm/commands'
 import type { MutableRefObject } from 'react'
 import {
-  convertMarkdownToHtml,
   convertMarkdownImageToHtmlAttrs,
   convertHtmlImageToAttrs,
   isMarkdownImageSyntax,
@@ -33,6 +33,35 @@ export interface NarrativeTipTapEditorHandle {
   failImageUploadPlaceholder: (uploadId: string) => boolean
   scaleFirstImage: (mode: 'sm' | 'md' | 'lg') => boolean
   focus: () => void
+  getAutomationState: () => NarrativeEditorAutomationState | null
+  automationTypeText: (text: string) => boolean
+  automationPressKey: (input: NarrativeEditorAutomationKeyInput) => boolean
+  automationSetSelection: (from: number, to?: number) => boolean
+}
+
+export interface NarrativeEditorAutomationKeyInput {
+  key: string
+  code?: string
+  ctrlKey?: boolean
+  altKey?: boolean
+  shiftKey?: boolean
+  metaKey?: boolean
+}
+
+export interface NarrativeEditorAutomationState {
+  html: string
+  json: JSONContent
+  selection: {
+    from: number
+    to: number
+    anchor: number
+    head: number
+    empty: boolean
+  }
+  blockType: string
+  marks: string[]
+  editable: boolean
+  focused: boolean
 }
 
 export interface ImageUploadPlaceholderInput {
@@ -79,10 +108,11 @@ export function useEditorImperativeHandle({
     setValue: (html: string) => {
       if (isAiTaskLocked) return
       if (editor) {
-        const processed = isMarkdownContent(html) ? convertMarkdownToHtml(html) : html
-        editor.commands.setContent(processed)
-        currentValueRef.current = html
-        onChange(editor.getHTML())
+        const markdown = isMarkdownContent(html)
+        editor.commands.setContent(html, { contentType: markdown ? 'markdown' : 'html' })
+        const nextHtml = editor.getHTML()
+        currentValueRef.current = nextHtml
+        onChange(nextHtml)
         onJsonChange?.(editor.getJSON())
       }
     },
@@ -111,8 +141,7 @@ export function useEditorImperativeHandle({
           return
         }
 
-        const html = convertMarkdownToHtml(markdown)
-        editor.commands.insertContent(html)
+        editor.commands.insertContent(markdown, { contentType: 'markdown' })
         focusEditor()
       }
     },
@@ -299,6 +328,130 @@ export function useEditorImperativeHandle({
     },
 
     focus: focusEditor,
+    getAutomationState: () => {
+      if (!editor) return null
+      const { selection } = editor.state
+      const marks = editor.state.storedMarks ?? selection.$from.marks()
+      return {
+        html: editor.getHTML(),
+        json: editor.getJSON(),
+        selection: {
+          from: selection.from,
+          to: selection.to,
+          anchor: selection.anchor,
+          head: selection.head,
+          empty: selection.empty,
+        },
+        blockType: selection.$from.parent.type.name,
+        marks: marks.map((mark) => mark.type.name),
+        editable: editor.isEditable,
+        focused: document.activeElement === editor.view.dom || editor.view.dom.contains(document.activeElement),
+      }
+    },
+    automationTypeText: (text: string) => {
+      if (isAiTaskLocked || !editor) return false
+      editor.commands.focus()
+
+      for (const character of text) {
+        if (character === '\n') {
+          editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            bubbles: true,
+            cancelable: true,
+          }))
+          continue
+        }
+
+        const { from, to } = editor.state.selection
+        const handled = editor.view.someProp(
+          'handleTextInput',
+          (handler) => handler(
+            editor.view,
+            from,
+            to,
+            character,
+            () => editor.state.tr.insertText(character, from, to),
+          ),
+        ) === true
+        if (!handled) {
+          editor.view.dispatch(editor.state.tr.insertText(character, from, to).scrollIntoView())
+        }
+      }
+      return true
+    },
+    automationPressKey: (input: NarrativeEditorAutomationKeyInput) => {
+      if (isAiTaskLocked || !editor || !input.key) return false
+      editor.commands.focus()
+      const event = new KeyboardEvent('keydown', {
+        key: input.key,
+        code: input.code || input.key,
+        ctrlKey: input.ctrlKey === true,
+        altKey: input.altKey === true,
+        shiftKey: input.shiftKey === true,
+        metaKey: input.metaKey === true,
+        bubbles: true,
+        cancelable: true,
+      })
+
+      // Wails/WebView automation can dispatch on the detached editor DOM
+      // without reaching ProseMirror's native listener. Run the same view
+      // prop pipeline first, then let the DOM event cover plugins that only
+      // subscribe to the element.
+      const beforeDoc = editor.state.doc
+      const beforeSelection = editor.state.selection
+      const handled = editor.view.someProp('handleKeyDown', (handler) => handler(editor.view, event))
+      if (!handled) editor.view.dom.dispatchEvent(event)
+
+      const unchanged = editor.state.doc.eq(beforeDoc)
+        && editor.state.selection.eq(beforeSelection)
+      const isPlainBackspace = input.key === 'Backspace'
+        && input.ctrlKey !== true
+        && input.altKey !== true
+        && input.metaKey !== true
+
+      // A synthetic keydown has no browser default action. If neither the
+      // TipTap keymap nor a DOM listener handled an ordinary Backspace,
+      // reproduce the native deletion/join step used by a real keyboard.
+      if (unchanged && isPlainBackspace) {
+        const { selection } = editor.state
+        if (!selection.empty) {
+          editor.view.dispatch(
+            editor.state.tr.delete(selection.from, selection.to).scrollIntoView(),
+          )
+        } else if (selection.$from.parent.isTextblock && selection.$from.parentOffset > 0) {
+          const textBefore = selection.$from.parent.textBetween(
+            0,
+            selection.$from.parentOffset,
+            undefined,
+            '\ufffc',
+          )
+          const previousCodePoint = Array.from(textBefore).at(-1)
+          const deleteSize = previousCodePoint?.length ?? 1
+          editor.view.dispatch(
+            editor.state.tr
+              .delete(selection.from - deleteSize, selection.from)
+              .scrollIntoView(),
+          )
+        } else {
+          joinBackward(
+            editor.state,
+            transaction => editor.view.dispatch(transaction),
+            editor.view,
+          )
+        }
+      }
+      return true
+    },
+    automationSetSelection: (from: number, to = from) => {
+      if (isAiTaskLocked || !editor || !Number.isInteger(from) || !Number.isInteger(to)) return false
+      const min = Math.min(from, to)
+      const max = Math.max(from, to)
+      if (min < 1 || max > editor.state.doc.content.size + 1) return false
+      editor.commands.setTextSelection({ from: min, to: max })
+      editor.commands.focus()
+      return true
+    },
   }), [editor, focusEditor, insertInlineImage, isAiTaskLocked, onChange, onJsonChange, currentValueRef])
 
   return handle

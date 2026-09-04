@@ -47,6 +47,7 @@ import {
   ArrowRight,
   Search,
   RefreshCw,
+  Plus,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -217,9 +218,22 @@ function PhotoJournalContent() {
   const { token } = useAuth()
   const { settings } = useAdmin()
   const location = useLocation()
+  const automationRequest = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    const documentId = params.get('automationDocument')?.trim() || ''
+    const documentKind = params.get('automationKind')
+    const source: 'draft' | 'database' = params.get('automationSource') === 'database' ? 'database' : 'draft'
+    return documentId && (documentKind === 'story' || documentKind === 'blog')
+      ? { documentId, documentKind, source }
+      : null
+  }, [location.search])
   const [photos, setPhotos] = useState<PhotoDto[]>([])
 
   const [activeSubTab, setActiveSubTab] = useState<'blog' | 'stories' | 'drafts'>('stories')
+
+  useEffect(() => {
+    if (automationRequest) setActiveSubTab(automationRequest.documentKind === 'blog' ? 'blog' : 'stories')
+  }, [automationRequest])
 
   const [storyDraft, setStoryDraft] = useState<StoryDraftWithPreviews | null>(null)
   const [blogDrafts, setBlogDrafts] = useState<BlogDraftData[]>([])
@@ -242,6 +256,8 @@ function PhotoJournalContent() {
   const lastClickRef = useRef<{ tab: string; time: number }>({ tab: '', time: 0 })
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0)
   const [blogRefreshKey, setBlogRefreshKey] = useState(0)
+  const [storiesCreateRequestKey, setStoriesCreateRequestKey] = useState(0)
+  const [blogCreateRequestKey, setBlogCreateRequestKey] = useState(0)
 
   // 沉浸模式由叙事/博客两个编辑器各自维护（互不影响），任一沉浸时隐藏页面级 chrome
   const [isStoriesImmersive, setIsStoriesImmersive] = useState(false)
@@ -457,6 +473,14 @@ function PhotoJournalContent() {
     setActiveSubTab(tab)
   }
 
+  function handleCreateArticle() {
+    if (activeSubTab === 'stories') {
+      setStoriesCreateRequestKey((key) => key + 1)
+    } else if (activeSubTab === 'blog') {
+      setBlogCreateRequestKey((key) => key + 1)
+    }
+  }
+
   // 顶栏始终显示「照片日志」标题（包括编辑态），仅沉浸全屏时隐藏。
   // 内容区内边距恒定（不随编辑态切换），确保打开/关闭文章时左栏列表不产生位移。
   const chromeVisible = !isImmersiveMode
@@ -478,6 +502,17 @@ function PhotoJournalContent() {
       <div className={chromeVisible ? 'block' : 'hidden'}>
         <PageHeader
           title={t('admin.logs')}
+          actions={activeSubTab !== 'drafts' ? (
+            <AdminButton
+              onClick={handleCreateArticle}
+              adminVariant="primary"
+              className="flex h-8 w-8 items-center justify-center rounded-md p-0"
+              title={activeSubTab === 'stories' ? t('ui.create_story') : t('ui.create_blog')}
+              aria-label={activeSubTab === 'stories' ? t('ui.create_story') : t('ui.create_blog')}
+            >
+              <Plus className="h-4 w-4" />
+            </AdminButton>
+          ) : undefined}
         />
       </div>
 
@@ -490,7 +525,10 @@ function PhotoJournalContent() {
             t={t}
             notify={notify}
             refreshKey={blogRefreshKey}
+            createRequestKey={blogCreateRequestKey}
             editBlogFromDraft={editBlogFromDraft}
+            editBlogId={automationRequest?.documentKind === 'blog' ? automationRequest.documentId : undefined}
+            editSource={automationRequest?.source}
             onDraftConsumed={() => setEditBlogFromDraft(null)}
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={toggleListPane}
@@ -506,8 +544,11 @@ function PhotoJournalContent() {
             t={t}
             notify={notify}
             editFromDraft={editFromDraft}
+            editStoryId={automationRequest?.documentKind === 'story' ? automationRequest.documentId : undefined}
+            editSource={automationRequest?.source}
             onDraftConsumed={() => setEditFromDraft(null)}
             refreshKey={storiesRefreshKey}
+            createRequestKey={storiesCreateRequestKey}
             listPaneCollapsed={listPaneCollapsed}
             onToggleListPane={toggleListPane}
             subTabNav={subTabNav}

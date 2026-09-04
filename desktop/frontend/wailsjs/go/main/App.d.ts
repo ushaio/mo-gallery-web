@@ -57,6 +57,8 @@ export function ClearLogs():Promise<void>;
 
 export function CloseLocalLibrary():Promise<void>;
 
+export function CompleteAutomationCommand(arg1:string,arg2:string):Promise<void>;
+
 export function CompleteSetup(arg1:Record<string, any>):Promise<void>;
 
 export function CopyLocalAssetsToClipboard(arg1:Array<string>,arg2:boolean):Promise<void>;
@@ -92,6 +94,8 @@ export function DeleteAlbum(arg1:string):Promise<void>;
 export function DeleteBlog(arg1:string):Promise<void>;
 
 export function DeleteComment(arg1:string):Promise<void>;
+
+export function DeleteDesignCanvasProject(arg1:string):Promise<void>;
 
 export function DeleteDesktopStorageSource(arg1:string):Promise<void>;
 
@@ -168,6 +172,10 @@ export function GetCameras():Promise<Array<services.CameraDTO>>;
 export function GetCategories():Promise<Array<string>>;
 
 export function GetComments(arg1:services.ListCommentsParams):Promise<services.PaginatedResponse_mo_gallery_desktop_services_CommentDTO_>;
+
+export function GetDesignCanvasAssetBlob(arg1:string):Promise<string>;
+
+export function GetDesignCanvasProject(arg1:string):Promise<string>;
 
 export function GetDesktopPluginMarketplace(arg1:boolean):Promise<storage_plugins.MarketplaceCatalog>;
 
@@ -279,11 +287,15 @@ export function InstallDesktopSystemPluginPackage(arg1:string):Promise<storage_p
 
 export function IsLinuxDoEnabled():Promise<boolean>;
 
+export function ListDesignCanvasProjects():Promise<Array<string>>;
+
 export function ListDesktopStorageObjects(arg1:string,arg2:string,arg3:string,arg4:number):Promise<storage_plugins.ListResult>;
 
 export function ListDesktopStoragePluginVersions(arg1:string):Promise<Array<storage_plugins.PluginVersionDescriptor>>;
 
 export function ListDesktopSystemPluginVersions(arg1:string):Promise<Array<storage_plugins.PluginVersionDescriptor>>;
+
+export function ListInspirationSubscriptions():Promise<Array<services.InspirationSubscription>>;
 
 export function ListLocalAssets(arg1:local_library.AssetQuery):Promise<local_library.AssetPage>;
 
@@ -355,6 +367,8 @@ export function RebuildLocalLibraryThumbnails(arg1:string):Promise<number>;
 
 export function RecheckMissingLocalAssets(arg1:Array<string>):Promise<Array<local_library.AssetMaintenanceResult>>;
 
+export function RefreshInspirationFeeds():Promise<Array<services.InspirationFeedItem>>;
+
 export function RefreshModelCatalog():Promise<services.ModelCatalogDTO>;
 
 export function RemoveAgentMCPServer(arg1:string):Promise<void>;
@@ -400,6 +414,10 @@ export function RollbackDesktopSystemPlugin(arg1:string,arg2:string):Promise<voi
 export function SaveAgentMCPServer(arg1:agent_extensions.MCPServerInput):Promise<agent_extensions.MCPServer>;
 
 export function SaveAiImageToAlbum(arg1:string):Promise<services.PhotoDTO>;
+
+export function SaveDesignCanvasAssetBlob(arg1:string,arg2:string):Promise<void>;
+
+export function SaveDesignCanvasProject(arg1:string):Promise<void>;
 
 export function SaveLocalDraft(arg1:string,arg2:string):Promise<void>;
 
@@ -453,6 +471,8 @@ export function SetLocalLibraryImportMode(arg1:string):Promise<local_library.Loc
 
 export function StartLocalLibraryScan():Promise<void>;
 
+export function SubscribeInspirationFeed(arg1:string):Promise<services.InspirationSubscription>;
+
 export function SyncLocalLibraryCloud():Promise<local_library.CloudSyncStatus>;
 
 export function TestAgentMCPServer(arg1:string):Promise<agent_extensions.MCPServer>;
@@ -470,6 +490,8 @@ export function UnbindLinuxDoAccount():Promise<void>;
 export function UninstallDesktopStoragePlugin(arg1:string):Promise<void>;
 
 export function UninstallDesktopSystemPlugin(arg1:string):Promise<void>;
+
+export function UnsubscribeInspirationFeed(arg1:string):Promise<void>;
 
 export function UpdateAiConfig(arg1:config.AIConfig):Promise<void>;
 

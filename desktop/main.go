@@ -27,6 +27,7 @@ var icon []byte
 func main() {
 	// 命令行参数：指定配置文件路径
 	configPath := flag.String("config", "", "配置文件路径 (默认: ~/.mo-gallery-desktop/config.json)")
+	automationEnabled := flag.Bool("automation", false, "启用仅限本机的编辑器自动化接口")
 	flag.Parse()
 
 	// 加载配置
@@ -46,9 +47,12 @@ func main() {
 	if err := db.ConnectLocalZine(config.ConfigDir()); err != nil {
 		log.Fatalf("初始化本地 Zine 数据库失败: %v", err)
 	}
+	if err := db.ConnectLocalDesignCanvas(config.ConfigDir()); err != nil {
+		log.Fatalf("初始化本地设计画布数据库失败: %v", err)
+	}
 
 	// 创建 App 实例
-	app := NewApp(cfg)
+	app := NewApp(cfg, *automationEnabled)
 
 	// 重启流程中，新进程需要绕过旧进程尚未释放的单实例锁。
 	var singleInstanceLock *options.SingleInstanceLock
@@ -65,9 +69,9 @@ func main() {
 	}
 
 	// 启动 Wails 应用
-		err = wails.Run(&options.App{
-			Title:     "Emulsion",
-			Width:     1440,
+	err = wails.Run(&options.App{
+		Title:     "Emulsion",
+		Width:     1440,
 		Height:    900,
 		MinWidth:  1024,
 		MinHeight: 700,

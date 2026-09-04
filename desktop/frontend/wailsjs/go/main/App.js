@@ -98,6 +98,10 @@ export function CloseLocalLibrary() {
   return window['go']['main']['App']['CloseLocalLibrary']();
 }
 
+export function CompleteAutomationCommand(arg1, arg2) {
+  return window['go']['main']['App']['CompleteAutomationCommand'](arg1, arg2);
+}
+
 export function CompleteSetup(arg1) {
   return window['go']['main']['App']['CompleteSetup'](arg1);
 }
@@ -168,6 +172,10 @@ export function DeleteBlog(arg1) {
 
 export function DeleteComment(arg1) {
   return window['go']['main']['App']['DeleteComment'](arg1);
+}
+
+export function DeleteDesignCanvasProject(arg1) {
+  return window['go']['main']['App']['DeleteDesignCanvasProject'](arg1);
 }
 
 export function DeleteDesktopStorageSource(arg1) {
@@ -320,6 +328,14 @@ export function GetCategories() {
 
 export function GetComments(arg1) {
   return window['go']['main']['App']['GetComments'](arg1);
+}
+
+export function GetDesignCanvasAssetBlob(arg1) {
+  return window['go']['main']['App']['GetDesignCanvasAssetBlob'](arg1);
+}
+
+export function GetDesignCanvasProject(arg1) {
+  return window['go']['main']['App']['GetDesignCanvasProject'](arg1);
 }
 
 export function GetDesktopPluginMarketplace(arg1) {
@@ -542,6 +558,10 @@ export function IsLinuxDoEnabled() {
   return window['go']['main']['App']['IsLinuxDoEnabled']();
 }
 
+export function ListDesignCanvasProjects() {
+  return window['go']['main']['App']['ListDesignCanvasProjects']();
+}
+
 export function ListDesktopStorageObjects(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ListDesktopStorageObjects'](arg1, arg2, arg3, arg4);
 }
@@ -552,6 +572,10 @@ export function ListDesktopStoragePluginVersions(arg1) {
 
 export function ListDesktopSystemPluginVersions(arg1) {
   return window['go']['main']['App']['ListDesktopSystemPluginVersions'](arg1);
+}
+
+export function ListInspirationSubscriptions() {
+  return window['go']['main']['App']['ListInspirationSubscriptions']();
 }
 
 export function ListLocalAssets(arg1) {
@@ -694,6 +718,10 @@ export function RecheckMissingLocalAssets(arg1) {
   return window['go']['main']['App']['RecheckMissingLocalAssets'](arg1);
 }
 
+export function RefreshInspirationFeeds() {
+  return window['go']['main']['App']['RefreshInspirationFeeds']();
+}
+
 export function RefreshModelCatalog() {
   return window['go']['main']['App']['RefreshModelCatalog']();
 }
@@ -784,6 +812,14 @@ export function SaveAgentMCPServer(arg1) {
 
 export function SaveAiImageToAlbum(arg1) {
   return window['go']['main']['App']['SaveAiImageToAlbum'](arg1);
+}
+
+export function SaveDesignCanvasAssetBlob(arg1, arg2) {
+  return window['go']['main']['App']['SaveDesignCanvasAssetBlob'](arg1, arg2);
+}
+
+export function SaveDesignCanvasProject(arg1) {
+  return window['go']['main']['App']['SaveDesignCanvasProject'](arg1);
 }
 
 export function SaveLocalDraft(arg1, arg2) {
@@ -890,6 +926,10 @@ export function StartLocalLibraryScan() {
   return window['go']['main']['App']['StartLocalLibraryScan']();
 }
 
+export function SubscribeInspirationFeed(arg1) {
+  return window['go']['main']['App']['SubscribeInspirationFeed'](arg1);
+}
+
 export function SyncLocalLibraryCloud() {
   return window['go']['main']['App']['SyncLocalLibraryCloud']();
 }
@@ -924,6 +964,10 @@ export function UninstallDesktopStoragePlugin(arg1) {
 
 export function UninstallDesktopSystemPlugin(arg1) {
   return window['go']['main']['App']['UninstallDesktopSystemPlugin'](arg1);
+}
+
+export function UnsubscribeInspirationFeed(arg1) {
+  return window['go']['main']['App']['UnsubscribeInspirationFeed'](arg1);
 }
 
 export function UpdateAiConfig(arg1) {

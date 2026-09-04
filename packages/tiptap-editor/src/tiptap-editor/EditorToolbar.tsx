@@ -20,6 +20,7 @@ interface ToolbarButtonProps {
   className?: string
   ariaHasPopup?: React.AriaAttributes['aria-haspopup']
   ariaExpanded?: boolean
+  automationId?: string
 }
 
 export function ToolbarButton({
@@ -33,6 +34,7 @@ export function ToolbarButton({
   className = '',
   ariaHasPopup,
   ariaExpanded,
+  automationId,
 }: ToolbarButtonProps) {
   return (
     <button
@@ -46,6 +48,7 @@ export function ToolbarButton({
       aria-pressed={typeof isActive === 'boolean' ? isActive : undefined}
       aria-haspopup={ariaHasPopup}
       aria-expanded={ariaExpanded}
+      data-automation-command={automationId}
       className={`flex h-11 min-w-11 shrink-0 items-center justify-center rounded-md border px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:h-8 sm:min-w-8 sm:rounded-sm sm:px-1.5 ${isActive
           ? 'border-primary/30 bg-primary/10 text-primary'
           : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground'
@@ -64,9 +67,10 @@ interface ToolbarSelectProps {
   title: string
   options: ReadonlyArray<{ label: string; value: string }>
   className?: string
+  automationId?: string
 }
 
-export function ToolbarSelect({ value, onChange, onMouseDown, onBlur, title, options, className = '' }: ToolbarSelectProps) {
+export function ToolbarSelect({ value, onChange, onMouseDown, onBlur, title, options, className = '', automationId }: ToolbarSelectProps) {
   const selectWidth = useMemo(() => {
     const longestLabelLength = options.reduce((max, option) => {
       return Math.max(max, option.label.length)
@@ -80,6 +84,7 @@ export function ToolbarSelect({ value, onChange, onMouseDown, onBlur, title, opt
       value={value}
       title={title}
       aria-label={title}
+      data-automation-control={automationId}
       onMouseDown={onMouseDown}
       onBlur={onBlur}
       onChange={(event) => onChange(event.target.value)}
@@ -152,6 +157,7 @@ interface ToolbarPopoverProps {
   active?: boolean
   disabled?: boolean
   panelClassName?: string
+  automationId?: string
 }
 
 export function ToolbarPopover({
@@ -163,6 +169,7 @@ export function ToolbarPopover({
   active = false,
   disabled = false,
   panelClassName = '',
+  automationId,
 }: ToolbarPopoverProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -231,6 +238,7 @@ export function ToolbarPopover({
         title={label}
         ariaHasPopup="menu"
         ariaExpanded={open}
+        automationId={automationId}
       >
         <Icon className="h-4 w-4" />
         <ChevronDown className="ml-0.5 hidden h-3 w-3 sm:block" aria-hidden="true" />
@@ -261,6 +269,7 @@ export function CommandMenuItem({
     <button
       type="button"
       role="menuitem"
+      data-automation-command={command.id}
       aria-disabled={command.disabled}
       disabled={command.disabled}
       onMouseDown={(event) => event.preventDefault()}

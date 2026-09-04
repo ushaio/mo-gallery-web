@@ -1217,6 +1217,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
         {/* Toolbar */}
         <fieldset
           ref={toolbarRef}
+          data-automation-toolbar
           disabled={isAiTaskLocked}
           aria-disabled={isAiTaskLocked}
           aria-label={t('editor.main_toolbar')}
@@ -1226,6 +1227,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
           {/* 命令条：空间不足时水平滚动；插入/格式/撤销重做固定常驻右侧 */}
           <div className="tiptap-toolbar-scroll flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-clip overscroll-x-contain py-1 -my-1">
             <ToolbarSelect
+              automationId="headingLevel"
               value={resolvedEditorUiState.headingLevel}
               onChange={setHeadingLevel}
               onMouseDown={preserveSelectionOnSelectMouseDown}
@@ -1235,6 +1237,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               className="max-w-[4.5rem] min-[360px]:max-w-[5.5rem] sm:max-w-[7.5rem]"
             />
             <ToolbarSelect
+              automationId="fontFamily"
               value={resolvedEditorUiState.fontFamily}
               onChange={setFontFamily}
               onMouseDown={preserveSelectionOnSelectMouseDown}
@@ -1244,6 +1247,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               className="max-w-[7rem]"
             />
             <ToolbarSelect
+              automationId="fontSize"
               value={resolvedEditorUiState.fontSize}
               onChange={setFontSize}
               onMouseDown={preserveSelectionOnSelectMouseDown}
@@ -1258,6 +1262,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               return (
                 <ToolbarButton
                   key={command.id}
+                  automationId={command.id}
                   onClick={command.execute}
                   isActive={command.active}
                   disabled={command.disabled}
@@ -1273,6 +1278,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               return (
                 <ToolbarButton
                   key={command.id}
+                  automationId={command.id}
                   onClick={command.execute}
                   isActive={command.active}
                   disabled={command.disabled}
@@ -1288,6 +1294,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               return (
                 <ToolbarButton
                   key={command.id}
+                  automationId={command.id}
                   onClick={command.execute}
                   isActive={command.active}
                   disabled={command.disabled}
@@ -1301,6 +1308,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
           <div className="flex shrink-0 items-center gap-0.5">
             <ToolbarPopover
+              automationId="insertMenu"
               open={openToolbarMenu === 'insert'}
               onOpenChange={(open) => {
                 setOpenToolbarMenu(open ? 'insert' : null)
@@ -1364,6 +1372,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             </ToolbarPopover>
 
             <ToolbarPopover
+              automationId="formatMenu"
               open={openToolbarMenu === 'format'}
               onOpenChange={(open) => {
                 setOpenToolbarMenu(open ? 'format' : null)
@@ -1384,6 +1393,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               <div className="my-1 h-px bg-border/70" />
               <button
                 ref={textColorButtonRef}
+                data-automation-command="textColor"
                 type="button"
                 role="menuitem"
                 onMouseDown={preserveSelectionOnToolbarMouseDown}
@@ -1396,6 +1406,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               </button>
               <button
                 ref={backgroundColorButtonRef}
+                data-automation-command="backgroundColor"
                 type="button"
                 role="menuitem"
                 onMouseDown={preserveSelectionOnToolbarMouseDown}
@@ -1414,6 +1425,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
               return (
                 <ToolbarButton
                   key={command.id}
+                  automationId={command.id}
                   onClick={command.execute}
                   disabled={command.disabled}
                   title={command.label}
