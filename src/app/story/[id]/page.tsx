@@ -110,6 +110,23 @@ export default function StoryDetailPage() {
   }, [story?.id])
 
   useEffect(() => {
+    if (!isMapExpanded) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMapExpanded(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isMapExpanded])
+
+  useEffect(() => {
     const handleScroll = () => {
       const shouldShow = window.scrollY > 400
       if (shouldShow !== showBackToTopRef.current) {
@@ -328,22 +345,6 @@ export default function StoryDetailPage() {
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 lg:px-12 lg:py-24">
-        {isMapExpanded ? (
-          <motion.section
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="mb-16"
-          >
-            <StoryMapPanel
-              photos={story.photos}
-              cdnDomain={settings?.cdn_domain}
-              expanded
-              onToggleExpanded={() => setIsMapExpanded(false)}
-            />
-          </motion.section>
-        ) : null}
-
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           <main className="lg:col-span-8">
             <article className="mb-16">
@@ -497,13 +498,11 @@ export default function StoryDetailPage() {
           </main>
 
           <aside className="space-y-8 lg:col-span-4 lg:sticky lg:top-8 lg:self-start">
-            {!isMapExpanded ? (
-              <StoryMapPanel
-                photos={story.photos}
-                cdnDomain={settings?.cdn_domain}
-                onToggleExpanded={() => setIsMapExpanded(true)}
-              />
-            ) : null}
+            <StoryMapPanel
+              photos={story.photos}
+              cdnDomain={settings?.cdn_domain}
+              onToggleExpanded={() => setIsMapExpanded(true)}
+            />
 
             {targetPhotoId ? (
               <div className="rounded-[28px] border border-border/30 bg-background/80 p-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)] sm:p-6">
@@ -528,6 +527,40 @@ export default function StoryDetailPage() {
         allPhotos={story.photos}
         hideStoryTab
       />
+
+      <AnimatePresence>
+        {isMapExpanded ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 lg:p-10"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm"
+              onClick={() => setIsMapExpanded(false)}
+            />
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="relative z-10 w-full max-w-6xl"
+            >
+              <StoryMapPanel
+                photos={story.photos}
+                cdnDomain={settings?.cdn_domain}
+                expanded
+                onToggleExpanded={() => setIsMapExpanded(false)}
+              />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <Toast
         notifications={notifications}
         remove={(id) => setNotifications((prev) => prev.filter((item) => item.id !== id))}
