@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,6 +73,8 @@ type transfer struct {
 	destination string
 	temporary   string
 	progress    func(done, total int64)
+	chunks      int
+	startedAt   time.Time
 }
 
 type pluginRuntime struct {
@@ -236,6 +239,16 @@ func (r *pluginRuntime) handleTransferRead(request rpcRequest) {
 	if progress := item.progress; progress != nil {
 		progress(params.Offset+int64(read), item.size)
 	}
+	now := time.Now()
+	r.mu.Lock()
+	if updated, ok := r.transfers[params.TransferID]; ok {
+		updated.chunks++
+		if updated.startedAt.IsZero() {
+			updated.startedAt = now
+		}
+		r.transfers[params.TransferID] = updated
+	}
+	r.mu.Unlock()
 	result := map[string]any{
 		"data":   base64.StdEncoding.EncodeToString(buffer),
 		"offset": params.Offset,
@@ -286,6 +299,10 @@ func (r *pluginRuntime) handleTransferWrite(request rpcRequest) {
 	}
 	if writeErr == nil {
 		item.written += int64(written)
+		item.chunks++
+		if item.startedAt.IsZero() {
+			item.startedAt = time.Now()
+		}
 		r.transfers[params.TransferID] = item
 	}
 	next := item.written
@@ -468,11 +485,31 @@ func (r *pluginRuntime) unregisterTransfer(id string) {
 	delete(r.transfers, id)
 	r.mu.Unlock()
 	if ok {
+		if item.chunks > 0 && !item.startedAt.IsZero() {
+			elapsed := time.Since(item.startedAt)
+			log.Printf("[storage-plugin] transfer %s done: %d chunks, %d bytes moved, took %s (%.2f MB/s)",
+				id, item.chunks, max64(item.written, item.size), elapsed, mbPerSecond(max64(item.written, item.size), elapsed))
+		}
 		_ = item.file.Close()
 		if item.writable && item.temporary != "" {
 			_ = os.Remove(item.temporary)
 		}
 	}
+}
+
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func mbPerSecond(size int64, elapsed time.Duration) float64 {
+	seconds := elapsed.Seconds()
+	if seconds <= 0 || size <= 0 {
+		return 0
+	}
+	return float64(size) / (1024 * 1024) / seconds
 }
 
 func (r *pluginRuntime) transferWritten(id string) (int64, bool) {

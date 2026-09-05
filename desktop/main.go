@@ -30,6 +30,8 @@ func main() {
 	automationEnabled := flag.Bool("automation", false, "启用仅限本机的编辑器自动化接口")
 	flag.Parse()
 
+	setupFileLogging()
+
 	// 加载配置
 	cfg, err := config.Load(*configPath)
 	if err != nil {

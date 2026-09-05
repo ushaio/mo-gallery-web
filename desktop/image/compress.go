@@ -7,10 +7,12 @@ import (
 	"image/jpeg"
 	"image/png"
 	_ "image/png"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	nativewebp "github.com/HugoSmits86/nativewebp"
 	avifcodec "github.com/gen2brain/avif"
@@ -24,6 +26,96 @@ const (
 	minCompressionDimension = 640
 	maxCompressionPixels    = 180_000_000
 )
+
+// OriginalFitsAsRendition reports whether the source file already satisfies
+// the compressed-rendition constraints (web-friendly format, size under
+// maxBytes, long edge within maxCompressionDimension), so compression can be
+// skipped and the original uploaded as-is. Only file headers are read.
+func OriginalFitsAsRendition(sourcePath string, maxBytes int64) bool {
+	switch strings.ToLower(filepath.Ext(sourcePath)) {
+	case ".jpg", ".jpeg", ".png", ".webp":
+	default:
+		return false
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil || info.Size() == 0 || info.Size() > maxBytes {
+		return false
+	}
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	config, _, err := stdimage.DecodeConfig(file)
+	if err != nil {
+		return false
+	}
+	return max(config.Width, config.Height) <= maxCompressionDimension
+}
+
+// CompressToJPEG re-encodes a photo as a lossy JPEG rendition under maxBytes.
+// It replaces the lossless WebP ladder: quality is lowered before pixels are
+// dropped, each resize is estimated from the previous encode's actual output
+// size, and every attempt is logged with its cost.
+func CompressToJPEG(sourcePath, destinationPath string, orientation int, maxBytes int64) error {
+	if maxBytes <= 0 {
+		return fmt.Errorf("压缩目标大小必须大于 0")
+	}
+	decodeStart := time.Now()
+	source, err := decodeForCompression(sourcePath)
+	if err != nil {
+		return fmt.Errorf("无法解码图片: %w", err)
+	}
+	log.Printf("[compress] jpeg decode %s took %s", filepath.Base(sourcePath), time.Since(decodeStart))
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 || int64(width)*int64(height) > maxCompressionPixels {
+		return fmt.Errorf("图片尺寸无效或像素数量超过限制: %dx%d", width, height)
+	}
+
+	current := scaleBilinear(orientForCompression(source, orientation), maxCompressionDimension)
+	qualities := []int{85, 75, 65}
+	var smallest []byte
+
+encode:
+	for round := 0; round < 3; round++ {
+		for _, quality := range qualities {
+			attemptStart := time.Now()
+			encoded, encodeErr := encodeJPEG(current, quality)
+			log.Printf("[compress] jpeg round=%d quality=%d source=%dx%d took %s output=%d bytes target=%d",
+				round, quality, current.Bounds().Dx(), current.Bounds().Dy(), time.Since(attemptStart), len(encoded), maxBytes)
+			if encodeErr != nil {
+				return fmt.Errorf("JPEG 编码失败: %w", encodeErr)
+			}
+			if smallest == nil || len(encoded) < len(smallest) {
+				smallest = encoded
+			}
+			if int64(len(encoded)) <= maxBytes {
+				return os.WriteFile(destinationPath, encoded, 0o600)
+			}
+			if quality == qualities[len(qualities)-1] {
+				currentBounds := current.Bounds()
+				longEdge := max(currentBounds.Dx(), currentBounds.Dy())
+				if longEdge <= minCompressionDimension {
+					break encode
+				}
+				ratio := math.Sqrt(float64(maxBytes)/float64(len(encoded))) * 0.92
+				ratio = math.Max(0.25, ratio)
+				nextLongEdge := max(minCompressionDimension, int(float64(longEdge)*ratio))
+				if nextLongEdge >= longEdge {
+					break encode
+				}
+				current = scaleBilinear(current, nextLongEdge)
+			}
+		}
+	}
+
+	return fmt.Errorf(
+		"无法将图片压缩到 %.1f MB（最小结果 %.1f MB）",
+		float64(maxBytes)/(1024*1024),
+		float64(len(smallest))/(1024*1024),
+	)
+}
 
 // CompressToAVIF decodes a desktop upload, applies its EXIF orientation,
 // bounds its dimensions, and iteratively encodes it below maxBytes.
@@ -88,10 +180,12 @@ func CompressToWebP(sourcePath, destinationPath string, orientation int, maxByte
 	if maxBytes <= 0 {
 		return fmt.Errorf("压缩目标大小必须大于 0")
 	}
+	decodeStart := time.Now()
 	source, err := decodeForCompression(sourcePath)
 	if err != nil {
 		return fmt.Errorf("无法解码图片: %w", err)
 	}
+	log.Printf("[compress] webp decode %s took %s", filepath.Base(sourcePath), time.Since(decodeStart))
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if width <= 0 || height <= 0 || int64(width)*int64(height) > maxCompressionPixels {
@@ -109,7 +203,10 @@ func CompressToWebP(sourcePath, destinationPath string, orientation int, maxByte
 
 	for scaleRound := 0; scaleRound < 5; scaleRound++ {
 		for _, level := range levels {
+			attemptStart := time.Now()
 			encoded, encodeErr := encodeWebP(current, level)
+			log.Printf("[compress] webp round=%d level=%v source=%dx%d took %s output=%d bytes target=%d",
+				scaleRound, level, current.Bounds().Dx(), current.Bounds().Dy(), time.Since(attemptStart), len(encoded), maxBytes)
 			if encodeErr != nil {
 				return fmt.Errorf("WebP 编码失败: %w", encodeErr)
 			}
@@ -216,10 +313,12 @@ func GenerateThumbnailAVIF(sourcePath string, orientation int) (string, error) {
 	}
 	decoded = orientForCompression(decoded, orientation)
 	decoded = resizeForCompression(decoded, 512)
+	thumbEncodeStart := time.Now()
 	encoded, err := encodeAVIF(decoded, 86)
 	if err != nil {
 		return "", err
 	}
+	log.Printf("[compress] thumbnail-avif encode 512px took %s output=%d bytes", time.Since(thumbEncodeStart), len(encoded))
 	file, err := os.CreateTemp("", "mo-gallery-thumbnail-*.avif")
 	if err != nil {
 		return "", err
@@ -260,6 +359,34 @@ func encodeWebP(source stdimage.Image, level nativewebp.CompressionLevel) ([]byt
 		CompressionLevel: level,
 	})
 	return output.Bytes(), err
+}
+
+func encodeJPEG(source stdimage.Image, quality int) ([]byte, error) {
+	var output bytes.Buffer
+	err := jpeg.Encode(&output, source, &jpeg.Options{Quality: quality})
+	return output.Bytes(), err
+}
+
+// scaleBilinear downscales with ApproxBiLinear, which is roughly an order of
+// magnitude faster than CatmullRom at photo sizes with a negligible visual
+// difference for distribution renditions.
+func scaleBilinear(source stdimage.Image, maxDimension int) stdimage.Image {
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= maxDimension && height <= maxDimension {
+		return source
+	}
+	targetWidth, targetHeight := width, height
+	if width >= height {
+		targetWidth = maxDimension
+		targetHeight = max(1, height*maxDimension/width)
+	} else {
+		targetHeight = maxDimension
+		targetWidth = max(1, width*maxDimension/height)
+	}
+	target := stdimage.NewNRGBA(stdimage.Rect(0, 0, targetWidth, targetHeight))
+	xdraw.ApproxBiLinear.Scale(target, target.Bounds(), source, bounds, xdraw.Over, nil)
+	return target
 }
 
 func resizeForCompression(source stdimage.Image, maxDimension int) stdimage.Image {

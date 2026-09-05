@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"path"
@@ -417,10 +418,6 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 	}
 
 	uploadPath := filePath
-	compressionFormat := strings.ToLower(settings.CompressionFormat)
-	if compressionFormat != "webp" {
-		compressionFormat = "avif"
-	}
 	if settings.CompressEnabled {
 		s.emitProgress(settings.TaskID, "compressing", 0, "")
 		targetBytes := int64(desktopCompressedUploadMaxBytes)
@@ -430,28 +427,31 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 				targetBytes = requestedBytes
 			}
 		}
-		tempDir, err := os.MkdirTemp("", "mo-gallery-upload-")
-		if err != nil {
-			result.Error = "创建本地压缩目录失败: " + err.Error()
-			return result, nil
-		}
-		defer os.RemoveAll(tempDir)
-		baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-		extension := "." + compressionFormat
-		uploadPath = filepath.Join(tempDir, baseName+extension)
-		orientation := 1
-		if exifData != nil && exifData.Orientation > 0 {
-			orientation = exifData.Orientation
-		}
-		var compressErr error
-		if compressionFormat == "webp" {
-			compressErr = image.CompressToWebP(filePath, uploadPath, orientation, targetBytes)
+		if image.OriginalFitsAsRendition(filePath, targetBytes) {
+			log.Printf("[upload] task=%s compress skipped: original already within target (%d bytes)", settings.TaskID, targetBytes)
 		} else {
-			compressErr = image.CompressToAVIF(filePath, uploadPath, orientation, targetBytes)
-		}
-		if compressErr != nil {
-			result.Error = "本地压缩失败: " + compressErr.Error()
-			return result, nil
+			compressStart := time.Now()
+			tempDir, err := os.MkdirTemp("", "mo-gallery-upload-")
+			if err != nil {
+				result.Error = "创建本地压缩目录失败: " + err.Error()
+				return result, nil
+			}
+			defer os.RemoveAll(tempDir)
+			baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+			uploadPath = filepath.Join(tempDir, baseName+".jpg")
+			orientation := 1
+			if exifData != nil && exifData.Orientation > 0 {
+				orientation = exifData.Orientation
+			}
+			if compressErr := image.CompressToJPEG(filePath, uploadPath, orientation, targetBytes); compressErr != nil {
+				result.Error = "本地压缩失败: " + compressErr.Error()
+				return result, nil
+			}
+			compressedSize := int64(0)
+			if info, statErr := os.Stat(uploadPath); statErr == nil {
+				compressedSize = info.Size()
+			}
+			log.Printf("[upload] task=%s compress took %s (jpeg → %d bytes, target %d)", settings.TaskID, time.Since(compressStart), compressedSize, targetBytes)
 		}
 	}
 
@@ -553,7 +553,11 @@ func (s *UploadService) UploadFile(filePath string, settings UploadSettings, has
 }
 
 func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, settings UploadSettings, hash string, exifData *image.ExifData) (*UploadResult, error) {
+	uploadStart := time.Now()
 	result := &UploadResult{FilePath: sourcePath}
+	defer func() {
+		log.Printf("[upload] task=%s total %s success=%v error=%q", settings.TaskID, time.Since(uploadStart), result.Success, result.Error)
+	}()
 	if s.storagePlugins == nil {
 		result.Error = "桌面存储插件未初始化"
 		return result, nil
@@ -562,7 +566,9 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "桌面存储源不能为空"
 		return result, nil
 	}
+	retryStart := time.Now()
 	s.RetryPendingRegistrations(context.Background())
+	log.Printf("[upload] task=%s retry-pending took %s", settings.TaskID, time.Since(retryStart))
 	if strings.TrimSpace(settings.StoragePluginID) == "" {
 		settings.StoragePluginID = s.storagePlugins.PluginID(settings.StorageSourceID)
 	}
@@ -570,10 +576,12 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "桌面存储插件标识不能为空"
 		return result, nil
 	}
-	// Both Desktop compressors emit fresh files without source metadata, so no
-	// second re-encode is needed when compression is enabled. This keeps WebP
-	// output as WebP while still stripping GPS from uncompressed uploads.
-	if settings.StripGPS && !settings.CompressEnabled {
+	// Compression re-encodes from scratch and drops all source metadata. When
+	// the upload path is still the source file (compression disabled, or the
+	// original already fit the rendition target and was skipped), sanitize
+	// explicitly to honor StripGPS.
+	if settings.StripGPS && uploadPath == sourcePath {
+		sanitizeStart := time.Now()
 		tempDir, err := os.MkdirTemp("", "mo-gallery-upload-sanitized-")
 		if err != nil {
 			result.Error = "创建隐私处理目录失败: " + err.Error()
@@ -590,12 +598,15 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 			return result, nil
 		}
 		uploadPath = sanitizedPath
+		log.Printf("[upload] task=%s strip-gps took %s", settings.TaskID, time.Since(sanitizeStart))
 	}
 
 	if strings.TrimSpace(hash) == "" {
+		hashStart := time.Now()
 		if computedHash, hashErr := fileHash(sourcePath); hashErr == nil {
 			hash = computedHash
 		}
+		log.Printf("[upload] task=%s file-hash took %s", settings.TaskID, time.Since(hashStart))
 	}
 	baseName := pluginObjectKey(uploadPath, hash)
 	contentType := contentTypeForPath(uploadPath)
@@ -604,6 +615,11 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 	if info, statErr := os.Stat(uploadPath); statErr == nil {
 		originalSize = info.Size()
 	}
+	log.Printf("[upload] task=%s original put begin size=%d bytes file=%s", settings.TaskID, originalSize, uploadPath)
+	checksumStart := time.Now()
+	checksum := uploadChecksum(hash, sourcePath, uploadPath)
+	log.Printf("[upload] task=%s checksum took %s", settings.TaskID, time.Since(checksumStart))
+	putStart := time.Now()
 	object, err := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
 		SourceID:       settings.StorageSourceID,
 		Key:            baseName,
@@ -611,7 +627,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		UseFullPath:    settings.StoragePathFull,
 		FilePath:       uploadPath,
 		ContentType:    contentType,
-		Checksum:       uploadChecksum(hash, sourcePath, uploadPath),
+		Checksum:       checksum,
 		IdempotencyKey: strings.TrimSpace(hash) + ":" + settings.StorageSourceID,
 		Progress: func(done, total int64) {
 			s.emitProgressBytes(settings.TaskID, "uploading", uploadPercent(done, total), "", done, total)
@@ -621,12 +637,15 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "插件上传原图失败: " + err.Error()
 		return result, nil
 	}
+	putElapsed := time.Since(putStart)
+	log.Printf("[upload] task=%s original put took %s (%d bytes, %.2f MB/s)", settings.TaskID, putElapsed, originalSize, mbPerSecond(originalSize, putElapsed))
 	if object.URLType != "public" {
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
 		result.Error = "桌面存储插件必须返回稳定的 public URL，不能登记临时或签名 URL"
 		return result, nil
 	}
 
+	thumbStart := time.Now()
 	thumbnailPath, err := image.GenerateThumbnailAVIF(uploadPath, exifOrientation(exifData))
 	if err != nil {
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
@@ -634,6 +653,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		return result, nil
 	}
 	defer os.Remove(thumbnailPath)
+	log.Printf("[upload] task=%s thumbnail-avif took %s", settings.TaskID, time.Since(thumbStart))
 	thumbnailKey := thumbnailObjectKey(object.Key)
 	thumbnailSize := int64(0)
 	if info, statErr := os.Stat(thumbnailPath); statErr == nil {
@@ -643,6 +663,8 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 	// stays monotonic (original, then original + thumbnail).
 	uploadedBase := originalSize
 	uploadedTotal := originalSize + thumbnailSize
+	log.Printf("[upload] task=%s thumbnail put begin size=%d bytes", settings.TaskID, thumbnailSize)
+	thumbPutStart := time.Now()
 	thumbnail, thumbErr := s.storagePlugins.Put(context.Background(), storage_plugins.PutRequest{
 		SourceID:       settings.StorageSourceID,
 		Key:            thumbnailKey,
@@ -660,6 +682,8 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "插件上传缩略图失败: " + thumbErr.Error()
 		return result, nil
 	}
+	thumbPutElapsed := time.Since(thumbPutStart)
+	log.Printf("[upload] task=%s thumbnail put took %s (%d bytes, %.2f MB/s)", settings.TaskID, thumbPutElapsed, thumbnailSize, mbPerSecond(thumbnailSize, thumbPutElapsed))
 	if thumbnail.URLType != "public" {
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: thumbnail.Key})
@@ -667,6 +691,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		return result, nil
 	}
 
+	dimensionStart := time.Now()
 	width, height, dimensionErr := image.ReadDimensions(uploadPath)
 	if dimensionErr != nil {
 		_ = s.storagePlugins.Delete(context.Background(), storage_plugins.DeleteRequest{SourceID: settings.StorageSourceID, Key: object.Key})
@@ -674,6 +699,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "读取图片尺寸失败: " + dimensionErr.Error()
 		return result, nil
 	}
+	log.Printf("[upload] task=%s read-dimensions took %s", settings.TaskID, time.Since(dimensionStart))
 	title := settings.Title
 	if title == "" {
 		title = filepath.Base(sourcePath)
@@ -722,8 +748,10 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "照片登记失败：未连接到服务器"
 		return result, nil
 	}
+	registerStart := time.Now()
 	var photo PhotoDTO
 	if err := s.proxy.POST("/admin/photos/register", register, &photo); err != nil {
+		log.Printf("[upload] task=%s register failed after %s: %v", settings.TaskID, time.Since(registerStart), err)
 		if apiErr := new(APIError); errors.As(err, &apiErr) && apiErr.Code == "DUPLICATE_PHOTO" {
 			_ = s.cleanupPluginObjects(settings.StorageSourceID, object.Key, thumbnail.Key)
 			result.IsDuplicate = true
@@ -771,6 +799,7 @@ func (s *UploadService) uploadWithStoragePlugin(sourcePath, uploadPath string, s
 		result.Error = "登记照片失败：服务端未返回照片信息"
 		return result, nil
 	}
+	log.Printf("[upload] task=%s register took %s", settings.TaskID, time.Since(registerStart))
 	result.Success = true
 	result.Photo = &photo
 	return result, nil
@@ -1071,4 +1100,12 @@ func uploadChecksum(sourceHash, sourcePath, uploadPath string) string {
 		return computed
 	}
 	return strings.TrimSpace(sourceHash)
+}
+
+func mbPerSecond(size int64, elapsed time.Duration) float64 {
+	seconds := elapsed.Seconds()
+	if seconds <= 0 || size <= 0 {
+		return 0
+	}
+	return float64(size) / (1024 * 1024) / seconds
 }

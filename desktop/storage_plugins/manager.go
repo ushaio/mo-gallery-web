@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -706,6 +707,7 @@ func (m *Manager) runtimeForSource(ctx context.Context, sourceID string) (*plugi
 		}
 	}
 	m.mu.Unlock()
+	coldStart := time.Now()
 	command, args, resolverEnv, err := m.commandFor(ctx, source)
 	if err != nil {
 		return nil, source, err
@@ -780,6 +782,7 @@ func (m *Manager) runtimeForSource(ctx context.Context, sourceID string) (*plugi
 	}
 	m.runtimes[source.ID] = runtime
 	m.mu.Unlock()
+	log.Printf("[storage-plugin] source %s plugin %s cold start (spawn+manifest+validate) took %s", source.ID, source.PluginID, time.Since(coldStart))
 	m.registry.updateStatus(source.ID, "ready", "")
 	return runtime, source, nil
 }
