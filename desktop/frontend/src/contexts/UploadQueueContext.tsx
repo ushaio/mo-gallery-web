@@ -24,6 +24,9 @@ export interface UploadTask {
   progress: number
   error?: string
   photoId?: string
+  // True only when the task finished by linking a local-library asset to a
+  // photo that already existed in the cloud (no bytes were uploaded).
+  synced?: boolean
   uploaded?: number
   uploadTotal?: number
 }
@@ -107,9 +110,13 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       if (event.phase === 'compressing') {
         updateTask(taskId, { status: 'compressing', progress: 0, error: undefined })
       } else if (event.phase === 'uploading') {
+        // The backend reports real byte-based progress per transfer chunk.
+        // Clamp monotonically so a fresh event after a quiet phase (thumbnail
+        // encode, server registration) can never drag the bar backwards.
+        const incoming = typeof event.progress === 'number' ? event.progress : 5
         updateTask(taskId, {
           status: 'uploading',
-          progress: 5,
+          progress: Math.max(task.progress ?? 0, incoming),
           uploaded: event.uploaded,
           uploadTotal: event.total,
           error: undefined,
@@ -140,7 +147,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
             }
           }
           updateTask(task.id, task.assetId
-            ? { status: 'completed', progress: 100, error: undefined, photoId: duplicate.id }
+            ? { status: 'completed', progress: 100, error: undefined, photoId: duplicate.id, synced: true }
             : { status: 'completed', progress: 100, error: `已存在: ${duplicate.title || ''}` })
           activeCountRef.current--
           processQueue()
@@ -207,7 +214,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       if (result?.isDuplicate) {
         const existingPhotoId = result.existing?.id
         updateTask(task.id, task.assetId && existingPhotoId
-          ? { status: 'completed', progress: 100, error: undefined, photoId: existingPhotoId }
+          ? { status: 'completed', progress: 100, error: undefined, photoId: existingPhotoId, synced: true }
           : { status: 'completed', progress: 100, error: `已存在: ${result.existing?.title || ''}` })
       } else if (result?.success && result.photo?.id) {
         const photoId = result.photo.id

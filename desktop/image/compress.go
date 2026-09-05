@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	nativewebp "github.com/HugoSmits86/nativewebp"
@@ -73,7 +74,9 @@ func CompressToJPEG(sourcePath, destinationPath string, orientation int, maxByte
 		return fmt.Errorf("图片尺寸无效或像素数量超过限制: %dx%d", width, height)
 	}
 
+	prepareStart := time.Now()
 	current := scaleBilinear(orientForCompression(source, orientation), maxCompressionDimension)
+	log.Printf("[compress] jpeg prepare orientation=%d source=%dx%d took %s", orientation, width, height, time.Since(prepareStart))
 	qualities := []int{85, 75, 65}
 	var smallest []byte
 
@@ -292,12 +295,22 @@ func decodeForCompression(sourcePath string) (stdimage.Image, error) {
 	return decoded, err
 }
 
-// ReadDimensions returns the decoded image dimensions using the same decoder
-// as local compression, including AVIF support.
+// ReadDimensions returns the image dimensions, reading only the file header
+// when the format supports it. AVIF is not registered with the standard
+// decoder and falls back to a full decode.
 func ReadDimensions(sourcePath string) (int, int, error) {
-	decoded, err := decodeForCompression(sourcePath)
+	file, err := os.Open(sourcePath)
 	if err != nil {
 		return 0, 0, err
+	}
+	defer file.Close()
+	config, _, err := stdimage.DecodeConfig(file)
+	if err == nil {
+		return config.Width, config.Height, nil
+	}
+	decoded, decodeErr := decodeForCompression(sourcePath)
+	if decodeErr != nil {
+		return 0, 0, decodeErr
 	}
 	bounds := decoded.Bounds()
 	return bounds.Dx(), bounds.Dy(), nil
@@ -312,7 +325,7 @@ func GenerateThumbnailAVIF(sourcePath string, orientation int) (string, error) {
 		return "", err
 	}
 	decoded = orientForCompression(decoded, orientation)
-	decoded = resizeForCompression(decoded, 512)
+	decoded = scaleBilinear(decoded, 512)
 	thumbEncodeStart := time.Now()
 	encoded, err := encodeAVIF(decoded, 86)
 	if err != nil {
@@ -340,6 +353,18 @@ func GenerateThumbnailAVIF(sourcePath string, orientation int) (string, error) {
 		return "", closeErr
 	}
 	return path, nil
+}
+
+var avifWarmup sync.Once
+
+// WarmupAVIFEncoder pre-compiles the wasm-backed AVIF encoder. The first
+// encode in a process otherwise pays a multi-second wazero compilation, which
+// would land inside the first photo upload. Safe to call concurrently; run it
+// in a background goroutine during startup.
+func WarmupAVIFEncoder() {
+	avifWarmup.Do(func() {
+		_, _ = encodeAVIF(stdimage.NewNRGBA(stdimage.Rect(0, 0, 1, 1)), 86)
+	})
 }
 
 func encodeAVIF(source stdimage.Image, quality int) ([]byte, error) {
@@ -408,27 +433,46 @@ func resizeForCompression(source stdimage.Image, maxDimension int) stdimage.Imag
 	return target
 }
 
+// orientForCompression returns an orientation-corrected copy. It rewrites raw
+// NRGBA pixel data instead of per-pixel At/Set, which costs seconds at photo
+// sizes because every At() re-converts YCbCr through the color interface.
 func orientForCompression(source stdimage.Image, orientation int) stdimage.Image {
 	if orientation < 2 || orientation > 8 {
 		return source
 	}
-	bounds := source.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	outputWidth, outputHeight := width, height
-	if orientation >= 5 {
-		outputWidth, outputHeight = height, width
+	return orientNRGBA(asNRGBA(source), orientation)
+}
+
+// asNRGBA converts through a fast row-based resample pass; a same-size copy
+// through ApproxBiLinear is much cheaper than per-pixel color conversion.
+func asNRGBA(source stdimage.Image) *stdimage.NRGBA {
+	if nrgba, ok := source.(*stdimage.NRGBA); ok {
+		return nrgba
 	}
-	target := stdimage.NewNRGBA(stdimage.Rect(0, 0, outputWidth, outputHeight))
-	for y := 0; y < outputHeight; y++ {
-		for x := 0; x < outputWidth; x++ {
-			sx, sy := x, y
+	bounds := source.Bounds()
+	target := stdimage.NewNRGBA(stdimage.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	xdraw.ApproxBiLinear.Scale(target, target.Bounds(), source, bounds, xdraw.Over, nil)
+	return target
+}
+
+func orientNRGBA(src *stdimage.NRGBA, orientation int) *stdimage.NRGBA {
+	bounds := src.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	outWidth, outHeight := width, height
+	if orientation >= 5 {
+		outWidth, outHeight = height, width
+	}
+	target := stdimage.NewNRGBA(stdimage.Rect(0, 0, outWidth, outHeight))
+	for y := 0; y < outHeight; y++ {
+		for x := 0; x < outWidth; x++ {
+			var sx, sy int
 			switch orientation {
 			case 2:
-				sx = width - 1 - x
+				sx, sy = width-1-x, y
 			case 3:
 				sx, sy = width-1-x, height-1-y
 			case 4:
-				sy = height - 1 - y
+				sx, sy = x, height-1-y
 			case 5:
 				sx, sy = y, x
 			case 6:
@@ -438,7 +482,9 @@ func orientForCompression(source stdimage.Image, orientation int) stdimage.Image
 			case 8:
 				sx, sy = width-1-y, x
 			}
-			target.Set(x, y, source.At(bounds.Min.X+sx, bounds.Min.Y+sy))
+			si := src.PixOffset(bounds.Min.X+sx, bounds.Min.Y+sy)
+			di := target.PixOffset(x, y)
+			copy(target.Pix[di:di+4], src.Pix[si:si+4])
 		}
 	}
 	return target

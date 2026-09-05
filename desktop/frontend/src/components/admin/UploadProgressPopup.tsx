@@ -41,9 +41,9 @@ function getTaskStatusLabel(task: UploadTask): string {
   if (task.status === 'uploading') return `上传中 · ${task.progress}%`
   if (task.status === 'pending') return '等待中'
   if (task.status === 'completed') {
-    if (task.photoId) return '信息同步完成'
+    if (task.synced) return '信息同步完成'
     if (task.error) return '已存在'
-    return '已完成'
+    return '上传完成'
   }
   return '上传失败'
 }

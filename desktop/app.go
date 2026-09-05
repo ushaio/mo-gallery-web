@@ -104,6 +104,9 @@ func NewApp(cfg *config.Config, automationEnabled bool) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// The wasm-backed AVIF encoder costs seconds to compile on first use; move
+	// that out of the first photo upload.
+	go image.WarmupAVIFEncoder()
 	if runtime.Environment(ctx).BuildType == "dev" {
 		// Dev-only pprof listener so a wedged local library manager can be
 		// inspected via http://127.0.0.1:6060/debug/pprof/goroutine?debug=2
