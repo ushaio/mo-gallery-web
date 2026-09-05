@@ -20,4 +20,6 @@ export interface PhotoCardProps extends PhotoCardActions {
   isDeleting: boolean;
   language: "zh" | "en";
   viewMode: "crop" | "fit" | "masonry";
+  /** 完整比例视图的瓦片目标高度（px），默认 180。 */
+  tileSize?: number;
 }

@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Check, ChevronRight, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Heart, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, Copy, File, FileImage, FilePenLine, Folder, FolderInput, FolderOpen, FolderSearch2, Loader2, Play, RefreshCw, RotateCcw, Scissors, Settings2, Trash2, Upload } from 'lucide-react'
 import { CloudIcon, CloudOffIcon, CloudWarningIcon } from '@/components/icons/CloudIcons'
 import { LivePhotoCanvas } from '@/components/media/LivePhotoCanvas'
 import {
@@ -19,12 +19,12 @@ import { LivePhotoIcon } from '@/components/icons/LivePhotoIcon'
 import { isPhotoAsset } from '../types'
 import type { FolderItem, LocalAsset } from '../types'
 import type { types as wailsTypes } from '../../../../../wailsjs/go/models'
-import { LibraryCountBar, LibraryEmptyState } from '@/components/ui/library'
+import { LibraryCountBar, LibraryEmptyState, formatLibraryCardSize, LibraryCardBadge, LibraryCardCaption, LibraryCardCheckbox, LibraryCardFavorite, LibraryCardFocusRing, LibraryJustifiedFiller, libraryJustifiedContainerClassName, libraryJustifiedTileStyle, libraryThumbnailClassName, libraryTileStyle } from '@/components/ui/library'
 import type { LocalLibraryCopy } from '../copy'
 
-const MASONRY_COLUMN_GAP = 6
+const MASONRY_COLUMN_GAP = 4
 const MASONRY_CARD_CAPTION_HEIGHT = 0
-const MASONRY_CARD_MARGIN = 6
+const MASONRY_CARD_MARGIN = 4
 
 interface Props {
   assets: LocalAsset[]
@@ -73,6 +73,7 @@ export interface AssetCardProps {
   storageSources: wailsTypes.StorageSourceDTO[]
   storageSourcesLoading: boolean
   viewMode: 'crop' | 'fit' | 'masonry'
+  gridSize: number
   onSelect: (asset: LocalAsset, intent?: { toggle?: boolean, range?: boolean }) => void
   onOpen: (asset: LocalAsset) => void
   onOpenInFileManager: (asset: LocalAsset) => void
@@ -91,7 +92,7 @@ export interface AssetCardProps {
 }
 
 const AssetCard = memo(function AssetCard({
-  asset, dragIds, selected, focused, copy, canUpload, storageSources, storageSourcesLoading, viewMode,
+  asset, dragIds, selected, focused, copy, canUpload, storageSources, storageSourcesLoading, viewMode, gridSize,
   onSelect, onOpen, onOpenInFileManager, onClipboard, onUpload, onUploadSettings, onUploadToStorage, onRefreshStorageSources, onDelete, onRename, onMove, onRestore, onRetryPreview, onRecheckMissing, onRemoveMissing,
 }: AssetCardProps) {
   const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
@@ -109,6 +110,19 @@ const AssetCard = memo(function AssetCard({
   const previewUnavailable = asset.availability === 'active' && asset.previewStatus === 'unavailable'
 
   const aspectRatio = isPhoto && asset.width > 0 && asset.height > 0 ? `${asset.width} / ${asset.height}` : undefined
+  const ratio = isPhoto && asset.width > 0 && asset.height > 0 ? asset.width / asset.height : 4 / 3
+  // 瓦片壳：瀑布流列内块随图比例；完整比例（设计稿 .just）高度固定、宽度随比例；
+  // 裁切为方形瓦片。
+  const shellClass = masonry
+    ? 'mb-1 inline-block w-full break-inside-avoid align-top'
+    : viewMode === 'fit'
+      ? 'inline-block align-top'
+      : 'h-full w-full'
+  const shellStyle = masonry
+    ? { aspectRatio: aspectRatio ?? '4 / 3' }
+    : viewMode === 'fit'
+      ? libraryJustifiedTileStyle(ratio, gridSize)
+      : undefined
   const showLiveVideo = isLive && hovering && asset.availability === 'active' && !liveVideoEnded
 
   return (
@@ -138,75 +152,53 @@ const AssetCard = memo(function AssetCard({
           onDoubleClick={() => { if (!missing && !trashed) onOpen(asset) }}
           onMouseEnter={() => { setHovering(true); setLiveVideoEnded(false) }}
           onMouseLeave={() => { setHovering(false); setLiveVideoEnded(false) }}
-          className={`group min-w-0 overflow-hidden rounded-lg border text-left transition focus:outline-none ${masonry ? 'mb-1.5 inline-block w-full break-inside-avoid align-top' : 'flex h-full flex-col'}`}
+          className={`group relative min-w-0 overflow-hidden rounded-md text-left transition focus:outline-none ${shellClass}`}
           style={{
-            borderColor: selected || focused ? 'var(--primary)' : 'var(--border)',
-            backgroundColor: selected || focused ? 'var(--accent)' : 'transparent',
-            boxShadow: selected || focused ? '0 0 0 1px var(--primary)' : undefined,
+            ...libraryTileStyle(),
+            ...shellStyle,
           }}
         >
-          <span className={`relative overflow-hidden bg-background ${masonry ? 'w-full' : 'min-h-0 flex-1'}`} style={masonry && aspectRatio ? { aspectRatio } : undefined}>
+          <span className="block h-full w-full">
             {isPhoto && !imageFailed && asset.previewStatus !== 'unavailable' ? (
               // 只要不是明确生成失败，就渲染 img 去请求缩略图，让处于 pending/generating
               // 的可见资产主动触发 /__local-library/thumbnail 请求，后端便以「可见」优先级
               // 优先生成，而不是等后台预热按序补齐（否则可见优先形同虚设）。
-              <img src={asset.thumbnailUrl} alt={label} loading="lazy" draggable={false} onError={() => setFailedThumbnailUrl(asset.thumbnailUrl)} className={`w-full transition-[transform,opacity] duration-300 ${masonry ? 'block h-full object-cover group-hover:scale-[1.015]' : viewMode === 'fit' ? 'h-full object-contain p-1' : 'h-full object-cover group-hover:scale-[1.025]'}`} />
+              <img src={asset.thumbnailUrl} alt={label} loading="lazy" draggable={false} onError={() => setFailedThumbnailUrl(asset.thumbnailUrl)} className={libraryThumbnailClassName(viewMode)} />
             ) : (
-              <span className={`flex w-full flex-col items-center justify-center gap-2 ${masonry ? 'aspect-[4/3]' : 'h-full'}`} style={{ color: 'var(--muted-foreground)' }}>
+              <span className="flex h-full w-full flex-col items-center justify-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
                 {isPhoto ? <FileImage size={25} strokeWidth={1.4} /> : <File size={25} strokeWidth={1.4} />}
                 <span className="max-w-[85%] truncate text-[10px] uppercase tracking-wider">{asset.format}</span>
               </span>
             )}
-            {showLiveVideo && (
-              <LivePhotoCanvas
-                src={asset.livePhotoVideoUrl!}
-                active
-                onEnded={() => setLiveVideoEnded(true)}
-                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              />
-            )}
-            <span
-              role="checkbox"
-              aria-checked={selected}
-              aria-label={selected ? copy.deselectLoaded : copy.selectLoaded}
-              tabIndex={0}
-              onClick={(event) => {
-                event.stopPropagation()
-                onSelect(asset, { toggle: true })
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== ' ' && event.key !== 'Enter') return
-                event.preventDefault()
-                event.stopPropagation()
-                onSelect(asset, { toggle: true })
-              }}
-              className={`absolute left-2 top-2 z-20 flex h-5 w-5 cursor-pointer items-center justify-center rounded border transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-              style={{
-                backgroundColor: selected ? 'var(--primary)' : 'rgba(0,0,0,0.4)',
-                borderColor: selected ? 'var(--primary)' : 'rgba(255,255,255,0.7)',
-              }}
-            >
-              {selected && <Check size={12} className="text-white" />}
-            </span>
-            <span className="absolute right-2 top-2 z-20 flex items-center gap-1">
-              {isLive && <span className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><LivePhotoIcon size={13} /></span>}
-              {asset.isAnimated && <span className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><Play size={11} fill="currentColor" /></span>}
-              {asset.cloudSyncState === 'deleted_remote'
-                ? <span title={copy.cloudDeletedRemote} className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-red-400"><CloudOffIcon size={13} /></span>
-                : asset.cloudSyncState === 'conflict'
-                  ? <span title={copy.cloudSyncConflict} className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-amber-400"><CloudWarningIcon size={13} /></span>
-                  : (asset.uploadStatus === 'uploaded' || asset.isUploaded)
-                    ? <span title={copy.filterUploaded} className="flex h-5 w-5 items-center justify-center rounded bg-black/65 text-white"><CloudIcon size={13} /></span>
-                    : null}
-              <span className="rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">{asset.extension.replace('.', '')}</span>
-            </span>
-            {asset.isFavorite && <Heart size={15} fill="currentColor" className="absolute bottom-2 right-2 text-white drop-shadow" />}
           </span>
-          {!masonry && (
-            <span className="block w-full px-2.5 py-2">
-              <span className="block truncate text-xs font-medium">{label}</span>
-            </span>
+          {showLiveVideo && (
+            <LivePhotoCanvas
+              src={asset.livePhotoVideoUrl!}
+              active
+              onEnded={() => setLiveVideoEnded(true)}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            />
           )}
+          <LibraryCardCheckbox
+            selected={selected}
+            onToggle={() => onSelect(asset, { toggle: true })}
+            label={selected ? copy.deselectLoaded : copy.selectLoaded}
+          />
+          <span className="absolute right-2 top-2 z-20 flex items-center gap-1">
+            {isLive && <LibraryCardBadge title="Live Photo"><LivePhotoIcon size={13} /></LibraryCardBadge>}
+            {asset.isAnimated && <LibraryCardBadge title="GIF"><Play size={11} fill="currentColor" /></LibraryCardBadge>}
+            {asset.cloudSyncState === 'deleted_remote'
+              ? <LibraryCardBadge title={copy.cloudDeletedRemote} color="#f87171"><CloudOffIcon size={13} /></LibraryCardBadge>
+              : asset.cloudSyncState === 'conflict'
+                ? <LibraryCardBadge title={copy.cloudSyncConflict} color="#fbbf24"><CloudWarningIcon size={13} /></LibraryCardBadge>
+                : (asset.uploadStatus === 'uploaded' || asset.isUploaded)
+                  ? <LibraryCardBadge title={copy.filterUploaded}><CloudIcon size={13} /></LibraryCardBadge>
+                  : null}
+            <LibraryCardBadge>{asset.extension.replace('.', '')}</LibraryCardBadge>
+          </span>
+          {asset.isFavorite && <LibraryCardFavorite />}
+          <LibraryCardFocusRing active={selected || focused} />
+          <LibraryCardCaption name={label} meta={formatLibraryCardSize(asset.byteSize)} />
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -345,10 +337,9 @@ export function LocalAssetGrid({
   }, [])
 
   const columns = Math.max(1, Math.floor((width - 24) / gridSize))
-  const columnWidth = Math.max(1, (width - 24 - Math.max(0, columns - 1) * 10) / columns)
-  // 与云端照片库保持一致：卡片图像区为 5:4（columnWidth * 4/5），
-  // 加标题行(32px) + 卡片边框(2px)，再加行底 pb-2.5 行距(10px)，即 0.8w + 44。
-  const rowHeight = Math.round(columnWidth * (4 / 5)) + 44
+  const columnWidth = Math.max(1, (width - 24 - Math.max(0, columns - 1) * 4) / columns)
+  // 与设计稿一致：方形瓦片无标题行，列间距 4px（gap-1）+ 行底 pb-1。
+  const rowHeight = Math.round(columnWidth) + 4
   const rowCount = Math.ceil(assets.length / columns)
   const isMasonry = viewMode === 'masonry'
   // 文件夹区固定占用内容区约 1/4 高度，横向滚动展示
@@ -410,7 +401,7 @@ export function LocalAssetGrid({
 
   const isEmpty = !loading && assets.length === 0
   const assetCard = (asset: LocalAsset) => (
-    <AssetCard key={asset.id} asset={asset} dragIds={selectedIds.includes(asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [asset.id]} selected={selectedIds.includes(asset.id)} focused={focusedId === asset.id} copy={copy} canUpload={canUpload} viewMode={viewMode}
+    <AssetCard key={asset.id} asset={asset} dragIds={selectedIds.includes(asset.id) ? selectedIds.filter((id) => assets.find((item) => item.id === id)?.availability === 'active') : [asset.id]} selected={selectedIds.includes(asset.id)} focused={focusedId === asset.id} copy={copy} canUpload={canUpload} viewMode={viewMode} gridSize={gridSize}
       storageSources={storageSources} storageSourcesLoading={storageSourcesLoading}
       onSelect={onSelect} onOpen={onOpen} onOpenInFileManager={onOpenInFileManager} onClipboard={onClipboard} onUpload={onUpload} onUploadSettings={onUploadSettings} onUploadToStorage={onUploadToStorage} onRefreshStorageSources={onRefreshStorageSources} onDelete={onDelete} onRename={onRename} onMove={onMove} onRestore={onRestore}
       onRetryPreview={onRetryPreview} onRecheckMissing={onRecheckMissing} onRemoveMissing={onRemoveMissing} />
@@ -444,9 +435,9 @@ export function LocalAssetGrid({
         ) : (
           <>
             {loading && assets.length === 0 ? (
-              <div className="grid gap-2.5" style={gridStyle} aria-label={copy.loading}>
+              <div className="grid gap-1" style={gridStyle} aria-label={copy.loading}>
                 {Array.from({ length: Math.min(12, Math.max(columns * 2, 6)) }, (_, index) => (
-                  <div key={index} className="aspect-[5/4] animate-pulse overflow-hidden rounded-lg border bg-secondary/70" style={{ borderColor: 'var(--border)' }} />
+                  <div key={index} className="aspect-square animate-pulse overflow-hidden rounded-md bg-secondary/70" />
                 ))}
               </div>
             ) : isMasonry ? (
@@ -459,13 +450,18 @@ export function LocalAssetGrid({
                   ))}
                 </div>
               </>
+            ) : viewMode === 'fit' ? (
+              <div className={libraryJustifiedContainerClassName()}>
+                {assets.map((asset) => assetCard(asset))}
+                <LibraryJustifiedFiller />
+              </div>
             ) : (
               <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
                 {rows.map((row) => {
                   const start = row.index * columns
                   const rowAssets = assets.slice(start, start + columns)
                   return (
-                    <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 grid w-full gap-2.5 pb-2.5"
+                    <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 grid w-full gap-1 pb-1"
                       style={{ ...gridStyle, height: rowHeight, transform: `translateY(${row.start}px)` }}>
                       {rowAssets.map((asset) => assetCard(asset))}
                     </div>

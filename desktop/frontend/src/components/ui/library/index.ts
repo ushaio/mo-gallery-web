@@ -22,7 +22,20 @@ export {
 } from './LibraryDetailsPanel'
 export type { LibraryStatusTone } from './LibraryDetailsPanel'
 export { LibraryEmptyState } from './LibraryEmptyState'
-export { LibraryCardCheckbox } from './LibraryGridCard'
+export {
+  formatLibraryCardSize,
+  libraryJustifiedContainerClassName,
+  LibraryJustifiedFiller,
+  libraryJustifiedTileStyle,
+  libraryThumbnailClassName,
+  LibraryCardBadge,
+  LibraryCardCaption,
+  LibraryCardCheckbox,
+  LibraryCardFavorite,
+  LibraryCardFilmFrame,
+  LibraryCardFocusRing,
+  libraryTileStyle,
+} from './LibraryGridCard'
 export { LibraryNavItem } from './LibraryNavItem'
 export { LibrarySearchInput } from './LibrarySearchInput'
 export { LibrarySelectionBar } from './LibrarySelectionBar'

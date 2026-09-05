@@ -74,6 +74,8 @@ import {
 import {
   LibraryCountBar,
   LibraryEmptyState,
+  LibraryJustifiedFiller,
+  libraryJustifiedContainerClassName,
   LibrarySearchInput,
   LibrarySelectionBar,
   LibrarySelectionButton,
@@ -1153,6 +1155,7 @@ export function CloudPhotos({
     <PhotoGridCard
       key={photo.id}
       photo={photo}
+      tileSize={gridSize}
       isSelected={selected.has(photo.id) || existingPhotoIdSet.has(photo.id)}
       isFocused={detailPhoto?.id === photo.id}
       isDeleting={deletingIds.has(photo.id)}
@@ -1306,8 +1309,8 @@ export function CloudPhotos({
               <ThumbGridSkeleton
                 count={15}
                 cols={Math.max(2, Math.floor(900 / gridSize))}
-                aspectClassName="aspect-[5/4]"
-                gapClassName="gap-2.5"
+                aspectClassName="aspect-square"
+                gapClassName="gap-1"
               />
             ) : photos.length === 0 && loadError ? (
               <div
@@ -1347,9 +1350,14 @@ export function CloudPhotos({
                       </div>
                     ))}
                   </div>
+                ) : viewMode === "fit" ? (
+                  <div className={libraryJustifiedContainerClassName()}>
+                    {photos.map(renderPhotoCard)}
+                    <LibraryJustifiedFiller />
+                  </div>
                 ) : (
                   <div
-                    className="grid gap-2.5"
+                    className="grid gap-1"
                     style={{
                       gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))`,
                     }}
