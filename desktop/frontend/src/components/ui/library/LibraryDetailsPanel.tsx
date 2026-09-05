@@ -1,7 +1,7 @@
 import type { ComponentType, HTMLAttributes, ReactNode } from 'react'
-import { Fragment } from 'react'
+import { useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { ChevronDown, Loader2, Maximize2 } from 'lucide-react'
+import { ChevronDown, Loader2, Maximize2, Star } from 'lucide-react'
 import { LIBRARY_EMPTY_VALUE } from './format'
 
 /**
@@ -16,7 +16,8 @@ import { LIBRARY_EMPTY_VALUE } from './format'
  * 仍留在各自组件内。
  */
 
-const PANEL_BASE_CLASS = 'hidden h-full w-[340px] shrink-0 flex-col border-l bg-background xl:flex'
+/* 参考稿（desktop-library-ui.html）.inspector 固定 320px。 */
+const PANEL_BASE_CLASS = 'hidden h-full w-[320px] shrink-0 flex-col border-l bg-background xl:flex'
 
 /* ─── 面板外壳 ─── */
 
@@ -77,7 +78,10 @@ interface LibraryDetailsSectionProps {
   children: ReactNode
 }
 
-/** 折叠区块：图标 + 标题 + 可选计数 + 旋转箭头，标题整行可点击。 */
+/**
+ * 折叠区块：图标 + 标题 + 可选计数 + 旋转箭头，标题整行可点击。
+ * 标题行对齐参考稿 `.sec-h`：约 40px 高、12.5px 常规大小写粗体。
+ */
 export function LibraryDetailsSection({
   label,
   icon: Icon,
@@ -94,11 +98,11 @@ export function LibraryDetailsSection({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex flex-1 items-center gap-2.5 py-2 text-left"
+          className="flex flex-1 items-center gap-2.5 py-2.5 text-left"
         >
           <Icon size={14} strokeWidth={1.8} style={{ color: 'var(--muted-foreground)' }} />
           <span
-            className="flex-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+            className="flex-1 text-[12.5px] font-semibold"
             style={{ color: 'var(--foreground)' }}
           >
             {label}
@@ -182,6 +186,63 @@ export function LibraryMetaRow({
         {value}
       </span>
     </div>
+  )
+}
+
+/* ─── 键值行网格（参考稿 .kv） ─── */
+
+/**
+ * 参考稿「基本信息」用的键值行网格：固定 76px 标签列 + 值列，值左对齐、
+ * 超长省略。与两列卡片网格（`LibraryMetaRow card`）互补——逐行字段用这个，
+ * 短参数组用卡片。
+ */
+export function LibraryKvList({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <dl
+      className={`grid grid-cols-[76px_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1.5 ${className ?? ''}`}
+    >
+      {children}
+    </dl>
+  )
+}
+
+/**
+ * 键值行：`LibraryKvList` 的一个 dt/dd 对。`action`（复制按钮等）挂在值右侧，
+ * 由调用方控制显隐（参考稿是 hover 时浮现）。
+ */
+export function LibraryKvItem({
+  label,
+  value,
+  mono,
+  action,
+}: {
+  label: string
+  value: ReactNode
+  mono?: boolean
+  action?: ReactNode
+}) {
+  return (
+    <>
+      <dt className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+        {label}
+      </dt>
+      <dd className="group/kv flex min-w-0 items-center gap-1.5">
+        <span
+          className={`min-w-0 flex-1 truncate text-[11px] ${mono ? 'font-mono tabular-nums' : ''}`}
+          title={typeof value === 'string' ? value : undefined}
+          style={{ color: 'var(--foreground)' }}
+        >
+          {value}
+        </span>
+        {action}
+      </dd>
+    </>
   )
 }
 
@@ -272,6 +333,207 @@ export function LibraryColorStrip({
   )
 }
 
+/* ─── 云端同步状态卡片 ─── */
+
+/**
+ * 云端同步状态卡片：图标方块 + 粗体标题 + 等宽路径副标题 + 尾部操作。
+ *
+ * 对应参考稿（desktop-library-ui.html）信息栏里预览卡片下方的 `.sync` 区块：
+ * 云端显示「S3 · 已同步 + 路径」，本地显示「已上传到云端 / 未上传 + 上传按钮」。
+ * `ok` 表示已同步态（图标方块用主色底），默认态为中性灰底（未上传）。
+ * `trailing` 由调用方传入（状态徽标 / 下载按钮 / 上传按钮等），不参与布局对齐以外的样式。
+ */
+export function LibraryDetailsSyncCard({
+  icon: Icon,
+  title,
+  subtitle,
+  ok = false,
+  trailing,
+}: {
+  icon: LibraryStatusIcon
+  title: string
+  subtitle?: string
+  ok?: boolean
+  trailing?: ReactNode
+}) {
+  return (
+    <div
+      className="mx-4 my-3 flex items-center gap-2.5 rounded-lg border px-3 py-2.5"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      <span
+        className="flex size-7 shrink-0 items-center justify-center rounded-md"
+        style={
+          ok
+            ? { backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }
+            : { backgroundColor: 'var(--secondary)', color: 'var(--muted-foreground)' }
+        }
+      >
+        <Icon size={14} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12px] font-medium leading-tight" style={{ color: 'var(--foreground)' }}>
+          {title}
+        </span>
+        {subtitle && (
+          <span
+            className="mt-0.5 block truncate font-mono text-[10px] leading-tight"
+            style={{ color: 'var(--muted-foreground)' }}
+            title={subtitle}
+          >
+            {subtitle}
+          </span>
+        )}
+      </span>
+      {trailing}
+    </div>
+  )
+}
+
+/* ─── 快捷操作行（参考稿 .quick） ─── */
+
+/**
+ * 参考稿信息栏标题卡片下方的快捷操作行骨架：
+ * `[收藏 ♥] [★×5] [颜色圆点] —— 弹性空隙 —— [隐藏] [更多]`，单行排布。
+ * 云端与本地可用的标记不同（本地有评分/颜色，云端有隐藏），但按钮规格
+ * 在这里统一，保证两侧视觉一致；调用方按骨架顺序拼装即可。
+ */
+
+/** 快捷标记按钮：28px 幽灵图标按钮，激活时浅色底、图标着色。 */
+export function LibraryQuickMark({
+  icon: Icon,
+  active,
+  onClick,
+  title,
+  filled = true,
+  danger = false,
+}: {
+  icon: ComponentType<{
+    size?: number | string
+    fill?: string
+    strokeWidth?: number | string
+  }>
+  active: boolean
+  onClick: () => void
+  title: string
+  /** 激活时是否填充图标（♥/★ 填充；眼睛类线性图标传 false）。 */
+  filled?: boolean
+  /** 激活态用危险色（隐藏），默认前景色（收藏/精选）。 */
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      onClick={onClick}
+      className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
+      style={{
+        backgroundColor: active ? 'var(--secondary)' : 'transparent',
+        color: active
+          ? danger
+            ? 'var(--destructive)'
+            : 'var(--foreground)'
+          : 'var(--muted-foreground)',
+      }}
+      onMouseEnter={(event) => {
+        if (!active) event.currentTarget.style.backgroundColor = 'var(--secondary)'
+      }}
+      onMouseLeave={(event) => {
+        if (!active) event.currentTarget.style.backgroundColor = 'transparent'
+      }}
+    >
+      <Icon
+        size={15}
+        fill={filled && active ? 'currentColor' : 'none'}
+        {...(filled ? { strokeWidth: active ? 2 : 1.6 } : {})}
+      />
+    </button>
+  )
+}
+
+/** 五星评分：点同星清零，悬停预览；激活星用前景色（参考稿 .stars）。 */
+export function LibraryQuickStars({
+  value,
+  onChange,
+  label,
+}: {
+  value: number
+  onChange: (value: number) => void
+  label: string
+}) {
+  const [hover, setHover] = useState(0)
+  return (
+    <div className="flex items-center gap-0.5" role="group" aria-label={label}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        const active = star <= (hover || value)
+        return (
+          <button
+            key={star}
+            type="button"
+            title={`${label}: ${star}`}
+            aria-label={`${label}: ${star}`}
+            onMouseEnter={() => setHover(star)}
+            onMouseLeave={() => setHover(0)}
+            onClick={() => onChange(value === star ? 0 : star)}
+            className="rounded p-0.5 transition-transform hover:scale-110 active:scale-95"
+          >
+            <Star
+              size={13}
+              fill={active ? 'currentColor' : 'none'}
+              strokeWidth={active ? 2 : 1.6}
+              style={{
+                color: active ? 'var(--foreground)' : 'var(--border)',
+                transition: 'all 0.12s ease',
+              }}
+            />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** 颜色标记圆点：未选半透明、选中带描边环，点当前色 = 取消（参考稿 .labels）。 */
+export function LibraryQuickDots({
+  colors,
+  value,
+  onChange,
+  label,
+}: {
+  colors: Array<{ value: string, bg: string, label: string }>
+  value?: string
+  onChange: (value: string) => void
+  label: string
+}) {
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label={label}>
+      {colors.map((swatch) => {
+        const selected = value === swatch.value
+        return (
+          <button
+            key={swatch.value}
+            type="button"
+            title={`${label}: ${swatch.label}`}
+            aria-label={`${label}: ${swatch.label}`}
+            aria-pressed={selected}
+            onClick={() => onChange(selected ? '' : swatch.value)}
+            className="size-3.5 shrink-0 rounded-full transition-all hover:scale-110 active:scale-95"
+            style={{
+              backgroundColor: swatch.bg,
+              opacity: selected ? 1 : 0.35,
+              boxShadow: selected
+                ? '0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground)'
+                : 'none',
+            }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 /* ─── 状态胶囊 ─── */
 
 export type LibraryStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
@@ -343,6 +605,8 @@ export function LibraryStatusPill({
 /**
  * 信息栏底部操作按钮：默认描边、`primary` 实心、`destructive` 危险色。
  * `loading` 只让图标旋转，不改变文案，避免底部操作区高度跳动。
+ * `compact` 用于贴底操作区与删除等图标按钮并排的场景：更小的字号与内边距、
+ * 文案不换行，保证单行按钮高度一致（参考稿 `.ins-foot .btn.sm`）。
  */
 export function LibraryDetailsAction({
   icon: Icon,
@@ -352,6 +616,7 @@ export function LibraryDetailsAction({
   destructive,
   disabled,
   loading,
+  compact,
 }: {
   icon: LucideIcon
   label: string
@@ -360,14 +625,18 @@ export function LibraryDetailsAction({
   destructive?: boolean
   disabled?: boolean
   loading?: boolean
+  compact?: boolean
 }) {
+  const sizing = compact
+    ? 'gap-1.5 px-2 text-[11px] whitespace-nowrap'
+    : 'gap-2 px-3 text-xs'
   if (primary) {
     return (
       <button
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className={`flex w-full items-center justify-center rounded-lg py-2 font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${sizing}`}
         style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
       >
         <Icon size={13} className={loading ? 'animate-spin' : ''} />
@@ -380,7 +649,7 @@ export function LibraryDetailsAction({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+      className={`flex w-full items-center justify-center rounded-lg border py-2 font-medium transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 ${sizing}`}
       style={
         destructive
           ? {
@@ -419,8 +688,8 @@ interface LibraryDetailsPreviewProps {
 }
 
 /**
- * 信息栏顶部预览缩略图：4:3 圆角框 + hover 放大提示，点击进入大图预览。
- * 两端此前只有云端带 hover 提示，这里统一提供同一套可点击反馈。
+ * 信息栏顶部预览缩略图：4:3 圆角框 + 右下角放大按钮（参考稿 `.preview .zoomin`），
+ * 点击进入大图预览。
  */
 export function LibraryDetailsPreview({
   onOpen,
@@ -436,16 +705,21 @@ export function LibraryDetailsPreview({
       disabled={disabled}
       title={title}
       aria-label={openLabel ?? title}
-      className="group relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md disabled:cursor-not-allowed disabled:shadow-none"
-      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }}
+      className="group relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg transition-opacity disabled:cursor-not-allowed"
+      style={{ backgroundColor: 'var(--muted)' }}
     >
       {children}
 
       {!disabled && (
-        <span className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
-          <span className="flex size-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
-            <Maximize2 size={15} />
-          </span>
+        <span
+          className="absolute bottom-2 right-2 flex size-6 items-center justify-center rounded-md border opacity-0 transition-opacity group-hover:opacity-100"
+          style={{
+            borderColor: 'var(--border)',
+            backgroundColor: 'var(--background)',
+            color: 'var(--foreground)',
+          }}
+        >
+          <Maximize2 size={12} />
         </span>
       )}
 
@@ -454,9 +728,6 @@ export function LibraryDetailsPreview({
 }
 
 /* ─── 顶部合并卡片 ─── */
-
-/** 段间细分隔线：比区块 `border` 更淡，用于同一张卡片内部的视觉分隔。 */
-const HEADER_DIVIDER_COLOR = 'color-mix(in srgb, var(--border) 60%, transparent)'
 
 interface LibraryDetailsHeaderProps {
   /** 预览图区域，通常是一个 `LibraryDetailsPreview`。 */
@@ -468,29 +739,48 @@ interface LibraryDetailsHeaderProps {
 }
 
 /**
- * 信息栏顶部合并卡片：预览图 + 标题 + 标记工具条。
+ * 信息栏顶部：预览图 + 标题（同一段内边距，段间只留间距），标记工具条
+ * （参考稿 `.quick`）作为通栏一行接在下方并自带下边框。
  *
- * 两端此前把这三段拆成三个各自带边框的独立区块，边框叠加让信息栏顶部出现三条
- * 横线、视觉上碎成三块。这里用一次外层 padding 包住三段，段间只留一条更淡的
- * 细线，读起来是一张连续卡片。缺省的段不渲染，也不会留下多余分隔线。
+ * 此前三段之间用分隔线拆成三块，与参考稿「预览 + 标题连续排版、快捷行通栏」
+ * 的结构不符。缺省的段不渲染。
  */
 export function LibraryDetailsHeader({ preview, title, marks }: LibraryDetailsHeaderProps) {
-  const segments = ([
-    ['preview', preview],
-    ['title', title],
-    ['marks', marks],
-  ] as const).filter(([, node]) => node)
-
   return (
-    <div className="border-b px-4 pt-4 pb-3.5" style={{ borderColor: 'var(--border)' }}>
-      {segments.map(([key, node], index) => (
-        <Fragment key={key}>
-          {index > 0 && (
-            <div className="my-3 h-px" style={{ backgroundColor: HEADER_DIVIDER_COLOR }} />
-          )}
-          {node}
-        </Fragment>
-      ))}
+    <>
+      {(preview || title) && (
+        <div className="px-4 pt-3.5 pb-3">
+          {preview}
+          {preview && title && <div className="mt-3">{title}</div>}
+          {!preview && title}
+        </div>
+      )}
+      {marks && (
+        <div
+          className="flex items-center border-b px-3 py-2.5"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          {marks}
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ─── 贴底操作区（参考稿 .ins-foot） ─── */
+
+/**
+ * 信息栏底部操作区：粘性贴底、上边框分隔，内容随滚动保持在视口内。
+ * 参考稿中它与滚动区分离（`.ins-foot`），这里用 `sticky bottom-0` 达到同样效果，
+ * 面板内容不足一屏时 `mt-auto` 把它压到底部。
+ */
+export function LibraryDetailsFooter({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="sticky bottom-0 mt-auto border-t px-3 py-2.5"
+      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+    >
+      {children}
     </div>
   )
 }

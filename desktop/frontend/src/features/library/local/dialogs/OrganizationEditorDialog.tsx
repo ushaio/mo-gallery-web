@@ -20,8 +20,6 @@ interface Props {
   onSubmit: (value: { name: string, notes: string, parentId?: string, color: string }) => void
 }
 
-const TAG_COLORS = ['', 'red', 'yellow', 'green', 'blue', 'purple']
-
 function descendants(groups: CollectionGroup[], id: string) {
   const result = new Set<string>([id])
   let changed = true
@@ -78,7 +76,6 @@ export function OrganizationEditorDialog({ target, groups, copy, busy, onClose, 
             ariaLabel={copy.collectionParent}
           /></label>}
           {target.kind === 'collection' && <label className="block text-[11px] font-medium">{copy.notes}<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} disabled={busy} className="mt-2 w-full resize-none rounded-md border bg-input px-3 py-2 text-xs" /></label>}
-          {target.kind === 'tag' && <div><span className="text-[11px] font-medium">{copy.tagColor}</span><div className="mt-2 flex gap-2">{TAG_COLORS.map((value) => <button key={value || 'none'} type="button" aria-label={value || copy.noColor} onClick={() => setColor(value)} className="size-6 rounded-full border-2" style={{ backgroundColor: value || 'transparent', borderColor: color === value ? 'var(--foreground)' : 'var(--border)' }} />)}</div></div>}
           <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={onClose} disabled={busy} className="rounded-md border px-3 py-2 text-xs hover:bg-secondary">{copy.cancelAction}</button><button type="submit" disabled={busy || !name.trim()} className="flex min-w-20 items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">{busy && <Loader2 size={13} className="animate-spin" />}{copy.save}</button></div>
         </form>
       </div>

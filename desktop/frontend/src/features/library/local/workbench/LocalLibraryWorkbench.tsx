@@ -1876,9 +1876,9 @@ export function LocalLibraryWorkbench({ copy, snapshot, onSnapshot, onClose, sel
         </main>
 
         <div className="col-start-3 row-start-2 min-h-0 overflow-hidden">
-          <LocalAssetDetails asset={selectedAsset} copy={copy} saving={saving} maintenanceBusy={missingMaintenanceBusy || previewMaintenanceBusy} tags={tags} collections={collections} organizationBusy={organizationBusy} onSave={saveAsset}
+          <LocalAssetDetails asset={selectedAsset} copy={copy} rootPath={snapshot.rootPath} saving={saving} maintenanceBusy={missingMaintenanceBusy || previewMaintenanceBusy} tags={tags} collections={collections} organizationBusy={organizationBusy} onSave={saveAsset}
             onPreview={(asset) => { if (asset.availability !== 'missing') setPreviewAsset(asset) }} onOpenSystem={openSystem} onMove={openMoveAsset} onDelete={setDeleteAsset} onRestore={restoreAsset}
-            onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => setRemoveMissingAsset(asset)} onSetTags={setAssetTags} onCreateTag={createTagFromDetails} onSetCollections={setAssetCollections} />
+            onRetryPreview={retryPreview} onRecheckMissing={recheckMissing} onRemoveMissing={(asset) => setRemoveMissingAsset(asset)} onSetTags={setAssetTags} onCreateTag={createTagFromDetails} onSetCollections={setAssetCollections} onUpload={openUploadSettings} />
         </div>
       </div>
 

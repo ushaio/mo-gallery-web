@@ -2,15 +2,17 @@ import { useRef, useState } from "react";
 import {
   Camera,
   Check,
+  Cloud,
   Copy,
+  ExternalLink,
   Eye,
   EyeOff,
   FileText,
+  Heart,
   ImageOff,
   Pencil,
   Plus,
   RefreshCw,
-  Star,
   Tag as TagIcon,
   Trash2,
   X,
@@ -28,14 +30,16 @@ import {
   LibraryColorStrip,
   LibraryDetailsAction,
   LibraryDetailsEmpty,
+  LibraryDetailsFooter,
   LibraryDetailsHeader,
   LibraryDetailsPanel,
   LibraryDetailsPreview,
   LibraryDetailsSection,
+  LibraryDetailsSyncCard,
   LibraryFieldBlock,
   LibraryMetaRow,
   LibraryMonoValue,
-  LibraryStatusPill,
+  LibraryQuickMark,
 } from "@/components/ui/library";
 import {
   formatDateTime,
@@ -43,6 +47,7 @@ import {
   LIBRARY_EMPTY_VALUE,
 } from "@/components/ui/library/format";
 import type { Photo } from "@/types";
+import { BrowserOpenURL } from "../../../wailsjs/runtime/runtime";
 
 interface Props {
   photo: Photo | null;
@@ -376,121 +381,45 @@ export function PhotoInfoSidebar({
           </div>
         }
         marks={
+          /* 快捷标记行（参考稿 .quick 骨架）：收藏 ♥ 靠左，隐藏靠右；
+             状态由按钮自身的激活态表达，不再叠状态胶囊。 */
           <div className="flex items-center gap-1">
-            <button
-              type="button"
+            <LibraryQuickMark
+              icon={Heart}
+              active={photo.isFeatured}
               title={
                 photo.isFeatured
                   ? t("admin.notify_featured_removed")
                   : t("admin.notify_featured_added")
               }
-              aria-label={
-                photo.isFeatured
-                  ? t("admin.notify_featured_removed")
-                  : t("admin.notify_featured_added")
-              }
-              aria-pressed={photo.isFeatured}
               onClick={() => onToggleFeatured(photo.id)}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
-              style={{
-                backgroundColor: photo.isFeatured
-                  ? "color-mix(in srgb, #F59E0B 14%, transparent)"
-                  : "transparent",
-                color: photo.isFeatured ? "#F59E0B" : "var(--muted-foreground)",
-              }}
-              onMouseEnter={(e) => {
-                if (!photo.isFeatured)
-                  e.currentTarget.style.backgroundColor = "var(--secondary)";
-              }}
-              onMouseLeave={(e) => {
-                if (!photo.isFeatured)
-                  e.currentTarget.style.backgroundColor = "transparent";
-              }}
-            >
-              <Star
-                size={15}
-                fill={photo.isFeatured ? "currentColor" : "none"}
-                strokeWidth={photo.isFeatured ? 2 : 1.6}
-              />
-            </button>
-
-            <span
-              className="mx-1 h-5 w-px shrink-0"
-              style={{ backgroundColor: "var(--border)" }}
             />
-
-            <button
-              type="button"
+            <span className="flex-1" />
+            <LibraryQuickMark
+              icon={photo.showFlag ? Eye : EyeOff}
+              filled={false}
+              danger
+              active={!photo.showFlag}
               title={
                 photo.showFlag
                   ? t("admin.hide_in_gallery")
                   : t("admin.show_in_gallery")
               }
-              aria-label={
-                photo.showFlag
-                  ? t("admin.hide_in_gallery")
-                  : t("admin.show_in_gallery")
-              }
-              aria-pressed={!photo.showFlag}
               onClick={() => onToggleShow(photo.id)}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
-              style={{
-                backgroundColor: photo.showFlag
-                  ? "transparent"
-                  : "color-mix(in srgb, var(--destructive) 10%, transparent)",
-                color: photo.showFlag
-                  ? "var(--muted-foreground)"
-                  : "var(--destructive)",
-              }}
-              onMouseEnter={(e) => {
-                if (photo.showFlag)
-                  e.currentTarget.style.backgroundColor = "var(--secondary)";
-              }}
-              onMouseLeave={(e) => {
-                if (photo.showFlag)
-                  e.currentTarget.style.backgroundColor = "transparent";
-              }}
-            >
-              {photo.showFlag ? <Eye size={15} /> : <EyeOff size={15} />}
-            </button>
-
-            {/* 状态胶囊（隐藏优先，其次精选，对应本地的“已上传”徽标位置） */}
-            {!photo.showFlag ? (
-              <LibraryStatusPill
-                icon={EyeOff}
-                label={t("admin.overview_hidden")}
-                tone="danger"
-              />
-            ) : photo.isFeatured ? (
-              <LibraryStatusPill
-                icon={Star}
-                label={t("gallery.featured")}
-                tone="warning"
-              />
-            ) : null}
+            />
           </div>
         }
       />
 
-      {/* ── 拍摄信息（有 EXIF 才显示，两列卡片网格） ── */}
-      {hasExif && (
-        <LibraryDetailsSection
-          label={t("admin.shooting_info")}
-          icon={Camera}
-          open={shootingOpen}
-          onToggle={() => setShootingOpen((v) => !v)}
-        >
-          <CameraParameters
-            cameraLabel={t("admin.camera")}
-            cameraValue={cameraLabel}
-            lensLabel={t("admin.lens")}
-            lensValue={photo.lensModel}
-            parameters={cameraParameters}
-          />
-        </LibraryDetailsSection>
-      )}
+      {/* ── 云端同步状态卡片：存储方 + 等宽路径 ── */}
+      <LibraryDetailsSyncCard
+        ok
+        icon={Cloud}
+        title={`${(photo.storageProvider || LIBRARY_EMPTY_VALUE).toUpperCase()} · ${t("admin.cloud_synced")}`}
+        subtitle={storagePath || LIBRARY_EMPTY_VALUE}
+      />
 
-      {/* ── 照片信息 ── */}
+      {/* ── 照片信息（两列卡片网格，参考稿把基本信息放在拍摄参数之前） ── */}
       <LibraryDetailsSection
         label={t("admin.basic_info")}
         icon={FileText}
@@ -580,15 +509,43 @@ export function PhotoInfoSidebar({
         ))}
       </LibraryDetailsSection>
 
-      {/* ── 操作区（常驻贴底） ── */}
-      <div className="mt-auto space-y-2 px-4 pb-5 pt-4">
-        <LibraryDetailsAction
-          icon={Trash2}
-          label={t("admin.delete")}
-          onClick={() => onDelete(photo)}
-          destructive
-        />
-      </div>
+      {/* ── 拍摄参数（有 EXIF 才显示，两列卡片网格） ── */}
+      {hasExif && (
+        <LibraryDetailsSection
+          label={t("admin.shooting_info")}
+          icon={Camera}
+          open={shootingOpen}
+          onToggle={() => setShootingOpen((v) => !v)}
+        >
+          <CameraParameters
+            cameraLabel={t("admin.camera")}
+            cameraValue={cameraLabel}
+            lensLabel={t("admin.lens")}
+            lensValue={photo.lensModel}
+            parameters={cameraParameters}
+          />
+        </LibraryDetailsSection>
+      )}
+
+      {/* ── 操作区（常驻贴底，参考稿：查看原图 + 删除） ── */}
+      <LibraryDetailsFooter>
+        <div className="grid grid-cols-2 gap-2">
+          <LibraryDetailsAction
+            icon={ExternalLink}
+            label={t("admin.view_original")}
+            disabled={!photo.url}
+            onClick={() => {
+              if (photo.url) BrowserOpenURL(resolveAssetUrl(photo.url));
+            }}
+          />
+          <LibraryDetailsAction
+            icon={Trash2}
+            label={t("admin.delete")}
+            onClick={() => onDelete(photo)}
+            destructive
+          />
+        </div>
+      </LibraryDetailsFooter>
     </LibraryDetailsPanel>
   );
 }

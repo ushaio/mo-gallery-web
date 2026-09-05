@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  Copy,
   ExternalLink,
   EyeOff,
   FileText,
@@ -14,24 +15,29 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Star,
   Tag as TagIcon,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import {
   LibraryColorStrip,
   LibraryDetailsAction,
   LibraryDetailsEmpty,
+  LibraryDetailsFooter,
   LibraryDetailsHeader,
   LibraryDetailsPanel,
   LibraryDetailsPreview,
   LibraryDetailsSection,
+  LibraryDetailsSyncCard,
   LibraryFieldBlock,
+  LibraryKvItem,
+  LibraryKvList,
   LibraryMetaRow,
-  LibraryMonoValue,
+  LibraryQuickDots,
+  LibraryQuickMark,
+  LibraryQuickStars,
   LibrarySavingHint,
-  LibraryStatusPill,
 } from "@/components/ui/library";
 import { CloudIcon, CloudOffIcon } from "@/components/icons/CloudIcons";
 import { isPhotoAsset } from "../types";
@@ -41,6 +47,8 @@ import type { LocalLibraryCopy } from "../copy";
 interface Props {
   asset: LocalAsset | null;
   copy: LocalLibraryCopy;
+  /** 资源库根目录（绝对路径），用于复制完整路径。 */
+  rootPath: string;
   saving: boolean;
   maintenanceBusy: boolean;
   tags: LocalTag[];
@@ -64,6 +72,8 @@ interface Props {
   onSetTags: (assetId: string, tagIds: string[]) => Promise<void>;
   onCreateTag: (name: string) => Promise<LocalTag | undefined>;
   onSetCollections: (assetId: string, collectionIds: string[]) => Promise<void>;
+  /** 从信息栏发起上传（打开上传设置弹窗）。 */
+  onUpload: (asset: LocalAsset) => void;
 }
 
 import {
@@ -88,6 +98,7 @@ export function LocalAssetDetails(props: Props) {
 function LocalAssetDetailsContent({
   asset,
   copy,
+  rootPath,
   saving,
   maintenanceBusy,
   tags,
@@ -105,6 +116,7 @@ function LocalAssetDetailsContent({
   onSetTags,
   onCreateTag,
   onSetCollections,
+  onUpload,
 }: Props) {
   const [title, setTitle] = useState(asset?.displayTitle || "");
   const [notes, setNotes] = useState(asset?.notes || "");
@@ -121,8 +133,9 @@ function LocalAssetDetailsContent({
   const [organizationOpen, setOrganizationOpen] = useState(true);
   const [shootingOpen, setShootingOpen] = useState(true);
   const [fileInfoOpen, setFileInfoOpen] = useState(true);
-  const [hoverRating, setHoverRating] = useState(0);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [cloudInfoOpen, setCloudInfoOpen] = useState(false);
+  const [pathCopied, setPathCopied] = useState(false);
   const [assignedTagIds, setAssignedTagIds] = useState<string[]>(
     () => asset?.tags.map((tag) => tag.id) || [],
   );
@@ -229,6 +242,21 @@ function LocalAssetDetailsContent({
     await onSetCollections(asset.id, nextIds);
   };
 
+  const copyPath = async () => {
+    if (!asset) return;
+    /* 复制完整路径：根目录 + 相对路径，分隔符跟随根目录风格 */
+    const sep = rootPath.includes("\\") ? "\\" : "/";
+    const base = rootPath.replace(/[\\/]+$/, "");
+    const fullPath = `${base}${sep}${asset.relativePath.replace(/[\\/]+/g, sep)}`;
+    try {
+      await navigator.clipboard.writeText(fullPath);
+      setPathCopied(true);
+      setTimeout(() => setPathCopied(false), 1500);
+    } catch {
+      /* 剪贴板不可用时静默失败 */
+    }
+  };
+
   if (!asset) {
     return (
       <LibraryDetailsEmpty
@@ -249,20 +277,30 @@ function LocalAssetDetailsContent({
   const cameraLabel = [exif?.cameraMake, exif?.cameraModel]
     .filter(Boolean)
     .join(" ");
-  const cameraParameters = [
-    { label: copy.filterAperture, value: formatAperture(exif?.aperture) },
-    { label: copy.filterExposure, value: formatExposure(exif?.shutterSeconds) },
-    { label: "ISO", value: exif?.iso ? `ISO ${exif.iso}` : null },
-    {
-      label: copy.filterFocalLength,
-      value: formatFocalLength(exif?.focalLengthMm),
-    },
-  ].filter((parameter): parameter is { label: string; value: string } =>
+  /* 三列参数卡（参考稿 .kv2：焦距/光圈/快门），其余进下方 kv 行 */
+  const exposureCards = (
+    [
+      {
+        label: copy.filterFocalLength,
+        value: formatFocalLength(exif?.focalLengthMm),
+      },
+      { label: copy.filterAperture, value: formatAperture(exif?.aperture) },
+      {
+        label: copy.filterExposure,
+        value: formatExposure(exif?.shutterSeconds),
+      },
+    ] as Array<{ label: string; value: string | null }>
+  ).filter((parameter): parameter is { label: string; value: string } =>
     Boolean(parameter.value),
   );
   const hasExif =
     isPhoto &&
-    Boolean(cameraLabel || exif?.lensModel || cameraParameters.length > 0);
+    Boolean(
+      cameraLabel ||
+        exif?.lensModel ||
+        exif?.iso ||
+        exposureCards.length > 0,
+    );
   const dimensionLabel =
     asset.width && asset.height ? `${asset.width} × ${asset.height}` : null;
   const uploaded = asset.uploadStatus === "uploaded" || asset.isUploaded;
@@ -427,68 +465,10 @@ function LocalAssetDetailsContent({
       )}
 
       {/* ── 标签：与云端分类同一套交互 ──
-          有标签显示 chip，无标签只留一个加号；点加号才展开输入框与自动补全。
-          放在标题下方而不是折叠区块里，让「这张照片是什么」一眼看完。 */}
+          有标签显示 chip，无标签显示虚线「添加」chip（参考稿 .tagrow .chip.add）；
+          点击后原地变成 chip 大小的内联输入框，回车确认、Esc 取消。 */}
       <div className="relative mt-2">
-        {addingTag ? (
-          <div
-            className="flex items-center rounded-lg border transition-colors focus-within:border-primary"
-            style={{ borderColor: "var(--primary)" }}
-          >
-            <input
-              ref={tagInputRef}
-              autoFocus
-              value={tagQuery}
-              disabled={organizationBusy}
-              onFocus={() => setTagMenuOpen(true)}
-              onChange={(e) => {
-                setTagQuery(e.target.value);
-                setTagMenuOpen(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void addTag();
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setTagQuery("");
-                  setTagMenuOpen(false);
-                  setAddingTag(false);
-                }
-              }}
-              placeholder={copy.tagInputPlaceholder}
-              className="h-7 min-w-0 flex-1 bg-transparent px-2.5 text-[11px] outline-none"
-              style={{ color: "var(--foreground)" }}
-            />
-            <button
-              type="button"
-              disabled={organizationBusy || !tagQuery.trim()}
-              title={copy.add}
-              aria-label={copy.add}
-              onClick={() => void addTag()}
-              className="flex size-7 items-center justify-center transition-colors hover:bg-secondary disabled:opacity-40"
-              style={{ color: "var(--primary)" }}
-            >
-              <Check size={12} />
-            </button>
-            <button
-              type="button"
-              title={copy.cancelAction}
-              aria-label={copy.cancelAction}
-              onClick={() => {
-                setTagQuery("");
-                setTagMenuOpen(false);
-                setAddingTag(false);
-              }}
-              className="flex size-7 items-center justify-center rounded-r-lg transition-colors hover:bg-secondary"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
             {visibleTags.map((tag) => (
               <span
                 key={tag.id}
@@ -534,23 +514,60 @@ function LocalAssetDetailsContent({
                 {tagsExpanded ? copy.collapse : `+${hiddenTagCount}`}
               </button>
             )}
-            {/* 无标签时这就是唯一可见的控件，与云端无分类时的加号一致 */}
-            <button
-              type="button"
-              disabled={organizationBusy}
-              title={copy.tags}
-              aria-label={copy.tags}
-              onClick={() => setAddingTag(true)}
-              className="flex size-5 items-center justify-center rounded-full border transition-colors hover:bg-secondary disabled:opacity-40"
-              style={{
-                borderColor: "var(--border)",
-                color: "var(--muted-foreground)",
-              }}
-            >
-              <Plus size={10} />
-            </button>
+            {/* 添加入口：默认是虚线 chip（参考稿 .chip.add），点击原地变输入框 */}
+            {addingTag ? (
+              <input
+                ref={tagInputRef}
+                autoFocus
+                value={tagQuery}
+                disabled={organizationBusy}
+                onFocus={() => setTagMenuOpen(true)}
+                onChange={(e) => {
+                  setTagQuery(e.target.value);
+                  setTagMenuOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void addTag();
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setTagQuery("");
+                    setTagMenuOpen(false);
+                    setAddingTag(false);
+                  }
+                }}
+                onBlur={() => {
+                  /* 失焦时已输入则提交，否则直接收回 chip */
+                  if (tagQuery.trim()) void addTag();
+                  else {
+                    setTagMenuOpen(false);
+                    setAddingTag(false);
+                  }
+                }}
+                placeholder={copy.tagInputPlaceholder}
+                className="h-[22px] w-36 rounded-full border bg-transparent px-2.5 text-[10px] outline-none transition-colors focus:border-primary disabled:opacity-40"
+                style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={organizationBusy}
+                title={copy.tags}
+                aria-label={copy.tags}
+                onClick={() => setAddingTag(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] transition-colors hover:bg-secondary disabled:opacity-40"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--muted-foreground)",
+                }}
+              >
+                <Plus size={10} />
+                {copy.add}
+              </button>
+            )}
           </div>
-        )}
 
         {addingTag && tagMenuOpen && (matchingTags.length > 0 || tagQuery.trim()) && (
           <div
@@ -600,153 +617,45 @@ function LocalAssetDetailsContent({
     </div>
   );
 
-  /* ── 合并卡片第三段：收藏 / 评分 / 颜色（都是“给照片打标记”，聚在一起） ── */
+  /* ── 合并卡片第三段：快捷标记行（参考稿 .quick 骨架：收藏 ♥ → 评分 ★ → 颜色圆点 → 弹性空隙） ── */
   const marksSegment = (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-1">
-        {/* 收藏 */}
-        <button
-          type="button"
-          title={favorite ? copy.unmarkFavorite : copy.markFavorite}
-          aria-label={favorite ? copy.unmarkFavorite : copy.markFavorite}
-          aria-pressed={favorite}
-          onClick={() => {
-            const next = !favorite;
-            setFavorite(next);
-            void savePatch({ isFavorite: next });
-          }}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90"
-          style={{
-            backgroundColor: favorite
-              ? "color-mix(in srgb, var(--primary) 12%, transparent)"
-              : "transparent",
-            color: favorite ? "var(--primary)" : "var(--muted-foreground)",
-          }}
-          onMouseEnter={(e) => {
-            if (!favorite)
-              e.currentTarget.style.backgroundColor = "var(--secondary)";
-          }}
-          onMouseLeave={(e) => {
-            if (!favorite)
-              e.currentTarget.style.backgroundColor = "transparent";
-          }}
-        >
-          <Heart
-            size={15}
-            fill={favorite ? "currentColor" : "none"}
-            strokeWidth={favorite ? 2 : 1.6}
-          />
-        </button>
-
-        <span
-          className="mx-1 h-5 w-px shrink-0"
-          style={{ backgroundColor: "var(--border)" }}
-        />
-
-        {/* 评分：点击同星级 = 清除，无需额外按钮 */}
-        {isPhoto ? (
-          <div
-            className="flex items-center gap-0.5"
-            role="group"
-            aria-label={copy.rating}
-          >
-            {[1, 2, 3, 4, 5].map((value) => {
-              const isActive = value <= (hoverRating || rating);
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  title={`${copy.rating}: ${value}`}
-                  aria-label={`${copy.rating}: ${value}`}
-                  onMouseEnter={() => setHoverRating(value)}
-                  onMouseLeave={() => setHoverRating(0)}
-                  onClick={() => {
-                    const next = rating === value ? 0 : value;
-                    setRating(next);
-                    void savePatch({ rating: next });
-                  }}
-                  className="rounded p-0.5 transition-transform hover:scale-110 active:scale-95"
-                >
-                  <Star
-                    size={15}
-                    fill={isActive ? "currentColor" : "none"}
-                    strokeWidth={isActive ? 2 : 1.6}
-                    style={{
-                      color: isActive ? "#F59E0B" : "var(--muted-foreground)",
-                      transition: "all 0.12s ease",
-                    }}
-                  />
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <span className="flex-1" />
-        )}
-
-        {/* 上传状态（已上传可点击查看云端信息；未上传灰色不可点击） */}
-        {uploaded ? (
-          <LibraryStatusPill
-            icon={CloudIcon}
-            label={copy.filterUploaded}
-            tone="success"
-            onClick={() => setCloudInfoOpen(true)}
-          />
-        ) : (
-          <LibraryStatusPill
-            icon={CloudOffIcon}
-            label={copy.filterNotUploaded}
-          />
-        )}
-      </div>
-
-      {/* 颜色标记：点击当前选中色 = 取消，无需额外按钮 */}
+    <div className="flex items-center gap-1">
+      <LibraryQuickMark
+        icon={Heart}
+        active={favorite}
+        title={favorite ? copy.unmarkFavorite : copy.markFavorite}
+        onClick={() => {
+          const next = !favorite;
+          setFavorite(next);
+          void savePatch({ isFavorite: next });
+        }}
+      />
       {isPhoto && (
-        <div
-          className="flex items-center gap-1.5"
-          role="group"
-          aria-label={copy.color}
-        >
-          {COLOR_SWATCHES.map((swatch) => {
-            const selected = color === swatch.value;
-            const name = swatch.nameKey ? copy[swatch.nameKey] : swatch.label;
-            return (
-              <button
-                key={swatch.value}
-                type="button"
-                title={`${copy.color}: ${name}${selected ? `（${copy.noColor}）` : ""}`}
-                aria-label={`${copy.color}: ${name}`}
-                aria-pressed={selected}
-                onClick={() => {
-                  const next = selected ? "" : swatch.value;
-                  setColor(next);
-                  void savePatch({ colorLabel: next });
-                }}
-                className="size-5 rounded-full transition-all hover:scale-110 active:scale-95"
-                style={{
-                  backgroundColor: swatch.bg,
-                  boxShadow: selected
-                    ? "0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground)"
-                    : "0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent)",
-                }}
-              />
-            );
-          })}
-          {color && (
-            <span
-              className="ml-1 text-[9px] uppercase tracking-wide"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {COLOR_SWATCHES.find((s) => s.value === color)?.nameKey
-                ? copy[
-                    COLOR_SWATCHES.find((s) => s.value === color)!
-                      .nameKey as "red"
-                  ]
-                : copy.color}
-            </span>
-          )}
-        </div>
+        <LibraryQuickStars
+          value={rating}
+          label={copy.rating}
+          onChange={(next) => {
+            setRating(next);
+            void savePatch({ rating: next });
+          }}
+        />
       )}
+      {isPhoto && (
+        <LibraryQuickDots
+          colors={COLOR_SWATCHES.map((swatch) => ({
+            value: swatch.value,
+            bg: swatch.bg,
+            label: swatch.nameKey ? copy[swatch.nameKey] : swatch.label,
+          }))}
+          value={color}
+          label={copy.color}
+          onChange={(next) => {
+            setColor(next);
+            void savePatch({ colorLabel: next });
+          }}
+        />
+      )}
+      <span className="flex-1" />
     </div>
   );
 
@@ -759,91 +668,167 @@ function LocalAssetDetailsContent({
         marks={marksSegment}
       />
 
-      {/* ── 备注：原位编辑 ── */}
-      <div
-        className="border-b px-4 py-3.5"
-        style={{ borderColor: "var(--border)" }}
-        ref={notesEditorRef}
-      >
-        {editingNotes ? (
-          <div>
-            <textarea
-              autoFocus
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={4}
-              placeholder={copy.notes}
-              className="w-full resize-none rounded-xl border bg-input/80 px-3 py-2 text-[11px] leading-relaxed outline-none transition-shadow focus:ring-2 focus:ring-primary/20"
-              style={{ borderColor: "var(--primary)" }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setNotes(asset.notes || "");
-                  setEditingNotes(false);
-                }
-              }}
-            />
-            <div className="mt-2 flex items-center justify-end gap-2">
+      {/* ── 云端同步状态卡片（参考稿 .sync 区块）：
+          已上传 → 主色图标方块 + 云端路径 + 查看云端信息按钮；
+          未上传 → 中性方块 + 本机提示 + 立即上传按钮。仅照片可上传。 ── */}
+      {isPhoto &&
+        (uploaded ? (
+          <LibraryDetailsSyncCard
+            ok
+            icon={CloudIcon}
+            title={copy.uploadedToCloud}
+            subtitle={asset.cloudPath || asset.cloudPhotoId}
+            trailing={
               <button
                 type="button"
-                onClick={() => {
-                  setNotes(asset.notes || "");
-                  setEditingNotes(false);
-                }}
-                className="rounded-md px-3 py-1.5 text-[11px] transition-colors hover:bg-secondary"
-                style={{ color: "var(--muted-foreground)" }}
+                onClick={() => setCloudInfoOpen(true)}
+                title={copy.cloudDetails}
+                aria-label={copy.cloudDetails}
+                className="flex size-7 shrink-0 items-center justify-center rounded-md border transition-colors hover:bg-secondary"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
               >
-                {copy.cancelAction}
+                <ExternalLink size={13} />
               </button>
+            }
+          />
+        ) : (
+          <LibraryDetailsSyncCard
+            icon={CloudOffIcon}
+            title={copy.filterNotUploaded}
+            subtitle={copy.notUploadedHint.replace(
+              "{size}",
+              asset.byteSize > 0 ? formatBytes(asset.byteSize) : "",
+            )}
+            trailing={
               <button
                 type="button"
-                onClick={commitNotes}
-                className="flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-medium transition-opacity hover:opacity-90"
+                disabled={missing || trashed}
+                onClick={() => onUpload(asset)}
+                title={copy.uploadNow}
+                className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
                   backgroundColor: "var(--primary)",
                   color: "var(--primary-foreground)",
                 }}
               >
-                <Check size={11} />
-                {copy.save}
+                <Upload size={12} />
+                {copy.uploadNow}
               </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditingNotes(true)}
-            className="group block w-full text-left"
-          >
-            <span
-              className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {copy.notes}
-              <Pencil
-                size={9}
-                className="opacity-0 transition-opacity group-hover:opacity-100"
-              />
-            </span>
-            {notes ? (
-              <p
-                className="whitespace-pre-wrap break-words text-[11px] leading-relaxed"
-                style={{ color: "var(--foreground)" }}
+            }
+          />
+        ))}
+
+      {/* ── 文件信息（参考稿「基本信息」，kv 键值行布局） ── */}
+      <LibraryDetailsSection
+        label={copy.details}
+        icon={FileText}
+        open={fileInfoOpen}
+        onToggle={() => setFileInfoOpen((v) => !v)}
+      >
+        <LibraryKvList>
+          {dimensionLabel && (
+            <LibraryKvItem
+              label={copy.dimensions}
+              mono
+              value={
+                <>
+                  {dimensionLabel}
+                  {asset.width && asset.height ? (
+                    <span
+                      className="ml-1"
+                      style={{ color: "var(--muted-foreground)" }}
+                    >
+                      · {((asset.width * asset.height) / 1e6).toFixed(1)} MP
+                    </span>
+                  ) : null}
+                </>
+              }
+            />
+          )}
+          {asset.byteSize > 0 && (
+            <LibraryKvItem
+              label={copy.fileSize}
+              value={formatBytes(asset.byteSize)}
+            />
+          )}
+          {isPhoto && asset.capturedAt && (
+            <LibraryKvItem
+              label={copy.captured}
+              value={formatDate(asset.capturedAt)}
+            />
+          )}
+          <LibraryKvItem
+            label={copy.modified}
+            value={formatDate(asset.modifiedAtNs)}
+          />
+          <LibraryKvItem label={copy.format} value={asset.format.toUpperCase()} />
+          <LibraryKvItem
+            label={copy.originalPath}
+            mono
+            value={asset.relativePath}
+            action={
+              <button
+                type="button"
+                onClick={() => void copyPath()}
+                title={pathCopied ? copy.copied : copy.copyPath}
+                aria-label={copy.copyPath}
+                className="flex shrink-0 items-center justify-center rounded p-0.5 opacity-0 transition-opacity hover:bg-secondary group-hover/kv:opacity-100"
+                style={{
+                  color: pathCopied ? "var(--primary)" : "var(--muted-foreground)",
+                }}
               >
-                {notes}
-              </p>
-            ) : (
-              <p
-                className="text-[11px] italic"
-                style={{ color: "var(--muted-foreground)" }}
-              >
-                —
-              </p>
-            )}
-          </button>
+                {pathCopied ? <Check size={11} /> : <Copy size={11} />}
+              </button>
+            }
+          />
+        </LibraryKvList>
+
+        {/* 主色：放在区块末尾（与云端照片信息同一排布），有数据才显示 */}
+        {isPhoto && asset.dominantColors && asset.dominantColors.length > 0 && (
+          <LibraryFieldBlock label={copy.dominantColors} className="mt-2.5">
+            <LibraryColorStrip colors={asset.dominantColors} />
+          </LibraryFieldBlock>
         )}
-        {saving && !editingNotes && <LibrarySavingHint label={copy.autoSaving} />}
-      </div>
+      </LibraryDetailsSection>
+
+      {/* ── 拍摄信息（参考稿「拍摄参数」：三列参数卡 + kv 行；有 EXIF 才显示） ── */}
+      {hasExif && (
+        <LibraryDetailsSection
+          label={copy.filterCamera}
+          icon={Camera}
+          open={shootingOpen}
+          onToggle={() => setShootingOpen((v) => !v)}
+        >
+          {exposureCards.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {exposureCards.map((parameter) => (
+                <LibraryMetaRow
+                  key={`${parameter.label}-${parameter.value}`}
+                  card
+                  mono
+                  label={parameter.label}
+                  value={parameter.value}
+                />
+              ))}
+            </div>
+          )}
+          {(cameraLabel || exif?.lensModel || exif?.iso) && (
+            <LibraryKvList
+              className={exposureCards.length > 0 ? "mt-2.5" : undefined}
+            >
+              {cameraLabel && (
+                <LibraryKvItem label={copy.camera} value={cameraLabel} />
+              )}
+              {exif?.lensModel && (
+                <LibraryKvItem label={copy.lens} value={exif.lensModel} />
+              )}
+              {exif?.iso && (
+                <LibraryKvItem label="ISO" mono value={exif.iso} />
+              )}
+            </LibraryKvList>
+          )}
+        </LibraryDetailsSection>
+      )}
 
       {/* ── 标签与集合 ── */}
       <LibraryDetailsSection
@@ -918,124 +903,90 @@ function LocalAssetDetailsContent({
         </div>
       </LibraryDetailsSection>
 
-      {/* ── 拍摄信息（有 EXIF 才显示） ── */}
-      {hasExif && (
+      {/* ── 备注（参考稿「备注」折叠区块，默认收起） ── */}
+      <div ref={notesEditorRef}>
         <LibraryDetailsSection
-          label={copy.filterCamera}
-          icon={Camera}
-          open={shootingOpen}
-          onToggle={() => setShootingOpen((v) => !v)}
+          label={copy.notes}
+          icon={Pencil}
+          open={notesOpen}
+          onToggle={() => setNotesOpen((v) => !v)}
         >
-          <div className="grid grid-cols-2 gap-2">
-            {cameraLabel && (
-              <div className="min-w-0 rounded-md border px-2.5 py-2">
-                <p
-                  className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  {copy.filterCamera}
-                </p>
-                <p
-                  className="mt-1 break-words text-[11px] font-medium leading-snug"
-                  style={{ color: "var(--foreground)" }}
-                >
-                  {cameraLabel}
-                </p>
-              </div>
-            )}
-            {exif?.lensModel && (
-              <div className="min-w-0 rounded-md border px-2.5 py-2">
-                <p
-                  className="truncate text-[9px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  {copy.filterLens}
-                </p>
-                <p
-                  className="mt-1 break-words text-[11px] font-medium leading-snug"
-                  style={{ color: "var(--foreground)" }}
-                >
-                  {exif.lensModel}
-                </p>
-              </div>
-            )}
-            {cameraParameters.map((parameter) => (
-              <LibraryMetaRow
-                key={`${parameter.label}-${parameter.value}`}
-                card
-                mono
-                label={parameter.label}
-                value={parameter.value}
+          {editingNotes ? (
+            <div>
+              <textarea
+                autoFocus
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={4}
+                placeholder={copy.notes}
+                className="w-full resize-none rounded-xl border bg-input/80 px-3 py-2 text-[11px] leading-relaxed outline-none transition-shadow focus:ring-2 focus:ring-primary/20"
+                style={{ borderColor: "var(--primary)" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setNotes(asset.notes || "");
+                    setEditingNotes(false);
+                  }
+                }}
               />
-            ))}
-          </div>
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotes(asset.notes || "");
+                    setEditingNotes(false);
+                  }}
+                  className="rounded-md px-3 py-1.5 text-[11px] transition-colors hover:bg-secondary"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {copy.cancelAction}
+                </button>
+                <button
+                  type="button"
+                  onClick={commitNotes}
+                  className="flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-medium transition-opacity hover:opacity-90"
+                  style={{
+                    backgroundColor: "var(--primary)",
+                    color: "var(--primary-foreground)",
+                  }}
+                >
+                  <Check size={11} />
+                  {copy.save}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingNotes(true)}
+              className="group block w-full text-left"
+            >
+              {notes ? (
+                <p
+                  className="whitespace-pre-wrap break-words text-[11px] leading-relaxed"
+                  style={{ color: "var(--foreground)" }}
+                >
+                  {notes}
+                </p>
+              ) : (
+                <p
+                  className="text-[11px] italic"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {copy.notes}
+                  …
+                </p>
+              )}
+            </button>
+          )}
+          {saving && !editingNotes && <LibrarySavingHint label={copy.autoSaving} />}
         </LibraryDetailsSection>
-      )}
+      </div>
 
-      {/* ── 文件信息（默认展开） ── */}
-      <LibraryDetailsSection
-        label={copy.details}
-        icon={FileText}
-        open={fileInfoOpen}
-        onToggle={() => setFileInfoOpen((v) => !v)}
-      >
-        {/*
-          时间/尺寸/体积/格式走两列卡片网格：逐行铺开会把这个区块拉得很长，
-          而这些值都短，半栏宽度足够，两列排布能把纵向长度砍掉近一半，
-          视觉上也与上面「拍摄信息」的参数网格统一。
-        */}
-        <div className="grid grid-cols-2 gap-2">
-          {isPhoto && asset.capturedAt && (
-            <LibraryMetaRow
-              card
-              label={copy.captured}
-              value={formatDate(asset.capturedAt)}
-            />
-          )}
-          <LibraryMetaRow
-            card
-            label={copy.modified}
-            value={formatDate(asset.modifiedAtNs)}
-          />
-          {dimensionLabel && (
-            <LibraryMetaRow
-              card
-              mono
-              label={copy.dimensions}
-              value={dimensionLabel}
-            />
-          )}
-          {asset.byteSize > 0 && (
-            <LibraryMetaRow
-              card
-              label={copy.fileSize}
-              value={formatBytes(asset.byteSize)}
-            />
-          )}
-          <LibraryMetaRow
-            card
-            label={copy.format}
-            value={asset.format.toUpperCase()}
-          />
-        </div>
-
-        {/* 主色 */}
-        {isPhoto && asset.dominantColors && asset.dominantColors.length > 0 && (
-          <LibraryFieldBlock label={copy.dominantColors}>
-            <LibraryColorStrip colors={asset.dominantColors} />
-          </LibraryFieldBlock>
-        )}
-
-        {/* 路径：长值不进网格，单独整宽一行才不会被挤成两三行 */}
-        <LibraryFieldBlock label={copy.originalPath}>
-          <LibraryMonoValue value={asset.relativePath} />
-        </LibraryFieldBlock>
-      </LibraryDetailsSection>
-
-      {/* ── 操作区（常驻，不折叠） ── */}
-      <div className="mt-auto space-y-2 px-4 pb-5 pt-4">
+      {/* ── 操作区（参考稿 .ins-foot：粘性贴底，常驻不折叠） ── */}
+      <LibraryDetailsFooter>
         {missing ? (
-          <>
+          <div className="flex w-full flex-col gap-2">
             <LibraryDetailsAction
               icon={RefreshCw}
               label={copy.recheckMissing}
@@ -1050,9 +1001,9 @@ function LocalAssetDetailsContent({
               disabled={maintenanceBusy}
               destructive
             />
-          </>
+          </div>
         ) : trashed ? (
-          <>
+          <div className="flex w-full flex-col gap-2">
             <LibraryDetailsAction
               icon={RotateCcw}
               label={copy.restoreTrashedAsset}
@@ -1065,21 +1016,9 @@ function LocalAssetDetailsContent({
               onClick={() => onDelete(asset)}
               destructive
             />
-          </>
+          </div>
         ) : (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <LibraryDetailsAction
-                icon={ExternalLink}
-                label={copy.openSystem}
-                onClick={() => onOpenSystem(asset)}
-              />
-              <LibraryDetailsAction
-                icon={FolderInput}
-                label={copy.moveAssetsToFolder}
-                onClick={() => onMove(asset)}
-              />
-            </div>
+          <div className="flex w-full flex-col gap-2">
             {asset.availability === "active" && unavailable && isPhoto && (
               <LibraryDetailsAction
                 icon={RefreshCw}
@@ -1089,19 +1028,41 @@ function LocalAssetDetailsContent({
                 loading={maintenanceBusy}
               />
             )}
-            <div
-              className="h-px"
-              style={{ backgroundColor: "var(--border)" }}
-            />
-            <LibraryDetailsAction
-              icon={Trash2}
-              label={copy.delete}
-              onClick={() => onDelete(asset)}
-              destructive
-            />
-          </>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <LibraryDetailsAction
+                  compact
+                  icon={ExternalLink}
+                  label={copy.openSystem}
+                  onClick={() => onOpenSystem(asset)}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <LibraryDetailsAction
+                  compact
+                  icon={FolderInput}
+                  label={copy.moveAssetsToFolder}
+                  onClick={() => onMove(asset)}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => onDelete(asset)}
+                title={copy.delete}
+                aria-label={copy.delete}
+                className="flex h-[34px] w-9 shrink-0 items-center justify-center rounded-lg border transition-colors hover:bg-destructive/10"
+                style={{
+                  borderColor:
+                    "color-mix(in srgb, var(--destructive) 35%, transparent)",
+                  color: "var(--destructive)",
+                }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
         )}
-      </div>
+      </LibraryDetailsFooter>
 
       {/* ── 云端照片信息弹窗 ── */}
       {cloudInfoOpen && (

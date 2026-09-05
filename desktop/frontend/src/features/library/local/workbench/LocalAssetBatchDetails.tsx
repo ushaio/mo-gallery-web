@@ -88,7 +88,7 @@ function Section({
     <section className="border-b px-5 py-1" style={{ borderColor: 'var(--border)' }}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2.5 py-2.5 text-left">
         <Icon size={14} strokeWidth={1.8} style={{ color: 'var(--muted-foreground)' }} />
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--foreground)' }}>
+        <span className="flex-1 text-[12.5px] font-semibold" style={{ color: 'var(--foreground)' }}>
           {label}
         </span>
         <ChevronDown
@@ -110,8 +110,8 @@ export function LocalAssetBatchDetails({ selectedCount, tags, collections, copy,
   return (
     <aside
       className={floating
-        ? 'custom-scrollbar absolute bottom-14 right-3 z-40 flex max-h-[min(680px,calc(100%-7rem))] w-[340px] flex-col overflow-y-auto rounded-xl border bg-background shadow-[0_16px_40px_-20px_rgba(15,23,42,0.72)]'
-        : 'custom-scrollbar hidden h-full w-[340px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex'}
+        ? 'custom-scrollbar absolute bottom-14 right-3 z-40 flex max-h-[min(680px,calc(100%-7rem))] w-[320px] flex-col overflow-y-auto rounded-xl border bg-background shadow-[0_16px_40px_-20px_rgba(15,23,42,0.72)]'
+        : 'custom-scrollbar hidden h-full w-[320px] shrink-0 flex-col overflow-y-auto border-l bg-background xl:flex'}
       style={{ borderColor: 'var(--border)' }}
       data-local-library-guide="batch-details"
     >

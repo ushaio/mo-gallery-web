@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { DragEvent, ReactElement, ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Folder, FolderHeart, Pencil, Plus, Tags, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, FolderHeart, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import {
   ContextMenu,
@@ -226,30 +226,36 @@ export function OrganizationNavigation({ copy, tags, groups, collections, select
       </div>
       {tagsOpen && (
         <div>
-          {tags.length > 0 ? tags.map((tag) => (
-            <div key={tag.id} {...dropHandlers({ kind: 'tag', id: tag.id })} data-local-library-logical-target className="mb-0.5 rounded-md">
-              <OrganizationContextTarget
-                label={tag.name}
-                editLabel={copy.renameTag}
-                deleteLabel={copy.deleteTag}
-                onEdit={() => onEdit({ kind: 'tag', item: tag })}
-                onDelete={() => onDelete({ kind: 'tag', id: tag.id, name: tag.name })}
-              >
-                <button
-                  type="button"
-                  onClick={() => selectTag(tag.id)}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-secondary"
-                  style={{ backgroundColor: dragOverId === tag.id ? 'var(--primary)' : selectedTagIds.includes(tag.id) ? 'var(--accent)' : undefined, color: dragOverId === tag.id ? 'var(--primary-foreground)' : undefined }}
-                >
-                  {selectedTagIds.includes(tag.id)
-                    ? <Check size={14} className="shrink-0" />
-                    : <Tags size={14} className="shrink-0" style={{ color: tag.color || undefined }} />}
-                  <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-                  <span className="text-[9px] text-muted-foreground">{tag.assetCount}</span>
-                </button>
-              </OrganizationContextTarget>
+          {tags.length > 0 ? (
+            /* 参考稿 .tags：流式 chip 布局，不再逐行铺开 */
+            <div className="flex flex-wrap gap-1 px-2 py-1">
+              {tags.map((tag) => (
+                <div key={tag.id} {...dropHandlers({ kind: 'tag', id: tag.id })} data-local-library-logical-target className="max-w-full rounded-full">
+                  <OrganizationContextTarget
+                    label={tag.name}
+                    editLabel={copy.renameTag}
+                    deleteLabel={copy.deleteTag}
+                    onEdit={() => onEdit({ kind: 'tag', item: tag })}
+                    onDelete={() => onDelete({ kind: 'tag', id: tag.id, name: tag.name })}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectTag(tag.id)}
+                      title={`${tag.name} · ${tag.assetCount}`}
+                      className="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] transition-colors hover:bg-secondary"
+                      style={{
+                        borderColor: dragOverId === tag.id || selectedTagIds.includes(tag.id) ? 'var(--primary)' : 'var(--border)',
+                        backgroundColor: dragOverId === tag.id || selectedTagIds.includes(tag.id) ? 'var(--primary)' : undefined,
+                        color: dragOverId === tag.id || selectedTagIds.includes(tag.id) ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+                      }}
+                    >
+                      <span className="min-w-0 truncate">{tag.name}</span>
+                    </button>
+                  </OrganizationContextTarget>
+                </div>
+              ))}
             </div>
-          )) : <p className="px-2 py-1.5 text-[11px] text-muted-foreground">{copy.noTags}</p>}
+          ) : <p className="px-2 py-1.5 text-[11px] text-muted-foreground">{copy.noTags}</p>}
         </div>
       )}
     </>
