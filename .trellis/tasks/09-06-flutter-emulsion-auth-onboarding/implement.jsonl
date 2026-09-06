@@ -1,0 +1,10 @@
+{"file": ".agents/skills/flutter-gallery-ui/SKILL.md", "reason": "Flutter UI 强制规范：仅用 ui.dart kit / AppIcons / tokens / strings.dart，禁 Material 原生组件与硬编码样式"}
+{"file": ".trellis/tasks/09-06-flutter-emulsion-auth-onboarding/design.md", "reason": "技术设计：新增官方账号层结构、router 门禁伪码、端点对齐表、风险对策"}
+{"file": "desktop/services/official_auth.go", "reason": "官方账号端点与行为基准：login/register/me、baseUrl 归一化、断网宽限放行"}
+{"file": "desktop/frontend/src/pages/SetupPage.tsx", "reason": "引导向导需求基准：两步结构、官方账号必填、站点连接可跳过"}
+{"file": "desktop/frontend/src/components/auth/OfficialAuthForm.tsx", "reason": "官方账号表单基准：登录/注册切换、字段校验规则、默认服务器地址、记住登录"}
+{"file": "flutter/lib/app/providers.dart", "reason": "现有 AuthController/LocalModeController/listenable 结构，新 OfficialAuthController 与 OnboardingController 仿照其模式挂载"}
+{"file": "flutter/lib/core/auth/session_store.dart", "reason": "secure storage 存储层模式（抽象+Secure+Memory），OfficialSessionStore 仿照"}
+{"file": "flutter/lib/features/auth/login_page.dart", "reason": "现登录页：品牌 masthead/双栏布局复用，站点表单抽取为 SiteConnectForm，本地模式入口移除"}
+{"file": "flutter/lib/features/settings/settings_detail_pages.dart", "reason": "AccountPage/EnvironmentsPage 现状，官方账号区块与断开站点语义改造点"}
+{"file": "flutter/lib/app/router.dart", "reason": "现有 redirect 门禁与分支结构，新 /onboarding /connect 路由与两级门禁重写点"}

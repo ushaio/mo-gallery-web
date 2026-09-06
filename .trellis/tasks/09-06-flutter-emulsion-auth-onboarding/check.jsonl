@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/09-06-flutter-emulsion-auth-onboarding/prd.md", "reason": "验收标准清单：全新安装引导、跳过、门禁路由矩阵、设置页行为、flutter analyze/test"}
+{"file": ".agents/skills/flutter-gallery-ui/SKILL.md", "reason": "检查 UI diff 是否违反硬规则表（Material 原生组件、Icons.*、内联颜色、魔法数字、硬编码文案）"}
+{"file": ".trellis/tasks/09-06-flutter-emulsion-auth-onboarding/design.md", "reason": "核对实现与设计一致：端点对齐、redirect 分支放行清单、本地模式入口保留等价性"}
