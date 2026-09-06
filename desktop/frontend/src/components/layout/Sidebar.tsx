@@ -15,6 +15,7 @@ import { useWindowChrome } from './window-chrome'
 const navGroups = [
   [
     { path: '/home', icon: Home, key: 'admin.home' },
+    { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
   ],
   [
     { path: '/library', icon: LibraryBig, key: 'admin.resource_library' },
@@ -23,9 +24,6 @@ const navGroups = [
   [
     { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
     { path: '/zine', icon: BookImage, key: 'admin.zine' },
-  ],
-  [
-    { path: '/ai-assistant', icon: Bot, key: 'admin.ai_assistant' },
   ],
   [
     { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
