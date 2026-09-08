@@ -1,0 +1,6 @@
+{"file": "docs/plugin-system/spec.md", "reason": "System plugin protocol, capability domains, manifest contract"}
+{"file": "docs/plugin-system/marketplace-repository.md", "reason": "Index format, release and signing flow for marketplace listing"}
+{"file": "docs/plugin-system/verification-matrix.md", "reason": "Acceptance items V-MKT-01/V-PLUG-01/02/V-REL-01 that the plugin must satisfy"}
+{"file": "docs/PROJECT_CONTEXT.md", "reason": "Section 13/14: plugin repos layout and desktop plugin core boundaries"}
+{"file": "../mo-gallery-plugin-s3/manifest.json", "reason": "Reference manifest shape: contributions, configSchema, credentialSchema, x-i18n"}
+{"file": "../mo-gallery-plugin-s3/PLUGIN.md", "reason": "Distribution contract: dist + manifest + checksums + signature"}

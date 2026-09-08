@@ -1,0 +1,2 @@
+{"file": "docs/plugin-system/verification-matrix.md", "reason": "Verify marketplace/integrity acceptance items for the new webdav entry"}
+{"file": "docs/plugin-system/marketplace-repository.md", "reason": "Validate index.json entry shape and npm run check requirements"}

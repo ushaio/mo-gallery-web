@@ -9,6 +9,7 @@ import { t } from '@/lib/i18n'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs'
 import { isDevelopmentBuild } from '@/lib/app-updater'
 import {
   CreateDesktopStorageSource,
@@ -193,7 +194,7 @@ const STORAGE_TYPE_META: Record<string, { label: string; icon: typeof HardDrive 
 
 function storageTypeMeta(type: string, plugin?: Pick<PluginDescriptor, 'id' | 'name'>) {
   if (plugin?.name) {
-    const icon = plugin.id === 'github' ? Github : plugin.id === 's3-compatible' ? Cloud : Database
+    const icon = plugin.id === 'github' ? Github : plugin.id === 's3-compatible' ? Cloud : plugin.id === 'webdav' ? FolderOpen : Database
     return { label: plugin.name, icon }
   }
   if (type === 's3-compatible') return STORAGE_TYPE_META.s3
@@ -442,18 +443,16 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
       {mode === 'plugins' && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex h-9 items-center rounded-md border p-0.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--muted)' }} role="tablist" aria-label="插件视图">
-              <button type="button" role="tab" aria-selected={pluginView === 'marketplace'} onClick={() => setPluginView('marketplace')}
-                className="h-8 rounded px-3 text-xs font-medium transition-colors"
-                style={{ backgroundColor: pluginView === 'marketplace' ? 'var(--background)' : 'transparent', color: pluginView === 'marketplace' ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                插件市场
-              </button>
-              <button type="button" role="tab" aria-selected={pluginView === 'installed'} onClick={() => setPluginView('installed')}
-                className="h-8 rounded px-3 text-xs font-medium transition-colors"
-                style={{ backgroundColor: pluginView === 'installed' ? 'var(--background)' : 'transparent', color: pluginView === 'installed' ? 'var(--foreground)' : 'var(--muted-foreground)' }}>
-                已安装 ({installedSystemPlugins.length})
-              </button>
-            </div>
+            <SegmentedTabs
+              fill={false}
+              ariaLabel="插件视图"
+              value={pluginView}
+              onChange={setPluginView}
+              options={[
+                { value: 'marketplace', label: '插件市场' },
+                { value: 'installed', label: `已安装 (${installedSystemPlugins.length})` },
+              ]}
+            />
             {pluginView === 'marketplace' && (
               <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                 <label className="relative w-full max-w-64">
@@ -519,7 +518,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
                     return (
                       <div key={plugin.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
                         <span className="flex size-10 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
-                          {plugin.id === 'github' ? <Github size={18} /> : plugin.id === 's3-compatible' ? <Cloud size={18} /> : <Puzzle size={18} />}
+                          {plugin.id === 'github' ? <Github size={18} /> : plugin.id === 's3-compatible' ? <Cloud size={18} /> : plugin.id === 'webdav' ? <FolderOpen size={18} /> : <Puzzle size={18} />}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -566,7 +565,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
                 {installedSystemPlugins.map(plugin => (
                   <div key={plugin.id} className="flex items-start gap-3 py-4">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-md" style={{ backgroundColor: 'var(--muted)' }}>
-                      {plugin.id === 'github' ? <Github size={18} /> : plugin.id === 's3-compatible' ? <Cloud size={18} /> : <Puzzle size={18} />}
+                      {plugin.id === 'github' ? <Github size={18} /> : plugin.id === 's3-compatible' ? <Cloud size={18} /> : plugin.id === 'webdav' ? <FolderOpen size={18} /> : <Puzzle size={18} />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -643,7 +642,7 @@ export function StorageTab({ mode = 'sources' }: { mode?: 'sources' | 'plugins' 
                   color: resolvedPluginTab === plugin.id ? 'var(--foreground)' : 'var(--muted-foreground)',
                 }}
               >
-                {plugin.id === 'github' ? <Github size={13} /> : plugin.id === 's3-compatible' ? <Cloud size={13} /> : <Puzzle size={13} />}
+                {plugin.id === 'github' ? <Github size={13} /> : plugin.id === 's3-compatible' ? <Cloud size={13} /> : plugin.id === 'webdav' ? <FolderOpen size={13} /> : <Puzzle size={13} />}
                 <span className="max-w-48 truncate">{plugin.name || plugin.id}</span>
                 <span className="font-mono text-[10px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{sources.filter(source => (source.pluginId || source.type) === plugin.id).length}</span>
               </button>
