@@ -914,12 +914,12 @@ function DesktopStorageSourceForm({ plugin, source, onCancel, onSaved }: {
           <div className="mb-3"><p className="text-xs font-semibold">凭据</p><p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>凭据只写入本机安全存储；编辑时留空表示保持原凭据。</p></div>
           <div className="grid gap-3 sm:grid-cols-2">{credentialFields.map(field => <Field key={field.key} label={`${field.title}${field.required ? ' *' : ''}`} description={field.description}>
             <div className="relative">
-              <input type={visibleFields[`credential:${field.key}`] ? 'text' : 'password'} autoComplete="new-password" value={form.credentials[field.key] || ''} onChange={e => updateCredential(field.key, e.target.value)} className={`${inputClass} pr-9`} style={inputStyle} />
-              <button type="button" onClick={() => void toggleCredentialVisibility(`credential:${field.key}`, true)} disabled={loadingCredentials}
+              <input type={field.secret ? (visibleFields[`credential:${field.key}`] ? 'text' : 'password') : 'text'} autoComplete="new-password" value={form.credentials[field.key] || ''} onChange={e => updateCredential(field.key, e.target.value)} className={`${inputClass}${field.secret ? ' pr-9' : ''}`} style={inputStyle} />
+              {field.secret && <button type="button" onClick={() => void toggleCredentialVisibility(`credential:${field.key}`, true)} disabled={loadingCredentials}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors disabled:opacity-50" style={{ color: 'var(--muted-foreground)' }}
                 aria-label={visibleFields[`credential:${field.key}`] ? `隐藏${field.title}` : `显示${field.title}`}>
                 {visibleFields[`credential:${field.key}`] ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
+              </button>}
             </div>
           </Field>)}</div>
         </div>}
