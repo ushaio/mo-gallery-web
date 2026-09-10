@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { getEditorContent, hasEditorContent } from '../packages/api-client/src/editor-content'
-import { convertToMilkdown, getMilkdownContent } from '../packages/milkdown/src/legacy-content'
-import { getMilkdownPhotoIds } from '../packages/milkdown/src/media'
-import type { ArticleContentDto } from '../packages/api-client/src/types'
+import { getEditorContent, hasEditorContent } from '@mo-gallery/api-client/editor-content'
+import { convertToMilkdown, getMilkdownContent } from '@mo-gallery/milkdown/migration'
+import { getMilkdownPhotoIds } from '@mo-gallery/milkdown/media'
+import type { ArticleContentDto } from '@mo-gallery/api-client/types'
 
 const article: ArticleContentDto = {
   editorType: 'tiptap',

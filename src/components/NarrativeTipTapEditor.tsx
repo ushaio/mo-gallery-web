@@ -3,9 +3,10 @@
 /**
  * TipTap 编辑器的 web 端包装层。
  *
- * 编辑器实现位于 packages/tiptap-editor（与 desktop 端共用同一份源码）；
- * 本文件只负责注入 web 应用自身的 i18n、主题与后端接口，对调用方保持
- * 原有的 props / 导出形态不变。desktop 端有对应的包装层。
+ * 编辑器实现位于 mo-gallery-shared 仓库的 @mo-gallery/tiptap-editor（与 desktop
+ * 端共用同一份源码，经 pnpm git 依赖引入）；本文件只负责注入 web 应用自身的
+ * i18n、主题与后端接口，对调用方保持原有的 props / 导出形态不变。
+ * desktop 端有对应的包装层。
  */
 
 import { forwardRef, useCallback, useMemo } from 'react'

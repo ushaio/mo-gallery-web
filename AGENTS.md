@@ -15,9 +15,10 @@
 - `hono/`: Hono API route handlers and middleware.
 - `server/`: server-only database queries, storage, EXIF, and infrastructure helpers.
 - `prisma/`: schema, migrations, and seed script.
-- `desktop/`: Go + Wails desktop client; React/Vite frontend is in `desktop/frontend/`.
-- `public/`, `weixin/`, and `desktop/build/`: static assets and exportable templates.
+- `public/` and `weixin/`: static assets and exportable templates.
 - `tests/`: focused tests such as `media-embed.test.ts`.
+- Shared `@mo-gallery/*` packages come from [mo-gallery-shared](https://github.com/ushaio/mo-gallery-shared) as pnpm git dependencies (`#tag&path:`), not workspace members.
+- The desktop client lives in its own repository [emulsion-desktop](https://github.com/ushaio/emulsion-desktop); the local `desktop/` folder (if present) is an untracked nested checkout.
 
 ## Build, Test, and Development Commands
 - `pnpm run dev`: start the Next.js web app at `http://localhost:3000`.
@@ -27,8 +28,6 @@
 - `pnpm run start`: run the built web app locally.
 - `pnpm run lint`: run ESLint across the repository.
 - `pnpm run prisma:generate|prisma:dev|prisma:deploy|prisma:seed`: manage Prisma client, migrations, and seed data.
-- `cd desktop/frontend && npm run dev`: run the desktop frontend in Vite.
-- `cd desktop/frontend && npm run build`: build the desktop frontend.
 
 ## Coding Style & Naming Conventions
 - Use TypeScript in strict mode; prefer `unknown` over `any`.
@@ -39,7 +38,6 @@
 
 ## Testing Guidelines
 - No full test framework is standardized. Treat `pnpm run lint` and a successful build as the baseline.
-- For desktop changes, run `cd desktop/frontend && npm run build`.
 - Add tests near the feature or under `tests/`, using names like `blog-editor.render.test.ts`.
 - For UI changes, manually verify affected flows and include screenshots for UI behavior.
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import {
   buildConversationTitleMessages,
   normalizeConversationTitle,
-} from '../packages/ai-agent/src/prompt'
+} from '@mo-gallery/ai-agent'
 
 function runTest(name: string, callback: () => void) {
   try {

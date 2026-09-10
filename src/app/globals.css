@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* 显式声明共享编辑器包的源码路径，确保包内使用的工具类被生成 */
-@source "../../packages/tiptap-editor/src";
+@source "../../node_modules/@mo-gallery/tiptap-editor/src";
 
 @theme inline {
   --color-background: var(--background);

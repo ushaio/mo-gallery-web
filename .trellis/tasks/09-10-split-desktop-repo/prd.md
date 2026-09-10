@@ -39,12 +39,12 @@
 
 ## Acceptance Criteria
 
-- [ ] AC1: `https://github.com/ushaio/mo-gallery-shared.git` 可克隆，五个共享包结构完整，存在首个版本 tag。
-- [ ] AC2: mo-gallery-desktop 仓库初始化完成、内容完整（含 desktop-plugin-sdk、emulsion-mcp），`desktop/frontend` 依赖改为 git 引用后前端构建成功。
-- [ ] AC3: mo-gallery-web 中 `git ls-files desktop` 输出为空，`desktop/` 在 `.gitignore` 中；在 desktop 文件夹内改动文件不出现在 mo-gallery-web 的 `git status`。
-- [ ] AC4: mo-gallery-web 中 `pnpm install && pnpm run build` 成功（共享包经 git 依赖解析，类型与运行时行为不变）。
-- [ ] AC5: mo-gallery-web 的 release workflow 无任何 desktop 路径引用；desktop 仓库有自己的 release workflow，二者版本号互不校验。
-- [ ] AC6: `mo-release` skill 及 AGENTS.md、docs 反映拆分后的仓库结构。
+- [x] AC1: `https://github.com/ushaio/mo-gallery-shared.git` 可克隆，五个共享包结构完整，存在首个版本 tag。
+- [x] AC2: mo-gallery-desktop 仓库初始化完成、内容完整（含 desktop-plugin-sdk、emulsion-mcp），`desktop/frontend` 依赖改为 git 引用后前端构建成功。
+- [x] AC3: mo-gallery-web 中 `git ls-files desktop` 输出为空，`desktop/` 在 `.gitignore` 中；在 desktop 文件夹内改动文件不出现在 mo-gallery-web 的 `git status`。
+- [x] AC4: mo-gallery-web 中 `pnpm install && pnpm run build` 成功（共享包经 git 依赖解析，类型与运行时行为不变）。
+- [x] AC5: mo-gallery-web 的 release workflow 无任何 desktop 路径引用；desktop 仓库有自己的 release workflow，二者版本号互不校验。
+- [x] AC6: `mo-release` skill 及 AGENTS.md、docs 反映拆分后的仓库结构。
 
 ## Out of Scope
 
@@ -52,8 +52,8 @@
 - 共享包发布到 npm registry（GitHub Packages 等留待将来）。
 - desktop 功能性代码修改（拆分以搬运为主，不做行为变更）。
 
-## Preconditions（实施前必须满足）
+## Preconditions（实施结果）
 
-- P1: `feat/desktop-storage-plugins` 分支上未提交的 desktop 改动先收尾（提交并合并），保证拆分快照是完整状态。
-- P2: 用户提供 mo-gallery-desktop 的 GitHub 远端地址（推送时需要）。
-- P3: 若相关 GitHub 仓库为私有，desktop/shared 仓库的 CI 需要配置可访问私有仓库的 token（或仓库设为公开）。
+- P1: 已完成——在途改动以检查点提交 304a616 收尾（未合并 master，等待用户决定）。
+- P2: 已提供——https://github.com/ushaio/emulsion-desktop.git，已推送并打 tag v0.8.3。
+- P3: 未完全解决——mo-gallery-shared 为私有仓库，而 mo-gallery-web 与 emulsion-desktop 为公开仓库：web 的 Vercel 构建与 desktop 的 CI 拉取共享包都需要 token（desktop release.yml 已内置 SHARED_PKG_TOKEN 可选步骤；Vercel 需用户配置），或将 shared 设为公开。

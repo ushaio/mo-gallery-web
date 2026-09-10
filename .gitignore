@@ -73,33 +73,22 @@ public/uploads
 # zcode tooling
 .zcode/
 
-# desktop client build artifacts
-/desktop/testdata/local-library/manifest.local.json
-/desktop/testdata/local-library/samples/
-/desktop/testdata/local-library/reports/
-/desktop/testdata/**/__pycache__/
-/desktop/frontend/node_modules
-/desktop/frontend/dist
-/desktop/frontend/package.json.md5
-/desktop/build/bin
-/desktop/.tmp/
-/desktop/.tmp-go-modcache/
-/desktop/.tmp-go-cache-ui/
-/desktop/**/*.go.[0-9]*
-/desktop/frontend/.vite-dev.*.log
-/desktop/build/runtime-package/
-/desktop/build/generated/
-/desktop/storage_plugins/runtime_assets/*
-!/desktop/storage_plugins/runtime_assets/.gitkeep
-*.bak
+# desktop client — now its own repository (github.com/ushaio/emulsion-desktop.git),
+# no longer tracked by this repo. The local folder stays as a nested checkout.
+/desktop/
 
 # flutter mobile client — now its own repository (github.com/ushaio/emulsion-app.git),
 # no longer tracked by this repo.
 /flutter/
 
-# workspace package dependency links
-/packages/*/node_modules/
-/packages/*/dist/
+# shared packages — now in github.com/ushaio/mo-gallery-shared, consumed via
+# pnpm git dependencies; local leftover folder (if any) is not tracked.
+/packages/
+
+# local temp artifacts
+/tmp/
+temp_screenshot.png
+
 .pnpm-store/
 .pencil-ui/
 .env*

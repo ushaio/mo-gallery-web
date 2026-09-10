@@ -1,6 +1,6 @@
-packages:
-  - desktop/frontend
-  - packages/*
+# 共享包 @mo-gallery/* 来自 github.com/ushaio/mo-gallery-shared，
+# 以 pnpm git 依赖（#tag&path:）引用，不再是本仓库的 workspace 成员。
+blockExoticSubdeps: false
 
 allowBuilds:
   '@prisma/engines': true

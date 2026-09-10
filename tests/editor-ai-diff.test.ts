@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { Schema } from '@tiptap/pm/model'
-import { linearizeDoc, findDocTextRange } from '../packages/tiptap-editor/src/tiptap-editor/doc-text'
-import { diffText } from '../packages/tiptap-editor/src/tiptap-editor/text-diff'
+import { linearizeDoc, findDocTextRange } from '@mo-gallery/tiptap-editor'
+import { diffText } from '@mo-gallery/tiptap-editor'
 
 function runTest(name: string, callback: () => void) {
   try {
