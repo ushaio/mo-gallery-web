@@ -143,6 +143,8 @@ export interface RunDirectEditAgentOptions<
   readonly taskId?: string
   readonly signal?: AbortSignal
   readonly maxSteps?: number
+  readonly temperature?: number
+  readonly systemPrompt?: string
   readonly maxAutoFixIterations?: number
   readonly onEvent?: (event: DirectEditAgentEvent<EditorAiSnapshotByCapability[C]>) => void
 }
@@ -618,6 +620,8 @@ export async function runDirectEditAgent<C extends EditorAiExecutionCapability>(
     endpoint: options.endpoint,
     model: options.model,
     maxSteps: options.maxSteps,
+    temperature: options.temperature,
+    systemPrompt: options.systemPrompt,
     maxAutoFixIterations: options.maxAutoFixIterations,
   })
   return runDirectEditAgentWithRuntime(options, runtime)

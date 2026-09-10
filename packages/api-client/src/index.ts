@@ -16,6 +16,7 @@ export {
 export type { ApiEnvelope, ApiRuntime } from './core'
 
 export * from './types'
+export * from './editor-content'
 export * from './auth'
 export * from './photos'
 export * from './comments'

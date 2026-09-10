@@ -1,6 +1,6 @@
 'use client'
 
-export { default as NarrativeTipTapEditor } from '@/components/NarrativeTipTapEditor'
+export { default as NarrativeMilkdownEditor } from '@/components/NarrativeMilkdownEditor'
 
 export const STORY_PHOTO_PANEL_COLLAPSED_KEY = 'admin-story-photo-panel-collapsed'
 export const STORY_PHOTO_ORDER_KEY = 'story_photo_order'

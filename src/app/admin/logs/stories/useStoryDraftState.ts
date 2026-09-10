@@ -17,6 +17,7 @@ interface UseStoryDraftStateParams {
   pendingCoverId: string | null
   stories: StoryDto[]
   storyEditMode: 'list' | 'editor'
+  saving: boolean
   editFromDraft?: StoryEditorDraftData | null
   onDraftConsumed?: () => void
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
@@ -29,6 +30,7 @@ interface UseStoryDraftStateParams {
 }
 
 interface UseStoryDraftStateResult {
+  editorSessionId: string
   draftSaved: boolean
   lastSavedAt: number | null
   initialStory: StorySnapshot | null
@@ -40,6 +42,7 @@ interface UseStoryDraftStateResult {
   handleDraftCancel: () => void
   clearDraft: (storyId?: string) => Promise<void>
   resetDraftState: () => void
+  markSaved: (story: StoryDto) => void
 }
 
 function restorePendingImages(files?: StoryEditorDraftData['files']): PendingImage[] {
@@ -49,15 +52,8 @@ function restorePendingImages(files?: StoryEditorDraftData['files']): PendingIma
 
 function createSnapshot(story: StoryDto): StorySnapshot {
   return {
-    title: story.title,
-    content: story.content,
-    contentJson: story.contentJson ?? null,
-    isPublished: story.isPublished,
-    createdAt: story.createdAt,
-    storyDate: story.storyDate,
+    ...story,
     photoIds: story.photos?.map((photo) => photo.id) || [],
-    coverPhotoId: story.coverPhotoId,
-    coverCrop: story.coverCrop ?? null,
   }
 }
 
@@ -77,6 +73,7 @@ export function useStoryDraftState({
   pendingCoverId,
   stories,
   storyEditMode,
+  saving,
   editFromDraft,
   onDraftConsumed,
   notify,
@@ -87,6 +84,7 @@ export function useStoryDraftState({
   setPendingCoverId,
   setStoryEditMode,
 }: UseStoryDraftStateParams): UseStoryDraftStateResult {
+  const [editorSessionId, setEditorSessionId] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [initialStory, setInitialStory] = useState<StorySnapshot | null>(null)
@@ -98,8 +96,11 @@ export function useStoryDraftState({
     initialStory &&
     (
       currentStory.title !== initialStory.title ||
-      currentStory.content !== initialStory.content ||
-      JSON.stringify(currentStory.contentJson ?? null) !== JSON.stringify(initialStory.contentJson ?? null) ||
+      currentStory.editorType !== initialStory.editorType ||
+      currentStory.tiptapContent !== initialStory.tiptapContent ||
+      currentStory.milkContent !== initialStory.milkContent ||
+      JSON.stringify(currentStory.tiptapContentJson ?? null) !== JSON.stringify(initialStory.tiptapContentJson ?? null) ||
+      JSON.stringify(currentStory.contentEditorTypes) !== JSON.stringify(initialStory.contentEditorTypes) ||
       currentStory.isPublished !== initialStory.isPublished ||
       currentStory.storyDate !== initialStory.storyDate ||
       currentStory.coverPhotoId !== initialStory.coverPhotoId ||
@@ -116,6 +117,13 @@ export function useStoryDraftState({
     setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
   }, [])
 
+  const markSaved = useCallback((story: StoryDto) => {
+    setInitialStory(createSnapshot(story))
+    setLastSavedAt(Date.now())
+    setDraftSaved(true)
+    window.setTimeout(() => setDraftSaved(false), 2000)
+  }, [])
+
   const saveDraft = useCallback(async () => {
     if (!currentStory) return
 
@@ -126,10 +134,14 @@ export function useStoryDraftState({
         storyId: existingStory ? currentStory.id : undefined,
         draftId: existingStory ? undefined : currentStory.id,
         title: currentStory.title,
-        content: currentStory.content,
-        contentJson: currentStory.contentJson ?? null,
+        editorType: currentStory.editorType,
+        contentEditorTypes: currentStory.contentEditorTypes,
+        tiptapContent: currentStory.tiptapContent,
+        tiptapContentJson: currentStory.tiptapContentJson ?? null,
+        milkContent: currentStory.milkContent,
         isPublished: currentStory.isPublished,
         createdAt: currentStory.createdAt,
+        storyDate: currentStory.storyDate,
         coverPhotoId: currentStory.coverPhotoId,
         coverCrop: currentStory.coverCrop ?? null,
         pendingCoverId,
@@ -158,37 +170,32 @@ export function useStoryDraftState({
       .map((id) => allPhotos.find((photo) => photo.id === id) || baseStory.photos?.find((photo) => photo.id === id))
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
-    setCurrentStory({
+    const restoredStory: StoryDto = {
       ...baseStory,
-      title: draft.title || baseStory.title,
-      content: draft.content || baseStory.content,
-      contentJson: draft.contentJson ?? baseStory.contentJson ?? null,
+      title: draft.title,
+      editorType: draft.editorType,
+      contentEditorTypes: draft.contentEditorTypes,
+      tiptapContent: draft.tiptapContent,
+      tiptapContentJson: draft.tiptapContentJson ?? null,
+      milkContent: draft.milkContent,
       isPublished: draft.isPublished,
       createdAt: draft.createdAt || baseStory.createdAt,
-      storyDate: draft.createdAt || baseStory.storyDate,
-      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
-      coverCrop: draft.coverCrop ?? baseStory.coverCrop ?? null,
+      storyDate: draft.storyDate ?? draft.createdAt ?? baseStory.storyDate,
+      coverPhotoId: draft.coverPhotoId ?? undefined,
+      coverCrop: draft.coverCrop ?? null,
       photos: restoredPhotos,
-    })
+    }
+    setCurrentStory(restoredStory)
     setPendingImages(restorePendingImages(draft.files))
     setPendingCoverId(draft.pendingCoverId || null)
     setLastSavedAt(draft.savedAt)
-    setInitialStory({
-      title: draft.title || baseStory.title,
-      content: draft.content || baseStory.content,
-      contentJson: draft.contentJson ?? baseStory.contentJson ?? null,
-      isPublished: draft.isPublished,
-      createdAt: draft.createdAt || baseStory.createdAt,
-      storyDate: draft.createdAt || baseStory.storyDate,
-      photoIds: draft.photoIds,
-      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
-      coverCrop: draft.coverCrop ?? baseStory.coverCrop ?? null,
-    })
+    setInitialStory(createSnapshot(restoredStory))
     notify(t('admin.restored_from_draft'), 'info')
   }, [allPhotos, notify, setCurrentStory, setPendingCoverId, setPendingImages, t])
 
   const createStoryWithDraftCheck = useCallback(async () => {
     const newStory = createEmptyStory()
+    setEditorSessionId(newStory.id)
     setInitialStory(createSnapshot(newStory))
     setPendingImages([])
     setPendingCoverId(null)
@@ -197,6 +204,7 @@ export function useStoryDraftState({
   }, [setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode])
 
   const editStoryWithDraftCheck = useCallback(async (story: StoryDto) => {
+    setEditorSessionId(story.id)
     setInitialStory(createSnapshot(story))
 
     try {
@@ -252,51 +260,45 @@ export function useStoryDraftState({
   }, [allPhotos.length, loadAllPhotos, storyEditMode])
 
   useEffect(() => {
-    if (storyEditMode !== 'editor' || !currentStory || !isDirty) return
-    if (!currentStory.title && !currentStory.content && pendingImages.length === 0) return
+    if (saving || storyEditMode !== 'editor' || !currentStory || !isDirty) return
 
     const timer = window.setTimeout(() => {
       void saveDraft()
     }, AUTO_SAVE_DELAY)
 
     return () => window.clearTimeout(timer)
-  }, [currentStory, isDirty, pendingImages.length, saveDraft, storyEditMode])
+  }, [currentStory, isDirty, pendingImages.length, saveDraft, saving, storyEditMode])
 
   useEffect(() => {
-    if (!editFromDraft || allPhotos.length === 0) return
+    if (!editFromDraft || (editFromDraft.photoIds.length > 0 && allPhotos.length === 0)) return
 
     queueMicrotask(() => {
       const restoredPhotos = editFromDraft.photoIds
         .map((id) => allPhotos.find((photo) => photo.id === id))
         .filter((photo): photo is PhotoDto => Boolean(photo))
 
-      setCurrentStory({
+      const restoredStory: StoryDto = {
         id: getNewStoryIdFromDraft(editFromDraft),
         title: editFromDraft.title,
-        content: editFromDraft.content,
-        contentJson: editFromDraft.contentJson ?? null,
+        editorType: editFromDraft.editorType,
+        contentEditorTypes: editFromDraft.contentEditorTypes,
+        tiptapContent: editFromDraft.tiptapContent,
+        tiptapContentJson: editFromDraft.tiptapContentJson ?? null,
+        milkContent: editFromDraft.milkContent,
         isPublished: editFromDraft.isPublished,
-        storyDate: editFromDraft.createdAt,
+        storyDate: editFromDraft.storyDate ?? editFromDraft.createdAt,
         createdAt: editFromDraft.createdAt,
         updatedAt: new Date().toISOString(),
         coverPhotoId: editFromDraft.coverPhotoId ?? undefined,
         coverCrop: editFromDraft.coverCrop ?? null,
         photos: restoredPhotos,
-      })
+      }
+      setEditorSessionId(restoredStory.id)
+      setCurrentStory(restoredStory)
       setPendingImages(restorePendingImages(editFromDraft.files))
       setPendingCoverId(editFromDraft.pendingCoverId || null)
       setLastSavedAt(editFromDraft.savedAt)
-      setInitialStory({
-        title: editFromDraft.title,
-        content: editFromDraft.content,
-        contentJson: editFromDraft.contentJson ?? null,
-        isPublished: editFromDraft.isPublished,
-        createdAt: editFromDraft.createdAt,
-        storyDate: editFromDraft.createdAt,
-        photoIds: editFromDraft.photoIds,
-        coverPhotoId: editFromDraft.coverPhotoId ?? undefined,
-        coverCrop: editFromDraft.coverCrop ?? null,
-      })
+      setInitialStory(createSnapshot(restoredStory))
       setStoryEditMode('editor')
       notify(t('admin.restored_from_draft'), 'info')
       onDraftConsumed?.()
@@ -304,6 +306,7 @@ export function useStoryDraftState({
   }, [allPhotos, editFromDraft, notify, onDraftConsumed, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode, t])
 
   return {
+    editorSessionId,
     draftSaved,
     lastSavedAt,
     initialStory,
@@ -315,5 +318,6 @@ export function useStoryDraftState({
     handleDraftCancel,
     clearDraft,
     resetDraftState,
+    markSaved,
   }
 }

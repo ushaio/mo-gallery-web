@@ -177,11 +177,7 @@ export function SettingsPage({ isModal = false }: { isModal?: boolean } = {}) {
               {saving ? '保存中...' : t('common.save', language)}
             </button>
           </>
-        ) : (
-          <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-            {activeSaveMode === 'self' ? '本页修改在各功能区内单独保存' : '本页修改即时生效'}
-          </span>
-        )}
+        ) : undefined}
       />
 
       <div className="flex flex-1 overflow-hidden">

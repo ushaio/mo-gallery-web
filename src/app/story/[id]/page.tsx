@@ -13,6 +13,7 @@ import { getStory } from '@/lib/api/stories'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { StoryComments } from '@/components/StoryComments'
 import { StoryRichContent } from '@/components/StoryRichContent'
+import { getArticlePlainText } from '@/lib/article-content'
 import { Toast, type Notification } from '@/components/Toast'
 
 const StoryMapPanel = dynamic(
@@ -27,13 +28,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
 import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
-import { buildStoryPreviewText, stripStoryContentToPlainText } from '@/lib/story-rich-content'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
-
-function estimateReadingMinutes(content: string) {
-  const plainText = stripStoryContentToPlainText(content)
-  return Math.max(1, Math.ceil(plainText.length / 500))
-}
 
 export default function StoryDetailPage() {
   const params = useParams<{ id: string }>()
@@ -147,8 +142,9 @@ export default function StoryDetailPage() {
   const coverPhoto = useMemo(() => (story ? getStoryCoverPhoto(story) : null), [story])
 
   const coverUrl = coverPhoto ? getPhotoUrl(coverPhoto) : null
-  const previewText = useMemo(() => (story?.content ? buildStoryPreviewText(story.content, 200) : ''), [story?.content])
-  const readingMinutes = useMemo(() => estimateReadingMinutes(story?.content || ''), [story?.content])
+  const plainText = useMemo(() => story ? getArticlePlainText(story) : '', [story])
+  const previewText = plainText.slice(0, 200)
+  const readingMinutes = Math.max(1, Math.ceil(plainText.length / 500))
   const storyDateLabel = useMemo(() => {
     if (!story) return ''
     return new Date(story.createdAt).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
@@ -292,7 +288,7 @@ export default function StoryDetailPage() {
               {story.title}
             </h1>
 
-            {story.content ? (
+            {previewText ? (
               <motion.p
                 initial={reduceMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -350,7 +346,9 @@ export default function StoryDetailPage() {
             <article className="mb-16">
               <div className="prose prose-lg prose-zinc max-w-none dark:prose-invert prose-headings:font-serif prose-headings:tracking-tight prose-p:leading-relaxed prose-a:text-zinc-900 prose-a:decoration-zinc-300 prose-a:underline-offset-4 hover:prose-a:text-zinc-600 dark:prose-a:text-zinc-100 dark:prose-a:decoration-zinc-600 dark:hover:prose-a:text-zinc-300">
                 <StoryRichContent
-                  content={story.content || ''}
+                  editorType={story.editorType}
+                  content={story.tiptapContent}
+                  milkContent={story.milkContent}
                   photos={story.photos || []}
                   cdnDomain={settings?.cdn_domain}
                   onPhotoClick={setSelectedPhoto}

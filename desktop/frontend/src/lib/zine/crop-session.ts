@@ -1,3 +1,4 @@
+import { toFrameDelta } from './geometry'
 import type { ZineImageTransform } from './types'
 
 export const MIN_CROP_SCALE = 0.1
@@ -25,11 +26,12 @@ export class CropSession {
     this.draft = { ...initial }
   }
 
-  pan(deltaXpx: number, deltaYpx: number, widthPx: number, heightPx: number) {
+  pan(deltaXpx: number, deltaYpx: number, widthPx: number, heightPx: number, frameRotation = 0) {
+    const [localX, localY] = toFrameDelta(deltaXpx, deltaYpx, frameRotation)
     this.draft = {
       ...this.draft,
-      offsetX: this.draft.offsetX + (deltaXpx / Math.max(1, widthPx)) * 100,
-      offsetY: this.draft.offsetY + (deltaYpx / Math.max(1, heightPx)) * 100,
+      offsetX: this.draft.offsetX + (localX / Math.max(1, widthPx)) * 100,
+      offsetY: this.draft.offsetY + (localY / Math.max(1, heightPx)) * 100,
     }
     return this.draft
   }

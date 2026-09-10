@@ -33,7 +33,7 @@ func newSourceRegistry(configDir string, credentials CredentialStore) (*sourceRe
 		return nil, errors.New("storage plugin credential store is required")
 	}
 	r := &sourceRegistry{
-		path:        filepath.Join(configDir, registryFileName),
+		path:        filepath.Join(configDir, "config", registryFileName),
 		sources:     make(map[string]Source),
 		credentials: credentials,
 	}

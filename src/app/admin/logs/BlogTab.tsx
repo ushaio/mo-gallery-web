@@ -3,8 +3,11 @@
  */
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
+import { EditorContentPrompt } from '@mo-gallery/milkdown/editor-content'
+import { convertToMilkdown } from '@mo-gallery/milkdown/migration'
+import { hasEditorContent } from '@mo-gallery/api-client/editor-content'
 import {
   BookText,
   Plus,
@@ -20,16 +23,19 @@ import {
   Check,
   Clock,
 } from 'lucide-react'
-import type { PhotoDto, AdminSettingsDto, BlogDto } from '@/lib/api/types'
+import type { PhotoDto, AdminSettingsDto, ArticleContentDto, BlogDto } from '@/lib/api/types'
 import { resolveAssetUrl, ApiUnauthorizedError } from '@/lib/api/core'
 import { getAdminBlogs, createBlog, updateBlog, deleteBlog } from '@/lib/api/blogs'
-import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
+import { buildMediaMarkdown, hasPendingMilkdownUploads } from '@mo-gallery/milkdown/media'
+import { getArticlePlainText } from '@/lib/article-content'
+import { mergeSavedFields } from '@/lib/article-editor'
 import { formatRelativeTimeLabel } from '@/lib/utils'
 import { createBlogDraftDocumentId, resolveBlogDocumentId, rotateBlogDraftDocumentId } from '@/lib/blog-draft-document'
 import { useAuth } from '@/contexts/AuthContext'
+import { useLanguage } from '@/contexts/LanguageContext'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
 import { useAdmin } from '../layout'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
+import type { NarrativeMilkdownEditorHandle } from '@/components/NarrativeMilkdownEditor'
 import {
   saveBlogDraftToDB,
   getBlogDraftFromDB,
@@ -42,8 +48,8 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { ListSkeleton } from '@/components/admin/Skeleton'
 
 // 动态导入 MilkdownEditor，避免 SSR 问题
-const NarrativeTipTapEditor = dynamic(
-  () => import('@/components/NarrativeTipTapEditor'),
+const NarrativeMilkdownEditor = dynamic(
+  () => import('@/components/NarrativeMilkdownEditor'),
   { 
     ssr: false,
     loading: () => (
@@ -64,28 +70,48 @@ interface BlogTabProps {
   refreshKey?: number
 }
 
-interface BlogFormData {
+interface BlogFormData extends ArticleContentDto {
   id?: string
   title: string
-  content: string
-  contentJson?: BlogDto['contentJson']
   category: string
   tags: string
   isPublished: boolean
 }
 
+const BLOG_FORM_FIELDS: readonly (keyof BlogFormData)[] = ['title', 'editorType', 'contentEditorTypes', 'tiptapContent', 'tiptapContentJson', 'milkContent', 'category', 'tags', 'isPublished']
+const blogFormChanged = (left: BlogFormData, right: BlogFormData) => BLOG_FORM_FIELDS.some((key) => JSON.stringify(left[key]) !== JSON.stringify(right[key]))
+
+function createEmptyBlog(category: string): BlogFormData {
+  return {
+    title: '',
+    editorType: 'milkdown',
+    contentEditorTypes: ['milkdown'],
+    tiptapContent: '',
+    tiptapContentJson: null,
+    milkContent: '',
+    category,
+    tags: '',
+    isPublished: false,
+  }
+}
+
 export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProps) {
   const { token } = useAuth()
+  const { locale } = useLanguage()
   const { handleUnauthorized } = useAdmin()
   const [blogs, setBlogs] = useState<BlogDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentBlog, setCurrentBlog] = useState<BlogFormData | null>(null)
+  const currentBlogRef = useRef<BlogFormData | null>(null)
+  const blogSessionRef = useRef(0)
+  const savingRef = useRef(false)
+  useLayoutEffect(() => { currentBlogRef.current = currentBlog }, [currentBlog])
   const [editMode, setEditMode] = useState<'list' | 'editor'>('list')
   const [isInsertingPhoto, setIsInsertingPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
   const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
   const [draftDocumentId, setDraftDocumentId] = useState(createBlogDraftDocumentId)
-  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
+  const editorRef = useRef<NarrativeMilkdownEditorHandle>(null)
   
   // 自动保存状态
   const [draftSaved, setDraftSaved] = useState(false)
@@ -94,14 +120,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   
   // 记录初始状态，用于脏检查
   const [isDirty, setIsDirty] = useState(false)
-  const initialBlogRef = useRef<{
-    title: string
-    content: string
-    contentJson?: BlogDto['contentJson']
-    category: string
-    tags: string
-    isPublished: boolean
-  } | null>(null)
+  const initialBlogRef = useRef<BlogFormData | null>(null)
   
   // 删除确认对话框状态
   const [deleteBlogId, setDeleteBlogId] = useState<string | null>(null)
@@ -116,6 +135,22 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     blog: BlogDto | null
     isNew: boolean
   }>({ isOpen: false, draft: null, blog: null, isNew: false })
+
+  const hasMilkdownContent = !!currentBlog && hasEditorContent(currentBlog, 'milkdown')
+  const isMilkdownReady = hasMilkdownContent && currentBlog?.editorType === 'milkdown'
+
+  const activateMilkdown = () => {
+    setCurrentBlog((previous) => {
+      if (!previous) return previous
+      if (!hasEditorContent(previous, 'milkdown') && !hasEditorContent(previous, 'tiptap')) return previous
+      return {
+        ...previous,
+        editorType: 'milkdown',
+        contentEditorTypes: Array.from(new Set<ArticleContentDto['editorType']>([...previous.contentEditorTypes, 'milkdown'])),
+        milkContent: hasEditorContent(previous, 'milkdown') ? previous.milkContent ?? '' : convertToMilkdown(previous),
+      }
+    })
+  }
 
   const fetchBlogs = useCallback(async () => {
     if (!token) {
@@ -167,14 +202,16 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   // 保存草稿到 IndexedDB
   const saveDraft = useCallback(async () => {
     if (!currentBlog) return
-    if (!currentBlog.title && !currentBlog.content) return
 
     try {
       await saveBlogDraftToDB({
         blogId: currentBlog.id,
         title: currentBlog.title,
-        content: currentBlog.content,
-        contentJson: currentBlog.contentJson ?? null,
+        editorType: currentBlog.editorType,
+        contentEditorTypes: currentBlog.contentEditorTypes,
+        tiptapContent: currentBlog.tiptapContent,
+        tiptapContentJson: currentBlog.tiptapContentJson ?? null,
+        milkContent: currentBlog.milkContent,
         category: currentBlog.category,
         tags: currentBlog.tags,
         isPublished: currentBlog.isPublished,
@@ -186,16 +223,6 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       console.error('Failed to save blog draft', e)
     }
   }, [currentBlog])
-
-  // 从 IndexedDB 清除草稿
-  const clearDraft = useCallback(async (blogId?: string) => {
-    try {
-      await clearBlogDraftFromDB(blogId)
-      setLastSavedAt(null)
-    } catch (e) {
-      console.error('Failed to clear blog draft', e)
-    }
-  }, [])
 
   // 格式化相对时间
   const formatRelativeTime = useMemo(() => {
@@ -213,19 +240,21 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     const initial = initialBlogRef.current
     const hasChanged =
       currentBlog.title !== initial.title ||
-      currentBlog.content !== initial.content ||
-      JSON.stringify(currentBlog.contentJson ?? null) !== JSON.stringify(initial.contentJson ?? null) ||
+      currentBlog.editorType !== initial.editorType ||
+      currentBlog.tiptapContent !== initial.tiptapContent ||
+      currentBlog.milkContent !== initial.milkContent ||
+      JSON.stringify(currentBlog.tiptapContentJson ?? null) !== JSON.stringify(initial.tiptapContentJson ?? null) ||
+      JSON.stringify(currentBlog.contentEditorTypes) !== JSON.stringify(initial.contentEditorTypes) ||
       currentBlog.category !== initial.category ||
       currentBlog.tags !== initial.tags ||
       currentBlog.isPublished !== initial.isPublished
     
     setIsDirty(hasChanged)
-  }, [editMode, currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished])
+  }, [editMode, currentBlog])
 
   // 内容变更时自动保存草稿（仅在有修改时）
   useEffect(() => {
-    if (isAiTaskLocked || !currentBlog || !isDirty) return
-    if (!currentBlog.title && !currentBlog.content) return
+    if (saving || isAiTaskLocked || !currentBlog || !isDirty) return
 
     // 清除已有定时器
     if (autoSaveTimerRef.current) {
@@ -242,29 +271,20 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
         clearTimeout(autoSaveTimerRef.current)
       }
     }
-  }, [currentBlog?.title, currentBlog?.content, currentBlog?.contentJson, currentBlog?.category, currentBlog?.tags, currentBlog?.isPublished, saveDraft, isAiTaskLocked, isDirty])
+  }, [currentBlog, saveDraft, isAiTaskLocked, isDirty, saving])
 
   // 将草稿应用到当前博客
   const applyDraft = useCallback((draft: BlogDraftData, blogId?: string) => {
-    setCurrentBlog({
+    const restoredBlog: BlogFormData = {
+      ...draft,
       id: blogId,
-      title: draft.title,
-      content: draft.content,
-      contentJson: draft.contentJson ?? null,
-      category: draft.category || t('blog.uncategorized'),
-      tags: draft.tags || '',
-      isPublished: draft.isPublished,
-    })
+      category: draft.category ?? t('blog.uncategorized'),
+      tags: draft.tags ?? '',
+    }
+    setCurrentBlog(restoredBlog)
     setLastSavedAt(draft.savedAt)
     // 更新初始引用以匹配恢复的草稿（不视为脏数据）
-    initialBlogRef.current = {
-      title: draft.title,
-      content: draft.content,
-      contentJson: draft.contentJson ?? null,
-      category: draft.category || t('blog.uncategorized'),
-      tags: draft.tags || '',
-      isPublished: draft.isPublished,
-    }
+    initialBlogRef.current = restoredBlog
     notify(t('admin.restored_from_draft'), 'info')
   }, [t, notify])
 
@@ -280,23 +300,12 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   // 草稿恢复对话框 - 丢弃草稿
   const handleDraftDiscard = useCallback(() => {
     if (draftRestoreDialog.isNew) {
-      setCurrentBlog({
-        title: '',
-        content: '',
-        contentJson: null,
-        category: t('blog.uncategorized'),
-        tags: '',
-        isPublished: false,
-      })
+      setCurrentBlog(createEmptyBlog(t('blog.uncategorized')))
     } else if (draftRestoreDialog.blog) {
       setCurrentBlog({
-        id: draftRestoreDialog.blog.id,
-        title: draftRestoreDialog.blog.title,
-        content: draftRestoreDialog.blog.content,
-        contentJson: draftRestoreDialog.blog.contentJson ?? null,
-        category: draftRestoreDialog.blog.category || t('blog.uncategorized'),
-        tags: draftRestoreDialog.blog.tags || '',
-        isPublished: draftRestoreDialog.blog.isPublished,
+        ...draftRestoreDialog.blog,
+        category: draftRestoreDialog.blog.category ?? t('blog.uncategorized'),
+        tags: draftRestoreDialog.blog.tags ?? '',
       })
     }
     setLastSavedAt(null)
@@ -311,53 +320,32 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }, [])
 
   const handleCreateBlog = async () => {
+    blogSessionRef.current += 1
     setDraftDocumentId(rotateBlogDraftDocumentId)
     // 设置脏检查的初始状态
-    initialBlogRef.current = {
-      title: '',
-      content: '',
-      contentJson: null,
-      category: t('blog.uncategorized'),
-      tags: '',
-      isPublished: false,
-    }
+    initialBlogRef.current = createEmptyBlog(t('blog.uncategorized'))
     
     // 检查是否存在新博客的草稿
     const draft = await loadDraftForBlog(undefined)
-    if (draft && (draft.title || draft.content)) {
+    if (draft) {
       // 弹出对话框询问用户是否恢复草稿
-      setCurrentBlog({
-        title: '',
-        content: '',
-        contentJson: null,
-        category: t('blog.uncategorized'),
-        tags: '',
-        isPublished: false,
-      })
+      setCurrentBlog(createEmptyBlog(t('blog.uncategorized')))
       setDraftRestoreDialog({ isOpen: true, draft, blog: null, isNew: true })
       return
     }
     
-    setCurrentBlog({
-      title: '',
-      content: '',
-      contentJson: null,
-      category: t('blog.uncategorized'),
-      tags: '',
-      isPublished: false,
-    })
+    setCurrentBlog(createEmptyBlog(t('blog.uncategorized')))
     setEditMode('editor')
   }
 
   const handleEditBlog = async (blog: BlogDto) => {
+    blogSessionRef.current += 1
+    setDraftDocumentId(blog.id)
     // 设置脏检查的初始状态
     initialBlogRef.current = {
-      title: blog.title,
-      content: blog.content,
-      contentJson: blog.contentJson ?? null,
-      category: blog.category || t('blog.uncategorized'),
-      tags: blog.tags || '',
-      isPublished: blog.isPublished,
+      ...blog,
+      category: blog.category ?? t('blog.uncategorized'),
+      tags: blog.tags ?? '',
     }
     
     // 检查是否存在该博客的草稿
@@ -365,26 +353,18 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
     if (draft && draft.savedAt > new Date(blog.updatedAt).getTime()) {
       // 草稿比已保存版本更新，弹出对话框
       setCurrentBlog({
-        id: blog.id,
-        title: blog.title,
-        content: blog.content,
-        contentJson: blog.contentJson ?? null,
-        category: blog.category || t('blog.uncategorized'),
-        tags: blog.tags || '',
-        isPublished: blog.isPublished,
+        ...blog,
+        category: blog.category ?? t('blog.uncategorized'),
+        tags: blog.tags ?? '',
       })
       setDraftRestoreDialog({ isOpen: true, draft, blog, isNew: false })
       return
     }
     
     setCurrentBlog({
-      id: blog.id,
-      title: blog.title,
-      content: blog.content,
-      contentJson: blog.contentJson ?? null,
-      category: blog.category || t('blog.uncategorized'),
-      tags: blog.tags || '',
-      isPublished: blog.isPublished,
+      ...blog,
+      category: blog.category ?? t('blog.uncategorized'),
+      tags: blog.tags ?? '',
     })
     setLastSavedAt(null)
     setEditMode('editor')
@@ -409,46 +389,45 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
   }
 
   const handleSaveBlog = async () => {
-    if (isAiTaskLocked || !currentBlog || !token) return
+    if (isAiTaskLocked || !currentBlog || !token || !isMilkdownReady) return
+    if (savingRef.current) return
     if (!currentBlog.title.trim()) {
       notify(t('blog.enter_title'), 'error')
       return
     }
-    if (!currentBlog.content.trim()) {
-      notify(t('blog.enter_content'), 'error')
+    if (hasPendingMilkdownUploads(currentBlog.milkContent ?? '')) {
+      notify(t('admin.uploading'), 'info')
       return
     }
-
+    const submitted: BlogFormData = { ...currentBlog, milkContent: editorRef.current?.getValue() ?? currentBlog.milkContent ?? '' }
+    const session = blogSessionRef.current
+    savingRef.current = true
     setSaving(true)
     try {
-      if (currentBlog.id) {
-        // 更新已有博客
-        await updateBlog(token, currentBlog.id, {
-          title: currentBlog.title,
-          content: currentBlog.content,
-          contentJson: currentBlog.contentJson ?? null,
-          category: currentBlog.category,
-          tags: currentBlog.tags,
-          isPublished: currentBlog.isPublished,
-        })
-      } else {
-        // 创建新博客
-        await createBlog(token, {
-          title: currentBlog.title,
-          content: currentBlog.content,
-          contentJson: currentBlog.contentJson ?? null,
-          category: currentBlog.category,
-          tags: currentBlog.tags,
-          isPublished: currentBlog.isPublished,
-        })
+      const payload = {
+        title: submitted.title,
+        editorType: 'milkdown' as const,
+        milkContent: submitted.milkContent ?? '',
+        category: submitted.category,
+        tags: submitted.tags,
+        isPublished: submitted.isPublished,
       }
-      // 保存成功后清除草稿
-      await clearDraft(currentBlog.id)
-      
-      await fetchBlogs()
-      setEditMode('list')
-      setCurrentBlog(null)
-      setLastSavedAt(null)
+      const saved = submitted.id ? await updateBlog(token, submitted.id, payload) : await createBlog(token, payload)
+      setBlogs((previous) => previous.some((blog) => blog.id === saved.id) ? previous.map((blog) => blog.id === saved.id ? saved : blog) : [saved, ...previous])
+      if (blogSessionRef.current !== session) return
+
+      const savedForm: BlogFormData = { ...saved, category: saved.category ?? '', tags: saved.tags ?? '' }
+      initialBlogRef.current = savedForm
+      setCurrentBlog((previous) => previous ? { ...mergeSavedFields(previous, submitted, savedForm, BLOG_FORM_FIELDS), id: saved.id } : previous)
+      await clearBlogDraftFromDB(submitted.id)
+      if (blogSessionRef.current !== session) return
+      const latest = currentBlogRef.current
+      if (latest && blogFormChanged(latest, savedForm)) {
+        await saveBlogDraftToDB({ ...latest, blogId: saved.id })
+      }
+      setLastSavedAt(new Date(saved.updatedAt).getTime())
+      setDraftSaved(true)
+      window.setTimeout(() => setDraftSaved(false), 2000)
       notify(t('admin.notify_log_saved'))
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
@@ -458,34 +437,32 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
       notify(t('common.error'), 'error')
       console.error('Failed to save blog:', error)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
 
   const insertPhotoIntoBlog = (photo: PhotoDto) => {
-    if (isAiTaskLocked) return
-    const markdown = buildStoryMarkdownImage({
-      url: resolveAssetUrl(photo.url, settings?.cdn_domain),
-      alt: photo.title,
+    if (isAiTaskLocked || !isMilkdownReady) return
+    const markdown = buildMediaMarkdown({
+      kind: 'image',
+      src: photo.url ?? undefined,
+      title: photo.title,
+      photoId: photo.id,
     })
     if (editorRef.current) {
       editorRef.current.insertMarkdown(markdown)
       const nextValue = editorRef.current.getValue()
-      const nextJsonValue = editorRef.current.getJsonValue()
-      setCurrentBlog((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
+      setCurrentBlog((prev) => (prev ? { ...prev, milkContent: nextValue } : prev))
     } else if (currentBlog) {
-      setCurrentBlog({ ...currentBlog, content: currentBlog.content + markdown })
+      setCurrentBlog({ ...currentBlog, milkContent: (currentBlog.milkContent ?? '') + markdown })
     }
     setIsInsertingPhoto(false)
     notify(t('admin.notify_photo_inserted'), 'info')
   }
 
-  const handleContentChange = (content: string) => {
-    setCurrentBlog((prev) => (prev ? { ...prev, content } : prev))
-  }
-
-  const handleJsonContentChange = (contentJson: NonNullable<BlogDto['contentJson']>) => {
-    setCurrentBlog((prev) => (prev ? { ...prev, contentJson } : prev))
+  const handleContentChange = (milkContent: string) => {
+    setCurrentBlog((prev) => (prev ? { ...prev, milkContent } : prev))
   }
 
   const resolvedCdnDomain = settings?.cdn_domain?.trim() || undefined
@@ -570,7 +547,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                         {new Date(blog.updatedAt).toLocaleString()}
                       </span>
                       <span className="flex items-center gap-1">
-                        <FileText className="w-3 h-3" /> {blog.content.length}{' '}
+                        <FileText className="w-3 h-3" /> {getArticlePlainText(blog).length}{' '}
                         {t('admin.characters')}
                       </span>
                     </div>
@@ -653,7 +630,7 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
               </label>
               <AdminButton
                 onClick={handleSaveBlog}
-                disabled={saving || isAiTaskLocked}
+                disabled={saving || isAiTaskLocked || !isMilkdownReady}
                 adminVariant="primary"
                 size="lg"
                 className="flex items-center gap-2"
@@ -711,30 +688,27 @@ export function BlogTab({ photos, settings, t, notify, refreshKey }: BlogTabProp
                 />
               </div>
               <div className="flex-1 relative border border-border bg-card/30 overflow-visible">
-                {currentBlog && (
-                  <NarrativeTipTapEditor
-                    contentVersion={blogDocumentId}
+                {currentBlog && !isMilkdownReady ? (
+                  <EditorContentPrompt language={locale} targetEditor="Milkdown" sourceEditor="TipTap" scenario={hasMilkdownContent ? 'use-existing' : hasEditorContent(currentBlog, 'tiptap') ? 'convert' : 'unavailable'} onAction={activateMilkdown} />
+                ) : currentBlog ? (
+                  <NarrativeMilkdownEditor
+                    contentVersion={draftDocumentId}
                     ref={editorRef}
-                    value={currentBlog.content}
-                    jsonValue={currentBlog.contentJson ?? null}
+                    value={currentBlog.milkContent ?? ''}
                     onChange={handleContentChange}
-                    onJsonChange={handleJsonContentChange}
-                    placeholder={t('ui.markdown_placeholder')}
                     className="overflow-hidden bg-background"
+                    token={token}
                     documentId={blogDocumentId}
-                    documentKind="blog"
-                    onAiTaskLockChange={setIsAiTaskLocked}
-                    aiOptions={token ? {
-                      enabled: true,
-                      token,
-                      scopeId: blogDocumentId,
-                      title: currentBlog.title,
-                    } : undefined}
+                    documentTitle={currentBlog.title}
+                    photos={photos}
+                    cdnDomain={resolvedCdnDomain}
+                    onBusyChange={setIsAiTaskLocked}
+                    onError={(error) => notify(error.message, 'error')}
                   />
-                )}
+                ) : null}
                 <AdminButton
                   onClick={() => setIsInsertingPhoto(true)}
-                  disabled={isAiTaskLocked}
+                  disabled={isAiTaskLocked || !isMilkdownReady}
                   adminVariant="unstyled"
                   className="absolute bottom-6 right-6 p-4 bg-background border border-border hover:border-primary text-primary transition-all shadow-2xl z-10"
                   title={t('blog.insert_photo')}

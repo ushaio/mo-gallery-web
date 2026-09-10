@@ -10,7 +10,7 @@ export const STORY_UPLOAD_SETTINGS_KEY = 'story_upload_settings'
 export const STORY_PASTE_UPLOAD_SETTINGS_KEY = 'story_paste_upload_settings'
 export const AUTO_SAVE_DELAY = 2000
 
-export const NarrativeTipTapEditor = dynamic(() => import('@/components/NarrativeTipTapEditor'), {
+export const NarrativeMilkdownEditor = dynamic(() => import('@/components/NarrativeMilkdownEditor'), {
   ssr: false,
   loading: () => (
     <div className="flex flex-1 items-center justify-center border border-border bg-card/30">

@@ -6,6 +6,7 @@
  * 地图与评论区为发布页的站点级能力，预览中不渲染。
  */
 import { useMemo, useState } from 'react'
+import { getEditorContent, hasEditorContent } from '@mo-gallery/api-client'
 import { motion } from 'framer-motion'
 import {
   X,
@@ -20,8 +21,9 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryRichContent } from '@/components/StoryRichContent'
+import { getMilkdownText } from '@mo-gallery/milkdown/media'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
-import { buildStoryPreviewText, prepareStoryContentForPreview, stripStoryContentToPlainText } from '@/lib/story-rich-content'
+import { prepareStoryContentForPreview, stripStoryContentToPlainText } from '@/lib/story-rich-content'
 
 interface StoryPreviewModalProps {
   story: StoryDto
@@ -66,12 +68,18 @@ export function StoryPreviewModal({
   const activePhoto = photos[activePhotoIndex] || null
   const activePhotoThumbnailUrl = activePhoto ? getPhotoUrl(activePhoto, true) : null
   const activePhotoFullUrl = activePhoto ? getPhotoUrl(activePhoto) : null
-  const previewText = story.content ? buildStoryPreviewText(story.content, 200) : ''
-  const readingMinutes = Math.max(1, Math.ceil((stripStoryContentToPlainText(story.content || '') || '').length / 500))
+  const selectedContent = hasEditorContent(story, story.editorType) ? getEditorContent(story) : ''
+  const plainText = story.editorType === 'milkdown'
+    ? getMilkdownText(selectedContent)
+    : stripStoryContentToPlainText(selectedContent)
+  const previewText = plainText.slice(0, 200)
+  const readingMinutes = Math.max(1, Math.ceil(plainText.length / 500))
   // 预览正文：回填已上传图片（data-photo-id → 照片记录），本地/未解析图片给灰色占位
   const previewContent = useMemo(
-    () => prepareStoryContentForPreview(story.content || '', story.photos || [], cdnDomain),
-    [story.content, story.photos, cdnDomain],
+    () => story.editorType === 'tiptap'
+      ? prepareStoryContentForPreview(selectedContent, story.photos || [], cdnDomain)
+      : '',
+    [story.editorType, selectedContent, story.photos, cdnDomain],
   )
   const storyDateLabel = new Date(story.createdAt).toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -144,7 +152,7 @@ export function StoryPreviewModal({
               {story.title || t('story.untitled')}
             </h1>
 
-            {story.content ? (
+            {previewText ? (
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -201,7 +209,7 @@ export function StoryPreviewModal({
       <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 lg:px-12 lg:py-24">
         <main>
           <article className="mb-16">
-            <StoryRichContent content={previewContent} className="story-rich-content--article" />
+            <StoryRichContent editorType={story.editorType} tiptapContent={previewContent} milkContent={story.editorType === 'milkdown' ? selectedContent : null} photos={story.photos} cdnDomain={cdnDomain} className="story-rich-content--article" />
           </article>
 
           {/* 返回入口：预览中点击关闭预览 */}

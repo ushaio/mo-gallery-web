@@ -26,7 +26,15 @@ type Config struct {
 	API      APIConfig      `json:"api"`
 	UI       UIConfig       `json:"ui"`
 	AI       AIConfig       `json:"ai"`
+	Official OfficialConfig `json:"official"`
 	Log      LogConfig      `json:"log"`
+}
+
+type OfficialConfig struct {
+	BaseURL       string `json:"base_url"`
+	Token         string `json:"token,omitempty"`         // AES-256-GCM 加密的官方账号 JWT
+	SavedUsername string `json:"saved_username,omitempty"`
+	RememberLogin bool   `json:"remember_login"`
 }
 
 // AIConfig AI 服务配置
@@ -36,8 +44,35 @@ type AIConfig struct {
 	Model             string                      `json:"model,omitempty"`               // 旧版单源配置
 	DefaultModel      string                      `json:"default_model"`                 // provider:model
 	DefaultImageModel string                      `json:"default_image_model,omitempty"` // provider:model
+	DefaultAgentID    string                      `json:"default_agent_id,omitempty"`
 	Providers         map[string]AIProviderConfig `json:"providers"`
+	Agents            []AIAgentProfile            `json:"agents,omitempty"`
 }
+
+// AIAgentProfile describes a reusable Agent routing policy. Models are stored
+// as provider:model references; credentials remain owned by AIProviderConfig.
+type AIAgentProfile struct {
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	Enabled          bool    `json:"enabled"`
+	PrimaryModel     string  `json:"primary_model"`
+	TextModel        string  `json:"text_model,omitempty"`
+	ImageModel       string  `json:"image_model,omitempty"`
+	VisionModel      string  `json:"vision_model,omitempty"`
+	VisionOutputMode string  `json:"vision_output_mode,omitempty"`
+	SystemPrompt     string  `json:"system_prompt,omitempty"`
+	MaxSteps         int     `json:"max_steps,omitempty"`
+	Temperature      float64 `json:"temperature,omitempty"`
+}
+
+const (
+	AIAgentRolePrimary         = "primary"
+	AIAgentRoleText            = "text"
+	AIAgentRoleImage           = "image"
+	AIAgentRoleVision          = "vision"
+	AIAgentVisionOutputVision  = "vision"
+	AIAgentVisionOutputPrimary = "primary"
+)
 
 // AIProviderConfig AI 模型源配置
 type AIProviderConfig struct {
@@ -102,6 +137,63 @@ func (c *AIConfig) Normalize() {
 				c.DefaultImageModel = providerID + ":" + provider.ImageModels[0]
 				break
 			}
+		}
+	}
+	c.normalizeAgents()
+}
+
+func (c *AIConfig) normalizeAgents() {
+	seen := make(map[string]struct{}, len(c.Agents))
+	normalized := make([]AIAgentProfile, 0, len(c.Agents))
+	for index, agent := range c.Agents {
+		agent.ID = strings.TrimSpace(agent.ID)
+		if agent.ID == "" {
+			agent.ID = fmt.Sprintf("agent%d", index+1)
+		}
+		if _, exists := seen[agent.ID]; exists {
+			continue
+		}
+		seen[agent.ID] = struct{}{}
+		agent.Name = strings.TrimSpace(agent.Name)
+		if agent.Name == "" {
+			agent.Name = agent.ID
+		}
+		agent.PrimaryModel = strings.TrimSpace(agent.PrimaryModel)
+		agent.TextModel = strings.TrimSpace(agent.TextModel)
+		agent.ImageModel = strings.TrimSpace(agent.ImageModel)
+		agent.VisionModel = strings.TrimSpace(agent.VisionModel)
+		if agent.VisionOutputMode != AIAgentVisionOutputPrimary {
+			agent.VisionOutputMode = AIAgentVisionOutputVision
+		}
+		if agent.MaxSteps <= 0 {
+			agent.MaxSteps = 8
+		}
+		if agent.MaxSteps > 32 {
+			agent.MaxSteps = 32
+		}
+		if agent.Temperature < 0 || agent.Temperature > 2 {
+			agent.Temperature = 0.3
+		}
+		normalized = append(normalized, agent)
+	}
+	c.Agents = normalized
+	if c.DefaultAgentID != "" {
+		for _, agent := range c.Agents {
+			if agent.ID == c.DefaultAgentID {
+				return
+			}
+		}
+		c.DefaultAgentID = ""
+	}
+	if c.DefaultAgentID == "" {
+		for _, agent := range c.Agents {
+			if agent.Enabled {
+				c.DefaultAgentID = agent.ID
+				return
+			}
+		}
+		if len(c.Agents) > 0 {
+			c.DefaultAgentID = c.Agents[0].ID
 		}
 	}
 }
@@ -191,6 +283,55 @@ func (c AIConfig) ResolveImageModel(selected string) (string, AIProviderConfig, 
 	return c.resolveModel(selected, true)
 }
 
+// ResolveAgentModel resolves one Agent role into the same provider contract as
+// the existing model proxy. Role-specific models fall back to the Agent's
+// primary model, then to the global defaults where appropriate.
+func (c AIConfig) ResolveAgentModel(agentID, role string) (string, AIProviderConfig, string, error) {
+	config := c.NormalizedCopy()
+	if agentID == "" {
+		agentID = config.DefaultAgentID
+	}
+	var agent *AIAgentProfile
+	for index := range config.Agents {
+		if config.Agents[index].ID == agentID {
+			agent = &config.Agents[index]
+			break
+		}
+	}
+	if agent == nil {
+		return "", AIProviderConfig{}, "", fmt.Errorf("Agent 不存在: %s", agentID)
+	}
+	if !agent.Enabled {
+		return "", AIProviderConfig{}, "", fmt.Errorf("Agent 已停用: %s", agentID)
+	}
+	selected := agent.PrimaryModel
+	if selected == "" {
+		selected = config.DefaultModel
+	}
+	switch role {
+	case AIAgentRoleText:
+		if agent.TextModel != "" {
+			selected = agent.TextModel
+		}
+	case AIAgentRoleImage:
+		selected = agent.ImageModel
+		if selected == "" {
+			selected = config.DefaultImageModel
+		}
+	case AIAgentRoleVision:
+		if agent.VisionModel != "" {
+			selected = agent.VisionModel
+		}
+	case AIAgentRolePrimary, "":
+	default:
+		return "", AIProviderConfig{}, "", fmt.Errorf("不支持的 Agent 模型角色: %s", role)
+	}
+	if role == AIAgentRoleImage {
+		return config.ResolveImageModel(selected)
+	}
+	return config.ResolveModel(selected)
+}
+
 func (c AIConfig) resolveModel(selected string, image bool) (string, AIProviderConfig, string, error) {
 	if selected == "" {
 		if image {
@@ -254,33 +395,11 @@ type APIConfig struct {
 	SavedPassword string `json:"saved_password"` // 保存的密码（AES-256-GCM 加密）
 }
 
-const (
-	WindowStyleNative     = "native"
-	WindowStyleIntegrated = "integrated"
-)
-
 // UIConfig 界面配置
 type UIConfig struct {
 	Language       string `json:"language"`        // zh / en
 	Theme          string `json:"theme"`           // light / dark / system
-	WindowStyle    string `json:"window_style"`    // native / integrated
 	SetupCompleted bool   `json:"setup_completed"` // whether the first-run setup was completed
-}
-
-// NormalizeWindowStyle returns a supported startup window style.
-func NormalizeWindowStyle(style string) string {
-	switch strings.ToLower(strings.TrimSpace(style)) {
-	case WindowStyleIntegrated:
-		return WindowStyleIntegrated
-	default:
-		return WindowStyleNative
-	}
-}
-
-// IsValidWindowStyle reports whether style can be persisted as-is.
-func IsValidWindowStyle(style string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(style))
-	return normalized == WindowStyleNative || normalized == WindowStyleIntegrated
 }
 
 // LogConfig 日志配置
@@ -304,10 +423,10 @@ func defaultConfig() *Config {
 			LoginURL: "http://localhost:3000",
 		},
 		UI: UIConfig{
-			Language:    "zh",
-			Theme:       "system",
-			WindowStyle: WindowStyleNative,
+			Language: "zh",
+			Theme:    "system",
 		},
+		Official: OfficialConfig{BaseURL: "http://localhost:3001"},
 		Log: LogConfig{
 			Enabled:    false,
 			MaxEntries: 1000,
@@ -338,9 +457,29 @@ func ConfigDir() string {
 	return configDir()
 }
 
+// LogDir 返回日志文件统一存放目录。
+func LogDir() string {
+	return filepath.Join(configDir(), "logs")
+}
+
+// DBDir 返回本地数据库文件统一存放目录。
+func DBDir() string {
+	return filepath.Join(configDir(), "db")
+}
+
+// SettingsDir 返回各类 JSON 设置文件统一存放目录。
+func SettingsDir() string {
+	return filepath.Join(configDir(), "config")
+}
+
+// CacheDir 返回可重建的缓存文件目录（插件媒体等）。
+func CacheDir() string {
+	return filepath.Join(configDir(), "cache")
+}
+
 // configPath 返回配置文件完整路径
 func configPath() string {
-	return filepath.Join(configDir(), "config.json")
+	return filepath.Join(SettingsDir(), "config.json")
 }
 
 // Load 加载配置文件。如果文件不存在则创建默认配置。
@@ -389,7 +528,9 @@ func Load(customPath string) (*Config, error) {
 		}
 	}
 	cfg.AI.Normalize()
-	cfg.UI.WindowStyle = NormalizeWindowStyle(cfg.UI.WindowStyle)
+	if strings.TrimSpace(cfg.Official.BaseURL) == "" {
+		cfg.Official.BaseURL = "http://localhost:3001"
+	}
 
 	return cfg, nil
 }

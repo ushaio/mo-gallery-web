@@ -183,6 +183,102 @@
   --ring: #D4AF37;
 }
 
+/* ── 配色方案（accent）─────────────────────────────────────────────
+   银盐 silver 为默认，即上方 :root 的现状 token，无覆盖块。
+   配色仅作用于浅色模式：选择器带 :not(.dark)，深色模式保持自身金色主色。
+   注意不能用裸 [data-accent] 选择器——它与 .dark 同优先级且写在后面，
+   会在深色模式下反向覆盖 .dark 的深色变量。
+   其余配色只改主色与灰阶微调；状态色 destructive 不随配色变。
+   选中态通过 --accent（soft 背景）+ --accent-foreground（主色文字）表达。 */
+
+:root:not(.dark)[data-accent='kodak'] {
+  --background: #FCFAF6;
+  --card: #FDFBF7;
+  --secondary: #F6F4EF;
+  --muted: #F6F4EF;
+  --muted-foreground: #7C766A;
+  --accent: #FDF5E3;
+  --accent-foreground: #A86E05;
+  --border: #E9E5DD;
+  --primary: #C9860A;
+  --primary-foreground: #1C1500;
+  --ring: #C9860A;
+}
+
+:root:not(.dark)[data-accent='fuji'] {
+  --background: #F8FBF9;
+  --card: #F7FAF8;
+  --secondary: #F0F5F2;
+  --muted: #F0F5F2;
+  --muted-foreground: #6F7170;
+  --accent: #E5F4EE;
+  --accent-foreground: #0B5F48;
+  --border: #E0E6E3;
+  --primary: #0F7A5C;
+  --primary-foreground: #FFFFFF;
+  --ring: #0F7A5C;
+}
+
+:root:not(.dark)[data-accent='agfa'] {
+  --background: #FCF9F7;
+  --card: #FBF6F3;
+  --secondary: #F6F2EF;
+  --muted: #F6F2EF;
+  --muted-foreground: #747372;
+  --accent: #FDECE4;
+  --accent-foreground: #9A3412;
+  --border: #E8E4DE;
+  --primary: #C2410C;
+  --primary-foreground: #FFFFFF;
+  --ring: #C2410C;
+}
+
+:root:not(.dark)[data-accent='ilford'] {
+  --background: #F8F9FB;
+  --card: #F7F8FA;
+  --secondary: #F0F3F5;
+  --muted: #F0F3F5;
+  --muted-foreground: #727374;
+  --accent: #E9EEF6;
+  --accent-foreground: #2E4A72;
+  --border: #DFE4E7;
+  --primary: #3B5B8A;
+  --primary-foreground: #FFFFFF;
+  --ring: #3B5B8A;
+}
+
+:root:not(.dark)[data-accent='polaroid'] {
+  --background: #F9F9FC;
+  --card: #F8F8FB;
+  --secondary: #F0F0F5;
+  --muted: #F0F0F5;
+  --muted-foreground: #6E6E7C;
+  --accent: #ECEBFB;
+  --accent-foreground: #4747B8;
+  --border: #E2E2E9;
+  --primary: #5B5BD6;
+  --primary-foreground: #FFFFFF;
+  --ring: #5B5BD6;
+}
+
+:root:not(.dark)[data-accent='sakura'] {
+  --background: #FCF9FA;
+  --card: #FBF7F8;
+  --secondary: #F5F0F3;
+  --muted: #F5F0F3;
+  --muted-foreground: #747273;
+  --accent: #FBE9F0;
+  --accent-foreground: #9D3762;
+  --border: #E7DFE4;
+  --primary: #C2497A;
+  --primary-foreground: #FFFFFF;
+  --ring: #C2497A;
+}
+
+/* 深色模式下原生控件（滚动条、下拉、输入框等）跟随主题明暗 */
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+
 @layer base {
   * {
     @apply border-border;

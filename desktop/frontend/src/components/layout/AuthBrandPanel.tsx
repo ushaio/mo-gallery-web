@@ -4,12 +4,12 @@ import { t } from '@/lib/i18n'
 const BRAND_POINTS = {
   zh: [
     { icon: Database, text: '云端图库索引与同步' },
-    { icon: HardDrive, text: '本地原图资源库，离线可用' },
+    { icon: HardDrive, text: '本地原图资源库，未连接站点也可用' },
     { icon: Sparkles, text: 'AI 助手工作台' },
   ],
   en: [
     { icon: Database, text: 'Cloud gallery indexes and sync' },
-    { icon: HardDrive, text: 'Local library, fully offline' },
+    { icon: HardDrive, text: 'Local library, works without a connected site' },
     { icon: Sparkles, text: 'AI assistant workspace' },
   ],
 }

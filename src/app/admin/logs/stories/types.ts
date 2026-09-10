@@ -1,6 +1,6 @@
 'use client'
 
-import type { StoryDto } from '@/lib/api/types'
+import type { ArticleContentDto, StoryDto } from '@/lib/api/types'
 import type { StoryEditorDraftData } from '@/lib/client-db'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 
@@ -15,10 +15,8 @@ export interface StoriesTabProps {
   onEditingChange?: (isEditing: boolean) => void
 }
 
-export interface StorySnapshot {
+export interface StorySnapshot extends ArticleContentDto {
   title: string
-  content: string
-  contentJson?: StoryDto['contentJson']
   isPublished: boolean
   createdAt: string
   storyDate: string

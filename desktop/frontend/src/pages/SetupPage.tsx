@@ -3,25 +3,24 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Eye,
-  EyeOff,
   Globe,
-  HardDrive,
   Loader2,
-  Lock,
   Moon,
   Sun,
   TriangleAlert,
   UserRound,
+  Unplug,
   type LucideIcon,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { CompleteSetup, Login } from '../../wailsjs/go/main/App'
+import { CompleteSetup, GetApiConfig } from '../../wailsjs/go/main/App'
 import { AuthBrandPanel } from '@/components/layout/AuthBrandPanel'
+import { OfficialAuthForm } from '@/components/auth/OfficialAuthForm'
+import { WebConnectPanel } from '@/components/auth/WebConnectPanel'
+import { useOfficialAuth } from '@/contexts/OfficialAuthContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { getErrorMessage } from '@/lib/auth-errors'
 import { usePreferences } from '@/store/preferences'
-import { configuredLoginUrl } from '@/lib/auth-config'
+import { t } from '@/lib/i18n'
 
 export interface SetupState {
   completed: boolean
@@ -44,50 +43,14 @@ const fallbackState: SetupState = {
   api: { base_url: '', login_url: '', remember_login: false, saved_username: '', password_configured: false },
 }
 
-interface SecretInputProps {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  language: 'zh' | 'en'
-  placeholder?: string
-  disabled?: boolean
-  icon?: LucideIcon
-  required?: boolean
-  autoComplete?: string
-}
-
-function SecretInput({ label, value, onChange, language, placeholder, disabled, icon: Icon, required, autoComplete }: SecretInputProps) {
-  const [visible, setVisible] = useState(false)
-  const visibilityLabel = language === 'zh' ? (visible ? '隐藏' : '显示') : visible ? 'Hide' : 'Show'
-
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="relative block">
-        {Icon && <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />}
-        <input type={visible ? 'text' : 'password'} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} disabled={disabled} required={required} autoComplete={autoComplete}
-          className={`w-full rounded-lg border border-border bg-background px-3 py-2.5 pr-10 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60 [&::-ms-clear]:hidden [&::-ms-reveal]:hidden ${Icon ? 'pl-10' : ''}`} />
-        <button type="button" onClick={() => setVisible((current) => !current)} disabled={disabled} aria-label={visibilityLabel}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50">
-          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
-      </span>
-    </label>
-  )
-}
-
 export function SetupPage({ initialState, onComplete }: Props) {
   const navigate = useNavigate()
-  const { login } = useAuth()
-  const { language, theme, setTheme, setLanguage } = usePreferences()
+  const { user: officialUser } = useOfficialAuth()
+  const { isAuthenticated: siteConnected } = useAuth()
+  const { language, theme, accent, setTheme, setLanguage } = usePreferences()
   const zh = language === 'zh'
   const [step, setStep] = useState(0)
-  const [api, setApi] = useState({ ...fallbackState.api, ...initialState.api, password: '' })
-  const [credentials, setCredentials] = useState({
-    username: initialState.api.saved_username || '',
-    password: '',
-    rememberLogin: initialState.api.remember_login,
-  })
+  const [api, setApi] = useState({ ...fallbackState.api, ...initialState.api })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
@@ -105,6 +68,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
           : theme
       setResolvedTheme(next)
       root.classList.add(next)
+      root.dataset.accent = accent
     }
     applyTheme()
 
@@ -113,48 +77,51 @@ export function SetupPage({ initialState, onComplete }: Props) {
       mq.addEventListener('change', applyTheme)
       return () => mq.removeEventListener('change', applyTheme)
     }
-  }, [theme])
+  }, [theme, accent])
 
   const copy = useMemo(() => zh ? {
-    eyebrow: '首次启动', title: '欢迎使用 Emulsion', body: '花一分钟配置云端连接。业务数据由服务端统一管理，本地功能可离线使用。',
-    connection: '配置连接', login: '登录信息', next: '下一步', back: '上一步',
-    finish: '验证并进入', skip: '使用离线功能', optional: '可选', required: '必填',
-    server: '服务地址', loginUsername: '管理员用户名', loginPassword: '管理员密码', rememberLogin: '记住登录（加密存储）',
-    saved: '正在验证...', saveError: '保存失败，请重试', loginError: '登录验证失败，请检查连接和登录信息', secretSaved: '已保存，留空则继续沿用',
+    eyebrow: '首次启动', title: '欢迎使用 Emulsion',
+    body: '登录官方账号后即可使用。可选择性连接你的自建站点，未连接时本地功能照常可用。',
+    officialStep: '官方账号', siteStep: '连接站点', next: '下一步', back: '上一步',
+    finish: '完成并进入', skip: '暂不连接站点', optional: '可选',
+    officialLoggedIn: '已登录官方账号', siteConnected: '已连接站点', required: '必填',
+    saving: '正在保存...', saveError: '保存失败，请重试',
     stepLabel: (current: number, total: number) => `步骤 ${current} / ${total}`,
   } : {
-    eyebrow: 'FIRST RUN', title: 'Welcome to Emulsion', body: 'Connect to your server. Cloud data stays server-managed while local features remain available offline.',
-    connection: 'Configure connection', login: 'Sign-in details', next: 'Continue', back: 'Back',
-    finish: 'Verify and enter', skip: 'Use offline features', optional: 'Optional', required: 'Required',
-    server: 'Server URL', loginUsername: 'Administrator username', loginPassword: 'Administrator password', rememberLogin: 'Remember login (encrypted)',
-    saved: 'Verifying...', saveError: 'Could not save setup. Try again.', loginError: 'Sign-in verification failed. Check the connection and credentials.', secretSaved: 'Saved. Leave blank to keep the current value.',
+    eyebrow: 'FIRST RUN', title: 'Welcome to Emulsion',
+    body: 'Sign in with your official account to continue. Connecting your self-hosted site is optional — local features work without it.',
+    officialStep: 'Official account', siteStep: 'Connect site', next: 'Continue', back: 'Back',
+    finish: 'Finish and enter', skip: 'Skip for now', optional: 'Optional',
+    officialLoggedIn: 'Signed in', siteConnected: 'Site connected', required: 'Required',
+    saving: 'Saving...', saveError: 'Could not save setup. Try again.',
     stepLabel: (current: number, total: number) => `Step ${current} / ${total}`,
   }, [zh])
 
   const steps = [
-    { icon: Globe, title: copy.connection },
-    { icon: UserRound, title: copy.login },
+    { icon: UserRound, title: copy.officialStep },
+    { icon: Globe, title: copy.siteStep },
   ]
   const StepIcon = steps[step].icon
 
-  const completedState = (offlineOnly = false): SetupState => ({
-    completed: true,
-    api: {
-      base_url: api.base_url,
-      login_url: api.login_url,
-      remember_login: offlineOnly ? api.remember_login : credentials.rememberLogin,
-      saved_username: offlineOnly ? api.saved_username : credentials.rememberLogin ? credentials.username : '',
-      password_configured: offlineOnly ? api.password_configured : credentials.rememberLogin,
-    },
-  })
-
-  const handleUseOffline = async () => {
+  const finishSetup = async (offlineOnly: boolean) => {
     setSaving(true)
     setError('')
     try {
-      await CompleteSetup({ api, offline_only: true })
-      onComplete(completedState(true))
-      navigate('/library?source=local', { replace: true })
+      // 站点凭据已由 Login 绑定持久化，这里只负责标记向导完成；
+      // 不回传 api 字段，避免空 login_url 触发地址校验失败。
+      await CompleteSetup({ offline_only: offlineOnly })
+      onComplete({
+        completed: true,
+        api: {
+          base_url: api.base_url,
+          login_url: api.login_url,
+          remember_login: api.remember_login,
+          saved_username: api.saved_username,
+          password_configured: api.password_configured,
+        },
+      })
+      // 落点由 App 的 / 路由决定：已连接站点 → /home，未连接 → 本地资源库
+      navigate('/', { replace: true })
     } catch {
       setError(copy.saveError)
     } finally {
@@ -162,7 +129,7 @@ export function SetupPage({ initialState, onComplete }: Props) {
     }
   }
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault()
     setError('')
 
@@ -170,45 +137,8 @@ export function SetupPage({ initialState, onComplete }: Props) {
       setStep((current) => current + 1)
       return
     }
-
-    setSaving(true)
-    try {
-    const server = configuredLoginUrl(api)
-      const result = await Login(server, credentials.username, credentials.password, credentials.rememberLogin)
-      if (!result?.token) {
-        setError(copy.loginError)
-        return
-      }
-
-      const setupApi = {
-        ...api,
-        remember_login: credentials.rememberLogin,
-        saved_username: credentials.rememberLogin ? credentials.username : '',
-        password: credentials.rememberLogin ? credentials.password : '',
-      }
-      await CompleteSetup({ api: setupApi, offline_only: false })
-      onComplete(completedState())
-      login(result.token, result.user)
-      navigate('/home', { replace: true })
-    } catch (cause: unknown) {
-      setError(getErrorMessage(cause) || copy.loginError)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const field = (label: string, value: string | number, onChange: (value: string) => void, options?: { type?: string; required?: boolean; placeholder?: string; icon?: LucideIcon; autoComplete?: string }) => {
-    const Icon = options?.icon
-    return (
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
-        <span className="relative block">
-          {Icon && <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />}
-          <input type={options?.type || 'text'} value={value} required={options?.required} placeholder={options?.placeholder} autoComplete={options?.autoComplete} onChange={(event) => onChange(event.target.value)} disabled={saving}
-            className={`w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60 ${Icon ? 'pl-10' : ''}`} />
-        </span>
-      </label>
-    )
+    // 第二步提交：站点已在 WebConnectPanel 中连接成功，这里仅完成向导
+    void finishSetup(false)
   }
 
   const toggleTheme = () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
@@ -302,24 +232,38 @@ export function SetupPage({ initialState, onComplete }: Props) {
 
             <div className="mt-7 sm:min-h-[252px]">
               {step === 0 ? (
-                <div className="space-y-4">
-                  {field(copy.server, api.login_url, (value) => setApi((current) => ({ ...current, login_url: value })), { icon: Globe, placeholder: 'https://gallery.example.com/login/private', required: true, autoComplete: 'url' })}
-                </div>
+                officialUser ? (
+                  <div className="flex flex-col items-start gap-3 rounded-lg border border-border bg-card px-4 py-3.5">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Check className="h-4 w-4 text-primary" />
+                      {copy.officialLoggedIn}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{officialUser.username}</p>
+                  </div>
+                ) : (
+                  <OfficialAuthForm onSuccess={() => undefined} />
+                )
               ) : (
                 <div className="space-y-4">
-                  {field(copy.loginUsername, credentials.username, (value) => setCredentials((current) => ({ ...current, username: value })), { icon: UserRound, required: true, autoComplete: 'username' })}
-                  <SecretInput label={copy.loginPassword} value={credentials.password} onChange={(value) => setCredentials((current) => ({ ...current, password: value }))} language={language} placeholder={api.password_configured ? copy.secretSaved : undefined} disabled={saving} icon={Lock} required={!api.password_configured} autoComplete="current-password" />
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={credentials.rememberLogin}
-                      onChange={(event) => setCredentials((current) => ({ ...current, rememberLogin: event.target.checked }))}
-                      disabled={saving}
-                      className="h-4 w-4 cursor-pointer rounded border-border"
-                      style={{ accentColor: 'var(--primary)' }}
-                    />
-                    {copy.rememberLogin}
-                  </label>
+                  {siteConnected ? (
+                    <div className="flex flex-col items-start gap-3 rounded-lg border border-border bg-card px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                        <Check className="h-4 w-4 text-primary" />
+                        {copy.siteConnected}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{api.login_url || api.base_url}</p>
+                    </div>
+                  ) : (
+                    <WebConnectPanel onConnected={() => {
+                      // Login 已持久化站点配置，刷新本地展示用状态
+                      void GetApiConfig().then((config) => {
+                        const saved = config as unknown as SetupState['api'] | null
+                        if (saved) {
+                          setApi((current) => ({ ...current, base_url: saved.base_url || '', login_url: saved.login_url || '' }))
+                        }
+                      }).catch(() => undefined)
+                    }} />
+                  )}
                 </div>
               )}
 
@@ -347,32 +291,39 @@ export function SetupPage({ initialState, onComplete }: Props) {
                   {copy.back}
                 </button>
               )}
-              <button
-                type="submit"
-                disabled={saving}
-                className="group flex h-10 items-center gap-2 rounded-lg bg-primary px-5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : step < steps.length - 1 ? (
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}
-                {saving ? copy.saved : step < steps.length - 1 ? copy.next : copy.finish}
-              </button>
+              {step === 0 && (
+                <button
+                  type="submit"
+                  disabled={saving || !officialUser}
+                  className="group flex h-10 items-center gap-2 rounded-lg bg-primary px-5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />}
+                  {saving ? copy.saving : copy.next}
+                </button>
+              )}
+              {step === steps.length - 1 && !siteConnected && (
+                <button
+                  type="button"
+                  onClick={() => void finishSetup(true)}
+                  disabled={saving}
+                  className="group flex h-10 items-center gap-2 rounded-lg bg-primary px-5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unplug className="h-3.5 w-3.5" />}
+                  {saving ? copy.saving : copy.skip}
+                </button>
+              )}
+              {step === steps.length - 1 && siteConnected && (
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="group flex h-10 items-center gap-2 rounded-lg bg-primary px-5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {saving ? copy.saving : copy.finish}
+                </button>
+              )}
             </div>
           </form>
-
-          <button
-            type="button"
-            onClick={() => void handleUseOffline()}
-            disabled={saving}
-            className="group mx-auto mt-5 flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <HardDrive className="h-4 w-4 text-muted-foreground/60 transition-colors group-hover:text-foreground" />
-            {copy.skip}
-          </button>
         </div>
       </main>
     </div>

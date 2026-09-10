@@ -15,7 +15,7 @@ export interface ZineCustomSizeMm { width: number; height: number }
 export interface ZineImageTransform { scale: number; offsetX: number; offsetY: number; rotation: number }
 export interface ZineProject { id: string; title: string; pageSize: ZinePageSize; pageOrientation: ZinePageOrientation; geometryVersion?: ZineGeometryVersion; customSizeMm?: ZineCustomSizeMm; bleedMm?: number; pageNumbers?: ZinePageNumberSettings; createdBy: string; createdAt: number; updatedAt: number; spreads: Spread[]; assets: ZineAsset[] }
 export interface Spread { id: string; templateId: string; role?: ZineSpreadRole; slots: Slot[] }
-export interface SlotBase { id: string; kind: SlotKind; page: ZinePageSide; x: number; y: number; w: number; h: number; rotation: number; zIndex: number }
+export interface SlotBase { id: string; kind: SlotKind; locked?: boolean; page: ZinePageSide; x: number; y: number; w: number; h: number; rotation: number; zIndex: number }
 export interface ImageSlot extends SlotBase {
   kind: 'image'
   assetId: string | null

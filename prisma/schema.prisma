@@ -244,24 +244,44 @@ model StorageSource {
   updatedAt    DateTime @updatedAt
 }
 
+enum EditorType {
+  tiptap
+  milkdown
+}
+
 model Story {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   title        String
-  content      String // Markdown content
-  contentJson  Json?
+  editorType   EditorType @default(tiptap)
   coverPhotoId String?
   coverCrop    Json?
-  isPublished  Boolean  @default(false)
-  storyDate    DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isPublished  Boolean    @default(false)
+  storyDate    DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  photos Photo[] @relation("PhotoStories")
+  photos   Photo[]        @relation("PhotoStories")
+  contents StoryContent[]
 
   @@index([isPublished])
   @@index([storyDate])
   @@index([createdAt])
   @@index([coverPhotoId])
+}
+
+model StoryContent {
+  id                String     @id @default(uuid())
+  storyId           String
+  editorType        EditorType
+  tiptapContent     String     @default("") @db.Text
+  tiptapContentJson Json?
+  milkContent       String?    @map("milk_content") @db.Text
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, editorType])
 }
 
 model Comment {
@@ -284,19 +304,35 @@ model Comment {
 }
 
 model Blog {
-  id          String   @id @default(uuid())
+  id          String     @id @default(uuid())
   title       String
-  content     String // Markdown content
-  contentJson Json?
-  category    String   @default("未分类") // Blog category
-  tags        String   @default("") // Comma-separated tags
-  isPublished Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  editorType  EditorType @default(tiptap)
+  category    String     @default("未分类") // Blog category
+  tags        String     @default("") // Comma-separated tags
+  isPublished Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  contents BlogContent[]
 
   @@index([isPublished])
   @@index([createdAt])
   @@index([category])
+}
+
+model BlogContent {
+  id                String     @id @default(uuid())
+  blogId            String
+  editorType        EditorType
+  tiptapContent     String     @default("") @db.Text
+  tiptapContentJson Json?
+  milkContent       String?    @map("milk_content") @db.Text
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, editorType])
 }
 
 model FriendLink {

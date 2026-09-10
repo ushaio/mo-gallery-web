@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { useSearchParams } from 'react-router-dom'
+import { fetchOfficialAiCatalog, type OfficialAiSkill } from '@/lib/official-ai'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import type {
   EditorAiConversationDto,
@@ -34,17 +36,20 @@ import { AgentToolApprovalBar } from '@/components/ai/AgentToolApprovalBar'
 import { ConversationSidebar } from '@/components/ai/ConversationSidebar'
 import { DesktopEmptyState } from '@/components/ai/EmptyState'
 import { DesktopMessageBubble } from '@/components/ai/message/MessageBubble'
+import { ModelPickerDialog } from '@/components/ai/ModelPickerDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
 import {
   ClearEditorAiConversation,
   CreateEditorAiConversation,
   DeleteEditorAiConversation,
+  GetAiConfig,
   GetEditorAiConversationMessagesPage,
   GetEditorAiConversationPage,
   UpdateEditorAiConversation,
 } from '../../wailsjs/go/main/App'
 import {
   ArrowUp,
+  Bot,
   Eraser,
   BrainCircuit,
   Image as ImageIcon,
@@ -95,7 +100,20 @@ import {
 } from '@/lib/ai-assistant/utils'
 import { getMessageImages, readImageAsDataUrl } from '@/lib/ai-assistant/images'
 
+type AiAgentOption = {
+  id: string
+  name: string
+  enabled: boolean
+  primary_model?: string
+  text_model?: string
+  vision_model?: string
+  vision_output_mode?: 'vision' | 'primary'
+  image_model?: string
+  system_prompt?: string
+}
+
 export function AiAssistantPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useLanguage()
 
   const [conversations, setConversations] = useState<EditorAiConversationDto[]>([])
@@ -103,16 +121,22 @@ export function AiAssistantPage() {
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false)
   const [activeConversation, setActiveConversation] = useState<string | null>(null)
   const [messages, setMessages] = useState<EditorAiMessageDto[]>([])
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(() => searchParams.get('q') ?? '')
   const [loading, setLoading] = useState(true)
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [loadingEarlierMessages, setLoadingEarlierMessages] = useState(false)
   const [sending, setSending] = useState(false)
   const [models, setModels] = useState<StoryAiModelsResponse | null>(null)
+  const [agents, setAgents] = useState<AiAgentOption[]>([])
+  const [officialSkills, setOfficialSkills] = useState<OfficialAiSkill[]>([])
+  const [selectedOfficialSkillId, setSelectedOfficialSkillId] = useState('')
+  const [selectedAgentId, setSelectedAgentId] = useState('')
+  const [modelOverride, setModelOverride] = useState(false)
+  const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [reasoningEffort, setReasoningEffort] = useState<EditorAiReasoningEffort | 'default'>('default')
-  const [imageMode, setImageMode] = useState(false)
+  const [imageMode, setImageMode] = useState(() => searchParams.get('mode') === 'image')
   const [selectedImageModel, setSelectedImageModel] = useState<string>('')
   const [selectedImageSize, setSelectedImageSize] = useState('auto')
   const [showSidebar, setShowSidebar] = useState(true)
@@ -154,9 +178,21 @@ export function AiAssistantPage() {
 
   const loadingImages = attachedImages.some(image => image.status === 'loading')
   const readyImages = attachedImages.filter(image => image.status === 'ready' && image.url)
+  const selectedAgent = agents.find(agent => agent.id === selectedAgentId)
+  const effectiveChatModel = modelOverride
+    ? selectedModel
+    : (readyImages.length > 0
+      ? selectedAgent?.vision_model?.trim() || selectedAgent?.primary_model?.trim()
+      : selectedAgent?.primary_model?.trim()) || models?.defaultModel || ''
+  const effectiveImageModel = modelOverride
+    ? selectedImageModel
+    : selectedAgent?.image_model?.trim() || models?.defaultImageModel || ''
+  const effectiveModelId = imageMode ? effectiveImageModel : effectiveChatModel
+  const effectiveModelOption = models?.models.find(model => model.id === effectiveModelId)
+  const effectiveModelLabel = effectiveModelOption?.label || effectiveModelId
   const canSend = !sending && !loadingImages && (
     imageMode
-      ? (input.trim().length > 0 || readyImages.length > 0) && Boolean(selectedImageModel)
+      ? (input.trim().length > 0 || readyImages.length > 0) && Boolean(effectiveImageModel)
       : input.trim().length > 0 || readyImages.length > 0
   )
   const agentMentionCandidates = useMemo(
@@ -244,9 +280,11 @@ export function AiAssistantPage() {
     const init = async () => {
       setLoading(true)
       try {
-        const [conversationPage, modelsData] = await Promise.all([
+        const [conversationPage, modelsData, aiConfig, officialCatalog] = await Promise.all([
           GetEditorAiConversationPage(SCOPE_ID, 0, CONVERSATION_PAGE_SIZE),
           getLocalStoryAiModels().catch(() => null),
+          GetAiConfig().catch(() => null),
+          fetchOfficialAiCatalog().catch(() => ({ skills: [] })),
         ])
         setConversations(conversationPage.items || [])
         setHasMoreConversations(conversationPage.hasMore)
@@ -257,12 +295,69 @@ export function AiAssistantPage() {
           setSelectedModel(selectAvailableModel(chatModels, modelsData.defaultModel))
           setSelectedImageModel(selectAvailableModel(imageModels, modelsData.defaultImageModel))
         }
+        setOfficialSkills(officialCatalog.skills)
+        const configuredAgents = Array.isArray(aiConfig?.agents)
+          ? aiConfig.agents
+            .filter(agent => agent && agent.enabled !== false)
+            .map(agent => ({
+              id: agent.id,
+              name: agent.name || agent.id,
+              enabled: agent.enabled !== false,
+              primary_model: agent.primary_model,
+              text_model: agent.text_model,
+              vision_model: agent.vision_model,
+              vision_output_mode: (agent.vision_output_mode === 'primary' ? 'primary' : 'vision') as 'vision' | 'primary',
+              image_model: agent.image_model,
+              system_prompt: agent.system_prompt,
+            }))
+          : []
+        setAgents(configuredAgents)
+        const defaultAgentId = aiConfig?.default_agent_id && configuredAgents.some(agent => agent.id === aiConfig.default_agent_id)
+          ? aiConfig.default_agent_id
+          : configuredAgents[0]?.id || ''
+        setSelectedAgentId(defaultAgentId)
       } catch (error) {
         console.error('[AI] Failed to load data:', error)
       } finally { setLoading(false) }
     }
     void init()
   }, [])
+
+  // 首页工作台交接：?images= 直接挂上图片附件；?q= 在页面已缓存挂载时也能同步进输入框
+  const handoffImages = useMemo(
+    () => (searchParams.get('images') ?? '').split(',').map(url => url.trim()).filter(Boolean),
+    [searchParams],
+  )
+  const handoffQuery = searchParams.get('q') ?? ''
+  const handoffImagesSeededRef = useRef(false)
+
+  useEffect(() => {
+    if (handoffImages.length === 0 || handoffImagesSeededRef.current) return
+    handoffImagesSeededRef.current = true
+    setAttachedImages(previous => [
+      ...previous,
+      ...handoffImages.map(url => ({ id: url, url, status: 'ready' as const })),
+    ])
+  }, [handoffImages])
+
+  useEffect(() => {
+    if (!handoffQuery || sending) return
+    setInput(handoffQuery)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  // ?send=1：初始化完成后自动发送一次，发送后清掉交接参数避免刷新/重进重复发送
+  const lastAutoSendKeyRef = useRef('')
+  useEffect(() => {
+    if (searchParams.get('send') !== '1' || loading) return
+    const autoSendKey = `${handoffQuery}|${handoffImages.join(',')}`
+    if (lastAutoSendKeyRef.current === autoSendKey) return
+    if (!handoffQuery.trim() && readyImages.length === 0) return
+    lastAutoSendKeyRef.current = autoSendKey
+    void handleSend({ input: handoffQuery || undefined })
+    setSearchParams(new URLSearchParams(), { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  })
 
   const loadMoreConversations = async () => {
     if (loadingMoreConversations || !hasMoreConversations) return
@@ -490,7 +585,7 @@ export function AiAssistantPage() {
     setRenameTarget(null)
     setGeneratingTitleId(id)
     try {
-      const updated = await generateEditorAiConversationTitle(id, selectedModel || undefined)
+      const updated = await generateEditorAiConversationTitle(id, modelOverride ? selectedModel || undefined : undefined)
       setConversations(previous => previous.map(item => item.id === id ? updated : item))
       toast.success(t('admin.ai_generate_title_success'))
     } catch (error) {
@@ -600,7 +695,7 @@ export function AiAssistantPage() {
   const hasCustomPrompt = Boolean(activeConvoData?.systemPrompt)
   const chatModels = models?.models.filter(supportsChat) ?? []
   const imageModels = models?.models.filter(supportsImageGeneration) ?? []
-  const activeModelLabel = imageMode ? (selectedImageModel || 'image model') : (selectedModel || 'default')
+  const activeModelLabel = imageMode ? (effectiveImageModel || 'image model') : (effectiveChatModel || 'default')
 
   const handleSend = async (overrides?: SendOverrides) => {
     const sendableImages = overrides?.images
@@ -612,7 +707,7 @@ export function AiAssistantPage() {
       && sendableImages.length === 0
     )) return
 
-    if (imageMode && !selectedImageModel) {
+    if (imageMode && !effectiveImageModel) {
       toast.error(t('admin.ai_image_model_required'))
       return
     }
@@ -674,6 +769,20 @@ export function AiAssistantPage() {
     const now = new Date().toISOString()
     const userMessageId = createLocalMessageId('user')
     const assistantMessageId = createLocalMessageId('assistant')
+    const optimisticChatModel = !modelOverride && images.length > 0 && selectedAgent?.vision_output_mode === 'primary'
+      ? selectedAgent.primary_model?.trim() || effectiveChatModel
+      : effectiveChatModel
+    const optimisticModelRoute: Record<string, string> = imageMode
+      ? { mode: 'image', outputModel: effectiveImageModel }
+      : images.length > 0 && !modelOverride && selectedAgent?.vision_output_mode === 'primary'
+        ? {
+          mode: 'vision_to_primary',
+          visionModel: selectedAgent.vision_model?.trim() || effectiveChatModel,
+          outputModel: optimisticChatModel,
+        }
+        : images.length > 0
+          ? { mode: 'vision', outputModel: effectiveChatModel }
+          : { mode: 'primary', outputModel: effectiveChatModel }
     const optimisticUserMessage: EditorAiMessageDto = {
       id: userMessageId,
       conversationId,
@@ -689,8 +798,13 @@ export function AiAssistantPage() {
       role: 'assistant',
       content: '',
       status: 'streaming',
-      model: imageMode ? selectedImageModel : selectedModel || undefined,
+      model: imageMode ? effectiveImageModel : optimisticChatModel || undefined,
       createdAt: now,
+      metadata: {
+        type: 'assistant_trace',
+        blocks: [],
+        modelRoute: optimisticModelRoute,
+      },
     }
 
     setInput('')
@@ -748,6 +862,7 @@ export function AiAssistantPage() {
       const traceMetadata = editorAiMessageMetadataSchema.safeParse({
         type: 'assistant_trace',
         blocks,
+        modelRoute: optimisticModelRoute,
         durationMs: Math.max(0, Math.round(performance.now() - generationStartedAt)),
         ...(generationUsage ? { usage: generationUsage } : {}),
         ...(reasoningEffort !== 'default' ? { reasoningEffort } : {}),
@@ -763,7 +878,8 @@ export function AiAssistantPage() {
 
         const imagePrompt = await prepareDesktopImagePrompt({
           prompt,
-          model: selectedModel || undefined,
+          model: agents.length > 0 && !modelOverride ? undefined : selectedModel || undefined,
+          agentId: selectedAgentId || undefined,
           images,
           selectedAgentSkillIds: mentionSelection.selectedSkillIds,
           signal: abortController.signal,
@@ -782,7 +898,8 @@ export function AiAssistantPage() {
             prompt: imagePrompt,
             userPrompt: prompt,
             generateImage: true,
-            imageModel: selectedImageModel || undefined,
+            imageModel: agents.length > 0 && !modelOverride ? undefined : selectedImageModel || undefined,
+            agentId: selectedAgentId || undefined,
             imageSize: selectedImageSize,
             title: conversationTitle,
             images: images.length > 0 ? images : undefined,
@@ -855,7 +972,8 @@ export function AiAssistantPage() {
           conversationId,
           action: 'custom',
           prompt,
-          model: selectedModel || undefined,
+          model: agents.length > 0 && !modelOverride ? undefined : selectedModel || undefined,
+          agentId: selectedAgentId || undefined,
           reasoningEffort: reasoningEffort === 'default' ? undefined : reasoningEffort,
           title: conversationTitle,
           images: images.length > 0 ? images : undefined,
@@ -1158,6 +1276,20 @@ export function AiAssistantPage() {
             {hasCustomPrompt && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
           </div>
 
+          {agents.length > 0 && (
+            <div className="w-36 shrink-0">
+              <SelectDropdown
+                value={selectedAgentId}
+                options={agents.map(agent => ({ value: agent.id, label: agent.name }))}
+                onChange={value => { setSelectedAgentId(value as string); setModelOverride(false) }}
+                placeholder={t('admin.ai_agent')}
+                size="sm"
+                icon={Bot}
+                disabled={sending}
+              />
+            </div>
+          )}
+
           <div className="flex items-center gap-1">
             {activeConversation && (
               <button
@@ -1197,6 +1329,11 @@ export function AiAssistantPage() {
                   </button>
                 </div>
               </div>
+              {selectedAgent?.system_prompt?.trim() && (
+                <p className="mb-2 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                  {t('admin.ai_agent_prompt_inherited')}
+                </p>
+              )}
               <textarea value={systemPromptDraft} onChange={e => setSystemPromptDraft(e.target.value)} placeholder={t('admin.ai_system_prompt_placeholder')} rows={2}
                 className="w-full resize-none border rounded px-3 py-2 text-xs outline-none leading-relaxed"
                 style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', color: 'var(--foreground)' }} />
@@ -1358,20 +1495,68 @@ export function AiAssistantPage() {
               {/* Toolbar: model controls (left) → send (right) */}
               <div className="flex items-end gap-2 px-3 pb-3 pt-1">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                  {/* Model selector: switches between chat/image models based on mode */}
-                  {(imageMode ? imageModels : chatModels).length > 0 && (
-                    <div className="w-40">
-                      <SelectDropdown
-                        value={imageMode ? selectedImageModel : selectedModel}
-                        options={(imageMode ? imageModels : chatModels).map(m => ({ value: m.id, label: m.label }))}
-                        onChange={(val) => imageMode ? setSelectedImageModel(val as string) : setSelectedModel(val as string)}
-                        placeholder="选择模型"
-                        size="sm"
-                        icon={Sparkles}
-                        disabled={sending}
-                        placement="top"
-                      />
-                    </div>
+                  {/* Agent routing summary and optional per-turn model override */}
+                  {agents.length > 0 && !modelOverride && (
+                    <span
+                      className="max-w-52 truncate rounded px-2 py-1 text-[10px]"
+                      style={{ color: 'var(--muted-foreground)', backgroundColor: 'color-mix(in srgb, var(--muted) 55%, transparent)' }}
+                      title={imageMode ? effectiveImageModel : effectiveChatModel}
+                    >
+                      {t('admin.ai_agent_route')} · {imageMode ? effectiveImageModel : effectiveChatModel || t('admin.ai_agent_unconfigured')}
+                    </span>
+                  )}
+
+                  {imageMode && officialSkills.length > 0 && (
+                    <select
+                      value={selectedOfficialSkillId}
+                      onChange={(event) => {
+                        const skill = officialSkills.find(item => item.id === event.target.value)
+                        setSelectedOfficialSkillId(event.target.value)
+                        if (skill) setInput(previous => previous.trim() ? `${previous}\n\n${skill.instructions}` : skill.instructions)
+                      }}
+                      disabled={sending}
+                      className="h-7 max-w-48 rounded-md border bg-transparent px-2 text-[10px] outline-none"
+                      style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                      aria-label="官方 Skill"
+                    >
+                      <option value="">官方 Skill</option>
+                      {officialSkills.map(skill => <option key={skill.id} value={skill.id}>{skill.name}</option>)}
+                    </select>
+                  )}
+
+                  {(imageMode ? imageModels : chatModels).length > 0 && (agents.length === 0 || modelOverride) && (
+                    <button
+                      type="button"
+                      onClick={() => setModelPickerOpen(true)}
+                      disabled={sending}
+                      className="flex h-7 min-w-0 max-w-56 items-center gap-1.5 rounded-md border px-2 text-[10px] transition-colors hover:bg-accent disabled:opacity-30"
+                      style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                      title={effectiveModelLabel || t('admin.ai_agent_direct_model')}
+                    >
+                      <Sparkles size={12} className="shrink-0" style={{ color: 'var(--muted-foreground)' }} />
+                      <span className="truncate">{effectiveModelLabel || t('admin.ai_agent_direct_model')}</span>
+                    </button>
+                  )}
+
+                  {agents.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!modelOverride) {
+                          setSelectedModel(effectiveChatModel)
+                          setSelectedImageModel(effectiveImageModel)
+                          setModelPickerOpen(true)
+                          return
+                        }
+                        setModelOverride(false)
+                      }}
+                      disabled={sending}
+                      className="h-7 shrink-0 rounded px-2 text-[10px] transition-colors hover:bg-accent disabled:opacity-30"
+                      style={{ color: modelOverride ? 'var(--foreground)' : 'var(--muted-foreground)' }}
+                      title={modelOverride ? t('admin.ai_agent_use_route') : t('admin.ai_agent_override')}
+                    >
+                      {modelOverride ? t('admin.ai_agent_use_route') : t('admin.ai_agent_override')}
+                    </button>
                   )}
 
                   {!imageMode && (
@@ -1501,6 +1686,19 @@ export function AiAssistantPage() {
         </div>,
         document.body,
       )}
+
+      <ModelPickerDialog
+        open={modelPickerOpen}
+        mode={imageMode ? 'image' : 'chat'}
+        models={imageMode ? imageModels : chatModels}
+        selectedModel={imageMode ? selectedImageModel : selectedModel}
+        onSelect={modelId => {
+          if (imageMode) setSelectedImageModel(modelId)
+          else setSelectedModel(modelId)
+          if (agents.length > 0) setModelOverride(true)
+        }}
+        onClose={() => setModelPickerOpen(false)}
+      />
     </div>
   )
 }

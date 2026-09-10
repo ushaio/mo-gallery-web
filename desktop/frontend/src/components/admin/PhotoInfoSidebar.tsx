@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Camera,
   Check,
@@ -24,6 +24,7 @@ import {
   ApiUnauthorizedError,
   type PhotoDto,
 } from "@/lib/api";
+import { photoAssetSrc, realPhotoUrl } from "@/lib/photo-asset-src";
 import { normalizeDominantColors } from "@/lib/photoColors";
 import { CameraParameters } from "@/components/CameraParameters";
 import {
@@ -101,7 +102,31 @@ export function PhotoInfoSidebar({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [shootingOpen, setShootingOpen] = useState(true);
   const [infoOpen, setInfoOpen] = useState(true);
+  // Provider-real URLs for desktop-plugin photos whose cloud URL is null
+  // (e.g. WebDAV sources); resolved asynchronously from the source config.
+  const [realThumbUrl, setRealThumbUrl] = useState<string | null>(null);
+  const [realOriginalUrl, setRealOriginalUrl] = useState<string | null>(null);
   const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRealThumbUrl(null);
+    setRealOriginalUrl(null);
+    if (!photo || photo.url) return undefined;
+    const resolveUrls = async () => {
+      const [thumb, original] = await Promise.all([
+        realPhotoUrl({ ...photo, path: photo.thumbPath ?? photo.path }),
+        realPhotoUrl({ ...photo, thumbPath: undefined }),
+      ]);
+      if (cancelled) return;
+      setRealThumbUrl(thumb);
+      setRealOriginalUrl(original);
+    };
+    void resolveUrls();
+    return () => {
+      cancelled = true;
+    };
+  }, [photo]);
 
   const handleCopy = async (text: string, key: string) => {
     try {
@@ -221,12 +246,16 @@ export function PhotoInfoSidebar({
     {
       label: t("admin.thumbnail_url"),
       key: "thumb",
-      value: photo.thumbnailUrl ? resolveAssetUrl(photo.thumbnailUrl) : "",
+      // Desktop-plugin sources without a web URL show the provider's real
+      // address (e.g. the WebDAV URL) so the user knows where the file lives.
+      value: photo.thumbnailUrl
+        ? resolveAssetUrl(photo.thumbnailUrl)
+        : realThumbUrl || "",
     },
     {
       label: t("admin.original_url"),
       key: "original",
-      value: resolveAssetUrl(photo.url),
+      value: photo.url ? resolveAssetUrl(photo.url) : realOriginalUrl || "",
     },
   ];
 
@@ -244,7 +273,7 @@ export function PhotoInfoSidebar({
             title={photo.title || t("admin.untitled_photo")}
           >
             <img
-              src={resolveAssetUrl(photo.thumbnailUrl || photo.url)}
+              src={photoAssetSrc(photo)}
               alt={photo.title || ""}
               className="h-full w-full object-cover"
             />
@@ -533,9 +562,10 @@ export function PhotoInfoSidebar({
           <LibraryDetailsAction
             icon={ExternalLink}
             label={t("admin.view_original")}
-            disabled={!photo.url}
+            disabled={!photo.url && !realOriginalUrl}
             onClick={() => {
-              if (photo.url) BrowserOpenURL(resolveAssetUrl(photo.url));
+              const src = photo.url ? resolveAssetUrl(photo.url) : realOriginalUrl || ""
+              if (src) BrowserOpenURL(src);
             }}
           />
           <LibraryDetailsAction

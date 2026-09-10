@@ -12,11 +12,14 @@ import { ModelTable } from './ModelTable'
 import { ProviderDetailHeader } from './ProviderDetailHeader'
 import { ProviderList } from './ProviderList'
 import { useAiConfig } from './useAiConfig'
+import { AgentProfiles } from './AgentProfiles'
+import type { AiSettingsView } from './config'
 
 export function AiTab() {
   const { language } = usePreferences()
   const ai = useAiConfig()
   const [deleteProviderId, setDeleteProviderId] = useState<string | null>(null)
+  const [view, setView] = useState<AiSettingsView>('providers')
   // 新建的模型源标识：详情头部据此自动进入重命名态
   const [createdProviderId, setCreatedProviderId] = useState<string | null>(null)
 
@@ -34,7 +37,26 @@ export function AiTab() {
   if (ai.loading) return <AiTabSkeleton />
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 flex-col">
+      {view === 'agents' ? (
+        <div className="min-h-0 flex-1">
+          <AgentProfiles
+            aiConfig={aiConfig}
+            selectedAgentId={ai.selectedAgentId}
+            onSelect={ai.selectAgent}
+            onAdd={ai.addAgent}
+            onRemove={ai.removeAgent}
+            onDefaultChange={ai.setDefaultAgent}
+            onUpdate={ai.updateAgent}
+            dirty={ai.dirty}
+            saving={ai.saving}
+            onSave={() => void ai.save()}
+            view={view}
+            onViewChange={setView}
+          />
+        </div>
+      ) : (
+      <div className="flex min-h-0 flex-1">
       <ProviderList
         aiConfig={aiConfig}
         providerIds={providerIds}
@@ -43,6 +65,8 @@ export function AiTab() {
         onAdd={handleAddProvider}
         onDefaultModelChange={ai.setDefaultModel}
         onDefaultImageModelChange={ai.setDefaultImageModel}
+        view={view}
+        onViewChange={setView}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -133,6 +157,8 @@ export function AiTab() {
         onCancel={() => setDeleteProviderId(null)}
         t={(key) => t(key, language)}
       />
+      </div>
+      )}
     </div>
   )
 }

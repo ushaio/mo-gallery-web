@@ -16,38 +16,45 @@ func NewStoryService(proxy *ProxyClient) *StoryService {
 }
 
 type StoryDTO struct {
-	ID           string          `json:"id"`
-	Title        string          `json:"title"`
-	Content      string          `json:"content"`
-	ContentJSON  json.RawMessage `json:"contentJson,omitempty"`
-	CoverPhotoID *string         `json:"coverPhotoId,omitempty"`
-	CoverCrop    json.RawMessage `json:"coverCrop,omitempty"`
-	IsPublished  bool        `json:"isPublished"`
-	StoryDate    *time.Time  `json:"storyDate,omitempty"`
-	CreatedAt    time.Time   `json:"createdAt"`
-	UpdatedAt    time.Time   `json:"updatedAt"`
-	Photos       []PhotoDTO  `json:"photos,omitempty"`
+	ID                 string          `json:"id"`
+	Title              string          `json:"title"`
+	EditorType         string          `json:"editorType"`
+	ContentEditorTypes []string        `json:"contentEditorTypes"`
+	TiptapContent      string          `json:"tiptapContent"`
+	TiptapContentJSON  json.RawMessage `json:"tiptapContentJson,omitempty"`
+	MilkContent        *string         `json:"milkContent,omitempty"`
+	CoverPhotoID       *string         `json:"coverPhotoId,omitempty"`
+	CoverCrop          json.RawMessage `json:"coverCrop,omitempty"`
+	IsPublished        bool            `json:"isPublished"`
+	StoryDate          *time.Time      `json:"storyDate,omitempty"`
+	CreatedAt          time.Time       `json:"createdAt"`
+	UpdatedAt          time.Time       `json:"updatedAt"`
+	Photos             []PhotoDTO      `json:"photos,omitempty"`
 }
 
 type CreateStoryParams struct {
-	Title        string          `json:"title"`
-	Content      string          `json:"content"`
-	ContentJSON  json.RawMessage `json:"contentJson,omitempty"`
-	IsPublished  bool            `json:"isPublished"`
-	PhotoIDs     []string        `json:"photoIds,omitempty"`
-	CoverPhotoID *string         `json:"coverPhotoId,omitempty"`
-	CoverCrop    json.RawMessage `json:"coverCrop,omitempty"`
-	StoryDate    *time.Time      `json:"storyDate,omitempty"`
+	Title             string          `json:"title"`
+	EditorType        string          `json:"editorType"`
+	TiptapContent     *string         `json:"tiptapContent,omitempty"`
+	TiptapContentJSON json.RawMessage `json:"tiptapContentJson,omitempty"`
+	MilkContent       *string         `json:"milkContent,omitempty"`
+	IsPublished       bool            `json:"isPublished"`
+	PhotoIDs          []string        `json:"photoIds,omitempty"`
+	CoverPhotoID      *string         `json:"coverPhotoId,omitempty"`
+	CoverCrop         json.RawMessage `json:"coverCrop,omitempty"`
+	StoryDate         *time.Time      `json:"storyDate,omitempty"`
 }
 
 type UpdateStoryParams struct {
-	Title        *string         `json:"title,omitempty"`
-	Content      *string         `json:"content,omitempty"`
-	ContentJSON  json.RawMessage `json:"contentJson,omitempty"`
-	IsPublished  *bool           `json:"isPublished,omitempty"`
-	CoverPhotoID *string         `json:"coverPhotoId,omitempty"`
-	CoverCrop    json.RawMessage `json:"coverCrop,omitempty"`
-	StoryDate    *time.Time      `json:"storyDate,omitempty"`
+	Title             *string         `json:"title,omitempty"`
+	EditorType        *string         `json:"editorType,omitempty"`
+	TiptapContent     *string         `json:"tiptapContent,omitempty"`
+	TiptapContentJSON json.RawMessage `json:"tiptapContentJson,omitempty"`
+	MilkContent       *string         `json:"milkContent,omitempty"`
+	IsPublished       *bool           `json:"isPublished,omitempty"`
+	CoverPhotoID      *string         `json:"coverPhotoId,omitempty"`
+	CoverCrop         json.RawMessage `json:"coverCrop,omitempty"`
+	StoryDate         *time.Time      `json:"storyDate,omitempty"`
 }
 
 func (s *StoryService) checkReady() error {

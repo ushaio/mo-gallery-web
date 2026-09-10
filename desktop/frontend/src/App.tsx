@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { OfficialAuthProvider, useOfficialAuth } from '@/contexts/OfficialAuthContext'
 import { SettingsProvider } from '@/contexts/SettingsContext'
 import { LanguageProvider } from '@/contexts/LanguageContext'
 import { UploadQueueProvider } from '@/contexts/UploadQueueContext'
@@ -10,14 +11,12 @@ import { DownloadProgressPopup } from '@/components/admin/DownloadProgressPopup'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { DesktopWindowFrame } from '@/components/layout/DesktopWindowFrame'
 import { LoginPage } from '@/pages/LoginPage'
+import { ConnectPage } from '@/pages/ConnectPage'
 import { ResourceLibrary } from '@/features/library/ResourceLibrary'
 import { UploadPage } from '@/pages/UploadPage'
 import { PhotoJournalPage } from '@/pages/PhotoJournalPage'
 import { DesignStudioPage } from '@/pages/DesignStudioPage'
-import { DesignTemplatePage } from '@/pages/DesignTemplatePage'
-import { CanvasProjectsPage } from '@/pages/CanvasProjectsPage'
 import { CanvasEditorPage } from '@/pages/design-canvas/CanvasEditorPage'
-import { ZinePage } from '@/pages/ZinePage'
 import { ZineEditorPage } from '@/pages/zine/ZineEditorPage'
 import { AiAssistantPage } from '@/pages/AiAssistantPage'
 import { AiImagePage } from '@/pages/AiImagePage'
@@ -35,22 +34,18 @@ function AuthenticatedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth()
 
   if (!isAuthenticated) {
-    return <Navigate to="/library?source=local" replace />
+    return <Navigate to="/connect" replace />
   }
 
   return <>{children}</>
 }
 
-function hasLoginConfiguration(setupState: SetupState) {
-  return Boolean(setupState.api.login_url?.trim() || setupState.api.base_url?.trim())
-}
-
 function AppRoutes() {
   const { isAuthenticated, isReady } = useAuth()
+  const { isAuthenticated: isOfficialAuthed, isReady: isOfficialReady } = useOfficialAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [setupState, setSetupState] = useState<SetupState | null>(null)
-  const [setupStateAvailable, setSetupStateAvailable] = useState(true)
 
   useEffect(() => registerAutomationNavigator((path) => navigate(path)), [navigate])
   useEffect(() => registerAutomationLocation(() => ({
@@ -65,20 +60,18 @@ function AppRoutes() {
       .then((state) => {
         if (active) {
           setSetupState(state as unknown as SetupState)
-          setSetupStateAvailable(true)
         }
       })
       .catch(() => {
         // Browser development mode has no Wails bridge; keep the normal app usable.
         if (active) {
           setSetupState({ completed: true, api: {} as SetupState['api'] })
-          setSetupStateAvailable(false)
         }
       })
     return () => { active = false }
   }, [location.pathname])
 
-  if (!isReady || !setupState) {
+  if (!isOfficialReady || !isReady || !setupState) {
     return (
       <div className="flex h-full w-full items-center justify-center"
         style={{ backgroundColor: 'var(--background)', color: 'var(--muted-foreground)' }}>
@@ -87,11 +80,18 @@ function AppRoutes() {
     )
   }
 
-  if (!setupState.completed && location.pathname !== '/setup') {
-    return <Navigate to="/setup" replace />
+  // 第一道门禁：必须登录官方账号才能使用桌面客户端
+  if (!isOfficialAuthed) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    )
   }
 
-  if (setupStateAvailable && !isAuthenticated && location.pathname === '/login' && !hasLoginConfiguration(setupState)) {
+  // 第二道门禁：首次启动向导（官方登录后进入；第二步连接站点可跳过）
+  if (!setupState.completed && location.pathname !== '/setup') {
     return <Navigate to="/setup" replace />
   }
 
@@ -102,13 +102,13 @@ function AppRoutes() {
           initialState={setupState}
           onComplete={(state) => {
             setSetupState(state)
-            setSetupStateAvailable(true)
           }}
         />
       } />
       <Route path="/login" element={
-        isAuthenticated ? <Navigate to="/home" replace /> : <LoginPage />
+        <Navigate to="/home" replace />
       } />
+      <Route path="/connect" element={<ConnectPage />} />
       <Route path="/" element={<AdminLayout />}>
         <Route index element={<Navigate to={isAuthenticated ? '/home' : '/library?source=local'} replace />} />
         <Route path="home" element={<AuthenticatedRoute><HomePage /></AuthenticatedRoute>} />
@@ -121,15 +121,15 @@ function AppRoutes() {
         <Route path="upload" element={<AuthenticatedRoute><UploadPage /></AuthenticatedRoute>} />
         <Route path="photo-journal" element={<AuthenticatedRoute><PhotoJournalPage /></AuthenticatedRoute>} />
         <Route path="design" element={<DesignStudioPage />} />
-        <Route path="design/new" element={<DesignTemplatePage />} />
-        <Route path="design/canvas" element={<CanvasProjectsPage />} />
+        <Route path="design/new" element={<Navigate to="/design" replace />} />
         <Route path="design/canvas/editor/:projectId" element={<CanvasEditorPage />} />
-        <Route path="design/zine" element={<ZinePage />} />
+        <Route path="design/canvas" element={<Navigate to="/design" replace />} />
+        <Route path="design/zine" element={<Navigate to="/design" replace />} />
         <Route path="design/zine/editor/:projectId" element={<ZineEditorPage />} />
-        <Route path="zine" element={<Navigate to="/design/zine" replace />} />
+        <Route path="zine" element={<Navigate to="/design" replace />} />
         <Route path="zine/editor/:projectId" element={<ZineEditorPage />} />
         {/* The desktop AI assistant is backed by local Wails services and its
-            editor-ai.db store, so it remains available without cloud login. */}
+            editor-ai.db store, so it remains available without a connected site. */}
         <Route path="ai-assistant" element={<AiAssistantPage />} />
         <Route path="design/ai-image" element={<AuthenticatedRoute><AiImagePage /></AuthenticatedRoute>} />
         <Route path="inspiration" element={<InspirationPage />} />
@@ -148,27 +148,30 @@ export default function App() {
   return (
     <LanguageProvider>
       <SettingsProvider>
-        <DesktopWindowFrame>
+        {/* 认证 Provider 包住 DesktopWindowFrame，标题栏 logo 需要读取站点连接状态 */}
+        <OfficialAuthProvider>
           <AuthProvider>
-            <UploadQueueProvider>
-              <DownloadQueueProvider>
-                <Toaster
-                  position="top-right"
-                  className="desktop-toaster"
-                  closeButton
-                  duration={4000}
-                  gap={8}
-                  visibleToasts={3}
-                  expand={false}
-                  toastOptions={{ classNames: { toast: 'desktop-toast' } }}
-                />
-                <AppRoutes />
-                <UploadProgressPopup />
-                <DownloadProgressPopup />
-              </DownloadQueueProvider>
-            </UploadQueueProvider>
+            <DesktopWindowFrame>
+              <UploadQueueProvider>
+                <DownloadQueueProvider>
+                  <Toaster
+                    position="top-right"
+                    className="desktop-toaster"
+                    closeButton
+                    duration={4000}
+                    gap={8}
+                    visibleToasts={3}
+                    expand={false}
+                    toastOptions={{ classNames: { toast: 'desktop-toast' } }}
+                  />
+                  <AppRoutes />
+                  <UploadProgressPopup />
+                  <DownloadProgressPopup />
+                </DownloadQueueProvider>
+              </UploadQueueProvider>
+            </DesktopWindowFrame>
           </AuthProvider>
-        </DesktopWindowFrame>
+        </OfficialAuthProvider>
       </SettingsProvider>
     </LanguageProvider>
   )

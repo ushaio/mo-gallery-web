@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Home, LibraryBig, Upload, BookMarked,
-  BookImage, Bot, HardDrive, Settings, Users, LogOut,
-  Sun, Moon, Monitor, Globe, Check, ChevronDown, LogIn, PanelLeftClose, PanelLeftOpen,
+  LayoutTemplate, Bot, Sparkles, HardDrive, Settings, Users, LogOut,
+  Sun, Moon, Monitor, Globe, Check, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOfficialAuth } from '@/contexts/OfficialAuthContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
-import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
-import { useDesktopSiteIdentity } from './useDesktopSiteIdentity'
-import { useWindowChrome } from './window-chrome'
+import { ACCENTS, DEFAULT_ACCENT } from '@/lib/accents'
 
 const navGroups = [
   [
@@ -23,7 +23,8 @@ const navGroups = [
   ],
   [
     { path: '/photo-journal', icon: BookMarked, key: 'admin.logs' },
-    { path: '/zine', icon: BookImage, key: 'admin.zine' },
+    { path: '/design', icon: LayoutTemplate, key: 'admin.design_studio' },
+    { path: '/inspiration', icon: Sparkles, key: 'admin.inspiration' },
   ],
   [
     { path: '/storage', icon: HardDrive, key: 'admin.storage_cleanup' },
@@ -52,11 +53,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onOpenSettings }: SidebarProps) {
-  const { user, logout, isAuthenticated } = useAuth()
-  const { language, theme, sidebarCollapsed, setLanguage, setTheme, setSidebarCollapsed } = usePreferences()
-  const { integrated, styleReady } = useWindowChrome()
-  const { siteTitle, siteUrl } = useDesktopSiteIdentity()
+  const { isAuthenticated } = useAuth()
+  const { user: officialUser, logout: officialLogout } = useOfficialAuth()
+  const { language, theme, accent, sidebarCollapsed, setLanguage, setTheme, setSidebarCollapsed } = usePreferences()
+  const { resolvedTheme } = useTheme()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const [openMenu, setOpenMenu] = useState<'theme' | 'language' | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -72,13 +74,11 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
   const getMenuDestination = (path: string) => lastMenuLocationsRef.current.get(path) ?? path
 
-  const handleOpenSite = () => {
-    if (siteUrl) BrowserOpenURL(siteUrl)
-  }
-
+  // 左下角退出的是官方账号登录；站点连接由标题栏 logo 管理。
   const handleLogoutConfirm = () => {
     setShowLogoutConfirm(false)
-    logout()
+    void officialLogout()
+    navigate('/login', { replace: true })
   }
 
   useEffect(() => {
@@ -98,13 +98,23 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
 
   const currentThemeLabel = t(themeOptions.find((o) => o.value === theme)?.label ?? 'common.system', language)
   const currentLanguageLabel = languageOptions.find((o) => o.value === language)?.label ?? '中文'
-  const collapseLabel = t(sidebarCollapsed ? 'admin.expand_sidebar' : 'admin.collapse_sidebar', language)
-  const visibleNavGroups = isAuthenticated ? navGroups : [navGroups[1].slice(0, 1), navGroups[2].slice(1, 2)]
-  const displayedSiteTitle = isAuthenticated ? siteTitle : 'Emulsion'
+  // Local library, Design Studio, and the desktop AI assistant work without a connected site.
+  // Inspiration is a separate online surface, but remains discoverable before
+  // login so users can reach its connection state and future sharing flow.
+  const visibleNavGroups = isAuthenticated
+    ? navGroups
+    : navGroups
+      .map((group) => group.filter((item) =>
+        item.path === '/library'
+        || item.path === '/design'
+        || item.path === '/ai-assistant'
+        || item.path === '/inspiration',
+      ))
+      .filter((group) => group.length > 0)
 
   return (
     <aside
-      className="flex h-full flex-col select-none border-r"
+      className="flex h-full shrink-0 flex-col select-none border-r"
       onDragStartCapture={(event) => event.preventDefault()}
       style={{
         width: sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
@@ -113,47 +123,9 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
         transition: 'width 180ms ease',
       }}
     >
-      {styleReady && !integrated && (
-        <div className="relative h-16 shrink-0 border-b" style={{ borderColor: 'var(--border)' }}>
-          <button
-            type="button"
-            onClick={handleOpenSite}
-            title={siteUrl ? t('admin.open_site', language, { url: siteUrl }) : undefined}
-            disabled={!siteUrl}
-            className={`flex h-full w-full min-w-0 items-center text-left transition-[padding,gap,opacity] hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-5 pr-10'}`}
-            style={{ backgroundColor: 'transparent', color: 'var(--foreground)' }}
-          >
-            <img
-              src="/logo.png"
-              alt=""
-              aria-hidden="true"
-              className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain p-0.5"
-            />
-            {!sidebarCollapsed && <span className="truncate font-serif text-sm font-bold uppercase tracking-widest">{displayedSiteTitle}</span>}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpenMenu(null)
-              setSidebarCollapsed(!sidebarCollapsed)
-            }}
-            className="absolute -right-3 top-1/2 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border shadow-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            style={{
-              backgroundColor: 'var(--card)',
-              borderColor: 'var(--border)',
-              color: 'var(--muted-foreground)',
-            }}
-            title={collapseLabel}
-            aria-label={collapseLabel}
-            aria-pressed={sidebarCollapsed}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
-          </button>
-        </div>
-      )}
 
       {/* 导航 */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2">
+      <nav className="flex-1 overflow-x-hidden overflow-y-auto px-2 py-2">
         {visibleNavGroups.map((group, groupIndex) => (
           <div key={group[0].path}>
             {groupIndex > 0 && (
@@ -172,7 +144,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                 draggable={false}
                 title={sidebarCollapsed ? t(key, language) : undefined}
                 className={({ isActive }) =>
-                  `mb-0.5 flex items-center rounded-md py-2 text-sm transition-colors ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'} ${
+                  `mb-0.5 flex min-w-0 items-center whitespace-nowrap rounded-md py-2 text-sm transition-colors ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3'} ${
                     isActive
                       ? 'font-medium'
                       : 'hover:opacity-80'
@@ -184,7 +156,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                 })}
               >
                 <Icon size={18} />
-                {!sidebarCollapsed && <span>{t(key, language)}</span>}
+                {!sidebarCollapsed && <span className="min-w-0 truncate">{t(key, language)}</span>}
               </NavLink>
             ))}
           </div>
@@ -198,7 +170,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
           <button
             type="button"
             onClick={() => setOpenMenu(openMenu === 'theme' ? null : 'theme')}
-            className={`w-full flex items-center rounded-md py-1.5 text-xs transition-colors hover:opacity-80 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-3'}`}
+            className={`w-full flex items-center whitespace-nowrap rounded-md py-1.5 text-xs transition-colors hover:opacity-80 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-3'}`}
             style={{ color: 'var(--muted-foreground)' }}
             title={sidebarCollapsed ? currentThemeLabel : undefined}
             aria-label={currentThemeLabel}
@@ -206,7 +178,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
             aria-haspopup="menu"
           >
             {theme === 'dark' ? <Moon size={14} /> : theme === 'light' ? <Sun size={14} /> : <Monitor size={14} />}
-            {!sidebarCollapsed && <span className="flex-1 text-left">{currentThemeLabel}</span>}
+            {!sidebarCollapsed && <span className="min-w-0 flex-1 truncate text-left">{currentThemeLabel}</span>}
             {!sidebarCollapsed && <ChevronDown
               size={12}
               style={{
@@ -242,6 +214,15 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                   {theme === value && <Check size={12} />}
                 </button>
               ))}
+              {/* 配色仅浅色模式生效：深色下提示当前配色已暂停 */}
+              {accent !== DEFAULT_ACCENT && resolvedTheme === 'dark' && (
+                <div
+                  className="border-t px-3 py-2 text-[11px] leading-4"
+                  style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                >
+                  「{ACCENTS.find((a) => a.id === accent)?.name}」配色仅在浅色模式下生效
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -251,7 +232,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
           <button
             type="button"
             onClick={() => setOpenMenu(openMenu === 'language' ? null : 'language')}
-            className={`w-full flex items-center rounded-md py-1.5 text-xs transition-colors hover:opacity-80 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-3'}`}
+            className={`w-full flex items-center whitespace-nowrap rounded-md py-1.5 text-xs transition-colors hover:opacity-80 ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-3'}`}
             style={{ color: 'var(--muted-foreground)' }}
             title={sidebarCollapsed ? currentLanguageLabel : undefined}
             aria-label={currentLanguageLabel}
@@ -259,7 +240,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
             aria-haspopup="menu"
           >
             <Globe size={14} />
-            {!sidebarCollapsed && <span className="flex-1 text-left">{currentLanguageLabel}</span>}
+            {!sidebarCollapsed && <span className="min-w-0 flex-1 truncate text-left">{currentLanguageLabel}</span>}
             {!sidebarCollapsed && <ChevronDown
               size={12}
               style={{
@@ -299,72 +280,43 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
         </div>
       </div>
 
-      {/* 用户信息 */}
+      {/* 官方账号（站点连接由标题栏 logo 管理） */}
       <div className={`border-t py-3 ${sidebarCollapsed ? 'px-2' : 'px-3'}`} style={{ borderColor: 'var(--border)' }}>
-        {isAuthenticated ? (
-          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? '' : 'gap-2'}`}>
-              {!sidebarCollapsed && <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
-                style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
-                {user?.username?.[0]?.toUpperCase() || 'A'}
-              </div>}
-              {!sidebarCollapsed && <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                {user?.username || 'Admin'}
-              </span>}
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                title={t('admin.config', language)}
-                aria-label={t('admin.config', language)}
-                className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
-                style={{ color: 'var(--muted-foreground)' }}
-              >
-                <Settings size={15} />
-              </button>
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
-                style={{ color: 'var(--muted-foreground)' }}
-                title={t('admin.logout', language)}
-              >
-                <LogOut size={15} />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+        <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+          <div className={`flex min-w-0 items-center ${sidebarCollapsed ? '' : 'gap-2'}`}>
+            {!sidebarCollapsed && <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium"
+              style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}>
+              {officialUser?.username?.[0]?.toUpperCase() || 'A'}
+            </div>}
             {!sidebarCollapsed && <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              {t('admin.offline_mode', language)}
+              {officialUser?.username || t('admin.official_account', language)}
             </span>}
-            <div className="flex shrink-0 items-center gap-0.5">
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                title={t('admin.config', language)}
-                aria-label={t('admin.config', language)}
-                className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
-                style={{ color: 'var(--muted-foreground)' }}
-              >
-                <Settings size={15} />
-              </button>
-              <NavLink
-                to="/login"
-                draggable={false}
-                title={t('admin.login', language)}
-                aria-label={t('admin.login', language)}
-                className="flex size-7 items-center justify-center rounded-md transition-colors hover:bg-secondary"
-                style={{ color: 'var(--muted-foreground)' }}
-              >
-                <LogIn size={15} />
-              </NavLink>
-            </div>
           </div>
-        )}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              title={t('admin.config', language)}
+              aria-label={t('admin.config', language)}
+              className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+              style={{ color: 'var(--muted-foreground)' }}
+            >
+              <Settings size={15} />
+            </button>
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+              style={{ color: 'var(--muted-foreground)' }}
+              title={t('admin.official_logout', language)}
+              aria-label={t('admin.official_logout', language)}
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {isAuthenticated && showLogoutConfirm && (
+      {showLogoutConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <button
             type="button"
@@ -380,7 +332,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
               {t('admin.logout_confirm_title', language)}
             </h3>
             <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-              {t('admin.logout_confirm', language)}
+              {t('admin.official_logout_confirm', language)}
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -397,7 +349,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
                 className="rounded-md px-3 py-1.5 text-xs transition-colors hover:opacity-90"
                 style={{ backgroundColor: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
               >
-                {t('admin.logout', language)}
+                {t('admin.official_logout', language)}
               </button>
             </div>
           </div>

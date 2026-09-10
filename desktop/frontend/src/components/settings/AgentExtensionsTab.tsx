@@ -18,6 +18,7 @@ import {
   type AgentSkill,
 } from '@/lib/agent-extensions'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs'
 
 type Section = 'skills' | 'mcp' | 'security'
 type SelectedItem = { type: 'skill'; id: string } | { type: 'mcp'; id: string } | null
@@ -113,11 +114,17 @@ export function AgentExtensionsTab() {
     <div className="flex h-full min-h-0 overflow-hidden">
       <aside className="flex w-[292px] shrink-0 flex-col border-r" style={{ borderColor: 'var(--border)' }}>
         <div className="border-b p-3" style={{ borderColor: 'var(--border)' }}>
-          <div className="grid grid-cols-3 rounded-md p-0.5" style={{ backgroundColor: 'var(--muted)' }}>
-            <SectionButton active={section === 'skills'} icon={Box} label="Skills" onClick={() => setSection('skills')} />
-            <SectionButton active={section === 'mcp'} icon={Server} label="MCP" onClick={() => setSection('mcp')} />
-            <SectionButton active={section === 'security'} icon={ShieldCheck} label="权限" onClick={() => setSection('security')} />
-          </div>
+          <SegmentedTabs
+            size="sm"
+            ariaLabel="Agent 扩展分区"
+            value={section}
+            onChange={setSection}
+            options={[
+              { value: 'skills', label: 'Skills', icon: Box },
+              { value: 'mcp', label: 'MCP', icon: Server },
+              { value: 'security', label: '权限', icon: ShieldCheck },
+            ]}
+          />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-2 custom-scrollbar">
@@ -187,10 +194,6 @@ export function AgentExtensionsTab() {
       <SimpleDeleteDialog isOpen={deleteTarget !== null} title={deleteTarget?.type === 'skill' ? '移除 Skill' : '移除 MCP Server'} message="该扩展的长期授权也会一并撤销。此操作不会删除原始导入目录。" confirmLabel="移除" cancelLabel="取消" pendingLabel="正在移除..." confirmVariant="destructive" onConfirm={confirmDelete} onCancel={() => setDeleteTarget(null)} t={key => key} />
     </div>
   )
-}
-
-function SectionButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="flex h-8 items-center justify-center gap-1.5 rounded text-[11px] font-medium transition-colors" style={{ backgroundColor: active ? 'var(--background)' : 'transparent', color: active ? 'var(--foreground)' : 'var(--muted-foreground)', boxShadow: active ? 'var(--shadow-sm)' : 'none' }}><Icon size={13} />{label}</button>
 }
 
 function ExtensionListEmptyGuard({ count, label, description, children }: { count: number; label: string; description: string; children: React.ReactNode }) {

@@ -19,6 +19,11 @@ export interface PlazaSlot {
   align?: 'left' | 'center' | 'right'
   fontSize?: number
   color?: string
+  content?: string
+  rotation?: number
+  fontFamily?: string
+  lineHeight?: number
+  verticalAlign?: 'top' | 'center' | 'bottom'
 }
 
 export interface PlazaTemplate {
@@ -32,7 +37,7 @@ export interface PlazaTemplate {
   author: { id: string; username: string }
 }
 
-const PLAZA_URL_KEY = 'mo-gallery-plaza-url'
+const PLAZA_URL_KEY = 'mo-gallery-official-site-url'
 const DEFAULT_PLAZA_URL = 'http://localhost:3001'
 
 export function getPlazaUrl(): string {
@@ -78,7 +83,7 @@ function createId() {
  * 与内置模板一致：右页 slot 的 x 相对跨页原点（加上 pageW）。
  */
 export function buildSpreadFromPlazaTemplate(
-  template: PlazaTemplate,
+  template: Pick<PlazaTemplate, 'id' | 'layout'>,
   pageW: number,
   pageH: number,
 ): Spread {
@@ -97,16 +102,16 @@ export function buildSpreadFromPlazaTemplate(
         y,
         w,
         h,
-        rotation: 0,
+        rotation: slot.rotation ?? 0,
         zIndex: slot.zIndex,
-        content: '',
+        content: slot.content ?? '',
         align: slot.align ?? 'left',
-        verticalAlign: 'top' as const,
+        verticalAlign: slot.verticalAlign ?? 'top',
         // fontSize 为相对页高的比例；桌面端字号单位为 pt（1mm ≈ 2.835pt）
-        fontSize: Math.max(6, (slot.fontSize ?? 0.05) * pageH * 2.835),
-        lineHeight: 1.25,
+        fontSize: Math.max(6, (slot.fontSize ?? 0.05) * pageH * (72 / 25.4)),
+        lineHeight: slot.lineHeight ?? 1.25,
         color: slot.color ?? '#111111',
-        fontFamily: 'serif',
+        fontFamily: slot.fontFamily ?? 'serif',
       }
     }
 
@@ -118,7 +123,7 @@ export function buildSpreadFromPlazaTemplate(
       y,
       w,
       h,
-      rotation: 0,
+      rotation: slot.rotation ?? 0,
       zIndex: slot.zIndex,
       assetId: null,
       imageTransform: { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 },

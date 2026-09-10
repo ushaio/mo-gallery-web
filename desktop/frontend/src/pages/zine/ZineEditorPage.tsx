@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 
 import { ZineEditor } from '@/components/zine/ZineEditor'
@@ -9,6 +9,8 @@ import { useZineStore } from '@/store/zine'
 
 export function ZineEditorPage() {
   const { projectId } = useParams()
+  const [searchParams] = useSearchParams()
+  const requestedSpreadId = searchParams.get('spread')
   const navigate = useNavigate()
   const { language } = usePreferences()
   const project = useZineStore((state) => state.project)
@@ -30,10 +32,15 @@ export function ZineEditorPage() {
       setError(null)
 
       try {
-        await loadProject(projectId)
+        const inMemoryState = useZineStore.getState()
+        if (inMemoryState.project?.id !== projectId || inMemoryState.saveStatus === 'saved') {
+          await loadProject(projectId)
+        }
         const loadedProject = useZineStore.getState().project
         if (!cancelled && (!loadedProject || loadedProject.id !== projectId)) {
           setError(t('admin.zine_no_projects', language))
+        } else if (!cancelled && requestedSpreadId) {
+          useZineStore.getState().setActiveSpread(requestedSpreadId)
         }
       } catch {
         if (!cancelled) setError(t('common.error', language))
@@ -47,7 +54,7 @@ export function ZineEditorPage() {
     return () => {
       cancelled = true
     }
-  }, [language, loadProject, projectId])
+  }, [language, loadProject, projectId, requestedSpreadId])
 
   if (loading) {
     return (
@@ -63,7 +70,7 @@ export function ZineEditorPage() {
         <p className="text-sm" style={{ color: 'var(--destructive)' }}>{error}</p>
         <button
           type="button"
-          onClick={() => navigate('/zine')}
+          onClick={() => navigate('/design/zine')}
           className="flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition hover:bg-accent"
           style={{ borderColor: 'var(--border)' }}
         >

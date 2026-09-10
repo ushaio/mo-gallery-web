@@ -13,33 +13,40 @@ func NewBlogService(proxy *ProxyClient) *BlogService {
 }
 
 type BlogDTO struct {
-	ID          string          `json:"id"`
-	Title       string          `json:"title"`
-	Content     string          `json:"content"`
-	ContentJSON json.RawMessage `json:"contentJson,omitempty"`
-	Category    string    `json:"category"`
-	Tags        string    `json:"tags"`
-	IsPublished bool      `json:"isPublished"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID                 string          `json:"id"`
+	Title              string          `json:"title"`
+	EditorType         string          `json:"editorType"`
+	ContentEditorTypes []string        `json:"contentEditorTypes"`
+	TiptapContent      string          `json:"tiptapContent"`
+	TiptapContentJSON  json.RawMessage `json:"tiptapContentJson,omitempty"`
+	MilkContent        *string         `json:"milkContent,omitempty"`
+	Category           string          `json:"category"`
+	Tags               string          `json:"tags"`
+	IsPublished        bool            `json:"isPublished"`
+	CreatedAt          time.Time       `json:"createdAt"`
+	UpdatedAt          time.Time       `json:"updatedAt"`
 }
 
 type CreateBlogParams struct {
-	Title       string          `json:"title"`
-	Content     string          `json:"content"`
-	ContentJSON json.RawMessage `json:"contentJson,omitempty"`
-	Category    string          `json:"category"`
-	Tags        string          `json:"tags"`
-	IsPublished bool            `json:"isPublished"`
+	Title             string          `json:"title"`
+	EditorType        string          `json:"editorType"`
+	TiptapContent     *string         `json:"tiptapContent,omitempty"`
+	TiptapContentJSON json.RawMessage `json:"tiptapContentJson,omitempty"`
+	MilkContent       *string         `json:"milkContent,omitempty"`
+	Category          string          `json:"category"`
+	Tags              string          `json:"tags"`
+	IsPublished       bool            `json:"isPublished"`
 }
 
 type UpdateBlogParams struct {
-	Title       *string         `json:"title,omitempty"`
-	Content     *string         `json:"content,omitempty"`
-	ContentJSON json.RawMessage `json:"contentJson,omitempty"`
-	Category    *string         `json:"category,omitempty"`
-	Tags        *string         `json:"tags,omitempty"`
-	IsPublished *bool           `json:"isPublished,omitempty"`
+	Title             *string         `json:"title,omitempty"`
+	EditorType        *string         `json:"editorType,omitempty"`
+	TiptapContent     *string         `json:"tiptapContent,omitempty"`
+	TiptapContentJSON json.RawMessage `json:"tiptapContentJson,omitempty"`
+	MilkContent       *string         `json:"milkContent,omitempty"`
+	Category          *string         `json:"category,omitempty"`
+	Tags              *string         `json:"tags,omitempty"`
+	IsPublished       *bool           `json:"isPublished,omitempty"`
 }
 
 func (s *BlogService) checkReady() error {

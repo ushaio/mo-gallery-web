@@ -2,10 +2,12 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,15 +33,17 @@ type LinuxDoAuthUrlDTO struct {
 type AuthService struct {
 	cfg        *config.Config
 	httpClient *http.Client
-	proxy      *ProxyClient
+	// loginClient 用于登录请求：Web 端 dev 模式首次访问 API 路由需要
+	// 现场编译，可能超过 10s，放宽超时避免开发联调时误报连接失败。
+	loginClient *http.Client
+	proxy       *ProxyClient
 }
 
 func NewAuthService(cfg *config.Config) *AuthService {
 	return &AuthService{
-		cfg: cfg,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		cfg:         cfg,
+		httpClient:  &http.Client{Timeout: 10 * time.Second},
+		loginClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -161,8 +165,12 @@ func (s *AuthService) Login(serverURL, username, password string, rememberLogin 
 	req.Header.Set("Content-Type", "application/json")
 
 	// 发送请求
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.loginClient.Do(req)
 	if err != nil {
+		var netErr net.Error
+		if (errors.As(err, &netErr) && netErr.Timeout()) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("连接服务器 %s 超时：请确认站点服务已启动且响应正常后重试", serverURL)
+		}
 		return nil, fmt.Errorf("无法连接到服务器 %s: %w", serverURL, err)
 	}
 	defer resp.Body.Close()

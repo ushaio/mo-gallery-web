@@ -234,6 +234,10 @@ export function DeleteZineProject(arg1) {
   return window['go']['main']['App']['DeleteZineProject'](arg1);
 }
 
+export function DisconnectSite() {
+  return window['go']['main']['App']['DisconnectSite']();
+}
+
 export function DiscoverAgentMCPServerTools(arg1) {
   return window['go']['main']['App']['DiscoverAgentMCPServerTools'](arg1);
 }
@@ -454,6 +458,10 @@ export function GetModelCatalog() {
   return window['go']['main']['App']['GetModelCatalog']();
 }
 
+export function GetOfficialAuthState() {
+  return window['go']['main']['App']['GetOfficialAuthState']();
+}
+
 export function GetOverview() {
   return window['go']['main']['App']['GetOverview']();
 }
@@ -492,10 +500,6 @@ export function GetStoryAiModels() {
 
 export function GetStoryAiProviderModels(arg1) {
   return window['go']['main']['App']['GetStoryAiProviderModels'](arg1);
-}
-
-export function GetWindowAppearance() {
-  return window['go']['main']['App']['GetWindowAppearance']();
 }
 
 export function GetZineAssetBlob(arg1) {
@@ -618,6 +622,10 @@ export function LookupModelSpecs(arg1) {
   return window['go']['main']['App']['LookupModelSpecs'](arg1);
 }
 
+export function MarkLocalDraftSynced(arg1, arg2) {
+  return window['go']['main']['App']['MarkLocalDraftSynced'](arg1, arg2);
+}
+
 export function MoveDesktopPluginPhotos(arg1) {
   return window['go']['main']['App']['MoveDesktopPluginPhotos'](arg1);
 }
@@ -628,6 +636,18 @@ export function MoveLocalAssets(arg1, arg2) {
 
 export function MoveLocalLibraryFolder(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveLocalLibraryFolder'](arg1, arg2, arg3);
+}
+
+export function OfficialLogin(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['OfficialLogin'](arg1, arg2, arg3, arg4);
+}
+
+export function OfficialLogout() {
+  return window['go']['main']['App']['OfficialLogout']();
+}
+
+export function OfficialRegister(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OfficialRegister'](arg1, arg2, arg3);
 }
 
 export function OpenDesktopStoragePluginLocation(arg1) {
@@ -726,6 +746,10 @@ export function RefreshModelCatalog() {
   return window['go']['main']['App']['RefreshModelCatalog']();
 }
 
+export function RekeyLocalDraft(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RekeyLocalDraft'](arg1, arg2, arg3);
+}
+
 export function RemoveAgentMCPServer(arg1) {
   return window['go']['main']['App']['RemoveAgentMCPServer'](arg1);
 }
@@ -768,10 +792,6 @@ export function ReorderFriends(arg1) {
 
 export function ReorderStoryPhotos(arg1, arg2) {
   return window['go']['main']['App']['ReorderStoryPhotos'](arg1, arg2);
-}
-
-export function RestartApplication() {
-  return window['go']['main']['App']['RestartApplication']();
 }
 
 export function RestoreLocalAsset(arg1) {
@@ -1036,10 +1056,6 @@ export function UpdateSettings(arg1) {
 
 export function UpdateStory(arg1, arg2) {
   return window['go']['main']['App']['UpdateStory'](arg1, arg2);
-}
-
-export function UpdateWindowStyle(arg1) {
-  return window['go']['main']['App']['UpdateWindowStyle'](arg1);
 }
 
 export function UpgradeLocalLibrary(arg1) {

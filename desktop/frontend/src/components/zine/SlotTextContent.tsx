@@ -12,10 +12,12 @@ interface SlotTextContentProps {
 
 export function SlotTextContent({ content, style, placeholder, editing, onChange, onEditEnd }: SlotTextContentProps) {
   const ref = useRef<HTMLDivElement | null>(null)
+  const cancelRef = useRef(false)
 
   // 进入编辑态时聚焦并把光标移到末尾
   useEffect(() => {
     if (!editing) return
+    cancelRef.current = false
     const element = ref.current
     if (!element) return
 
@@ -31,7 +33,14 @@ export function SlotTextContent({ content, style, placeholder, editing, onChange
   }, [editing])
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.nativeEvent.isComposing) return
     if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      cancelRef.current = true
+      event.currentTarget.textContent = content
+      event.currentTarget.blur()
+    } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault()
       event.currentTarget.blur()
     }
@@ -43,12 +52,12 @@ export function SlotTextContent({ content, style, placeholder, editing, onChange
       // 非编辑态关闭指针事件，让单击选中/拖动作用于整个槽位；双击进入编辑
       className={`zine-text-slot h-full w-full outline-none ${editing ? 'cursor-text' : 'pointer-events-none'}`}
       style={{ ...style, minWidth: 0, whiteSpace: 'pre-wrap' }}
-      contentEditable={editing}
+      contentEditable={editing ? 'plaintext-only' : false}
       suppressContentEditableWarning
       data-placeholder={placeholder}
       onKeyDown={handleKeyDown}
       onBlur={(event) => {
-        onChange?.(event.currentTarget.textContent ?? '')
+        if (!cancelRef.current) onChange?.(event.currentTarget.innerText.replace(/\r/g, ''))
         onEditEnd?.()
       }}
     >

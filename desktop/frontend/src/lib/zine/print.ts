@@ -6,8 +6,9 @@ export const DEFAULT_BLEED_MM = 3
 export const CROP_MARK_AREA_MM = 5
 /** 安全边距：文字等关键内容与成品边缘的建议最小距离 */
 export const SAFE_MARGIN_MM = 5
-/** 低于该有效 DPI 的图片在打印时明显发糊 */
-export const MIN_PRINT_DPI = 150
+/** Photographic print target in source pixels per physical inch (PPI). */
+export const MIN_PRINT_DPI = 300
+export const CRITICAL_PRINT_DPI = 150
 
 /** 页码基线距成品底边的距离与字号 */
 export const PAGE_NUMBER_BOTTOM_MM = 9
@@ -100,9 +101,10 @@ export function getSpreadPageNumbers(project: Pick<ZineProject, 'spreads'>, spre
  * 因此每毫米的源像素随铺满比例与缩放同步下降。
  */
 export function calculateEffectiveDpi(assetWidthPx: number, assetHeightPx: number, slotWmm: number, slotHmm: number, imageScale = 1): number {
-  if (assetWidthPx <= 0 || assetHeightPx <= 0 || slotWmm <= 0 || slotHmm <= 0) return 0
+  if (![assetWidthPx, assetHeightPx, slotWmm, slotHmm, imageScale].every(Number.isFinite)
+    || assetWidthPx <= 0 || assetHeightPx <= 0 || slotWmm <= 0 || slotHmm <= 0 || imageScale <= 0) return 0
   const mmPerSourcePx = Math.max(slotWmm / assetWidthPx, slotHmm / assetHeightPx)
-  const scale = imageScale > 0 ? imageScale : 1
+  const scale = Math.max(0.01, imageScale)
   return 25.4 / (mmPerSourcePx * scale)
 }
 
@@ -111,6 +113,7 @@ export interface LowResSlotWarning {
   slotId: string
   assetFileName: string
   effectiveDpi: number
+  critical: boolean
 }
 
 /** 汇总项目中所有低于 MIN_PRINT_DPI 的图片槽位（跳过空槽与像素信息缺失的素材） */
@@ -125,7 +128,7 @@ export function collectLowResSlots(project: Pick<ZineProject, 'spreads' | 'asset
 
       const effectiveDpi = calculateEffectiveDpi(asset.width, asset.height, slot.w, slot.h, slot.imageTransform.scale)
       if (effectiveDpi > 0 && effectiveDpi < MIN_PRINT_DPI) {
-        warnings.push({ spreadIndex, slotId: slot.id, assetFileName: asset.fileName, effectiveDpi: Math.round(effectiveDpi) })
+        warnings.push({ spreadIndex, slotId: slot.id, assetFileName: asset.fileName, effectiveDpi: Math.floor(effectiveDpi), critical: effectiveDpi < CRITICAL_PRINT_DPI })
       }
     }
   })

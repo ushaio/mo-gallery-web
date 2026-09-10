@@ -19,6 +19,7 @@ import type { JSONContent } from '@tiptap/core'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import {
   Bold,
+  FileText,
   Italic,
   Underline as UnderlineIcon,
   Strikethrough,
@@ -124,6 +125,12 @@ export interface NarrativeTipTapEditorProps {
   documentKind?: 'story' | 'blog'
   /** 文档内容版本号：变化时原地重置编辑器内容（见 useNarrativeEditor） */
   contentVersion?: string | number
+  /** 底部状态栏：传入即渲染。字符数由编辑器 CharacterCount 扩展统计，
+   *  素材数等宿主数据经 materialCount 传入，trailing 渲染在右侧（如草稿保存指示） */
+  statusBar?: {
+    materialCount?: number
+    trailing?: React.ReactNode
+  }
   onAiTaskLockChange?: (locked: boolean) => void
   aiOptions?: {
     enabled: boolean
@@ -153,6 +160,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
     documentId,
     documentKind,
     contentVersion,
+    statusBar,
     onAiTaskLockChange,
     aiOptions,
   }, ref) => {
@@ -283,6 +291,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             fontFamily: '',
             color: '',
             backgroundColor: '',
+            characterCount: 0,
           }
         }
 
@@ -329,6 +338,10 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             [...BASIC_BACKGROUND_COLOR_OPTIONS, ...MORE_BACKGROUND_COLOR_OPTIONS],
             true
           ),
+          characterCount: (
+            (currentEditor.storage.characterCount as { characters?: () => number } | undefined)
+              ?.characters?.() ?? 0
+          ),
         }
       },
     })
@@ -356,6 +369,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
       fontFamily: '',
       color: '',
       backgroundColor: '',
+      characterCount: 0,
     }
 
     const focusEditor = useCallback(() => {
@@ -1208,7 +1222,7 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
 
     return (
       <div
-        className={`tiptap-editor relative z-0 isolate h-full flex flex-col border-x border-border/60 bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}
+        className={`tiptap-editor relative z-0 isolate h-full flex flex-col bg-background ${resolvedTheme === 'dark' ? 'tiptap-dark' : 'tiptap-light'} ${className || ''}`}
         aria-busy={isAiTaskLocked}
         aria-readonly={isAiTaskLocked}
         data-document-id={documentId}
@@ -1544,6 +1558,28 @@ export const NarrativeTipTapEditor = forwardRef<NarrativeTipTapEditorHandle, Nar
             {editorCanvas}
           </div>
         )}
+
+        {/* 底部状态栏：字符数（CharacterCount 扩展）+ 宿主素材数 */}
+        {statusBar ? (
+          <div
+            data-automation-status-bar
+            className="flex h-8 shrink-0 items-center justify-between border-t border-border px-3"
+          >
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                <FileText className="h-3.5 w-3.5" />
+                {resolvedEditorUiState.characterCount} {t('editor.characters')}
+              </span>
+              {typeof statusBar.materialCount === 'number' ? (
+                <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {statusBar.materialCount} {t('editor.materials')}
+                </span>
+              ) : null}
+            </div>
+            {statusBar.trailing ?? null}
+          </div>
+        ) : null}
 
         {/* 替换选区前的 diff 确认 */}
         <AiDiffPreviewDialog

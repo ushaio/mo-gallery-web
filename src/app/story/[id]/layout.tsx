@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { stripStoryContentToPlainText } from '@/lib/story-rich-content'
+import { getArticlePlainText } from '@/lib/article-content'
 import { queryStory } from '~/server/lib/queries'
 
 interface StoryDetailLayoutProps {
@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: StoryDetailLayoutProps): Prom
     }
   }
 
-  const description = stripStoryContentToPlainText(story.content).slice(0, 160).trim()
+  const description = getArticlePlainText(story).slice(0, 160).trim()
     || 'An original photo story and visual narrative.'
 
   return {

@@ -1,6 +1,7 @@
 'use client'
 
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
+import { hasEditorContent } from '@mo-gallery/api-client'
 import { STORY_PHOTO_ORDER_KEY } from './constants'
 
 export function createEmptyStory(): StoryDto {
@@ -8,8 +9,11 @@ export function createEmptyStory(): StoryDto {
   return {
     id: crypto.randomUUID(),
     title: '',
-    content: '',
-    contentJson: null,
+    editorType: 'milkdown',
+    contentEditorTypes: ['milkdown'],
+    tiptapContent: '',
+    tiptapContentJson: null,
+    milkContent: '',
     isPublished: false,
     storyDate: now,
     createdAt: now,
@@ -17,6 +21,10 @@ export function createEmptyStory(): StoryDto {
     photos: [],
     coverCrop: null,
   }
+}
+
+export function isMilkdownStoryReady(story: StoryDto | null): boolean {
+  return story?.editorType === 'milkdown' && hasEditorContent(story, 'milkdown')
 }
 
 export function getSavedPhotoOrder(): Record<string, string[]> {

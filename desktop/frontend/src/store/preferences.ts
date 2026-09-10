@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { DEFAULT_ACCENT, type AccentId } from '@/lib/accents'
 import { DEFAULT_ZINE_VIEW_OPTIONS, type ZineViewOptionKey, type ZineViewOptions } from '@/lib/zine/view-options'
 import type { ZineAiMode } from '@/lib/zine/zine-ai-permission'
 
@@ -12,6 +13,7 @@ interface AdminPreferences {
   photoViewMode: PhotoViewMode
   language: 'zh' | 'en'
   theme: 'light' | 'dark' | 'system'
+  accent: AccentId
   sidebarCollapsed: boolean
   zineStripWidth: number
   zineViewOptions: ZineViewOptions
@@ -22,6 +24,7 @@ interface AdminPreferences {
   setPhotoViewMode: (mode: PhotoViewMode) => void
   setLanguage: (lang: 'zh' | 'en') => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
+  setAccent: (accent: AccentId) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setZineStripWidth: (n: number) => void
   setZineViewOption: (key: ZineViewOptionKey, enabled: boolean) => void
@@ -37,6 +40,7 @@ export const usePreferences = create<AdminPreferences>()(
       photoViewMode: 'fit',
       language: 'zh',
       theme: 'system',
+      accent: DEFAULT_ACCENT,
       sidebarCollapsed: false,
       zineStripWidth: 176,
       zineViewOptions: DEFAULT_ZINE_VIEW_OPTIONS,
@@ -47,6 +51,7 @@ export const usePreferences = create<AdminPreferences>()(
       setPhotoViewMode: (mode) => set({ photoViewMode: mode }),
       setLanguage: (lang) => set({ language: lang }),
       setTheme: (theme) => set({ theme }),
+      setAccent: (accent) => set({ accent }),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setZineStripWidth: (n) => set({ zineStripWidth: n }),
       setZineViewOption: (key, enabled) => set((state) => ({

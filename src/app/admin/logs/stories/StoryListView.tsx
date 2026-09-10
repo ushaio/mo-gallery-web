@@ -22,7 +22,7 @@ import { AdminButton } from '@/components/admin/AdminButton'
 import { Skeleton } from '@/components/admin/Skeleton'
 import type { StoryDto } from '@/lib/api/types'
 import { resolveAssetUrl } from '@/lib/api/core'
-import { countStoryCharacters } from '@/lib/story-rich-content'
+import { getArticlePlainText } from '@/lib/article-content'
 
 interface StoryListViewProps {
   stories: StoryDto[]
@@ -184,7 +184,7 @@ export function StoryListView({
                     <div className={`flex flex-wrap items-center gap-y-1 text-[10px] uppercase tracking-wide text-muted-foreground ${compact ? 'gap-x-3' : 'gap-x-6 text-xs'}`}>
                       <span className="flex items-center gap-1.5" title="Created At"><Calendar className="h-3 w-3" />{new Date(story.createdAt).toLocaleDateString()}</span>
                       <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title="Updated At"><History className="h-3 w-3" />{new Date(story.updatedAt).toLocaleString()}</span>
-                      <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title={t('admin.characters')}><FileText className="h-3 w-3" />{countStoryCharacters(story.content)} {t('admin.characters')}</span>
+                      <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title={t('admin.characters')}><FileText className="h-3 w-3" />{getArticlePlainText(story).length} {t('admin.characters')}</span>
                       {story.photos && story.photos.length > 0 ? <span className="flex items-center gap-1.5" title={t('story.material_library')}><ImageIcon className="h-3 w-3" />{story.photos.length}</span> : null}
                     </div>
                   </div>

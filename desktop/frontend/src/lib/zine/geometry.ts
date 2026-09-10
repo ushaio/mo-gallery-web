@@ -54,3 +54,11 @@ export function toSlotGeometry(slot: Slot): SlotGeometry {
 export function geometryEqual(left: SlotGeometry, right: SlotGeometry) {
   return left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h && left.rotation === right.rotation
 }
+
+/** Convert a viewport movement to the axes of a rotated frame. */
+export function toFrameDelta(deltaX: number, deltaY: number, rotation: number): readonly [number, number] {
+  const angle = rotation * Math.PI / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return [deltaX * cos + deltaY * sin, -deltaX * sin + deltaY * cos]
+}

@@ -41,8 +41,13 @@ func NewManager(configDir string) (*Manager, error) {
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return nil, fmt.Errorf("创建 Agent 扩展目录失败: %w", err)
 	}
+	// 扩展清单等 JSON 设置统一存放在 config 子目录，扩展本体仍在 installRoot。
+	settingsDir := filepath.Join(configDir, "config")
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		return nil, fmt.Errorf("创建 Agent 扩展配置目录失败: %w", err)
+	}
 	manager := &Manager{
-		path:        filepath.Join(configDir, "agent-extensions.json"),
+		path:        filepath.Join(settingsDir, "agent-extensions.json"),
 		installRoot: root,
 		credentials: NewCredentialStore(),
 		runtimes:    map[string]*mcpRuntime{},

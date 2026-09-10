@@ -8,6 +8,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./media-embed": "./src/lib/media-embed.ts",
     "./styles.css": "./src/tiptap-editor.css"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "@tiptap/extension-table-row": "3.30.6",
     "@tiptap/extension-text-align": "3.30.6",
     "@tiptap/extension-underline": "3.30.6",
+    "@tiptap/extensions": "3.30.6",
     "@tiptap/markdown": "3.30.6",
     "@tiptap/pm": "3.30.6",
     "@tiptap/react": "3.30.6",

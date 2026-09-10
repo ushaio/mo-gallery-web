@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emulsion · 工作台</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3eee5; --card:#fffdf8; --card2:#f8f3ea; --ink:#1c1917; --muted:#7c736a;
+  --line:#e6dfd2; --accent:#d9832a; --accent-ink:#fff; --accent-soft:rgba(217,131,42,.13);
+  --ok:#3f8f5a; --shadow:0 1px 2px rgba(60,40,20,.05),0 12px 32px -16px rgba(60,40,20,.18);
+  --r-lg:18px; --r-md:12px; --r-sm:8px; --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+[data-theme="dark"]{
+  --bg:#14100e; --card:#1d1815; --card2:#231d19; --ink:#efe6d8; --muted:#948878;
+  --line:#2d2621; --accent:#f0a03c; --accent-ink:#1a1208; --accent-soft:rgba(240,160,60,.14);
+  --ok:#6cc08a; --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px -16px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:Inter,"PingFang SC","Noto Sans SC",system-ui,sans-serif;
+  background:var(--bg); color:var(--ink); font-size:14px; line-height:1.5;
+  transition:background .3s,color .3s; padding-bottom:120px;
+}
+body::before{ /* 颗粒 */
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.045; mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+}
+[data-theme="dark"] body::before{mix-blend-mode:screen;opacity:.06}
+.serif{font-family:"Noto Serif SC","Songti SC",serif}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--muted);background:var(--card)}
+
+/* 顶栏 */
+.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0 8px}
+.brand{font-size:12px;letter-spacing:.32em;color:var(--muted);font-weight:600}
+.brand b{color:var(--ink)}
+.top-r{display:flex;align-items:center;gap:14px;color:var(--muted);font-size:12px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;box-shadow:0 0 0 3px rgba(63,143,90,.18)}
+.icon-btn{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--card);transition:.2s}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* Hero */
+.hero{padding:26px 0 10px}
+.hero h1{font-size:40px;font-weight:600;letter-spacing:.01em;line-height:1.15}
+.hero h1 span{color:var(--accent)}
+.hero .sub{color:var(--muted);margin-top:8px;font-size:13.5px}
+.hero .sub em{font-style:normal;color:var(--ink);border-bottom:1px dashed var(--line);cursor:pointer}
+.hero .sub em:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 万能输入框 */
+.omni{margin-top:22px;position:relative}
+.omni-box{
+  position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow);transition:.25s;overflow:hidden;
+}
+.omni-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)}
+.omni-box.dragover{border-color:var(--accent);border-style:dashed;background:var(--accent-soft)}
+.omni-row{display:flex;align-items:center;gap:12px;padding:16px 18px}
+.omni-row .spark{color:var(--accent);font-size:18px;flex:none}
+.omni-field{position:relative;flex:1;height:26px}
+.omni-field input,.omni-field .ghost{
+  position:absolute;inset:0;font:inherit;font-size:17px;background:transparent;border:0;outline:0;color:var(--ink);padding:0;
+}
+.omni-field .ghost{color:var(--muted);opacity:.55;pointer-events:none;white-space:pre}
+.omni-field input::placeholder{color:var(--muted);opacity:.7}
+.omni-hint{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12px;flex:none}
+.chips{display:flex;gap:8px;padding:0 18px 14px;flex-wrap:wrap}
+.chip{font-size:12.5px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card2);color:var(--muted);transition:.15s}
+.chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.chip.cmd{font-family:var(--mono)}
+
+/* 命令菜单 */
+.cmd-menu{border-top:1px solid var(--line);padding:8px;display:none}
+.cmd-menu.show{display:block}
+.cmd-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:var(--r-sm);cursor:pointer}
+.cmd-item:hover,.cmd-item.active{background:var(--accent-soft)}
+.cmd-item code{font-family:var(--mono);font-size:12px;color:var(--accent);min-width:70px}
+.cmd-item span{color:var(--muted);font-size:12.5px}
+
+/* 回应区 */
+.response{border-top:1px solid var(--line);padding:18px;display:none;animation:fade .25s}
+.response.show{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.resp-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:12px;color:var(--muted)}
+.resp-head b{color:var(--ink);font-weight:500;font-size:13px}
+.steps{display:flex;flex-direction:column;gap:6px}
+.step{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--r-sm);background:var(--card2);animation:fade .3s;font-size:13.5px}
+.step .st{width:18px;height:18px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:11px;margin-top:2px}
+.step.pending .st{border:1.5px solid var(--line)}
+.step.running .st{border:1.5px solid var(--accent);border-top-color:transparent;animation:spin .8s linear infinite}
+.step.done .st{background:var(--ok);color:#fff}
+.step.done{color:var(--muted)}
+.step.done .res{color:var(--ink)}
+.step .res{font-weight:500;margin-left:6px}
+.step .opts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.step .opts .title{font-family:"Noto Serif SC",serif;font-size:16px;color:var(--ink);padding:4px 10px;background:var(--card);border:1px dashed var(--accent);border-radius:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn{padding:7px 13px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.accent{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.result-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0}
+.result-grid .ph{height:90px}
+.intent{display:flex;flex-direction:column;gap:10px}
+.intent .q{font-size:15px}
+.intent .acts{display:flex;gap:8px;flex-wrap:wrap}
+.intent .acts .btn{padding:10px 14px}
+.stream-text{font-family:"Noto Serif SC",serif;font-size:15px;line-height:1.9;white-space:pre-wrap;padding:10px 4px}
+.caret::after{content:"▍";color:var(--accent);animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* 区块通用 */
+.sec{margin-top:34px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.sec-h h2{font-size:12px;letter-spacing:.2em;font-weight:600;color:var(--muted)}
+.sec-h .more{font-size:12px;color:var(--muted)}
+.sec-h .more:hover{color:var(--accent)}
+.two{display:grid;grid-template-columns:1.6fr 1fr;gap:20px;margin-top:34px}
+
+/* 提案 */
+.props{display:flex;flex-direction:column;gap:10px}
+.prop{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;
+  box-shadow:var(--shadow);position:relative;transition:.3s;perspective:1000px;
+}
+.prop .head{display:flex;gap:10px;align-items:flex-start}
+.prop .ic{width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.prop .txt{flex:1}
+.prop .txt p{font-size:14.5px;font-weight:500}
+.prop .ev{font-size:12px;color:var(--muted);margin-top:3px}
+.prop .ev b{font-weight:500;color:var(--ink)}
+.prop .thumbs{display:flex;gap:4px;margin-top:10px}
+.prop .thumbs .ph{width:52px;height:40px;border-radius:5px}
+.prop .acts{display:flex;gap:6px;margin-top:12px;justify-content:flex-end}
+.prop .form{display:none;margin-top:12px;gap:8px;flex-direction:column}
+.prop.edit .form{display:flex}
+.prop.edit .acts{display:none}
+.prop input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card2);color:var(--ink);outline:0}
+.prop input[type=text]:focus{border-color:var(--accent)}
+.prop .why{display:none;gap:6px;margin-top:10px;align-items:center;font-size:12px;color:var(--muted)}
+.prop.why .why{display:flex}.prop.why .acts{display:none}
+.prop.done{background:var(--card2);border-style:dashed}
+.prop.done .body{display:none}
+.prop .donemsg{display:none;align-items:center;justify-content:space-between;color:var(--muted);font-size:13px}
+.prop.done .donemsg{display:flex}
+.prop.gone{opacity:0;transform:translateX(20px);max-height:0;padding:0;margin:0;border:0;overflow:hidden}
+.quiet{font-size:12px;color:var(--muted)}
+.quiet:hover{color:var(--accent)}
+
+/* 继续上次 */
+.cont{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);overflow:hidden}
+.cont a{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit;transition:.15s;cursor:pointer}
+.cont a:last-child{border:0}
+.cont a:hover{background:var(--accent-soft)}
+.cont .t{flex:1;font-size:13.5px}
+.cont .t small{display:block;color:var(--muted);font-size:12px}
+.cont .bar{width:60px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.cont .bar i{display:block;height:100%;background:var(--accent)}
+.cont .go{color:var(--muted);opacity:0;transition:.15s}
+.cont a:hover .go{opacity:1;color:var(--accent)}
+
+/* 照片流 */
+.photos-wrap{position:relative}
+.toolbar{
+  position:sticky;top:12px;z-index:20;display:flex;align-items:center;gap:6px;
+  background:var(--ink);color:var(--bg);padding:8px 8px 8px 14px;border-radius:12px;
+  box-shadow:0 10px 30px -8px rgba(0,0,0,.4);margin-bottom:12px;
+  transform:translateY(-8px);opacity:0;pointer-events:none;transition:.25s;
+}
+.toolbar.show{transform:none;opacity:1;pointer-events:auto}
+.toolbar .cnt{font-weight:600;margin-right:6px}
+.toolbar .btn{border-color:transparent;background:rgba(255,255,255,.08);color:inherit}
+.toolbar .btn:hover{background:var(--accent);color:var(--accent-ink)}
+.toolbar .x{margin-left:auto;opacity:.6}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:150px;gap:10px;grid-auto-flow:dense}
+.ph{
+  position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(135deg,var(--c1,#8c7355),var(--c2,#3d2e22));
+  cursor:pointer;transition:.2s;user-select:none;
+}
+.ph img{width:100%;height:100%;object-fit:cover;display:block;transition:.4s}
+.ph:hover img{transform:scale(1.03)}
+.ph.big{grid-column:span 2;grid-row:span 2}
+.ph.film::before,.ph.film::after{
+  content:"";position:absolute;left:0;right:0;height:9px;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(90deg,transparent 0 6px,rgba(0,0,0,.55) 6px 12px);
+  background-color:rgba(20,12,6,.75);
+}
+.ph.film::before{top:0}.ph.film::after{bottom:0}
+.ph .cap{
+  position:absolute;left:0;right:0;bottom:0;padding:26px 10px 10px;z-index:3;font-size:12px;color:#fff;
+  background:linear-gradient(transparent,rgba(0,0,0,.72));opacity:0;transition:.2s;transform:translateY(4px);
+}
+.ph:hover .cap{opacity:1;transform:none}
+.ph .cap .ai{font-family:"Noto Serif SC",serif;font-size:13px;display:block}
+.ph .cap .ex{font-family:var(--mono);font-size:10.5px;opacity:.75;display:block;margin-top:2px}
+.ph .chk{position:absolute;top:10px;left:10px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.9);z-index:4;background:rgba(0,0,0,.25);display:grid;place-items:center;font-size:11px;color:#fff;opacity:0;transition:.15s}
+.ph.film .chk{top:16px}
+.ph:hover .chk,.ph.sel .chk{opacity:1}
+.ph.sel .chk{background:var(--accent);border-color:var(--accent)}
+.ph.sel{box-shadow:0 0 0 3px var(--accent),0 0 0 6px var(--accent-soft)}
+.ph .ask{position:absolute;top:10px;right:10px;z-index:4;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.92);color:#1c1917;display:grid;place-items:center;font-size:13px;opacity:0;transition:.15s}
+.ph.film .ask{top:16px}
+.ph:hover .ask{opacity:1}
+.ph .ask:hover{background:var(--accent);color:#fff}
+.ph.drag{opacity:.4}
+/* 提问气泡 */
+.bubble{
+  position:absolute;z-index:30;width:300px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+  padding:12px;animation:fade .2s;
+}
+.bubble .bq{display:flex;gap:6px}
+.bubble input{flex:1;font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card2);color:var(--ink);outline:0}
+.bubble input:focus{border-color:var(--accent)}
+.bubble .qs{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.bubble .ans{margin-top:10px;font-size:13px;line-height:1.7;display:none;padding-top:10px;border-top:1px dashed var(--line)}
+.bubble .ans.show{display:block}
+
+/* 年度轴 */
+.year{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--shadow);display:flex;gap:18px;align-items:flex-end}
+.year .meta{flex:none;width:150px}
+.year .meta b{font-size:28px;font-weight:600;display:block;line-height:1}
+.year .meta small{color:var(--muted);font-size:12px}
+.bars{flex:1;display:flex;align-items:flex-end;gap:6px;height:70px;position:relative}
+.bar{flex:1;background:var(--line);border-radius:3px 3px 0 0;position:relative;transition:.2s;cursor:pointer;min-height:3px}
+.bar:hover,.bar.cur{background:var(--accent)}
+.bar i{position:absolute;top:100%;left:0;right:0;text-align:center;font-size:10px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+.tip{position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%);width:230px;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px;font-size:12px;z-index:10;pointer-events:none;opacity:0;transition:.15s;box-shadow:0 10px 30px -8px rgba(0,0,0,.4)}
+.bar:hover .tip{opacity:1}
+.tip .row{display:flex;gap:4px;margin-top:6px}
+.tip .row span{flex:1;height:36px;border-radius:4px;background:linear-gradient(135deg,var(--c1),var(--c2))}
+.tip::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;border:5px solid transparent;border-top-color:var(--ink)}
+
+/* 草稿篮 */
+.dock{position:fixed;right:28px;bottom:28px;z-index:50}
+.basket{
+  display:flex;align-items:center;gap:8px;background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:999px;
+  box-shadow:0 14px 40px -10px rgba(0,0,0,.45);transition:.2s;
+}
+.basket:hover,.basket.over{background:var(--accent);color:var(--accent-ink);transform:translateY(-2px)}
+.basket .n{background:var(--accent);color:var(--accent-ink);border-radius:999px;min-width:20px;height:20px;display:grid;place-items:center;font-size:11px;font-weight:600;padding:0 6px}
+.basket:hover .n{background:var(--ink);color:var(--bg)}
+.basket.bump{animation:bump .35s}
+@keyframes bump{30%{transform:scale(1.12)}}
+.panel{
+  position:absolute;right:0;bottom:56px;width:320px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+  padding:14px;display:none;animation:fade .2s;
+}
+.panel.show{display:block}
+.panel h4{font-size:13px;margin-bottom:10px;display:flex;justify-content:space-between}
+.panel h4 small{color:var(--muted);font-weight:400}
+.panel .items{display:flex;flex-wrap:wrap;gap:6px;min-height:40px}
+.panel .items .ph{width:64px;height:48px;border-radius:6px}
+.panel .items .note{font-size:12px;padding:6px 8px;border-radius:6px;background:var(--card2);border-left:2px solid var(--accent);width:100%;color:var(--muted)}
+.panel .empty{color:var(--muted);font-size:12.5px;padding:8px 0}
+.panel .acts{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+
+/* 上传流 */
+.uplog{border-top:1px solid var(--line);padding:14px 18px;display:none;font-family:var(--mono);font-size:12px}
+.uplog.show{display:block}
+.ul{display:flex;gap:8px;align-items:center;padding:6px 0;flex-wrap:wrap;animation:fade .3s}
+.ul .f{color:var(--ink);min-width:130px}
+.ul .tag{padding:2px 7px;border-radius:5px;background:var(--card2);color:var(--muted)}
+.ul .tag.ok{color:var(--ok)}
+.ul .tag.q{color:var(--accent);background:var(--accent-soft)}
+.ul .tag.warn{color:#c0552a;background:rgba(192,85,42,.1)}
+.ul .btn.sm{font-family:Inter,sans-serif}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 14px 10px 16px;border-radius:10px;font-size:13px;display:flex;gap:12px;align-items:center;opacity:0;transition:.25s;z-index:60;box-shadow:0 14px 40px -10px rgba(0,0,0,.5)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast button{color:var(--accent);font-weight:600}
+.drop-veil{position:fixed;inset:0;z-index:40;background:var(--accent-soft);backdrop-filter:blur(3px);display:none;place-items:center;font-size:22px;font-family:"Noto Serif SC",serif;border:3px dashed var(--accent);margin:12px;border-radius:20px}
+.drop-veil.show{display:grid}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand"><b>EMULSION</b> · 工作台</div>
+    <div class="top-r">
+      <span><i class="dot"></i>已同步 · 10:21</span>
+      <button class="icon-btn" id="themeBtn" title="切换暗房模式">☾</button>
+    </div>
+  </div>
+
+  <section class="hero">
+    <h1 class="serif">早上好，<span>shai</span></h1>
+    <p class="sub">9月5日 周六 · 成都 多云 · 日落 <em title="黄金时刻 18:05 – 18:42">18:42</em> · 本周你拍了 <em id="weekFilm">12 张胶片</em>，还有 <em id="draftCnt">5 篇草稿</em> 等着你</p>
+
+    <div class="omni" id="omni">
+      <div class="omni-box" id="omniBox">
+        <div class="omni-row">
+          <span class="spark">✦</span>
+          <div class="omni-field">
+            <div class="ghost" id="ghost"></div>
+            <input id="omniInput" placeholder="想做什么？说一句、输 / 命令，或直接把照片拖进来" autocomplete="off">
+          </div>
+          <div class="omni-hint"><kbd>⌘</kbd><kbd>K</kbd></div>
+        </div>
+        <div class="chips">
+          <button class="chip" data-fill="把昨天那卷 Portra 整理成相册">把昨天那卷 Portra 整理成相册</button>
+          <button class="chip" data-fill="找出所有在雨天拍的胶片">找出所有在雨天拍的胶片</button>
+          <button class="chip" data-fill="回顾 2026 年 9 月">回顾 2026 年 9 月</button>
+          <button class="chip cmd" data-fill="/zine 夏日">/zine</button>
+          <button class="chip cmd" data-fill="/draft">/draft</button>
+          <button class="chip" id="simUpload">⇧ 模拟拖入 3 张照片</button>
+        </div>
+        <div class="cmd-menu" id="cmdMenu">
+          <div class="cmd-item" data-fill="/zine "><code>/zine</code><span>新建 Zine 并把选中照片排进去</span></div>
+          <div class="cmd-item" data-fill="/draft"><code>/draft</code><span>打开最近的草稿继续写</span></div>
+          <div class="cmd-item" data-fill="/album "><code>/album</code><span>用选中或描述的照片建相册</span></div>
+          <div class="cmd-item" data-fill="/find "><code>/find</code><span>语义搜索照片</span></div>
+          <div class="cmd-item" data-fill="/caption"><code>/caption</code><span>为选中照片批量生成图注</span></div>
+        </div>
+        <div class="response" id="response">
+          <div class="resp-head"><b id="respTitle"></b><span>Esc 收起 · 每一步都可以插手</span></div>
+          <div id="respBody"></div>
+        </div>
+        <div class="uplog" id="uplog"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="two">
+    <section>
+      <div class="sec-h"><h2>今日提案</h2><button class="quiet" id="quietBtn">今天不想看建议</button></div>
+      <div class="props" id="props">
+
+        <div class="prop" data-type="cluster">
+          <div class="body">
+            <div class="head">
+              <div class="ic">▣</div>
+              <div class="txt">
+                <p>昨天上传的 6 张照片拍摄于同一地点，组成一个相册？</p>
+                <div class="ev">依据 · GPS 相距 <b>&lt;50m</b> · 拍摄间隔 <b>40 分钟</b> · 同一卷 <b>#7</b></div>
+                <div class="thumbs" data-thumbs="temple1,temple2,temple3,street1,rain1,neon1"></div>
+              </div>
+            </div>
+            <div class="form">
+              <input type="text" value="秋日寺门" id="clusterTitle">
+              <div style="display:flex;gap:6px;justify-content:flex-end">
+                <button class="btn ghost" data-act="cancel">取消</button>
+                <button class="btn primary" data-act="accept">按这个创建</button>
+              </div>
+            </div>
+            <div class="why">判断得不对？<button class="btn sm" data-act="why">不需要</button><button class="btn sm" data-act="why">时机不对</button><button class="btn sm" data-act="why">地点判断错了</button></div>
+            <div class="acts">
+              <button class="btn ghost" data-act="ignore">忽略</button>
+              <button class="btn" data-act="edit">改一下</button>
+              <button class="btn primary" data-act="accept">组成相册</button>
+            </div>
+          </div>
+          <div class="donemsg"><span>✓ 已创建相册《<b class="dt">秋日寺门</b>》· 6 张</span><button class="btn sm" data-act="undo">撤销</button></div>
+        </div>
+
+        <div class="prop" data-type="draft">
+          <div class="body">
+            <div class="head">
+              <div class="ic">✎</div>
+              <div class="txt">
+                <p>《门楼》草稿已经写了 80%，我帮你收个尾？</p>
+                <div class="ev">依据 · 上次编辑 <b>2 天前</b> · 剩余段落 <b>结尾</b> · 你惯用的结尾方式：<b>回到一张照片</b></div>
+              </div>
+            </div>
+            <div class="form">
+              <input type="text" value="用第 4 张照片收尾，语气克制一点" id="draftHint">
+              <div style="display:flex;gap:6px;justify-content:flex-end">
+                <button class="btn ghost" data-act="cancel">取消</button>
+                <button class="btn primary" data-act="accept">按这个写</button>
+              </div>
+            </div>
+            <div class="why">判断得不对？<button class="btn sm" data-act="why">我自己写</button><button class="btn sm" data-act="why">还没想好</button></div>
+            <div class="acts">
+              <button class="btn ghost" data-act="ignore">忽略</button>
+              <button class="btn" data-act="edit">给点要求</button>
+              <button class="btn primary" data-act="accept">写个结尾</button>
+            </div>
+          </div>
+          <div class="donemsg"><span>✓ 结尾已写入草稿（待确认状态）</span><button class="btn sm" data-act="undo">撤销</button></div>
+        </div>
+
+        <div class="prop" data-type="meta">
+          <div class="body">
+            <div class="head">
+              <div class="ic">◐</div>
+              <div class="txt">
+                <p>胶卷 #8 还没标型号，看起来像 Portra 400？</p>
+                <div class="ev">依据 · 肤色偏暖 · 颗粒特征 · 置信度 <b>72%</b>（不太确定，所以用问句）</div>
+                <div class="thumbs" data-thumbs="rain1,street2,window1"></div>
+              </div>
+            </div>
+            <div class="form">
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn" data-act="pick">Portra 160</button><button class="btn" data-act="pick">Gold 200</button><button class="btn" data-act="pick">Ultramax 400</button><button class="btn" data-act="pick">Pro 400H</button>
+              </div>
+              <button class="btn ghost" data-act="cancel" style="align-self:flex-end">取消</button>
+            </div>
+            <div class="why">判断得不对？<button class="btn sm" data-act="why">不是胶片</button><button class="btn sm" data-act="why">稍后再说</button></div>
+            <div class="acts">
+              <button class="btn ghost" data-act="ignore">忽略</button>
+              <button class="btn" data-act="edit">是别的型号</button>
+              <button class="btn primary" data-act="accept">就是它</button>
+            </div>
+          </div>
+          <div class="donemsg"><span>✓ 胶卷 #8 已标为 <b class="dt">Portra 400</b></span><button class="btn sm" data-act="undo">撤销</button></div>
+        </div>
+
+      </div>
+    </section>
+
+    <aside>
+      <div class="sec-h"><h2>继续上次</h2></div>
+      <div class="cont">
+        <a data-run="zine"><span>▤</span><span class="t">Zine《夏日》<small>排到第 3 / 12 页 · 昨天 23:10</small></span><span class="bar"><i style="width:25%"></i></span><span class="go">→</span></a>
+        <a data-run="narr"><span>✎</span><span class="t">叙事《雨后》<small>写完了，还没发布</small></span><span class="go">→</span></a>
+        <a data-run="comment"><span>◌</span><span class="t">1 条新评论<small>「第三张的色调太绝了」· 来自 lin</small></span><span class="go">→</span></a>
+        <a data-run="blog"><span>◇</span><span class="t">博客还是空的<small>从 18 篇叙事里改写一篇？</small></span><span class="go">→</span></a>
+      </div>
+    </aside>
+  </div>
+
+  <section class="sec photos-wrap">
+    <div class="sec-h"><h2>照片流 · 9月</h2><span class="more">点选照片 · Shift 多选 · 拖到下面的草稿篮或上面的输入框</span></div>
+    <div class="toolbar" id="toolbar">
+      <span class="cnt" id="selCnt">0</span><span style="opacity:.7;margin-right:8px">张已选</span>
+      <button class="btn" data-tool="narr">✎ 写叙事</button>
+      <button class="btn" data-tool="album">▣ 建相册</button>
+      <button class="btn" data-tool="zine">▤ 排 Zine</button>
+      <button class="btn" data-tool="caption">✦ 生成图注</button>
+      <button class="btn" data-tool="basket">📎 放进草稿篮</button>
+      <button class="btn x" data-tool="clear">✕</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><h2>今年</h2><span class="more">悬停看月度摘要 · 点击生成回顾</span></div>
+    <div class="year">
+      <div class="meta"><b class="num">353</b><small>张 · 2026 · 数码 <span class="num">252</span> / 胶片 <span class="num">101</span></small></div>
+      <div class="bars" id="bars"></div>
+    </div>
+  </section>
+
+</div>
+
+<div class="dock">
+  <div class="panel" id="panel">
+    <h4>草稿篮 <small>跨页面保留，作为 AI 的上下文</small></h4>
+    <div class="items" id="basketItems"><div class="empty">把照片、段落、AI 生成的东西拖进来，攒够了一起做点什么。</div></div>
+    <div class="acts">
+      <button class="btn primary" data-tool="narr">用这些写叙事</button>
+      <button class="btn" data-tool="zine">排成 Zine</button>
+      <button class="btn" data-tool="album">建相册</button>
+      <button class="btn ghost" id="clearBasket">清空</button>
+    </div>
+  </div>
+  <button class="basket" id="basket">📎 草稿篮 <span class="n" id="basketN">0</span></button>
+</div>
+
+<div class="drop-veil" id="veil">松手，让我先看看这些照片</div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo">撤销</button></div>
+
+<script>
+/* ---------- 数据 ---------- */
+const PHOTOS=[
+  {id:'temple1',type:'film',film:'Portra 400',lens:'50mm f/2',place:'大慈寺',ai:'朱漆门楼下，秋日的第一缕光',c:['#9a5a2c','#2a1a10'],big:true},
+  {id:'temple2',type:'film',film:'Portra 400',lens:'50mm f/2.8',place:'大慈寺',ai:'匾额与檐角，色彩克制地热闹着',c:['#b3743a','#3b2415']},
+  {id:'street1',type:'digital',lens:'35mm f/1.8',place:'春熙路',ai:'下班的人潮里，只有他停下来',c:['#5c6b7a','#1b222b']},
+  {id:'rain1',type:'film',film:'—',lens:'40mm f/2',place:'玉林',ai:'雨后的反光把街道翻了个面',c:['#3f5f6f','#0e1a20']},
+  {id:'neon1',type:'digital',lens:'85mm f/1.4',place:'九眼桥',ai:'霓虹是夜晚的另一种胶片',c:['#8a2f6a','#1f0a1a']},
+  {id:'window1',type:'film',film:'—',lens:'50mm f/2',place:'家',ai:'窗台上的下午，什么也没发生',c:['#c29a5a','#4a3618']},
+  {id:'street2',type:'film',film:'—',lens:'28mm f/2.8',place:'宽窄巷子',ai:'游客散去后巷子才开始呼吸',c:['#6f6a4e','#23211a']},
+  {id:'temple3',type:'digital',lens:'24mm f/4',place:'大慈寺',ai:'仰视，金顶把云切成两半',c:['#4d6b8a','#152030']},
+  {id:'cat1',type:'digital',lens:'50mm f/1.8',place:'玉林',ai:'它先看了镜头，再决定不理你',c:['#7a6a5a','#241d17']},
+  {id:'river1',type:'film',film:'Gold 200',lens:'35mm f/2',place:'锦江',ai:'暖调让河水看起来像傍晚的茶',c:['#c78b3b','#4b2f10']},
+];
+const byId=id=>PHOTOS.find(p=>p.id===id);
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+
+function phHTML(p,cls='',extra=''){
+  return `<div class="ph ${p.type==='film'?'film':''} ${cls}" data-id="${p.id}" style="--c1:${p.c[0]};--c2:${p.c[1]}" ${extra}>
+    <img src="https://picsum.photos/seed/${p.id}/600/420" loading="lazy" onerror="this.remove()" draggable="false">
+  </div>`;
+}
+
+/* ---------- 照片流 ---------- */
+const grid=$('#grid');
+grid.innerHTML=PHOTOS.map(p=>{
+  const el=document.createElement('div');el.innerHTML=phHTML(p,p.big?'big':'','draggable="true"');
+  const d=el.firstElementChild;
+  d.insertAdjacentHTML('beforeend',`<span class="chk">✓</span><button class="ask" title="问它一个问题">?</button>
+  <div class="cap"><span class="ai">${p.ai}</span><span class="ex">${p.type==='film'?(p.film==='—'?'胶片 · 型号未知':p.film):'数码'} · ${p.lens} · ${p.place}</span></div>`);
+  return d.outerHTML;
+}).join('');
+
+const sel=new Set();
+function refreshSel(){
+  $('#selCnt').textContent=sel.size;$('#toolbar').classList.toggle('show',sel.size>0);
+  $$('#grid .ph').forEach(el=>el.classList.toggle('sel',sel.has(el.dataset.id)));
+}
+grid.addEventListener('click',e=>{
+  const ask=e.target.closest('.ask');const ph=e.target.closest('.ph');if(!ph)return;
+  if(ask){openBubble(ph);return;}
+  if(!e.shiftKey&&!e.metaKey&&!e.ctrlKey&&sel.size&&!sel.has(ph.dataset.id)&&sel.size>1){}
+  sel.has(ph.dataset.id)?sel.delete(ph.dataset.id):sel.add(ph.dataset.id);
+  refreshSel();
+});
+$('#toolbar').addEventListener('click',e=>{
+  const b=e.target.closest('[data-tool]');if(!b)return;
+  const ids=[...sel];
+  if(b.dataset.tool==='clear'){sel.clear();refreshSel();return;}
+  if(b.dataset.tool==='basket'){ids.forEach(addToBasket);sel.clear();refreshSel();return;}
+  runTool(b.dataset.tool,ids);sel.clear();refreshSel();
+});
+
+/* 拖拽 */
+let dragIds=[];
+grid.addEventListener('dragstart',e=>{
+  const ph=e.target.closest('.ph');if(!ph)return;
+  dragIds=sel.has(ph.dataset.id)?[...sel]:[ph.dataset.id];
+  e.dataTransfer.setData('text/plain',dragIds.join(','));e.dataTransfer.effectAllowed='copy';
+  dragIds.forEach(id=>grid.querySelector(`[data-id="${id}"]`)?.classList.add('drag'));
+});
+grid.addEventListener('dragend',()=>$$('#grid .ph.drag').forEach(el=>el.classList.remove('drag')));
+
+/* ---------- 单张提问气泡 ---------- */
+let bubble=null;
+function closeBubble(){bubble?.remove();bubble=null;}
+function openBubble(ph){
+  closeBubble();const p=byId(ph.dataset.id);
+  bubble=document.createElement('div');bubble.className='bubble';
+  const r=ph.getBoundingClientRect(),gr=grid.getBoundingClientRect();
+  let left=r.left-gr.left,top=r.bottom-gr.top+8;if(left+300>gr.width)left=gr.width-300;
+  bubble.style.cssText=`left:${left}px;top:${top}px`;
+  bubble.innerHTML=`<div class="bq"><input placeholder="问这张照片…" autofocus><button class="btn sm primary">问</button></div>
+  <div class="qs"><button class="chip">用的什么焦段？</button><button class="chip">想三个标题</button><button class="chip">找相似的</button><button class="chip">适合放进哪篇叙事？</button></div>
+  <div class="ans"></div>`;
+  grid.style.position='relative';grid.appendChild(bubble);
+  const input=bubble.querySelector('input'),ans=bubble.querySelector('.ans');
+  const answers={
+    '焦段':`${p.lens.split(' ')[0]}，光圈 ${p.lens.split(' ')[1]}。${p.type==='film'?'胶片扫描没有电子 EXIF，这是我从透视和景深推的，置信度 80%。':'来自 EXIF，可信。'}`,
+    '标题':`1.《${p.ai.slice(0,6)}》\n2.《${p.place}，${p.type==='film'?'一卷没拍完的':'下午四点的'}》\n3.《停一下》\n\n点任一个可直接用作图注。`,
+    '相似':`找到 3 张构图和色调相近的：temple2、temple3、river1。要不要放在一起对比？`,
+    '叙事':`《门楼》里刚好缺一张收尾图——这张的留白和结尾段落的语气很配。要我把它插到末尾吗？`,
+  };
+  const go=q=>{
+    ans.classList.add('show');ans.textContent='';ans.classList.add('caret');
+    const key=Object.keys(answers).find(k=>q.includes(k))||'标题';
+    stream(ans,answers[key],()=>{ans.classList.remove('caret');
+      ans.insertAdjacentHTML('beforeend',`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn sm primary" data-a="use">采用</button><button class="btn sm" data-a="basket">放进草稿篮</button></div>`);
+    });
+  };
+  bubble.querySelector('.btn').onclick=()=>input.value&&go(input.value);
+  input.onkeydown=e=>{if(e.key==='Enter'&&input.value)go(input.value);if(e.key==='Escape')closeBubble();};
+  bubble.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{input.value=c.textContent;go(c.textContent);});
+  bubble.addEventListener('click',e=>{const a=e.target.dataset.a;if(a==='use'){toast('已采用，标记为「待确认」');closeBubble();}if(a==='basket'){addNoteToBasket('AI 回答 · '+p.place);closeBubble();}});
+  setTimeout(()=>input.focus(),30);
+}
+document.addEventListener('click',e=>{if(bubble&&!bubble.contains(e.target)&&!e.target.closest('.ask'))closeBubble();});
+
+/* ---------- 草稿篮 ---------- */
+const basket=[];
+function renderBasket(){
+  $('#basketN').textContent=basket.length;
+  const box=$('#basketItems');
+  box.innerHTML=basket.length?basket.map(b=>b.note?`<div class="note">${b.note}</div>`:phHTML(byId(b.id))).join(''):'<div class="empty">把照片、段落、AI 生成的东西拖进来，攒够了一起做点什么。</div>';
+  const bk=$('#basket');bk.classList.remove('bump');void bk.offsetWidth;bk.classList.add('bump');
+}
+function addToBasket(id){if(!basket.some(b=>b.id===id))basket.push({id});renderBasket();}
+function addNoteToBasket(note){basket.push({note});renderBasket();}
+$('#basket').onclick=()=>$('#panel').classList.toggle('show');
+$('#clearBasket').onclick=()=>{basket.length=0;renderBasket();};
+$('#panel').addEventListener('click',e=>{const b=e.target.closest('[data-tool]');if(!b)return;runTool(b.dataset.tool,basket.filter(x=>x.id).map(x=>x.id));$('#panel').classList.remove('show');});
+const bk=$('#basket');
+bk.addEventListener('dragover',e=>{e.preventDefault();bk.classList.add('over');});
+bk.addEventListener('dragleave',()=>bk.classList.remove('over'));
+bk.addEventListener('drop',e=>{e.preventDefault();bk.classList.remove('over');e.dataTransfer.getData('text/plain').split(',').filter(Boolean).forEach(addToBasket);toast(`已放入 ${dragIds.length} 张`);});
+
+/* ---------- 万能输入框 ---------- */
+const input=$('#omniInput'),ghost=$('#ghost'),cmdMenu=$('#cmdMenu'),resp=$('#response'),respBody=$('#respBody'),omniBox=$('#omniBox');
+const SUG=['把昨天那卷 Portra 整理成相册','找出所有在雨天拍的胶片','找出所有在大慈寺拍的照片','回顾 2026 年 9 月','帮我给未标型号的胶卷猜一下型号','把《雨后》发布到博客'];
+input.addEventListener('input',()=>{
+  const v=input.value;
+  cmdMenu.classList.toggle('show',v.startsWith('/'));
+  const m=v.length>1&&!v.startsWith('/')?SUG.find(s=>s.startsWith(v)&&s!==v):null;
+  ghost.textContent=m?v+m.slice(v.length):'';
+});
+input.addEventListener('keydown',e=>{
+  if(e.key==='Tab'&&ghost.textContent){e.preventDefault();input.value=ghost.textContent;ghost.textContent='';}
+  if(e.key==='Enter'&&input.value.trim()){handleIntent(input.value.trim());}
+  if(e.key==='Escape'){collapse();}
+});
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();input.focus();input.value='/';input.dispatchEvent(new Event('input'));}});
+$$('.chip[data-fill],.cmd-item').forEach(c=>c.onclick=()=>{input.value=c.dataset.fill;input.dispatchEvent(new Event('input'));input.focus();if(!c.dataset.fill.endsWith(' '))handleIntent(c.dataset.fill);});
+function collapse(){resp.classList.remove('show');cmdMenu.classList.remove('show');$('#uplog').classList.remove('show');ghost.textContent='';}
+function openResp(title){cmdMenu.classList.remove('show');$('#uplog').classList.remove('show');resp.classList.add('show');$('#respTitle').textContent=title;respBody.innerHTML='';}
+
+/* 拖照片到输入框 */
+omniBox.addEventListener('dragover',e=>{e.preventDefault();omniBox.classList.add('dragover');});
+omniBox.addEventListener('dragleave',e=>{if(!omniBox.contains(e.relatedTarget))omniBox.classList.remove('dragover');});
+omniBox.addEventListener('drop',e=>{
+  e.preventDefault();omniBox.classList.remove('dragover');
+  if(e.dataTransfer.files?.length){simulateUpload([...e.dataTransfer.files].map(f=>f.name));return;}
+  const ids=e.dataTransfer.getData('text/plain').split(',').filter(Boolean);if(!ids.length)return;
+  openResp(`你拖进来了 ${ids.length} 张照片`);
+  respBody.innerHTML=`<div class="intent">
+    <div class="result-grid">${ids.map(id=>phHTML(byId(id))).join('')}</div>
+    <div class="q serif">想用这 ${ids.length} 张做什么？</div>
+    <div class="acts"><button class="btn primary" data-tool="narr">✎ 写一篇叙事</button><button class="btn" data-tool="album">▣ 建相册</button><button class="btn" data-tool="zine">▤ 排成 Zine</button><button class="btn" data-tool="caption">✦ 生成图注</button><button class="btn" data-tool="compare">◫ 比较它们</button></div>
+  </div>`;
+  respBody.querySelector('.acts').onclick=ev=>{const b=ev.target.closest('[data-tool]');b&&runTool(b.dataset.tool,ids);};
+});
+
+/* 全页拖入文件 → 上传流 */
+const veil=$('#veil');let dragDepth=0;
+window.addEventListener('dragenter',e=>{if([...e.dataTransfer.types].includes('Files')){dragDepth++;veil.classList.add('show');}});
+window.addEventListener('dragleave',e=>{if([...e.dataTransfer.types].includes('Files')){dragDepth--;if(dragDepth<=0){veil.classList.remove('show');dragDepth=0;}}});
+window.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault();});
+window.addEventListener('drop',e=>{if([...e.dataTransfer.types].includes('Files')){e.preventDefault();veil.classList.remove('show');dragDepth=0;simulateUpload([...e.dataTransfer.files].map(f=>f.name));}});
+$('#simUpload').onclick=()=>simulateUpload(['IMG_4471.dng','scan_007.tiff','IMG_4472.dng']);
+
+/* ---------- 意图分发 ---------- */
+function handleIntent(v){
+  ghost.textContent='';
+  if(v.startsWith('/zine'))return runTool('zine',[...sel],v.replace('/zine','').trim()||'未命名');
+  if(v.startsWith('/draft'))return runPlan('打开草稿',[{l:'找到最近编辑的草稿',r:'《门楼》'},{l:'恢复光标位置',r:'第 4 段'},{l:'载入你上次的语气参考'},{l:'跳转到编辑器',btn:'继续写'}]);
+  if(v.startsWith('/caption'))return runTool('caption',[...sel]);
+  if(v.startsWith('/album'))return runTool('album',[...sel]);
+  if(v.startsWith('/find'))return search(v.replace('/find','').trim());
+  if(/相册/.test(v)&&/整理|组成|建/.test(v))return runPlan(v,[
+    {l:'解析意图',r:'时间=昨天 · 胶片=Portra · 动作=建相册'},
+    {l:'找到 12 张（9月4日，胶卷 #7）',thumbs:['temple1','temple2','temple3','street1']},
+    {l:'识别地点',r:'大慈寺（GPS 聚类）'},
+    {l:'生成相册标题',choice:['秋日寺门','寺门与光','大慈寺·九月']},
+    {l:'创建相册（待确认）',btn:'创建相册',done:'相册《%s》已创建 · 12 张'},
+  ]);
+  if(/回顾/.test(v))return review(v.match(/\d+\s*月/)?.[0]||'9 月');
+  if(/发布/.test(v))return runPlan(v,[{l:'找到叙事《雨后》'},{l:'检查配图版权与尺寸',r:'6 张 · 全部通过'},{l:'生成摘要与 SEO 描述',r:'「雨后的玉林，街道被翻了个面」'},{l:'发布到博客',btn:'发布',done:'已发布，可在 30 秒内撤回'}]);
+  if(/猜|型号/.test(v))return runPlan(v,[{l:'找到未标型号的胶卷',r:'#8、#11'},{l:'分析颗粒与色彩响应'},{l:'#8 → Portra 400',r:'72%'},{l:'#11 → Gold 200',r:'88%'},{l:'写入元数据（待确认）',btn:'全部采纳',done:'已标记 2 卷'}]);
+  return search(v);
+}
+function search(q){
+  const ids=/雨/.test(q)?['rain1','street2','river1']:/寺|大慈/.test(q)?['temple1','temple2','temple3']:/胶片|film/i.test(q)?PHOTOS.filter(p=>p.type==='film').map(p=>p.id):PHOTOS.slice(0,5).map(p=>p.id);
+  openResp(`「${q}」`);
+  respBody.innerHTML=`<div class="steps"></div>`;
+  const steps=respBody.querySelector('.steps');
+  step(steps,'理解为语义查询',`${/雨/.test(q)?'天气=雨 · 介质=胶片':'关键词匹配 + 视觉 embedding'}`,0);
+  setTimeout(()=>{step(steps,`找到 ${ids.length} 张`,null,0);
+    respBody.insertAdjacentHTML('beforeend',`<div class="result-grid">${ids.map(id=>phHTML(byId(id))).join('')}</div>
+    <div style="display:flex;gap:8px"><button class="btn primary" id="saveSmart">存为智能相册（自动更新）</button><button class="btn" id="toBasket2">全部放进草稿篮</button><button class="btn ghost" id="refine">再缩小范围</button></div>`);
+    $('#saveSmart').onclick=()=>toast(`智能相册「${q}」已创建`);
+    $('#toBasket2').onclick=()=>{ids.forEach(addToBasket);toast('已放入草稿篮');};
+    $('#refine').onclick=()=>{input.value=q+'，只要';input.focus();};
+  },700);
+}
+function review(m){
+  openResp(`回顾 2026 年 ${m}`);
+  respBody.innerHTML=`<div class="steps"></div><div class="stream-text caret" id="rv"></div>`;
+  const s=respBody.querySelector('.steps');
+  step(s,'统计','3 卷胶片 · 41 张数码 · 主要在成都',0);
+  setTimeout(()=>step(s,'选出 5 张代表照片',null,0),500);
+  setTimeout(()=>{step(s,'撰写回顾草稿',null,0);
+    stream($('#rv'),`九月大多数时候是阴的。\n\n三卷胶片里有两卷交给了大慈寺——同一个门楼，不同的光。数码机几乎只在夜里拿出来，九眼桥的霓虹和玉林的雨是这个月仅有的饱和色。\n\n拍得最多的一天是 4 号，40 分钟 12 张，你很少这么密集。`,()=>{
+      $('#rv').classList.remove('caret');
+      respBody.insertAdjacentHTML('beforeend',`<div style="display:flex;gap:8px;margin-top:6px"><button class="btn primary">存为叙事草稿</button><button class="btn">换个角度重写</button><button class="btn ghost">只要数据不要文字</button></div>`);
+      respBody.lastElementChild.onclick=()=>toast('已存为叙事草稿《九月》');
+    });
+  },1100);
+}
+
+/* 工具动作 → 计划 */
+function runTool(tool,ids,name){
+  if(!ids.length&&tool!=='zine')return toast('先选几张照片，或者拖进来');
+  const n=ids.length,th=ids.slice(0,6);
+  const plans={
+    narr:[{l:`读取 ${n} 张照片的 EXIF 与地点`,thumbs:th},{l:'找到共同线索',r:'同一个下午 · 大慈寺 → 玉林'},{l:'参考你最近 3 篇叙事的语气',r:'短句 · 少形容词'},{l:'生成开头（其余留给你）',text:'门楼下面站了十分钟，什么都没拍。后来光挪了一点，才按下第一张。'},{l:'创建叙事草稿',btn:'创建草稿',done:'叙事草稿已创建'}],
+    album:[{l:`分析 ${n} 张照片`,thumbs:th},{l:'识别地点与时间',r:'大慈寺 · 9月4日'},{l:'生成标题',choice:['秋日寺门','门与光','9月4日']},{l:'创建相册（待确认）',btn:'创建',done:'相册《%s》已创建'}],
+    zine:[{l:`Zine《${name||'夏日'}》`,r:n?`加入 ${n} 张`:'继续排版'},{l:'按色调与节奏排序',thumbs:th},{l:'建议开本',choice:['A5 骑马钉','方 21cm','口袋本']},{l:'排入页面',btn:'打开 Zine 编辑器',done:'已排入 %s，共 12 页'}],
+    caption:[{l:`为 ${n} 张生成图注`,thumbs:th},...ids.slice(0,3).map(id=>({l:byId(id).place,r:'「'+byId(id).ai+'」'})),{l:'写入（待确认，可逐张改）',btn:'全部采用',done:'图注已写入，虚线边框表示待确认'}],
+    compare:[{l:'并排对齐'},{l:'差异',r:'曝光 +0.3EV · 构图右移 · 第二张更松'},{l:'我的倾向',r:'保留第 1 张，第 2 张作为备选'},{l:'应用',btn:'按建议处理',done:'已标记备选'}],
+  };
+  runPlan({narr:'写叙事',album:'建相册',zine:'排 Zine',caption:'生成图注',compare:'比较'}[tool],plans[tool]);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* 步骤引擎 */
+function step(container,label,result,delay){
+  const el=document.createElement('div');el.className='step running';
+  el.innerHTML=`<span class="st"></span><div><span class="lbl">${label}</span></div>`;container.appendChild(el);
+  setTimeout(()=>{el.classList.replace('running','done');el.querySelector('.st').textContent='✓';if(result)el.querySelector('div').insertAdjacentHTML('beforeend',`<span class="res">${result}</span>`);},400+delay);
+  return el;
+}
+function runPlan(title,steps){
+  openResp(title);respBody.innerHTML=`<div class="steps"></div>`;
+  const box=respBody.querySelector('.steps');let chosen='';
+  const run=i=>{
+    if(i>=steps.length)return;
+    const s=steps[i];
+    if(s.btn){
+      const el=document.createElement('div');el.className='step pending';
+      el.innerHTML=`<span class="st"></span><div>${s.l}<div class="opts"><button class="btn primary sm">${s.btn}</button><button class="btn ghost sm">先不了</button></div></div>`;
+      box.appendChild(el);
+      el.querySelector('.primary').onclick=()=>{el.classList.replace('pending','done');el.querySelector('.st').textContent='✓';el.querySelector('.opts').remove();toast((s.done||'完成').replace('%s',chosen||'—'));};
+      el.querySelector('.ghost').onclick=()=>collapse();
+      return;
+    }
+    const el=step(box,s.l,s.r,0);
+    if(s.thumbs)setTimeout(()=>el.querySelector('div').insertAdjacentHTML('beforeend',`<div class="opts">${s.thumbs.map(id=>`<span class="ph" style="width:44px;height:34px;--c1:${byId(id).c[0]};--c2:${byId(id).c[1]}"><img src="https://picsum.photos/seed/${id}/120/90" onerror="this.remove()"></span>`).join('')}</div>`),420);
+    if(s.text)setTimeout(()=>{el.querySelector('div').insertAdjacentHTML('beforeend',`<div class="stream-text caret" style="font-size:14px"></div>`);stream(el.querySelector('.stream-text'),s.text,()=>{el.querySelector('.stream-text').classList.remove('caret');run(i+1);});},450);
+    if(s.choice){
+      setTimeout(()=>{
+        chosen=s.choice[0];
+        el.querySelector('div').insertAdjacentHTML('beforeend',`<div class="opts"><span class="title">${chosen}</span><button class="btn sm">换一个</button><button class="btn sm">自己写</button></div>`);
+        const t=el.querySelector('.title');let k=0;
+        el.querySelectorAll('.opts .btn')[0].onclick=()=>{k=(k+1)%s.choice.length;chosen=s.choice[k];t.textContent=chosen;};
+        el.querySelectorAll('.opts .btn')[1].onclick=()=>{t.contentEditable=true;t.focus();t.onblur=()=>chosen=t.textContent;};
+        run(i+1);
+      },500);
+      return;
+    }
+    if(!s.text)setTimeout(()=>run(i+1),650);
+  };
+  run(0);
+}
+function stream(el,text,cb){let i=0;const t=setInterval(()=>{el.textContent=text.slice(0,++i);if(i>=text.length){clearInterval(t);cb&&cb();}},22);}
+
+/* 上传处理流 */
+function simulateUpload(names){
+  collapse();const log=$('#uplog');log.classList.add('show');log.innerHTML='';
+  const rows=[
+    [names[0]||'IMG_4471.dng',[['ok','已上传'],['ok','EXIF 50mm f/2'],['ok','地点 · 大慈寺'],['run','生成标签…','ok','寺庙 · 建筑 · 秋']]],
+    [names[1]||'scan_007.tiff',[['ok','已上传'],['ok','识别为胶片扫描'],['q','型号未知 →'],['choice',['Portra 400','Gold 200','手动']]]],
+    [names[2]||'IMG_4472.dng',[['ok','已上传'],['warn','与 '+(names[0]||'IMG_4471')+' 相似 96%'],['choice',['保留两张','只留这张']]]],
+  ];
+  rows.forEach((r,ri)=>setTimeout(()=>{
+    const row=document.createElement('div');row.className='ul';row.innerHTML=`<span class="f">▸ ${r[0]}</span>`;log.appendChild(row);
+    r[1].forEach((t,ti)=>setTimeout(()=>{
+      if(t[0]==='choice'){row.insertAdjacentHTML('beforeend',t[1].map(c=>`<button class="btn sm">${c}</button>`).join(''));row.querySelectorAll('.btn').forEach(b=>b.onclick=()=>{row.querySelectorAll('.btn').forEach(x=>x.remove());row.insertAdjacentHTML('beforeend',`<span class="tag ok">✓ ${b.textContent}</span>`);});return;}
+      if(t[0]==='run'){const s=document.createElement('span');s.className='tag';s.textContent=t[1];row.appendChild(s);setTimeout(()=>{s.className='tag ok';s.textContent='✓ '+t[3];},900);return;}
+      row.insertAdjacentHTML('beforeend',`<span class="tag ${t[0]}">${t[0]==='ok'?'✓ ':t[0]==='warn'?'⚠ ':'? '}${t[1]}</span>`);
+    },ti*350));
+  },ri*500));
+  setTimeout(()=>log.insertAdjacentHTML('beforeend',`<div class="ul" style="color:var(--muted)">上传完成 · 整理也完成了一半 · <button class="btn sm">这 3 张组成什么？</button></div>`),2600);
+}
+
+/* ---------- 今日提案 ---------- */
+$$('.prop .thumbs').forEach(t=>t.innerHTML=t.dataset.thumbs.split(',').map(id=>phHTML(byId(id))).join(''));
+$('#props').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;const card=b.closest('.prop'),a=b.dataset.act;
+  if(a==='edit')card.classList.add('edit');
+  if(a==='cancel')card.classList.remove('edit','why');
+  if(a==='ignore')card.classList.add('why');
+  if(a==='why'){card.classList.add('gone');toast(`已忽略 · 以后「${card.dataset.type==='cluster'?'相册建议':card.dataset.type==='draft'?'续写建议':'元数据建议'}」会更少出现`);}
+  if(a==='pick'){card.querySelector('.dt').textContent=b.textContent;card.classList.remove('edit');card.classList.add('done');toast('已记录：'+b.textContent);}
+  if(a==='accept'){const t=card.querySelector('#clusterTitle');if(t)card.querySelector('.dt').textContent=t.value;card.classList.remove('edit');card.classList.add('done');toast('完成 · 处于「待确认」状态，可随时撤销');}
+  if(a==='undo'){card.classList.remove('done');toast('已撤销');}
+});
+$('#quietBtn').onclick=()=>{$$('.prop').forEach(p=>p.classList.add('gone'));$('#quietBtn').textContent='好，今天安静创作 · 明早再看';};
+
+/* 继续上次 */
+$('.cont').addEventListener('click',e=>{
+  const a=e.target.closest('[data-run]');if(!a)return;
+  ({zine:()=>runTool('zine',['temple1','temple2'],'夏日'),
+    narr:()=>handleIntent('把《雨后》发布到博客'),
+    comment:()=>runPlan('回复评论',[{l:'评论来自 lin',r:'「第三张的色调太绝了」'},{l:'第三张 =',thumbs:['neon1']},{l:'草拟回复',text:'谢谢！那张是 Portra 在钨丝灯下的样子，没怎么调。'},{l:'发送',btn:'发送回复',done:'已回复'}]),
+    blog:()=>runPlan('从叙事改写博客',[{l:'在 18 篇叙事里找最适合的',r:'《雨后》— 阅读最多、图最全'},{l:'改写为博客结构',r:'加小标题 · 拆长段 · 补器材信息'},{l:'生成',btn:'生成博客草稿',done:'博客草稿已创建'}]),
+  })[a.dataset.run]();
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+/* ---------- 年度轴 ---------- */
+const months=[12,18,25,31,44,38,52,47,53,20,8,5],notes=['新年在家，拍得少','雨季开始','第一卷 Portra','春游','五一 · 重庆','','暑期最密集','','3 卷胶片 · 主要在成都','','',''];
+$('#bars').innerHTML=months.map((v,i)=>`<div class="bar ${i===8?'cur':''}" style="height:${v/53*100}%" data-m="${i+1}"><i>${i+1}</i>
+  <div class="tip"><b>${i+1}月 · ${v} 张</b><div class="row"><span style="--c1:${PHOTOS[i%10].c[0]};--c2:${PHOTOS[i%10].c[1]}"></span><span style="--c1:${PHOTOS[(i+3)%10].c[0]};--c2:${PHOTOS[(i+3)%10].c[1]}"></span><span style="--c1:${PHOTOS[(i+5)%10].c[0]};--c2:${PHOTOS[(i+5)%10].c[1]}"></span></div><div style="opacity:.7;margin-top:6px">${notes[i]||'点击生成这个月的回顾'}</div></div></div>`).join('');
+$('#bars').onclick=e=>{const b=e.target.closest('.bar');if(!b)return;input.value=`回顾 2026 年 ${b.dataset.m} 月`;review(`${b.dataset.m} 月`);window.scrollTo({top:0,behavior:'smooth'});};
+
+/* ---------- 其他 ---------- */
+let toastT;function toast(msg){$('#toastMsg').textContent=msg;$('#toast').classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>$('#toast').classList.remove('show'),3200);}
+$('#toastUndo').onclick=()=>{$('#toast').classList.remove('show');toast('已撤销上一步');};
+$('#themeBtn').onclick=()=>{const h=document.documentElement,d=h.dataset.theme==='dark';h.dataset.theme=d?'light':'dark';$('#themeBtn').textContent=d?'☾':'☀';};
+$('#draftCnt').onclick=()=>handleIntent('/draft');
+$('#weekFilm').onclick=()=>search('本周的胶片');
+</script>
+</body>
+</html>

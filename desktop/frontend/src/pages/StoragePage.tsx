@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { getErrorMessage } from '@/lib/auth-errors'
 import { t } from '@/lib/i18n'
@@ -610,33 +611,18 @@ function StorageCleanupPage() {
       {/* 内容工具栏：与照片库/胶卷保持一致的位置与样式 */}
       <div className="flex min-h-13 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
         {/* 存储源切换 */}
-        <div
-          className="flex h-8 items-center rounded-md border bg-background p-0.5"
-          style={{ borderColor: 'var(--border)' }}
-          role="tablist"
-          aria-label={t('admin.storage_provider', language)}
-        >
-          {providers.map(({ value, label, labelKey, icon: Icon }) => {
-            const active = provider === value
-            return (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => switchProvider(value)}
-                className="flex h-7 items-center gap-1.5 rounded px-3 text-[11px] font-medium transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                style={{
-                  backgroundColor: active ? 'var(--accent)' : 'transparent',
-                  color: active ? 'var(--accent-foreground)' : 'var(--muted-foreground)',
-                }}
-              >
-                <Icon size={12} />
-                {labelKey ? t(labelKey, language) : label}
-              </button>
-            )
-          })}
-        </div>
+        <SegmentedTabs
+          size="sm"
+          fill={false}
+          ariaLabel={t('admin.storage_provider', language)}
+          value={provider}
+          onChange={switchProvider}
+          options={providers.map(({ value, label, labelKey, icon }) => ({
+            value,
+            label: labelKey ? t(labelKey, language) : (label || value),
+            icon,
+          }))}
+        />
 
         <SelectDropdown
           value={statusFilter}

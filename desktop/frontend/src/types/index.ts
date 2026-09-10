@@ -1,3 +1,5 @@
+import type { ArticleContentDto } from '@mo-gallery/api-client/types'
+
 // 通用分页响应
 export interface PaginatedResponse<T> {
   data: T[]
@@ -88,11 +90,9 @@ export interface Album {
 }
 
 // 故事
-export interface Story {
+export interface Story extends ArticleContentDto {
   id: string
   title: string
-  content: string
-  contentJson?: string
   coverPhotoId?: string
   coverCrop?: string
   isPublished: boolean
@@ -104,11 +104,9 @@ export interface Story {
 }
 
 // 博客
-export interface Blog {
+export interface Blog extends ArticleContentDto {
   id: string
   title: string
-  content: string
-  contentJson?: string
   category: string
   tags: string
   isPublished: boolean

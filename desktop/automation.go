@@ -83,7 +83,7 @@ func (a *App) startAutomationServer() {
 	bridge := &automationBridge{
 		app:            a,
 		token:          token,
-		descriptorPath: filepath.Join(config.ConfigDir(), automationDescriptorName),
+		descriptorPath: filepath.Join(config.SettingsDir(), automationDescriptorName),
 		listener:       listener,
 		pending:        make(map[string]chan string),
 	}

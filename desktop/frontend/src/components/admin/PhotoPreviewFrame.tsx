@@ -131,7 +131,7 @@ export function PhotoPreviewFrame({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      switch (event.key.toLowerCase()) {
+      switch (event.key) {
         case 'Escape':
           event.preventDefault()
           onClose()
@@ -143,16 +143,25 @@ export function PhotoPreviewFrame({
           if (onNext && hasNext) { event.preventDefault(); onNext() }
           break
         case ' ':
-          if (livePhotoVideoSrc) {
+          if (livePhotoVideoSrc && !event.repeat) {
             event.preventDefault()
-            setShowLiveVideo((value) => !value)
+            if (!showLiveVideo) {
+              setShowLiveVideo(true)
+              break
+            }
+            const video = liveVideoRef.current
+            if (!video) break
+            if (video.paused) void video.play().catch(() => {})
+            else video.pause()
           }
           break
         case 'q':
+        case 'Q':
           event.preventDefault()
           setRotation((value) => value - 90)
           break
         case 'e':
+        case 'E':
           event.preventDefault()
           setRotation((value) => value + 90)
           break
@@ -160,7 +169,7 @@ export function PhotoPreviewFrame({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose, onPrevious, onNext, hasPrevious, hasNext, livePhotoVideoSrc])
+  }, [onClose, onPrevious, onNext, hasPrevious, hasNext, livePhotoVideoSrc, showLiveVideo])
 
   const setZoomLevel = (value: number) => setZoom(Math.min(5, Math.max(0.25, value)))
   const activeSrc = showOriginal && !originalFailed ? originalSrc : previewSrc

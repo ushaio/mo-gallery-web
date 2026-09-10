@@ -21,6 +21,7 @@ import {
 } from './catalog'
 import {
   buildAiConfigPayload,
+  createEmptyAgent,
   createEmptyAiProvider,
   emptyAiConfig,
   isModelUnconfigured,
@@ -29,6 +30,7 @@ import {
   writeSelectedAiProvider,
   type AiCapabilityKey,
   type AiConfig,
+  type AiAgentProfile,
   type AiProviderConfig,
 } from './config'
 import * as mutate from './mutations'
@@ -40,6 +42,7 @@ export function useAiConfig() {
   const [fetchingProvider, setFetchingProvider] = useState<string | null>(null)
   const [modelCandidates, setModelCandidates] = useState<Record<string, string[]>>({})
   const [selectedProvider, setSelectedProvider] = useState<string | null>(readSelectedAiProvider())
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   // 最近一次加载/保存的规范化配置快照，用于脏状态判断
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null)
   // models.dev 官方规格：模型源 → 模型名 → 规格。用于「自动/手动」标识与参考信息展示
@@ -83,6 +86,9 @@ export function useAiConfig() {
   const selectedId = selectedProvider && aiConfig.providers[selectedProvider]
     ? selectedProvider
     : providerIds[0] ?? null
+  const selectedAgentId = selectedAgent && aiConfig.agents.some(agent => agent.id === selectedAgent)
+    ? selectedAgent
+    : aiConfig.default_agent_id || aiConfig.agents[0]?.id || null
 
   // 选中模型源持久化（与胶卷页视图偏好一致：跨页面/重启保留）
   useEffect(() => {
@@ -152,6 +158,35 @@ export function useAiConfig() {
 
   const setDefaultModel = (value: string) => setAiConfig(prev => ({ ...prev, default_model: value }))
   const setDefaultImageModel = (value: string) => setAiConfig(prev => ({ ...prev, default_image_model: value }))
+  const setDefaultAgent = (value: string) => setAiConfig(prev => ({ ...prev, default_agent_id: value }))
+
+  const updateAgent = (agentId: string, patch: Partial<AiAgentProfile>) => {
+    setAiConfig(prev => ({
+      ...prev,
+      agents: prev.agents.map(agent => agent.id === agentId ? { ...agent, ...patch } : agent),
+    }))
+  }
+
+  const addAgent = (): string => {
+    let index = aiConfig.agents.length + 1
+    let id = `agent${index}`
+    while (aiConfig.agents.some(agent => agent.id === id)) {
+      index += 1
+      id = `agent${index}`
+    }
+    setAiConfig(prev => ({ ...prev, agents: [...prev.agents, createEmptyAgent(id)], default_agent_id: prev.default_agent_id || id }))
+    setSelectedAgent(id)
+    return id
+  }
+
+  const removeAgent = (agentId: string) => {
+    setAiConfig(prev => {
+      const agents = prev.agents.filter(agent => agent.id !== agentId)
+      const defaultAgentId = prev.default_agent_id === agentId ? (agents[0]?.id || '') : prev.default_agent_id
+      return { ...prev, agents, default_agent_id: defaultAgentId }
+    })
+    setSelectedAgent(prev => prev === agentId ? null : prev)
+  }
 
   /** 重命名模型源；标识为空/重复时返回 false，由调用方提示 */
   const renameProvider = (oldId: string, nextId: string): boolean => {
@@ -318,6 +353,12 @@ export function useAiConfig() {
     updateProvider,
     setDefaultModel,
     setDefaultImageModel,
+    setDefaultAgent,
+    selectedAgentId,
+    selectAgent: setSelectedAgent,
+    updateAgent,
+    addAgent,
+    removeAgent,
     renameProvider,
     addProvider,
     removeProvider,

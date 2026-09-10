@@ -2,6 +2,9 @@
 
 import { isRecord } from '../shared'
 
+/** 模型配置页左栏的视图切换：模型源 / Agent */
+export type AiSettingsView = 'providers' | 'agents'
+
 export interface AiProviderConfig {
   base_url: string
   api_key: string
@@ -18,13 +21,40 @@ export interface AiProviderConfig {
 export interface AiConfig {
   default_model: string
   default_image_model: string
+  default_agent_id: string
   providers: Record<string, AiProviderConfig>
+  agents: AiAgentProfile[]
 }
+
+export interface AiAgentProfile {
+  id: string
+  name: string
+  enabled: boolean
+  primary_model: string
+  text_model: string
+  image_model: string
+  vision_model: string
+  vision_output_mode: AiVisionOutputMode
+  system_prompt: string
+  max_steps: number
+  temperature: number
+}
+
+export type AiVisionOutputMode = 'vision' | 'primary'
 
 /** 模型能力字段：与模型行中的开关一一对应 */
 export type AiCapabilityKey = 'vision_models' | 'tool_models' | 'structured_output_models' | 'image_models'
 
-export const emptyAiConfig: AiConfig = { default_model: '', default_image_model: '', providers: {} }
+export const emptyAiConfig: AiConfig = {
+  default_model: '', default_image_model: '', default_agent_id: '', providers: {}, agents: [],
+}
+
+export function createEmptyAgent(id = 'agent1'): AiAgentProfile {
+  return {
+    id, name: '新 Agent', enabled: true, primary_model: '', text_model: '', image_model: '',
+    vision_model: '', vision_output_mode: 'vision', system_prompt: '', max_steps: 8, temperature: 0.3,
+  }
+}
 
 export function createEmptyAiProvider(): AiProviderConfig {
   return {
@@ -79,12 +109,43 @@ function getContextWindows(value: unknown): Record<string, number> {
   )))
 }
 
+function normalizeAgents(value: unknown): AiAgentProfile[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap((entry, index) => {
+    const agent = isRecord(entry) ? entry : {}
+    const id = getString(agent.id).trim() || `agent${index + 1}`
+    if (seen.has(id)) return []
+    seen.add(id)
+    const maxSteps = typeof agent.max_steps === 'number' && Number.isFinite(agent.max_steps)
+      ? Math.min(32, Math.max(1, Math.floor(agent.max_steps)))
+      : 8
+    const temperature = typeof agent.temperature === 'number' && Number.isFinite(agent.temperature)
+      ? Math.min(2, Math.max(0, agent.temperature))
+      : 0.3
+    return [{
+      id,
+      name: getString(agent.name).trim() || id,
+      enabled: agent.enabled !== false,
+      primary_model: getString(agent.primary_model).trim(),
+      text_model: getString(agent.text_model).trim(),
+      image_model: getString(agent.image_model).trim(),
+      vision_model: getString(agent.vision_model).trim(),
+      vision_output_mode: getString(agent.vision_output_mode) === 'primary' ? 'primary' : 'vision',
+      system_prompt: getString(agent.system_prompt),
+      max_steps: maxSteps,
+      temperature,
+    }]
+  })
+}
+
 export function normalizeAiConfig(value: unknown): AiConfig {
   const config = isRecord(value) ? value : {}
   const rawProviders = isRecord(config.providers) ? config.providers : {}
   return {
     default_model: getString(config.default_model) || getString(config.model),
     default_image_model: getString(config.default_image_model),
+    default_agent_id: getString(config.default_agent_id),
     providers: Object.fromEntries(Object.entries(rawProviders).map(([id, value]) => {
       const provider = isRecord(value) ? value : {}
       const models = getStringList(provider.models)
@@ -100,6 +161,7 @@ export function normalizeAiConfig(value: unknown): AiConfig {
         catalog_provider: getString(provider.catalog_provider),
       }]
     })),
+    agents: normalizeAgents(config.agents),
   }
 }
 
@@ -133,6 +195,18 @@ export function buildAiConfigPayload(aiConfig: AiConfig): AiConfig {
     ...aiConfig,
     default_model: chatModelIds.has(aiConfig.default_model) ? aiConfig.default_model : '',
     default_image_model: imageModelIds.has(aiConfig.default_image_model) ? aiConfig.default_image_model : '',
+    default_agent_id: aiConfig.agents.some(agent => agent.id === aiConfig.default_agent_id)
+      ? aiConfig.default_agent_id
+      : '',
+    agents: aiConfig.agents.map(agent => ({
+      ...agent,
+      primary_model: chatModelIds.has(agent.primary_model) ? agent.primary_model : '',
+      text_model: chatModelIds.has(agent.text_model) ? agent.text_model : '',
+      image_model: imageModelIds.has(agent.image_model) ? agent.image_model : '',
+      vision_model: chatModelIds.has(agent.vision_model) ? agent.vision_model : '',
+      max_steps: Math.min(32, Math.max(1, Math.floor(agent.max_steps || 8))),
+      temperature: Number.isFinite(agent.temperature) ? Math.min(2, Math.max(0, agent.temperature)) : 0.3,
+    })),
     providers,
   }
 }

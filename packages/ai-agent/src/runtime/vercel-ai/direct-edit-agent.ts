@@ -45,6 +45,7 @@ export interface VercelAiDirectEditAgentRuntimeOptions {
   model: string
   temperature?: number
   maxSteps?: number
+  systemPrompt?: string
   maxAutoFixIterations?: number
   /** Package-internal test/custom runtime injection; intentionally not root-exported. */
   languageModel?: LanguageModel
@@ -483,7 +484,15 @@ export class VercelAiDirectEditAgentRuntime implements DirectEditAgentRuntime<St
       const agent = new ToolLoopAgent({
         model: this.options.languageModel
           ?? createVercelAiLanguageModel(this.options.endpoint, this.options.model),
-        ...(modelInput.instructions ? { instructions: modelInput.instructions } : {}),
+        ...([modelInput.instructions, this.options.systemPrompt?.trim()]
+          .filter((value): value is string => Boolean(value))
+          .length > 0
+          ? {
+              instructions: [modelInput.instructions, this.options.systemPrompt?.trim()]
+                .filter((value): value is string => Boolean(value))
+                .join('\n\n'),
+            }
+          : {}),
         tools,
         temperature: this.options.temperature ?? 0.3,
         stopWhen: isStepCount(maxSteps),

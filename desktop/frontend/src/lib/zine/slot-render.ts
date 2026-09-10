@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 
 import { resolveAssetUrl } from '@/lib/api/core'
 
+import { toFrameDelta } from './geometry'
 import type { RenderedSlot, Slot, ZineAsset, ZineImageTransform } from './types'
 
 export interface ImagePlacement {
@@ -100,7 +101,7 @@ export function renderSlot(slot: Slot, _pageWmm: number, assets: ZineAsset[] = [
   }
 }
 
-export interface ImageFrameGeometry { x: number; y: number; w: number; h: number }
+export interface ImageFrameGeometry { x: number; y: number; w: number; h: number; rotation?: number }
 
 /** Keep the rendered photo fixed on the canvas while changing its clipping frame. */
 export function preserveImageTransformOnFrameResize(
@@ -115,12 +116,20 @@ export function preserveImageTransformOnFrameResize(
   const before = calculateImagePlacement(initialFrame.w, initialFrame.h, imageWidth, imageHeight, transform)
   const coverScale = Math.max(nextFrame.w / imageWidth, nextFrame.h / imageHeight)
   const scale = Math.max(0.01, before.width / (imageWidth * coverScale))
-  const centerX = initialFrame.x + before.left + before.width / 2
-  const centerY = initialFrame.y + before.top + before.height / 2
+  const [worldOffsetX, worldOffsetY] = toFrameDelta(
+    transform.offsetX / 100 * initialFrame.w,
+    transform.offsetY / 100 * initialFrame.h,
+    -(initialFrame.rotation ?? 0),
+  )
+  const [localOffsetX, localOffsetY] = toFrameDelta(
+    initialFrame.x + initialFrame.w / 2 + worldOffsetX - nextFrame.x - nextFrame.w / 2,
+    initialFrame.y + initialFrame.h / 2 + worldOffsetY - nextFrame.y - nextFrame.h / 2,
+    nextFrame.rotation ?? initialFrame.rotation ?? 0,
+  )
   return {
     ...transform,
     scale,
-    offsetX: ((centerX - nextFrame.x - nextFrame.w / 2) / nextFrame.w) * 100,
-    offsetY: ((centerY - nextFrame.y - nextFrame.h / 2) / nextFrame.h) * 100,
+    offsetX: (localOffsetX / nextFrame.w) * 100,
+    offsetY: (localOffsetY / nextFrame.h) * 100,
   }
 }

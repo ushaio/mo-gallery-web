@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { CloudLibrary } from "@/features/library/cloud/CloudLibrary";
 import { LocalLibrary } from "@/features/library/local/LocalLibrary";
 import { useAuth } from "@/contexts/AuthContext";
+import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 import { usePreferences } from "@/store/preferences";
 import { t } from "@/lib/i18n";
 import {
@@ -33,8 +34,8 @@ export function ResourceLibrary() {
       window.localStorage.setItem(SOURCE_STORAGE_KEY, source);
 
     const querySource = searchParams.get("source");
-    const hasOfflineOnlyParams = !isAuthenticated && searchParams.has("view");
-    if (querySource !== source || hasOfflineOnlyParams) {
+    const hasLocalOnlyParams = !isAuthenticated && searchParams.has("view");
+    if (querySource !== source || hasLocalOnlyParams) {
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -124,42 +125,18 @@ export function ResourceLibrary() {
           </span>
         </div>
         {isAuthenticated && (
-          <div
-            className="flex h-8 items-center rounded-md border bg-secondary/50 p-0.5"
-            role="tablist"
-            aria-label={t("admin.resource_library", language)}
-            style={{ borderColor: "var(--border)" }}
-          >
-            {sources.map(({ value, label, icon: Icon }) => {
-              const active = source === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  aria-controls={`resource-library-${value}`}
-                  data-library-source={value}
-                  tabIndex={active ? 0 : -1}
-                  onClick={() => switchSource(value)}
-                  onKeyDown={(event) => handleSourceKeyDown(event, value)}
-                  className="flex h-7 items-center gap-1.5 rounded px-3 text-[11px] font-medium transition-[background-color,color,box-shadow] hover:bg-background/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  style={{
-                    backgroundColor: active ? "var(--background)" : "transparent",
-                    color: active
-                      ? "var(--foreground)"
-                      : "var(--muted-foreground)",
-                    boxShadow: active
-                      ? "0 1px 3px color-mix(in srgb, var(--foreground) 12%, transparent)"
-                      : undefined,
-                  }}
-                >
-                  <Icon size={12} />
-                  {label}
-                </button>
-              );
+          <SegmentedTabs
+            size="sm"
+            ariaLabel={t("admin.resource_library", language)}
+            value={source}
+            onChange={switchSource}
+            options={sources.map(({ value, label, icon }) => ({ value, label, icon }))}
+            itemAttributes={(value) => ({
+              "data-library-source": value,
+              "aria-controls": `resource-library-${value}`,
             })}
-          </div>
+            onItemKeyDown={handleSourceKeyDown}
+          />
         )}
       </div>
 

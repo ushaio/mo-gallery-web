@@ -22,6 +22,7 @@ export type DataRevisionKey =
   | 'storage-sources'
   | 'settings'
   | 'zine-projects'
+  | 'canvas-projects'
 
 const revisions = new Map<DataRevisionKey, number>()
 const listeners = new Set<() => void>()

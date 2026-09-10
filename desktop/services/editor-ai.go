@@ -139,6 +139,7 @@ type EditorAiConversationUpdateInput struct {
 
 type EditorAiGenerateInput struct {
 	ConversationID string   `json:"conversationId"`
+	AgentID        string   `json:"agentId,omitempty"`
 	Action         string   `json:"action,omitempty"`
 	ImageModel     string   `json:"imageModel,omitempty"`
 	ImageSize      string   `json:"imageSize,omitempty"`
@@ -817,6 +818,9 @@ func (s *EditorAiService) DeleteConversation(_ string, conversationId string) er
 		if err := tx.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiMessage{}).Error; err != nil {
 			return fmt.Errorf("删除消息失败: %w", err)
 		}
+		if err := tx.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiInputImage{}).Error; err != nil {
+			return fmt.Errorf("删除图片失败: %w", err)
+		}
 		if err := tx.Where("id = ?", conversationId).Delete(&db.AiConversation{}).Error; err != nil {
 			return fmt.Errorf("删除对话失败: %w", err)
 		}
@@ -832,6 +836,9 @@ func (s *EditorAiService) ClearConversation(_ string, conversationId string) (*E
 		}
 		if err := tx.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiMessage{}).Error; err != nil {
 			return fmt.Errorf("清空消息失败: %w", err)
+		}
+		if err := tx.Where(`"conversationId" = ?`, conversationId).Delete(&db.AiInputImage{}).Error; err != nil {
+			return fmt.Errorf("清空图片失败: %w", err)
 		}
 		updates := map[string]interface{}{"summary": nil, "lastModel": nil}
 		return tx.Model(&conversation).Updates(updates).Error
@@ -1040,6 +1047,9 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	aiCfg := s.cfg.AI
 	aiCfg.Normalize()
 	providerID, provider, activeModel, err := aiCfg.ResolveImageModel(input.ImageModel)
+	if strings.TrimSpace(input.ImageModel) == "" && strings.TrimSpace(input.AgentID) != "" {
+		providerID, provider, activeModel, err = aiCfg.ResolveAgentModel(input.AgentID, config.AIAgentRoleImage)
+	}
 	if err != nil {
 		return err
 	}
@@ -1067,7 +1077,9 @@ func (s *EditorAiService) handleImageGeneration(input EditorAiGenerateInput, w h
 	if input.Action != "" {
 		userMsg.Action = &input.Action
 	}
-	if persistedImages := persistableImageReferences(input.Images); len(persistedImages) > 0 {
+	if persistedImages, persistErr := s.PersistInputImages(input.Images, input.ConversationID); persistErr != nil {
+		return persistErr
+	} else if len(persistedImages) > 0 {
 		metadata, _ := json.Marshal(map[string]interface{}{"images": persistedImages})
 		userMsg.Metadata = datatypes.JSON(metadata)
 	}
@@ -1596,6 +1608,77 @@ func readMessageImage(imageURL string, uploadService *UploadService) ([]byte, st
 		return nil, "", errors.New("不支持的图片地址")
 	}
 	return downloadImage(resolvedURL)
+}
+
+// PersistInputImages stores data URLs in editor-ai.db and returns stable
+// loopback URLs that can be rendered after the conversation is reopened.
+// Remote URLs are kept as-is because they are already persistence-safe.
+// The variadic conversation ID preserves compatibility with older callers.
+func (s *EditorAiService) PersistInputImages(images []string, conversationIDs ...string) ([]string, error) {
+	conversationID := ""
+	if len(conversationIDs) > 0 {
+		conversationID = strings.TrimSpace(conversationIDs[0])
+	}
+	if conversationID != "" {
+		var exists db.AiConversation
+		if err := s.persistenceDB().Select("id").Where("id = ?", conversationID).First(&exists).Error; err != nil {
+			return nil, errors.New("对话不存在")
+		}
+	}
+	result := make([]string, 0, len(images))
+	for index, source := range images {
+		normalized := strings.TrimSpace(source)
+		if normalized == "" {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToLower(normalized), "data:image/") {
+			result = append(result, normalized)
+			continue
+		}
+
+		data, mimeType, err := readImageInput(normalized)
+		if err != nil {
+			return nil, fmt.Errorf("保存参考图片 %d 失败: %w", index+1, err)
+		}
+		image := db.AiInputImage{ID: cuid(), ConversationID: conversationID, MimeType: mimeType, Data: data}
+		if err := s.persistenceDB().Create(&image).Error; err != nil {
+			return nil, fmt.Errorf("保存参考图片 %d 失败: %w", index+1, err)
+		}
+		result = append(result, fmt.Sprintf("http://127.0.0.1:%d/ai/input-image/%s", s.httpPort, image.ID))
+	}
+	return result, nil
+}
+
+// ReadPersistedInputImage serves images stored by PersistInputImages.
+func (s *EditorAiService) ReadPersistedInputImage(filename string) ([]byte, string, error) {
+	id := strings.TrimSpace(filename)
+	if id == "" || filepath.Base(id) != id {
+		return nil, "", errors.New("参考图片地址无效")
+	}
+	var image db.AiInputImage
+	if err := s.persistenceDB().Where("id = ?", id).First(&image).Error; err != nil {
+		// Keep previously persisted conversations readable after upgrading.
+		if !strings.HasPrefix(id, "input-") {
+			return nil, "", err
+		}
+		path := filepath.Join(aiImageTempDir(), id)
+		if pathErr := validateAiImagePath(path); pathErr != nil {
+			return nil, "", err
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil, "", err
+		}
+		mimeType := http.DetectContentType(data)
+		if !isAllowedImageMime(mimeType) {
+			return nil, "", errors.New("参考图片类型不受支持")
+		}
+		return data, mimeType, nil
+	}
+	if !isAllowedImageMime(image.MimeType) || len(image.Data) == 0 || len(image.Data) > 30*1024*1024 {
+		return nil, "", errors.New("参考图片类型不受支持")
+	}
+	return image.Data, image.MimeType, nil
 }
 
 func (s *EditorAiService) ensureLocalImageFile(messageId string, metadata *AiImageMetadata) (string, error) {

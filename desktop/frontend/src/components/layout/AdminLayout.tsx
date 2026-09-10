@@ -32,13 +32,14 @@ function CachedMenuOutlet() {
 }
 
 export function AdminLayout() {
-  const { theme } = usePreferences()
+  const { theme, accent } = usePreferences()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  // 主题切换
+  // 主题切换 + 配色方案
   useEffect(() => {
     const root = document.documentElement
     root.classList.remove('light', 'dark')
+    root.dataset.accent = accent
 
     if (theme === 'system') {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -46,7 +47,7 @@ export function AdminLayout() {
     } else {
       root.classList.add(theme)
     }
-  }, [theme])
+  }, [theme, accent])
 
   useEffect(() => {
     if (!settingsOpen) return

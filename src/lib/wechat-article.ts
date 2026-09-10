@@ -1,3 +1,6 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { MilkdownContent } from '@mo-gallery/milkdown/content'
 import {
   copyWechatArticleToClipboard,
   formatWechatArticleHtml,
@@ -7,7 +10,10 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { findStoryPhotoById } from '@/lib/story-rich-content'
 
-type WechatArticleSource = Pick<StoryDto, 'title' | 'content' | 'photos'>
+type WechatArticleSource = Pick<StoryDto, 'title' | 'photos'> & (
+  | Pick<StoryDto, 'editorType' | 'tiptapContent' | 'milkContent'>
+  | { content: string }
+)
 
 function resolveStoryCopyAssetUrl(rawUrl: string, photos: PhotoDto[], cdnDomain?: string, photoId?: string | null) {
   const matchedById = findStoryPhotoById(photos, photoId || undefined)
@@ -33,16 +39,27 @@ function getFormatOptions(story: WechatArticleSource, cdnDomain?: string) {
   }
 }
 
+function getWechatContent(story: WechatArticleSource, cdnDomain?: string) {
+  if ('content' in story) return story
+  const content = story.editorType === 'milkdown'
+    ? renderToStaticMarkup(createElement(MilkdownContent, {
+        content: story.milkContent ?? '',
+        resolveMediaUrl: (url, photoId) => resolveStoryCopyAssetUrl(url, story.photos, cdnDomain, photoId),
+      }))
+    : story.tiptapContent
+  return { title: story.title, content, photos: story.photos }
+}
+
 export function formatStoryAsWechatHtml(story: WechatArticleSource, cdnDomain?: string) {
-  return formatWechatArticleHtml(story, getFormatOptions(story, cdnDomain))
+  return formatWechatArticleHtml(getWechatContent(story, cdnDomain), getFormatOptions(story, cdnDomain))
 }
 
 export function formatStoryAsPlainText(story: WechatArticleSource) {
-  return formatWechatArticlePlainText(story)
+  return formatWechatArticlePlainText(getWechatContent(story))
 }
 
 export async function copyStoryAsWechatArticle(story: WechatArticleSource, cdnDomain?: string) {
-  return await copyWechatArticleToClipboard(story, getFormatOptions(story, cdnDomain))
+  return await copyWechatArticleToClipboard(getWechatContent(story, cdnDomain), getFormatOptions(story, cdnDomain))
 }
 
 /** @deprecated Use formatStoryAsPlainText instead. */

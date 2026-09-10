@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
+
+	"mo-gallery-desktop/config"
 )
 
 // LogLevel 日志级别
@@ -65,22 +66,9 @@ func NewLogger(enabled bool, maxEntries int) *Logger {
 	}
 }
 
-// logFilePath 返回日志文件路径
+// logFilePath 返回日志文件路径，统一存放在 logs 子目录。
 func logFilePath() string {
-	var dir string
-	switch runtime.GOOS {
-	case "windows":
-		dir = os.Getenv("APPDATA")
-		if dir == "" {
-			dir = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Roaming")
-		}
-		dir = filepath.Join(dir, "mo-gallery-desktop")
-	case "darwin":
-		dir = filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "mo-gallery-desktop")
-	default:
-		dir = filepath.Join(os.Getenv("HOME"), ".config", "mo-gallery-desktop")
-	}
-	return filepath.Join(dir, "logs.json")
+	return filepath.Join(config.LogDir(), "logs.json")
 }
 
 // GetLogDir 返回日志目录路径

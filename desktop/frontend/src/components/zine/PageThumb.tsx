@@ -35,7 +35,7 @@ export function PageThumb({ project, spread, width = 128, fluid = false }: PageT
       style={fluid ? { width: '100%', aspectRatio: `${spreadW} / ${spreadH}` } : { width, height: spreadH * (width / spreadW) }}
     >
       <div className="absolute inset-y-0 z-10 w-px bg-zinc-300/80" style={{ left: `${(pageW / spreadW) * 100}%` }} />
-      {spread.slots.map((slot) => {
+      {[...spread.slots].sort((left, right) => left.zIndex - right.zIndex).map((slot) => {
         const style = {
           left: `${(slot.x / spreadW) * 100}%`,
           top: `${(slot.y / spreadH) * 100}%`,

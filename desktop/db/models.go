@@ -47,25 +47,25 @@ func (Lens) TableName() string { return "Lens" }
 // ─── Photo ───────────────────────────────────────────
 
 type Photo struct {
-	ID              string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Title           string    `gorm:"type:text" json:"title"`
-	OriginFlag      string    `gorm:"column:originFlag;type:text;default:web" json:"originFlag"`
-	StorageProvider string    `gorm:"column:storageProvider;type:text;default:local" json:"storageProvider"`
-	StorageRuntime  string    `gorm:"column:storageRuntime;type:text;default:web" json:"storageRuntime"`
-	StoragePluginID *string   `gorm:"column:storagePluginId;type:text" json:"storagePluginId,omitempty"`
-	StorageSourceID *string   `gorm:"column:storageSourceId;type:text" json:"storageSourceId,omitempty"`
-	Path            *string   `gorm:"column:path;type:text" json:"path,omitempty"`
-	ThumbPath       *string   `gorm:"column:thumbPath;type:text" json:"thumbPath,omitempty"`
-	StorageURLType  string    `gorm:"column:storageUrlType;type:text;default:public" json:"storageUrlType"`
+	ID                  string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Title               string     `gorm:"type:text" json:"title"`
+	OriginFlag          string     `gorm:"column:originFlag;type:text;default:web" json:"originFlag"`
+	StorageProvider     string     `gorm:"column:storageProvider;type:text;default:local" json:"storageProvider"`
+	StorageRuntime      string     `gorm:"column:storageRuntime;type:text;default:web" json:"storageRuntime"`
+	StoragePluginID     *string    `gorm:"column:storagePluginId;type:text" json:"storagePluginId,omitempty"`
+	StorageSourceID     *string    `gorm:"column:storageSourceId;type:text" json:"storageSourceId,omitempty"`
+	Path                *string    `gorm:"column:path;type:text" json:"path,omitempty"`
+	ThumbPath           *string    `gorm:"column:thumbPath;type:text" json:"thumbPath,omitempty"`
+	StorageURLType      string     `gorm:"column:storageUrlType;type:text;default:public" json:"storageUrlType"`
 	StorageURLExpiresAt *time.Time `gorm:"column:storageUrlExpiresAt" json:"storageUrlExpiresAt,omitempty"`
-	Width           int       `json:"width"`
-	Height          int       `json:"height"`
-	Size            *int64    `json:"size,omitempty"`
-	IsFeatured      bool      `gorm:"column:isFeatured;default:false" json:"isFeatured"`
-	ShowFlag        bool      `gorm:"column:showFlag;default:true" json:"showFlag"`
-	DominantColors  *string   `gorm:"column:dominantColors;type:text" json:"dominantColors,omitempty"`
-	FileHash        *string   `gorm:"column:fileHash;type:text" json:"fileHash,omitempty"`
-	CreatedAt       time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	Width               int        `json:"width"`
+	Height              int        `json:"height"`
+	Size                *int64     `json:"size,omitempty"`
+	IsFeatured          bool       `gorm:"column:isFeatured;default:false" json:"isFeatured"`
+	ShowFlag            bool       `gorm:"column:showFlag;default:true" json:"showFlag"`
+	DominantColors      *string    `gorm:"column:dominantColors;type:text" json:"dominantColors,omitempty"`
+	FileHash            *string    `gorm:"column:fileHash;type:text" json:"fileHash,omitempty"`
+	CreatedAt           time.Time  `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 
 	// 设备外键
 	CameraID *string `gorm:"column:cameraId;type:text" json:"cameraId,omitempty"`
@@ -195,8 +195,7 @@ func (StorageSource) TableName() string { return "StorageSource" }
 type Story struct {
 	ID           string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Title        string    `gorm:"type:text" json:"title"`
-	Content      string    `gorm:"type:text" json:"content"`
-	ContentJSON  *string   `gorm:"column:contentJson;type:text" json:"contentJson,omitempty"`
+	EditorType   string    `gorm:"column:editorType;type:text;default:tiptap" json:"editorType"`
 	CoverPhotoID *string   `gorm:"column:coverPhotoId;type:text" json:"coverPhotoId,omitempty"`
 	CoverCrop    *string   `gorm:"column:coverCrop;type:text" json:"coverCrop,omitempty"` // JSON string
 	IsPublished  bool      `gorm:"column:isPublished;default:false" json:"isPublished"`
@@ -204,10 +203,24 @@ type Story struct {
 	CreatedAt    time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 	UpdatedAt    time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
 
-	Photos []Photo `gorm:"many2many:PhotoStories" json:"photos,omitempty"`
+	Photos   []Photo        `gorm:"many2many:PhotoStories" json:"photos,omitempty"`
+	Contents []StoryContent `gorm:"foreignKey:StoryID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"contents,omitempty"`
 }
 
 func (Story) TableName() string { return "Story" }
+
+type StoryContent struct {
+	ID                string    `gorm:"type:text;primaryKey" json:"id"`
+	StoryID           string    `gorm:"column:storyId;type:text;not null;uniqueIndex:StoryContent_storyId_editorType_key" json:"storyId"`
+	EditorType        string    `gorm:"column:editorType;type:text;not null;uniqueIndex:StoryContent_storyId_editorType_key" json:"editorType"`
+	TiptapContent     string    `gorm:"column:tiptapContent;type:text;not null;default:''" json:"tiptapContent"`
+	TiptapContentJSON *string   `gorm:"column:tiptapContentJson;type:jsonb" json:"tiptapContentJson,omitempty"`
+	MilkContent       *string   `gorm:"column:milk_content;type:text" json:"milkContent,omitempty"`
+	CreatedAt         time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt         time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+}
+
+func (StoryContent) TableName() string { return "StoryContent" }
 
 // ─── Comment ─────────────────────────────────────────
 
@@ -233,16 +246,30 @@ func (Comment) TableName() string { return "Comment" }
 type Blog struct {
 	ID          string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Title       string    `gorm:"type:text" json:"title"`
-	Content     string    `gorm:"type:text" json:"content"`
-	ContentJSON *string   `gorm:"column:contentJson;type:text" json:"contentJson,omitempty"`
+	EditorType  string    `gorm:"column:editorType;type:text;default:tiptap" json:"editorType"`
 	Category    string    `gorm:"type:text;default:未分类" json:"category"`
 	Tags        string    `gorm:"type:text;default:" json:"tags"`
 	IsPublished bool      `gorm:"column:isPublished;default:false" json:"isPublished"`
 	CreatedAt   time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
 	UpdatedAt   time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+
+	Contents []BlogContent `gorm:"foreignKey:BlogID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"contents,omitempty"`
 }
 
 func (Blog) TableName() string { return "Blog" }
+
+type BlogContent struct {
+	ID                string    `gorm:"type:text;primaryKey" json:"id"`
+	BlogID            string    `gorm:"column:blogId;type:text;not null;uniqueIndex:BlogContent_blogId_editorType_key" json:"blogId"`
+	EditorType        string    `gorm:"column:editorType;type:text;not null;uniqueIndex:BlogContent_blogId_editorType_key" json:"editorType"`
+	TiptapContent     string    `gorm:"column:tiptapContent;type:text;not null;default:''" json:"tiptapContent"`
+	TiptapContentJSON *string   `gorm:"column:tiptapContentJson;type:jsonb" json:"tiptapContentJson,omitempty"`
+	MilkContent       *string   `gorm:"column:milk_content;type:text" json:"milkContent,omitempty"`
+	CreatedAt         time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+	UpdatedAt         time.Time `gorm:"column:updatedAt;autoUpdateTime" json:"updatedAt"`
+}
+
+func (BlogContent) TableName() string { return "BlogContent" }
 
 // ─── FriendLink ──────────────────────────────────────
 
@@ -297,3 +324,16 @@ type AiMessage struct {
 }
 
 func (AiMessage) TableName() string { return "AiMessage" }
+
+// AiInputImage keeps user-supplied images in the same local SQLite profile as
+// the conversation that references them. Keeping the bytes here avoids
+// dangling files when a conversation is moved or restored.
+type AiInputImage struct {
+	ID             string    `gorm:"column:id;type:text;primaryKey" json:"id"`
+	ConversationID string    `gorm:"column:conversationId;type:text;index" json:"conversationId"`
+	MimeType       string    `gorm:"column:mimeType;type:text" json:"mimeType"`
+	Data           []byte    `gorm:"column:data;type:blob" json:"-"`
+	CreatedAt      time.Time `gorm:"column:createdAt;autoCreateTime" json:"createdAt"`
+}
+
+func (AiInputImage) TableName() string { return "AiInputImage" }

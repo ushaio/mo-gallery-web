@@ -153,7 +153,7 @@ export function ZineToolbar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-2" style={{ borderColor: 'var(--border)' }}>
-      <ToolIconButton label={t('admin.zine_back', language)} onClick={() => navigate('/zine')}>
+      <ToolIconButton label={t('admin.zine_back', language)} onClick={() => navigate('/design/zine')}>
         <ArrowLeft size={16} />
       </ToolIconButton>
 

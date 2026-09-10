@@ -1,29 +1,32 @@
 'use client'
 
-/**
- * StoryRichContent — 简化版，直接渲染 HTML 内容（TipTap 输出）。
- * web 端用 react-markdown + remark-gfm 渲染 Markdown，
- * desktop 端 content 已是 HTML，直接用 dangerouslySetInnerHTML 渲染。
- * 图片按 data-photo-id 回填 src（由 hydrateStoryContentImages 处理）。
- */
 import { memo } from 'react'
-import type { PhotoDto } from '@/lib/api/types'
+import { MilkdownContent } from '@mo-gallery/milkdown/content'
+import { resolveAssetUrl } from '@/lib/api/core'
+import type { EditorType, PhotoDto } from '@/lib/api/types'
 
 interface StoryRichContentProps {
-  content: string
+  editorType: EditorType
+  tiptapContent: string
+  milkContent?: string | null
   photos?: PhotoDto[]
   cdnDomain?: string
   className?: string
 }
 
 export const StoryRichContent = memo(function StoryRichContent({
-  content,
+  editorType,
+  tiptapContent,
+  milkContent,
+  photos,
+  cdnDomain,
   className,
 }: StoryRichContentProps) {
+  if (editorType === 'milkdown') return <MilkdownContent content={milkContent ?? ''} className={className} resolveMediaUrl={(src, photoId) => resolveAssetUrl(photos?.find((photo) => photo.id === photoId)?.url || src, cdnDomain)} />
   return (
     <div
       className={className}
-      dangerouslySetInnerHTML={{ __html: content }}
+      dangerouslySetInnerHTML={{ __html: tiptapContent }}
     />
   )
 })

@@ -10,9 +10,13 @@ export interface StoriesTabProps {
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
   editStoryId?: string
+  editSource?: 'prompt' | 'draft' | 'database'
+  /** 首页照片流「写叙事」交接：新建叙事时预置这些已选照片 */
+  newStoryPhotoIds?: string[]
   editFromDraft?: StoryEditorDraftData | null
   onDraftConsumed?: () => void
   refreshKey?: number
+  createRequestKey?: number
   listPaneCollapsed?: boolean
   onToggleListPane?: () => void
   subTabNav?: ReactNode
@@ -24,8 +28,11 @@ export interface StoriesTabProps {
 
 export interface StorySnapshot {
   title: string
-  content: string
-  contentJson?: StoryDto['contentJson']
+  editorType: StoryDto['editorType']
+  contentEditorTypes: StoryDto['contentEditorTypes']
+  tiptapContent: string
+  tiptapContentJson?: StoryDto['tiptapContentJson']
+  milkContent?: string | null
   isPublished: boolean
   createdAt: string
   storyDate: string

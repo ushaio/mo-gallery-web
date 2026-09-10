@@ -66,6 +66,7 @@ import {
   CreateEditorAiConversation,
   DeleteEditorAiConversation,
   FinishEditorAiMessage,
+  GetAiConfig,
   GetAiHttpPort,
   GetEditorAiConversation,
   GetEditorAiConversationMessagesPage,
@@ -223,21 +224,27 @@ let storyAiModelsRequest: Promise<StoryAiModelsResponse> | null = null
 export async function getLocalStoryAiModels(): Promise<StoryAiModelsResponse> {
   if (storyAiModelsRequest) return await storyAiModelsRequest
 
-  const request = GetStoryAiModels().then((response) => ({
-    defaultModel: response.defaultModel,
-    defaultImageModel: response.defaultImageModel,
-    models: response.models.map((model) => ({
-      id: model.id,
-      label: model.label,
-      provider: model.provider,
-      model: model.model,
-      capabilities: model.capabilities?.filter(isModelCapability),
-      vision: model.vision,
-      tools: model.tools,
-      structuredOutput: model.structuredOutput,
-      contextWindow: model.contextWindow,
-    })),
-  }))
+  const request = Promise.all([GetStoryAiModels(), GetAiConfig()]).then(([response, aiConfig]) => {
+    const agents = Array.isArray(aiConfig?.agents) ? aiConfig.agents : []
+    const defaultAgent = agents.find(agent => agent.id === aiConfig?.default_agent_id && agent.enabled !== false)
+    const configuredDefaultModel = defaultAgent?.primary_model?.trim()
+    const configuredDefaultImageModel = defaultAgent?.image_model?.trim()
+    return {
+      defaultModel: configuredDefaultModel || response.defaultModel,
+      defaultImageModel: configuredDefaultImageModel || response.defaultImageModel,
+      models: response.models.map((model) => ({
+        id: model.id,
+        label: model.label,
+        provider: model.provider,
+        model: model.model,
+        capabilities: model.capabilities?.filter(isModelCapability),
+        vision: model.vision,
+        tools: model.tools,
+        structuredOutput: model.structuredOutput,
+        contextWindow: model.contextWindow,
+      })),
+    }
+  })
   storyAiModelsRequest = request
 
   try {
@@ -247,6 +254,17 @@ export async function getLocalStoryAiModels(): Promise<StoryAiModelsResponse> {
   }
 }
 
+export async function getLocalAgent(agentId?: string) {
+  const aiConfig = await GetAiConfig()
+  const agents = Array.isArray(aiConfig?.agents) ? aiConfig.agents : []
+  const selectedId = agentId?.trim() || aiConfig?.default_agent_id
+  return agents.find(agent => agent.id === selectedId && agent.enabled !== false) ?? null
+}
+
+export async function getLocalDefaultAgent() {
+  return await getLocalAgent()
+}
+
 /** 本地 Go 代理端点（编辑器 Agent 模式也经此访问模型） */
 export async function getLocalEndpoint(): Promise<EditorAiEndpoint> {
   const port: number = await GetAiHttpPort()
@@ -254,11 +272,47 @@ export async function getLocalEndpoint(): Promise<EditorAiEndpoint> {
   return { baseURL: `http://127.0.0.1:${port}/v1` }
 }
 
-async function resolveModelId(selected?: string): Promise<string> {
+async function persistLocalEditorAiImages(images: string[], conversationId: string, signal?: AbortSignal): Promise<string[]> {
+  if (images.length === 0) return []
+  const port: number = await GetAiHttpPort()
+  if (!port) throw new Error('本地 AI 服务未启动，请检查 AI 配置')
+  const response = await fetch(`http://127.0.0.1:${port}/ai/persist-input-images`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId, images }),
+    signal,
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(detail || `图片持久化失败（${response.status}）`)
+  }
+  const payload: unknown = await response.json()
+  if (!payload || typeof payload !== 'object' || !Array.isArray((payload as { images?: unknown }).images)) {
+    throw new Error('图片持久化响应无效')
+  }
+  return (payload as { images: unknown[] }).images.filter((image): image is string => typeof image === 'string' && image.length > 0)
+}
+
+async function resolveModelId(selected?: string, agentId?: string, hasImages = false): Promise<string> {
   if (selected && selected.trim()) return selected.trim()
-  const models = await getLocalStoryAiModels()
+  const [models, agent] = await Promise.all([getLocalStoryAiModels(), getLocalAgent(agentId)])
+  const configured = hasImages
+    ? agent?.vision_model?.trim() || agent?.primary_model?.trim()
+    : agent?.primary_model?.trim()
+  if (configured) return configured
   if (!models?.defaultModel) throw new Error('未配置默认 AI 模型')
   return models.defaultModel
+}
+
+async function resolveAgentRoleModel(selected: string | undefined, role: 'primary' | 'text' | 'vision', agentId?: string): Promise<string> {
+  if (selected && selected.trim()) return selected.trim()
+  const [models, agent] = await Promise.all([getLocalStoryAiModels(), getLocalAgent(agentId)])
+  const configured = role === 'text'
+    ? agent?.text_model?.trim() || agent?.primary_model?.trim()
+    : role === 'vision'
+      ? agent?.vision_model?.trim() || agent?.primary_model?.trim() || agent?.text_model?.trim()
+      : agent?.primary_model?.trim()
+  return configured?.trim() || models.defaultModel || (() => { throw new Error('未配置默认 AI 模型') })()
 }
 
 function createToolInvocationId(toolCallId: string | undefined, phase: string): string {
@@ -372,6 +426,7 @@ export async function generateEditorAiConversationTitle(
 export async function prepareDesktopImagePrompt(input: {
   prompt: string
   model?: string
+  agentId?: string
   images?: string[]
   selectedAgentSkillIds: string[]
   signal?: AbortSignal
@@ -381,7 +436,7 @@ export async function prepareDesktopImagePrompt(input: {
 
   const [endpoint, model, snapshot] = await Promise.all([
     getLocalEndpoint(),
-    resolveModelId(input.model),
+    resolveAgentRoleModel(input.model, input.images?.length ? 'vision' : 'text', input.agentId),
     agentExtensions.snapshot(),
   ])
   const selectedIds = new Set(input.selectedAgentSkillIds)
@@ -471,9 +526,12 @@ export async function updateLocalEditorAiTaskState(
 
 async function polishStoryAiPrompt(
   _token: string,
-  input: { text: string; action?: EditorAiAction; hasSelection?: boolean; model?: string },
+  input: { text: string; action?: EditorAiAction; hasSelection?: boolean; model?: string; agentId?: string },
 ): Promise<{ text: string }> {
-  const [endpoint, model] = await Promise.all([getLocalEndpoint(), resolveModelId(input.model)])
+  const [endpoint, model] = await Promise.all([
+    getLocalEndpoint(),
+    resolveAgentRoleModel(input.model, 'text', input.agentId),
+  ])
   const text = await generateEditorAiText({
     endpoint,
     model,
@@ -488,7 +546,15 @@ async function streamStoryAiGenerate(
   handlers: StoryAiStreamHandlers,
 ): Promise<void> {
   const action: EditorAiAction = input.action ?? 'custom'
-  const [endpoint, model] = await Promise.all([getLocalEndpoint(), resolveModelId(input.model)])
+  const [endpoint, selectedAgent] = await Promise.all([
+    getLocalEndpoint(),
+    getLocalAgent(input.agentId),
+  ])
+  const hasImages = (input.images?.length ?? 0) > 0
+  const usePrimaryVisionOutput = hasImages
+    && !input.model
+    && selectedAgent?.vision_output_mode === 'primary'
+  const model = await resolveModelId(input.model, input.agentId, hasImages && !usePrimaryVisionOutput)
 
   // 历史消息与会话级系统提示：取全量已完成消息（分页拉齐）而非滑动窗口，
   // 保证请求前缀（system + 历史）逐轮稳定以命中上游 prefix cache
@@ -500,7 +566,9 @@ async function streamStoryAiGenerate(
     .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }))
 
   // 持久化用户消息 + assistant 流式占位（内容选择与 web 端一致）
-  const persistedImages = filterPersistableEditorAiImageReferences(input.images ?? [])
+  const persistedImages = filterPersistableEditorAiImageReferences(
+    await persistLocalEditorAiImages(input.images ?? [], input.conversationId, handlers.signal),
+  )
   const userMessage = await appendLocalEditorAiMessage(input.conversationId, {
     role: 'user',
     content: input.prompt?.trim() || input.selectedText?.trim() || input.currentParagraph?.trim() || action,
@@ -529,6 +597,16 @@ async function streamStoryAiGenerate(
     traceBlocks = reduceEditorAiTrace(traceBlocks, event)
     handlers.onEvent?.(event)
   }
+  const modelRoute = usePrimaryVisionOutput
+    ? {
+      mode: 'vision_to_primary',
+      visionModel: selectedAgent?.vision_model?.trim() || '',
+      outputModel: model,
+    }
+    : {
+      mode: hasImages ? 'vision' : 'primary',
+      outputModel: model,
+    }
   const buildTraceMetadata = () => {
     try {
       const blocks = JSON.parse(JSON.stringify(traceBlocks)) as EditorAiTraceBlock[]
@@ -540,6 +618,7 @@ async function streamStoryAiGenerate(
       const parsed = editorAiMessageMetadataSchema.safeParse({
         type: 'assistant_trace',
         blocks,
+        modelRoute,
         durationMs: Math.max(0, Math.round(performance.now() - generationStartedAt)),
         ...(generationUsage ? { usage: generationUsage } : {}),
         ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
@@ -569,16 +648,48 @@ async function streamStoryAiGenerate(
       }
     }
 
+    let imageAnalysis = ''
+    if (usePrimaryVisionOutput) {
+      const visionModel = selectedAgent?.vision_model?.trim()
+      if (!visionModel) throw new Error('当前 Agent 未配置视觉模型，无法按主模型输出')
+      imageAnalysis = await generateEditorAiText({
+        endpoint,
+        model: visionModel,
+        temperature: 0.2,
+        signal: handlers.signal,
+        messages: buildEditorAiMessages({
+          action,
+          prompt: input.prompt,
+          title: input.title,
+          selectedText: input.selectedText,
+          currentParagraph: input.currentParagraph,
+          contextBefore: input.contextBefore,
+          contextAfter: input.contextAfter,
+          systemPrompt: '你是图片观察分析器。请提取与用户请求相关的可观察事实、构图、光线、主体和不确定性，供另一个模型生成最终回答。不要直接回答用户，不要编造无法确认的信息。',
+          images: input.images,
+        }),
+      })
+    }
+
+    const finalPrompt = usePrimaryVisionOutput
+      ? [
+        input.prompt?.trim(),
+        `视觉模型图片分析（仅作为参考，不要提及分析过程）：\n${imageAnalysis.trim()}`,
+      ].filter(Boolean).join('\n\n')
+      : input.prompt
     const messages = buildEditorAiMessages({
       action,
-      prompt: input.prompt,
+      prompt: finalPrompt,
       title: input.title,
       selectedText: input.selectedText,
       currentParagraph: input.currentParagraph,
       contextBefore: input.contextBefore,
       contextAfter: input.contextAfter,
-      systemPrompt: conversation.systemPrompt || undefined,
-      images: input.images,
+      systemPrompt: [
+        !input.model ? selectedAgent?.system_prompt?.trim() : '',
+        conversation.systemPrompt,
+      ].filter(Boolean).join('\n\n') || undefined,
+      images: usePrimaryVisionOutput ? undefined : input.images,
       historyMessages,
     })
     if (agentExtensionSystemContext) {

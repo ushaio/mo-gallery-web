@@ -1,0 +1,18 @@
+[0;92mWails CLI[0m [0;31mv2.14.0[0m
+
+  • Generating bindings: Done.
+  • Installing frontend dependencies: Done.
+  • Compiling frontend: Done.
+Port 5173 is in use, trying another one...
+
+  VITE v6.4.3  ready in 599 ms
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: use --host to expose
+Building application for development...
+  • Generating bindings: Done.
+  • Generating application assets: Done.
+  • Compiling application: Done.
+ INFO  Wails is now using the new Go WebView2Loader. If you encounter any issues with it, please report them to https://github.com/wailsapp/wails/issues/2004. You could also use the old legacy loader with `-tags nodynamic,native_webview2loader`, but keep in mind this will be deprecated in the near future.
+ ♥   If Wails is useful to you or your company, please consider sponsoring the project:
+https://github.com/sponsors/leaanthony

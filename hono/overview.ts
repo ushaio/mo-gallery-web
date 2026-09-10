@@ -13,7 +13,9 @@ overview.get('/admin/overview', authMiddleware, async (c) => {
   try {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const yearStart = new Date(now.getFullYear(), 0, 1)
+    const photoActivityYear = now.getUTCFullYear()
+    const yearStart = new Date(Date.UTC(photoActivityYear, 0, 1))
+    const yearEnd = new Date(Date.UTC(photoActivityYear + 1, 0, 1))
 
     const [
       digitalCount,
@@ -37,10 +39,10 @@ overview.get('/admin/overview', authMiddleware, async (c) => {
       publishedBlogs,
       sizeAggregate,
       photosThisMonth,
-      photosThisYear,
       recentPhotos,
       recentStories,
       recentBlogs,
+      dailyRows,
     ] = await Promise.all([
       db.photo.count({ where: { filmPhoto: { is: null } } }),
       db.photo.count({ where: { filmPhoto: { isNot: null } } }),
@@ -63,7 +65,6 @@ overview.get('/admin/overview', authMiddleware, async (c) => {
       db.blog.count({ where: { isPublished: true } }),
       db.photo.aggregate({ _sum: { size: true } }),
       db.photo.count({ where: { createdAt: { gte: monthStart } } }),
-      db.photo.count({ where: { createdAt: { gte: yearStart } } }),
       db.photo.findMany({
         take: 6,
         orderBy: { createdAt: 'desc' },
@@ -88,6 +89,14 @@ overview.get('/admin/overview', authMiddleware, async (c) => {
         orderBy: { createdAt: 'desc' },
         select: { id: true, title: true, createdAt: true, isPublished: true },
       }),
+      // Prisma stores Photo.createdAt as a UTC timestamp without a time zone.
+      db.$queryRaw<{ date: string; count: number }[]>`
+        SELECT TO_CHAR("createdAt", 'YYYY-MM-DD') AS date, COUNT(*)::int AS count
+        FROM "Photo"
+        WHERE "createdAt" >= ${yearStart} AND "createdAt" < ${yearEnd}
+        GROUP BY 1
+        ORDER BY 1
+      `,
     ])
 
     const recentPhotoDtos = await Promise.all(recentPhotos.map(async (photo) => {
@@ -100,6 +109,15 @@ overview.get('/admin/overview', authMiddleware, async (c) => {
         createdAt: photo.createdAt.toISOString(),
       }
     }))
+
+    const dailyPhotos = dailyRows.map(row => ({ date: row.date, count: Number(row.count) }))
+    const monthlyPhotos = Array.from({ length: 12 }, () => 0)
+    let photosThisYear = 0
+    for (const day of dailyPhotos) {
+      const month = new Date(`${day.date}T00:00:00.000Z`).getUTCMonth()
+      monthlyPhotos[month] += day.count
+      photosThisYear += day.count
+    }
 
     return c.json({
       success: true,
@@ -139,6 +157,10 @@ overview.get('/admin/overview', authMiddleware, async (c) => {
         })),
         photosThisMonth,
         photosThisYear,
+        monthlyPhotos,
+        photoActivityYear,
+        photoActivityTimeZone: 'UTC',
+        dailyPhotos,
       },
     })
   } catch (error) {

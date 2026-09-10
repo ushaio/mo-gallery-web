@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { queryBlog } from '~/server/lib/queries'
 import { BlogDetailContent } from './BlogDetailContent'
+import { getArticlePlainText } from '@/lib/article-content'
 
 interface BlogDetailPageProps {
   params: Promise<{ id: string }>
@@ -18,10 +19,7 @@ export async function generateMetadata({ params }: BlogDetailPageProps): Promise
     }
   }
 
-  const description = blog.content
-    .replace(/[#*`\[\]<>]/g, '')
-    .substring(0, 160)
-    .trim()
+  const description = getArticlePlainText(blog).slice(0, 160).trim()
 
   return {
     title: blog.title,

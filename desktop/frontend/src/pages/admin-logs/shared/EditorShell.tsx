@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Eye, Maximize2, Minimize2, Save, X } from 'lucide-react'
+import { Eye, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Save, X } from 'lucide-react'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -93,11 +93,11 @@ export function EditorShell({
   t,
 }: EditorShellProps) {
   return (
-    <div className={cn('flex h-full min-h-0 flex-col gap-4 overflow-hidden', className)}>
+    <div className={cn('flex h-full min-h-0 flex-col gap-3 overflow-hidden', className)}>
       {/* 顶栏 */}
       <fieldset
         disabled={disabled}
-        className="flex shrink-0 items-center justify-between gap-4 border-0 border-b border-border px-3 py-2.5"
+        className="flex shrink-0 items-center justify-between gap-4 border-0 border-b border-border px-4 py-2.5"
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {onToggleListPane ? (
@@ -109,7 +109,7 @@ export function EditorShell({
               title={listPaneCollapsed ? t('admin.expand_list') : t('admin.collapse_list')}
               aria-label={listPaneCollapsed ? t('admin.expand_list') : t('admin.collapse_list')}
             >
-              {listPaneCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+              {listPaneCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </AdminButton>
           ) : null}
           <AdminButton
@@ -208,7 +208,7 @@ export function EditorShell({
 
       {/* 底部信息栏 */}
       {bottomBar ? (
-        <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-1.5">
+        <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-1.5">
           {bottomBar}
         </div>
       ) : null}

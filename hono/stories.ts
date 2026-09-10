@@ -1,28 +1,33 @@
 import 'server-only'
-import { Prisma } from '@/generated/prisma/client'
 import { Hono } from 'hono'
+import { z } from 'zod'
+import { Prisma } from '@/generated/prisma/client'
+import {
+  ARTICLE_CONTENT_INCLUDE,
+  ARTICLE_SAVE_TRANSACTION_OPTIONS,
+  ArticleContentShape,
+  EditorTypeSchema,
+  MissingEditorContentError,
+  articleContentData,
+  hasArticleBody,
+  mapArticleContent,
+  validateArticleContent,
+} from '~/server/lib/article-content'
 import { db } from '~/server/lib/db'
 import { createStoryAiStream, fetchStoryAiModels } from '~/server/lib/story-ai'
 import { polishStoryAiPrompt } from '~/server/lib/story-ai-prompt'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { z } from 'zod'
 import { resolvePhotoUrlsInto } from '~/server/lib/photo-urls'
 
 const stories = new Hono<{ Variables: AuthVariables }>()
 
-const TiptapJsonContentSchema = z.record(z.string(), z.unknown())
-type TiptapJsonContentInput = z.infer<typeof TiptapJsonContentSchema>
-
-function toPrismaJsonInput(value: TiptapJsonContentInput): Prisma.InputJsonValue {
-  return value as Prisma.InputJsonValue
-}
-
 // Validation schemas
 const CreateStorySchema = z.object({
+  ...ArticleContentShape,
+  editorType: EditorTypeSchema,
   title: z.string().min(1).max(200),
-  content: z.string().min(1).max(50000),
-  contentJson: TiptapJsonContentSchema.optional().nullable(),
   isPublished: z.boolean().default(false),
+  storyDate: z.string().datetime().optional(),
   photoIds: z.array(z.string().uuid()).optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
   coverCrop: z.object({
@@ -31,12 +36,11 @@ const CreateStorySchema = z.object({
     width: z.number().gt(0).max(1),
     height: z.number().gt(0).max(1),
   }).optional().nullable(),
-})
+}).strict().superRefine(validateArticleContent)
 
 const UpdateStorySchema = z.object({
+  ...ArticleContentShape,
   title: z.string().min(1).max(200).optional(),
-  content: z.string().min(1).max(50000).optional(),
-  contentJson: TiptapJsonContentSchema.optional().nullable(),
   isPublished: z.boolean().optional(),
   coverPhotoId: z.string().uuid().optional().nullable(),
   coverCrop: z.object({
@@ -47,7 +51,7 @@ const UpdateStorySchema = z.object({
   }).optional().nullable(),
   storyDate: z.string().datetime().optional().nullable(),
   createdAt: z.string().datetime().optional().nullable(),
-})
+}).strict().superRefine(validateArticleContent)
 
 const AddPhotosSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1),
@@ -81,6 +85,7 @@ stories.get('/stories', async (c) => {
     const storiesList = await db.story.findMany({
       where: { isPublished: true },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -89,7 +94,7 @@ stories.get('/stories', async (c) => {
     })
 
     const data = await Promise.all(storiesList.map(async (story) => ({
-      ...story,
+      ...mapArticleContent(story),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -114,6 +119,7 @@ stories.get('/stories/:id', async (c) => {
     const story = await db.story.findUnique({
       where: { id, isPublished: true },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -125,7 +131,7 @@ stories.get('/stories/:id', async (c) => {
     }
 
     const data = {
-      ...story,
+      ...mapArticleContent(story),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -204,6 +210,7 @@ stories.get('/photos/:photoId/story', async (c) => {
         },
       },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -215,7 +222,7 @@ stories.get('/photos/:photoId/story', async (c) => {
     }
 
     const data = {
-      ...story,
+      ...mapArticleContent(story),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -247,6 +254,7 @@ stories.get('/admin/photos/:photoId/story', async (c) => {
         },
       },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -258,7 +266,7 @@ stories.get('/admin/photos/:photoId/story', async (c) => {
     }
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -279,6 +287,7 @@ stories.get('/admin/stories', async (c) => {
   try {
     const storiesList = await db.story.findMany({
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -287,7 +296,7 @@ stories.get('/admin/stories', async (c) => {
     })
 
     const data = await Promise.all(storiesList.map(async (story) => ({
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -311,6 +320,7 @@ stories.get('/admin/stories/:id', async (c) => {
     const story = await db.story.findUnique({
       where: { id },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -322,7 +332,7 @@ stories.get('/admin/stories/:id', async (c) => {
     }
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -347,14 +357,10 @@ stories.post('/admin/stories', async (c) => {
     const story = await db.story.create({
       data: {
         title: validated.title,
-        content: validated.content,
-        contentJson:
-          validated.contentJson === undefined
-            ? undefined
-            : validated.contentJson === null
-              ? Prisma.JsonNull
-              : toPrismaJsonInput(validated.contentJson),
+        editorType: validated.editorType,
+        contents: { create: articleContentData(validated) },
         isPublished: validated.isPublished,
+        storyDate: validated.storyDate ? new Date(validated.storyDate) : undefined,
         coverPhotoId: validated.coverPhotoId,
         coverCrop:
           validated.coverCrop === undefined
@@ -369,6 +375,7 @@ stories.post('/admin/stories', async (c) => {
           : undefined,
       },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -376,7 +383,7 @@ stories.post('/admin/stories', async (c) => {
     })
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -404,11 +411,6 @@ stories.patch('/admin/stories/:id', async (c) => {
 
     const updateData: Prisma.StoryUpdateInput = {}
     if (validated.title !== undefined) updateData.title = validated.title
-    if (validated.content !== undefined) updateData.content = validated.content
-    if (validated.contentJson !== undefined) {
-      updateData.contentJson =
-        validated.contentJson === null ? Prisma.JsonNull : toPrismaJsonInput(validated.contentJson)
-    }
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
     if (validated.coverPhotoId !== undefined) updateData.coverPhotoId = validated.coverPhotoId
     if (validated.coverCrop !== undefined) {
@@ -421,18 +423,42 @@ stories.patch('/admin/stories/:id', async (c) => {
       updateData.storyDate = validated.createdAt ? new Date(validated.createdAt) : new Date()
     }
 
-    const story = await db.story.update({
-      where: { id },
-      data: updateData,
-      include: {
-        photos: {
-          include: { categories: true },
+    const editorType = validated.editorType
+    const savesBody = hasArticleBody(validated)
+    if (editorType !== undefined) {
+      updateData.editorType = editorType
+      if (savesBody) {
+        const content = articleContentData({ ...validated, editorType })
+        updateData.contents = {
+          upsert: {
+            where: { storyId_editorType: { storyId: id, editorType } },
+            create: content,
+            update: content,
+          },
+        }
+      }
+    }
+
+    const story = await db.$transaction(async (tx) => {
+      if (editorType !== undefined && !savesBody) {
+        const existing = await tx.story.findUniqueOrThrow({
+          where: { id },
+          select: { contents: { where: { editorType }, select: { id: true } } },
+        })
+        if (existing.contents.length === 0) throw new MissingEditorContentError(editorType)
+      }
+      return tx.story.update({
+        where: { id },
+        data: updateData,
+        include: {
+          ...ARTICLE_CONTENT_INCLUDE,
+          photos: { include: { categories: true } },
         },
-      },
-    })
+      })
+    }, ARTICLE_SAVE_TRANSACTION_OPTIONS)
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -447,6 +473,12 @@ stories.patch('/admin/stories/:id', async (c) => {
     console.error('Update story error:', error)
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    if (error instanceof MissingEditorContentError) {
+      return c.json({ error: error.message, code: 'EDITOR_CONTENT_MISSING' }, 409)
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return c.json({ error: 'Story not found' }, 404)
     }
     return c.json({ error: 'Internal server error' }, 500)
   }
@@ -485,6 +517,7 @@ stories.post('/admin/stories/:id/photos', async (c) => {
         },
       },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -492,7 +525,7 @@ stories.post('/admin/stories/:id/photos', async (c) => {
     })
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -526,6 +559,7 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
         },
       },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -533,7 +567,7 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
     })
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),
@@ -567,6 +601,7 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
         },
       },
       include: {
+        ...ARTICLE_CONTENT_INCLUDE,
         photos: {
           include: { categories: true },
         },
@@ -574,7 +609,7 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
     })
 
     const data = {
-      ...story,
+      ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
         category: p.categories.map((c) => c.name).join(','),

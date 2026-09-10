@@ -62,7 +62,7 @@ function localPhotoToZineAsset(asset: LocalAsset): ZineAsset {
     width: asset.width,
     height: asset.height,
     previewUrl: asset.thumbnailUrl || asset.previewUrl,
-    fullUrl: asset.originalUrl || asset.previewUrl,
+    fullUrl: asset.originalUrl,
     createdAt: Date.now(),
   }
 }
@@ -72,11 +72,13 @@ export function PhotoLibraryDialog(props: PhotoLibraryDialogProps) {
   const language = usePreferences((state) => state.language)
   const [selectedCloudPhotos, setSelectedCloudPhotos] = useState<Photo[]>([])
   const [selectedLocalAssets, setSelectedLocalAssets] = useState<LocalAsset[]>([])
+  const [selectionSource, setSelectionSource] = useState(source)
 
-  useEffect(() => {
+  if (source !== selectionSource) {
+    setSelectionSource(source)
     setSelectedCloudPhotos([])
     setSelectedLocalAssets([])
-  }, [source])
+  }
 
   useEffect(() => {
     if (!source) return

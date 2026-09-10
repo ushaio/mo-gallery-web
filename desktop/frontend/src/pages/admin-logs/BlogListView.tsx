@@ -1,5 +1,7 @@
 'use client'
 
+import { getEditorContent } from '@mo-gallery/api-client/editor-content'
+
 import { useMemo, useState } from 'react'
 import { BookText, Edit3, FileText, History, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
 import type { SelectOption } from '@/components/admin/AdminFormControls'
@@ -15,6 +17,7 @@ import {
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminLoading } from '@/components/admin/AdminLoading'
 import type { BlogDto } from '@/lib/api/types'
+import { getMilkdownText } from '@mo-gallery/milkdown/media'
 import { formatRelativeTimeLabel } from '@/lib/utils'
 
 interface BlogListViewProps {
@@ -62,7 +65,7 @@ export function BlogListView({
         (statusFilter === 'published' ? blog.isPublished : !blog.isPublished)
       const matchesQuery =
         !query ||
-        [blog.title, blog.content, blog.category, blog.tags].some((value) =>
+        [blog.title, getEditorContent(blog), blog.category, blog.tags].some((value) =>
           value?.toLowerCase().includes(query),
         )
       return matchesStatus && matchesQuery
@@ -97,8 +100,8 @@ export function BlogListView({
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
-      {/* 工具栏：搜索 ｜ 筛选 / 刷新 / 新建 全部在搜索框右侧（单行） */}
-      <div className="flex shrink-0 items-center gap-1.5 border-b pb-3" style={{ borderColor: 'var(--border)' }}>
+      {/* 工具栏：新增入口位于页面标题栏，这里仅保留列表操作。 */}
+      <div className="mx-3 flex shrink-0 items-center gap-1.5 border-b pb-3" style={{ borderColor: 'var(--border)' }}>
         <div className="relative min-w-0 flex-1">
           <Search
             size={14}
@@ -128,14 +131,6 @@ export function BlogListView({
           title={t('common.refresh')}
         >
           <RefreshCw className="h-3.5 w-3.5" />
-        </AdminButton>
-        <AdminButton
-          onClick={onCreateBlog}
-          adminVariant="primary"
-          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md p-0"
-          title={t('ui.create_blog')}
-        >
-          <Plus className="h-4 w-4" />
         </AdminButton>
       </div>
 
@@ -205,78 +200,80 @@ export function BlogListView({
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">{label}</span>
                     <div className="h-px flex-1 bg-border/40" />
                   </div>
-                  {items.map((blog) => {
-              const isSelected = selectedBlogId === blog.id
-              return (
-                <ContextMenu key={blog.id}>
-                  <ContextMenuTrigger asChild>
-                    <div
-                      className="group relative flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors"
-                      style={{
-                        borderColor: isSelected ? 'var(--primary)' : 'var(--border)',
-                        backgroundColor: isSelected
-                          ? 'color-mix(in srgb, var(--primary) 7%, transparent)'
-                          : 'var(--card)',
-                        boxShadow: isSelected ? '0 0 0 1px var(--primary)' : undefined,
-                      }}
-                    >
-                      {/* 状态徽标：固定右上角 */}
-                      <span
-                        className="absolute right-2 top-2 z-10 shrink-0 rounded px-1.5 py-0.5 text-[10px]"
-                        style={
-                          blog.isPublished
-                            ? { backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }
-                            : { backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }
-                        }
-                      >
-                        {blog.isPublished ? t('admin.published') : t('admin.draft')}
-                      </span>
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
-                        style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)' }}
-                      >
-                        <BookText className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />
-                      </div>
-                      <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onSelectBlog(blog)}>
-                        <div className="mb-1 flex items-center gap-2">
-                          <h4 className="truncate pr-12 font-serif text-sm transition-colors group-hover:text-primary">
-                            {blog.title || t('admin.untitled')}
-                          </h4>
-                        </div>
-                        <div
-                          className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-wide"
-                          style={{ color: 'var(--muted-foreground)' }}
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <History className="h-3 w-3" />
-                            {formatRelativeTimeLabel(new Date(blog.updatedAt).getTime(), t, 'datetime')}
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <FileText className="h-3 w-3" />
-                            {blog.content.length} {t('admin.characters')}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuLabel className="max-w-56 truncate">
-                      {blog.title || t('admin.untitled')}
-                    </ContextMenuLabel>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem onSelect={() => onSelectBlog(blog)}>
-                      <Edit3 className="size-3.5" />
-                      {t('common.edit')}
-                    </ContextMenuItem>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem variant="destructive" onSelect={() => onRequestDelete(blog.id)}>
-                      <Trash2 className="size-3.5" />
-                      {t('common.delete')}
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
-              )
-            })}
+                  <div className="flex flex-col gap-[2px]">
+                    {items.map((blog) => {
+                      const isSelected = selectedBlogId === blog.id
+                      return (
+                        <ContextMenu key={blog.id}>
+                          <ContextMenuTrigger asChild>
+                            <div
+                              className="group relative flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors"
+                              style={{
+                                borderColor: isSelected ? 'var(--primary)' : 'var(--border)',
+                                backgroundColor: isSelected
+                                  ? 'color-mix(in srgb, var(--primary) 7%, transparent)'
+                                  : 'var(--card)',
+                                boxShadow: isSelected ? '0 0 0 1px var(--primary)' : undefined,
+                              }}
+                            >
+                              {/* 状态徽标：固定右上角 */}
+                              <span
+                                className="absolute right-2 top-2 z-10 shrink-0 rounded px-1.5 py-0.5 text-[10px]"
+                                style={
+                                  blog.isPublished
+                                    ? { backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' }
+                                    : { backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }
+                                }
+                              >
+                                {blog.isPublished ? t('admin.published') : t('admin.draft')}
+                              </span>
+                              <div
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+                                style={{ backgroundColor: 'color-mix(in srgb, var(--muted) 60%, transparent)' }}
+                              >
+                                <BookText className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />
+                              </div>
+                              <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onSelectBlog(blog)}>
+                                <div className="mb-1 flex items-center gap-2">
+                                  <h4 className="truncate pr-12 font-serif text-sm transition-colors group-hover:text-primary">
+                                    {blog.title || t('admin.untitled')}
+                                  </h4>
+                                </div>
+                                <div
+                                  className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-wide"
+                                  style={{ color: 'var(--muted-foreground)' }}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <History className="h-3 w-3" />
+                                    {formatRelativeTimeLabel(new Date(blog.updatedAt).getTime(), t, 'datetime')}
+                                  </span>
+                                  <span className="flex items-center gap-1.5">
+                                    <FileText className="h-3 w-3" />
+                                    {(blog.editorType === 'milkdown' ? getMilkdownText(blog.milkContent ?? '') : blog.tiptapContent).length} {t('admin.characters')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuLabel className="max-w-56 truncate">
+                              {blog.title || t('admin.untitled')}
+                            </ContextMenuLabel>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem onSelect={() => onSelectBlog(blog)}>
+                              <Edit3 className="size-3.5" />
+                              {t('common.edit')}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem variant="destructive" onSelect={() => onRequestDelete(blog.id)}>
+                              <Trash2 className="size-3.5" />
+                              {t('common.delete')}
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      )
+                    })}
+                  </div>
                 </div>
               )
             })}

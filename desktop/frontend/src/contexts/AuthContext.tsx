@@ -66,7 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthState()
     setIsReady(true)
     sessionStorage.setItem(AUTH_ERROR_MESSAGE_KEY, notice ?? getAuthErrorMessage(error))
-    navigate('/login', { replace: true })
+    // /login 是官方账号登录页；web 站点会话失效统一引导到 /connect 重连。
+    navigate('/connect', { replace: true })
   }, [clearAuthState, navigate])
 
   useEffect(() => {
@@ -201,8 +202,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         const server = configuredServer
         if (!server) {
+          // 未配置站点（本地模式）时没有可恢复的 web 会话，静默清理即可，
+          // 不引导用户去连接页——连接站点是可选步骤。
           authSyncPendingRef.current = false
-          handleAuthFailure(undefined, '尚未配置服务器地址，请先完成连接设置。')
+          localStorage.removeItem(TOKEN_KEY)
+          localStorage.removeItem(USER_KEY)
+          if (!cancelled) {
+            setToken(null)
+            setUser(null)
+            setIsReady(true)
+          }
           return
         }
         await SetAuth(server, savedToken)

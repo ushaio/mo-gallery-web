@@ -1,14 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Maximize, Minus, Plus } from 'lucide-react'
 
 import { t } from '@/lib/i18n'
+import { isZineControlTarget, isZineEditableTarget, isZineShortcutTarget } from '@/lib/zine/editor-input'
 import { getPageSizeLabel, getProjectSpreadSize } from '@/lib/zine/page-sizes'
+import { DEFAULT_ZINE_FONT_FAMILY, useZinePreviewFont } from '@/lib/zine/preview-fonts'
 import { getPageNumberAlign, getProjectBleedMm, getSpreadPageNumbers, PAGE_NUMBER_BOTTOM_MM, PAGE_NUMBER_FONT_PT, SAFE_MARGIN_MM } from '@/lib/zine/print'
 import type { Spread, ZineProject } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
 
 import { SlotView } from './SlotView'
+import './zine-editor.css'
 
 interface SpreadCanvasProps {
   project: ZineProject
@@ -17,6 +20,8 @@ interface SpreadCanvasProps {
   zoom: number
   onZoomChange: (zoom: number) => void
   onSelectSlot: (slotId: string | null) => void
+  tool?: 'select' | 'hand'
+  preview?: boolean
 }
 
 const DEFAULT_CANVAS_WIDTH = 1040
@@ -24,8 +29,8 @@ const CANVAS_PADDING = 48
 const MIN_CANVAS_WIDTH = 280
 const MIN_CANVAS_HEIGHT = 220
 const PREVIEW_FIT_RATIO = 0.88
-const MIN_ZOOM = 0.4
-const MAX_ZOOM = 2
+const MIN_ZOOM = 0.25
+const MAX_ZOOM = 4
 
 interface SpreadCanvasScaleParams {
   availableWidth: number
@@ -36,11 +41,10 @@ interface SpreadCanvasScaleParams {
 }
 
 interface PendingZoomAnchor {
-  scrollLeft: number
-  scrollTop: number
   pointerX: number
   pointerY: number
-  previousZoom: number
+  paperX: number
+  paperY: number
   nextZoom: number
 }
 
@@ -91,10 +95,16 @@ function CropMarks() {
   )
 }
 
-export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZoomChange, onSelectSlot }: SpreadCanvasProps) {
-  const { language, zineViewOptions } = usePreferences()
+export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZoomChange, onSelectSlot, tool = 'select', preview = false }: SpreadCanvasProps) {
+  const language = usePreferences((state) => state.language)
+  const zineViewOptions = usePreferences((state) => state.zineViewOptions)
+  const folioFont = useZinePreviewFont(DEFAULT_ZINE_FONT_FAMILY, project.pageNumbers?.enabled ? '0123456789' : '')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const paperRef = useRef<HTMLDivElement | null>(null)
+  const zoomRef = useRef(zoom)
+  const fitRequestedRef = useRef(true)
+  const scrollRangeRef = useRef<{ x: number; y: number } | null>(null)
   const pendingZoomAnchorRef = useRef<PendingZoomAnchor | null>(null)
   const panRef = useRef<{ pointerId: number; x: number; y: number; scrollLeft: number; scrollTop: number; moved: boolean } | null>(null)
   const suppressClickRef = useRef(false)
@@ -124,22 +134,40 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
   }, [])
 
   useLayoutEffect(() => {
+    zoomRef.current = zoom
     const viewport = viewportRef.current
+    const paper = paperRef.current
     const anchor = pendingZoomAnchorRef.current
-    if (!viewport || !anchor || anchor.nextZoom !== zoom) return
-
-    viewport.scrollLeft = calculatePointerAnchoredScroll(anchor.scrollLeft, anchor.pointerX, anchor.previousZoom, anchor.nextZoom)
-    viewport.scrollTop = calculatePointerAnchoredScroll(anchor.scrollTop, anchor.pointerY, anchor.previousZoom, anchor.nextZoom)
-    pendingZoomAnchorRef.current = null
-  }, [zoom])
+    if (!viewport || !paper) return
+    const range = { x: viewport.scrollWidth - viewport.clientWidth, y: viewport.scrollHeight - viewport.clientHeight }
+    if (fitRequestedRef.current) {
+      viewport.scrollLeft = range.x / 2
+      viewport.scrollTop = range.y / 2
+      fitRequestedRef.current = false
+      pendingZoomAnchorRef.current = null
+    } else if (anchor && anchor.nextZoom === zoom) {
+      const viewportRect = viewport.getBoundingClientRect()
+      const paperRect = paper.getBoundingClientRect()
+      viewport.scrollLeft += paperRect.left - viewportRect.left + anchor.paperX * paperRect.width - anchor.pointerX
+      viewport.scrollTop += paperRect.top - viewportRect.top + anchor.paperY * paperRect.height - anchor.pointerY
+      pendingZoomAnchorRef.current = null
+    } else if (scrollRangeRef.current) {
+      // Preserve the viewport's offset from the paper when a side panel resizes.
+      viewport.scrollLeft += (range.x - scrollRangeRef.current.x) / 2
+      viewport.scrollTop += (range.y - scrollRangeRef.current.y) / 2
+    }
+    scrollRangeRef.current = range
+  }, [zoom, availableSize.width, availableSize.height, project.pageSize, project.pageOrientation, project.customSizeMm])
 
   useEffect(() => {
-    function isEditableTarget(target: EventTarget | null) {
-      return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
-    }
-
     function onKeyDown(event: KeyboardEvent) {
-      if (event.code !== 'Space' || isEditableTarget(event.target)) return
+      if (!isZineShortcutTarget(event.target) || isZineControlTarget(event.target)) return
+      if (event.key === 'Escape' && panRef.current) {
+        event.preventDefault()
+        endPan()
+        return
+      }
+      if (event.code !== 'Space' || event.ctrlKey || event.metaKey || event.altKey) return
       event.preventDefault()
       setSpacePressed(true)
     }
@@ -150,8 +178,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
 
     function onBlur() {
       setSpacePressed(false)
-      setPanning(false)
-      panRef.current = null
+      endPan()
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -164,27 +191,63 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
     }
   }, [])
 
-  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
-    if (!event.ctrlKey && !event.metaKey) return
+  const changeZoom = useCallback((nextZoom: number, clientX?: number, clientY?: number) => {
+    const viewport = viewportRef.current
+    const paper = paperRef.current
+    if (!viewport || !paper) return
+    const next = clampZoom(nextZoom)
+    if (next === zoomRef.current) return
+    const rect = viewport.getBoundingClientRect()
+    const paperRect = paper.getBoundingClientRect()
+    const x = clientX ?? rect.left + viewport.clientWidth / 2
+    const y = clientY ?? rect.top + viewport.clientHeight / 2
+    pendingZoomAnchorRef.current = {
+      pointerX: x - rect.left,
+      pointerY: y - rect.top,
+      paperX: (x - paperRect.left) / paperRect.width,
+      paperY: (y - paperRect.top) / paperRect.height,
+      nextZoom: next,
+    }
+    zoomRef.current = next
+    onZoomChange(next)
+  }, [onZoomChange])
 
+  useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
-
-    event.preventDefault()
-    const nextZoom = clampZoom(zoom + (event.deltaY > 0 ? -0.08 : 0.08))
-    if (nextZoom === zoom) return
-    const rect = viewport.getBoundingClientRect()
-    const pointerX = event.clientX - rect.left
-    const pointerY = event.clientY - rect.top
-    pendingZoomAnchorRef.current = {
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
-      pointerX,
-      pointerY,
-      previousZoom: zoom,
-      nextZoom,
+    function onWheel(event: WheelEvent) {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (viewport?.querySelector('[data-zine-gesture]') || panRef.current || event.deltaY === 0) return
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport!.clientHeight : 1
+      changeZoom(zoomRef.current * Math.exp(-event.deltaY * unit * 0.002), event.clientX, event.clientY)
     }
-    onZoomChange(nextZoom)
+    // React's wheel listeners are passive; cancellation must be attached here.
+    viewport.addEventListener('wheel', onWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', onWheel)
+  }, [changeZoom])
+
+  function endPan() {
+    const pan = panRef.current
+    panRef.current = null
+    setPanning(false)
+    if (!pan) return
+    suppressClickRef.current = true
+    const viewport = viewportRef.current
+    if (viewport?.hasPointerCapture(pan.pointerId)) viewport.releasePointerCapture(pan.pointerId)
+  }
+
+  function fitCanvas() {
+    pendingZoomAnchorRef.current = null
+    fitRequestedRef.current = zoom !== 1
+    zoomRef.current = 1
+    onZoomChange(1)
+    const viewport = viewportRef.current
+    if (viewport && zoom === 1) viewport.scrollTo({
+      left: (viewport.scrollWidth - viewport.clientWidth) / 2,
+      top: (viewport.scrollHeight - viewport.clientHeight) / 2,
+    })
   }
 
   const spreadIndex = Math.max(0, project.spreads.findIndex((spread) => spread.id === activeSpread?.id))
@@ -204,23 +267,29 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
       : `P${pageNumbers.left} · P${pageNumbers.right}`
 
   return (
-    <div ref={containerRef} className="zine-desk zine-canvas relative min-h-0 min-w-0 flex-1 overflow-hidden">
+    <div ref={containerRef} data-zine-canvas className="zine-desk zine-canvas relative isolate min-h-0 min-w-0 flex-1 overflow-hidden">
       <div
         ref={viewportRef}
-        className={`h-full w-full overflow-auto ${panning ? 'cursor-grabbing' : spacePressed ? 'cursor-grab' : ''}`}
-        style={{ scrollbarGutter: 'stable' }}
-        onWheel={handleWheel}
+        data-zine-viewport
+        data-zine-navigating={panning || spacePressed || tool === 'hand' || undefined}
+        tabIndex={0}
+        aria-label={language === 'zh' ? 'Zine 编辑画布' : 'Zine editing canvas'}
+        className={`h-full w-full overflow-auto outline-none ${panning ? 'cursor-grabbing' : spacePressed || tool === 'hand' ? 'cursor-grab' : ''}`}
+        style={{ scrollbarGutter: 'stable', overscrollBehavior: 'contain' }}
         onClick={() => {
           if (suppressClickRef.current) {
             suppressClickRef.current = false
             return
           }
-          onSelectSlot(null)
+          if (!preview && tool === 'select') onSelectSlot(null)
         }}
-        onPointerDown={(event) => {
-          if (!spacePressed || event.button !== 0) return
+        onPointerDownCapture={(event) => {
+          suppressClickRef.current = false
           const viewport = viewportRef.current
-          if (!viewport) return
+          if (!viewport || isZineEditableTarget(event.target)) return
+          if (event.target instanceof Element && event.target.closest('button')) return
+          viewport.focus({ preventScroll: true })
+          if (!(event.button === 1 || event.button === 0 && (spacePressed || tool === 'hand'))) return
           event.preventDefault()
           event.stopPropagation()
           viewport.setPointerCapture(event.pointerId)
@@ -246,18 +315,24 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
         }}
         onPointerUp={(event) => {
           if (panRef.current?.pointerId !== event.pointerId) return
-          const moved = panRef.current.moved
-          panRef.current = null
-          suppressClickRef.current = moved
-          setPanning(false)
-          if (moved) event.stopPropagation()
+          event.stopPropagation()
+          endPan()
         }}
+        onPointerCancel={endPan}
+        onLostPointerCapture={() => { if (panRef.current) endPan() }}
+        onAuxClick={(event) => { if (event.button === 1) event.preventDefault() }}
       >
-        {/* The stage keeps the canvas origin continuous when overflow begins. */}
-        <div className="flex min-h-full min-w-full w-max shrink-0 items-center justify-center p-6">
+        {/* A viewport of work area on each side keeps pan/zoom available even
+            when the paper fits entirely inside the viewport. */}
+        <div className="flex items-center justify-center" style={{
+          width: trimW + bleedPx * 2 + availableSize.width * 2,
+          height: trimH + bleedPx * 2 + availableSize.height * 2 + 32,
+        }}>
           <div className="flex shrink-0 flex-col items-center gap-3">
           {/* 纸张 = 成品 + 出血：满版内容需延伸到纸边，裁切后才无白边 */}
           <div
+            ref={paperRef}
+            data-zine-paper
             className="relative shrink-0 bg-white"
             style={{
               width: `${trimW + bleedPx * 2}px`,
@@ -267,7 +342,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
           >
             {/* 裁切原点容器：槽位坐标一律相对成品左上角，出血区在其负方向 */}
             <div className="absolute" style={{ left: `${bleedPx}px`, top: `${bleedPx}px`, width: `${trimW}px`, height: `${trimH}px` }}>
-              {zineViewOptions.showBleed ? <CropMarks /> : null}
+              {!preview && zineViewOptions.showBleed ? <CropMarks /> : null}
 
               {activeSpread?.slots.map((slot) => (
                 <SlotView
@@ -279,25 +354,27 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                   spreadW={spreadW}
                   bleed={bleed}
                   assets={project.assets}
-                  selected={selectedSlotId === slot.id}
+                  selected={!preview && selectedSlotId === slot.id}
                   scale={scale}
                   viewOptions={zineViewOptions}
                   onSelect={onSelectSlot}
+                  interactionDisabled={preview || tool === 'hand'}
+                  preview={preview}
                 />
               ))}
 
               {/* 空白跨页引导：无任何槽位时提示从工具栏或模板开始 */}
-              {(activeSpread?.slots.length ?? 0) === 0 && (
+              {!preview && (activeSpread?.slots.length ?? 0) === 0 && (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
                   <p className="max-w-[75%] text-center text-xs leading-relaxed" style={{ color: 'rgba(113, 113, 122, 0.7)' }}>
                     {t('admin.zine_canvas_empty_hint', language)}
                   </p>
                 </div>
               )}
-              {zineViewOptions.showBleed && bleedPx > 0 && (
+              {!preview && zineViewOptions.showBleed && bleedPx > 0 && (
                 <div className="pointer-events-none absolute inset-0 z-20" style={{ boxShadow: `0 0 0 ${bleedPx}px rgba(244, 63, 94, 0.05)` }} />
               )}
-              {zineViewOptions.showGuides ? (
+              {!preview && zineViewOptions.showGuides ? (
                 <>
                   {/* 裁切框（成品尺寸） */}
                   <div className="pointer-events-none absolute inset-0 z-20" style={{ boxShadow: 'inset 0 0 0 1px rgba(59, 130, 246, 0.45)' }} />
@@ -330,6 +407,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                       top: `${trimH - toScreenPx(PAGE_NUMBER_BOTTOM_MM, scale)}px`,
                       width: `${pageWPx - safePx * 2}px`,
                       fontSize: `${toScreenPx(pageNumberFontMm, scale)}px`,
+                      fontFamily: folioFont.fontFamily,
                       lineHeight: 1,
                       textAlign: getPageNumberAlign(side, pageNumberSettings.position),
                       color: 'rgba(82, 82, 82, 0.9)',
@@ -349,15 +427,15 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
                     'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.05) 38%, rgba(0,0,0,0.14) 50%, rgba(0,0,0,0.05) 62%, rgba(0,0,0,0) 100%)',
                 }}
               />
-              {zineViewOptions.showGuides ? <div className="pointer-events-none absolute inset-y-0 z-30 w-px bg-black/10" style={{ left: `${pageWPx}px` }} /> : null}
+              {!preview && zineViewOptions.showGuides ? <div className="pointer-events-none absolute inset-y-0 z-30 w-px bg-black/10" style={{ left: `${pageWPx}px` }} /> : null}
             </div>
           </div>
 
           {/* folio：页码与开本标注 */}
-          <p className="flex items-center gap-2 text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+          <p className="flex max-w-full items-center gap-2 text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
             <span className="font-medium">{folioLabel}</span>
             <span aria-hidden>—</span>
-            <span>
+            <span className="hidden xl:inline">
               {getPageSizeLabel(project)} {orientationLabel} · {pageW} × {pageH} mm · {t('admin.zine_bleed_label', language, { bleed })}
             </span>
           </p>
@@ -373,18 +451,20 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
         <button
           type="button"
           className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-accent"
-          onClick={() => onZoomChange(clampZoom(zoom - 0.1))}
+          onClick={() => changeZoom(zoomRef.current - 0.1)}
+          disabled={zoom <= MIN_ZOOM}
           aria-label={t('admin.zine_zoom_out', language)}
         >
           <Minus size={13} />
         </button>
-        <span className="w-10 text-center text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+        <button type="button" onClick={fitCanvas} title={t('admin.zine_zoom_fit', language)} className="w-10 rounded text-center text-[11px] tabular-nums focus-visible:ring-2 focus-visible:ring-ring" style={{ color: 'var(--muted-foreground)' }}>
           {Math.round(zoom * 100)}%
-        </span>
+        </button>
         <button
           type="button"
           className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-accent"
-          onClick={() => onZoomChange(clampZoom(zoom + 0.1))}
+          onClick={() => changeZoom(zoomRef.current + 0.1)}
+          disabled={zoom >= MAX_ZOOM}
           aria-label={t('admin.zine_zoom_in', language)}
         >
           <Plus size={13} />
@@ -393,7 +473,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
         <button
           type="button"
           className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-accent"
-          onClick={() => onZoomChange(1)}
+          onClick={fitCanvas}
           aria-label={t('admin.zine_zoom_fit', language)}
           title={t('admin.zine_zoom_fit', language)}
         >
@@ -403,7 +483,7 @@ export function SpreadCanvas({ project, activeSpread, selectedSlotId, zoom, onZo
 
       {/* 快捷键提示 */}
       <p className="pointer-events-none absolute bottom-4 left-4 z-10 hidden text-[11px] lg:block" style={{ color: 'color-mix(in srgb, var(--muted-foreground) 75%, transparent)' }}>
-        {t('admin.zine_shortcut_hint', language)}
+        {language === 'zh' ? '空格 / 中键平移 · Ctrl + 滚轮缩放 · Shift 约束方向' : 'Space / middle mouse to pan · Ctrl + scroll to zoom · Shift to constrain'}
       </p>
     </div>
   )

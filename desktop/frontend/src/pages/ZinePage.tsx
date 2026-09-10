@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { BookImage, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageThumb } from '@/components/zine/PageThumb'
-import { ZineCreateDialog, type ZineCreateOptions } from '@/components/zine/ZineCreateDialog'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { useDataRevision } from '@/hooks/useDataRevision'
 import { t } from '@/lib/i18n'
@@ -13,7 +11,6 @@ import { getPageSizeLabel, getProjectSpreadSize } from '@/lib/zine/page-sizes'
 import { deleteZineProject, listZineProjects } from '@/lib/zine/project'
 import type { ZineProject } from '@/lib/zine/types'
 import { usePreferences } from '@/store/preferences'
-import { useZineStore } from '@/store/zine'
 
 function formatProjectDate(timestamp: number, language: string) {
   return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'zh-CN', {
@@ -47,8 +44,6 @@ export function ZinePage() {
   const [projects, setProjects] = useState<ZineProject[]>([])
   const [loading, setLoading] = useState(true)
   const [busyProjectId, setBusyProjectId] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
 
   async function refreshProjects() {
     setLoading(true)
@@ -62,28 +57,7 @@ export function ZinePage() {
   // 菜单页常驻缓存：切回本页不重新加载；从编辑器保存/删除项目后才重新读取列表
   useCachedPageEffect(() => {
     void refreshProjects()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectsRevision])
-
-  async function handleCreateProject(options: ZineCreateOptions) {
-    if (creating) return
-
-    setCreating(true)
-    try {
-      const store = useZineStore.getState()
-      const project = store.createProject(t('admin.zine_untitled', language), options)
-      await useZineStore.getState().save()
-      // The page stays mounted in an Activity cache while the editor route is shown.
-      // Commit the portal unmount and busy-state reset before navigating.
-      flushSync(() => {
-        setCreateOpen(false)
-        setCreating(false)
-      })
-      navigate(`/zine/editor/${project.id}`)
-    } finally {
-      setCreating(false)
-    }
-  }
 
   async function handleDeleteProject(id: string) {
     if (!window.confirm(t('admin.zine_delete_confirm', language))) return
@@ -99,7 +73,20 @@ export function ZinePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title={t('admin.zine', language)} />
+      <PageHeader
+        title={t('admin.zine', language)}
+        actions={(
+          <button
+            type="button"
+            onClick={() => navigate('/design/new?type=zine')}
+            className="flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+          >
+            <Plus size={14} />
+            {t('admin.zine_new', language)}
+          </button>
+        )}
+      />
 
       <main className="flex-1 overflow-auto p-6">
         {loading ? (
@@ -119,13 +106,12 @@ export function ZinePage() {
             <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
               <button
                 type="button"
-                onClick={() => setCreateOpen(true)}
-                disabled={creating}
-                className="flex min-h-[248px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition hover:border-primary hover:text-primary disabled:cursor-wait disabled:opacity-60"
+                onClick={() => navigate('/design/new?type=zine')}
+                className="flex min-h-[248px] flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed transition hover:border-primary hover:text-primary"
                 style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
               >
                 <span className="flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-current">
-                  {creating ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                  <Plus size={18} />
                 </span>
                 <span className="text-sm font-medium">{t('admin.zine_new', language)}</span>
               </button>
@@ -142,14 +128,14 @@ export function ZinePage() {
                     key={project.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => navigate(`/zine/editor/${project.id}`)}
+                    onClick={() => navigate(`/design/zine/editor/${project.id}`)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault()
-                        navigate(`/zine/editor/${project.id}`)
+                        navigate(`/design/zine/editor/${project.id}`)
                       }
                     }}
-                    className="group cursor-pointer overflow-hidden rounded-xl border bg-card outline-none transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group cursor-pointer overflow-hidden rounded-lg border bg-card outline-none transition hover:border-foreground/40 focus-visible:ring-2 focus-visible:ring-ring"
                     style={{ borderColor: 'var(--border)' }}
                     aria-label={`${t('admin.zine_open', language)} ${project.title}`}
                   >
@@ -194,8 +180,6 @@ export function ZinePage() {
           </>
         )}
       </main>
-
-      <ZineCreateDialog open={createOpen} creating={creating} onCancel={() => setCreateOpen(false)} onCreate={(options) => void handleCreateProject(options)} />
     </div>
   )
 }

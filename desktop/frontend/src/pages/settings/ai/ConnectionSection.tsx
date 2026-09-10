@@ -34,9 +34,9 @@ export function ConnectionSection({ provider, catalogProviders, catalogStatus, o
   }
 
   return (
-    <AiSection label="连接" description="OpenAI 兼容端点。填写 API 地址与 Key 后，可通过右上角「获取模型」验证连接并拉取可用模型列表。">
+    <AiSection label="连接">
       <div className="grid gap-4 lg:grid-cols-2">
-        <Field label="API 地址" description="如 https://api.openai.com/v1">
+        <Field label="API 地址">
           <input type="text" value={provider.base_url} spellCheck={false}
             onChange={e => onChange({ base_url: e.target.value })}
             className={`${inputClass} font-mono`} style={inputStyle} />
@@ -57,7 +57,6 @@ export function ConnectionSection({ provider, catalogProviders, catalogStatus, o
 
       <Field
         label="官方参数来源"
-        description="留空时按 API 地址自动判断。聚合站/代理端点建议手动指定，可显著提高模型参数匹配准确度。"
       >
         <div className="flex items-center gap-2">
           <SelectDropdown

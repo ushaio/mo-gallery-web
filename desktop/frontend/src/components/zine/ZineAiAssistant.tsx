@@ -33,6 +33,7 @@ import {
   appendLocalEditorAiMessage,
   editorAiLocal,
   finishLocalEditorAiMessage,
+  getLocalDefaultAgent,
   getLocalEditorAiConversation,
   getLocalEndpoint,
   getLocalStoryAiModels,
@@ -464,7 +465,7 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
     let assistantMessage: EditorAiMessageDto | null = null
     let executionCompleted = false
     try {
-      const [endpoint, userMessage] = await Promise.all([
+      const [endpoint, userMessage, defaultAgent] = await Promise.all([
         getLocalEndpoint(),
         appendUser
           ? appendLocalEditorAiMessage(conversationId, {
@@ -475,7 +476,12 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
               action: 'custom',
             })
           : Promise.resolve(null),
+        mode === 'agent' ? getLocalDefaultAgent() : Promise.resolve(null),
       ])
+      const configuredAgent = defaultAgent
+        && defaultAgent.primary_model === model.id
+        ? defaultAgent
+        : null
       assistantMessage = await appendLocalEditorAiMessage(conversationId, {
         role: 'assistant',
         content: '',
@@ -505,6 +511,9 @@ export function ZineAiAssistant({ onClose }: ZineAiAssistantProps) {
           project.assets.map((asset) => asset.id),
           directEdit,
         ),
+        ...(configuredAgent?.system_prompt?.trim() ? { systemPrompt: configuredAgent.system_prompt } : {}),
+        ...(configuredAgent?.max_steps ? { maxSteps: configuredAgent.max_steps } : {}),
+        ...(configuredAgent?.temperature !== undefined ? { temperature: configuredAgent.temperature } : {}),
         onEvent: (event) => setActivity(eventLabel(event)),
       })
       const content = completedContent(result)

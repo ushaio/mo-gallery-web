@@ -8,6 +8,7 @@
 
 import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react'
 import NarrativeTipTapEditorCore from '@mo-gallery/tiptap-editor'
+import { getEditorContent } from '@mo-gallery/api-client/editor-content'
 import type {
   NarrativeTipTapEditorHandle,
   NarrativeTipTapEditorProps as CoreEditorProps,
@@ -28,7 +29,7 @@ async function getEditorStory(token: string, storyId: string): Promise<EditorSto
   return {
     id: story.id,
     title: story.title,
-    content: story.content,
+    content: getEditorContent(story),
     coverPhotoId: story.coverPhotoId,
     isPublished: story.isPublished,
     storyDate: story.storyDate,

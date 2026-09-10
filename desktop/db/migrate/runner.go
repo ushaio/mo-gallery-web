@@ -39,7 +39,7 @@ func Run(database *gorm.DB, migrations []Migration) error {
 		return fmt.Errorf("create migration history: %w", err)
 	}
 
-	current, err := currentVersion(database)
+	current, err := CurrentVersion(database)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,9 @@ func Run(database *gorm.DB, migrations []Migration) error {
 	return nil
 }
 
-func currentVersion(database *gorm.DB) (int, error) {
+// CurrentVersion returns the highest applied migration version for one local
+// database. It is also used by anonymous desktop usage reporting.
+func CurrentVersion(database *gorm.DB) (int, error) {
 	var version int
 	err := database.Raw(`SELECT COALESCE(MAX("version"), 0) FROM "schema_migrations"`).Scan(&version).Error
 	if err != nil {

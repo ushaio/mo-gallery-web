@@ -9,6 +9,7 @@ import type { JSONContent } from '@tiptap/core'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import { CharacterCount } from '@tiptap/extensions'
 import Link from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
@@ -131,6 +132,7 @@ export function useNarrativeEditor({
   const editor = useEditor({
     extensions: [
       PastedBlockStyle,
+      CharacterCount,
       Markdown.configure({ indentation: { style: 'space', size: 2 } }),
       StarterKit.configure({
         horizontalRule: false,

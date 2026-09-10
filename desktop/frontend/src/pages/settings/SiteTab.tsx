@@ -1,9 +1,9 @@
-// 系统设置 · 站点（与 Web 端一致：site_title 和 cdn_domain 只读）
+// 系统设置 · 站点
 
 import { inputClass, inputStyle, Section, Field } from './shared'
-// ─── Tab 1: 站点（与 Web 端一致：site_title 和 cdn_domain 只读） ──
+// ─── Tab 1: 站点 ──
 
-export function SiteTab({ config }: {
+export function SiteTab({ config, updateConfig }: {
   config: Record<string, string>
   updateConfig: (key: string, value: string) => void
 }) {
@@ -19,6 +19,10 @@ export function SiteTab({ config }: {
           <input type="text" value={config.cdn_domain || ''} disabled
             className={`${inputClass} cursor-not-allowed opacity-60`}
             style={inputStyle} />
+        </Field>
+        <Field label="官方内容站地址" description="用于获取官方模板、AI Skills 和参考照片，默认 http://localhost:3001">
+          <input type="url" value={config.official_site_url || 'http://localhost:3001'} onChange={event => { localStorage.setItem('mo-gallery-official-site-url', event.target.value); updateConfig('official_site_url', event.target.value) }}
+            className={inputClass} style={inputStyle} placeholder="http://localhost:3001" />
         </Field>
       </Section>
     </div>

@@ -3,6 +3,9 @@
  */
 'use client'
 
+import { getEditorContent, hasEditorContent } from '@mo-gallery/api-client'
+import { convertToMilkdown } from '@mo-gallery/milkdown/migration'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { BookOpen } from 'lucide-react'
@@ -17,10 +20,11 @@ import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import { PhotoLibraryDialog } from '@/components/zine/PhotoLibraryDialog'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
-import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
+import { getMilkdownPhotoIds, hasPendingMilkdownUploads } from '@mo-gallery/milkdown/media'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { normalizeCompressionFormat, normalizeCompressionMode } from '@/lib/image-compress'
 import { cn } from '@/lib/utils'
+import { usePreferences } from '@/store/preferences'
 import { useAdmin } from './layout'
 import { useImmersiveMode } from './shared/useImmersiveMode'
 import {
@@ -34,7 +38,7 @@ import type { StoriesTabProps } from './stories/types'
 import { useStoryDraftState } from './stories/useStoryDraftState'
 import { useStoryEditorActions } from './stories/useStoryEditorActions'
 import { useStoryPhotoDnD } from './stories/useStoryPhotoDnD'
-import { applySavedOrder, savePhotoOrder } from './stories/utils'
+import { applySavedOrder, isMilkdownStoryReady, savePhotoOrder } from './stories/utils'
 import { EditorEmptyState } from './shared/EditorEmptyState'
 import { CollapsibleListPane } from './shared/CollapsibleListPane'
 import { useDirtyLeaveGuard, useSaveShortcut } from './shared/useDirtyLeaveGuard'
@@ -71,10 +75,11 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   stripGps: false,
 }
 
-export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: StoriesTabProps) {
+export function StoriesTab({ token, t, notify, editStoryId, editSource = 'prompt', editFromDraft, onDraftConsumed, refreshKey, createRequestKey = 0, newStoryPhotoIds, listPaneCollapsed = false, onToggleListPane, subTabNav, active = true, isImmersiveMode, setIsImmersiveMode }: StoriesTabProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { settings, categories } = useAdmin()
+  const language = usePreferences((state) => state.language)
 
   // 沉浸全屏/Esc 放在稳定的页签层持有：切换文章时编辑器不再重挂载
   // （内容经 contentVersion 原地重置），若放在编辑器内会反复退/进全屏，表现为页面刷新。
@@ -126,6 +131,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [])
 
   const {
+    editorSessionId,
     draftSaved,
     lastSavedAt,
     initialStory,
@@ -137,6 +143,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleDraftDiscard,
     handleDraftCancel,
     markDraftSynced,
+    rekeySavedDraft,
+    acceptSavedStory,
     saveDraft,
     resetDraftState,
   } = useStoryDraftState({
@@ -158,7 +166,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   })
 
   const doSaveStory = useCallback(async () => {
-    if (!currentStory) return
+    if (!currentStory || !isMilkdownStoryReady(currentStory)) return
     if (savingRef.current) return
 
     try {
@@ -170,54 +178,80 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       const photoIdSet = new Set(basePhotoIds)
       for (const id of extraIds) photoIdSet.add(id)
       const photoIds = Array.from(photoIdSet)
-      pendingPhotoIdsRef.current = null
 
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
+      let savedStory: StoryDto
 
       if (isNew) {
-        await CreateStory({
+        savedStory = await CreateStory({
           title: currentStory.title,
-          content: currentStory.content,
-          contentJson: currentStory.contentJson ?? null,
+          editorType: 'milkdown',
+          milkContent: currentStory.milkContent ?? '',
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
           coverCrop: currentStory.coverCrop ?? null,
-          ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
-        } as unknown as services.CreateStoryParams)
-        notify(t('story.created'), 'success')
+          storyDate: currentStory.storyDate,
+        } as unknown as services.CreateStoryParams) as unknown as StoryDto
       } else {
-        await UpdateStory(currentStory.id, {
+        savedStory = await UpdateStory(currentStory.id, {
           title: currentStory.title,
-          content: currentStory.content,
-          contentJson: currentStory.contentJson ?? null,
+          editorType: 'milkdown',
+          milkContent: currentStory.milkContent ?? '',
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
           coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
-        } as unknown as services.UpdateStoryParams)
-        if (photoIds.length > 0) {
-          await ReorderStoryPhotos(currentStory.id, photoIds)
+        } as unknown as services.UpdateStoryParams) as unknown as StoryDto
+        const photoIdsChanged = JSON.stringify(photoIds) !== JSON.stringify(initialStory?.photoIds ?? [])
+        if (photoIds.length > 0 && photoIdsChanged) {
+          savedStory = await ReorderStoryPhotos(currentStory.id, photoIds) as unknown as StoryDto
         }
-        savePhotoOrder(currentStory.id, photoIds)
-        notify(t('story.updated'), 'success')
       }
 
-      await markDraftSynced(currentStory.id)
-      pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
-      setPendingImages([])
-      setPendingCoverId(null)
-      setUseCustomDate(false)
-      setPreviewPhotoIndex(null)
-      setShowPreview(false)
-      resetDraftState()
-      setStoryEditMode('list')
-      setCurrentStory(null)
-      // 保存后回到列表视图，自动展开左栏（编辑态可能已收起）
-      if (listPaneCollapsed) onToggleListPane?.()
-      await loadStories()
-      if (location.search.includes('editStory=')) {
-        navigate('/photo-journal', { replace: true })
+      const photoOrder = new Map(photoIds.map((id, index) => [id, index]))
+      savedStory = {
+        ...savedStory,
+        photos: [...savedStory.photos].sort((left, right) =>
+          (photoOrder.get(left.id) ?? photoIds.length) - (photoOrder.get(right.id) ?? photoIds.length)),
+      }
+      savePhotoOrder(savedStory.id, photoIds)
+      setStories((previous) => previous.some((story) => story.id === savedStory.id)
+        ? previous.map((story) => story.id === savedStory.id ? savedStory : story)
+        : [savedStory, ...previous])
+
+      // The baseline is what this request saved. Keep inactive local sources
+      // and any newer edits in the open form instead of replacing the editor.
+      const savedSnapshot: StoryDto = {
+        ...savedStory,
+        contentEditorTypes: Array.from(new Set([...savedStory.contentEditorTypes, ...currentStory.contentEditorTypes])),
+        tiptapContent: currentStory.tiptapContent,
+        tiptapContentJson: currentStory.tiptapContentJson,
+      }
+      if (acceptSavedStory(savedSnapshot, editorSessionId)) {
+        setCurrentStory((latest) => latest?.id === currentStory.id ? {
+          ...latest,
+          id: savedStory.id,
+          createdAt: savedStory.createdAt,
+          updatedAt: savedStory.updatedAt,
+          storyDate: latest.storyDate === currentStory.storyDate ? savedStory.storyDate : latest.storyDate,
+          contentEditorTypes: Array.from(new Set([...savedStory.contentEditorTypes, ...latest.contentEditorTypes])),
+        } : latest)
+        const submittedPendingIds = new Set(pendingImages.map((image) => image.id))
+        setPendingImages((latest) => {
+          latest.filter((image) => submittedPendingIds.has(image.id)).forEach((image) => URL.revokeObjectURL(image.previewUrl))
+          return latest.filter((image) => !submittedPendingIds.has(image.id))
+        })
+        setPendingCoverId((latest) => latest === pendingCoverId ? null : latest)
+        if (pendingPhotoIdsRef.current === extraIds) pendingPhotoIdsRef.current = null
+      }
+      notify(t(isNew ? 'story.created' : 'story.updated'), 'success')
+      try {
+        if (isNew) await rekeySavedDraft(currentStory.id, savedStory.id)
+        await markDraftSynced(savedSnapshot, savedStory.id)
+      } catch (error) {
+        console.error('Story saved but local draft synchronization failed:', error)
+        notify(language === 'zh' ? '文章已保存，但本地草稿同步失败。' : 'Story saved, but the local draft could not be updated.', 'error')
       }
     } catch (error) {
       console.error('Failed to save story:', error)
@@ -226,7 +260,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = false
       setSaving(false)
     }
-  }, [markDraftSynced, currentStory, initialStory, listPaneCollapsed, loadStories, location.search, notify, onToggleListPane, pendingImages, resetDraftState, navigate, stories, t])
+  }, [acceptSavedStory, currentStory, editorSessionId, initialStory, language, markDraftSynced, notify, pendingCoverId, pendingImages, rekeySavedDraft, stories, t])
 
   const {
     editorRef,
@@ -294,6 +328,29 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   // 文档内容修订号：整篇内容被替换（草稿恢复/跳转）时递增，驱动编辑器重挂载
   const [editorRevision, setEditorRevision] = useState(0)
 
+  const handleConvertToMilkdown = useCallback(() => {
+    if (!currentStory) return
+    const hasMilkdownContent = hasEditorContent(currentStory, 'milkdown')
+    if (!hasMilkdownContent && !hasEditorContent(currentStory, 'tiptap')) return
+
+    try {
+      const milkContent = hasMilkdownContent
+        ? currentStory.milkContent ?? ''
+        : convertToMilkdown(currentStory)
+      setCurrentStory((previous) => previous?.id === currentStory.id ? {
+        ...previous,
+        editorType: 'milkdown',
+        contentEditorTypes: previous.contentEditorTypes.includes('milkdown')
+          ? previous.contentEditorTypes
+          : [...previous.contentEditorTypes, 'milkdown'],
+        milkContent,
+      } : previous)
+      setEditorRevision((revision) => revision + 1)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : t('story.operation_failed'), 'error')
+    }
+  }, [currentStory, notify, t])
+
   const handleDraftRestoreWithRevision = useCallback(() => {
     setEditorRevision((r) => r + 1)
     handleDraftRestore()
@@ -326,14 +383,18 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [listPaneCollapsed, location.search, onToggleListPane, pendingImages, resetDraftState, navigate, setIsDraggingOver])
 
   const handleSaveStory = useCallback(async () => {
-    if (!token || !currentStory) return
+    if (!token || !currentStory || !isMilkdownStoryReady(currentStory)) return
     if (savingRef.current) return
-    if (!currentStory.title.trim() || !currentStory.content.trim()) {
-      notify(t('story.fill_title_content'), 'error')
+    if (!currentStory.title.trim()) {
+      notify(t('blog.enter_title'), 'error')
       return
     }
 
-    const referencedPhotoIds = getStoryReferencedPhotoIds(currentStory.content)
+    if (hasPendingMilkdownUploads(currentStory.milkContent ?? '')) {
+      notify('请等待图片上传完成，或移除未完成的上传卡片。', 'error')
+      return
+    }
+    const referencedPhotoIds = getMilkdownPhotoIds(currentStory.milkContent ?? '')
     const availablePhotoIds = new Set((currentStory.photos || []).map((photo) => photo.id))
     const invalidPhotoIds = Array.from(referencedPhotoIds).filter((photoId) => !availablePhotoIds.has(photoId))
     if (invalidPhotoIds.length > 0) {
@@ -472,6 +533,45 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     await createStoryWithDraftCheck()
   }, [createStoryWithDraftCheck, isDirty, saveDraft])
 
+  const handledCreateRequestRef = useRef(0)
+  useEffect(() => {
+    if (createRequestKey <= 0 || handledCreateRequestRef.current === createRequestKey) return
+    handledCreateRequestRef.current = createRequestKey
+    void handleCreateStory()
+  }, [createRequestKey, handleCreateStory])
+
+  // 首页照片流「写叙事」交接：新建一篇叙事并预置选中的照片
+  const handledNewStoryPhotosRef = useRef('')
+  const photoHandoffLoadRef = useRef(false)
+  useEffect(() => {
+    const ids = (newStoryPhotoIds ?? []).filter(Boolean)
+    const handoffKey = ids.join(',')
+    if (ids.length === 0 || handledNewStoryPhotosRef.current === handoffKey) return
+    if (allPhotos.length === 0) {
+      // 照片库还没加载，先拉取一次，等数据到位后本 effect 会重跑
+      if (!photoHandoffLoadRef.current) {
+        photoHandoffLoadRef.current = true
+        void loadAllPhotos()
+      }
+      return
+    }
+    handledNewStoryPhotosRef.current = handoffKey
+    pendingPhotoIdsRef.current = ids
+    void (async () => {
+      if (isDirty) void saveDraft()
+      await createStoryWithDraftCheck()
+      const photoMap = new Map(allPhotos.map(photo => [photo.id, photo]))
+      const picked = ids
+        .map(id => photoMap.get(id))
+        .filter((photo): photo is PhotoDto => Boolean(photo))
+      setCurrentStory(current => {
+        if (!current) return current
+        const existing = new Set((current.photos ?? []).map(photo => photo.id))
+        return { ...current, photos: [...(current.photos ?? []), ...picked.filter(photo => !existing.has(photo.id))] }
+      })
+    })()
+  }, [newStoryPhotoIds, allPhotos, createStoryWithDraftCheck, isDirty, saveDraft, setCurrentStory, loadAllPhotos])
+
   const handleEditStory = useCallback(async (story: StoryDto) => {
     // 切换选中前先落盘当前草稿
     if (isDirty) void saveDraft()
@@ -548,7 +648,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       return
     }
 
-    if (handledEditStoryIdRef.current === editStoryId) {
+    const editRequestKey = `${editStoryId}:${editSource}`
+    if (handledEditStoryIdRef.current === editRequestKey) {
       return
     }
 
@@ -557,14 +658,14 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       return
     }
 
-    if (storyEditMode === 'editor' && currentStory?.id === editStoryId) {
-      handledEditStoryIdRef.current = editStoryId
+    if (editSource === 'prompt' && storyEditMode === 'editor' && currentStory?.id === editStoryId) {
+      handledEditStoryIdRef.current = editRequestKey
       return
     }
 
-    handledEditStoryIdRef.current = editStoryId
-    void editStoryWithDraftCheck(story)
-  }, [currentStory?.id, editStoryId, editStoryWithDraftCheck, stories, storyEditMode])
+    handledEditStoryIdRef.current = editRequestKey
+    void editStoryWithDraftCheck(story, editSource)
+  }, [currentStory?.id, editSource, editStoryId, editStoryWithDraftCheck, stories, storyEditMode])
 
   const togglePhotoPanelCollapse = useCallback(() => {
     setIsPhotoPanelCollapsed((prev) => {
@@ -581,7 +682,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   useSaveShortcut(() => void handleSaveStory(), storyEditMode === 'editor')
 
   return (
-    <div className={cn('flex h-full min-h-0 overflow-hidden', isImmersiveMode ? 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4' : 'gap-5')}>
+    <div className={cn('flex h-full min-h-0 overflow-hidden', isImmersiveMode ? 'fixed inset-0 z-[45] h-dvh w-screen gap-3 bg-background p-3 sm:p-4' : storyEditMode === 'editor' ? 'gap-0' : 'gap-4')}>
       {/* 左栏：叙事列表（可折叠） */}
       <CollapsibleListPane
         collapsed={listPaneCollapsed}
@@ -609,11 +710,60 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
       {/* 右栏：编辑器 + 素材库（无间隙） */}
       <div className="flex min-w-0 flex-1 overflow-hidden">
-        <main className="min-w-0 flex-1 overflow-hidden">
+        <main className={cn('min-w-0 flex-1 overflow-hidden', storyEditMode === 'editor' && '-ml-px')}>
           {storyEditMode === 'editor' && currentStory ? (
           <StoryEditorView
+           sidePanel={storyEditMode === 'editor' && currentStory && !isPhotoPanelCollapsed ? (
+             <aside className="-ml-px w-[340px] shrink-0 overflow-hidden xl:w-[390px]">
+          <StoryPhotoPanel
+            disabled={isAiTaskLocked || !isMilkdownStoryReady(currentStory)}
+            isCollapsed={isPhotoPanelCollapsed}
+            isImmersiveMode={isImmersiveMode}
+            currentStory={currentStory}
+            editorContent={getEditorContent(currentStory)}
+            pendingImages={pendingImages}
+            pendingCoverId={pendingCoverId}
+            cdnDomain={settings?.cdn_domain}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            isDraggingOver={isDraggingOver}
+            draggedItemId={draggedItemId}
+            draggedItemType={draggedItemType}
+            dragOverItemId={dragOverItemId}
+            openMenuPhotoId={openMenuPhotoId}
+            openMenuPendingId={openMenuPendingId}
+            t={t}
+            notify={notify}
+            onAddPhotos={() => setShowMaterialLibrary(true)}
+            onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
+            onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
+            onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
+            onRemovePhoto={handleRemovePhoto}
+            onRemovePendingImage={handleRemovePendingImage}
+            onSetCover={handleSetCover}
+            onSetPendingCover={handleSetPendingCover}
+            onSetPhotoDate={handleSetPhotoDate}
+            onRetryFailedUploads={handleRetryFailedUploads}
+            onPhotoPanelDragOver={handlePhotoPanelDragOver}
+            onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
+            onPhotoPanelDrop={async (event) => {
+              handlePhotoPanelDragLeave(event)
+              await handlePhotoPanelDrop(event)
+            }}
+            onItemDragStart={handleItemDragStart}
+            onItemDragEnd={handleItemDragEnd}
+            onItemDragOver={handleItemDragOver}
+            onItemDragLeave={handleItemDragLeave}
+            onItemDrop={handleItemDrop}
+            onOpenMenuPhoto={setOpenMenuPhotoId}
+            onOpenMenuPending={setOpenMenuPendingId}
+          />
+             </aside>
+           ) : null}
+
           token={token}
           currentStory={currentStory}
+          editorSessionId={editorSessionId}
           editorRevision={editorRevision}
           pendingImages={pendingImages}
           pendingCoverId={pendingCoverId}
@@ -642,6 +792,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
           showPreview={() => setShowPreview(true)}
           onClose={resetEditorState}
           onSave={() => void handleSaveStory()}
+          onConvertToMilkdown={handleConvertToMilkdown}
           onPasteFiles={handlePasteFiles}
           onOpenMaterialLibrary={() => setShowMaterialLibrary(true)}
           onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
@@ -681,56 +832,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         />
       )}
       </main>
-
-      {/* 右栏：素材库 - 仅在编辑态显示，与编辑区域联动 */}
-      {storyEditMode === 'editor' && currentStory ? (
-        <aside className="w-[340px] shrink-0 overflow-hidden border-l border-border xl:w-[390px]">
-          <StoryPhotoPanel
-            disabled={isAiTaskLocked}
-            isCollapsed={false}
-            isImmersiveMode={false}
-            currentStory={currentStory}
-            editorContent={currentStory.content || ''}
-            pendingImages={pendingImages}
-            pendingCoverId={pendingCoverId}
-            cdnDomain={settings?.cdn_domain}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-            isDraggingOver={isDraggingOver}
-            draggedItemId={draggedItemId}
-            draggedItemType={draggedItemType}
-            dragOverItemId={dragOverItemId}
-            openMenuPhotoId={openMenuPhotoId}
-            openMenuPendingId={openMenuPendingId}
-            t={t}
-            notify={notify}
-            onAddPhotos={() => setShowMaterialLibrary(true)}
-            onInsertPhotoMarkdown={handleInsertPhotoMarkdown}
-            onInsertGalleryMarkdown={handleInsertGalleryMarkdown}
-            onOpenPasteUploadSettings={() => setShowPasteUploadSettings(true)}
-            onRemovePhoto={handleRemovePhoto}
-            onRemovePendingImage={handleRemovePendingImage}
-            onSetCover={handleSetCover}
-            onSetPendingCover={handleSetPendingCover}
-            onSetPhotoDate={handleSetPhotoDate}
-            onRetryFailedUploads={handleRetryFailedUploads}
-            onPhotoPanelDragOver={handlePhotoPanelDragOver}
-            onPhotoPanelDragLeave={handlePhotoPanelDragLeave}
-            onPhotoPanelDrop={async (event) => {
-              handlePhotoPanelDragLeave(event)
-              await handlePhotoPanelDrop(event)
-            }}
-            onItemDragStart={handleItemDragStart}
-            onItemDragEnd={handleItemDragEnd}
-            onItemDragOver={handleItemDragOver}
-            onItemDragLeave={handleItemDragLeave}
-            onItemDrop={handleItemDrop}
-            onOpenMenuPhoto={setOpenMenuPhotoId}
-            onOpenMenuPending={setOpenMenuPendingId}
-          />
-        </aside>
-      ) : null}
       </div>
+
 
       <PhotoLibraryDialog
         source={showMaterialLibrary ? 'cloud' : null}

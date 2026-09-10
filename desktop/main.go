@@ -70,6 +70,8 @@ func main() {
 		}
 	}
 
+	pluginMediaHandler := services.NewPluginMediaHandler(app.StoragePlugins, config.CacheDir())
+
 	// 启动 Wails 应用
 	err = wails.Run(&options.App{
 		Title:     "Emulsion",
@@ -77,12 +79,14 @@ func main() {
 		Height:    900,
 		MinWidth:  1024,
 		MinHeight: 700,
-		Frameless: config.NormalizeWindowStyle(cfg.UI.WindowStyle) == config.WindowStyleIntegrated,
+		Frameless: true,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:     assets,
+			Middleware: services.NewDesktopAssetMiddleware(pluginMediaHandler),
 			Handler: services.NewDesktopAssetHandler(
 				services.NewZineAssetHandler(app.Proxy),
 				app.LocalLibrary.AssetHandler(),
+				pluginMediaHandler,
 			),
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},

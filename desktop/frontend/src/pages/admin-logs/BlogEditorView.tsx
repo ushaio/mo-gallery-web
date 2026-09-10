@@ -3,17 +3,19 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { Check, FileText } from 'lucide-react'
-import type { BlogDto } from '@/lib/api/types'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
-import NarrativeTipTapEditor from '@/components/NarrativeTipTapEditor'
+import { EditorContentPrompt } from '@mo-gallery/milkdown/editor-content'
+import { convertToMilkdown } from '@mo-gallery/milkdown/migration'
+import type { ArticleContentDto } from '@/lib/api/types'
+import { usePreferences } from '@/store/preferences'
+import type { NarrativeMilkdownEditorHandle } from '@/components/NarrativeMilkdownEditor'
+import NarrativeMilkdownEditor from '@/components/NarrativeMilkdownEditor'
 import { EditorShell } from './shared/EditorShell'
 import { BlogPreviewModal } from './shared/BlogPreviewModal'
+import { cn } from '@/lib/utils'
 
-export interface BlogFormData {
+export interface BlogFormData extends ArticleContentDto {
   id?: string
   title: string
-  content: string
-  contentJson?: BlogDto['contentJson']
   category: string
   tags: string
   isPublished: boolean
@@ -21,12 +23,14 @@ export interface BlogFormData {
 
 export interface BlogEditorHandle {
   insertMarkdown: (markdown: string) => void
+  getValue: () => string
 }
 
 interface BlogEditorViewProps {
   blog: BlogFormData
   onChange: (patch: Partial<BlogFormData>) => void
   editorRevision?: number
+  editorSessionId?: string
   saving: boolean
   draftSaved: boolean
   lastSavedAt: number | null
@@ -48,6 +52,7 @@ export const BlogEditorView = forwardRef<BlogEditorHandle, BlogEditorViewProps>(
   blog,
   onChange,
   editorRevision,
+  editorSessionId,
   saving,
   draftSaved,
   lastSavedAt,
@@ -64,22 +69,25 @@ export const BlogEditorView = forwardRef<BlogEditorHandle, BlogEditorViewProps>(
   isImmersiveMode,
   setIsImmersiveMode,
 }, ref) {
-  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
+  const editorRef = useRef<NarrativeMilkdownEditorHandle>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const language = usePreferences((state) => state.language)
+  const hasMilkdownContent = blog.contentEditorTypes.includes('milkdown')
+  const canEdit = blog.editorType === 'milkdown' && hasMilkdownContent
 
   useImperativeHandle(ref, () => ({
+    getValue: () => editorRef.current?.getValue() ?? blog.milkContent ?? '',
     insertMarkdown: (markdown: string) => {
-      if (isAiTaskLocked) return
+      if (isAiTaskLocked || !canEdit) return
       if (editorRef.current) {
         editorRef.current.insertMarkdown(markdown)
         const nextValue = editorRef.current.getValue()
-        const nextJsonValue = editorRef.current.getJsonValue()
-        onChange({ content: nextValue, contentJson: nextJsonValue })
+        onChange({ milkContent: nextValue })
       } else {
-        onChange({ content: blog.content + markdown })
+        onChange({ milkContent: (blog.milkContent ?? '') + markdown })
       }
     },
-  }), [isAiTaskLocked, onChange, blog.content])
+  }), [isAiTaskLocked, canEdit, onChange, blog.milkContent])
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -97,7 +105,7 @@ export const BlogEditorView = forwardRef<BlogEditorHandle, BlogEditorViewProps>(
         publishedLabel={t('admin.published')}
         draftLabel={t('admin.draft')}
         onSave={onSave}
-        saveDisabled={saving || isAiTaskLocked}
+        saveDisabled={saving || isAiTaskLocked || !canEdit}
         saveLabel={t('admin.save')}
         savingLabel={t('ui.saving')}
         onPreview={() => setShowPreview(true)}
@@ -130,52 +138,43 @@ export const BlogEditorView = forwardRef<BlogEditorHandle, BlogEditorViewProps>(
           </div>
         }
         metaRight={null}
-        bottomBar={
-          <div className="flex w-full items-center justify-between">
-            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-              <FileText className="h-3.5 w-3.5" />
-              {blog.content.length} {t('admin.characters')}
-            </span>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-              {draftSaved ? (
-                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                  <Check className="h-3 w-3" />
-                  {t('story.draft_saved')}
-                </span>
-              ) : null}
-            </span>
-          </div>
-        }
         t={t}
       >
-        <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]">
-            <NarrativeTipTapEditor
-              contentVersion={`${documentId}-${editorRevision ?? 0}`}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* 右侧分隔线由素材库面板自身边框提供（沉浸模式除外）；列表栏折叠后卡片贴住应用菜单栏，
+              左侧由菜单栏 border-r 作为唯一分隔线，避免相邻边框叠加显粗 */}
+          <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]', isImmersiveMode && 'shadow-none')}>
+            {canEdit ? <NarrativeMilkdownEditor
+              contentVersion={`${editorSessionId ?? documentId}-${editorRevision ?? 0}`}
               ref={editorRef}
-              value={blog.content}
-              jsonValue={blog.contentJson ?? null}
-              onChange={(content) => onChange({ content })}
-              onJsonChange={(contentJson) => onChange({ contentJson })}
-              placeholder={t('ui.markdown_placeholder')}
+              value={blog.milkContent ?? ''}
+              onChange={(milkContent) => onChange({ milkContent })}
               className="overflow-hidden bg-background"
-              documentId={documentId}
-              documentKind="blog"
-              onAiTaskLockChange={onAiTaskLockChange}
-              aiOptions={{
-                enabled: Boolean(token),
-                token,
-                scopeId: documentId,
-                title: blog.title,
-              }}
-            />
+              token={token}
+              onBusyChange={onAiTaskLockChange}
+              onError={(error) => notify(error.message, 'error')}
+            /> : <EditorContentPrompt
+              language={language}
+              targetEditor="Milkdown"
+              sourceEditor="TipTap"
+              scenario={hasMilkdownContent ? 'use-existing' : blog.contentEditorTypes.includes('tiptap') ? 'convert' : 'unavailable'}
+              onAction={() => onChange({
+                editorType: 'milkdown',
+                contentEditorTypes: [...new Set([...blog.contentEditorTypes, 'milkdown' as const])],
+                milkContent: hasMilkdownContent ? blog.milkContent ?? '' : convertToMilkdown(blog),
+              })}
+            />}
+            <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-1.5">
+              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground"><FileText className="h-3.5 w-3.5" />Milkdown</span>
+              {draftSaved ? <span className="flex items-center gap-1 font-mono text-[10px] text-green-600 dark:text-green-400"><Check className="h-3 w-3" />{t('story.draft_saved')}</span> : <span />}
+            </div>
           </div>
         </div>
       </EditorShell>
 
       {showPreview && (
         <BlogPreviewModal
-          blog={{ title: blog.title, content: blog.content, category: blog.category, tags: blog.tags }}
+          blog={{ title: blog.title, editorType: blog.editorType, tiptapContent: blog.tiptapContent, milkContent: blog.milkContent, category: blog.category, tags: blog.tags }}
           updatedAt={undefined}
           t={t}
           onClose={() => setShowPreview(false)}

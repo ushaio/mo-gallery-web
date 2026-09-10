@@ -1,37 +1,40 @@
 import 'server-only'
-import { Prisma } from '@/generated/prisma/client'
 import { Hono } from 'hono'
+import { z } from 'zod'
+import { Prisma } from '@/generated/prisma/client'
+import {
+  ARTICLE_CONTENT_INCLUDE,
+  ARTICLE_SAVE_TRANSACTION_OPTIONS,
+  ArticleContentShape,
+  EditorTypeSchema,
+  MissingEditorContentError,
+  articleContentData,
+  hasArticleBody,
+  mapArticleContent,
+  validateArticleContent,
+} from '~/server/lib/article-content'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { z } from 'zod'
 
 const blogs = new Hono<{ Variables: AuthVariables }>()
 
-const TiptapJsonContentSchema = z.record(z.string(), z.unknown())
-type TiptapJsonContentInput = z.infer<typeof TiptapJsonContentSchema>
-
-function toPrismaJsonInput(value: TiptapJsonContentInput): Prisma.InputJsonValue {
-  return value as Prisma.InputJsonValue
-}
-
 // Validation schemas
 const CreateBlogSchema = z.object({
+  ...ArticleContentShape,
+  editorType: EditorTypeSchema,
   title: z.string().min(1).max(200),
-  content: z.string().min(1).max(50000),
-  contentJson: TiptapJsonContentSchema.optional().nullable(),
   category: z.string().default('未分类'),
   tags: z.string().default(''),
   isPublished: z.boolean().default(false),
-})
+}).strict().superRefine(validateArticleContent)
 
 const UpdateBlogSchema = z.object({
+  ...ArticleContentShape,
   title: z.string().min(1).max(200).optional(),
-  content: z.string().min(1).max(50000).optional(),
-  contentJson: TiptapJsonContentSchema.optional().nullable(),
   category: z.string().optional(),
   tags: z.string().optional(),
   isPublished: z.boolean().optional(),
-})
+}).strict().superRefine(validateArticleContent)
 
 // Public endpoints - Get published blogs
 blogs.get('/blogs', async (c) => {
@@ -41,13 +44,14 @@ blogs.get('/blogs', async (c) => {
 
     const blogsList = await db.blog.findMany({
       where: { isPublished: true },
+      include: ARTICLE_CONTENT_INCLUDE,
       orderBy: { createdAt: 'desc' },
       take: limitNum,
     })
 
     return c.json({
       success: true,
-      data: blogsList,
+      data: blogsList.map((blog) => mapArticleContent(blog)),
     })
   } catch (error) {
     console.error('Get blogs error:', error)
@@ -62,6 +66,7 @@ blogs.get('/blogs/:id', async (c) => {
 
     const blog = await db.blog.findUnique({
       where: { id, isPublished: true },
+      include: ARTICLE_CONTENT_INCLUDE,
     })
 
     if (!blog) {
@@ -70,7 +75,7 @@ blogs.get('/blogs/:id', async (c) => {
 
     return c.json({
       success: true,
-      data: blog,
+      data: mapArticleContent(blog),
     })
   } catch (error) {
     console.error('Get blog error:', error)
@@ -107,14 +112,30 @@ blogs.get('/admin/blogs', async (c) => {
   try {
     const blogsList = await db.blog.findMany({
       orderBy: { createdAt: 'desc' },
+      include: ARTICLE_CONTENT_INCLUDE,
     })
 
     return c.json({
       success: true,
-      data: blogsList,
+      data: blogsList.map((blog) => mapArticleContent(blog, true)),
     })
   } catch (error) {
     console.error('Get admin blogs error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// Get a single blog (admin)
+blogs.get('/admin/blogs/:id', async (c) => {
+  try {
+    const blog = await db.blog.findUnique({
+      where: { id: c.req.param('id') },
+      include: ARTICLE_CONTENT_INCLUDE,
+    })
+    if (!blog) return c.json({ error: 'Blog not found' }, 404)
+    return c.json({ success: true, data: mapArticleContent(blog, true) })
+  } catch (error) {
+    console.error('Get admin blog error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
@@ -127,19 +148,19 @@ blogs.post('/admin/blogs', async (c) => {
 
     const blog = await db.blog.create({
       data: {
-        ...validated,
-        contentJson:
-          validated.contentJson === undefined
-            ? undefined
-            : validated.contentJson === null
-              ? Prisma.JsonNull
-              : toPrismaJsonInput(validated.contentJson),
+        title: validated.title,
+        category: validated.category,
+        tags: validated.tags,
+        isPublished: validated.isPublished,
+        editorType: validated.editorType,
+        contents: { create: articleContentData(validated) },
       },
+      include: ARTICLE_CONTENT_INCLUDE,
     })
 
     return c.json({
       success: true,
-      data: blog,
+      data: mapArticleContent(blog, true),
     })
   } catch (error) {
     console.error('Create blog error:', error)
@@ -159,28 +180,55 @@ blogs.patch('/admin/blogs/:id', async (c) => {
 
     const updateData: Prisma.BlogUpdateInput = {}
     if (validated.title !== undefined) updateData.title = validated.title
-    if (validated.content !== undefined) updateData.content = validated.content
-    if (validated.contentJson !== undefined) {
-      updateData.contentJson =
-        validated.contentJson === null ? Prisma.JsonNull : toPrismaJsonInput(validated.contentJson)
-    }
     if (validated.category !== undefined) updateData.category = validated.category
     if (validated.tags !== undefined) updateData.tags = validated.tags
     if (validated.isPublished !== undefined) updateData.isPublished = validated.isPublished
 
-    const blog = await db.blog.update({
-      where: { id },
-      data: updateData,
-    })
+    const editorType = validated.editorType
+    const savesBody = hasArticleBody(validated)
+    if (editorType !== undefined) {
+      updateData.editorType = editorType
+      if (savesBody) {
+        const content = articleContentData({ ...validated, editorType })
+        updateData.contents = {
+          upsert: {
+            where: { blogId_editorType: { blogId: id, editorType } },
+            create: content,
+            update: content,
+          },
+        }
+      }
+    }
+
+    const blog = await db.$transaction(async (tx) => {
+      if (editorType !== undefined && !savesBody) {
+        const existing = await tx.blog.findUniqueOrThrow({
+          where: { id },
+          select: { contents: { where: { editorType }, select: { id: true } } },
+        })
+        if (existing.contents.length === 0) throw new MissingEditorContentError(editorType)
+      }
+      return tx.blog.update({
+        where: { id },
+        data: updateData,
+        include: ARTICLE_CONTENT_INCLUDE,
+      })
+    }, ARTICLE_SAVE_TRANSACTION_OPTIONS)
 
     return c.json({
       success: true,
-      data: blog,
+      data: mapArticleContent(blog, true),
     })
   } catch (error) {
     console.error('Update blog error:', error)
     if (error instanceof z.ZodError) {
       return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    if (error instanceof MissingEditorContentError) {
+      return c.json({ error: error.message, code: 'EDITOR_CONTENT_MISSING' }, 409)
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return c.json({ error: 'Blog not found' }, 404)
     }
     return c.json({ error: 'Internal server error' }, 500)
   }

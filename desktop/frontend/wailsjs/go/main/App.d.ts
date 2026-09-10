@@ -125,6 +125,8 @@ export function DeleteStory(arg1:string):Promise<void>;
 
 export function DeleteZineProject(arg1:string):Promise<void>;
 
+export function DisconnectSite():Promise<void>;
+
 export function DiscoverAgentMCPServerTools(arg1:string):Promise<agent_extensions.MCPServer>;
 
 export function DownloadCloudPhotoToFolder(arg1:string,arg2:string,arg3:string):Promise<string>;
@@ -235,6 +237,8 @@ export function GetLogs(arg1:string,arg2:string,arg3:number):Promise<Array<servi
 
 export function GetModelCatalog():Promise<services.ModelCatalogDTO>;
 
+export function GetOfficialAuthState():Promise<Record<string, any>>;
+
 export function GetOverview():Promise<services.OverviewDTO>;
 
 export function GetPhoto(arg1:string):Promise<services.PhotoDTO>;
@@ -254,8 +258,6 @@ export function GetStory(arg1:string):Promise<services.StoryDTO>;
 export function GetStoryAiModels():Promise<services.StoryAiModelsResponseDTO>;
 
 export function GetStoryAiProviderModels(arg1:string):Promise<services.StoryAiModelsResponseDTO>;
-
-export function GetWindowAppearance():Promise<main.WindowAppearance>;
 
 export function GetZineAssetBlob(arg1:string):Promise<string>;
 
@@ -317,11 +319,19 @@ export function Login(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<
 
 export function LookupModelSpecs(arg1:services.ModelCatalogBatchLookupInput):Promise<services.ModelCatalogBatchLookupResult>;
 
+export function MarkLocalDraftSynced(arg1:string,arg2:number):Promise<void>;
+
 export function MoveDesktopPluginPhotos(arg1:main.MoveDesktopPhotosInput):Promise<services.BatchResult>;
 
 export function MoveLocalAssets(arg1:Array<string>,arg2:string):Promise<Array<local_library.AssetMoveResult>>;
 
 export function MoveLocalLibraryFolder(arg1:string,arg2:string,arg3:string):Promise<local_library.FolderDTO>;
+
+export function OfficialLogin(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<services.OfficialAuthResult>;
+
+export function OfficialLogout():Promise<void>;
+
+export function OfficialRegister(arg1:string,arg2:string,arg3:string):Promise<services.OfficialAuthResult>;
 
 export function OpenDesktopStoragePluginLocation(arg1:string):Promise<void>;
 
@@ -371,6 +381,8 @@ export function RefreshInspirationFeeds():Promise<Array<services.InspirationFeed
 
 export function RefreshModelCatalog():Promise<services.ModelCatalogDTO>;
 
+export function RekeyLocalDraft(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function RemoveAgentMCPServer(arg1:string):Promise<void>;
 
 export function RemoveAgentSkill(arg1:string):Promise<void>;
@@ -392,8 +404,6 @@ export function ReorderFilmRollFrames(arg1:string):Promise<services.FilmRollDTO>
 export function ReorderFriends(arg1:Array<services.ReorderFriendItem>):Promise<void>;
 
 export function ReorderStoryPhotos(arg1:string,arg2:Array<string>):Promise<services.StoryDTO>;
-
-export function RestartApplication():Promise<void>;
 
 export function RestoreLocalAsset(arg1:string):Promise<void>;
 
@@ -526,8 +536,6 @@ export function UpdatePhoto(arg1:string,arg2:services.UpdatePhotoParams):Promise
 export function UpdateSettings(arg1:Record<string, string>):Promise<Record<string, string>>;
 
 export function UpdateStory(arg1:string,arg2:services.UpdateStoryParams):Promise<services.StoryDTO>;
-
-export function UpdateWindowStyle(arg1:string):Promise<main.WindowAppearance>;
 
 export function UpgradeLocalLibrary(arg1:string):Promise<Record<string, any>>;
 

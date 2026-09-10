@@ -1,16 +1,21 @@
-// 系统设置 · 账户（与 Web 端一致：Linux DO 绑定）
+// 系统设置 · 账户（官方账号 + 站点连接 + Linux DO 绑定）
 
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { usePreferences } from '@/store/preferences'
 import { t } from '@/lib/i18n'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { WebConnectPanel } from '@/components/auth/WebConnectPanel'
+import { useOfficialAuth } from '@/contexts/OfficialAuthContext'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   GetLinuxDoAuthUrl,
   GetLinuxDoBinding,
   IsLinuxDoEnabled,
   UnbindLinuxDoAccount,
+  DisconnectSite,
 } from '../../../wailsjs/go/main/App'
 import { type services } from '../../../wailsjs/go/models'
 import {
@@ -19,17 +24,41 @@ import {
   Check,
   Unlink,
   Link,
+  LogOut,
+  Unplug,
 } from 'lucide-react'
 import { getErrorMessage, Badge, Section } from './shared'
-// ─── Tab 5: 账户（与 Web 端一致：Linux DO 绑定） ────────────
+// ─── Tab 5: 账户 ────────────
 
 export function AccountTab() {
   const { language } = usePreferences()
+  const navigate = useNavigate()
+  const { user: officialUser, logout: officialLogout } = useOfficialAuth()
+  const { isAuthenticated: siteConnected, user: siteUser, logout: siteLogout } = useAuth()
   const [linuxDoEnabled, setLinuxDoEnabled] = useState(false)
   const [linuxDoBinding, setLinuxDoBinding] = useState<services.LinuxDoBindingDTO | null>(null)
   const [linuxDoLoading, setLinuxDoLoading] = useState(false)
   const [linuxDoBindLoading, setLinuxDoBindLoading] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  const handleOfficialLogout = async () => {
+    await officialLogout()
+    navigate('/login', { replace: true })
+  }
+
+  const handleDisconnectSite = async () => {
+    try {
+      setDisconnecting(true)
+      await DisconnectSite()
+      siteLogout()
+      toast.success(t('admin.disconnect_site', language))
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setDisconnecting(false)
+    }
+  }
 
   const loadLinuxDoStatus = async () => {
     setLinuxDoLoading(true)
@@ -79,6 +108,76 @@ export function AccountTab() {
 
   return (
     <div className="space-y-6">
+      <Section title={t('admin.official_account', language)}>
+        <div className="space-y-4">
+          {officialUser ? (
+            <div className="space-y-4 rounded-lg border p-6" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border bg-muted" style={{ borderColor: 'var(--border)' }}>
+                  <User size={20} className="text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">{t('admin.official_logged_in_as', language)}</p>
+                  <p className="font-medium" style={{ color: 'var(--foreground)' }}>
+                    {officialUser.username}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => void handleOfficialLogout()}
+                className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              >
+                <LogOut size={14} />
+                {t('admin.official_logout', language)}
+              </button>
+            </div>
+          ) : (
+            <div className="p-6 rounded-lg border border-dashed text-center" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                {t('admin.site_not_connected', language)}
+              </p>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section title={t('admin.connect_site', language)}>
+        <div className="space-y-4">
+          <p className="text-[10px] text-muted-foreground">
+            {t('admin.local_features_note', language)}
+          </p>
+          {siteConnected ? (
+            <div className="space-y-4 rounded-lg border p-6" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full border bg-muted" style={{ borderColor: 'var(--border)' }}>
+                  <User size={20} className="text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">{t('admin.site_connected', language)}</p>
+                  <p className="font-medium" style={{ color: 'var(--foreground)' }}>
+                    {siteUser?.username || '—'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => void handleDisconnectSite()}
+                disabled={disconnecting}
+                className="flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors hover:bg-secondary disabled:opacity-50"
+                style={{ borderColor: 'color-mix(in srgb, var(--destructive) 40%, transparent)', color: 'var(--destructive)' }}
+              >
+                {disconnecting ? <Loader2 size={14} className="animate-spin" /> : <Unplug size={14} />}
+                {t('admin.disconnect_site', language)}
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-lg border p-6" style={{ borderColor: 'var(--border)' }}>
+              <WebConnectPanel onConnected={() => toast.success(t('admin.connect_success', language))} />
+            </div>
+          )}
+        </div>
+      </Section>
+
       <Section title="Linux DO 绑定">
         <div className="space-y-4">
           <div className="flex items-center gap-2">

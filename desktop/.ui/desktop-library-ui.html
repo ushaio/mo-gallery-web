@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emulsion · 资源库</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --background:#fff;--foreground:#09090b;--muted:#f4f4f5;--muted-foreground:#71717a;--border:#e4e4e7;
+  --primary:#18181b;--primary-foreground:#fafafa;--accent:#f4f4f5;--ring:#18181b;--destructive:#ef4444;
+  --card:#fff;--radius:8px;--tile:180px;
+}
+.dark{
+  --background:#09090b;--foreground:#fafafa;--muted:#18181b;--muted-foreground:#a1a1aa;--border:#27272a;
+  --primary:#fafafa;--primary-foreground:#18181b;--accent:#27272a;--ring:#d4d4d8;--card:#09090b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;line-height:1.45;background:var(--background);color:var(--foreground);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+svg{flex:none}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--border);border:3px solid var(--background);border-radius:8px}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px}
+.muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+
+/* 基础组件 */
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--border);background:var(--background);font-size:13px;font-weight:500;white-space:nowrap;transition:.12s}
+.btn:hover{background:var(--accent)}
+.btn.primary{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.btn.primary:hover{opacity:.9}
+.btn.ghost{border-color:transparent}
+.btn.icon{width:32px;padding:0;justify-content:center}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}.btn.sm.icon{width:28px}
+.btn.xs{height:24px;padding:0 8px;font-size:12px}.btn.xs.icon{width:24px}
+.btn.on{background:var(--accent)}
+.btn.danger{color:var(--destructive)}
+.seg{display:inline-flex;background:var(--muted);padding:3px;border-radius:7px;gap:2px}
+.seg button{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:5px;font-size:12.5px;font-weight:500;color:var(--muted-foreground)}
+.seg button.on{background:var(--background);color:var(--foreground);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.dark .seg button.on{background:#27272a}
+.input{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--muted-foreground)}
+.input input{flex:1;border:0;outline:0;background:transparent;color:var(--foreground);min-width:0}
+.input:focus-within{box-shadow:0 0 0 2px var(--background),0 0 0 4px var(--ring)}
+kbd{font-family:inherit;font-size:10.5px;padding:1px 5px;border:1px solid var(--border);border-radius:4px;color:var(--muted-foreground);background:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;font-size:11px;font-weight:500;background:var(--muted);color:var(--muted-foreground)}
+.badge.solid{background:var(--primary);color:var(--primary-foreground)}
+.badge.outline{background:transparent;border:1px solid var(--border)}
+.chip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;color:var(--muted-foreground);transition:.12s}
+.chip:hover{color:var(--foreground);background:var(--accent)}
+.chip.on{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.chip .x{opacity:.6;margin-left:2px}
+.sep{width:1px;height:20px;background:var(--border);margin:0 4px}
+.check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border);display:grid;place-items:center;background:var(--background);color:var(--primary-foreground);flex:none}
+.check.on{background:var(--primary);border-color:var(--primary)}
+.tip{position:relative}
+
+/* 布局 */
+.app{display:grid;grid-template-columns:232px 1fr auto;grid-template-rows:52px 1fr;height:100vh}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--border)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-right:4px}
+.logo .mark{width:26px;height:26px;border-radius:6px;background:var(--primary);color:var(--primary-foreground);display:grid;place-items:center}
+.topbar .search{flex:1;max-width:520px;margin:0 auto}
+.topbar .right{display:flex;align-items:center;gap:6px;margin-left:auto}
+
+/* 侧栏 */
+.sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.sb-scroll{flex:1;overflow:auto;padding:10px 8px}
+.sb-sec{margin-bottom:6px}
+.sb-h{display:flex;align-items:center;gap:6px;padding:8px 8px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);cursor:pointer;user-select:none}
+.sb-h .chev{transition:.15s}
+.sb-sec.closed .chev{transform:rotate(-90deg)}
+.sb-sec.closed .sb-body{display:none}
+.sb-h .act{margin-left:auto;display:flex;gap:2px;opacity:0;transition:.12s}
+.sb-h:hover .act{opacity:1}
+.sb-h .act button{width:20px;height:20px;border-radius:4px;display:grid;place-items:center;color:var(--muted-foreground)}
+.sb-h .act button:hover{background:var(--accent);color:var(--foreground)}
+.nav{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:6px;color:var(--foreground);cursor:pointer;font-size:13px;white-space:nowrap;position:relative}
+.nav:hover{background:var(--accent)}
+.nav.on{background:var(--accent);font-weight:500}
+.nav .n{margin-left:auto;font-size:11.5px;color:var(--muted-foreground)}
+.nav .ic{color:var(--muted-foreground)}.nav.on .ic{color:var(--foreground)}
+.nav .tw{width:14px;height:14px;display:grid;place-items:center;color:var(--muted-foreground);border-radius:3px;margin-left:-4px}
+.nav .tw:hover{background:var(--border)}
+.nav.d1{padding-left:24px}.nav.d2{padding-left:40px}
+.nav .dot{width:6px;height:6px;border-radius:50%;background:var(--muted-foreground);opacity:.6;margin-left:4px}
+.tags{display:flex;flex-wrap:wrap;gap:4px;padding:4px 8px}
+.tags .chip{height:22px;padding:0 8px;font-size:11.5px}
+.typebar{margin:4px 8px 6px;height:4px;border-radius:2px;background:var(--muted);overflow:hidden;display:flex}
+.typebar i{display:block;height:100%;background:var(--primary)}
+.typebar i+i{background:var(--muted-foreground);opacity:.45}
+.sb-foot{border-top:1px solid var(--border);padding:12px 14px;font-size:12px}
+.sb-foot .row{display:flex;justify-content:space-between;align-items:center;color:var(--muted-foreground)}
+.sb-foot .bar{height:5px;border-radius:3px;background:var(--muted);margin:8px 0 6px;overflow:hidden}
+.sb-foot .bar i{display:block;height:100%;background:var(--primary)}
+.empty{padding:6px 8px 8px;font-size:12px;color:var(--muted-foreground);display:flex;align-items:center;justify-content:space-between}
+.empty button{color:var(--foreground);font-weight:500;display:inline-flex;align-items:center;gap:4px}
+
+/* 主区 */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.toolbar{padding:10px 16px 0;border-bottom:1px solid var(--border)}
+.toolbar .r1{display:flex;align-items:center;gap:8px;height:36px}
+.toolbar .crumb{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600}
+.toolbar .crumb .muted{font-weight:400;font-size:13px}
+.toolbar .crumb a{color:var(--muted-foreground);font-weight:400;font-size:13px;cursor:pointer}
+.toolbar .crumb a:hover{color:var(--foreground)}
+.toolbar .r2{display:flex;align-items:center;gap:6px;height:44px;overflow-x:auto}
+.toolbar .r2::-webkit-scrollbar{display:none}
+.toolbar .right{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.select{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--background);cursor:pointer}
+.select:hover{background:var(--accent)}
+.content{flex:1;overflow:auto;padding:0 16px 80px;min-height:0}
+.folders{display:flex;align-items:center;gap:6px;padding:12px 0 4px;flex-wrap:wrap}
+.folders .lbl{font-size:12px;color:var(--muted-foreground);margin-right:4px}
+.fchip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;cursor:pointer}
+.fchip:hover{background:var(--accent)}
+.fchip .n{color:var(--muted-foreground);font-size:11.5px}
+.fchip .ic{color:var(--muted-foreground)}
+.group{padding-top:14px}
+.gh{position:sticky;top:0;z-index:5;background:var(--background);display:flex;align-items:center;gap:10px;height:32px;margin:0 -16px;padding:0 16px;font-size:12.5px;font-weight:500;border-bottom:1px solid transparent}
+.gh .check{opacity:0;transition:.12s}
+.group:hover .gh .check,.gh .check.on,.gh .check.part{opacity:1}
+.gh .n{color:var(--muted-foreground);font-weight:400}
+.gh .place{color:var(--muted-foreground);font-weight:400;display:inline-flex;align-items:center;gap:4px}
+.gh .place::before{content:"·";margin-right:4px}
+.check.part{background:var(--primary);border-color:var(--primary)}
+.check.part::after{content:"";width:8px;height:2px;background:var(--primary-foreground);border-radius:1px}
+
+/* 网格 */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:4px;padding-top:8px}
+.tile{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:var(--muted);cursor:pointer;user-select:none}
+.tile img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .2s}
+.tile:hover img{opacity:.92}
+.tile.sel{box-shadow:0 0 0 2px var(--background),0 0 0 4px var(--primary)}
+.tile.sel img{opacity:.85}
+.tile .check{position:absolute;top:8px;left:8px;z-index:3;opacity:0;transition:.12s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.tile:hover .check,.tile.sel .check{opacity:1}
+.tile .bd{position:absolute;top:8px;right:8px;z-index:3;display:flex;gap:4px}
+.tile .bd span{height:20px;min-width:20px;padding:0 5px;border-radius:5px;background:rgba(9,9,11,.62);color:#fff;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:3px;backdrop-filter:blur(4px)}
+.tile .bd span.warn{background:rgba(255,255,255,.92);color:#18181b}
+.tile .cap{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:22px 8px 7px;font-size:11px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.65));opacity:0;transition:.15s;display:flex;justify-content:space-between;gap:8px}
+.tile .cap b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .cap span{opacity:.75;flex:none}
+.tile:hover .cap{opacity:1}
+.tile .fav{position:absolute;left:8px;bottom:8px;z-index:3;color:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.tile.film::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;border:2px solid rgba(255,255,255,.35);border-radius:6px;mix-blend-mode:overlay}
+/* 原比例 */
+.just{display:flex;flex-wrap:wrap;gap:4px;padding-top:8px}
+.just .tile{aspect-ratio:auto;height:var(--tile);flex-grow:calc(var(--r)*100);width:calc(var(--tile)*var(--r))}
+.just::after{content:"";flex-grow:1e5}
+/* 列表 */
+.list{padding-top:6px}
+.lrow{display:grid;grid-template-columns:28px 44px minmax(180px,2fr) 70px 90px 120px 130px 90px 1fr;align-items:center;gap:12px;height:48px;padding:0 6px;border-radius:6px;cursor:pointer;font-size:12.5px;user-select:none}
+.lrow:hover{background:var(--accent)}
+.lrow.sel{background:var(--accent);box-shadow:inset 2px 0 0 var(--primary)}
+.lrow img{width:44px;height:36px;object-fit:cover;border-radius:4px;background:var(--muted)}
+.lrow .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.lrow .name small{display:block;font-weight:400;color:var(--muted-foreground);font-size:11px}
+.lhead{display:grid;grid-template-columns:28px 44px minmax(180px,2fr) 70px 90px 120px 130px 90px 1fr;gap:12px;padding:8px 6px;font-size:11px;color:var(--muted-foreground);border-bottom:1px solid var(--border);position:sticky;top:32px;background:var(--background);z-index:4}
+.lrow .check{opacity:1}
+
+/* 状态栏 / 批量条 */
+.statusbar{height:36px;border-top:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 16px;font-size:12px;color:var(--muted-foreground)}
+.statusbar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.statusbar a{color:var(--muted-foreground);cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.statusbar a:hover{color:var(--foreground)}
+.zoom{display:flex;align-items:center;gap:6px}
+.zoom input{width:110px;accent-color:var(--primary)}
+.selbar{position:absolute;left:50%;bottom:52px;transform:translate(-50%,16px);opacity:0;pointer-events:none;transition:.18s;z-index:20;display:flex;align-items:center;gap:4px;padding:6px 6px 6px 14px;background:var(--primary);color:var(--primary-foreground);border-radius:10px;box-shadow:0 12px 32px -8px rgba(0,0,0,.35)}
+.selbar.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.selbar b{font-weight:600;margin-right:8px}
+.selbar .btn{border-color:transparent;background:transparent;color:inherit;height:30px}
+.selbar .btn:hover{background:rgba(255,255,255,.14)}
+.dark .selbar .btn:hover{background:rgba(0,0,0,.1)}
+.selbar .sep{background:rgba(255,255,255,.2)}
+.dark .selbar .sep{background:rgba(0,0,0,.15)}
+
+/* 右栏 */
+.inspector{width:320px;border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0;transition:width .2s}
+.inspector.hide{width:0;overflow:hidden;border:0}
+.ins-scroll{flex:1;overflow:auto;min-height:0}
+.preview{margin:14px 14px 0;aspect-ratio:4/3;border-radius:8px;background:var(--muted);display:grid;place-items:center;overflow:hidden;position:relative}
+.preview img{max-width:100%;max-height:100%;object-fit:contain}
+.preview .zoomin{position:absolute;right:8px;bottom:8px}
+.ins-title{padding:12px 14px 0}
+.ins-title .name{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;word-break:break-all}
+.ins-title .name .edit{opacity:0;color:var(--muted-foreground)}
+.ins-title .name:hover .edit{opacity:1}
+.ins-title .sub{display:flex;align-items:center;gap:6px;margin-top:3px;color:var(--muted-foreground)}
+.ins-title .sub button{color:var(--muted-foreground);display:inline-flex}
+.quick{display:flex;align-items:center;gap:2px;padding:10px 12px;border-bottom:1px solid var(--border);margin-top:8px}
+.stars{display:flex;gap:1px;margin:0 6px}
+.stars button{color:var(--border);display:grid;place-items:center;width:20px;height:24px}
+.stars button.on{color:var(--foreground)}
+.stars button:hover{color:var(--foreground)}
+.labels{display:flex;gap:4px;margin:0 6px}
+.labels button{width:14px;height:14px;border-radius:50%;opacity:.35;transition:.12s;border:2px solid transparent}
+.labels button:hover,.labels button.on{opacity:1}
+.labels button.on{box-shadow:0 0 0 2px var(--background),0 0 0 3.5px var(--foreground)}
+.sync{margin:12px 14px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:10px}
+.sync .t{flex:1;min-width:0}
+.sync .t b{display:block;font-weight:500;font-size:12.5px}
+.sync .t small{display:block;color:var(--muted-foreground);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sync .st{width:28px;height:28px;border-radius:6px;background:var(--muted);display:grid;place-items:center;color:var(--muted-foreground)}
+.sync.ok .st{background:var(--primary);color:var(--primary-foreground)}
+.sec{border-top:1px solid var(--border)}
+.sec-h{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;font-weight:600;font-size:12.5px;cursor:pointer;user-select:none}
+.sec-h .chev{margin-left:auto;color:var(--muted-foreground);transition:.15s}
+.sec.closed .chev{transform:rotate(-90deg)}
+.sec.closed .sec-b{display:none}
+.sec-h .ic{color:var(--muted-foreground)}
+.sec-b{padding:0 14px 12px}
+.kv{display:grid;grid-template-columns:76px 1fr;gap:6px 12px;font-size:12.5px}
+.kv dt{color:var(--muted-foreground)}
+.kv dd{display:flex;align-items:center;gap:6px;min-width:0}
+.kv dd .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv dd button{color:var(--muted-foreground);opacity:0;display:inline-flex}
+.kv dd:hover button{opacity:1}
+.kv2{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kv2 div{padding:8px 10px;border:1px solid var(--border);border-radius:6px}
+.kv2 small{display:block;color:var(--muted-foreground);font-size:11px}
+.kv2 b{font-weight:500;font-size:12.5px}
+.palette{display:flex;gap:3px;height:22px;border-radius:5px;overflow:hidden}
+.palette i{flex:1}
+.tagrow{display:flex;flex-wrap:wrap;gap:4px}
+.tagrow .chip{height:24px;padding:0 9px;font-size:12px}
+.tagrow .chip.add{border-style:dashed;color:var(--muted-foreground)}
+.ins-foot{border-top:1px solid var(--border);padding:10px 12px;display:flex;gap:6px}
+.ins-foot .btn{flex:1;justify-content:center}
+.multi{padding:14px}
+.multi .stack{height:140px;position:relative;margin:6px 10px 18px}
+.multi .stack img{position:absolute;width:70%;height:100%;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);border:2px solid var(--background)}
+.multi h3{font-size:15px;font-weight:600}
+.multi .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px}
+.multi .acts .btn{justify-content:flex-start}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);opacity:0;transition:.2s;background:var(--primary);color:var(--primary-foreground);padding:9px 14px;border-radius:8px;font-size:12.5px;z-index:99;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.hint{padding:60px 0;text-align:center;color:var(--muted-foreground)}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="logo"><span class="mark" id="logoIc"></span>资源库</div>
+    <div class="seg" id="scopeSeg">
+      <button data-scope="cloud" class="on"></button>
+      <button data-scope="local"></button>
+    </div>
+    <div class="input search" id="searchBox"><span id="searchIc"></span><input id="search" placeholder="搜索文件名、路径、标签、相机…"><kbd>⌘K</kbd></div>
+    <div class="right" id="topActions"></div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="sb-scroll" id="sidebar"></div>
+    <div class="sb-foot" id="sbFoot"></div>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <div class="r1" id="crumb"></div>
+      <div class="r2" id="filters"></div>
+    </div>
+    <div class="content" id="content"></div>
+    <div class="selbar" id="selbar"></div>
+    <div class="statusbar" id="statusbar"></div>
+  </main>
+
+  <aside class="inspector" id="inspector"></aside>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- icons (lucide) ---------- */
+const I={
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+cloud:'<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+cloudoff:'<path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"/><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/>',
+drive:'<line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/>',
+filter:'<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+grid:'<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+rows:'<rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/>',
+list:'<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+eyeoff:'<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>',
+tag:'<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+folderopen:'<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>',
+image:'<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+images:'<path d="M18 22H4a2 2 0 0 1-2-2V6"/><path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18"/><circle cx="12" cy="8" r="2"/><rect width="16" height="16" x="6" y="2" rx="2"/>',
+film:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/>',
+camera:'<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+refresh:'<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+chevd:'<polyline points="6 9 12 15 18 9"/>',chevr:'<polyline points="9 18 15 12 9 6"/>',
+x:'<line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/>',
+check:'<polyline points="20 6 9 17 4 12"/>',
+copy:'<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+plus:'<line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/>',
+sliders:'<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
+pin:'<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+aperture:'<circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94"/><path d="M9.69 8h11.48"/><path d="m7.38 12 5.74-9.94"/><path d="M9.69 16 3.95 6.06"/><path d="M14.31 16H2.83"/><path d="m16.62 12-5.74 9.94"/>',
+panel:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+live:'<circle cx="12" cy="12" r="10" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="4"/>',
+hash:'<line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/>',
+ext:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+cal:'<rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>',
+link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+album:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 3v18"/><path d="M13 8h5"/><path d="M13 12h5"/>',
+sq:'<rect width="18" height="18" x="3" y="3" rx="2"/>',
+maximize:'<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+wrench:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+db:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+palette:'<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+pencil:'<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+};
+const ic=(n,s=16)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+
+/* ---------- 数据 ---------- */
+const SEEDS=['temple1','temple2','temple3','street1','rain1','neon1','window1','street2','cat1','river1','lane1','market1','sky1','room1','ikea1','bear1','pier1','hill1','sea1','tree1'];
+const RAT=[[3,2],[2,3],[4,3],[3,2],[16,9],[1,1],[3,2],[4,5]];
+const CAMS=[['Sony A7C','FE 35mm F1.8','35mm','f/2','1/250','200'],['Fujifilm X100V','23mm F2','23mm','f/4','1/500','160'],['OPPO Find X8 Pro','主摄','24mm','f/1.8','1/120','50'],['DJI Mini 4 Pro','24mm','24mm','f/1.7','1/800','100']];
+const FILMS=[['Nikon FM2','50mm f/1.4','Portra 400','#7'],['Contax T2','38mm f/2.8','Gold 200','#8'],['Olympus mju II','35mm f/2.8','Ultramax 400','#9']];
+const PLACES=['成都 · 大慈寺','成都 · 玉林','杭州 · 灵隐寺','镇江','香格里拉 · 独克宗','宜家 · 成华店'];
+const PAL=[['#c9c3bb','#2f2b33','#6b6470','#8f8580','#8c7351'],['#1f2a33','#3f6f8c','#a9b9c4','#d8c9a8','#7a5a3b'],['#e2c8a0','#b48a55','#5a4630','#2b2420','#d7d2c8']];
+const LABELS=['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#a855f7'];
+const seed=n=>{let x=Math.sin(n*9301+49297)*233280;return x-Math.floor(x)};
+function gen(scope){
+  const dates=[['2026-08-14',12],['2026-08-13',7],['2026-08-09',9],['2026-07-30',6],['2026-06-21',5]];
+  const out=[];let k=0;
+  dates.forEach(([d,n],di)=>{for(let i=0;i<n;i++){
+    const r=seed(k*3+ (scope==='cloud'?1:2));const ratio=RAT[Math.floor(r*RAT.length)];
+    const film=seed(k*7+11)<(scope==='cloud'?.28:.18);
+    const cam=film?FILMS[k%3]:CAMS[k%4];
+    const fmt=film?'TIF':seed(k*5+3)<.15?'WEBP':seed(k*5+4)<.1?'HEIC':'JPG';
+    const w=ratio[0]*(film?900:1365),h=ratio[1]*(film?900:1365);
+    const name=scope==='cloud'?(film?`scan_${String(k+7).padStart(3,'0')}.tif`:`DSC0${4471+k}.jpg`):(film?`000168930${30+k}.jpg`:fmt==='WEBP'?`59a81fbd517b${k}.webp`:seed(k)<.3?`微信图片_2026081${i}.jpg`:`IMG_2026081${i}_${100+k}.jpg`);
+    out.push({id:`${scope}-${k}`,seed:SEEDS[k%SEEDS.length],name,date:d,time:`${9+((k*3)%10)}:${String((k*17)%60).padStart(2,'0')}`,w,h,r:ratio[0]/ratio[1],type:film?'film':'digital',fmt,
+      size:(seed(k*13)*8+1.2).toFixed(1),synced:scope==='cloud'?true:seed(k*19)<.35,localCopy:scope==='cloud'?seed(k*23)<.4:true,live:!film&&seed(k*29)<.15,
+      fav:seed(k*31)<.18,rating:seed(k*37)<.5?0:Math.ceil(seed(k*41)*5),hidden:seed(k*43)<.08,label:seed(k*47)<.2?Math.floor(seed(k*53)*6):-1,
+      cam,place:PLACES[(k+di)%PLACES.length],pal:PAL[k%3],tags:k%4===0?['Story','灵隐寺']:k%3===0?['OPPO']:[],albums:k%5===0?['杭州']:[],
+      path:scope==='cloud'?`2026/mo-gallery/${d.replace(/-/g,'')}/${name}`:`E:\\图片\\2026\\${d.slice(5,7)}\\${name}`});
+    k++;}});
+  return out;
+}
+const DATA={cloud:gen('cloud'),local:gen('local')};
+const img=(p,w=480)=>`https://picsum.photos/seed/${p.seed}/${w}/${Math.round(w/p.r)}`;
+
+/* ---------- 状态 ---------- */
+const S={scope:'cloud',view:'grid',tile:180,sel:new Set(),last:null,filters:{},insp:true,dark:false,sort:'拍摄时间',desc:true,nav:'all',folder:'2026'};
+const photos=()=>DATA[S.scope];
+const fmtDate=d=>{const [y,m,dd]=d.split('-');return `${y}年${+m}月${+dd}日`};
+let toastT;const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200)};
+
+/* ---------- 顶栏 ---------- */
+$('#logoIc').innerHTML=ic('images',15);$('#searchIc').innerHTML=ic('search',15);
+$$('#scopeSeg button').forEach(b=>{b.innerHTML=(b.dataset.scope==='cloud'?ic('cloud',14):ic('drive',14))+(b.dataset.scope==='cloud'?'云端':'本地');b.onclick=()=>{S.scope=b.dataset.scope;S.sel.clear();S.nav='all';$$('#scopeSeg button').forEach(x=>x.classList.toggle('on',x===b));renderAll();}});
+function renderTop(){
+  $('#topActions').innerHTML=S.scope==='cloud'
+    ?`<button class="btn primary">${ic('upload',15)}上传</button><button class="btn icon" title="同步">${ic('refresh',15)}</button><button class="btn icon" title="设置">${ic('sliders',15)}</button><button class="btn icon" id="themeBtn">${ic(S.dark?'sun':'moon',15)}</button><button class="btn icon ${S.insp?'on':''}" id="inspBtn" title="信息面板 ⌘I">${ic('panel',15)}</button>`
+    :`<button class="btn primary">${ic('upload',15)}导入</button><button class="btn">${ic('db',15)}备份数据库</button><button class="btn icon" title="设置">${ic('sliders',15)}</button><button class="btn icon" id="themeBtn">${ic(S.dark?'sun':'moon',15)}</button><button class="btn icon ${S.insp?'on':''}" id="inspBtn" title="信息面板 ⌘I">${ic('panel',15)}</button>`;
+  $('#themeBtn').onclick=()=>{S.dark=!S.dark;document.body.classList.toggle('dark',S.dark);renderTop()};
+  $('#inspBtn').onclick=()=>{S.insp=!S.insp;$('#inspector').classList.toggle('hide',!S.insp);renderTop()};
+}
+
+/* ---------- 侧栏 ---------- */
+const nav=(id,icn,label,n,extra='',d='')=>`<div class="nav ${d} ${S.nav===id?'on':''}" data-nav="${id}"><span class="ic">${ic(icn,15)}</span>${label}${extra}<span class="n num">${n??''}</span></div>`;
+const sec=(title,body,acts='',closed=false)=>`<div class="sb-sec ${closed?'closed':''}"><div class="sb-h"><span class="chev">${ic('chevd',12)}</span>${title}<span class="act">${acts}</span></div><div class="sb-body">${body}</div></div>`;
+const tw=(open,n)=>`<span class="tw">${ic(open?'chevd':'chevr',12)}</span>`;
+function renderSidebar(){
+  const P=photos();
+  const cnt=f=>P.filter(f).length;
+  let html='';
+  if(S.scope==='cloud'){
+    html+=sec('资料库',nav('all','image','全部照片',359)+nav('fav','heart','精选',24)+nav('hidden','eyeoff','隐藏',43)+nav('trash','trash','回收站',2));
+    html+=sec('类型',nav('digital','camera','数码',260)+nav('film','film','胶片',101)+`<div class="typebar"><i style="width:72%"></i><i style="width:28%"></i></div>`);
+    html+=sec('同步',nav('nolocal','cloudoff','仅云端 · 本地无副本',88));
+    html+=sec('相册 <span class="muted" style="font-weight:400;margin-left:2px">7</span>',
+      nav('a1','folder','杭州',8)+nav('a2','folder','建德',8)+nav('a3','folder','云南',17)+nav('a4','folder','人像',6)+nav('a5','folder','OPPO FIND X8',43,`<span class="ic" style="margin-left:4px" title="隐藏相册">${ic('eyeoff',12)}</span>`)+nav('a6','folder','成都',21)+nav('a7','folder','2025 回顾',34),
+      `<button title="新建相册">${ic('plus',13)}</button><button title="刷新">${ic('refresh',13)}</button>`);
+    html+=sec('标签',`<div class="tags">${['灵隐寺','Story','OPPO','镇江','云南','香格里拉','独克宗','123'].map(t=>`<span class="chip">${t}</span>`).join('')}</div>`,`<button title="管理标签">${ic('sliders',13)}</button>`);
+  }else{
+    html+=sec('资料库',nav('all','image','所有照片','1,745')+nav('live','live','Live Photo',133)+nav('fav','heart','收藏',0)+nav('unsynced','cloudoff','未上传','1,203')+nav('lost','x','失联',0)+nav('trash','trash','回收站',0));
+    html+=sec('文件夹',
+      `<div class="nav ${S.nav==='root'?'on':''}" data-nav="root"><span class="ic">${ic('drive',15)}</span>E:\\图片<span class="n mono">1,745</span></div>`+
+      nav('f2025','folder','2025',291,tw(false),'d1')+
+      `<div class="nav d1 ${S.nav==='f2026'?'on':''}" data-nav="f2026"><span class="tw">${ic('chevd',12)}</span><span class="ic">${ic('folderopen',15)}</span>2026<span class="n num">1,282</span></div>`+
+      nav('f01','folder','06',214,'','d2')+nav('f02','folder','07',387,'','d2')+nav('f03','folder','08',681,'','d2')+
+      nav('fai','folder','AiImage',4,'','d1')+nav('fdji','folder','DJI',14,'','d1')+nav('fwx','folder','微信',22,'','d1')+nav('ffilm','folder','胶片',113,tw(false),'d1')+nav('fmov','folder','影视飓风',6,tw(false),'d1')+nav('fvid','folder','视频',3,'','d1')+
+      `<div class="nav d1 muted" data-nav="emptyf" style="font-size:12px"><span class="ic">${ic('folder',15)}</span>5 个空文件夹<span class="n">${ic('chevr',12)}</span></div>`,
+      `<button title="添加文件夹">${ic('plus',13)}</button><button title="重新扫描">${ic('refresh',13)}</button>`);
+    html+=sec('集合',`<div class="empty">还没有集合<button>${ic('plus',12)}新建</button></div>`,`<button>${ic('plus',13)}</button>`);
+    html+=sec('标签',`<div class="empty">还没有标签<button>${ic('plus',12)}新建</button></div>`);
+  }
+  $('#sidebar').innerHTML=html;
+  $$('.sb-h').forEach(h=>h.onclick=e=>{if(e.target.closest('.act'))return;h.parentElement.classList.toggle('closed')});
+  $$('.nav[data-nav]').forEach(n=>n.onclick=()=>{S.nav=n.dataset.nav;S.sel.clear();$$('.nav').forEach(x=>x.classList.toggle('on',x===n));renderCrumb();renderFilters();renderContent();renderInspector()});
+  $('#sbFoot').innerHTML=S.scope==='cloud'
+    ?`<div class="row"><span>存储用量</span><b class="num" style="color:var(--foreground)">673.8 MB</b></div><div class="bar"><i style="width:13%"></i></div><div class="row"><span>S3 · mo-gallery</span><span>5 GB 配额</span></div>`
+    :`<div class="row"><span>索引</span><span style="color:var(--foreground);display:inline-flex;align-items:center;gap:4px">${ic('check',12)}已是最新</span></div><div class="row" style="margin-top:6px"><span class="num">1,745 张 · 13 个文件夹</span><a style="cursor:pointer;color:var(--foreground)">重新扫描</a></div>`;
+}
+
+/* ---------- 工具栏 ---------- */
+const NAVNAME={all:S.scope==='cloud'?'全部照片':'所有照片',fav:'精选',hidden:'隐藏',trash:'回收站',digital:'数码',film:'胶片',nolocal:'仅云端',live:'Live Photo',unsynced:'未上传',lost:'失联',root:'E:\\图片',f2025:'2025',f2026:'2026',f01:'06',f02:'07',f03:'08',fai:'AiImage',fdji:'DJI',fwx:'微信',ffilm:'胶片',fmov:'影视飓风',fvid:'视频',a1:'杭州',a2:'建德',a3:'云南',a4:'人像',a5:'OPPO FIND X8',a6:'成都',a7:'2025 回顾'};
+function renderCrumb(){
+  const n=visible().length;
+  const name=S.nav==='all'?(S.scope==='cloud'?'全部照片':'所有照片'):(NAVNAME[S.nav]||'全部照片');
+  let crumb='';
+  if(S.scope==='local'&&/^f/.test(S.nav)){crumb=`<a>E:</a>${ic('chevr',12)}<a>图片</a>${ic('chevr',12)}`;if(/^f0/.test(S.nav))crumb+=`<a>2026</a>${ic('chevr',12)}`}
+  $('#crumb').innerHTML=`<div class="crumb">${crumb}<span>${name}</span><span class="muted num">· ${n} 张</span>${S.scope==='cloud'&&S.nav.startsWith('a')?`<button class="btn xs ghost" title="发布状态">${ic('ext',12)}已发布</button>`:''}</div>
+  <div class="right">
+    <div class="seg" id="viewSeg"><button data-v="grid" title="网格">${ic('grid',14)}</button><button data-v="just" title="原比例">${ic('rows',14)}</button><button data-v="list" title="列表">${ic('list',14)}</button></div>
+    <div class="select" id="sortSel">${ic('cal',13)}${S.sort}<span class="muted">${S.desc?'↓':'↑'}</span>${ic('chevd',12)}</div>
+  </div>`;
+  $$('#viewSeg button').forEach(b=>{b.classList.toggle('on',b.dataset.v===S.view);b.onclick=()=>{S.view=b.dataset.v;renderCrumb();renderContent()}});
+  $('#sortSel').onclick=()=>{S.desc=!S.desc;renderCrumb();renderContent()};
+}
+function renderFilters(){
+  const F=S.filters;const c=(k,v,label)=>`<button class="chip ${F[k]===v?'on':''}" data-k="${k}" data-v="${v}">${label}${F[k]===v?ic('x',11):''}</button>`;
+  let h=`<button class="btn sm ghost">${ic('filter',14)}筛选</button><div class="sep"></div>`;
+  if(S.scope==='cloud'){
+    h+=`<span class="muted" style="font-size:12px">类型</span>${c('type','digital','数码')}${c('type','film','胶片')}<div class="sep"></div>`;
+    h+=`<span class="muted" style="font-size:12px">本地</span>${c('local','1','有副本')}${c('local','0','无副本')}<div class="sep"></div>`;
+    h+=`${c('rating','3','★ 3+')}${c('fav','1',ic('heart',12)+'精选')}${c('hidden','1',ic('eyeoff',12)+'显示隐藏')}`;
+  }else{
+    h+=`<span class="muted" style="font-size:12px">同步</span>${c('sync','1','已上传')}${c('sync','0','未上传')}<div class="sep"></div>`;
+    h+=`<span class="muted" style="font-size:12px">格式</span>${c('fmt','JPG','JPG')}${c('fmt','WEBP','WEBP')}${c('fmt','HEIC','HEIC')}${c('fmt','TIF','TIF')}<div class="sep"></div>`;
+    h+=`${c('live','1',ic('live',12)+'Live')}${c('rating','3','★ 3+')}<div class="sep"></div><label class="chip" style="cursor:pointer"><span class="check ${F.sub?'on':''}" style="width:13px;height:13px">${F.sub?ic('check',9):''}</span>包含子文件夹</label>`;
+  }
+  if(Object.keys(F).length)h+=`<button class="btn xs ghost muted" id="clearF" style="margin-left:4px">清除</button>`;
+  $('#filters').innerHTML=h;
+  $$('#filters .chip[data-k]').forEach(b=>b.onclick=()=>{const k=b.dataset.k;F[k]===b.dataset.v?delete F[k]:F[k]=b.dataset.v;S.sel.clear();renderFilters();renderCrumb();renderContent();renderInspector()});
+  const sub=$('#filters label.chip');if(sub)sub.onclick=()=>{F.sub?delete F.sub:F.sub=1;renderFilters()};
+  const cl=$('#clearF');if(cl)cl.onclick=()=>{S.filters={};renderFilters();renderCrumb();renderContent()};
+}
+function visible(){
+  const F=S.filters;let P=photos().filter(p=>{
+    if(S.nav==='film'||F.type==='film')if(p.type!=='film')return false;
+    if(S.nav==='digital'||F.type==='digital')if(p.type!=='digital')return false;
+    if(S.nav==='fav'||F.fav)if(!p.fav)return false;
+    if(S.nav==='hidden'){if(!p.hidden)return false}else if(!F.hidden&&p.hidden)return false;
+    if(S.nav==='live'||F.live)if(!p.live)return false;
+    if(S.nav==='unsynced'||F.sync==='0')if(p.synced)return false;
+    if(F.sync==='1'&&!p.synced)return false;
+    if(S.nav==='nolocal'||F.local==='0')if(p.localCopy)return false;
+    if(F.local==='1'&&!p.localCopy)return false;
+    if(F.fmt&&p.fmt!==F.fmt)return false;
+    if(F.rating&&p.rating<+F.rating)return false;
+    if(S.nav==='trash'||S.nav==='lost')return false;
+    return true;
+  });
+  P.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)*(S.desc?-1:1));
+  return P;
+}
+
+/* ---------- 内容 ---------- */
+function renderContent(){
+  const P=visible();const el=$('#content');
+  let h='';
+  if(S.scope==='local'&&(S.nav==='all'||S.nav==='root'||S.nav==='f2026')){
+    const fs=S.nav==='f2026'?[['06',214],['07',387],['08',681]]:[['2025',291],['2026','1,282'],['AiImage',4],['DJI',14],['微信',22],['胶片',113],['影视飓风',6],['视频',3]];
+    h+=`<div class="folders"><span class="lbl">${ic('folder',13)} 子文件夹 ${fs.length}</span>${fs.map(f=>`<span class="fchip"><span class="ic">${ic('folder',14)}</span>${f[0]}<span class="n num">${f[1]}</span></span>`).join('')}${S.nav!=='f2026'?`<span class="fchip muted" style="border-style:dashed">5 个空文件夹 ${ic('chevr',12)}</span>`:''}</div>`;
+  }
+  if(!P.length){h+=`<div class="hint">${ic('image',28)}<p style="margin-top:10px">这里还没有照片</p></div>`;el.innerHTML=h;renderStatus();return}
+  const groups=[];P.forEach(p=>{let g=groups.find(g=>g.d===p.date);if(!g){g={d:p.date,items:[],place:p.place};groups.push(g)}g.items.push(p)});
+  const bd=p=>{let b='';
+    if(p.type==='film')b+=`<span title="胶片">${ic('film',11)}</span>`;
+    if(p.live)b+=`<span title="Live Photo">${ic('live',11)}</span>`;
+    if(S.scope==='local'&&!p.synced)b+=`<span class="warn" title="未上传到云端">${ic('cloudoff',11)}</span>`;
+    if(S.scope==='cloud'&&!p.localCopy)b+=`<span title="本地无副本">${ic('cloud',11)}</span>`;
+    if(p.hidden)b+=`<span title="已隐藏">${ic('eyeoff',11)}</span>`;
+    if(S.scope==='local'&&p.fmt!=='JPG')b+=`<span>${p.fmt}</span>`;
+    return b};
+  if(S.view==='list'){
+    h+=`<div class="lhead"><span></span><span></span><span>文件名</span><span>格式</span><span>尺寸</span><span>拍摄时间</span><span>${S.scope==='cloud'?'相机 / 胶卷':'路径'}</span><span>大小</span><span>${S.scope==='cloud'?'本地':'云端'}</span></div>`;
+    groups.forEach(g=>{h+=`<div class="group"><div class="gh" data-g="${g.d}"><span class="check"></span>${fmtDate(g.d)}<span class="n num">${g.items.length} 张</span><span class="place">${ic('pin',11)}${g.place}</span></div><div class="list">`;
+      g.items.forEach(p=>{h+=`<div class="lrow ${S.sel.has(p.id)?'sel':''}" data-id="${p.id}"><span class="check ${S.sel.has(p.id)?'on':''}">${S.sel.has(p.id)?ic('check',10):''}</span><img src="${img(p,120)}" loading="lazy"><div class="name">${p.name}<small>${p.place}${p.fav?' · ♥':''}${p.rating?' · '+'★'.repeat(p.rating):''}</small></div><span class="badge outline">${p.fmt}</span><span class="num muted">${p.w} × ${p.h}</span><span class="num muted">${p.date.replace(/-/g,'/')} ${p.time}</span><span class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${S.scope==='cloud'?(p.type==='film'?p.cam[2]+' · '+p.cam[3]:p.cam[0]):p.path.replace(/\\[^\\]+$/,'')}</span><span class="num muted">${p.size} MB</span><span class="muted" style="display:inline-flex;align-items:center;gap:4px">${S.scope==='cloud'?(p.localCopy?ic('check',12)+'有副本':ic('cloud',12)+'仅云端'):(p.synced?ic('check',12)+'已上传':ic('cloudoff',12)+'未上传')}</span></div>`});
+      h+=`</div></div>`});
+  }else{
+    groups.forEach(g=>{h+=`<div class="group"><div class="gh" data-g="${g.d}"><span class="check"></span>${fmtDate(g.d)}<span class="n num">${g.items.length} 张</span><span class="place">${ic('pin',11)}${g.place}</span></div><div class="${S.view==='grid'?'grid':'just'}">`;
+      g.items.forEach(p=>{h+=`<div class="tile ${p.type} ${S.sel.has(p.id)?'sel':''}" data-id="${p.id}" style="--r:${p.r.toFixed(3)}"><img src="${img(p,S.view==='grid'?400:Math.round(S.tile*p.r*1.6))}" loading="lazy" draggable="false"><span class="check ${S.sel.has(p.id)?'on':''}">${S.sel.has(p.id)?ic('check',10):''}</span><div class="bd">${bd(p)}</div>${p.fav?`<span class="fav">${ic('heart',13)}</span>`:''}<div class="cap"><b>${p.name}</b><span>${p.size} MB</span></div></div>`});
+      h+=`</div></div>`});
+  }
+  el.innerHTML=h;
+  el.querySelectorAll('[data-id]').forEach(t=>t.onclick=e=>onSelect(t.dataset.id,e));
+  el.querySelectorAll('.gh').forEach(g=>{const ids=groups.find(x=>x.d===g.dataset.g).items.map(p=>p.id);const all=ids.every(i=>S.sel.has(i)),some=ids.some(i=>S.sel.has(i));const ck=g.querySelector('.check');ck.classList.toggle('on',all);ck.classList.toggle('part',some&&!all);if(all)ck.innerHTML=ic('check',10);
+    g.onclick=()=>{all?ids.forEach(i=>S.sel.delete(i)):ids.forEach(i=>S.sel.add(i));afterSel()}});
+  renderStatus();
+}
+function onSelect(id,e){
+  const flat=visible().map(p=>p.id);
+  if(e.shiftKey&&S.last){const a=flat.indexOf(S.last),b=flat.indexOf(id);flat.slice(Math.min(a,b),Math.max(a,b)+1).forEach(i=>S.sel.add(i))}
+  else if(e.metaKey||e.ctrlKey){S.sel.has(id)?S.sel.delete(id):S.sel.add(id)}
+  else{if(S.sel.size===1&&S.sel.has(id))S.sel.clear();else{S.sel.clear();S.sel.add(id)}}
+  S.last=id;afterSel();
+}
+function afterSel(){
+  $$('#content [data-id]').forEach(t=>{const on=S.sel.has(t.dataset.id);t.classList.toggle('sel',on);const c=t.querySelector('.check');c.classList.toggle('on',on);c.innerHTML=on?ic('check',10):''});
+  $$('#content .gh').forEach(g=>{const ids=[...g.nextElementSibling.querySelectorAll('[data-id]')].map(x=>x.dataset.id);const all=ids.every(i=>S.sel.has(i)),some=ids.some(i=>S.sel.has(i));const ck=g.querySelector('.check');ck.classList.toggle('on',all);ck.classList.toggle('part',some&&!all);ck.innerHTML=all?ic('check',10):''});
+  renderSelbar();renderInspector();renderStatus();
+}
+function renderSelbar(){
+  const el=$('#selbar');const n=S.sel.size;el.classList.toggle('show',n>1);if(n<2)return;
+  const P=photos().filter(p=>S.sel.has(p.id));const mb=P.reduce((a,p)=>a+ +p.size,0).toFixed(1);
+  el.innerHTML=`<b class="num">已选 ${n} 张</b><span style="opacity:.6;margin-right:8px" class="num">${mb} MB</span>
+  <button class="btn sm">${ic('album',14)}加入相册</button><button class="btn sm">${ic('tag',14)}标签</button><button class="btn sm">${ic('heart',14)}精选</button>
+  ${S.scope==='cloud'?`<button class="btn sm">${ic('download',14)}下载</button><button class="btn sm">${ic('eyeoff',14)}隐藏</button>`:`<button class="btn sm">${ic('upload',14)}上传到云端</button><button class="btn sm">${ic('folder',14)}移动</button>`}
+  <div class="sep"></div><button class="btn sm">${ic('trash',14)}</button><button class="btn sm icon" id="selClear">${ic('x',14)}</button>`;
+  el.querySelectorAll('.btn:not(#selClear)').forEach(b=>b.onclick=()=>toast(`已对 ${n} 张执行：${b.textContent.trim()||'删除'}`));
+  $('#selClear').onclick=()=>{S.sel.clear();afterSel()};
+}
+function renderStatus(){
+  const n=visible().length;
+  $('#statusbar').innerHTML=`<span class="num">${S.sel.size?`已选 ${S.sel.size} / `:''}${n} 张</span><span>排序：${S.sort} ${S.desc?'降序':'升序'}</span>
+  ${S.scope==='local'?`<a>${ic('refresh',12)}重新扫描</a><a>${ic('wrench',12)}修复</a><a>${ic('link',12)}同步云端路径</a>`:`<a>${ic('refresh',12)}刚刚同步</a>`}
+  <div class="right"><div class="zoom"><span class="muted">−</span><input type="range" min="110" max="300" value="${S.tile}" id="zoomR"><span class="muted">+</span></div><span class="num muted" style="width:36px">${Math.round(S.tile/180*100)}%</span></div>`;
+  $('#zoomR').oninput=e=>{S.tile=+e.target.value;document.documentElement.style.setProperty('--tile',S.tile+'px');$('#statusbar .num.muted').textContent=Math.round(S.tile/180*100)+'%'};
+}
+
+/* ---------- 右栏 ---------- */
+function renderInspector(){
+  const el=$('#inspector');const n=S.sel.size;
+  if(n===0){el.innerHTML=`<div class="hint" style="padding:120px 30px;font-size:12.5px">${ic('image',24)}<p style="margin-top:10px">选择一张照片查看信息<br><span class="muted">Shift 范围选择 · ⌘ 加选 · ⌘A 全选</span></p></div>`;return}
+  if(n>1){const P=photos().filter(p=>S.sel.has(p.id));const mb=P.reduce((a,p)=>a+ +p.size,0).toFixed(1);const film=P.filter(p=>p.type==='film').length,un=P.filter(p=>S.scope==='cloud'?!p.localCopy:!p.synced).length;
+    el.innerHTML=`<div class="multi"><div class="stack">${P.slice(0,3).map((p,i)=>`<img src="${img(p,300)}" style="left:${i*15}%;transform:rotate(${(i-1)*3}deg);z-index:${3-i}">`).join('')}</div>
+    <h3 class="num">已选 ${n} 张</h3><p class="muted num">${mb} MB · ${film ? film+' 张胶片 · ' : ''}${un} 张${S.scope==='cloud'?'本地无副本':'未上传'}</p>
+    <div class="acts"><button class="btn sm">${ic('album',14)}加入相册</button><button class="btn sm">${ic('tag',14)}添加标签</button><button class="btn sm">${ic('heart',14)}标为精选</button><button class="btn sm">${ic('star',14)}批量评分</button>${S.scope==='cloud'?`<button class="btn sm">${ic('download',14)}下载到本地</button><button class="btn sm">${ic('eyeoff',14)}隐藏</button>`:`<button class="btn sm">${ic('upload',14)}上传到云端</button><button class="btn sm">${ic('folder',14)}移动到…</button>`}</div>
+    <div class="sec" style="margin-top:16px"><div class="sec-h">${ic('info',14)}共同属性<span class="chev">${ic('chevd',14)}</span></div><div class="sec-b"><dl class="kv"><dt>日期</dt><dd><span class="v">${[...new Set(P.map(p=>p.date))].length===1?fmtDate(P[0].date):'多个日期'}</span></dd><dt>相机</dt><dd><span class="v">${[...new Set(P.map(p=>p.cam[0]))].join('、')}</span></dd><dt>地点</dt><dd><span class="v">${[...new Set(P.map(p=>p.place))].slice(0,2).join('、')}</span></dd></dl></div></div></div>`;return}
+  const p=photos().find(x=>S.sel.has(x.id));const film=p.type==='film';
+  const kv=(rows)=>`<dl class="kv">${rows.map(([k,v,cp])=>`<dt>${k}</dt><dd><span class="v ${cp?'mono':''}">${v}</span>${cp?`<button title="复制">${ic('copy',12)}</button>`:''}</dd>`).join('')}</dl>`;
+  const S1=(t,icn,body,closed=false)=>`<div class="sec ${closed?'closed':''}"><div class="sec-h"><span class="ic">${ic(icn,14)}</span>${t}<span class="chev">${ic('chevd',14)}</span></div><div class="sec-b">${body}</div></div>`;
+  const sync=S.scope==='cloud'
+    ?`<div class="sync ok"><span class="st">${ic('cloud',15)}</span><div class="t"><b>S3 · 已同步</b><small class="mono">${p.path}</small></div>${p.localCopy?`<span class="badge">${ic('drive',11)}本地有副本</span>`:`<button class="btn sm">${ic('download',13)}下载</button>`}</div>`
+    :(p.synced?`<div class="sync ok"><span class="st">${ic('cloud',15)}</span><div class="t"><b>已上传到云端</b><small class="mono">2026/mo-gallery/${p.name}</small></div><button class="btn sm icon" title="打开云端">${ic('ext',13)}</button></div>`
+      :`<div class="sync"><span class="st">${ic('cloudoff',15)}</span><div class="t"><b>未上传</b><small>仅存在于本机 · ${p.size} MB</small></div><button class="btn sm primary">${ic('upload',13)}上传</button></div>`);
+  el.innerHTML=`<div class="ins-scroll">
+    <div class="preview"><img src="${img(p,640)}"><button class="btn xs icon zoomin" style="background:var(--background)">${ic('maximize',12)}</button></div>
+    <div class="ins-title"><div class="name">${p.name}<span class="edit">${ic('pencil',12)}</span></div><div class="sub"><span class="mono">${S.scope==='cloud'?'255bbab0-c094-440c':'#'+p.id.split('-')[1].padStart(5,'0')}</span><button title="复制">${ic('copy',12)}</button><span>·</span><span class="badge outline">${p.fmt}</span>${film?`<span class="badge outline">${ic('film',10)}胶片</span>`:''}${p.live?`<span class="badge outline">${ic('live',10)}Live</span>`:''}</div></div>
+    <div class="quick">
+      <button class="btn sm icon ghost ${p.fav?'on':''}" title="精选" data-q="fav" style="${p.fav?'color:var(--foreground)':''}">${ic('heart',15)}</button>
+      <div class="stars">${[1,2,3,4,5].map(i=>`<button data-star="${i}" class="${p.rating>=i?'on':''}">${ic('star',13)}</button>`).join('')}</div>
+      <div class="labels">${LABELS.map((c,i)=>`<button style="background:${c}" data-label="${i}" class="${p.label===i?'on':''}"></button>`).join('')}</div>
+      <span style="flex:1"></span>
+      <button class="btn sm icon ghost ${p.hidden?'on':''}" title="${p.hidden?'取消隐藏':'隐藏'}" data-q="hidden">${ic('eyeoff',15)}</button>
+      <button class="btn sm icon ghost" title="更多">${ic('more',15)}</button>
+    </div>
+    ${sync}
+    ${S1('基本信息','info',kv([['尺寸',`<span class="num">${p.w} × ${p.h}</span> <span class="muted">· ${(p.w*p.h/1e6).toFixed(1)} MP</span>`],['大小',`<span class="num">${p.size} MB</span>`],['拍摄时间',`<span class="num">${p.date.replace(/-/g,'/')} ${p.time}</span>`],[S.scope==='cloud'?'上传于':'修改于',`<span class="num">${p.date.replace(/-/g,'/')} ${p.time}</span>`],[S.scope==='cloud'?'存储':'路径',S.scope==='cloud'?'S3 · mo-gallery':p.path,true]]))}
+    ${S1('拍摄参数','aperture',film
+      ?`<div class="kv2"><div><small>胶卷</small><b>${p.cam[2]}</b></div><div><small>卷号</small><b>${p.cam[3]}</b></div><div><small>相机</small><b>${p.cam[0]}</b></div></div><dl class="kv" style="margin-top:10px"><dt>镜头</dt><dd><span class="v">${p.cam[1]}</span></dd><dt>扫描仪</dt><dd><span class="v">NORITSU KOKI EZ Controller</span></dd><dt>冲扫</dt><dd><span class="v">C-41 · 2026/08/16</span></dd></dl>`
+      :`<div class="kv2"><div><small>焦距</small><b>${p.cam[2]}</b></div><div><small>光圈</small><b>${p.cam[3]}</b></div><div><small>快门</small><b>${p.cam[4]}</b></div></div><dl class="kv" style="margin-top:10px"><dt>相机</dt><dd><span class="v">${p.cam[0]}</span></dd><dt>镜头</dt><dd><span class="v">${p.cam[1]}</span></dd><dt>ISO</dt><dd><span class="v num">${p.cam[5]}</span></dd><dt>白平衡</dt><dd><span class="v">自动</span></dd></dl>`)}
+    ${S1('位置','pin',`<dl class="kv"><dt>地点</dt><dd><span class="v">${p.place}</span></dd><dt>坐标</dt><dd><span class="v mono">30.6595, 104.0834</span><button>${ic('copy',12)}</button></dd></dl>`)}
+    ${S1(S.scope==='cloud'?'相册与标签':'集合与标签','tag',`<div class="tagrow">${p.albums.map(a=>`<span class="chip">${ic('album',11)}${a}</span>`).join('')}${p.tags.map(t=>`<span class="chip">${t}<span class="x">${ic('x',10)}</span></span>`).join('')}<span class="chip add">${ic('plus',11)}添加</span></div>`)}
+    ${S1('色彩','palette',`<div class="palette">${p.pal.map(c=>`<i style="background:${c}"></i>`).join('')}</div>`,true)}
+    ${S1('备注','pencil',`<div class="muted" style="font-size:12.5px;padding:6px 0;cursor:text">点击添加备注…</div>`,true)}
+  </div>
+  <div class="ins-foot">${S.scope==='cloud'?`<button class="btn sm">${ic('ext',13)}访问站点</button><button class="btn sm">${ic('download',13)}下载原图</button>`:`<button class="btn sm">${ic('folderopen',13)}在文件夹中显示</button><button class="btn sm">${ic('ext',13)}用默认应用打开</button>`}<button class="btn sm icon danger" title="删除">${ic('trash',13)}</button></div>`;
+  el.querySelectorAll('.sec-h').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('closed'));
+  el.querySelectorAll('[data-star]').forEach(b=>b.onclick=()=>{p.rating=p.rating===+b.dataset.star?0:+b.dataset.star;renderInspector();renderContent()});
+  el.querySelectorAll('[data-label]').forEach(b=>b.onclick=()=>{p.label=p.label===+b.dataset.label?-1:+b.dataset.label;renderInspector()});
+  el.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>{p[b.dataset.q]=!p[b.dataset.q];renderInspector();renderContent();toast(b.dataset.q==='fav'?(p.fav?'已加入精选':'已取消精选'):(p.hidden?'已隐藏，在「隐藏」中可找回':'已取消隐藏'))});
+  el.querySelectorAll('[title="复制"]').forEach(b=>b.onclick=()=>toast('已复制'));
+}
+
+/* ---------- 全局 ---------- */
+document.addEventListener('keydown',e=>{
+  const mod=e.metaKey||e.ctrlKey;
+  if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();$('#search').focus()}
+  if(mod&&e.key.toLowerCase()==='a'&&document.activeElement.tagName!=='INPUT'){e.preventDefault();visible().forEach(p=>S.sel.add(p.id));afterSel()}
+  if(mod&&e.key.toLowerCase()==='i'){e.preventDefault();$('#inspBtn').click()}
+  if(e.key==='Escape'){S.sel.clear();afterSel();document.activeElement.blur()}
+  if(e.key==='1'&&!mod&&document.activeElement.tagName!=='INPUT')$$('#scopeSeg button')[0].click();
+  if(e.key==='2'&&!mod&&document.activeElement.tagName!=='INPUT')$$('#scopeSeg button')[1].click();
+});
+$('#search').oninput=e=>{const q=e.target.value.trim().toLowerCase();$$('#content [data-id]').forEach(t=>{const p=photos().find(x=>x.id===t.dataset.id);t.style.display=!q||(p.name+p.place+p.cam.join()+p.path).toLowerCase().includes(q)?'':'none'})};
+function renderAll(){renderTop();renderSidebar();renderCrumb();renderFilters();renderContent();renderInspector();renderSelbar()}
+renderAll();
+</script>
+</body>
+</html>

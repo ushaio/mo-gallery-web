@@ -1,51 +1,40 @@
-import { useCallback, useMemo, useState } from 'react'
-import type { CSSProperties, ElementType, ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Aperture,
   ArrowUpRight,
+  BookMarked,
   Bot,
   BookImage,
-  BookMarked,
-  Camera,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  EyeOff,
+  Check,
+  FileText,
   FolderOpen,
-  HardDrive,
   Image,
   LibraryBig,
   MessageSquare,
   PenLine,
-  RefreshCw,
-  Star,
+  Sparkles,
   Upload,
-  Users,
+  X,
 } from 'lucide-react'
 import { Skeleton } from '@/components/admin/Skeleton'
+import { HomePhotoActivity } from '@/components/admin/HomePhotoActivity'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDesktopSiteIdentity } from '@/components/layout/useDesktopSiteIdentity'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { useDataRevision } from '@/hooks/useDataRevision'
 import {
-  getEquipmentItemsCache,
   getOverviewCache,
-  isEquipmentCacheFresh,
-  isEquipmentCacheLoaded,
   isOverviewCacheFresh,
-  setEquipmentItemsCache,
   setOverviewCache,
-  type EquipmentItem,
-  type EquipmentKind,
 } from '@/lib/app-cache'
 import { AUTH_ERROR_MESSAGE_KEY, getAuthErrorMessage, getErrorMessage, isAuthError } from '@/lib/auth-errors'
 import { buildApiUrl, resolveAssetUrl } from '@/lib/api'
 import { t } from '@/lib/i18n'
 import type { Locale } from '@/lib/i18n'
-import { cn, formatBytes } from '@/lib/utils'
-import { usePreferences } from '@/store/preferences'
-import { GetCameras, GetLenses, GetOverview } from '../../wailsjs/go/main/App'
+import { cn } from '@/lib/utils'
+import { usePreferences, useSettingsNav } from '@/store/preferences'
+import { GetOverview } from '../../wailsjs/go/main/App'
 import type { services } from '../../wailsjs/go/models'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 
@@ -59,59 +48,11 @@ type FeedItem = RecentTextItem & { kind: FeedKind }
 const SURFACE_BORDER = 'color-mix(in srgb, var(--border) 78%, transparent)'
 const PAGE_BACKGROUND = 'color-mix(in srgb, var(--background) 96%, var(--secondary))'
 const CARD_SHADOW = '0 16px 30px -28px rgb(0 0 0 / 0.55)'
-const RECENT_PHOTO_LIMIT = 8
+const ACCENT_SOFT = 'color-mix(in srgb, var(--primary) 12%, transparent)'
+const RECENT_PHOTO_LIMIT = 9
+const RECENT_FEED_LIMIT = 5
 
 const SCROLL_STYLE: CSSProperties = { scrollbarGutter: 'stable' }
-
-/** 工作台卡片：柔和描边 + card 表面 + 极浅投影，与本地资源库欢迎页同一套语汇。 */
-function Card({
-  title,
-  icon: Icon,
-  action,
-  children,
-  className,
-  bodyClassName,
-}: {
-  title: string
-  icon?: ElementType
-  action?: ReactNode
-  children: ReactNode
-  className?: string
-  bodyClassName?: string
-}) {
-  return (
-    <section
-      className={cn('flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-card/80', className)}
-      style={{ borderColor: SURFACE_BORDER, boxShadow: CARD_SHADOW }}
-    >
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
-        <div className="flex min-w-0 items-center gap-2">
-          {Icon && <Icon size={14} style={{ color: 'var(--muted-foreground)' }} />}
-          <h2 className="truncate font-sans text-[13px] font-medium tracking-tight" style={{ color: 'var(--foreground)' }}>
-            {title}
-          </h2>
-        </div>
-        {action}
-      </div>
-      <div className={cn('min-w-0 flex-1', bodyClassName ?? 'px-5 pb-5')}>{children}</div>
-    </section>
-  )
-}
-
-/** 卡片右上角的文字入口，替代原来分散在各处的「查看全部」按钮。 */
-function CardLink({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group inline-flex shrink-0 items-center gap-1 rounded-md text-[11px] font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      style={{ color: 'var(--muted-foreground)' }}
-    >
-      {label}
-      <ArrowUpRight size={12} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-    </button>
-  )
-}
 
 function getGreetingKey(hour: number): string {
   if (hour >= 5 && hour < 12) return 'admin.home_greeting_morning'
@@ -121,7 +62,6 @@ function getGreetingKey(hour: number): string {
 
 function formatToday(language: Locale): string {
   return new Date().toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
-    year: 'numeric',
     month: 'long',
     day: 'numeric',
     weekday: 'long',
@@ -165,232 +105,220 @@ function getPublicContentUrl(path: FeedKind, id: string) {
   return /^https?:\/\//i.test(url) ? url : null
 }
 
-interface QuickAction {
-  key: string
-  icon: ElementType
-  label: string
-  hint: string
-  to: string
-  primary?: boolean
-}
-
-/** 快速开始磁贴：图标胶囊 + 名称 + 一句说明，悬停轻微抬起。 */
-function QuickActionTile({ action, onSelect }: { action: QuickAction; onSelect: (to: string) => void }) {
-  const { icon: Icon, label, hint, primary } = action
+/** 小节标题：字距拉开的小写标签 + 右侧可选动作。 */
+function SectionHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(action.to)}
-      className="group flex min-w-0 flex-col items-start gap-3 rounded-2xl border bg-card/70 p-4 text-left transition-[transform,box-shadow,background-color] duration-200 hover:-translate-y-0.5 hover:bg-card hover:shadow-[0_18px_30px_-26px_rgb(0_0_0/0.6)] active:translate-y-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      style={{ borderColor: SURFACE_BORDER }}
-    >
-      <span
-        className="flex size-9 items-center justify-center rounded-xl transition-colors"
-        style={
-          primary
-            ? { backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }
-            : { backgroundColor: 'var(--secondary)', color: 'var(--foreground)' }
-        }
-      >
-        <Icon size={17} />
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate text-[13px] font-medium" style={{ color: 'var(--foreground)' }}>{label}</span>
-        <span className="mt-0.5 block text-[11px] leading-4" style={{ color: 'var(--muted-foreground)' }}>{hint}</span>
-      </span>
-    </button>
-  )
-}
-
-interface MetricProps {
-  label: string
-  value: ReactNode
-  sub?: ReactNode
-  to?: string
-  loading?: boolean
-}
-
-/** 资源库指标格：标签小字 + mono 数字，点击进入对应工作区。 */
-function Metric({ label, value, sub, to, loading = false }: MetricProps) {
-  const navigate = useNavigate()
-  const clickable = !!to && !loading
-
-  const body = (
-    <>
-      <span className="truncate text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
-      {loading ? (
-        <Skeleton className="mt-1.5 h-5 w-12" />
-      ) : (
-        <span className="mt-1 flex min-w-0 items-baseline gap-1.5">
-          <span className="font-mono text-lg font-semibold tabular-nums leading-none" style={{ color: 'var(--foreground)' }}>
-            {value}
-          </span>
-          {sub && <span className="truncate text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>{sub}</span>}
-        </span>
-      )}
-    </>
-  )
-
-  const base = 'flex min-w-0 flex-col rounded-xl px-3 py-2.5 text-left transition-colors'
-
-  if (!clickable) {
-    return <div className={cn(base, 'bg-secondary/40')}>{body}</div>
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(to!)}
-      className={cn(base, 'bg-secondary/40 hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring')}
-    >
-      {body}
-    </button>
-  )
-}
-
-interface EquipmentHoverTargetProps {
-  label: string
-  items: EquipmentItem[]
-  loading: boolean
-  error: string | null
-  noDataLabel: string
-  onOpen: () => void
-}
-
-/** 器材名称悬停展开清单，沿用旧概览页的交互，避免丢掉相机/镜头明细。 */
-function EquipmentHoverTarget({ label, items, loading, error, noDataLabel, onOpen }: EquipmentHoverTargetProps) {
-  const [open, setOpen] = useState(false)
-
-  const show = () => {
-    setOpen(true)
-    onOpen()
-  }
-
-  return (
-    <span className="relative inline-flex">
-      <button
-        type="button"
-        className="cursor-help appearance-none border-0 bg-transparent p-0 text-[11px] underline decoration-dotted underline-offset-4 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        style={{ color: 'var(--muted-foreground)' }}
-        onMouseEnter={show}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={show}
-        onBlur={() => setOpen(false)}
-      >
-        {label}
-      </button>
-      {open && (
-        <span
-          className="absolute left-0 top-full z-50 mt-2 w-56 rounded-xl border p-2 shadow-xl"
-          style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
-        >
-          <span className="mb-1 block px-2 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
-            {label}
-          </span>
-          <span className="block max-h-56 overflow-y-auto custom-scrollbar">
-            {loading ? (
-              <span className="block space-y-1.5 px-1 py-1">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <Skeleton key={index} className="h-6 w-full" />
-                ))}
-              </span>
-            ) : error ? (
-              <span className="block px-2 py-2 text-xs" style={{ color: 'var(--destructive)' }}>{error}</span>
-            ) : items.length > 0 ? (
-              items.map((item) => (
-                <span key={item.id} className="block truncate rounded-md px-2 py-1.5 text-xs" style={{ color: 'var(--foreground)' }}>
-                  {item.name}
-                </span>
-              ))
-            ) : (
-              <span className="block px-2 py-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>{noDataLabel}</span>
-            )}
-          </span>
-        </span>
-      )}
-    </span>
-  )
-}
-
-function RecentPhotoWall({
-  photos,
-  loading,
-  noDataLabel,
-  language,
-}: {
-  photos: RecentPhoto[]
-  loading: boolean
-  noDataLabel: string
-  language: Locale
-}) {
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {Array.from({ length: RECENT_PHOTO_LIMIT }).map((_, index) => (
-          <Skeleton key={index} className="aspect-square rounded-xl" />
-        ))}
-      </div>
-    )
-  }
-
-  if (photos.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-10 text-xs"
-        style={{ borderColor: SURFACE_BORDER, color: 'var(--muted-foreground)' }}>
-        <Image size={18} />
-        {noDataLabel}
-      </div>
-    )
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {photos.slice(0, RECENT_PHOTO_LIMIT).map((photo) => {
-        const imgSrc = photo.thumbnailUrl
-          ? resolveAssetUrl(photo.thumbnailUrl)
-          : photo.url
-            ? resolveAssetUrl(photo.url)
-            : null
-        const time = formatRelative(photo.createdAt, language)
-        return (
-          <figure
-            key={photo.id}
-            className="group relative aspect-square min-h-0 w-full overflow-hidden rounded-xl"
-            style={{ backgroundColor: 'var(--secondary)' }}
-          >
-            {imgSrc ? (
-              <img
-                src={imgSrc}
-                alt={photo.title}
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-              />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center">
-                <Image size={16} style={{ color: 'var(--muted-foreground)' }} />
-              </span>
-            )}
-            <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-2 bg-gradient-to-t from-black/75 to-transparent px-2.5 pb-2 pt-6 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
-              <span className="block truncate text-[11px] font-medium text-white">{photo.title}</span>
-              {time && <span className="block text-[10px] text-white/70">{time}</span>}
-            </figcaption>
-          </figure>
-        )
-      })}
+    <div className="mb-3 flex items-baseline justify-between gap-3">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--muted-foreground)' }}>
+        {title}
+      </h2>
+      {children}
     </div>
   )
 }
 
-function RecentFeed({
+/** 虚线下划线的行内跳转文字，对应参考页 sub 行的 em 元素。 */
+function InlineLink({ label, onClick }: { label: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="cursor-pointer appearance-none border-0 bg-transparent p-0 underline decoration-dashed decoration-from-font underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      style={{ color: 'var(--foreground)' }}
+    >
+      {label}
+    </button>
+  )
+}
+
+interface CommandItem {
+  cmd: string
+  desc: string
+  to: string
+}
+
+/** 万能输入框：一句意图、/ 命令，回车分发到对应工作区。 */
+function OmniBox({
+  language,
+  draftTotal,
+  pendingComments,
+}: {
+  language: Locale
+  draftTotal: number
+  pendingComments: number
+}) {
+  const navigate = useNavigate()
+  const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const commands = useMemo<CommandItem[]>(() => [
+    { cmd: '/zine', desc: t('admin.home_cmd_zine', language), to: '/design/zine' },
+    { cmd: '/draft', desc: t('admin.home_cmd_draft', language), to: '/photo-journal' },
+    { cmd: '/album', desc: t('admin.home_cmd_album', language), to: '/library?source=cloud&view=albums' },
+    { cmd: '/find', desc: t('admin.home_cmd_find', language), to: '/library?source=cloud' },
+    { cmd: '/caption', desc: t('admin.home_cmd_caption', language), to: '/ai-assistant' },
+  ], [language])
+
+  const showMenu = value.startsWith('/')
+
+  const run = useCallback((text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    const matched = commands.find(c => trimmed.startsWith(c.cmd))
+    if (matched) {
+      navigate(matched.to)
+      return
+    }
+    // 自由意图直接交给 AI 助手自动发送，而不是只预填输入框
+    navigate(`/ai-assistant?q=${encodeURIComponent(trimmed)}&send=1`)
+  }, [commands, navigate])
+
+  // Ctrl/Cmd+K 聚焦输入框，对齐参考页的快捷键
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        inputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  const chips: { label: string; icon: typeof Upload; to: string }[] = [
+    { label: t('admin.home_action_upload', language), icon: Upload, to: '/upload' },
+    { label: t('admin.home_act_write', language), icon: PenLine, to: '/photo-journal' },
+    { label: t('admin.home_act_album', language), icon: FolderOpen, to: '/library?source=cloud&view=albums' },
+    { label: t('admin.home_act_zine', language), icon: BookImage, to: '/design/zine' },
+    { label: t('admin.home_act_ask', language), icon: Bot, to: '/ai-assistant' },
+  ]
+
+  return (
+    <div className="mt-5">
+      <div
+        className="overflow-hidden rounded-2xl border bg-card/85 transition-shadow focus-within:shadow-[0_0_0_4px_var(--tw-shadow-color),var(--tw-shadow)]"
+        style={{ borderColor: SURFACE_BORDER, boxShadow: CARD_SHADOW, ['--tw-shadow-color' as string]: ACCENT_SOFT }}
+      >
+        <div className="flex items-center gap-3 px-4 py-4">
+          <Sparkles size={18} style={{ color: 'var(--primary)' }} className="shrink-0" />
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                run(value)
+              } else if (e.key === 'Escape') {
+                setValue('')
+                inputRef.current?.blur()
+              }
+            }}
+            placeholder={t('admin.home_omni_placeholder', language)}
+            autoComplete="off"
+            className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:opacity-60"
+            style={{ color: 'var(--foreground)' }}
+          />
+          <span className="hidden shrink-0 items-center gap-1 text-[11px] sm:flex" style={{ color: 'var(--muted-foreground)' }}>
+            {t('admin.home_omni_hint', language)}
+          </span>
+        </div>
+
+        {showMenu && (
+          <div className="border-t px-2 py-2" style={{ borderColor: SURFACE_BORDER }}>
+            {commands.map(c => (
+              <button
+                key={c.cmd}
+                type="button"
+                onClick={() => run(c.cmd)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <code className="w-20 shrink-0 font-mono text-xs" style={{ color: 'var(--primary)' }}>{c.cmd}</code>
+                <span className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>{c.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 px-4 pb-3.5">
+          {chips.map(({ label, icon: Icon, to }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => navigate(to)}
+              className="inline-flex items-center gap-1.5 rounded-full border bg-secondary/50 px-3 py-1.5 text-xs transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              style={{ borderColor: SURFACE_BORDER, color: 'var(--muted-foreground)' }}
+            >
+              <Icon size={12} />
+              {label}
+            </button>
+          ))}
+          {draftTotal + pendingComments > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate(draftTotal > 0 ? '/photo-journal' : '/settings')}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              style={{ backgroundColor: ACCENT_SOFT, color: 'var(--primary)' }}
+            >
+              {draftTotal > 0
+                ? t('admin.home_proposal_drafts', language, { n: draftTotal })
+                : t('admin.home_proposal_comments', language, { n: pendingComments })}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface Proposal {
+  key: 'drafts' | 'comments'
+  icon: typeof PenLine
+  title: string
+  evidence: string
+  actionLabel: string
+  onGo: () => void
+}
+
+/** 提案卡片：图标胶囊 + 一句建议 + 依据 + 去处理。 */
+function ProposalCard({ proposal }: { proposal: Proposal }) {
+  const { icon: Icon, title, evidence, actionLabel, onGo } = proposal
+  return (
+    <div
+      className="flex items-start gap-3 rounded-xl border bg-card/85 p-4"
+      style={{ borderColor: SURFACE_BORDER, boxShadow: CARD_SHADOW }}
+    >
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: ACCENT_SOFT, color: 'var(--primary)' }}>
+        <Icon size={15} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium leading-snug" style={{ color: 'var(--foreground)' }}>{title}</p>
+        <p className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{evidence}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onGo}
+        className="shrink-0 self-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', borderColor: 'var(--primary)' }}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  )
+}
+
+/** 继续上次：最近叙事 / 博客混排，点标题打开站点或进编辑器。 */
+function ContinueList({
   items,
   loading,
   noDataLabel,
   language,
+  onOpen,
 }: {
   items: FeedItem[]
   loading: boolean
   noDataLabel: string
   language: Locale
+  onOpen: (item: FeedItem) => void
 }) {
   const storyLabel = t('admin.overview_stories', language)
   const blogLabel = t('admin.overview_blogs', language)
@@ -399,75 +327,210 @@ function RecentFeed({
 
   if (loading) {
     return (
-      <div className="space-y-1 px-2 pb-3">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <div key={index} className="flex min-w-0 items-center gap-3 px-3 py-2.5">
-            <Skeleton className="h-4 w-10 shrink-0" />
-            <Skeleton className="h-4 flex-1" />
-            <Skeleton className="h-3 w-16 shrink-0" />
-          </div>
+      <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: SURFACE_BORDER, boxShadow: CARD_SHADOW }}>
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-9 w-full rounded-lg" />
         ))}
       </div>
     )
   }
 
-  if (items.length === 0) {
+  return (
+    <div className="overflow-hidden rounded-xl border" style={{ borderColor: SURFACE_BORDER, boxShadow: CARD_SHADOW }}>
+      {items.length === 0 ? (
+        <div className="px-4 py-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          {noDataLabel}
+        </div>
+      ) : (
+        items.map((item, index) => {
+          const time = formatRelative(item.createdAt, language)
+          return (
+            <button
+              key={`${item.kind}-${item.id}`}
+              type="button"
+              onClick={() => onOpen(item)}
+              className={cn(
+                'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
+                index > 0 && 'border-t',
+              )}
+              style={index > 0 ? { borderColor: SURFACE_BORDER } : undefined}
+            >
+              <span className="shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+                {item.kind === 'story' ? <PenLine size={13} /> : <FileText size={13} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-serif text-[14px] font-medium" style={{ color: 'var(--foreground)' }}>
+                  {item.title || untitledLabel}
+                </span>
+                <span className="mt-0.5 block text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                  {item.kind === 'story' ? storyLabel : blogLabel}
+                  {time ? ` · ${time}` : ''}
+                </span>
+              </span>
+              {!item.isPublished && (
+                <span
+                  className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px]"
+                  style={{ backgroundColor: 'color-mix(in srgb, var(--muted-foreground) 14%, transparent)', color: 'var(--muted-foreground)' }}
+                >
+                  {draftLabel}
+                </span>
+              )}
+              <ArrowUpRight size={13} className="shrink-0 opacity-40" />
+            </button>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+interface StreamAction {
+  key: string
+  icon: typeof PenLine
+  label: string
+  onRun: (photos: RecentPhoto[]) => void
+}
+
+/** 照片流：可多选，选中后浮出动作条。 */
+function PhotoStream({
+  photos,
+  loading,
+  noDataLabel,
+  language,
+  actions,
+}: {
+  photos: RecentPhoto[]
+  loading: boolean
+  noDataLabel: string
+  language: Locale
+  actions: StreamAction[]
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const runAction = (action: StreamAction) => {
+    const picked = photos.filter(photo => selected.has(photo.id))
+    if (picked.length === 0) return
+    setSelected(new Set())
+    action.onRun(picked)
+  }
+
+  if (loading) {
     return (
-      <div className="px-5 pb-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+      <div className="grid grid-cols-4 gap-2.5 [grid-auto-rows:130px]">
+        {Array.from({ length: RECENT_PHOTO_LIMIT }).map((_, index) => (
+          <Skeleton key={index} className={cn('rounded-xl', index === 0 && 'col-span-2 row-span-2')} />
+        ))}
+      </div>
+    )
+  }
+
+  if (photos.length === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-12 text-xs"
+        style={{ borderColor: SURFACE_BORDER, color: 'var(--muted-foreground)' }}
+      >
+        <Image size={18} />
         {noDataLabel}
       </div>
     )
   }
 
   return (
-    <div className="space-y-0.5 px-2 pb-3">
-      {items.map((item) => {
-        const url = item.isPublished ? getPublicContentUrl(item.kind, item.id) : null
-        const time = formatRelative(item.createdAt, language)
-        return (
-          <div
-            key={`${item.kind}-${item.id}`}
-            className="flex min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-secondary/60"
-          >
-            <span
-              className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
-              style={{ backgroundColor: 'var(--secondary)', color: 'var(--muted-foreground)' }}
+    <div className="relative">
+      {selected.size > 0 && (
+        <div
+          className="mb-2.5 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2"
+          style={{ backgroundColor: 'var(--foreground)', color: 'var(--background)' }}
+        >
+          <span className="text-xs font-semibold tabular-nums">
+            {t('admin.home_photo_stream_selected', language, { n: selected.size })}
+          </span>
+          {actions.map(action => (
+            <button
+              key={action.key}
+              type="button"
+              onClick={() => runAction(action)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-colors hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              style={{ backgroundColor: 'color-mix(in srgb, var(--background) 14%, transparent)' }}
             >
-              {item.kind === 'story' ? storyLabel : blogLabel}
-            </span>
-            {url ? (
-              <button
-                type="button"
-                onClick={() => BrowserOpenURL(url)}
-                title={url}
-                className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-serif text-[15px] font-medium tracking-tight underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                style={{ color: 'var(--foreground)' }}
-              >
-                <span className="truncate">{item.title || untitledLabel}</span>
-                <ExternalLink size={11} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-              </button>
-            ) : (
-              <span className="min-w-0 flex-1 truncate font-serif text-[15px] font-medium tracking-tight" style={{ color: 'var(--muted-foreground)' }}>
-                {item.title || untitledLabel}
-              </span>
-            )}
-            {!item.isPublished && (
+              <action.icon size={12} />
+              {action.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            aria-label={t('admin.window_close', language)}
+            className="ml-auto rounded-lg p-1.5 opacity-60 transition-opacity hover:opacity-100"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+      <div className="grid auto-rows-[130px] grid-cols-4 gap-2.5 [grid-auto-flow:dense]">
+        {photos.slice(0, RECENT_PHOTO_LIMIT).map((photo, index) => {
+          const imgSrc = photo.thumbnailUrl
+            ? resolveAssetUrl(photo.thumbnailUrl)
+            : photo.url
+              ? resolveAssetUrl(photo.url)
+              : null
+          const isSel = selected.has(photo.id)
+          const time = formatRelative(photo.createdAt, language)
+          return (
+            <figure
+              key={photo.id}
+              onClick={() => toggle(photo.id)}
+              className={cn(
+                'group relative min-h-0 cursor-pointer overflow-hidden rounded-xl transition-shadow',
+                index === 0 && 'col-span-2 row-span-2',
+                isSel && 'ring-2 ring-offset-2',
+              )}
+              style={{
+                backgroundColor: 'var(--secondary)',
+                ['--tw-ring-color' as string]: 'var(--primary)',
+                ['--tw-ring-offset-color' as string]: 'var(--background)',
+              }}
+            >
+              {imgSrc ? (
+                <img
+                  src={imgSrc}
+                  alt={photo.title}
+                  loading="lazy"
+                  draggable={false}
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center">
+                  <Image size={16} style={{ color: 'var(--muted-foreground)' }} />
+                </span>
+              )}
               <span
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px]"
-                style={{ backgroundColor: 'color-mix(in srgb, var(--muted-foreground) 14%, transparent)', color: 'var(--muted-foreground)' }}
+                className={cn(
+                  'absolute left-2.5 top-2.5 z-10 flex size-5 items-center justify-center rounded-full border-2 border-white/90 bg-black/25 text-[10px] text-white transition-opacity',
+                  isSel ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                )}
+                style={isSel ? { backgroundColor: 'var(--primary)', borderColor: 'var(--primary)' } : undefined}
               >
-                {draftLabel}
+                <Check size={11} />
               </span>
-            )}
-            {time && (
-              <span className="flex w-[84px] shrink-0 items-center justify-end gap-1 text-[10px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
-                <Clock size={10} />
-                {time}
-              </span>
-            )}
-          </div>
-        )
-      })}
+              <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-2 bg-gradient-to-t from-black/75 to-transparent px-2.5 pb-2 pt-7 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+                <span className="block truncate text-[11px] font-medium text-white">{photo.title}</span>
+                {time && <span className="block font-mono text-[10px] text-white/70">{time}</span>}
+              </figcaption>
+            </figure>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -477,22 +540,14 @@ export function HomePage() {
   const { logout, user } = useAuth()
   const navigate = useNavigate()
   const { siteTitle, siteUrl } = useDesktopSiteIdentity()
+  const setSettingsTab = useSettingsNav(state => state.setTab)
   const overviewRevision = useDataRevision('overview')
   const cachedOverview = getOverviewCache()
   const [data, setData] = useState<OverviewDTO | null>(cachedOverview)
   const [loading, setLoading] = useState(!cachedOverview)
   const [error, setError] = useState<string | null>(null)
   const [syncedAt, setSyncedAt] = useState<Date | null>(null)
-  const [equipmentItems, setEquipmentItems] = useState<Record<EquipmentKind, EquipmentItem[]>>(() => ({
-    camera: getEquipmentItemsCache('camera'),
-    lens: getEquipmentItemsCache('lens'),
-  }))
-  const [equipmentLoading, setEquipmentLoading] = useState<Record<EquipmentKind, boolean>>({ camera: false, lens: false })
-  const [equipmentLoaded, setEquipmentLoaded] = useState<Record<EquipmentKind, boolean>>(() => ({
-    camera: isEquipmentCacheLoaded('camera'),
-    lens: isEquipmentCacheLoaded('lens'),
-  }))
-  const [equipmentErrors, setEquipmentErrors] = useState<Record<EquipmentKind, string | null>>({ camera: null, lens: null })
+  const [quietMode, setQuietMode] = useState(false)
 
   const fetchData = useCallback(async (force = false) => {
     const cache = getOverviewCache()
@@ -500,7 +555,7 @@ export function HomePage() {
       setData(cache)
       setLoading(false)
       setError(null)
-      if (isOverviewCacheFresh()) return
+      if (isOverviewCacheFresh() && Array.isArray(cache.dailyPhotos) && cache.photoActivityYear === new Date().getUTCFullYear()) return
     }
 
     setLoading(!cache)
@@ -527,75 +582,12 @@ export function HomePage() {
   // 菜单页常驻缓存：切回本页不重新加载，只有数据被写操作失效后才重新拉取
   useCachedPageEffect(() => { void fetchData() }, [fetchData, overviewRevision])
 
-  const fetchEquipment = useCallback(async (kind: EquipmentKind) => {
-    if (equipmentLoading[kind]) return
-    if (equipmentLoaded[kind] && isEquipmentCacheFresh(kind)) return
-
-    setEquipmentLoading(prev => ({ ...prev, [kind]: true }))
-    setEquipmentErrors(prev => ({ ...prev, [kind]: null }))
-    try {
-      const result = kind === 'camera' ? await GetCameras() : await GetLenses()
-      setEquipmentItemsCache(kind, result ?? [])
-      setEquipmentItems(prev => ({ ...prev, [kind]: result ?? [] }))
-      setEquipmentLoaded(prev => ({ ...prev, [kind]: true }))
-    } catch (err) {
-      console.error(`Failed to fetch ${kind} list:`, err)
-      setEquipmentErrors(prev => ({ ...prev, [kind]: t('error', language) }))
-    } finally {
-      setEquipmentLoading(prev => ({ ...prev, [kind]: false }))
-    }
-  }, [equipmentLoaded, equipmentLoading, language])
-
   const isLoading = loading || !data
   const noDataLabel = t('admin.overview_no_data', language)
-  const publishedLabel = t('admin.overview_published', language)
   const host = siteLabel(siteUrl)
 
-  const quickActions: QuickAction[] = [
-    {
-      key: 'upload',
-      icon: Upload,
-      label: t('admin.home_action_upload', language),
-      hint: t('admin.home_action_upload_hint', language),
-      to: '/upload',
-      primary: true,
-    },
-    {
-      key: 'cloud-library',
-      icon: LibraryBig,
-      label: t('admin.home_action_cloud_library', language),
-      hint: t('admin.home_action_cloud_library_hint', language),
-      to: '/library?source=cloud',
-    },
-    {
-      key: 'local-library',
-      icon: FolderOpen,
-      label: t('admin.home_action_local_library', language),
-      hint: t('admin.home_action_local_library_hint', language),
-      to: '/library?source=local',
-    },
-    {
-      key: 'journal',
-      icon: BookMarked,
-      label: t('admin.home_action_journal', language),
-      hint: t('admin.home_action_journal_hint', language),
-      to: '/photo-journal',
-    },
-    {
-      key: 'zine',
-      icon: BookImage,
-      label: t('admin.home_action_zine', language),
-      hint: t('admin.home_action_zine_hint', language),
-      to: '/zine',
-    },
-    {
-      key: 'ai',
-      icon: Bot,
-      label: t('admin.home_action_ai', language),
-      hint: t('admin.home_action_ai_hint', language),
-      to: '/ai-assistant',
-    },
-  ]
+  const draftTotal = (data?.draftAlbums ?? 0) + (data?.draftStories ?? 0) + (data?.draftBlogs ?? 0)
+  const pendingComments = data?.pendingComments ?? 0
 
   const recentFeed = useMemo<FeedItem[]>(() => {
     if (!data) return []
@@ -603,405 +595,241 @@ export function HomePage() {
       ...data.recentStories.map(item => ({ ...item, kind: 'story' as const })),
       ...data.recentBlogs.map(item => ({ ...item, kind: 'blog' as const })),
     ]
-    return items.sort((a, b) => {
-      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
-      return timeB - timeA
-    })
+    return items
+      .sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return timeB - timeA
+      })
+      .slice(0, RECENT_FEED_LIMIT)
   }, [data])
 
-  const digitalCount = data?.digitalCount ?? 0
-  const filmCount = data?.filmCount ?? 0
-  const filmShare = digitalCount + filmCount > 0 ? (filmCount / (digitalCount + filmCount)) * 100 : 0
-  const draftTotal = (data?.draftAlbums ?? 0) + (data?.draftStories ?? 0) + (data?.draftBlogs ?? 0)
-  const pendingComments = data?.pendingComments ?? 0
-  const hasPending = draftTotal > 0 || pendingComments > 0
+  const openFeedItem = useCallback((item: FeedItem) => {
+    if (item.isPublished) {
+      const url = getPublicContentUrl(item.kind, item.id)
+      if (url) {
+        BrowserOpenURL(url)
+        return
+      }
+    }
+    // 未发布的草稿直接在编辑器里打开这一篇，而不是落在列表页
+    navigate(
+      `/photo-journal?automationDocument=${encodeURIComponent(item.id)}&automationKind=${item.kind}&automationSource=database`,
+    )
+  }, [navigate])
 
-  const libraryMetrics: MetricProps[] = [
-    {
-      label: t('admin.overview_albums', language),
-      value: data?.albumCount ?? 0,
-      sub: data ? `${publishedLabel} ${data.publishedAlbums}` : undefined,
-      to: '/library?source=cloud&view=albums',
-    },
-    {
-      label: t('admin.overview_film_rolls', language),
-      value: data?.filmRollCount ?? 0,
-      to: '/library?source=cloud&view=film-rolls',
-    },
-    {
-      label: t('admin.overview_stories', language),
-      value: data?.storyCount ?? 0,
-      sub: data ? `${publishedLabel} ${data.publishedStories}` : undefined,
-      to: '/photo-journal',
-    },
-    {
-      label: t('admin.overview_blogs', language),
-      value: data?.blogCount ?? 0,
-      sub: data ? `${publishedLabel} ${data.publishedBlogs}` : undefined,
-      to: '/photo-journal',
-    },
-  ]
+  const proposals = useMemo<Proposal[]>(() => {
+    const list: Proposal[] = []
+    if (draftTotal > 0) {
+      list.push({
+        key: 'drafts',
+        icon: PenLine,
+        title: t('admin.home_proposal_drafts', language, { n: draftTotal }),
+        evidence: t('admin.home_proposal_drafts_evidence', language, {
+          stories: data?.draftStories ?? 0,
+          blogs: data?.draftBlogs ?? 0,
+          albums: data?.draftAlbums ?? 0,
+        }),
+        actionLabel: t('admin.home_proposal_write', language),
+        onGo: () => navigate('/photo-journal'),
+      })
+    }
+    if (pendingComments > 0) {
+      list.push({
+        key: 'comments',
+        icon: MessageSquare,
+        title: t('admin.home_proposal_comments', language, { n: pendingComments }),
+        evidence: t('admin.home_proposal_comments_evidence', language),
+        actionLabel: t('admin.home_proposal_review', language),
+        onGo: () => {
+          setSettingsTab('comments')
+          navigate('/settings')
+        },
+      })
+    }
+    return list
+  }, [data, draftTotal, pendingComments, language, navigate, setSettingsTab])
 
-  const equipmentMetrics = [
+  // 把选中照片的访问地址交给 AI 助手（视觉模型按 URL 取图）
+  const photoHandoffUrls = useCallback((picked: RecentPhoto[]) => (
+    picked
+      .map(photo => photo.url || photo.thumbnailUrl)
+      .filter(Boolean)
+      .map(src => resolveAssetUrl(src))
+  ), [])
+
+  const streamActions: StreamAction[] = useMemo(() => [
     {
-      key: 'cameras',
-      icon: Camera,
-      label: (
-        <EquipmentHoverTarget
-          label={t('admin.overview_cameras', language)}
-          items={equipmentItems.camera}
-          loading={equipmentLoading.camera}
-          error={equipmentErrors.camera}
-          noDataLabel={noDataLabel}
-          onOpen={() => fetchEquipment('camera')}
-        />
-      ),
-      value: data?.cameraCount ?? 0,
+      key: 'write',
+      icon: PenLine,
+      label: t('admin.home_act_write', language),
+      onRun: picked => navigate(`/photo-journal?newStoryPhotos=${picked.map(p => p.id).join(',')}`),
     },
     {
-      key: 'lenses',
-      icon: Aperture,
-      label: (
-        <EquipmentHoverTarget
-          label={t('admin.overview_lenses', language)}
-          items={equipmentItems.lens}
-          loading={equipmentLoading.lens}
-          error={equipmentErrors.lens}
-          noDataLabel={noDataLabel}
-          onOpen={() => fetchEquipment('lens')}
-        />
-      ),
-      value: data?.lensCount ?? 0,
+      key: 'album',
+      icon: LibraryBig,
+      label: t('admin.home_act_album', language),
+      onRun: picked => navigate(`/library?source=cloud&view=albums&create=1&photos=${picked.map(p => p.id).join(',')}`),
     },
+    { key: 'zine', icon: BookImage, label: t('admin.home_act_zine', language), onRun: () => navigate('/design') },
     {
-      key: 'categories',
-      icon: FolderOpen,
-      label: <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.overview_categories', language)}</span>,
-      value: data?.categoryCount ?? 0,
+      key: 'ask',
+      icon: Bot,
+      label: t('admin.home_act_ask', language),
+      onRun: picked => {
+        const params = new URLSearchParams({
+          q: t('admin.home_ask_with_photos', language, { n: picked.length }),
+          images: photoHandoffUrls(picked).join(','),
+          send: '1',
+        })
+        navigate(`/ai-assistant?${params.toString()}`)
+      },
     },
-    {
-      key: 'featured',
-      icon: Star,
-      label: <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.overview_featured', language)}</span>,
-      value: data?.featuredCount ?? 0,
-    },
-    {
-      key: 'hidden',
-      icon: EyeOff,
-      label: <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>{t('admin.overview_hidden', language)}</span>,
-      value: data?.hiddenCount ?? 0,
-    },
-  ]
+  ], [language, navigate, photoHandoffUrls, t])
 
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col overflow-y-auto custom-scrollbar"
       style={{ ...SCROLL_STYLE, backgroundColor: PAGE_BACKGROUND }}
     >
-      <div className="mx-auto w-full max-w-6xl space-y-7 px-8 pb-10 pt-7">
-        {/* 迎宾区：身份 + 时间 + 连接状态 + 主动作，替代原来的「数据概览」标题栏 */}
-        <section
-          className="relative overflow-hidden rounded-2xl border p-6"
-          style={{
-            borderColor: SURFACE_BORDER,
-            backgroundImage:
-              'linear-gradient(135deg, color-mix(in srgb, var(--card) 94%, var(--background)), color-mix(in srgb, var(--secondary) 62%, var(--background)))',
-            boxShadow: CARD_SHADOW,
-          }}
-        >
-          <Aperture
-            aria-hidden="true"
-            size={210}
-            className="pointer-events-none absolute -right-10 -top-14 opacity-[0.05]"
-            style={{ color: 'var(--foreground)' }}
-          />
-          <div className="relative flex flex-wrap items-start justify-between gap-6">
-            <div className="min-w-0">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: 'var(--muted-foreground)' }}>
-                {siteTitle} · {t('admin.home_workbench', language)}
-              </div>
-              <h1 className="mt-2.5 truncate font-serif text-[30px] leading-tight">
-                {t('admin.home_greeting_line', language, {
-                  greeting: t(getGreetingKey(new Date().getHours()), language),
-                  name: user?.username || 'Admin',
-                })}
-              </h1>
-              <p className="mt-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                {formatToday(language)}
-                <span className="mx-2 opacity-50">·</span>
-                {host
-                  ? t('admin.home_connected_to', language, { site: host })
-                  : t('admin.home_not_connected', language)}
-              </p>
-            </div>
+      <div className="mx-auto w-full max-w-6xl px-8 pb-12 pt-8">
 
-            <div className="flex shrink-0 flex-col items-end gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/upload')}
-                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-medium transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
-                >
-                  <Upload size={14} />
-                  {t('admin.home_action_upload', language)}
-                </button>
-                <button
-                  type="button"
+        {/* Hero：问候 + 今日一句话 + 万能输入框 */}
+        <section>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.28em]" style={{ color: 'var(--muted-foreground)' }}>
+            {siteTitle} · {t('admin.home_workbench', language)}
+          </div>
+          <h1 className="mt-3 font-serif text-[38px] leading-tight tracking-tight">
+            {t('admin.home_greeting_line', language, {
+              greeting: t(getGreetingKey(new Date().getHours()), language),
+              name: user?.username || 'Admin',
+            })}
+          </h1>
+          <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[13px]" style={{ color: 'var(--muted-foreground)' }}>
+            <span>{formatToday(language)}</span>
+            <span className="opacity-50">·</span>
+            <span>
+              {host
+                ? t('admin.home_connected_to', language, { site: host })
+                : t('admin.home_not_connected', language)}
+            </span>
+            {syncedAt && (
+              <>
+                <span className="opacity-50">·</span>
+                <span className="tabular-nums">{t('admin.home_synced_at', language, { time: formatClock(syncedAt, language) })}</span>
+              </>
+            )}
+            {draftTotal > 0 && (
+              <>
+                <span className="opacity-50">·</span>
+                <InlineLink
+                  label={t('admin.home_proposal_drafts', language, { n: draftTotal })}
                   onClick={() => navigate('/photo-journal')}
-                  className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-medium transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  style={{ borderColor: SURFACE_BORDER, color: 'var(--foreground)' }}
-                >
-                  <PenLine size={14} />
-                  {t('admin.home_write', language)}
-                </button>
-                {siteUrl && (
-                  <button
-                    type="button"
-                    onClick={() => BrowserOpenURL(siteUrl)}
-                    title={siteUrl}
-                    className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    style={{ borderColor: SURFACE_BORDER, color: 'var(--muted-foreground)' }}
-                  >
-                    <ExternalLink size={14} />
-                    {t('admin.home_visit_site', language)}
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                <span className="tabular-nums">
-                  {syncedAt
-                    ? t('admin.home_synced_at', language, { time: formatClock(syncedAt, language) })
-                    : t('admin.home_synced_cached', language)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void fetchData(true)}
-                  title={t('admin.refresh', language)}
-                  aria-label={t('admin.refresh', language)}
-                  className="flex size-7 items-center justify-center rounded-lg border transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  style={{ borderColor: SURFACE_BORDER }}
-                >
-                  <RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />
-                </button>
-              </div>
-            </div>
-          </div>
+                />
+              </>
+            )}
+            {pendingComments > 0 && (
+              <>
+                <span className="opacity-50">·</span>
+                <InlineLink
+                  label={t('admin.home_proposal_comments', language, { n: pendingComments })}
+                  onClick={() => {
+                    setSettingsTab('comments')
+                    navigate('/settings')
+                  }}
+                />
+              </>
+            )}
+          </p>
 
-          {/* 照片体量与数码/胶片构成：一行读完，不再铺满整屏数字格 */}
-          <div className="relative mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
-            <button
-              type="button"
-              onClick={() => navigate('/library?source=cloud')}
-              className="group flex min-w-0 flex-col items-start rounded-xl text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                {t('admin.overview_total_photos', language)}
-              </span>
-              {isLoading ? (
-                <Skeleton className="mt-1.5 h-9 w-24" />
-              ) : (
-                <span className="mt-1 flex items-baseline gap-2">
-                  <span className="font-mono text-[34px] font-semibold tabular-nums leading-none transition-opacity group-hover:opacity-80"
-                    style={{ color: 'var(--foreground)' }}>
-                    {data?.photoCount ?? 0}
-                  </span>
-                  <ArrowUpRight size={14} className="opacity-0 transition-opacity group-hover:opacity-60" />
-                </span>
-              )}
-            </button>
-
-            <div className="min-w-[180px] flex-1">
-              <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                <span className="tabular-nums">{t('admin.overview_digital', language)} {digitalCount}</span>
-                <span className="tabular-nums">{t('admin.overview_film', language)} {filmCount}</span>
-              </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'color-mix(in srgb, var(--muted-foreground) 20%, transparent)' }}>
-                {!isLoading && (
-                  <div
-                    className="h-full rounded-full transition-[width] duration-500"
-                    style={{ width: `${100 - filmShare}%`, backgroundColor: 'var(--foreground)', opacity: 0.55 }}
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col">
-                <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                  {t('admin.overview_photos_this_month', language)}
-                </span>
-                {isLoading
-                  ? <Skeleton className="mt-1.5 h-4 w-10" />
-                  : <span className="mt-1 font-mono text-sm font-semibold tabular-nums">{data?.photosThisMonth ?? 0}</span>}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                  {t('admin.overview_photos_this_year', language)}
-                </span>
-                {isLoading
-                  ? <Skeleton className="mt-1.5 h-4 w-10" />
-                  : <span className="mt-1 font-mono text-sm font-semibold tabular-nums">{data?.photosThisYear ?? 0}</span>}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                  {t('admin.overview_storage', language)}
-                </span>
-                {isLoading
-                  ? <Skeleton className="mt-1.5 h-4 w-14" />
-                  : <span className="mt-1 font-mono text-sm font-semibold tabular-nums">{formatBytes(data?.totalSize ?? 0)}</span>}
-              </div>
-            </div>
-          </div>
+          <OmniBox language={language} draftTotal={draftTotal} pendingComments={pendingComments} />
         </section>
 
         {error && (
-          <div className="rounded-2xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)' }}>
+          <div className="mt-6 rounded-2xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--destructive)', color: 'var(--destructive)' }}>
             {error}
           </div>
         )}
 
-        {/* 快速开始：把工作流入口摆在首页第一屏 */}
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: 'var(--muted-foreground)' }}>
-              {t('admin.home_quick_start', language)}
-            </h2>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => navigate('/storage')}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                style={{ color: 'var(--muted-foreground)' }}
+        {/* 今日提案 / 继续上次 */}
+        <div className="mt-9 grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+          <section className="min-w-0">
+            <SectionHeader title={t('admin.home_proposals', language)}>
+              {(proposals.length > 0 || !isLoading) && (
+                <button
+                  type="button"
+                  onClick={() => setQuietMode(true)}
+                  className="text-[11px] transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  style={{ color: 'var(--muted-foreground)' }}
+                >
+                  {quietMode
+                    ? t('admin.home_proposals_quiet_done', language)
+                    : t('admin.home_proposals_quiet', language)}
+                </button>
+              )}
+            </SectionHeader>
+            {isLoading ? (
+              <div className="space-y-2.5">
+                <Skeleton className="h-[86px] w-full rounded-xl" />
+                <Skeleton className="h-[86px] w-full rounded-xl" />
+              </div>
+            ) : quietMode || proposals.length === 0 ? (
+              <div
+                className="flex items-center gap-2 rounded-xl border border-dashed px-4 py-6 text-xs"
+                style={{ borderColor: SURFACE_BORDER, color: 'var(--muted-foreground)' }}
               >
-                <HardDrive size={12} />
-                {t('admin.storage_cleanup', language)}
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/friends')}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                style={{ color: 'var(--muted-foreground)' }}
-              >
-                <Users size={12} />
-                {t('admin.friends', language)}
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {quickActions.map((action) => (
-              <QuickActionTile key={action.key} action={action} onSelect={(to) => navigate(to)} />
-            ))}
-          </div>
+                <Sparkles size={14} />
+                {quietMode
+                  ? t('admin.home_proposals_quiet_done', language)
+                  : t('admin.home_proposal_empty', language)}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {proposals.map(proposal => (
+                  <ProposalCard key={proposal.key} proposal={proposal} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <aside className="min-w-0">
+            <SectionHeader title={t('admin.home_continue', language)} />
+            <ContinueList
+              items={recentFeed}
+              loading={isLoading}
+              noDataLabel={noDataLabel}
+              language={language}
+              onOpen={openFeedItem}
+            />
+          </aside>
+        </div>
+
+        {/* 照片流 */}
+        <section className="mt-9">
+          <SectionHeader title={t('admin.home_photo_stream', language)}>
+            <span className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+              {t('admin.home_photo_stream_hint', language)}
+            </span>
+          </SectionHeader>
+          <PhotoStream
+            photos={data?.recentPhotos ?? []}
+            loading={isLoading}
+            noDataLabel={t('admin.home_photo_stream_empty', language)}
+            language={language}
+            actions={streamActions}
+          />
         </section>
 
-        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-6">
-            <Card
-              title={t('admin.overview_recent_photos', language)}
-              icon={Image}
-              action={<CardLink label={t('admin.overview_view_all', language)} onClick={() => navigate('/library?source=cloud')} />}
-            >
-              <RecentPhotoWall
-                photos={data?.recentPhotos ?? []}
-                loading={isLoading}
-                noDataLabel={noDataLabel}
-                language={language}
-              />
-            </Card>
+        {/* 今年：按上传日期汇总的全年热力图 */}
+        <section className="mt-9">
+          <SectionHeader title={t('admin.home_year', language)}>
+            <span className="font-mono text-[11px] tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+              {data?.photoActivityYear || new Date().getUTCFullYear()}
+            </span>
+          </SectionHeader>
+          <HomePhotoActivity data={data} loading={isLoading} language={language} />
+        </section>
 
-            <Card
-              title={t('admin.overview_recent_content', language)}
-              icon={BookMarked}
-              action={<CardLink label={t('admin.home_go_journal', language)} onClick={() => navigate('/photo-journal')} />}
-              bodyClassName=""
-            >
-              <RecentFeed items={recentFeed} loading={isLoading} noDataLabel={noDataLabel} language={language} />
-            </Card>
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-6">
-            <Card title={t('admin.home_pending', language)} icon={CheckCircle2}>
-              {isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-12 w-full rounded-xl" />
-                  <Skeleton className="h-12 w-full rounded-xl" />
-                </div>
-              ) : hasPending ? (
-                <div className="space-y-2">
-                  {draftTotal > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => navigate('/photo-journal')}
-                      className="flex w-full items-center justify-between gap-3 rounded-xl bg-secondary/40 px-3 py-2.5 text-left transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      <span className="flex min-w-0 items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
-                        <PenLine size={13} style={{ color: 'var(--muted-foreground)' }} />
-                        <span className="truncate">{t('admin.home_pending_drafts', language)}</span>
-                      </span>
-                      <span className="font-mono text-sm font-semibold tabular-nums">{draftTotal}</span>
-                    </button>
-                  )}
-                  {pendingComments > 0 && (
-                    <div className="flex w-full items-center justify-between gap-3 rounded-xl bg-secondary/40 px-3 py-2.5">
-                      <span className="flex min-w-0 items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
-                        <MessageSquare size={13} style={{ color: 'var(--muted-foreground)' }} />
-                        <span className="truncate">{t('admin.overview_pending_comments', language)}</span>
-                      </span>
-                      <span className="font-mono text-sm font-semibold tabular-nums">{pendingComments}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 rounded-xl bg-secondary/40 px-3 py-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  <CheckCircle2 size={14} />
-                  {t('admin.home_pending_clear', language)}
-                </div>
-              )}
-            </Card>
-
-            <Card title={t('admin.home_library_status', language)} icon={LibraryBig}>
-              <div className="grid grid-cols-2 gap-2">
-                {libraryMetrics.map((metric) => (
-                  <Metric key={metric.label} {...metric} loading={isLoading} />
-                ))}
-              </div>
-              <div className="mt-3 flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2.5">
-                <span className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                  <MessageSquare size={13} />
-                  {t('admin.overview_comments', language)}
-                </span>
-                {isLoading
-                  ? <Skeleton className="h-4 w-10" />
-                  : <span className="font-mono text-sm font-semibold tabular-nums">{data?.commentCount ?? 0}</span>}
-              </div>
-            </Card>
-
-            <Card title={t('admin.home_equipment', language)} icon={Camera}>
-              <div className="grid grid-cols-1 gap-1">
-                {equipmentMetrics.map(({ key, icon: Icon, label, value }, index) => (
-                  <div
-                    key={key}
-                    className={cn(
-                      'flex min-w-0 items-center justify-between gap-3 py-2',
-                      index > 0 && 'border-t',
-                    )}
-                    style={index > 0 ? { borderColor: SURFACE_BORDER } : undefined}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Icon size={13} style={{ color: 'var(--muted-foreground)' }} />
-                      {label}
-                    </span>
-                    {isLoading
-                      ? <Skeleton className="h-4 w-8" />
-                      : <span className="font-mono text-sm font-semibold tabular-nums" style={{ color: 'var(--foreground)' }}>{value}</span>}
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-        </div>
       </div>
     </div>
   )

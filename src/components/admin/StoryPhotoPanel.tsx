@@ -12,6 +12,7 @@ import {
   MoreVertical,
 } from 'lucide-react'
 import { guardNarrativeAiMutation } from '@mo-gallery/tiptap-editor'
+import { getMilkdownPhotoIds } from '@mo-gallery/milkdown/media'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
@@ -134,7 +135,7 @@ export function StoryPhotoPanel({
   const onOpenPasteUploadSettings = guardMutation(onOpenPasteUploadSettingsProp)
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
-  const referencedPhotoIds = getStoryReferencedPhotoIds(editorContent)
+  const referencedPhotoIds = currentStory?.editorType === 'milkdown' ? getMilkdownPhotoIds(editorContent) : getStoryReferencedPhotoIds(editorContent)
 
   const isPhotoInserted = (photo: PhotoDto) => {
     if (referencedPhotoIds.has(photo.id)) {

@@ -36,6 +36,8 @@ export interface GestureSessionOptions {
   resizeDirection?: readonly [number, number]
   rotationSnapDegrees?: readonly number[]
   rotationSnapThreshold?: number
+  /** Moveable already snaps the live preview; do not snap it a second time on release. */
+  snapOnCommit?: boolean
 }
 
 export interface GestureCommit {
@@ -218,6 +220,9 @@ export function applyGestureBoundary(geometry: SlotGeometry, boundary: GestureBo
 
 export function finalizeGestureGeometry(geometry: SlotGeometry, options: GestureSessionOptions) {
   const normalized = normalizeGestureGeometry(geometry)
+  if (options.snapOnCommit === false) {
+    return { geometry: applyGestureBoundary(normalized, options.boundary), activeGuides: [], rotationSnapped: false }
+  }
   const snapped = snapGestureGeometry(
     normalized,
     options.guides,
@@ -225,11 +230,9 @@ export function finalizeGestureGeometry(geometry: SlotGeometry, options: Gesture
     options.kind,
     options.resizeDirection,
   )
-  const rotation = snapGestureRotation(
-    snapped.geometry.rotation,
-    options.rotationSnapDegrees ?? DEFAULT_ROTATION_SNAPS,
-    options.rotationSnapThreshold ?? 3,
-  )
+  const rotation = options.kind === 'rotate'
+    ? snapGestureRotation(snapped.geometry.rotation, options.rotationSnapDegrees ?? DEFAULT_ROTATION_SNAPS, options.rotationSnapThreshold ?? 3)
+    : { rotation: snapped.geometry.rotation, snapped: false }
   const bounded = applyGestureBoundary({ ...snapped.geometry, rotation: rotation.rotation }, options.boundary)
   return { geometry: bounded, activeGuides: snapped.activeGuides, rotationSnapped: rotation.snapped }
 }
@@ -253,6 +256,9 @@ export class GestureSession {
   }
 
   commit(slot: Slot): GestureCommit {
+    if (geometryEqual(this.initial, normalizeGestureGeometry(this.draft))) {
+      return { changed: false, geometry: this.initial, page: slot.page, activeGuides: [], rotationSnapped: false }
+    }
     const finalized = finalizeGestureGeometry(this.draft, this.options)
     return {
       changed: !geometryEqual(this.initial, finalized.geometry),

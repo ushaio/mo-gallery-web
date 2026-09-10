@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { toast } from 'sonner'
+import { Globe, PanelLeftClose, PanelLeftOpen, Unplug, X } from 'lucide-react'
 import {
   BrowserOpenURL,
   Quit,
@@ -8,11 +9,12 @@ import {
   WindowMinimise,
   WindowToggleMaximise,
 } from '../../../wailsjs/runtime/runtime'
-import { getWindowAppearance, type WindowStyle } from '@/lib/window-appearance'
+import { DisconnectSite } from '../../../wailsjs/go/main/App'
 import { t } from '@/lib/i18n'
 import { usePreferences } from '@/store/preferences'
+import { useAuth } from '@/contexts/AuthContext'
+import { WebConnectPanel } from '@/components/auth/WebConnectPanel'
 import { useDesktopSiteIdentity } from './useDesktopSiteIdentity'
-import { WindowChromeContext } from './window-chrome'
 
 function CaptionIconMinimize() {
   return (
@@ -48,16 +50,20 @@ function CaptionIconClose() {
 }
 
 function hasAdminSidebar(pathname: string) {
-  return pathname !== '/login' && pathname !== '/setup'
+  return pathname !== '/login' && pathname !== '/setup' && pathname !== '/connect'
 }
 
 function DesktopTitleBar() {
   const location = useLocation()
   const hasSidebar = hasAdminSidebar(location.pathname)
   const { language, sidebarCollapsed, setSidebarCollapsed } = usePreferences()
-  const { siteTitle, siteUrl } = useDesktopSiteIdentity()
+  // 站点连接状态变化后重新拉取配置，保持跳转地址同步。
+  const { isAuthenticated: siteConnected, logout: siteLogout } = useAuth()
+  const { siteTitle, siteUrl } = useDesktopSiteIdentity(siteConnected)
   const [isMaximised, setIsMaximised] = useState(false)
   const [isFocused, setIsFocused] = useState(true)
+  const [siteMenuOpen, setSiteMenuOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
 
   const syncMaximisedState = () => {
     void WindowIsMaximised().then(setIsMaximised).catch(() => undefined)
@@ -80,15 +86,56 @@ function DesktopTitleBar() {
     window.setTimeout(syncMaximisedState, 80)
   }
 
-  const handleOpenSite = () => {
+  useEffect(() => {
+    if (!siteMenuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      // 站点菜单和连接弹窗都属于 logo 交互区，点击其外部时收起菜单。
+      if (!(target instanceof Element) || !target.closest('[data-site-menu-root]')) {
+        setSiteMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [siteMenuOpen])
+
+  useEffect(() => {
+    if (!connectOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConnectOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [connectOpen])
+
+  // 已连接站点：logo 弹出「跳转站点 / 断开连接」菜单；未连接：弹出连接站点弹窗。
+  const handleLogoClick = () => {
+    if (siteConnected) {
+      setSiteMenuOpen((open) => !open)
+    } else {
+      setConnectOpen(true)
+    }
+  }
+
+  const handleJumpSite = () => {
+    setSiteMenuOpen(false)
     if (siteUrl) BrowserOpenURL(siteUrl)
+  }
+
+  const handleDisconnectSite = async () => {
+    setSiteMenuOpen(false)
+    await DisconnectSite().catch(() => undefined)
+    siteLogout()
+    toast.success(t('admin.disconnect_site', language))
   }
 
   const collapseLabel = t(sidebarCollapsed ? 'admin.expand_sidebar' : 'admin.collapse_sidebar', language)
   const minimizeLabel = t('admin.window_minimize', language)
   const maximizeLabel = t(isMaximised ? 'admin.window_restore' : 'admin.window_maximize', language)
   const closeLabel = t('admin.window_close', language)
-  const openSiteLabel = siteUrl ? t('admin.open_site', language, { url: siteUrl }) : undefined
+  const logoLabel = siteConnected
+    ? (siteUrl ? t('admin.open_site', language, { url: siteUrl }) : undefined)
+    : t('admin.connect_site', language)
 
   return (
     <header
@@ -98,6 +145,7 @@ function DesktopTitleBar() {
     >
       {hasSidebar ? (
         <div
+          data-site-menu-root
           className="relative flex h-full shrink-0 items-center border-r"
           style={{
             width: sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
@@ -107,10 +155,9 @@ function DesktopTitleBar() {
         >
           <button
             type="button"
-            onClick={handleOpenSite}
-            title={openSiteLabel}
-            disabled={!siteUrl}
-            className={`window-no-drag desktop-chrome-identity flex h-full w-full min-w-0 items-center text-left transition-[padding,gap,opacity] hover:opacity-75 disabled:cursor-default disabled:hover:opacity-100 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-2.5 px-4 pr-9'}`}
+            onClick={handleLogoClick}
+            title={logoLabel}
+            className={`window-no-drag desktop-chrome-identity flex h-full w-full min-w-0 items-center text-left transition-[padding,gap,opacity] hover:opacity-75 ${sidebarCollapsed ? 'justify-center px-2' : 'gap-2.5 px-4 pr-9'}`}
             style={{ backgroundColor: 'transparent', color: 'var(--foreground)' }}
             onDoubleClick={(event) => event.stopPropagation()}
           >
@@ -126,6 +173,43 @@ function DesktopTitleBar() {
               </span>
             )}
           </button>
+          {siteMenuOpen && (
+            <div
+              role="menu"
+              className={`window-no-drag absolute top-full z-50 mt-1 w-56 overflow-hidden rounded-md border shadow-lg ${sidebarCollapsed ? 'left-2' : 'left-3'}`}
+              style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
+            >
+              {siteUrl && (
+                <div
+                  className="truncate border-b px-3 py-2 text-[11px]"
+                  style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                >
+                  {siteUrl}
+                </div>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!siteUrl}
+                onClick={handleJumpSite}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:opacity-80 disabled:cursor-default disabled:opacity-50"
+                style={{ color: 'var(--popover-foreground)' }}
+              >
+                <Globe size={14} />
+                <span className="flex-1 text-left">{t('admin.goto_site', language)}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void handleDisconnectSite()}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:opacity-80"
+                style={{ color: 'var(--destructive)' }}
+              >
+                <Unplug size={14} />
+                <span className="flex-1 text-left">{t('admin.disconnect_site', language)}</span>
+              </button>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -191,36 +275,62 @@ function DesktopTitleBar() {
           <CaptionIconClose />
         </button>
       </div>
+
+      {connectOpen && (
+        <div
+          className="window-no-drag fixed inset-0 z-50 flex items-center justify-center p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('admin.connect_site', language)}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            aria-label={t('common.cancel', language)}
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setConnectOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-sm overflow-hidden rounded-lg border shadow-xl"
+            style={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)' }}
+          >
+            <div
+              className="flex items-center justify-between border-b px-5 py-3"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <h3 className="text-sm font-medium" style={{ color: 'var(--popover-foreground)' }}>
+                {t('admin.connect_site', language)}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setConnectOpen(false)}
+                className="flex size-6 items-center justify-center rounded-md transition-colors hover:bg-secondary"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label={t('common.cancel', language)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto p-5">
+              <WebConnectPanel
+                onConnected={() => {
+                  setConnectOpen(false)
+                  toast.success(t('admin.connect_success', language))
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
 
 export function DesktopWindowFrame({ children }: { children: ReactNode }) {
-  const [activeStyle, setActiveStyle] = useState<WindowStyle | null>(null)
-  const integrated = activeStyle === 'integrated'
-  const chromeValue = useMemo(
-    () => ({ integrated, styleReady: activeStyle !== null }),
-    [integrated, activeStyle],
-  )
-
-  useEffect(() => {
-    let cancelled = false
-    getWindowAppearance()
-      .then((appearance) => {
-        if (!cancelled) setActiveStyle(appearance.activeStyle)
-      })
-      .catch(() => {
-        if (!cancelled) setActiveStyle('integrated')
-      })
-    return () => { cancelled = true }
-  }, [])
-
   return (
-    <WindowChromeContext.Provider value={chromeValue}>
-      <div className={`flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground${integrated ? ' integrated-window-frame' : ''}`}>
-        {integrated && <DesktopTitleBar />}
-        <div className="relative z-0 min-h-0 flex-1 overflow-hidden">{children}</div>
-      </div>
-    </WindowChromeContext.Provider>
+    <div className="integrated-window-frame flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <DesktopTitleBar />
+      <div className="relative z-0 min-h-0 flex-1 overflow-hidden">{children}</div>
+    </div>
   )
 }

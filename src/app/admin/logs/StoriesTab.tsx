@@ -3,10 +3,13 @@
  */
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { hasEditorContent } from '@mo-gallery/api-client/editor-content'
+import { getMilkdownPhotoIds, hasPendingMilkdownUploads } from '@mo-gallery/milkdown/media'
 import {
   ApiUnauthorizedError,
+  addPhotosToStory,
   createStory,
   deleteStory,
   getAdminStories,
@@ -23,10 +26,10 @@ import { DraftRestoreDialog } from '@/components/admin/DraftRestoreDialog'
 import { StoryPreviewModal } from '@/components/admin/StoryPreviewModal'
 import { StoryCoverCropModal } from '@/components/admin/StoryCoverCropModal'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
-import { getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
 import { getStoryCoverCrop, getStoryCoverPhoto, normalizeStoryCoverCrop, toStoryCoverCropValue } from '@/lib/story-cover'
 import { normalizeCompressionFormat, normalizeCompressionMode } from '@/lib/image-compress'
 import { cn } from '@/lib/utils'
+import { mergeSavedFields } from '@/lib/article-editor'
 import { useAdmin } from '../layout'
 import {
   STORY_PHOTO_PANEL_COLLAPSED_KEY,
@@ -64,6 +67,8 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   stripGps: false,
 }
 
+const STORY_FORM_FIELDS: readonly (keyof StoryDto)[] = ['title', 'editorType', 'contentEditorTypes', 'tiptapContent', 'tiptapContentJson', 'milkContent', 'isPublished', 'storyDate', 'coverPhotoId', 'coverCrop', 'photos']
+
 export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDraftConsumed, refreshKey, onEditingChange }: StoriesTabProps) {
   const router = useRouter()
   const {
@@ -77,6 +82,8 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const [stories, setStories] = useState<StoryDto[]>([])
   const [loading, setLoading] = useState(true)
   const [currentStory, setCurrentStory] = useState<StoryDto | null>(null)
+  const currentStoryRef = useRef<StoryDto | null>(null)
+  useLayoutEffect(() => { currentStoryRef.current = currentStory }, [currentStory])
   const [storyEditMode, setStoryEditMode] = useState<'list' | 'editor'>('list')
   const [saving, setSaving] = useState(false)
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
@@ -126,6 +133,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   }, [])
 
   const {
+    editorSessionId,
     draftSaved,
     lastSavedAt,
     initialStory,
@@ -137,6 +145,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     handleDraftCancel,
     clearDraft,
     resetDraftState,
+    markSaved,
   } = useStoryDraftState({
     allPhotos,
     currentStory,
@@ -144,6 +153,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
     pendingCoverId,
     stories,
     storyEditMode,
+    saving,
     editFromDraft,
     onDraftConsumed,
     notify,
@@ -157,7 +167,9 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const doSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
+    if (currentStory.editorType !== 'milkdown' || !hasEditorContent(currentStory, 'milkdown')) return
     if (savingRef.current) return
+    const submitted = currentStory
 
     try {
       savingRef.current = true
@@ -173,49 +185,48 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
       const dateChanged = initialStory && currentStory.storyDate !== initialStory.storyDate
 
+      let saved: StoryDto
       if (isNew) {
-        await createStory(token, {
+        saved = await createStory(token, {
           title: currentStory.title,
-          content: currentStory.content,
-          contentJson: currentStory.contentJson ?? null,
+          editorType: 'milkdown',
+          milkContent: currentStory.milkContent ?? '',
           isPublished: currentStory.isPublished,
           photoIds,
           coverPhotoId: currentStory.coverPhotoId,
           coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged && currentStory.storyDate ? { storyDate: currentStory.storyDate } : {}),
         })
-        notify(t('story.created'), 'success')
       } else {
-        await updateStory(token, currentStory.id, {
+        const savedPhotoIds = new Set(stories.find((story) => story.id === currentStory.id)?.photos.map((photo) => photo.id))
+        const newPhotoIds = photoIds.filter((id) => !savedPhotoIds.has(id))
+        if (newPhotoIds.length > 0) await addPhotosToStory(token, currentStory.id, newPhotoIds)
+        saved = await updateStory(token, currentStory.id, {
           title: currentStory.title,
-          content: currentStory.content,
-          contentJson: currentStory.contentJson ?? null,
+          editorType: 'milkdown',
+          milkContent: currentStory.milkContent ?? '',
           isPublished: currentStory.isPublished,
           coverPhotoId: currentStory.coverPhotoId ?? null,
           coverCrop: currentStory.coverCrop ?? null,
           ...(dateChanged ? { storyDate: currentStory.storyDate } : {}),
         })
         if (photoIds.length > 0) {
-          await reorderStoryPhotos(token, currentStory.id, photoIds)
+          saved = await reorderStoryPhotos(token, currentStory.id, photoIds)
         }
-        savePhotoOrder(currentStory.id, photoIds)
-        notify(t('story.updated'), 'success')
       }
-
-      await clearDraft(currentStory.id)
-      pendingImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
-      setPendingImages([])
-      setPendingCoverId(null)
-      setUseCustomDate(false)
-      setPreviewPhotoIndex(null)
-      setShowPreview(false)
-      resetDraftState()
-      setStoryEditMode('list')
-      setCurrentStory(null)
-      await loadStories()
-      if (window.location.search.includes('editStory=')) {
-        router.replace('/admin/logs', { scroll: false })
+      savePhotoOrder(saved.id, photoIds)
+      setStories((previous) => previous.some((story) => story.id === saved.id) ? previous.map((story) => story.id === saved.id ? saved : story) : [saved, ...previous])
+      if (currentStoryRef.current?.id === submitted.id) {
+        setCurrentStory((previous) => previous?.id === submitted.id ? {
+          ...mergeSavedFields(previous, submitted, saved, STORY_FORM_FIELDS),
+          id: saved.id,
+          createdAt: saved.createdAt,
+          updatedAt: saved.updatedAt,
+        } : previous)
+        await clearDraft(submitted.id)
+        if (currentStoryRef.current?.id === saved.id || currentStoryRef.current?.id === submitted.id) markSaved(saved)
       }
+      notify(t(isNew ? 'story.created' : 'story.updated'), 'success')
     } catch (error) {
       if (error instanceof ApiUnauthorizedError) {
         handleUnauthorized(error)
@@ -227,7 +238,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       savingRef.current = false
       setSaving(false)
     }
-  }, [clearDraft, currentStory, handleUnauthorized, initialStory, loadStories, notify, pendingImages, resetDraftState, router, stories, t, token])
+  }, [clearDraft, currentStory, handleUnauthorized, initialStory, markSaved, notify, stories, t, token])
 
   const {
     editorRef,
@@ -310,13 +321,19 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
 
   const handleSaveStory = useCallback(async () => {
     if (!token || !currentStory) return
+    if (currentStory.editorType !== 'milkdown' || !hasEditorContent(currentStory, 'milkdown')) return
     if (savingRef.current) return
-    if (!currentStory.title.trim() || !currentStory.content.trim()) {
+    if (!currentStory.title.trim()) {
       notify(t('story.fill_title_content'), 'error')
       return
     }
 
-    const referencedPhotoIds = getStoryReferencedPhotoIds(currentStory.content)
+    const milkContent = currentStory.milkContent ?? ''
+    if (hasPendingMilkdownUploads(milkContent)) {
+      notify(t('admin.uploading'), 'info')
+      return
+    }
+    const referencedPhotoIds = getMilkdownPhotoIds(milkContent)
     const availablePhotoIds = new Set((currentStory.photos || []).map((photo) => photo.id))
     const invalidPhotoIds = Array.from(referencedPhotoIds).filter((photoId) => !availablePhotoIds.has(photoId))
     if (invalidPhotoIds.length > 0) {
@@ -632,6 +649,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         <StoryEditorView
           token={token}
           currentStory={currentStory}
+          editorSessionId={editorSessionId}
           pendingImages={pendingImages}
           pendingCoverId={pendingCoverId}
           saving={saving}

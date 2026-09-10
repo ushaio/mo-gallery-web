@@ -488,6 +488,38 @@ export namespace agent_extensions {
 
 export namespace config {
 	
+	export class AIAgentProfile {
+	    id: string;
+	    name: string;
+	    enabled: boolean;
+	    primary_model: string;
+	    text_model?: string;
+	    image_model?: string;
+	    vision_model?: string;
+	    vision_output_mode?: string;
+	    system_prompt?: string;
+	    max_steps?: number;
+	    temperature?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIAgentProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.enabled = source["enabled"];
+	        this.primary_model = source["primary_model"];
+	        this.text_model = source["text_model"];
+	        this.image_model = source["image_model"];
+	        this.vision_model = source["vision_model"];
+	        this.vision_output_mode = source["vision_output_mode"];
+	        this.system_prompt = source["system_prompt"];
+	        this.max_steps = source["max_steps"];
+	        this.temperature = source["temperature"];
+	    }
+	}
 	export class AIProviderConfig {
 	    base_url: string;
 	    api_key: string;
@@ -522,7 +554,9 @@ export namespace config {
 	    model?: string;
 	    default_model: string;
 	    default_image_model?: string;
+	    default_agent_id?: string;
 	    providers: Record<string, AIProviderConfig>;
+	    agents?: AIAgentProfile[];
 	
 	    static createFrom(source: any = {}) {
 	        return new AIConfig(source);
@@ -535,7 +569,9 @@ export namespace config {
 	        this.model = source["model"];
 	        this.default_model = source["default_model"];
 	        this.default_image_model = source["default_image_model"];
+	        this.default_agent_id = source["default_agent_id"];
 	        this.providers = this.convertValues(source["providers"], AIProviderConfig, true);
+	        this.agents = this.convertValues(source["agents"], AIAgentProfile);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1800,20 +1836,6 @@ export namespace main {
 		    return a;
 		}
 	}
-	export class WindowAppearance {
-	    activeStyle: string;
-	    configuredStyle: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new WindowAppearance(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.activeStyle = source["activeStyle"];
-	        this.configuredStyle = source["configuredStyle"];
-	    }
-	}
 
 }
 
@@ -2071,8 +2093,11 @@ export namespace services {
 	export class BlogDTO {
 	    id: string;
 	    title: string;
-	    content: string;
-	    contentJson?: number[];
+	    editorType: string;
+	    contentEditorTypes: string[];
+	    tiptapContent: string;
+	    tiptapContentJson?: number[];
+	    milkContent?: string;
 	    category: string;
 	    tags: string;
 	    isPublished: boolean;
@@ -2089,8 +2114,11 @@ export namespace services {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.title = source["title"];
-	        this.content = source["content"];
-	        this.contentJson = source["contentJson"];
+	        this.editorType = source["editorType"];
+	        this.contentEditorTypes = source["contentEditorTypes"];
+	        this.tiptapContent = source["tiptapContent"];
+	        this.tiptapContentJson = source["tiptapContentJson"];
+	        this.milkContent = source["milkContent"];
 	        this.category = source["category"];
 	        this.tags = source["tags"];
 	        this.isPublished = source["isPublished"];
@@ -2191,8 +2219,10 @@ export namespace services {
 	}
 	export class CreateBlogParams {
 	    title: string;
-	    content: string;
-	    contentJson?: number[];
+	    editorType: string;
+	    tiptapContent?: string;
+	    tiptapContentJson?: number[];
+	    milkContent?: string;
 	    category: string;
 	    tags: string;
 	    isPublished: boolean;
@@ -2204,8 +2234,10 @@ export namespace services {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
-	        this.content = source["content"];
-	        this.contentJson = source["contentJson"];
+	        this.editorType = source["editorType"];
+	        this.tiptapContent = source["tiptapContent"];
+	        this.tiptapContentJson = source["tiptapContentJson"];
+	        this.milkContent = source["milkContent"];
 	        this.category = source["category"];
 	        this.tags = source["tags"];
 	        this.isPublished = source["isPublished"];
@@ -2283,8 +2315,10 @@ export namespace services {
 	}
 	export class CreateStoryParams {
 	    title: string;
-	    content: string;
-	    contentJson?: number[];
+	    editorType: string;
+	    tiptapContent?: string;
+	    tiptapContentJson?: number[];
+	    milkContent?: string;
 	    isPublished: boolean;
 	    photoIds?: string[];
 	    coverPhotoId?: string;
@@ -2299,8 +2333,10 @@ export namespace services {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
-	        this.content = source["content"];
-	        this.contentJson = source["contentJson"];
+	        this.editorType = source["editorType"];
+	        this.tiptapContent = source["tiptapContent"];
+	        this.tiptapContentJson = source["tiptapContentJson"];
+	        this.milkContent = source["milkContent"];
 	        this.isPublished = source["isPublished"];
 	        this.photoIds = source["photoIds"];
 	        this.coverPhotoId = source["coverPhotoId"];
@@ -2325,6 +2361,20 @@ export namespace services {
 		    }
 		    return a;
 		}
+	}
+	export class DailyPhotoDTO {
+	    date: string;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPhotoDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.count = source["count"];
+	    }
 	}
 	export class DeletePhotoParams {
 	    deleteOriginal: boolean;
@@ -2765,6 +2815,101 @@ export namespace services {
 	        this.isActive = source["isActive"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class InspirationFeedItem {
+	    id: string;
+	    feedId: string;
+	    feedTitle: string;
+	    title: string;
+	    url: string;
+	    summary?: string;
+	    author?: string;
+	    // Go type: time
+	    publishedAt?: any;
+	    imageUrl?: string;
+	    sourceSiteUrl?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InspirationFeedItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.feedId = source["feedId"];
+	        this.feedTitle = source["feedTitle"];
+	        this.title = source["title"];
+	        this.url = source["url"];
+	        this.summary = source["summary"];
+	        this.author = source["author"];
+	        this.publishedAt = this.convertValues(source["publishedAt"], null);
+	        this.imageUrl = source["imageUrl"];
+	        this.sourceSiteUrl = source["sourceSiteUrl"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class InspirationSubscription {
+	    id: string;
+	    url: string;
+	    title: string;
+	    siteUrl?: string;
+	    description?: string;
+	    // Go type: time
+	    addedAt: any;
+	    // Go type: time
+	    lastFetched?: any;
+	    lastError?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InspirationSubscription(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.url = source["url"];
+	        this.title = source["title"];
+	        this.siteUrl = source["siteUrl"];
+	        this.description = source["description"];
+	        this.addedAt = this.convertValues(source["addedAt"], null);
+	        this.lastFetched = this.convertValues(source["lastFetched"], null);
+	        this.lastError = source["lastError"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3288,6 +3433,55 @@ export namespace services {
 	
 	
 	
+	export class OfficialUser {
+	    id: string;
+	    username: string;
+	    role: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OfficialUser(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.username = source["username"];
+	        this.role = source["role"];
+	    }
+	}
+	export class OfficialAuthResult {
+	    token: string;
+	    user: OfficialUser;
+	
+	    static createFrom(source: any = {}) {
+	        return new OfficialAuthResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.token = source["token"];
+	        this.user = this.convertValues(source["user"], OfficialUser);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class RecentBlogDTO {
 	    id: string;
 	    title: string;
@@ -3374,6 +3568,10 @@ export namespace services {
 	    recentBlogs: RecentBlogDTO[];
 	    photosThisMonth: number;
 	    photosThisYear: number;
+	    monthlyPhotos: number[];
+	    photoActivityYear?: number;
+	    photoActivityTimeZone?: string;
+	    dailyPhotos?: DailyPhotoDTO[];
 	
 	    static createFrom(source: any = {}) {
 	        return new OverviewDTO(source);
@@ -3410,6 +3608,10 @@ export namespace services {
 	        this.recentBlogs = this.convertValues(source["recentBlogs"], RecentBlogDTO);
 	        this.photosThisMonth = source["photosThisMonth"];
 	        this.photosThisYear = source["photosThisYear"];
+	        this.monthlyPhotos = source["monthlyPhotos"];
+	        this.photoActivityYear = source["photoActivityYear"];
+	        this.photoActivityTimeZone = source["photoActivityTimeZone"];
+	        this.dailyPhotos = this.convertValues(source["dailyPhotos"], DailyPhotoDTO);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3757,8 +3959,11 @@ export namespace services {
 	export class StoryDTO {
 	    id: string;
 	    title: string;
-	    content: string;
-	    contentJson?: number[];
+	    editorType: string;
+	    contentEditorTypes: string[];
+	    tiptapContent: string;
+	    tiptapContentJson?: number[];
+	    milkContent?: string;
 	    coverPhotoId?: string;
 	    coverCrop?: number[];
 	    isPublished: boolean;
@@ -3778,8 +3983,11 @@ export namespace services {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.title = source["title"];
-	        this.content = source["content"];
-	        this.contentJson = source["contentJson"];
+	        this.editorType = source["editorType"];
+	        this.contentEditorTypes = source["contentEditorTypes"];
+	        this.tiptapContent = source["tiptapContent"];
+	        this.tiptapContentJson = source["tiptapContentJson"];
+	        this.milkContent = source["milkContent"];
 	        this.coverPhotoId = source["coverPhotoId"];
 	        this.coverCrop = source["coverCrop"];
 	        this.isPublished = source["isPublished"];
@@ -3855,8 +4063,10 @@ export namespace services {
 	}
 	export class UpdateBlogParams {
 	    title?: string;
-	    content?: string;
-	    contentJson?: number[];
+	    editorType?: string;
+	    tiptapContent?: string;
+	    tiptapContentJson?: number[];
+	    milkContent?: string;
 	    category?: string;
 	    tags?: string;
 	    isPublished?: boolean;
@@ -3868,8 +4078,10 @@ export namespace services {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
-	        this.content = source["content"];
-	        this.contentJson = source["contentJson"];
+	        this.editorType = source["editorType"];
+	        this.tiptapContent = source["tiptapContent"];
+	        this.tiptapContentJson = source["tiptapContentJson"];
+	        this.milkContent = source["milkContent"];
 	        this.category = source["category"];
 	        this.tags = source["tags"];
 	        this.isPublished = source["isPublished"];
@@ -4044,8 +4256,10 @@ export namespace services {
 	}
 	export class UpdateStoryParams {
 	    title?: string;
-	    content?: string;
-	    contentJson?: number[];
+	    editorType?: string;
+	    tiptapContent?: string;
+	    tiptapContentJson?: number[];
+	    milkContent?: string;
 	    isPublished?: boolean;
 	    coverPhotoId?: string;
 	    coverCrop?: number[];
@@ -4059,8 +4273,10 @@ export namespace services {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
-	        this.content = source["content"];
-	        this.contentJson = source["contentJson"];
+	        this.editorType = source["editorType"];
+	        this.tiptapContent = source["tiptapContent"];
+	        this.tiptapContentJson = source["tiptapContentJson"];
+	        this.milkContent = source["milkContent"];
 	        this.isPublished = source["isPublished"];
 	        this.coverPhotoId = source["coverPhotoId"];
 	        this.coverCrop = source["coverCrop"];

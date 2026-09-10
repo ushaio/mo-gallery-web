@@ -50,9 +50,6 @@ export function ModelTable({ providerId, provider, aiConfig, specs, autoFilling,
   return (
     <AiSection
       label="模型清单"
-      description={catalogAvailable
-        ? '添加模型后自动填入 models.dev 的官方参数；需要时可手动覆盖，覆盖后该行标为「手动」。'
-        : '模型目录当前不可用，参数需手动填写；目录恢复后可用「按官方参数填充」补齐。'}
       action={
         <div className="flex items-center gap-2">
           {autoFilling && (

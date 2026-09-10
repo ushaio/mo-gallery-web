@@ -1,0 +1,36 @@
+[data-zine-editor] {
+  container-type: inline-size;
+  container-name: zine-editor;
+}
+
+.zine-inspector {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 40;
+  box-shadow: -12px 0 30px -20px rgb(0 0 0 / 30%);
+}
+
+@container zine-editor (min-width: 1080px) {
+  .zine-inspector {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+[data-zine-viewport][data-zine-navigating] [data-zine-slot] {
+  cursor: inherit !important;
+}
+
+[data-zine-slot]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+[data-zine-editor] .moveable-control-box {
+  z-index: 100001;
+}
+
+[data-zine-editor] button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

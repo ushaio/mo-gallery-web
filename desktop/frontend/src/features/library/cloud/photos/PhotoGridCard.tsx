@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { EyeOff, Film, Loader2 } from "lucide-react";
-import { resolveAssetUrl } from "@/lib/api";
+import { photoAssetSrc } from "@/lib/photo-asset-src";
 import { t } from "@/lib/i18n";
 import {
   formatLibraryCardSize,
@@ -98,7 +98,7 @@ export const PhotoGridCard = memo(function PhotoGridCard({
       >
         <span className="block h-full w-full">
           <Thumb
-            src={resolveAssetUrl(photo.thumbnailUrl || photo.url)}
+            src={photoAssetSrc(photo)}
             alt={photo.title}
             width={masonry ? photo.width : undefined}
             height={masonry ? photo.height : undefined}

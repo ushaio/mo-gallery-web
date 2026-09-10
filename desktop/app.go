@@ -33,11 +33,6 @@ import (
 	"mo-gallery-desktop/storage_plugins"
 )
 
-type WindowAppearance struct {
-	ActiveStyle     string `json:"activeStyle"`
-	ConfiguredStyle string `json:"configuredStyle"`
-}
-
 type App struct {
 	ctx                 context.Context
 	cfg                 *config.Config
@@ -46,9 +41,9 @@ type App struct {
 	cloudSyncMu         sync.Mutex
 	cloudSyncCancel     context.CancelFunc
 	localDownloadMu     sync.Mutex
-	activeWindowStyle   string
 	Proxy               *services.ProxyClient
 	Auth                *services.AuthService
+	OfficialAuth        *services.OfficialAuthService
 	Photo               *services.PhotoService
 	Album               *services.AlbumService
 	Story               *services.StoryService
@@ -79,13 +74,12 @@ func NewApp(cfg *config.Config, automationEnabled bool) *App {
 	app := &App{
 		cfg:                 cfg,
 		automationEnabled:   automationEnabled,
-		activeWindowStyle:   config.NormalizeWindowStyle(cfg.UI.WindowStyle),
 		Proxy:               services.NewProxyClient(),
 		Logger:              services.NewLogger(cfg.Log.Enabled, cfg.Log.MaxEntries),
 		ZineOperationLogger: services.NewZineOperationLogger(config.ConfigDir()),
 		Updater:             services.NewUpdateService(config.ConfigDir()),
 		Usage:               services.NewUsageService(config.ConfigDir(), desktopAppVersion()),
-		ModelCatalog:        services.NewModelCatalogService(config.ConfigDir()),
+		ModelCatalog:        services.NewModelCatalogService(config.SettingsDir()),
 		Inspiration:         services.NewInspirationService(),
 	}
 	if storageManager, err := storage_plugins.NewManager(config.ConfigDir()); err != nil {
@@ -94,7 +88,7 @@ func NewApp(cfg *config.Config, automationEnabled bool) *App {
 		app.StoragePlugins = storageManager
 		app.PluginMarketplace = storage_plugins.NewMarketplace(config.ConfigDir(), storageManager)
 	}
-	app.LocalLibrary = local_library.NewManager(config.ConfigDir(), func(event local_library.LocalLibraryEvent) {
+	app.LocalLibrary = local_library.NewManager(config.SettingsDir(), func(event local_library.LocalLibraryEvent) {
 		if app.ctx != nil {
 			runtime.EventsEmit(app.ctx, "local-library:event", event)
 		}
@@ -124,6 +118,7 @@ func (a *App) startup(ctx context.Context) {
 	a.Proxy.SetLogger(a.Logger)
 	a.Auth = services.NewAuthService(a.cfg)
 	a.Auth.SetProxy(a.Proxy)
+	a.OfficialAuth = services.NewOfficialAuthService(a.cfg)
 	a.Photo = services.NewPhotoService(a.Proxy)
 	a.Album = services.NewAlbumService(a.Proxy)
 	a.Story = services.NewStoryService(a.Proxy)
@@ -336,47 +331,6 @@ func (a *App) shutdown(ctx context.Context) {
 	db.CloseLocalDesignCanvas()
 }
 
-func (a *App) GetWindowAppearance() WindowAppearance {
-	return WindowAppearance{
-		ActiveStyle:     a.activeWindowStyle,
-		ConfiguredStyle: config.NormalizeWindowStyle(a.cfg.UI.WindowStyle),
-	}
-}
-
-func (a *App) UpdateWindowStyle(style string) (WindowAppearance, error) {
-	if !config.IsValidWindowStyle(style) {
-		return a.GetWindowAppearance(), errors.New("不支持的窗口风格")
-	}
-	previousStyle := a.cfg.UI.WindowStyle
-	a.cfg.UI.WindowStyle = config.NormalizeWindowStyle(style)
-	if err := a.cfg.Save(""); err != nil {
-		a.cfg.UI.WindowStyle = previousStyle
-		return a.GetWindowAppearance(), err
-	}
-	return a.GetWindowAppearance(), nil
-}
-
-// RestartApplication starts a replacement process with the persisted settings,
-// then closes the current process. The restart marker lets the replacement
-// bypass the single-instance handoff while the old process is still exiting.
-func (a *App) RestartApplication() error {
-	executable, err := os.Executable()
-	if err != nil {
-		return err
-	}
-
-	command := exec.Command(executable, os.Args[1:]...)
-	command.Env = append(os.Environ(), "MO_GALLERY_RESTART=1")
-	if err := command.Start(); err != nil {
-		return err
-	}
-
-	if a.ctx != nil {
-		runtime.Quit(a.ctx)
-	}
-	return nil
-}
-
 func (a *App) CheckForUpdates(currentVersion string, force bool) (*services.UpdateInfo, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -462,6 +416,126 @@ func (a *App) SetAuth(serverURL, token string) (*services.UserInfo, error) {
 func (a *App) ClearAuth() {
 	a.Proxy.SetToken("")
 	a.setAuthenticatedUser("")
+}
+
+// DisconnectSite 清除 web 站点连接配置与本地会话，恢复"未连接站点"状态。
+func (a *App) DisconnectSite() error {
+	a.Proxy.SetToken("")
+	a.setAuthenticatedUser("")
+	a.cfg.API.BaseURL = ""
+	a.cfg.API.LoginURL = ""
+	a.cfg.API.RememberLogin = false
+	a.cfg.API.SavedUsername = ""
+	a.cfg.API.SavedPassword = ""
+	a.cfg.Save("")
+	a.Logger.Info(services.LogCategoryAuth, "site_disconnected", "已断开站点连接", "")
+	return nil
+}
+
+// ─── Official Account（官方账号） ─────────────────────
+
+// OfficialLogin 登录官方账号。rememberLogin=true 时加密持久化 token，
+// 否则仅本次会话有效（前端持有，重启后需重新登录）。
+func (a *App) OfficialLogin(baseURL, username, password string, rememberLogin bool) (*services.OfficialAuthResult, error) {
+	result, err := a.OfficialAuth.Login(baseURL, username, password)
+	if err != nil {
+		a.Logger.Warn(services.LogCategoryAuth, "official_login_failed", "官方账号登录失败", err.Error())
+		return nil, err
+	}
+	if err := a.saveOfficialSession(baseURL, result, rememberLogin); err != nil {
+		return nil, err
+	}
+	a.Logger.Info(services.LogCategoryAuth, "official_login_success", "官方账号登录成功", "用户: "+result.User.Username)
+	return result, nil
+}
+
+// OfficialRegister 注册官方账号，官方站注册成功即返回 token（视为已登录）。
+func (a *App) OfficialRegister(baseURL, username, password string) (*services.OfficialAuthResult, error) {
+	result, err := a.OfficialAuth.Register(baseURL, username, password)
+	if err != nil {
+		a.Logger.Warn(services.LogCategoryAuth, "official_register_failed", "官方账号注册失败", err.Error())
+		return nil, err
+	}
+	if err := a.saveOfficialSession(baseURL, result, true); err != nil {
+		return nil, err
+	}
+	a.Logger.Info(services.LogCategoryAuth, "official_register_success", "官方账号注册成功", "用户: "+result.User.Username)
+	return result, nil
+}
+
+func (a *App) saveOfficialSession(baseURL string, result *services.OfficialAuthResult, rememberLogin bool) error {
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = a.cfg.Official.BaseURL
+	}
+	server, err := services.NormalizeOfficialBaseURL(baseURL)
+	if err != nil {
+		return err
+	}
+	a.cfg.Official.BaseURL = server
+	if rememberLogin {
+		encrypted, err := config.EncryptPassword(result.Token)
+		if err != nil {
+			return fmt.Errorf("加密官方登录凭证失败: %w", err)
+		}
+		a.cfg.Official.RememberLogin = true
+		a.cfg.Official.Token = encrypted
+		a.cfg.Official.SavedUsername = result.User.Username
+	} else {
+		a.cfg.Official.RememberLogin = false
+		a.cfg.Official.Token = ""
+		a.cfg.Official.SavedUsername = ""
+	}
+	a.cfg.Save("")
+	return nil
+}
+
+// GetOfficialAuthState 返回官方账号登录状态。有存储 token 时调 /auth/me 校验：
+// 有效→logged_in；401→清除并要求重登；网络等服务异常→凭本地缓存放行，不因断网卡死启动。
+func (a *App) GetOfficialAuthState() map[string]interface{} {
+	baseURL := a.cfg.Official.BaseURL
+	state := map[string]interface{}{
+		"logged_in":      false,
+		"base_url":       baseURL,
+		"username":       "",
+		"remember_login": false,
+	}
+	if a.cfg.Official.Token == "" {
+		return state
+	}
+	token, err := config.DecryptPassword(a.cfg.Official.Token)
+	if err != nil {
+		a.clearOfficialSession()
+		return state
+	}
+	user, err := a.OfficialAuth.ValidateToken(baseURL, token)
+	if err != nil {
+		if errors.Is(err, services.ErrOfficialTokenInvalid) {
+			a.clearOfficialSession()
+			a.Logger.Warn(services.LogCategoryAuth, "official_session_expired", "官方登录已过期", err.Error())
+			return state
+		}
+		state["logged_in"] = true
+		state["username"] = a.cfg.Official.SavedUsername
+		state["remember_login"] = a.cfg.Official.RememberLogin
+		return state
+	}
+	state["logged_in"] = true
+	state["username"] = user.Username
+	state["remember_login"] = a.cfg.Official.RememberLogin
+	return state
+}
+
+// OfficialLogout 清除本地持久化的官方账号会话。
+func (a *App) OfficialLogout() error {
+	a.clearOfficialSession()
+	return nil
+}
+
+func (a *App) clearOfficialSession() {
+	a.cfg.Official.Token = ""
+	a.cfg.Official.SavedUsername = ""
+	a.cfg.Official.RememberLogin = false
+	a.cfg.Save("")
 }
 
 func (a *App) setAuthenticatedUser(userID string) {

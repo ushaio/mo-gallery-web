@@ -1,17 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import { EditorContentPrompt } from '@mo-gallery/milkdown/editor-content'
+import { convertToMilkdown } from '@mo-gallery/milkdown/migration'
+import { getEditorContent, hasEditorContent } from '@mo-gallery/api-client/editor-content'
 import {
   Calendar,
   Check,
   ChevronLeft,
   ChevronRight,
-  PanelRightClose,
-  PanelRightOpen,
   Clock,
   Eye,
-  FileText,
-  Image as ImageIcon,
   Maximize2,
   Minimize2,
   Save,
@@ -21,22 +20,23 @@ import type { Dispatch, SetStateAction } from 'react'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput } from '@/components/admin/AdminFormControls'
 import { StoryPhotoPanel, type PendingImage } from '@/components/admin/StoryPhotoPanel'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
+import type { NarrativeMilkdownEditorHandle } from '@/components/NarrativeMilkdownEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
-import { countStoryCharacters, hydrateStoryContentImages, hydrateStoryContentJsonImages, normalizeStoryContentImages, normalizeStoryContentJsonImages } from '@/lib/story-rich-content'
+import { useLanguage } from '@/contexts/LanguageContext'
 import { cn } from '@/lib/utils'
-import { NarrativeTipTapEditor } from './constants'
+import { NarrativeMilkdownEditor } from './constants'
 import type { UploadProgressState } from './types'
 
 interface StoryEditorViewProps {
   token: string | null
   currentStory: StoryDto
+  editorSessionId: string
   pendingImages: PendingImage[]
   pendingCoverId: string | null
   saving: boolean
   draftSaved: boolean
   lastSavedAt: number | null
-  editorRef: React.RefObject<NarrativeTipTapEditorHandle | null>
+  editorRef: React.RefObject<NarrativeMilkdownEditorHandle | null>
   isImmersiveMode: boolean
   setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
   useCustomDate: boolean
@@ -88,6 +88,7 @@ interface StoryEditorViewProps {
 export function StoryEditorView({
   token,
   currentStory,
+  editorSessionId,
   pendingImages,
   pendingCoverId,
   saving,
@@ -139,18 +140,23 @@ export function StoryEditorView({
   notify,
   setCurrentStory,
 }: StoryEditorViewProps) {
+  const { locale } = useLanguage()
   const [isAiTaskLocked, setIsAiTaskLocked] = useState(false)
-  const editorCharacterCount = countStoryCharacters(currentStory.content)
   const materialCount = currentStory.photos?.length || 0
-  const hydratedEditorContent = useMemo(
-    () => hydrateStoryContentImages(currentStory.content, currentStory.photos || [], settingsCdnDomain),
-    [currentStory.content, currentStory.photos, settingsCdnDomain],
-  )
-  const hydratedEditorJsonContent = useMemo(
-    () => hydrateStoryContentJsonImages(currentStory.contentJson, currentStory.photos || [], settingsCdnDomain),
-    [currentStory.contentJson, currentStory.photos, settingsCdnDomain],
-  )
-
+  const hasMilkdownContent = hasEditorContent(currentStory, 'milkdown')
+  const isMilkdownReady = hasMilkdownContent && currentStory.editorType === 'milkdown'
+  const activateMilkdown = () => {
+    setCurrentStory((previous): StoryDto | null => {
+      if (!previous) return previous
+      if (!hasEditorContent(previous, 'milkdown') && !hasEditorContent(previous, 'tiptap')) return previous
+      return {
+        ...previous,
+        editorType: 'milkdown',
+        contentEditorTypes: Array.from(new Set<StoryDto['editorType']>([...previous.contentEditorTypes, 'milkdown'])),
+        milkContent: hasEditorContent(previous, 'milkdown') ? previous.milkContent ?? '' : convertToMilkdown(previous),
+      }
+    })
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
@@ -221,7 +227,7 @@ export function StoryEditorView({
             {isImmersiveMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             <span className="hidden xl:inline">{t('ui.immersive')}</span>
           </AdminButton>
-          <AdminButton onClick={onSave} disabled={saving || isUploading} adminVariant="primary" size="md" className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3.5 shadow-none">
+          <AdminButton onClick={onSave} disabled={saving || isUploading || !isMilkdownReady} adminVariant="primary" size="md" className="flex h-9 shrink-0 items-center gap-2 rounded-md px-3.5 shadow-none">
             <Save className="h-3.5 w-3.5" />
             <span>{saving ? t('ui.saving') : isUploading ? t('admin.uploading') : t('admin.save')}</span>
           </AdminButton>
@@ -240,46 +246,78 @@ export function StoryEditorView({
             <button type="button" disabled={isAiTaskLocked} onClick={() => setUseCustomDate(true)} className="cursor-pointer font-mono text-[10px] uppercase tracking-wide text-muted-foreground underline-offset-4 transition-all hover:text-foreground hover:underline decoration-dashed disabled:cursor-not-allowed disabled:opacity-60" title={t('admin.custom_date')}>{new Date(currentStory.storyDate).toLocaleString()}</button>
           )}
         </div>
-        <div className="flex items-center gap-5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-          <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" />{editorCharacterCount} {t('admin.characters')}</span>
-          <span className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" />{materialCount} {t('story.materials_suffix')}</span>
-        </div>
       </div>
 
       <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
         <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/40 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.35)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
           <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
-            <NarrativeTipTapEditor
-              contentVersion={currentStory.id}
+            {!isMilkdownReady ? (
+              <EditorContentPrompt language={locale} targetEditor="Milkdown" sourceEditor="TipTap" scenario={hasMilkdownContent ? 'use-existing' : hasEditorContent(currentStory, 'tiptap') ? 'convert' : 'unavailable'} onAction={activateMilkdown} />
+            ) : <NarrativeMilkdownEditor
+              contentVersion={editorSessionId}
               ref={editorRef}
-              value={hydratedEditorContent}
-              jsonValue={hydratedEditorJsonContent}
-              onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
-              onJsonChange={(contentJson) => setCurrentStory((prev) => (prev ? { ...prev, contentJson: normalizeStoryContentJsonImages(contentJson) } : prev))}
+              value={currentStory.milkContent ?? ''}
+              onChange={(milkContent) => setCurrentStory((prev) => (prev ? { ...prev, milkContent } : prev))}
               onPasteFiles={onPasteFiles}
-              toolbarAfterRedoAction={{
-                title: isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse'),
+              toolbarAction={{
+                label: isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse'),
                 onClick: togglePhotoPanelCollapse,
-                icon: isPhotoPanelCollapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />,
-                disabled: isAiTaskLocked,
               }}
-              placeholder={t('ui.markdown_placeholder')}
               className="overflow-hidden bg-background"
+              token={token}
               documentId={currentStory.id}
-              documentKind="story"
-              onAiTaskLockChange={setIsAiTaskLocked}
-              aiOptions={{
-                enabled: true,
-                token,
-                scopeId: currentStory.id,
-                title: currentStory.title,
-              }}
-            />
+              documentTitle={currentStory.title}
+              photos={currentStory.photos}
+              cdnDomain={settingsCdnDomain}
+              onPhotoUploaded={(photo) => setCurrentStory((previous) => previous ? { ...previous, photos: previous.photos.some((entry) => entry.id === photo.id) ? previous.photos : [...previous.photos, photo] } : previous)}
+              onBusyChange={setIsAiTaskLocked}
+              onError={(error) => notify(error.message, 'error')}
+              statusBar={{ materialCount }}
+            />}
           </div>
         </div>
 
-        <fieldset disabled={isAiTaskLocked} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-0' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
-          <StoryPhotoPanel disabled={isAiTaskLocked} isCollapsed={isPhotoPanelCollapsed} isImmersiveMode={isImmersiveMode} currentStory={currentStory} editorContent={currentStory.content || ''} pendingImages={pendingImages} pendingCoverId={pendingCoverId} cdnDomain={settingsCdnDomain} isUploading={isUploading} uploadProgress={uploadProgress} isDraggingOver={isDraggingOver} draggedItemId={draggedItemId} draggedItemType={draggedItemType} dragOverItemId={dragOverItemId} openMenuPhotoId={openMenuPhotoId} openMenuPendingId={openMenuPendingId} t={t} notify={notify} onAddPhotos={onOpenMaterialLibrary} onInsertPhotoMarkdown={onInsertPhotoMarkdown} onInsertGalleryMarkdown={onInsertGalleryMarkdown} onOpenPasteUploadSettings={onOpenPasteUploadSettings} onRemovePhoto={onRemovePhoto} onRemovePendingImage={onRemovePendingImage} onSetCover={onSetCover} onSetPendingCover={onSetPendingCover} onSetPhotoDate={onSetPhotoDate} onRetryFailedUploads={onRetryFailedUploads} onPhotoPanelDragOver={onPhotoPanelDragOver} onPhotoPanelDragLeave={onPhotoPanelDragLeave} onPhotoPanelDrop={onPhotoPanelDrop} onItemDragStart={onItemDragStart} onItemDragEnd={onItemDragEnd} onItemDragOver={onItemDragOver} onItemDragLeave={onItemDragLeave} onItemDrop={onItemDrop} onOpenMenuPhoto={onOpenMenuPhoto} onOpenMenuPending={onOpenMenuPending} />
+        <fieldset disabled={isAiTaskLocked || !isMilkdownReady} className={cn('h-full min-h-0 shrink-0 overflow-hidden border-0 will-change-[width] transition-[width] duration-300 ease-out motion-reduce:transition-none', isPhotoPanelCollapsed ? 'w-0' : isImmersiveMode ? 'w-[360px] xl:w-[420px]' : 'w-[340px] xl:w-[390px]')}>
+          <StoryPhotoPanel
+            disabled={isAiTaskLocked || !isMilkdownReady}
+            isCollapsed={isPhotoPanelCollapsed}
+            isImmersiveMode={isImmersiveMode}
+            currentStory={currentStory}
+            editorContent={getEditorContent(currentStory)}
+            pendingImages={pendingImages}
+            pendingCoverId={pendingCoverId}
+            cdnDomain={settingsCdnDomain}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            isDraggingOver={isDraggingOver}
+            draggedItemId={draggedItemId}
+            draggedItemType={draggedItemType}
+            dragOverItemId={dragOverItemId}
+            openMenuPhotoId={openMenuPhotoId}
+            openMenuPendingId={openMenuPendingId}
+            t={t}
+            notify={notify}
+            onAddPhotos={onOpenMaterialLibrary}
+            onInsertPhotoMarkdown={onInsertPhotoMarkdown}
+            onInsertGalleryMarkdown={onInsertGalleryMarkdown}
+            onOpenPasteUploadSettings={onOpenPasteUploadSettings}
+            onRemovePhoto={onRemovePhoto}
+            onRemovePendingImage={onRemovePendingImage}
+            onSetCover={onSetCover}
+            onSetPendingCover={onSetPendingCover}
+            onSetPhotoDate={onSetPhotoDate}
+            onRetryFailedUploads={onRetryFailedUploads}
+            onPhotoPanelDragOver={onPhotoPanelDragOver}
+            onPhotoPanelDragLeave={onPhotoPanelDragLeave}
+            onPhotoPanelDrop={onPhotoPanelDrop}
+            onItemDragStart={onItemDragStart}
+            onItemDragEnd={onItemDragEnd}
+            onItemDragOver={onItemDragOver}
+            onItemDragLeave={onItemDragLeave}
+            onItemDrop={onItemDrop}
+            onOpenMenuPhoto={onOpenMenuPhoto}
+            onOpenMenuPending={onOpenMenuPending}
+          />
         </fieldset>
       </div>
     </div>

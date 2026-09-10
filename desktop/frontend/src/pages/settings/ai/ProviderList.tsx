@@ -1,9 +1,10 @@
 // 系统设置 · 模型配置左栏：模型源列表 + 默认模型选择
 
-import { Plus, Server } from 'lucide-react'
+import { Bot, Plus, Server, Sparkles } from 'lucide-react'
 import { SelectDropdown } from '@/components/ui/SelectDropdown'
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs'
 import { btnOutline } from '../shared'
-import { isProviderConfigured, toModelId, type AiConfig, type AiProviderConfig } from './config'
+import { isProviderConfigured, toModelId, type AiConfig, type AiProviderConfig, type AiSettingsView } from './config'
 
 function buildModelOptions(aiConfig: AiConfig, providerIds: string[], key: 'models' | 'image_models') {
   return providerIds.flatMap(providerId => (
@@ -13,7 +14,7 @@ function buildModelOptions(aiConfig: AiConfig, providerIds: string[], key: 'mode
   ))
 }
 
-export function ProviderList({ aiConfig, providerIds, selectedId, onSelect, onAdd, onDefaultModelChange, onDefaultImageModelChange }: {
+export function ProviderList({ aiConfig, providerIds, selectedId, onSelect, onAdd, onDefaultModelChange, onDefaultImageModelChange, view, onViewChange }: {
   aiConfig: AiConfig
   providerIds: string[]
   selectedId: string | null
@@ -21,12 +22,23 @@ export function ProviderList({ aiConfig, providerIds, selectedId, onSelect, onAd
   onAdd: () => void
   onDefaultModelChange: (value: string) => void
   onDefaultImageModelChange: (value: string) => void
+  /** 左栏面板头：模型源 / Agent 视图切换（与 Agent 扩展页同款，只占左侧区域） */
+  view: AiSettingsView
+  onViewChange: (view: AiSettingsView) => void
 }) {
   return (
     <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-r bg-card" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex h-9 shrink-0 items-center justify-between border-b px-3" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-[10px] font-medium uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>模型源</span>
-        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] tabular-nums" style={{ color: 'var(--foreground)' }}>{providerIds.length}</span>
+      <div className="shrink-0 border-b p-3" style={{ borderColor: 'var(--border)' }}>
+        <SegmentedTabs
+          size="sm"
+          ariaLabel="AI 视图"
+          value={view}
+          onChange={onViewChange}
+          options={[
+            { value: 'providers', label: '模型源', icon: Sparkles },
+            { value: 'agents', label: 'Agent', icon: Bot },
+          ]}
+        />
       </div>
 
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">

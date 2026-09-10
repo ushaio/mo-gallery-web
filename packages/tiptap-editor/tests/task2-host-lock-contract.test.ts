@@ -5,12 +5,18 @@ import {
   rotateBlogDraftDocumentId as rotateDesktopBlogDraftDocumentId,
 } from '../../../desktop/frontend/src/lib/blog-draft-document'
 import { persistDesktopBlog } from '../../../desktop/frontend/src/lib/desktop-blog-save'
+import type { BlogDto } from '../../api-client/src/types'
 import {
   blockNarrativeAiInteraction,
   guardNarrativeAiMutation,
 } from '../src/tiptap-editor/ai-task-mutation-guard'
 
 const desktopDraftId = createDesktopBlogDraftDocumentId()
+const savedBlog: BlogDto = {
+  id: 'persisted-blog', title: 'Draft', editorType: 'milkdown', contentEditorTypes: ['milkdown'],
+  tiptapContent: '', milkContent: 'Draft body', category: '未分类', tags: '', isPublished: false,
+  createdAt: '2026-09-08T00:00:00.000Z', updatedAt: '2026-09-08T00:00:00.000Z',
+}
 const rotatedDesktopDraftId = rotateDesktopBlogDraftDocumentId(desktopDraftId)
 assert.notEqual(rotatedDesktopDraftId, desktopDraftId, 'desktop starts each distinct new-blog lifecycle with a fresh identity')
 assert.equal(
@@ -26,36 +32,36 @@ assert.equal(
 
 {
   const calls: string[] = []
-  const persistedId = await persistDesktopBlog({
+  const persisted = await persistDesktopBlog({
     api: {
       UpdateBlog: async () => {
         calls.push('update')
+        return savedBlog
       },
       CreateBlog: async () => {
         calls.push('create')
-        return { id: 'persisted-blog' }
+        return savedBlog
       },
     },
     data: { title: 'Draft' },
-    onCreated: (blogId) => {
-      calls.push(`handoff:${blogId}`)
-    },
   })
 
-  assert.equal(persistedId, 'persisted-blog', 'create returns the persisted document identity')
+  assert.equal(persisted.id, 'persisted-blog', 'create returns the persisted document identity')
+  assert.equal(persisted.milkContent, 'Draft body', 'create returns saved content for in-place reconciliation')
   assert.deepEqual(
     calls,
-    ['create', 'handoff:persisted-blog'],
-    'the live draft receives its persisted identity before the save workflow continues',
+    ['create'],
+    'creating the document does not reload the list or issue an extra save',
   )
 }
 
 {
   const calls: string[] = []
-  const persistedId = await persistDesktopBlog({
+  const persisted = await persistDesktopBlog({
     api: {
       UpdateBlog: async (blogId) => {
         calls.push(`update:${blogId}`)
+        return { ...savedBlog, id: blogId }
       },
       CreateBlog: async () => {
         throw new Error('existing blogs must not be recreated')
@@ -63,12 +69,9 @@ assert.equal(
     },
     blogId: 'existing-blog',
     data: { title: 'Saved' },
-    onCreated: () => {
-      calls.push('unexpected-handoff')
-    },
   })
 
-  assert.equal(persistedId, 'existing-blog', 'updates preserve the persisted document identity')
+  assert.equal(persisted.id, 'existing-blog', 'updates preserve the persisted document identity')
   assert.deepEqual(calls, ['update:existing-blog'], 'updates do not run the new-draft handoff')
 }
 

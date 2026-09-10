@@ -1,15 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { flushSync } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import Moveable from 'react-moveable'
-import { TriangleAlert } from 'lucide-react'
+import { Check, Crop, LockKeyhole, RotateCcw, TriangleAlert, X } from 'lucide-react'
 
-import { toSlotGeometry, type SlotGeometry } from '@/lib/zine/geometry'
+import { toFrameDelta, toSlotGeometry, type SlotGeometry } from '@/lib/zine/geometry'
 import { clampCropScale, createDefaultImageTransform, CropSession } from '@/lib/zine/crop-session'
-import { buildGestureGuides, constrainMovementToAxis, GestureSession, getDominantMovementAxis, snapGestureRotation, type GestureGuide, type GestureKind, type MovementAxis } from '@/lib/zine/gesture-session'
+import { isZineControlTarget, isZineEditableTarget as isEditableTarget, isZineShortcutTarget } from '@/lib/zine/editor-input'
+import { applyGestureBoundary, buildGestureGuides, constrainMovementToAxis, GestureSession, getDominantMovementAxis, snapGestureRotation, type GestureGuide, type GestureKind, type MovementAxis } from '@/lib/zine/gesture-session'
 import { t } from '@/lib/i18n'
 import { calculateEffectiveDpi, MIN_PRINT_DPI, SAFE_MARGIN_MM } from '@/lib/zine/print'
 import { recordZineOperation } from '@/lib/zine/operation-log'
+import { useZinePreviewFont } from '@/lib/zine/preview-fonts'
 import { calculateImagePlacement, preserveImageTransformOnFrameResize, renderSlot } from '@/lib/zine/slot-render'
 import type { Slot, Spread, ZineAsset, ZineImageTransform } from '@/lib/zine/types'
 import type { ZineViewOptions } from '@/lib/zine/view-options'
@@ -27,11 +29,6 @@ const CROP_NUDGE_MM = 1
 const SNAP_ROTATION_DEGREES = [0, 45, 90, 135, 180, 225, 270, 315]
 const SNAP_DIRECTIONS = { left: true, top: true, right: true, bottom: true, center: true, middle: true } as const
 
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false
-  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
-}
-
 interface SlotViewProps {
   spread: Spread
   slot: Slot
@@ -44,6 +41,17 @@ interface SlotViewProps {
   scale: number
   viewOptions: ZineViewOptions
   onSelect?: (slotId: string) => void
+  interactionDisabled?: boolean
+  preview?: boolean
+}
+
+interface SlotInteractionActions {
+  beginCrop: () => void
+  cancelCrop: () => void
+  cancelGeometry: () => void
+  commitCrop: () => void
+  endEditRequest: () => void
+  updateCrop: (transform: ZineImageTransform) => void
 }
 
 function toScreenPx(valueMm: number, scale: number) {
@@ -71,8 +79,12 @@ function imageBoundsStyle(slot: Extract<Slot, { kind: 'image' }>, asset: ZineAss
   }
 }
 
-export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, selected, scale, viewOptions, onSelect }: SlotViewProps) {
-  const { language } = usePreferences()
+export const SlotView = memo(function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, selected, scale, viewOptions, onSelect, interactionDisabled = false, preview = false }: SlotViewProps) {
+  const language = usePreferences((state) => state.language)
+  const aiBusy = useZineStore((state) => state.aiTaskId !== null)
+  const editRequested = useZineStore((state) => state.editingSlotId === slot.id)
+  const editSlot = useZineStore((state) => state.editSlot)
+  const canEdit = !slot.locked && !aiBusy && !interactionDisabled
   const slotAssetId = slot.kind === 'image' ? slot.assetId : null
   const slotRef = useRef<HTMLDivElement | null>(null)
   const moveableRef = useRef<Moveable | null>(null)
@@ -104,7 +116,6 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   const activeGuideKeysRef = useRef('')
   const frameDragAxisRef = useRef<MovementAxis | null>(null)
   const frameDragLogRef = useRef({ moveCount: 0, lastLoggedAt: 0 })
-  const resizeImageTransformRef = useRef<ZineImageTransform | null>(null)
   const resizeInitialImageTransformRef = useRef<ZineImageTransform | null>(null)
   const resizeImageStyleSnapshotRef = useRef<string | null>(null)
   const resizeImagePreviewRef = useRef<{
@@ -127,11 +138,12 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   const [activeGuides, setActiveGuides] = useState<GestureGuide[]>([])
   const [rotationSnap, setRotationSnap] = useState<number | null>(null)
   const updateSlot = useZineStore((state) => state.updateSlot)
+  const actionsRef = useRef<SlotInteractionActions | null>(null)
   const gestureGuides = useMemo(() => buildGestureGuides(pageW, pageH, SAFE_MARGIN_MM), [pageH, pageW])
   const verticalGuidelines = useMemo(() => gestureGuides.filter((guide) => guide.axis === 'x').map((guide) => guide.position * scale), [gestureGuides, scale])
   const horizontalGuidelines = useMemo(() => gestureGuides.filter((guide) => guide.axis === 'y').map((guide) => guide.position * scale), [gestureGuides, scale])
 
-  const rendered = renderSlot(slot, pageW, assets)
+  const rendered = useMemo(() => renderSlot(slot, pageW, assets), [slot, pageW, assets])
   const asset = slot.kind === 'image' ? assets.find((item) => item.id === slot.assetId) : undefined
   const isEmptyImage = slot.kind === 'image' && !asset
   const isEmptyText = slot.kind === 'text' && !slot.content
@@ -148,11 +160,19 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     width: `${toScreenPx(Number(rendered.htmlStyle.width), scale)}px`,
     height: `${toScreenPx(Number(rendered.htmlStyle.height), scale)}px`,
   }
+  const previewFont = useZinePreviewFont(slot.kind === 'text' ? slot.fontFamily || 'serif' : undefined, slot.kind === 'text' ? slot.content : '')
   const textStyle = rendered.text
-    ? { ...rendered.text.htmlStyle, fontSize: `${Number(rendered.text.htmlStyle.fontSize) * PT_TO_MM * scale}px` }
+    ? { ...rendered.text.htmlStyle, fontFamily: previewFont.fontFamily, fontSize: `${Number(rendered.text.htmlStyle.fontSize) * PT_TO_MM * scale}px` }
     : undefined
 
+  // Native gesture listeners outlive a render. Publish the current handlers
+  // before effects run, so callbacks never commit an older slot or scale.
   useLayoutEffect(() => {
+    actionsRef.current = { beginCrop, cancelCrop, cancelGeometry, commitCrop, endEditRequest, updateCrop }
+  })
+
+  useLayoutEffect(() => {
+    if (gestureSessionRef.current) return
     geometryRef.current = toSlotGeometry(slot)
     const element = slotRef.current
     if (element) {
@@ -189,35 +209,85 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   }, [selected, slot, slotAssetId, spread.id])
 
   useEffect(() => {
-    if (!selected) {
+    if (!canEdit) {
+      actionsRef.current?.cancelGeometry()
+      actionsRef.current?.cancelCrop()
+      actionsRef.current?.endEditRequest()
       setEditingText(false)
-      if (cropEditing) commitCrop()
+      return
+    }
+    if (selected && editRequested) {
+      if (slot.kind === 'text') setEditingText(true)
+      else actionsRef.current?.beginCrop()
+    } else {
+      setEditingText(false)
+      if (cropSessionRef.current) actionsRef.current?.commitCrop()
+    }
+  }, [selected, editRequested, canEdit, slot.kind])
+
+  useEffect(() => {
+    if (!selected) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || !gestureSessionRef.current) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      actionsRef.current?.cancelGeometry()
+    }
+    function onCancel() {
+      actionsRef.current?.cancelGeometry()
+      actionsRef.current?.cancelCrop()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('blur', onCancel)
+    window.addEventListener('pointercancel', onCancel)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('blur', onCancel)
+      window.removeEventListener('pointercancel', onCancel)
     }
   }, [selected])
 
   useEffect(() => {
     if (!cropEditing) return
+    const element = slotRef.current
+    if (!element) return
+    function onWheel(event: WheelEvent) {
+      if (event.shiftKey || event.ctrlKey || event.metaKey) return
+      event.preventDefault()
+      event.stopPropagation()
+      const next = cropSessionRef.current?.zoom(event.deltaY, CROP_SCALE_STEP)
+      if (next) actionsRef.current?.updateCrop(next)
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
+  }, [cropEditing, slot, scale])
+
+  useEffect(() => {
+    if (!cropEditing) return
 
     function onKeyDown(event: KeyboardEvent) {
-      if (isEditableTarget(event.target)) return
+      if (!isZineShortcutTarget(event.target)) return
 
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopImmediatePropagation()
-        const initialTransform = cropSessionRef.current?.cancel()
-        cropSessionRef.current = null
-        cropResizePointerRef.current = null
-        cancelCropPreview()
-        if (initialTransform) applyCropPreview(initialTransform)
-        releaseCropPointer()
-        setCropEditing(false)
+        actionsRef.current?.cancelCrop()
         return
       }
+
+      if (isZineControlTarget(event.target)) return
 
       if (event.key === 'Enter') {
         event.preventDefault()
         event.stopImmediatePropagation()
-        commitCrop()
+        actionsRef.current?.commitCrop()
+        return
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        actionsRef.current?.cancelCrop()
         return
       }
 
@@ -229,6 +299,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         cancelCropPreview()
         releaseCropPointer()
         setCropEditing(false)
+        actionsRef.current?.endEditRequest()
         if (slot.kind === 'image') {
           updateSlot(spread.id, slot.id, {
             assetId: null,
@@ -254,14 +325,16 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         nudge[1] * step,
         slot.w * scale,
         slot.h * scale,
+        slot.rotation,
       )
-      if (next) updateCrop(next)
+      if (next) actionsRef.current?.updateCrop(next)
     }
 
     function onPointerDown(event: PointerEvent) {
       const target = event.target
+      if (target instanceof Element && target.closest('[data-zine-crop-controls]')) return
       if (target instanceof Node && (slotRef.current?.contains(target) || cropControlsRef.current?.contains(target))) return
-      commitCrop()
+      actionsRef.current?.commitCrop()
     }
 
     window.addEventListener('keydown', onKeyDown, true)
@@ -270,7 +343,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
       window.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('pointerdown', onPointerDown, true)
     }
-  }, [cropEditing, slot])
+  }, [cropEditing, slot, scale, spread.id, updateSlot])
 
   useEffect(() => () => {
     cancelCropPreview()
@@ -349,6 +422,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     applyCropPreview(transform)
     releaseCropPointer()
     setCropEditing(false)
+    endEditRequest()
     recordZineOperation('crop_edit_committed', {
       spreadId: spread.id,
       slotId: slot.id,
@@ -361,13 +435,18 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   }
 
   function beginCrop() {
-    if (slot.kind !== 'image' || !asset || cropSessionRef.current) return
+    if (cropSessionRef.current) return
+    if (!canEdit || slot.kind !== 'image' || !asset) {
+      endEditRequest()
+      return
+    }
     const session = new CropSession(slot.imageTransform)
     cropSessionRef.current = session
     cropDragLogRef.current = { moveCount: 0, lastLoggedAt: 0 }
     applyCropPreview(session.getDraft())
     setCropEditing(true)
     onSelect?.(slot.id)
+    editSlot(slot.id)
     recordZineOperation('crop_edit_started', {
       spreadId: spread.id,
       slotId: slot.id,
@@ -381,18 +460,56 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     scheduleCropPreview(next)
   }
 
+  function endEditRequest() {
+    if (useZineStore.getState().editingSlotId === slot.id) editSlot(null)
+  }
+
+  function cancelCrop() {
+    const session = cropSessionRef.current
+    if (!session) return
+    cropSessionRef.current = null
+    cropResizePointerRef.current = null
+    cancelCropPreview()
+    applyCropPreview(session.cancel())
+    releaseCropPointer()
+    setCropEditing(false)
+    endEditRequest()
+  }
+
+  function clearGestureFeedback() {
+    if (slotRef.current) delete slotRef.current.dataset.zineGesture
+    activeGuideKeysRef.current = ''
+    setActiveGuides((current) => current.length === 0 ? current : [])
+    setRotationSnap(null)
+    frameDragAxisRef.current = null
+  }
+
+  function cancelGeometry() {
+    const session = gestureSessionRef.current
+    if (!session) return
+    gestureSessionRef.current = null
+    moveableRef.current?.stopDrag()
+    restoreImageTransformLayer()
+    geometryRef.current = session.initial
+    commitLiveGeometry(session.initial)
+    resizeInitialImageTransformRef.current = null
+    resizeImageStyleSnapshotRef.current = null
+    resizeImagePreviewRef.current = null
+    clearGestureFeedback()
+    moveableRef.current?.updateRect()
+  }
+
   function commitGeometry() {
     const session = gestureSessionRef.current
     if (!session) return
     const result = session.commit(slot)
     gestureSessionRef.current = null
-    activeGuideKeysRef.current = ''
-    setActiveGuides((current) => current.length === 0 ? current : [])
-    setRotationSnap(null)
+    clearGestureFeedback()
     geometryRef.current = result.geometry
-    commitLiveGeometry(result.geometry, resizeImageTransformRef.current ?? undefined)
-    const imageTransform = resizeImageTransformRef.current
-    resizeImageTransformRef.current = null
+    const imageTransform = result.changed && slot.kind === 'image' && asset && resizeInitialImageTransformRef.current
+      ? preserveImageTransformOnFrameResize(session.initial, result.geometry, asset.width, asset.height, resizeInitialImageTransformRef.current)
+      : undefined
+    commitLiveGeometry(result.geometry, imageTransform)
     resizeInitialImageTransformRef.current = null
     resizeImageStyleSnapshotRef.current = null
     resizeImagePreviewRef.current = null
@@ -400,8 +517,12 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     updateSlot(spread.id, slot.id, { ...result.geometry, page: result.page, ...(imageTransform ? { imageTransform } : {}) })
   }
 
-  function resetLiveStyle() {
-    commitLiveGeometry(geometryRef.current)
+  function applyLiveDrag(deltaX: number, deltaY: number, rotation: number) {
+    // Keep the layout origin fixed for the whole gesture. Moveable measures the
+    // transformed target; changing left/top here makes that origin drift.
+    const transform = `translate3d(${deltaX}px, ${deltaY}px, 0) rotate(${rotation}deg)`
+    if (slotRef.current) slotRef.current.style.transform = transform
+    if (cropControlsRef.current) cropControlsRef.current.style.transform = transform
   }
 
   function commitLiveGeometry(
@@ -416,6 +537,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     element.style.width = `${toScreenPx(next.w, scale)}px`
     element.style.height = `${toScreenPx(next.h, scale)}px`
     element.style.transform = `rotate(${next.rotation}deg)`
+    syncCoverImage(next.w, next.h)
 
     const outlineLayer = cropControlsRef.current
     if (outlineLayer) {
@@ -445,6 +567,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     element.style.width = `${widthPx}px`
     element.style.height = `${heightPx}px`
     element.style.transform = dragTransform
+    if (!imageTransform) syncCoverImage(next.w, next.h)
 
     const outlineLayer = cropControlsRef.current
     if (outlineLayer) {
@@ -457,14 +580,29 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     }
   }
 
+  function syncCoverImage(width: number, height: number) {
+    const image = cropImageRef.current
+    if (!image || !asset || asset.width <= 0 || asset.height <= 0) return
+    const wider = asset.width / asset.height >= width / height
+    image.style.width = wider ? 'auto' : '100%'
+    image.style.height = wider ? '100%' : 'auto'
+  }
+
   function applyUnboundResizePreview(next: SlotGeometry) {
     const layer = cropTransformRef.current
     const preview = resizeImagePreviewRef.current
     if (!layer || !preview) return
+    const [deltaX, deltaY] = toFrameDelta(
+      preview.frameLeftPx + preview.widthPx / 2 - toScreenPx(next.x + next.w / 2, scale),
+      preview.frameTopPx + preview.heightPx / 2 - toScreenPx(next.y + next.h / 2, scale),
+      next.rotation,
+    )
+    const left = toScreenPx(next.w, scale) / 2 - preview.widthPx / 2 + deltaX
+    const top = toScreenPx(next.h, scale) / 2 - preview.heightPx / 2 + deltaY
     Object.assign(layer.style, {
       inset: 'auto',
-      left: `${preview.frameLeftPx - toScreenPx(next.x, scale)}px`,
-      top: `${preview.frameTopPx - toScreenPx(next.y, scale)}px`,
+      left: `${left}px`,
+      top: `${top}px`,
       width: `${preview.widthPx}px`,
       height: `${preview.heightPx}px`,
       transform: preview.transform,
@@ -472,8 +610,8 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
     })
     if (cropBoundsRef.current) {
       Object.assign(cropBoundsRef.current.style, {
-        left: `${preview.boundsLeftPx - toScreenPx(next.x, scale)}px`,
-        top: `${preview.boundsTopPx - toScreenPx(next.y, scale)}px`,
+        left: `${preview.boundsLeftPx - preview.frameLeftPx + left}px`,
+        top: `${preview.boundsTopPx - preview.frameTopPx + top}px`,
         width: `${preview.boundsWidthPx}px`,
         height: `${preview.boundsHeightPx}px`,
         transform: preview.boundsTransform,
@@ -490,7 +628,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
   }
 
   function beginGeometryGesture(kind: GestureKind, resizeDirection?: readonly [number, number]) {
-    resizeImageTransformRef.current = null
+    if (slotRef.current) slotRef.current.dataset.zineGesture = 'true'
     resizeInitialImageTransformRef.current = null
     resizeImageStyleSnapshotRef.current = null
     resizeImagePreviewRef.current = null
@@ -505,6 +643,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
       resizeDirection,
       rotationSnapDegrees: viewOptions.snapToGuides ? SNAP_ROTATION_DEGREES : [],
       rotationSnapThreshold: 3,
+      snapOnCommit: false,
     })
     activeGuideKeysRef.current = ''
     setActiveGuides((current) => current.length === 0 ? current : [])
@@ -543,43 +682,65 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
       <div
         ref={slotRef}
         role="button"
-        tabIndex={0}
+        tabIndex={preview ? -1 : 0}
+        data-zine-slot={slot.id}
+        data-zine-locked={slot.locked || undefined}
+        data-zine-font-loading={previewFont.loading || undefined}
+        data-zine-font-error={previewFont.error || undefined}
         className="group text-left outline-none"
         style={{
           ...slotStyle,
-          cursor: cropEditing ? 'grab' : selected ? 'move' : 'pointer',
-          touchAction: cropEditing ? 'none' : undefined,
+          cursor: interactionDisabled ? 'inherit' : slot.locked ? 'default' : cropEditing ? 'grab' : selected ? 'move' : 'pointer',
+          touchAction: 'none',
           willChange: selected ? 'transform' : undefined,
         }}
         onClick={(event) => {
           event.stopPropagation()
+          if (interactionDisabled) return
           onSelect?.(slot.id)
+        }}
+        onFocus={(event) => {
+          if (!interactionDisabled && event.target === event.currentTarget) onSelect?.(slot.id)
+        }}
+        onMouseDown={(event) => {
+          if (event.button !== 0 || !canEdit || cropEditing || editingText || isEditableTarget(event.target)) return
+          if (event.target instanceof Element && event.target.closest('button')) return
+          event.currentTarget.focus({ preventScroll: true })
+          if (selected) return
+          // Mount the active Moveable before forwarding this same press so a
+          // previously unselected element can be grabbed in one gesture.
+          event.preventDefault()
+          flushSync(() => onSelect?.(slot.id))
+          moveableRef.current?.dragStart(event.nativeEvent)
         }}
         onDoubleClick={(event) => {
           event.stopPropagation()
+          if (!canEdit) return
           if (slot.kind === 'text') {
             onSelect?.(slot.id)
             setEditingText(true)
+            editSlot(slot.id)
           } else {
             beginCrop()
           }
         }}
         onKeyDown={(event) => {
-          if (isEditableTarget(event.target)) return
-          if (event.key !== 'Enter' && event.key !== ' ') return
+          if (!canEdit || isEditableTarget(event.target) || event.key !== 'Enter') return
           event.preventDefault()
+          event.stopPropagation()
           if (event.key === 'Enter' && slot.kind === 'image' && selected && asset) {
             beginCrop()
             return
           }
           if (event.key === 'Enter' && slot.kind === 'text' && selected) {
             setEditingText(true)
+            editSlot(slot.id)
             return
           }
           onSelect?.(slot.id)
         }}
         onPointerDown={(event) => {
-          if (!cropEditing || slot.kind !== 'image' || event.button !== 0 || !event.isPrimary) return
+          if (!canEdit || !cropEditing || slot.kind !== 'image' || event.button !== 0 || !event.isPrimary) return
           event.preventDefault()
           event.stopPropagation()
           cropPointerRef.current = {
@@ -604,7 +765,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           const [deltaX, deltaY] = nextAxis
             ? constrainMovementToAxis(rawDeltaX, rawDeltaY, nextAxis)
             : [rawDeltaX, rawDeltaY]
-          const next = cropSessionRef.current?.pan(deltaX, deltaY, slot.w * scale, slot.h * scale)
+          const next = cropSessionRef.current?.pan(deltaX, deltaY, slot.w * scale, slot.h * scale, slot.rotation)
           if (next) updateCrop(next)
           cropPointerRef.current = { ...pointer, x: event.clientX, y: event.clientY, axis: nextAxis }
           const now = performance.now()
@@ -630,21 +791,14 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         onLostPointerCapture={(event) => {
           if (cropPointerRef.current?.pointerId === event.pointerId) cropPointerRef.current = null
         }}
-        onWheel={(event) => {
-          if (!cropEditing || slot.kind !== 'image' || event.shiftKey) return
-          event.preventDefault()
-          event.stopPropagation()
-          const next = cropSessionRef.current?.zoom(event.deltaY, CROP_SCALE_STEP)
-          if (next) updateCrop(next)
-        }}
         onDragEnter={slot.kind === 'image' ? (event) => {
-          if (!isAssetDrag(event)) return
+          if (!canEdit || !isAssetDrag(event)) return
           event.preventDefault()
           dragDepthRef.current += 1
           setDragOver(true)
         } : undefined}
         onDragOver={slot.kind === 'image' ? (event) => {
-          if (!isAssetDrag(event)) return
+          if (!canEdit || !isAssetDrag(event)) return
           event.preventDefault()
           event.dataTransfer.dropEffect = 'copy'
         } : undefined}
@@ -653,12 +807,13 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           if (dragDepthRef.current === 0) setDragOver(false)
         } : undefined}
         onDrop={slot.kind === 'image' ? (event) => {
+          if (!canEdit || !isAssetDrag(event)) return
           event.preventDefault()
           event.stopPropagation()
           dragDepthRef.current = 0
           setDragOver(false)
           const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE)
-          if (assetId) {
+          if (assetId && assets.some((candidate) => candidate.id === assetId)) {
             updateSlot(spread.id, slot.id, {
               assetId,
               ...(slot.assetId !== assetId ? { imageTransform: createDefaultImageTransform() } : {}),
@@ -669,7 +824,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
         aria-pressed={selected}
         aria-label={t(slot.kind === 'image' ? 'admin.zine_slot_image' : 'admin.zine_slot_text', language)}
       >
-        {slot.kind === 'image' && (
+        {slot.kind === 'image' && (!preview || asset) && (
           <SlotImageContent
             asset={asset}
             imageRef={cropImageRef}
@@ -681,34 +836,48 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
             failedText={t('admin.zine_image_load_failed', language)}
             retryText={t('admin.zine_retry_image', language)}
             replaceText={t('admin.zine_replace_image', language)}
-            onReplace={() => updateSlot(spread.id, slot.id, { assetId: null })}
+            onReplace={canEdit ? () => updateSlot(spread.id, slot.id, { assetId: null }) : undefined}
           />
         )}
         {slot.kind === 'text' && rendered.text && (
           <SlotTextContent
             content={rendered.text.content}
             style={textStyle}
-            placeholder={t('admin.zine_text_edit_hint', language)}
+            placeholder={preview ? undefined : t('admin.zine_text_edit_hint', language)}
             editing={editingText}
-            onEditEnd={() => setEditingText(false)}
+            onEditEnd={() => {
+              setEditingText(false)
+              endEditRequest()
+            }}
             onChange={(content) => {
               if (content !== slot.content) updateSlot(spread.id, slot.id, { content })
             }}
           />
         )}
 
-        {lowRes && !dragOver && (
+        {previewFont.error && !preview && (
+          <span
+            role="img"
+            aria-label={previewFont.error}
+            title={previewFont.error}
+            className="absolute right-1 top-1 z-10 rounded-full bg-destructive p-1 text-destructive-foreground shadow-sm"
+          >
+            <TriangleAlert size={10} />
+          </span>
+        )}
+        {lowRes && !dragOver && !preview && (
           <span
             className="pointer-events-none absolute right-1 top-1 z-10 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm"
             style={{ backgroundColor: 'rgba(217, 119, 6, 0.92)' }}
-            title={t('admin.zine_low_res_hint', language, { dpi: Math.round(effectiveDpi) })}
+            title={t('admin.zine_low_res_hint', language, { dpi: Math.round(effectiveDpi), min: MIN_PRINT_DPI })}
           >
             <TriangleAlert size={10} />
-            {slotHeightPx > 44 && `${Math.round(effectiveDpi)} DPI`}
+            {slotHeightPx > 44 && `${Math.round(effectiveDpi)} PPI`}
           </span>
         )}
-        {(isEmptyImage || isEmptyText) && !dragOver && <div className="pointer-events-none absolute inset-0 border border-dashed" style={{ borderColor: 'rgba(113, 113, 122, 0.5)' }} />}
-        {!selected && !dragOver && <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100" style={{ boxShadow: 'inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 60%, transparent)' }} />}
+        {(isEmptyImage || isEmptyText) && !dragOver && !preview && <div className="pointer-events-none absolute inset-0 border border-dashed" style={{ borderColor: 'rgba(113, 113, 122, 0.5)' }} />}
+        {!selected && !dragOver && !interactionDisabled && <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100" style={{ boxShadow: 'inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 60%, transparent)' }} />}
+        {selected && slot.locked && !preview && <div className="pointer-events-none absolute inset-0 border border-dashed border-primary"><LockKeyhole size={14} className="absolute right-1 top-1 rounded bg-background p-0.5 text-primary" /></div>}
         {dragOver && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center" style={{ backgroundColor: 'color-mix(in srgb, var(--primary) 12%, transparent)', boxShadow: 'inset 0 0 0 2px var(--primary)' }}>
             {slotHeightPx > 44 && <span className="rounded-full px-2.5 py-1 text-[11px] font-medium shadow-sm" style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>{t('admin.zine_drop_here', language)}</span>}
@@ -726,7 +895,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           </span>
         )}
       </div>
-      {(cropEditing || viewOptions.showImageOutlines) && slot.kind === 'image' && asset && (
+      {!preview && (cropEditing || viewOptions.showImageOutlines) && slot.kind === 'image' && asset && (
         <div
           ref={cropControlsRef}
           className="pointer-events-none absolute overflow-visible"
@@ -793,7 +962,7 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           </div>
         </div>
       )}
-      {selected && !cropEditing && (
+      {selected && canEdit && !cropEditing && !editingText && (
         <Moveable
           ref={moveableRef}
           target={slotRef}
@@ -809,6 +978,11 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           snapRotationDegrees={viewOptions.snapToGuides ? SNAP_ROTATION_DEGREES : []}
           snapRotationThreshold={3}
           checkInput
+          preventClickEventOnDrag
+          preventDefault
+          hideDefaultLines={false}
+          origin={false}
+          controlPadding={5}
           onSnap={({ guidelines }) => {
             const matched = guidelines.flatMap((guideline) => {
               const axis = guideline.type === 'vertical' ? 'x' : 'y'
@@ -857,9 +1031,12 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
             const translation = axis
               ? constrainMovementToAxis(beforeTranslate[0], beforeTranslate[1], axis)
               : beforeTranslate
-            const next = { ...initial, x: initial.x + translation[0] / scale, y: initial.y + translation[1] / scale }
+            const next = applyGestureBoundary(
+              { ...initial, x: initial.x + translation[0] / scale, y: initial.y + translation[1] / scale },
+              { bleed, pageH, spreadW },
+            )
             updateGeometryDraft(next)
-            commitLiveGeometry(next)
+            applyLiveDrag((next.x - initial.x) * scale, (next.y - initial.y) * scale, initial.rotation)
             const now = performance.now()
             const logState = frameDragLogRef.current
             logState.moveCount += 1
@@ -890,7 +1067,6 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
             beginGeometryGesture('resize', direction as [number, number])
             setMin([MIN_SLOT_MM * scale, MIN_SLOT_MM * scale])
             if (slot.kind === 'image' && asset && slot.imageFrameBinding === false) {
-              resizeImageTransformRef.current = slot.imageTransform
               resizeInitialImageTransformRef.current = slot.imageTransform
               const placement = calculateImagePlacement(slot.w, slot.h, asset.width, asset.height, slot.imageTransform)
               resizeImagePreviewRef.current = {
@@ -913,13 +1089,13 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           }}
           onResize={({ width, height, drag }) => {
             const initial = gestureSessionRef.current?.initial ?? toSlotGeometry(slot)
-            const next = {
+            const next = applyGestureBoundary({
               ...initial,
               x: initial.x + drag.beforeTranslate[0] / scale,
               y: initial.y + drag.beforeTranslate[1] / scale,
               w: Math.max(MIN_SLOT_MM, width / scale),
               h: Math.max(MIN_SLOT_MM, height / scale),
-            }
+            }, { bleed, pageH, spreadW })
             const imageTransform = slot.kind === 'image' && asset && slot.imageFrameBinding === false
               ? preserveImageTransformOnFrameResize(
                 gestureSessionRef.current?.initial ?? toSlotGeometry(slot),
@@ -929,9 +1105,9 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
                 resizeInitialImageTransformRef.current ?? slot.imageTransform,
               )
               : undefined
-            if (imageTransform) resizeImageTransformRef.current = imageTransform
             updateGeometryDraft(next)
-            applyLiveResizeGeometry(next, width, height, drag.transform, imageTransform)
+            const transform = `translate3d(${(next.x - initial.x) * scale}px, ${(next.y - initial.y) * scale}px, 0) rotate(${initial.rotation}deg)`
+            applyLiveResizeGeometry(next, width, height, transform, imageTransform)
             if (imageTransform) applyUnboundResizePreview(next)
           }}
           onResizeEnd={() => {
@@ -953,6 +1129,33 @@ export function SlotView({ spread, slot, pageW, pageH, spreadW, bleed, assets, s
           onRotateEnd={commitGeometry}
         />
       )}
+      {cropEditing && slotRef.current?.closest('[data-zine-canvas]') && createPortal(
+        <div
+          data-zine-crop-controls
+          role="toolbar"
+          aria-label={language === 'zh' ? '调整图片' : 'Adjust image'}
+          className="absolute bottom-14 left-1/2 z-50 flex w-max max-w-[calc(100%_-_24px)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <span className="flex items-center gap-1.5 px-2 text-xs font-medium"><Crop size={14} />{language === 'zh' ? '调整图片' : 'Adjust image'}</span>
+          <span className="hidden pr-2 text-[10px] text-muted-foreground xl:inline">{language === 'zh' ? '拖动取景 · 滚轮缩放' : 'Drag to position · Scroll to zoom'}</span>
+          <button type="button" className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring" aria-label={t('admin.zine_reset_crop', language)} title={t('admin.zine_reset_crop', language)} onClick={() => {
+            const next = cropSessionRef.current?.reset()
+            if (next) updateCrop(next)
+          }}><RotateCcw size={14} /></button>
+          <button type="button" className="flex h-8 items-center gap-1 rounded-md px-2 text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring" title="Esc" onClick={cancelCrop}><X size={14} />{language === 'zh' ? '取消' : 'Cancel'}</button>
+          <button type="button" className="flex h-8 items-center gap-1 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Enter" onClick={commitCrop}><Check size={14} />{language === 'zh' ? '完成' : 'Done'}</button>
+        </div>,
+        slotRef.current.closest('[data-zine-canvas]')!,
+      )}
     </>
   )
-}
+}, (previous, next) => (
+  previous.slot === next.slot && previous.spread.id === next.spread.id
+  && previous.assets === next.assets && previous.selected === next.selected
+  && previous.scale === next.scale && previous.pageW === next.pageW
+  && previous.pageH === next.pageH && previous.spreadW === next.spreadW
+  && previous.bleed === next.bleed && previous.viewOptions === next.viewOptions
+  && previous.onSelect === next.onSelect && previous.interactionDisabled === next.interactionDisabled
+  && previous.preview === next.preview
+))

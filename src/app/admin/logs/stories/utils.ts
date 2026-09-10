@@ -8,8 +8,11 @@ export function createEmptyStory(): StoryDto {
   return {
     id: crypto.randomUUID(),
     title: '',
-    content: '',
-    contentJson: null,
+    editorType: 'milkdown',
+    contentEditorTypes: ['milkdown'],
+    tiptapContent: '',
+    tiptapContentJson: null,
+    milkContent: '',
     isPublished: false,
     storyDate: now,
     createdAt: now,

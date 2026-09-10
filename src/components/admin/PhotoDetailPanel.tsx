@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import dynamic from 'next/dynamic'
+import { EditorContentPrompt } from '@mo-gallery/milkdown'
+import { hasEditorContent } from '@mo-gallery/api-client/editor-content'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -34,11 +37,18 @@ import {
   reanalyzePhotoColors,
   getFilmRolls,
   type FilmRollDto,
+  type ArticleContentDto,
 } from '@/lib/api'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminInput, AdminSelect } from '@/components/admin/AdminFormControls'
 import { FilmRollSelectorModal } from '@/components/admin/FilmRollSelectorModal'
-import { countStoryCharacters } from '@/lib/story-rich-content'
+import { getArticlePlainText } from '@/lib/article-content'
+import { activateMilkdownContent, createMilkdownDraftContent } from '@/lib/article-editor'
+import { useLanguage } from '@/contexts/LanguageContext'
+
+const NarrativeMilkdownEditor = dynamic(() => import('@/components/NarrativeMilkdownEditor'), { ssr: false })
+type StoryFormData = ArticleContentDto & { title: string; isPublished: boolean }
+const createStoryForm = (): StoryFormData => ({ ...createMilkdownDraftContent(), title: '', isPublished: false })
 
 interface PhotoDetailPanelProps {
   photo: PhotoDto | null
@@ -69,6 +79,7 @@ export function PhotoDetailPanel({
   notify,
   initialTab = 'info',
 }: PhotoDetailPanelProps) {
+  const { locale } = useLanguage()
   const [editData, setEditData] = useState({
     title: '',
     category: '',
@@ -86,11 +97,9 @@ export function PhotoDetailPanel({
   const [story, setStory] = useState<StoryDto | null>(null)
   const [storyLoading, setStoryLoading] = useState(false)
   const [storyLoaded, setStoryLoaded] = useState(false)
-  const [storyData, setStoryData] = useState({
-    title: '',
-    content: '',
-    isPublished: false,
-  })
+  const [storyData, setStoryData] = useState<StoryFormData>(createStoryForm)
+  const [storyUploadPhotos, setStoryUploadPhotos] = useState<PhotoDto[]>([])
+  const isStoryEditorReady = storyData.editorType === 'milkdown' && hasEditorContent(storyData, 'milkdown')
   const [storySaving, setStorySaving] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [displayColors, setDisplayColors] = useState<string[]>([])
@@ -125,7 +134,8 @@ export function PhotoDetailPanel({
       setActiveTab(initialTab)
       setStory(null)
       setStoryLoaded(false)
-      setStoryData({ title: '', content: '', isPublished: false })
+      setStoryData(createStoryForm())
+      setStoryUploadPhotos([])
       setShowPhotoSelector(false)
       setShowFilmRollSelector(false)
       setSelectedPhotoIds(new Set())
@@ -140,11 +150,7 @@ export function PhotoDetailPanel({
         .then((s) => {
           setStory(s)
           if (s) {
-            setStoryData({
-              title: s.title,
-              content: s.content,
-              isPublished: s.isPublished,
-            })
+            setStoryData(s)
           }
         })
         .catch(() => setStory(null))
@@ -243,9 +249,9 @@ export function PhotoDetailPanel({
   }
 
   const handleSaveStory = async () => {
-    if (!photo || !token) return
-    if (!storyData.title.trim() || !storyData.content.trim()) {
-      notify(t('admin.story_title') + ' / ' + t('admin.log_content') + ' required', 'error')
+    if (!photo || !token || !isStoryEditorReady) return
+    if (!storyData.title.trim()) {
+      notify(t('admin.story_title') + ' required', 'error')
       return
     }
 
@@ -255,7 +261,8 @@ export function PhotoDetailPanel({
         // Update existing story
         const updated = await updateStory(token, story.id, {
           title: storyData.title,
-          content: storyData.content,
+          editorType: 'milkdown',
+          milkContent: storyData.milkContent ?? '',
           isPublished: storyData.isPublished,
         })
         setStory(updated)
@@ -263,9 +270,10 @@ export function PhotoDetailPanel({
         // Create new story with current photo
         const created = await createStory(token, {
           title: storyData.title,
-          content: storyData.content,
+          editorType: 'milkdown',
+          milkContent: storyData.milkContent ?? '',
           isPublished: storyData.isPublished,
-          photoIds: [photo.id],
+          photoIds: Array.from(new Set([photo.id, ...storyUploadPhotos.map((item) => item.id)])),
           coverPhotoId: photo.id,
         })
         setStory(created)
@@ -813,15 +821,29 @@ export function PhotoDetailPanel({
                                 <BookOpen className="w-4 h-4" />
                                 {t('admin.log_content') || 'The Story'}
                               </label>
-                              <textarea
-                                value={storyData.content}
-                                onChange={(e) => setStoryData({ ...storyData, content: e.target.value })}
-                                placeholder={t('admin.story_description_hint')}
-                                className="w-full h-64 p-3 bg-background border border-border focus:border-primary outline-none text-xs font-mono transition-colors resize-none"
-                              />
+                              {isStoryEditorReady ? (
+                                <div className="h-[420px] overflow-hidden border border-border">
+                                  <NarrativeMilkdownEditor
+                                    contentVersion={photo?.id}
+                                    value={storyData.milkContent ?? ''}
+                                    onChange={(milkContent) => setStoryData((previous) => ({ ...previous, milkContent }))}
+                                    token={token}
+                                    photos={[...(story?.photos ?? (photo ? [photo] : [])), ...storyUploadPhotos]}
+                                    cdnDomain={cdnDomain}
+                                    onPhotoUploaded={async (uploaded) => {
+                                      if (story && token) setStory(await addPhotosToStory(token, story.id, [uploaded.id]))
+                                      else setStoryUploadPhotos((previous) => [...previous, uploaded])
+                                    }}
+                                    placeholder={t('admin.story_description_hint')}
+                                    onError={(error) => notify(error.message, 'error')}
+                                  />
+                                </div>
+                              ) : (
+                                <EditorContentPrompt language={locale} targetEditor="Milkdown" sourceEditor="TipTap" scenario={hasEditorContent(storyData, 'milkdown') ? 'use-existing' : hasEditorContent(storyData, 'tiptap') ? 'convert' : 'unavailable'} onAction={() => setStoryData((previous) => ({ ...previous, ...activateMilkdownContent(previous) }))} />
+                              )}
                               <div className="flex justify-end">
                                 <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest opacity-60">
-                                  {countStoryCharacters(storyData.content)} Characters
+                                  {getArticlePlainText(storyData).length} Characters
                                 </span>
                               </div>
                             </div>
@@ -1010,7 +1032,7 @@ export function PhotoDetailPanel({
               </AdminButton>
               <AdminButton
                 onClick={activeTab === 'info' ? handleSave : handleSaveStory}
-                disabled={activeTab === 'info' ? saving : storySaving}
+                disabled={activeTab === 'info' ? saving : storySaving || storyLoading || !isStoryEditorReady}
                 adminVariant="primary"
                 size="lg"
                 className="flex-[1.5] flex items-center justify-center gap-3 transition-all active:scale-[0.98] rounded-none"
@@ -1034,4 +1056,3 @@ export function PhotoDetailPanel({
     </AnimatePresence>
   )
 }
-

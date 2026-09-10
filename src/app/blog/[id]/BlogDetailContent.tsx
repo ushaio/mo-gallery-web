@@ -70,7 +70,7 @@ export function BlogDetailContent({ blog }: BlogDetailContentProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <StoryRichContent content={blog.content} photos={[]} className="story-rich-content--article" />
+          <StoryRichContent editorType={blog.editorType} content={blog.tiptapContent} milkContent={blog.milkContent} photos={[]} className="story-rich-content--article" />
         </motion.article>
 
         <motion.footer

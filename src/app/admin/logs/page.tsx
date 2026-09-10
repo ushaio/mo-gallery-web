@@ -23,7 +23,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { AdminSelect, type SelectOption } from '@/components/admin/AdminFormControls'
-import { countStoryCharacters } from '@/lib/story-rich-content'
+import { getArticlePlainText } from '@/lib/article-content'
+import { getEditorContent } from '@mo-gallery/api-client/editor-content'
 import { formatRelativeTimeLabel } from '@/lib/utils'
 
 // 扩展类型：为故事草稿文件添加预览 URL
@@ -210,7 +211,7 @@ export default function LogsPage() {
     if (!storyDraft) return null
     if (draftSearchQuery) {
       const query = draftSearchQuery.toLowerCase()
-      if (!storyDraft.title?.toLowerCase().includes(query) && !storyDraft.content?.toLowerCase().includes(query)) {
+      if (!storyDraft.title?.toLowerCase().includes(query) && !getArticlePlainText(storyDraft).toLowerCase().includes(query)) {
         return null
       }
     }
@@ -223,7 +224,7 @@ export default function LogsPage() {
     if (!draftSearchQuery) return storyEditorDrafts
     const query = draftSearchQuery.toLowerCase()
     return storyEditorDrafts.filter(d =>
-      d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query)
+      d.title?.toLowerCase().includes(query) || getArticlePlainText(d).toLowerCase().includes(query)
     )
   }, [storyEditorDrafts, draftTypeFilter, draftSearchQuery])
 
@@ -233,7 +234,7 @@ export default function LogsPage() {
     if (!draftSearchQuery) return blogDrafts
     const query = draftSearchQuery.toLowerCase()
     return blogDrafts.filter(d =>
-      d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query)
+      d.title?.toLowerCase().includes(query) || getArticlePlainText(d).toLowerCase().includes(query)
     )
   }, [blogDrafts, draftTypeFilter, draftSearchQuery])
 
@@ -387,8 +388,8 @@ export default function LogsPage() {
                               {filteredStoryDraft.title || t('story.untitled')}
                             </h4>
                             <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                              {filteredStoryDraft.content?.substring(0, 150) || t('admin.no_content')}
-                              {filteredStoryDraft.content?.length > 150 ? '...' : ''}
+                              {getArticlePlainText(filteredStoryDraft).slice(0, 150) || t('admin.no_content')}
+                              {getArticlePlainText(filteredStoryDraft).length > 150 ? '...' : ''}
                             </p>
                             <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
                               <span className="flex items-center gap-1">
@@ -459,16 +460,16 @@ export default function LogsPage() {
                                     )}
                                   </div>
                                   <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                    {draft.content?.substring(0, 150) || t('admin.no_content')}
-                                    {draft.content?.length > 150 ? '...' : ''}
+                                    {getArticlePlainText(draft).slice(0, 150) || t('admin.no_content')}
+                                    {getArticlePlainText(draft).length > 150 ? '...' : ''}
                                   </p>
                                   <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
                                     <span className="flex items-center gap-1">
                                       <Clock className="w-3 h-3" />
                                       {formatRelativeTime(draft.savedAt)}
                                     </span>
-                                    {draft.content && (
-                                      <span>{countStoryCharacters(draft.content)} {t('admin.characters')}</span>
+                                    {getArticlePlainText(draft) && (
+                                      <span>{getArticlePlainText(draft).length} {t('admin.characters')}</span>
                                     )}
                                     {draft.photoIds?.length > 0 && (
                                       <span>{draft.photoIds.length} {t('admin.photos')}</span>
@@ -542,8 +543,8 @@ export default function LogsPage() {
                                   )}
                                 </div>
                                 <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                  {draft.content?.substring(0, 150) || t('admin.no_content')}
-                                  {draft.content?.length > 150 ? '...' : ''}
+                                  {getArticlePlainText(draft).slice(0, 150) || t('admin.no_content')}
+                                  {getArticlePlainText(draft).length > 150 ? '...' : ''}
                                 </p>
                                 <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-mono uppercase">
                                   <span className="flex items-center gap-1">
@@ -553,8 +554,8 @@ export default function LogsPage() {
                                   {draft.category && (
                                     <span>{draft.category}</span>
                                   )}
-                                  {draft.content && (
-                                    <span>{draft.content.length} {t('admin.characters')}</span>
+                                  {getArticlePlainText(draft) && (
+                                    <span>{getArticlePlainText(draft).length} {t('admin.characters')}</span>
                                   )}
                                 </div>
                               </div>
@@ -659,7 +660,7 @@ export default function LogsPage() {
               <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                 <div className="prose prose-sm dark:prose-invert max-w-none">
                   <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/30 p-4 rounded-lg overflow-x-auto">
-                    {selectedDraft.content || t('admin.no_content')}
+                    {getEditorContent(selectedDraft) || t('admin.no_content')}
                   </pre>
                 </div>
 

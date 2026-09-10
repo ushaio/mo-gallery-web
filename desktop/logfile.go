@@ -12,11 +12,11 @@ import (
 )
 
 // setupFileLogging tees standard log output into a daily file under the app
-// configuration directory so runtime diagnostics survive in packaged builds
+// logs directory so runtime diagnostics survive in packaged builds
 // where stderr is not attached to any console. The file stays open for the
 // process lifetime; the log package serializes writes.
 func setupFileLogging() {
-	dir := filepath.Join(config.ConfigDir(), "logs")
+	dir := config.LogDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}

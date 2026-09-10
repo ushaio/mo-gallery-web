@@ -9,7 +9,7 @@ import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useSettings } from '@/contexts/SettingsContext'
-import { buildStoryPreviewText } from '@/lib/story-rich-content'
+import { getArticlePlainText } from '@/lib/article-content'
 import { getStoryCoverImageStyle } from '@/lib/story-cover'
 
 const STORY_GRID_CLASSNAME = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-8 pl-4 md:pl-8'
@@ -106,7 +106,7 @@ export function StoryListContent({ initialStories }: StoryListContentProps) {
               return {
                 ...story,
                 coverUrl: getStoryCoverUrl(story, settings?.cdn_domain),
-                previewText: buildStoryPreviewText(story.content),
+                previewText: getArticlePlainText(story).slice(0, 200),
                 dateLabel: createdAt.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }),
                 timeLabel: createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 serialNumber: String(index + 1).padStart(2, '0'),

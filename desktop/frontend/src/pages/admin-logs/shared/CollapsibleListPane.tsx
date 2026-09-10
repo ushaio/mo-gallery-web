@@ -45,7 +45,7 @@ export function CollapsibleListPane({ collapsed, onToggle, t, header, children, 
   }
 
   return (
-    <aside className="flex w-[300px] min-w-0 shrink-0 flex-col overflow-hidden border-r border-border xl:w-[340px]">
+    <aside className="flex w-[340px] min-w-0 shrink-0 flex-col overflow-hidden border-r border-border xl:w-[380px]">
       {/* 面板头：子页签导航（收起/展开控制已移至编辑器顶栏，见 EditorShell） */}
       <div className="flex shrink-0 items-center gap-1.5 px-2 pb-2 pt-2">{header}</div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>

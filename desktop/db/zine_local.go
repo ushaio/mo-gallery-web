@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -45,11 +44,11 @@ type zineProjectMetadata struct {
 }
 
 func LocalZinePath(configDir string) string {
-	return filepath.Join(configDir, localZineFileName)
+	return localDBPath(configDir, localZineFileName)
 }
 
 func ConnectLocalZine(configDir string) error {
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
+	if err := ensureDBDir(configDir); err != nil {
 		return fmt.Errorf("create local Zine database directory: %w", err)
 	}
 

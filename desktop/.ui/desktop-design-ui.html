@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emulsion · 设计台</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3eee5;--card:#fffdf8;--card2:#f8f3ea;--ink:#1c1917;--muted:#7c736a;--line:#e6dfd2;
+  --accent:#d9832a;--accent-ink:#fff;--accent-soft:rgba(217,131,42,.13);--ok:#3f8f5a;
+  --paper:#fffefb;--paper-line:rgba(0,0,0,.07);
+  --shadow:0 1px 2px rgba(60,40,20,.05),0 12px 32px -16px rgba(60,40,20,.18);
+  --r-lg:18px;--r-md:12px;--r-sm:8px;--mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+[data-theme="dark"]{
+  --bg:#14100e;--card:#1d1815;--card2:#231d19;--ink:#efe6d8;--muted:#948878;--line:#2d2621;
+  --accent:#f0a03c;--accent-ink:#1a1208;--accent-soft:rgba(240,160,60,.14);--ok:#6cc08a;
+  --paper:#f2ebe0;--paper-line:rgba(0,0,0,.1);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px -16px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,"PingFang SC","Noto Sans SC",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;transition:.3s;padding-bottom:80px}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.045;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>")}
+[data-theme="dark"] body::before{mix-blend-mode:screen;opacity:.06}
+.serif{font-family:"Noto Serif SC","Songti SC",serif}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--muted);background:var(--card)}
+.btn{padding:7px 13px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.tag{font-size:11px;padding:2px 7px;border-radius:5px;background:var(--card2);color:var(--muted);border:1px solid var(--line)}
+.tag.pre{color:var(--accent);background:var(--accent-soft);border-color:transparent}
+
+/* 顶栏 */
+.top{display:flex;align-items:center;justify-content:space-between;padding:22px 0 8px}
+.brand{font-size:12px;letter-spacing:.32em;color:var(--muted);font-weight:600}.brand b{color:var(--ink)}
+.top-r{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}
+.status{display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card)}
+.status .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(63,143,90,.18)}
+.status.off .dot{background:var(--muted);box-shadow:none}
+.icon-btn{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);background:var(--card)}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* Hero + 起稿框 */
+.hero{padding:34px 0 10px;text-align:center}
+.hero h1{font-size:38px;font-weight:600;line-height:1.2}
+.hero .sub{color:var(--muted);margin-top:6px;font-size:13.5px}
+.omni-box{margin:22px auto 0;max-width:900px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);transition:.25s;overflow:hidden}
+.omni-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)}
+.omni-box.dragover{border-color:var(--accent);border-style:dashed;background:var(--accent-soft)}
+.omni-row{display:flex;align-items:center;gap:12px;padding:16px 18px}
+.omni-row .spark{color:var(--accent);font-size:18px}
+.field{position:relative;flex:1;height:26px}
+.field input,.field .ghost{position:absolute;inset:0;font:inherit;font-size:17px;background:transparent;border:0;outline:0;color:var(--ink)}
+.field .ghost{color:var(--muted);opacity:.55;pointer-events:none;white-space:pre}
+.field input::placeholder{color:var(--muted);opacity:.7}
+.mats{display:flex;gap:8px;padding:0 18px 14px;align-items:center;flex-wrap:wrap}
+.mats .lbl{font-size:12px;color:var(--muted);margin-right:4px}
+.mat{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:999px;border:1px solid var(--line);background:var(--card2);cursor:grab;transition:.15s;font-size:12.5px}
+.mat:hover{border-color:var(--accent)}
+.mat.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.mat .th{display:flex}
+.mat .th i{width:22px;height:22px;border-radius:50%;border:2px solid var(--card);background-size:cover;margin-right:-8px}
+.mat small{color:var(--muted);font-size:11px}
+.mat.on small{color:var(--accent);opacity:.8}
+.response{border-top:1px solid var(--line);padding:18px;display:none;animation:fade .25s}
+.response.show{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.resp-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:12px;color:var(--muted)}
+.resp-head b{color:var(--ink);font-weight:500;font-size:13px}
+.steps{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.step{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:var(--r-sm);background:var(--card2);font-size:13px;animation:fade .3s}
+.step .st{width:16px;height:16px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:10px}
+.step.running .st{border:1.5px solid var(--accent);border-top-color:transparent;animation:spin .8s linear infinite}
+.step.done .st{background:var(--ok);color:#fff}
+.step.done{color:var(--muted)}.step .res{color:var(--ink);font-weight:500}
+@keyframes spin{to{transform:rotate(360deg)}}
+.schemes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.scheme{background:var(--card2);border:1px solid var(--line);border-radius:var(--r-md);padding:12px;transition:.2s;cursor:pointer;animation:fade .4s}
+.scheme:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
+.scheme .name{font-weight:500;margin-top:10px;display:flex;justify-content:space-between;align-items:center}
+.scheme .desc{font-size:12px;color:var(--muted)}
+.scheme .acts{display:flex;gap:6px;margin-top:10px}
+.after{display:flex;gap:8px;margin-top:14px;align-items:center;font-size:12.5px;color:var(--muted)}
+
+/* 纸张渲染 */
+.paper{background:var(--paper);border:1px solid var(--paper-line);box-shadow:0 1px 2px rgba(0,0,0,.06),0 8px 20px -10px rgba(0,0,0,.25);position:relative;overflow:hidden}
+.im{background-size:cover;background-position:center;background-color:#8c7355}
+.ln{height:2px;background:rgba(0,0,0,.18);border-radius:1px;margin-top:3px}
+.ln.h{height:4px;width:55%;background:rgba(0,0,0,.4)}
+.ln.s{width:70%}.ln.xs{width:40%}
+.zine{display:flex;aspect-ratio:2/1.35}
+.zine .pg{flex:1;padding:7%;display:flex;flex-direction:column;gap:5%;position:relative}
+.zine::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:14px;margin-left:-7px;background:linear-gradient(90deg,transparent,rgba(0,0,0,.14),transparent);pointer-events:none}
+.zine .pg .im{flex:1}
+.zine.v1 .pg{padding:0}.zine.v1 .pg .im{flex:1}
+.zine.v2 .pg{padding:14% 12%}
+.zine .row{display:flex;gap:5%;flex:1}.zine .row .im{flex:1}
+.zine .cover{position:absolute;inset:0;padding:8%;display:flex;flex-direction:column;justify-content:flex-end;color:#fff;font-family:"Noto Serif SC",serif}
+.zine .cover .im{position:absolute;inset:0}.zine .cover span{position:relative;font-size:12px;letter-spacing:.2em}
+.cs{display:grid;gap:3px;padding:5%;aspect-ratio:1/1.35;grid-template-columns:repeat(6,1fr);align-content:start}
+.cs .im{aspect-ratio:3/2;border-radius:1px;position:relative}
+.cs.film .im::before{content:"";position:absolute;left:0;right:0;top:0;height:14%;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(0,0,0,.6) 3px 6px);background-color:rgba(20,12,6,.7)}
+.cs .cap{grid-column:1/-1;display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:rgba(0,0,0,.45);margin-top:4px}
+.poster{aspect-ratio:5/7;padding:6%;display:flex;flex-direction:column}
+.poster .im{flex:1}
+.poster .t{font-family:"Noto Serif SC",serif;font-size:11px;margin-top:8%;color:rgba(0,0,0,.8);display:flex;justify-content:space-between;align-items:baseline}
+.poster .t small{font-family:var(--mono);font-size:7px;opacity:.5}
+.poster.v1{padding:0}.poster.v1 .im{flex:1}.poster.v1 .t{position:absolute;left:8%;bottom:8%;color:#fff;margin:0;width:84%}
+.poster.v2{padding:12% 10%}
+.col{aspect-ratio:1;padding:4%;display:grid;gap:3%;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)}
+.col .im:first-child{grid-column:span 2;grid-row:span 2}
+.col.v1 .im:first-child{grid-column:span 1;grid-row:span 1}.col.v1 .im:nth-child(5){grid-column:span 2;grid-row:span 2}
+.col.v2{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr)}.col.v2 .im:first-child{grid-column:span 1;grid-row:span 1}.col.v2 .im:nth-child(n+5){display:none}
+
+/* 区块 */
+.sec{margin-top:36px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.sec-h h2{font-size:12px;letter-spacing:.2em;font-weight:600;color:var(--muted)}
+.sec-h .more{font-size:12px;color:var(--muted)}
+/* 继续上次 */
+.recent{display:flex;gap:12px}
+.rc{display:flex;gap:12px;align-items:center;padding:10px 14px 10px 10px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);cursor:pointer;transition:.15s;min-width:280px}
+.rc:hover{border-color:var(--accent)}
+.rc .paper{width:96px;flex:none}
+.rc .t{font-size:13.5px;font-weight:500}.rc small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+.rc .bar{width:70px;height:4px;border-radius:2px;background:var(--line);margin-top:6px;overflow:hidden}.rc .bar i{display:block;height:100%;background:var(--accent)}
+/* AI 起稿 */
+.drafts{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.dc{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);overflow:hidden;position:relative;transition:.2s}
+.dc:hover{border-color:var(--accent)}
+.dc .prev{padding:22px 24px 14px;background:var(--card2);display:grid;place-items:center;min-height:230px;position:relative}
+.dc .prev .paper{width:100%;max-width:220px;transition:.3s}
+.dc .prev .paper.flip{animation:flip .45s}
+@keyframes flip{0%{transform:rotateY(0)}50%{transform:rotateY(90deg);opacity:.3}100%{transform:rotateY(0)}}
+.dc .ev{position:absolute;inset:0;background:rgba(28,25,23,.86);color:#f3eee5;padding:18px;font-size:12.5px;line-height:1.7;opacity:0;transition:.2s;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.dc .prev:hover .ev{opacity:1}
+.dc .ev b{color:var(--accent);font-weight:500;display:block;margin-bottom:4px;font-size:11px;letter-spacing:.15em}
+.dc .info{padding:12px 14px}
+.dc .info .t{font-weight:500;display:flex;justify-content:space-between;align-items:center}
+.dc .info .t small{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400}
+.dc .info .d{font-size:12px;color:var(--muted)}
+.dc .acts{display:flex;gap:6px;margin-top:10px}
+.skill{margin-top:14px;padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r-md);display:flex;align-items:center;gap:14px;font-size:13px}
+.skill .paper{width:58px}
+.skill .t{flex:1}.skill small{display:block;color:var(--muted);font-size:12px}
+.skill.hide{display:none}
+/* 从格式开始 */
+.formats{display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:stretch}
+.flist{display:flex;flex-direction:column;gap:8px}
+.fi{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--card);cursor:pointer;transition:.15s;position:relative}
+.fi:hover,.fi.on{border-color:var(--accent);background:var(--accent-soft)}
+.fi.over{border-style:dashed;border-color:var(--accent);background:var(--accent-soft)}
+.fi .ic{width:32px;height:32px;border-radius:8px;background:var(--card2);display:grid;place-items:center;flex:none;font-size:15px}
+.fi.on .ic{background:var(--accent);color:var(--accent-ink)}
+.fi .t{flex:1}
+.fi .t p{font-weight:500;display:flex;align-items:center;gap:8px}
+.fi .t small{color:var(--muted);font-size:12px;display:block}
+.fi .sizes{display:flex;gap:4px;margin-top:6px}
+.fi .sizes span{font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted);background:var(--card)}
+.fi .sizes span:hover,.fi .sizes span.on{border-color:var(--accent);color:var(--accent)}
+.fstage{background:var(--card2);border:1px solid var(--line);border-radius:var(--r-md);padding:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:360px;position:relative}
+.fstage .paper{width:100%;max-width:420px;transition:.3s}
+.fstage .cap{font-size:12px;color:var(--muted);display:flex;gap:14px;align-items:center}
+.fstage .cap b{color:var(--ink);font-weight:500}
+.fstage .hint{position:absolute;top:12px;right:14px;font-size:11px;color:var(--muted)}
+/* toast / veil */
+.toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;display:flex;gap:12px;align-items:center;opacity:0;transition:.25s;z-index:60}
+.toast.show{opacity:1;transform:translate(-50%,0)}.toast button{color:var(--accent);font-weight:600}
+.veil{position:fixed;inset:12px;z-index:40;background:var(--accent-soft);backdrop-filter:blur(3px);display:none;place-items:center;font-size:22px;font-family:"Noto Serif SC",serif;border:3px dashed var(--accent);border-radius:20px}
+.veil.show{display:grid}
+@media (max-width:900px){.schemes,.drafts{grid-template-columns:1fr}.formats{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand"><b>EMULSION</b> · 设计台</div>
+    <div class="top-r">
+      <div class="status" id="status" title="点击模拟离线"><span class="dot"></span><span id="statusTxt">Skill 已就绪 · 3 个社区版式</span></div>
+      <a class="btn ghost sm" href="#" onclick="toast('已打开空白画布');return false">空白画布 →</a>
+      <button class="icon-btn" id="themeBtn">☾</button>
+    </div>
+  </div>
+
+  <section class="hero">
+    <h1 class="serif">今天想设计什么？</h1>
+    <p class="sub">描述它、拖照片进来，或从下面选一卷。排好了再进编辑器改。</p>
+
+    <div class="omni-box" id="omni">
+      <div class="omni-row">
+        <span class="spark">✦</span>
+        <div class="field"><div class="ghost" id="ghost"></div><input id="inp" placeholder='试试："把大慈寺那卷排成 12 页 Zine，留白多一点"' autocomplete="off"></div>
+        <kbd>Tab</kbd><span style="font-size:12px;color:var(--muted)">补全</span>
+        <button class="btn primary" id="go">起稿</button>
+      </div>
+      <div class="mats" id="mats">
+        <span class="lbl">最近素材</span>
+        <div class="mat" draggable="true" data-m="roll7"><span class="th"></span>胶卷 #7 <small>12 张 · Portra</small></div>
+        <div class="mat" draggable="true" data-m="sep"><span class="th"></span>9 月数码 <small>41 张</small></div>
+        <div class="mat" draggable="true" data-m="album"><span class="th"></span>相册 · 秋日寺门 <small>6 张</small></div>
+        <div class="mat" draggable="true" data-m="rain"><span class="th"></span>叙事《雨后》配图 <small>6 张</small></div>
+      </div>
+      <div class="response" id="resp">
+        <div class="resp-head"><b id="respTitle"></b><span>Esc 收起 · 方案都是用这些照片真排出来的</span></div>
+        <div id="respBody"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><h2>继续上次</h2></div>
+    <div class="recent" id="recent"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><h2>AI 起稿 · 基于你的照片库，已经排好了</h2><span class="more">悬停预览看依据 · 每张都可以换排法 / 换素材</span></div>
+    <div class="drafts" id="drafts"></div>
+    <div class="skill" id="skill">
+      <div class="paper cs film" id="skillPrev"></div>
+      <div class="t">社区版式 · <b>lin 的接触印相风格</b><small>把胶卷 #7 用这个版式排一版？带齿孔、单色图注、手写卷号。来自官方 Skill 库，离线时自动隐藏。</small></div>
+      <button class="btn sm" onclick="startPlan('roll7','联系表 · 接触印相风格')">试试</button>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><h2>从格式开始</h2><span class="more">悬停用你的照片实时预览 · 把上面的素材拖到格式上直接生成</span></div>
+    <div class="formats">
+      <div class="flist" id="flist">
+        <div class="fi on" data-f="zine"><div class="ic">▤</div><div class="t"><p>Zine</p><small>编排跨页、封面与文字，导出可打印的小志</small><div class="sizes"><span class="on">A5 骑马钉</span><span>方 21cm</span><span>口袋本</span></div></div></div>
+        <div class="fi" data-f="col"><div class="ic">⊞</div><div class="t"><p>拼图</p><small>多张照片组合为自由版式</small><div class="sizes"><span class="on">1:1</span><span>4:5</span><span>16:9</span></div></div></div>
+        <div class="fi" data-f="poster"><div class="ic">▯</div><div class="t"><p>海报 <span class="tag pre">预览版</span></p><small>单页摄影海报 · 可导出图片，编辑器精修开发中</small><div class="sizes"><span class="on">50×70</span><span>A3</span><span>竖屏</span></div></div></div>
+        <div class="fi" data-f="cs"><div class="ic">▦</div><div class="t"><p>联系表 <span class="tag pre">预览版</span></p><small>按网格整理并输出摄影选片</small><div class="sizes"><span class="on">6 列 A4</span><span>5 列</span><span>带图注</span></div></div></div>
+      </div>
+      <div class="fstage" id="fstage">
+        <span class="hint">用「胶卷 #7」预览</span>
+        <div id="stagePaper"></div>
+        <div class="cap" id="stageCap"></div>
+        <div style="display:flex;gap:8px"><button class="btn primary" id="stageGo">用这个格式开始</button><button class="btn" id="stageVar">换一种排法</button></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="veil" id="veil">松手，我先看看这些照片能排成什么</div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button onclick="toast('已撤销')">撤销</button></div>
+
+<script>
+/* ---------- 数据 ---------- */
+const P=['temple1','temple2','temple3','street1','rain1','neon1','window1','street2','cat1','river1','river2','lane1'];
+const img=(id,w=400,h=280)=>`https://picsum.photos/seed/${id}/${w}/${h}`;
+const MATS={
+  roll7:{name:'胶卷 #7',ids:['temple1','temple2','temple3','street1','window1','river1','street2','cat1','lane1','rain1','neon1','river2'],meta:'12 张 · Portra 400 · 大慈寺',film:true},
+  sep:{name:'9 月数码',ids:['neon1','street1','temple3','cat1','river2','lane1','rain1','temple1','street2','window1','temple2','river1'],meta:'41 张 · 数码 · 成都'},
+  album:{name:'相册 · 秋日寺门',ids:['temple1','temple2','temple3','street1','window1','river1'],meta:'6 张 · 同一下午'},
+  rain:{name:'《雨后》配图',ids:['rain1','street2','river1','lane1','window1','neon1'],meta:'6 张 · 叙事配图'},
+};
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const im=(id,style='')=>`<div class="im" style="background-image:url(${img(id)});${style}"></div>`;
+
+/* ---------- 渲染器 ---------- */
+const R={
+  zine(ids,v=0,cover=false){
+    const [a,b,c,d]=ids;
+    if(cover)return `<div class="paper zine"><div class="pg"><div class="ln h" style="margin-top:auto"></div><div class="ln s"></div><div class="ln xs"></div></div><div class="pg"><div class="cover">${im(a)}<span>${MATS.roll7.name.toUpperCase()} · ZINE</span></div></div></div>`;
+    const V=[
+      `<div class="paper zine"><div class="pg">${im(a)}</div><div class="pg">${im(b,'flex:0 0 55%')}<div class="ln h"></div><div class="ln s"></div><div class="ln"></div><div class="ln xs"></div></div></div>`,
+      `<div class="paper zine v1"><div class="pg">${im(a)}</div><div class="pg">${im(b)}</div></div>`,
+      `<div class="paper zine v2"><div class="pg"><div class="ln xs" style="margin-bottom:auto"></div></div><div class="pg">${im(c||a)}</div></div>`,
+      `<div class="paper zine"><div class="pg"><div class="row">${im(a)}${im(b)}</div><div class="row">${im(c)}${im(d)}</div></div><div class="pg">${im(ids[4]||a)}<div class="ln xs"></div></div></div>`,
+    ];return V[v%V.length];
+  },
+  cs(ids,v=0,film=false){
+    const n=v%2?15:18,cols=v%2?5:6;const list=Array.from({length:n},(_,i)=>ids[i%ids.length]);
+    return `<div class="paper cs ${film?'film':''}" style="grid-template-columns:repeat(${cols},1fr)">${list.map(id=>im(id)).join('')}<div class="cap"><span>ROLL #7 · PORTRA 400</span><span>${n}/36</span></div></div>`;
+  },
+  poster(ids,v=0){const V=['','v1','v2'];return `<div class="paper poster ${V[v%3]}">${im(ids[0])}<div class="t"><span>雨后 · 玉林</span><small>EMULSION · 2026.09</small></div></div>`},
+  col(ids,v=0){const V=['','v1','v2'];return `<div class="paper col ${V[v%3]}">${ids.slice(0,5).map(id=>im(id)).join('')}</div>`},
+};
+
+/* ---------- 素材胶囊 ---------- */
+let curMat=null;
+$$('.mat').forEach(m=>{
+  const ids=MATS[m.dataset.m].ids.slice(0,3);
+  m.querySelector('.th').innerHTML=ids.map(id=>`<i style="background-image:url(${img(id,60,60)})"></i>`).join('');
+  m.onclick=()=>{const on=m.classList.contains('on');$$('.mat').forEach(x=>x.classList.remove('on'));if(!on){m.classList.add('on');curMat=m.dataset.m;$('#inp').placeholder=`这 ${MATS[curMat].ids.length} 张，想做成什么？比如"12 页 Zine，留白多一点"`;$('#inp').focus();}else{curMat=null;$('#inp').placeholder='试试："把大慈寺那卷排成 12 页 Zine，留白多一点"';}};
+  m.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',m.dataset.m);e.dataTransfer.effectAllowed='copy'});
+});
+
+/* ---------- 起稿框 ---------- */
+const inp=$('#inp'),ghost=$('#ghost');
+const SUG=['把大慈寺那卷排成 12 页 Zine，留白多一点','把 9 月的数码做一张联系表','用《雨后》的配图做一张竖版海报','把秋日寺门拼成 4:5 的图发社交'];
+inp.oninput=()=>{const v=inp.value;const m=v.length>1?SUG.find(s=>s.startsWith(v)&&s!==v):null;ghost.textContent=m?v+m.slice(v.length):''};
+inp.onkeydown=e=>{
+  if(e.key==='Tab'&&ghost.textContent){e.preventDefault();inp.value=ghost.textContent;ghost.textContent=''}
+  if(e.key==='Enter'&&(inp.value.trim()||curMat))goIntent();
+  if(e.key==='Escape'){$('#resp').classList.remove('show')}
+};
+$('#go').onclick=goIntent;
+function goIntent(){
+  const v=inp.value.trim();ghost.textContent='';
+  let mat=curMat||(/寺|Portra|胶卷/.test(v)?'roll7':/雨后/.test(v)?'rain':/9 ?月|数码/.test(v)?'sep':/秋日|相册/.test(v)?'album':'roll7');
+  let fmt=/联系表/.test(v)?'cs':/海报/.test(v)?'poster':/拼图|社交/.test(v)?'col':'zine';
+  const opts={pages:v.match(/(\d+)\s*页/)?.[1],white:/留白/.test(v),square:/方/.test(v)};
+  startPlan(mat,null,fmt,opts);
+}
+const omni=$('#omni');
+omni.addEventListener('dragover',e=>{e.preventDefault();omni.classList.add('dragover')});
+omni.addEventListener('dragleave',e=>{if(!omni.contains(e.relatedTarget))omni.classList.remove('dragover')});
+omni.addEventListener('drop',e=>{e.preventDefault();omni.classList.remove('dragover');const m=e.dataTransfer.getData('text/plain');if(MATS[m]){pickIntent(m)}});
+function pickIntent(m){
+  open(`你拖进来了「${MATS[m].name}」· ${MATS[m].meta}`);
+  $('#respBody').innerHTML=`<div style="display:flex;gap:6px;margin-bottom:14px">${MATS[m].ids.slice(0,8).map(id=>im(id,'width:52px;height:40px;border-radius:5px')).join('')}</div>
+  <div class="serif" style="font-size:15px;margin-bottom:10px">想把它们做成什么？</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn primary" onclick="startPlan('${m}',null,'zine')">▤ 12 页 Zine</button>
+    <button class="btn" onclick="startPlan('${m}',null,'cs')">▦ 联系表</button>
+    <button class="btn" onclick="startPlan('${m}',null,'poster')">▯ 海报</button>
+    <button class="btn" onclick="startPlan('${m}',null,'col')">⊞ 拼图</button>
+    <button class="btn ghost" onclick="startPlan('${m}',null,'zine',{all:true})">都排一下，我挑</button>
+  </div>`;
+}
+function open(t){$('#resp').classList.add('show');$('#respTitle').textContent=t;$('#respBody').innerHTML='';window.scrollTo({top:0,behavior:'smooth'})}
+function step(box,l,r){const el=document.createElement('div');el.className='step running';el.innerHTML=`<span class="st"></span><span>${l}</span>`;box.appendChild(el);setTimeout(()=>{el.classList.replace('running','done');el.querySelector('.st').textContent='✓';if(r)el.insertAdjacentHTML('beforeend',`<span class="res">${r}</span>`)},380);return el}
+
+const FN={zine:'Zine',cs:'联系表',poster:'海报',col:'拼图'};
+function startPlan(m,title,fmt='zine',opts={}){
+  const M=MATS[m];open(title||`${M.name} → ${FN[fmt]}`);
+  const body=$('#respBody');body.innerHTML=`<div class="steps"></div>`;const box=body.querySelector('.steps');
+  const steps=[
+    ['解析意图',`素材=${M.name} · 格式=${FN[fmt]}${opts.pages?' · '+opts.pages+' 页':''}${opts.white?' · 留白多':''}`],
+    [`读取 ${M.ids.length} 张照片的色调、方向与时间`,''],
+    ['按节奏排序',M.film?'暖→冷 · 竖幅集中在中段':'亮→暗 · 夜景收尾'],
+    ['参考你上次的偏好',fmt==='zine'?'A5 · 每跨页 1～2 张 · 图注在外侧':'和上次一样的边距'],
+    ['生成 3 个方案',''],
+  ];
+  steps.forEach((s,i)=>setTimeout(()=>{step(box,s[0],s[1]);if(i===steps.length-1)setTimeout(()=>schemes(m,fmt,opts),450)},i*420));
+}
+function schemes(m,fmt,opts){
+  const M=MATS[m];const body=$('#respBody');
+  const defs=opts.all?[['zine',0,'Zine · 12 页 A5'],['cs',0,'联系表 · 6 列'],['poster',0,'海报 · 50×70']]
+    :fmt==='zine'?[['zine',opts.white?2:0,opts.white?'留白版 · 每页一张':'经典 · 图文对页'],['zine',1,'出血版 · 8 页更紧凑'],['zine',3,'密集 · 四宫格开场']]
+    :fmt==='cs'?[['cs',0,'6 列 · 带卷号'],['cs',1,'5 列 · 更大'],['cs',0,'接触印相 · 齿孔版']]
+    :fmt==='poster'?[['poster',0,'留边 · 标题在下'],['poster',1,'出血 · 标题压图'],['poster',2,'画廊 · 宽边']]
+    :[['col',0,'主图 + 四张'],['col',1,'主图在右下'],['col',2,'四宫格']];
+  body.insertAdjacentHTML('beforeend',`<div class="schemes">${defs.map((d,i)=>`<div class="scheme" style="animation-delay:${i*.08}s" data-i="${i}">
+    ${R[d[0]](M.ids,d[1],d[0]==='cs'&&i===2)}
+    <div class="name"><span>${d[2]}</span><span class="tag">${i===0?'推荐':i===1?'备选':'另一种'}</span></div>
+    <div class="desc">${i===0?'最接近你以前的做法':i===1?'节奏更快，适合社交传播':'换个思路'}</div>
+    <div class="acts"><button class="btn primary sm">打开编辑</button><button class="btn sm">以它为底再改</button></div>
+  </div>`).join('')}</div>
+  <div class="after">还不对？<button class="btn sm" onclick="startPlan('${m}',null,'${fmt}',{white:true})">留白再多点</button><button class="btn sm" onclick="startPlan('${m}',null,'${fmt}',{pages:8})">页数减半</button><button class="btn sm" onclick="pickIntent('${m}')">换格式</button><span style="margin-left:auto">生成的都是草稿，进编辑器后每一页都能单独重排</span></div>`);
+  body.querySelectorAll('.scheme .primary').forEach(b=>b.onclick=e=>{e.stopPropagation();toast('已在编辑器打开（草稿态）')});
+  body.querySelectorAll('.scheme .btn:not(.primary)').forEach(b=>b.onclick=e=>{e.stopPropagation();inp.value='以方案为底，';inp.focus()});
+}
+
+/* 全页拖文件 */
+const veil=$('#veil');let depth=0;
+window.addEventListener('dragenter',e=>{if([...e.dataTransfer.types].includes('Files')){depth++;veil.classList.add('show')}});
+window.addEventListener('dragleave',e=>{if([...e.dataTransfer.types].includes('Files')&&--depth<=0){veil.classList.remove('show');depth=0}});
+window.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('Files'))e.preventDefault()});
+window.addEventListener('drop',e=>{if([...e.dataTransfer.types].includes('Files')){e.preventDefault();veil.classList.remove('show');depth=0;pickIntent('roll7')}});
+
+/* ---------- 继续上次 ---------- */
+$('#recent').innerHTML=`
+<div class="rc" onclick="toast('已打开 Zine《夏日》· 第 3 页')">${R.zine(MATS.album.ids,0)}<div><div class="t">Zine《夏日》<small>第 3 / 12 页 · 昨天 23:10</small><div class="bar"><i style="width:25%"></i></div></div></div></div>
+<div class="rc" onclick="toast('已打开拼图')">${R.col(MATS.sep.ids,1)}<div><div class="t">拼图 · 未命名<small>4:5 · 3 天前 · 还没导出</small><div class="bar"><i style="width:80%"></i></div></div></div></div>`;
+
+/* ---------- AI 起稿 ---------- */
+const DR=[
+  {m:'roll7',f:'zine',size:'12 页 · A5',why:['刚扫完的整卷，36 张里选了 12 张','同一地点 · 同一下午','你上一本 Zine 也是 A5、图注在外侧'],cover:true},
+  {m:'sep',f:'cs',size:'41 格 · A4',why:['本月数码还没整理','按拍摄日分组，夜景放最后','联系表是你每月都会做的'],},
+  {m:'rain',f:'poster',size:'50×70',why:['《雨后》是本月阅读最多的叙事','第一张配图是横幅、主体居中，适合做海报','标题沿用叙事名']},
+];
+const state=DR.map(()=>({v:0,mi:0}));
+const matKeys=Object.keys(MATS);
+function renderDrafts(){
+  $('#drafts').innerHTML=DR.map((d,i)=>{const s=state[i],m=matKeys[(matKeys.indexOf(d.m)+s.mi)%matKeys.length],M=MATS[m];
+    return `<div class="dc" data-i="${i}">
+      <div class="prev">${R[d.f](M.ids,s.v,d.f==='zine'?d.cover&&s.v===0:d.f==='cs'?M.film:false)}
+        <div class="ev"><b>为什么是这个</b>${d.why.map(w=>`<span>· ${w}</span>`).join('')}</div></div>
+      <div class="info"><div class="t"><span>${M.name} → ${FN[d.f]}</span><small>${d.size}</small></div><div class="d">${M.meta}</div>
+        <div class="acts"><button class="btn primary sm" data-a="open">打开</button><button class="btn sm" data-a="var">换一种排法</button><button class="btn sm" data-a="mat">换素材</button><button class="btn ghost sm" data-a="no" style="margin-left:auto">不要</button></div></div>
+    </div>`}).join('');
+}
+renderDrafts();
+$('#drafts').onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;const card=b.closest('.dc'),i=+card.dataset.i;
+  if(b.dataset.a==='open')return toast('已打开（草稿态，每页可单独重排）');
+  if(b.dataset.a==='no'){card.style.cssText='opacity:0;transform:scale(.96)';setTimeout(()=>{card.remove();toast('已移除 · 以后少推这类')},250);return}
+  if(b.dataset.a==='var')state[i].v++;else state[i].mi++;
+  renderDrafts();$(`.dc[data-i="${i}"] .paper`).classList.add('flip');
+};
+$('#skillPrev').outerHTML=R.cs(MATS.roll7.ids,1,true).replace('class="paper','id="skillPrev" style="width:58px;flex:none" class="paper');
+
+/* ---------- 从格式开始 ---------- */
+let curF='zine',fv=0;
+const FCAP={zine:['Zine','12 页 · A5 骑马钉 · 每跨页 1～2 张'],col:['拼图','1:1 · 主图 + 四张'],poster:['海报 · 预览版','50×70 · 可导出 PNG，精修编辑器开发中'],cs:['联系表 · 预览版','6 列 · A4 · 带卷号与计数']};
+function stage(){const ids=MATS.roll7.ids;$('#stagePaper').innerHTML=R[curF](ids,fv,curF==='cs');$('#stageCap').innerHTML=`<b>${FCAP[curF][0]}</b><span>${FCAP[curF][1]}</span><span>· 用「胶卷 #7」预览</span>`;$$('.fi').forEach(f=>f.classList.toggle('on',f.dataset.f===curF));$('#stagePaper').style.maxWidth=curF==='poster'?'260px':curF==='cs'?'300px':curF==='col'?'320px':'420px'}
+stage();
+$$('.fi').forEach(f=>{
+  f.addEventListener('mouseenter',()=>{if(curF!==f.dataset.f){curF=f.dataset.f;fv=0;stage()}});
+  f.onclick=e=>{if(e.target.closest('.sizes span')){f.querySelectorAll('.sizes span').forEach(s=>s.classList.remove('on'));e.target.classList.add('on');fv++;stage();return}startPlan('roll7',null,f.dataset.f)};
+  f.addEventListener('dragover',e=>{e.preventDefault();f.classList.add('over')});
+  f.addEventListener('dragleave',()=>f.classList.remove('over'));
+  f.addEventListener('drop',e=>{e.preventDefault();f.classList.remove('over');const m=e.dataTransfer.getData('text/plain');if(MATS[m])startPlan(m,null,f.dataset.f)});
+});
+$('#stageVar').onclick=()=>{fv++;stage()};
+$('#stageGo').onclick=()=>startPlan(curMat||'roll7',null,curF);
+
+/* ---------- 其他 ---------- */
+let tt;function toast(m){$('#toastMsg').textContent=m;$('#toast').classList.add('show');clearTimeout(tt);tt=setTimeout(()=>$('#toast').classList.remove('show'),3000)}
+$('#themeBtn').onclick=()=>{const h=document.documentElement,d=h.dataset.theme==='dark';h.dataset.theme=d?'light':'dark';$('#themeBtn').textContent=d?'☾':'☀'};
+$('#status').onclick=()=>{const s=$('#status'),off=s.classList.toggle('off');$('#statusTxt').textContent=off?'离线 · 本地起稿可用':'Skill 已就绪 · 3 个社区版式';$('#skill').classList.toggle('hide',off);toast(off?'官方 Skill 不可用，AI 起稿仍基于本地照片库':'已重新连接 Skill 库')};
+</script>
+</body>
+</html>

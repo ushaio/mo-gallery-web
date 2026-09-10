@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 	_ "modernc.org/sqlite"
 
@@ -23,28 +23,30 @@ const localDraftsFileName = "drafts.db"
 var DraftsDB *gorm.DB
 
 type LocalDraftRecord struct {
-	Key          string  `gorm:"column:key;type:text;primaryKey"`
-	Kind         string  `gorm:"column:kind;type:text;not null;index"`
-	ResourceID   *string `gorm:"column:resourceId;type:text;index"`
-	Title        string  `gorm:"column:title;type:text;not null"`
-	Content      string  `gorm:"column:content;type:text;not null"`
-	ContentJSON  *string `gorm:"column:contentJson;type:text"`
-	Category     *string `gorm:"column:category;type:text;index"`
-	Tags         *string `gorm:"column:tags;type:text"`
-	IsPublished  bool    `gorm:"column:isPublished;not null;default:false;index"`
-	CloudSynced  bool    `gorm:"column:cloudSynced;not null;default:false;index"`
-	ContentDate  *string `gorm:"column:contentDate;type:text"`
-	SavedAt      int64   `gorm:"column:savedAt;not null;index"`
-	MetadataJSON string  `gorm:"column:metadataJson;type:text;not null;default:'{}'"`
-	UpdatedAt    int64   `gorm:"column:updatedAt;not null;index"`
+	Key               string  `gorm:"column:key;type:text;primaryKey"`
+	Kind              string  `gorm:"column:kind;type:text;not null;index"`
+	ResourceID        *string `gorm:"column:resourceId;type:text;index"`
+	Title             string  `gorm:"column:title;type:text;not null"`
+	EditorType        string  `gorm:"column:editorType;type:text;not null;default:tiptap"`
+	TiptapContent     string  `gorm:"column:tiptapContent;type:text;not null"`
+	TiptapContentJSON *string `gorm:"column:tiptapContentJson;type:text"`
+	MilkContent       *string `gorm:"column:milk_content;type:text"`
+	Category          *string `gorm:"column:category;type:text;index"`
+	Tags              *string `gorm:"column:tags;type:text"`
+	IsPublished       bool    `gorm:"column:isPublished;not null;default:false;index"`
+	CloudSynced       bool    `gorm:"column:cloudSynced;not null;default:false;index"`
+	ContentDate       *string `gorm:"column:contentDate;type:text"`
+	SavedAt           int64   `gorm:"column:savedAt;not null;index"`
+	MetadataJSON      string  `gorm:"column:metadataJson;type:text;not null;default:'{}'"`
+	UpdatedAt         int64   `gorm:"column:updatedAt;not null;index"`
 }
 
 func (LocalDraftRecord) TableName() string { return "LocalDraft" }
 
-func LocalDraftsPath(configDir string) string { return filepath.Join(configDir, localDraftsFileName) }
+func LocalDraftsPath(configDir string) string { return localDBPath(configDir, localDraftsFileName) }
 
 func ConnectLocalDrafts(configDir string) error {
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
+	if err := ensureDBDir(configDir); err != nil {
 		return fmt.Errorf("create local drafts database directory: %w", err)
 	}
 	database, err := OpenLocalDrafts(LocalDraftsPath(configDir))
@@ -91,7 +93,103 @@ func localDraftMigrations() []migrate.Migration {
 			Name:    "baseline",
 			Up:      migrateLocalDraftSchema,
 		},
+		{
+			Version: 2,
+			Name:    "milkdown_content",
+			Up: func(database *gorm.DB) error {
+				if database.Migrator().HasColumn(&LocalDraftRecord{}, "milk_content") {
+					return nil
+				}
+				return database.Migrator().AddColumn(&LocalDraftRecord{}, "MilkContent")
+			},
+		},
+		{
+			Version: 3,
+			Name:    "editor_content_fields",
+			Up:      migrateLocalDraftEditorContent,
+		},
 	}
+}
+
+func migrateLocalDraftEditorContent(database *gorm.DB) error {
+	migrator := database.Migrator()
+	columnTypes, err := migrator.ColumnTypes("LocalDraft")
+	if err != nil {
+		return fmt.Errorf("inspect local draft columns: %w", err)
+	}
+	columns := make(map[string]bool, len(columnTypes))
+	for _, column := range columnTypes {
+		columns[strings.ToLower(column.Name())] = true
+	}
+	hadEditorType := columns["editortype"]
+	for _, rename := range [][2]string{{"content", "tiptapContent"}, {"contentJson", "tiptapContentJson"}} {
+		if !columns[strings.ToLower(rename[0])] {
+			continue
+		}
+		if columns[strings.ToLower(rename[1])] {
+			return fmt.Errorf("draft database contains both %s and %s columns", rename[0], rename[1])
+		}
+		if err := migrator.RenameColumn("LocalDraft", rename[0], rename[1]); err != nil {
+			return fmt.Errorf("rename draft %s: %w", rename[0], err)
+		}
+	}
+	if err := database.AutoMigrate(&LocalDraftRecord{}); err != nil {
+		return err
+	}
+	if hadEditorType {
+		return nil
+	}
+
+	var records []LocalDraftRecord
+	if err := database.Find(&records).Error; err != nil {
+		return fmt.Errorf("read draft editor identities: %w", err)
+	}
+	for _, record := range records {
+		payload := map[string]json.RawMessage{}
+		if record.MetadataJSON != "" {
+			if err := json.Unmarshal([]byte(record.MetadataJSON), &payload); err != nil {
+				return fmt.Errorf("read draft %q metadata: %w", record.Key, err)
+			}
+		}
+		// Builds predating a dedicated column kept unrecognized body fields in
+		// metadata. Move those values too, preserving explicitly empty bodies.
+		updates := map[string]any{}
+		if _, exists := payload["tiptapContent"]; exists {
+			value, _, err := draftString(payload, "tiptapContent")
+			if err != nil {
+				return fmt.Errorf("read draft %q content: %w", record.Key, err)
+			}
+			updates["tiptapContent"] = value
+		}
+		if raw, exists := payload["tiptapContentJson"]; exists {
+			updates["tiptapContentJson"] = nil
+			if string(raw) != "null" {
+				updates["tiptapContentJson"] = string(raw)
+			}
+		}
+		if _, exists := payload["milkContent"]; exists {
+			value, hasMilkdown, err := draftString(payload, "milkContent")
+			if err != nil {
+				return fmt.Errorf("read draft %q content: %w", record.Key, err)
+			}
+			record.MilkContent = nil
+			updates["milk_content"] = nil
+			if hasMilkdown {
+				record.MilkContent = &value
+				updates["milk_content"] = value
+			}
+		}
+		editorType, err := localDraftEditorType(payload, record.MilkContent != nil)
+		if err != nil {
+			return fmt.Errorf("read draft %q editor: %w", record.Key, err)
+		}
+		updates["editorType"] = editorType
+		// UpdateColumns preserves the original savedAt/updatedAt values.
+		if err := database.Model(&LocalDraftRecord{}).Where("key = ?", record.Key).UpdateColumns(updates).Error; err != nil {
+			return fmt.Errorf("set draft %q editor: %w", record.Key, err)
+		}
+	}
+	return nil
 }
 
 type legacyLocalDraftRecord struct {
@@ -111,7 +209,9 @@ func migrateLocalDraftSchema(database *gorm.DB) error {
 		legacyColumn = "value"
 	}
 	if legacyColumn == "" {
-		return database.AutoMigrate(&LocalDraftRecord{})
+		// An older structured database may not have migration history yet.
+		// Rename its populated columns before AutoMigrate sees the current model.
+		return migrateLocalDraftEditorContent(database)
 	}
 
 	var legacyRecords []legacyLocalDraftRecord
@@ -175,6 +275,43 @@ func draftString(payload map[string]json.RawMessage, key string) (string, bool, 
 	return value, true, nil
 }
 
+func decodeLocalDraftPayload(data string) (map[string]json.RawMessage, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(data), &payload); err != nil || payload == nil {
+		return nil, errors.New("draft data must be a JSON object")
+	}
+	// Compatibility belongs at the storage boundary. A present renamed field,
+	// including an empty string or null, always wins over its legacy alias.
+	for _, rename := range [][2]string{{"content", "tiptapContent"}, {"contentJson", "tiptapContentJson"}} {
+		if _, exists := payload[rename[1]]; !exists {
+			if legacy, ok := payload[rename[0]]; ok {
+				payload[rename[1]] = legacy
+			}
+		}
+		delete(payload, rename[0])
+	}
+	return payload, nil
+}
+
+func localDraftEditorType(payload map[string]json.RawMessage, hasMilkdown bool) (string, error) {
+	editorType, exists, err := draftString(payload, "editorType")
+	if err != nil {
+		return "", err
+	}
+	if exists {
+		if editorType != "tiptap" && editorType != "milkdown" {
+			return "", errors.New("draft editorType must be tiptap or milkdown")
+		}
+		return editorType, nil
+	}
+	// Cloud backfill is always TipTap; local drafts may already contain
+	// unsynced Milkdown work, including an intentionally empty document.
+	if hasMilkdown {
+		return "milkdown", nil
+	}
+	return "tiptap", nil
+}
+
 func draftBool(payload map[string]json.RawMessage, key string) (bool, error) {
 	raw, ok := payload[key]
 	if !ok || string(raw) == "null" {
@@ -223,15 +360,23 @@ func parseLocalDraft(key, data string) (LocalDraftRecord, error) {
 	if key == "" {
 		return LocalDraftRecord{}, errors.New("draft key is required")
 	}
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(data), &payload); err != nil {
-		return LocalDraftRecord{}, errors.New("draft data must be a JSON object")
+	payload, err := decodeLocalDraftPayload(data)
+	if err != nil {
+		return LocalDraftRecord{}, err
 	}
 	title, _, err := draftString(payload, "title")
 	if err != nil {
 		return LocalDraftRecord{}, err
 	}
-	content, _, err := draftString(payload, "content")
+	content, _, err := draftString(payload, "tiptapContent")
+	if err != nil {
+		return LocalDraftRecord{}, err
+	}
+	milkContent, hasMilkdown, err := draftString(payload, "milkContent")
+	if err != nil {
+		return LocalDraftRecord{}, err
+	}
+	editorType, err := localDraftEditorType(payload, hasMilkdown)
 	if err != nil {
 		return LocalDraftRecord{}, err
 	}
@@ -252,20 +397,24 @@ func parseLocalDraft(key, data string) (LocalDraftRecord, error) {
 	}
 
 	record := LocalDraftRecord{
-		Key: key, Kind: kind, ResourceID: resourceID, Title: title, Content: content,
+		Key: key, Kind: kind, ResourceID: resourceID, Title: title,
+		EditorType: editorType, TiptapContent: content,
 		IsPublished: published, CloudSynced: false, SavedAt: savedAt, UpdatedAt: time.Now().UnixMilli(),
+	}
+	if hasMilkdown {
+		record.MilkContent = &milkContent
 	}
 	if synced, syncedErr := draftBool(payload, "cloudSynced"); syncedErr != nil {
 		return LocalDraftRecord{}, syncedErr
 	} else {
 		record.CloudSynced = synced
 	}
-	if raw, exists := payload["contentJson"]; exists && string(raw) != "null" {
+	if raw, exists := payload["tiptapContentJson"]; exists && string(raw) != "null" {
 		if !json.Valid(raw) {
-			return LocalDraftRecord{}, errors.New("draft contentJson must be valid JSON")
+			return LocalDraftRecord{}, errors.New("draft tiptapContentJson must be valid JSON")
 		}
 		value := string(raw)
-		record.ContentJSON = &value
+		record.TiptapContentJSON = &value
 	}
 	if value, exists, parseErr := draftString(payload, "category"); parseErr != nil {
 		return LocalDraftRecord{}, parseErr
@@ -283,7 +432,7 @@ func parseLocalDraft(key, data string) (LocalDraftRecord, error) {
 		record.ContentDate = &value
 	}
 
-	for _, field := range []string{"id", "storyId", "blogId", "title", "content", "contentJson", "category", "tags", "isPublished", "cloudSynced", "createdAt", "savedAt"} {
+	for _, field := range []string{"id", "storyId", "blogId", "title", "editorType", "tiptapContent", "tiptapContentJson", "milkContent", "category", "tags", "isPublished", "cloudSynced", "createdAt", "savedAt"} {
 		delete(payload, field)
 	}
 	metadata, err := json.Marshal(payload)
@@ -301,6 +450,12 @@ func localDraftJSON(record LocalDraftRecord) (string, error) {
 			return "", fmt.Errorf("decode draft metadata: %w", err)
 		}
 	}
+	if payload == nil {
+		payload = map[string]json.RawMessage{}
+	}
+	for _, field := range []string{"content", "contentJson", "tiptapContentJson", "milkContent"} {
+		delete(payload, field)
+	}
 	set := func(key string, value any) error {
 		encoded, err := json.Marshal(value)
 		if err == nil {
@@ -310,12 +465,16 @@ func localDraftJSON(record LocalDraftRecord) (string, error) {
 	}
 	_ = set("id", record.Key)
 	_ = set("title", record.Title)
-	_ = set("content", record.Content)
+	_ = set("editorType", record.EditorType)
+	_ = set("tiptapContent", record.TiptapContent)
 	_ = set("isPublished", record.IsPublished)
 	_ = set("cloudSynced", record.CloudSynced)
 	_ = set("savedAt", record.SavedAt)
-	if record.ContentJSON != nil {
-		payload["contentJson"] = json.RawMessage(*record.ContentJSON)
+	if record.TiptapContentJSON != nil {
+		payload["tiptapContentJson"] = json.RawMessage(*record.TiptapContentJSON)
+	}
+	if record.MilkContent != nil {
+		_ = set("milkContent", *record.MilkContent)
 	}
 	if record.Category != nil {
 		_ = set("category", *record.Category)
@@ -349,10 +508,93 @@ func SaveLocalDraft(key, data string) error {
 	if err != nil {
 		return err
 	}
-	if err := database.Save(&record).Error; err != nil {
+	// Omitted editor fields must survive writes from another editor/version.
+	payload, err := decodeLocalDraftPayload(data)
+	if err != nil {
+		return err
+	}
+	columns := []string{"kind", "resourceId", "title", "category", "tags", "isPublished", "cloudSynced", "contentDate", "savedAt", "metadataJson", "updatedAt"}
+	hasBody := false
+	for field, column := range map[string]string{"tiptapContent": "tiptapContent", "tiptapContentJson": "tiptapContentJson", "milkContent": "milk_content"} {
+		if _, exists := payload[field]; exists {
+			hasBody = true
+			columns = append(columns, column)
+		}
+	}
+	if _, hasEditorType := payload["editorType"]; hasEditorType || hasBody {
+		columns = append(columns, "editorType")
+	}
+	if record.EditorType == "tiptap" {
+		_, hasText := payload["tiptapContent"]
+		_, hasJSON := payload["tiptapContentJson"]
+		if hasText && !hasJSON {
+			columns = append(columns, "tiptapContentJson")
+		} else if hasJSON && !hasText {
+			columns = append(columns, "tiptapContent")
+		}
+	}
+	if err := database.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns(columns),
+	}).Create(&record).Error; err != nil {
 		return fmt.Errorf("save local draft: %w", err)
 	}
 	return nil
+}
+
+func MarkLocalDraftSynced(key string, expectedSavedAt int64) error {
+	database, err := requireDraftsDB()
+	if err != nil {
+		return err
+	}
+	key = strings.TrimSpace(key)
+	if key == "" || expectedSavedAt <= 0 {
+		return errors.New("draft key and expected savedAt are required")
+	}
+	// A newer autosave is left untouched, and no body is replayed into storage.
+	return database.Model(&LocalDraftRecord{}).
+		Where("key = ? AND savedAt = ?", key, expectedSavedAt).
+		UpdateColumn("cloudSynced", true).Error
+}
+
+func RekeyLocalDraft(oldKey, newKey, documentID string) error {
+	database, err := requireDraftsDB()
+	if err != nil {
+		return err
+	}
+	oldKey, newKey, documentID = strings.TrimSpace(oldKey), strings.TrimSpace(newKey), strings.TrimSpace(documentID)
+	if oldKey == "" || newKey == "" || documentID == "" {
+		return errors.New("draft keys and document ID are required")
+	}
+	if oldKey == newKey {
+		return database.Model(&LocalDraftRecord{}).Where("key = ?", newKey).UpdateColumn("resourceId", documentID).Error
+	}
+	return database.Transaction(func(tx *gorm.DB) error {
+		var source LocalDraftRecord
+		result := tx.Where("key = ?", oldKey).Limit(1).Find(&source)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		var destination LocalDraftRecord
+		result = tx.Where("key = ?", newKey).Limit(1).Find(&destination)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected > 0 && destination.SavedAt >= source.SavedAt {
+			if err := tx.Model(&LocalDraftRecord{}).Where("key = ?", newKey).UpdateColumn("resourceId", documentID).Error; err != nil {
+				return err
+			}
+			return tx.Delete(&LocalDraftRecord{}, "key = ?", oldKey).Error
+		}
+		if result.RowsAffected > 0 {
+			if err := tx.Delete(&LocalDraftRecord{}, "key = ?", newKey).Error; err != nil {
+				return err
+			}
+		}
+		// Moving the existing row keeps every body, metadata and timestamp field.
+		return tx.Model(&LocalDraftRecord{}).Where("key = ?", oldKey).
+			UpdateColumns(map[string]any{"key": newKey, "resourceId": documentID}).Error
+	})
 }
 
 func GetLocalDraft(key string) (string, error) {

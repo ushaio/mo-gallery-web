@@ -6,7 +6,9 @@ export interface ZineSaveResultState {
 }
 
 export function resolveZineSaveSuccess(savedProject: ZineProject, currentProject: ZineProject | null, currentDirty: boolean): ZineSaveResultState {
-  const savedCurrentRevision = currentProject?.id === savedProject.id && currentProject.updatedAt === savedProject.updatedAt
+  // Store mutations replace the project object. Timestamps can collide when
+  // several edits land in one millisecond and must not identify a revision.
+  const savedCurrentRevision = currentProject === savedProject
   return {
     dirty: savedCurrentRevision ? false : currentDirty,
     saveStatus: savedCurrentRevision ? 'saved' : 'unsaved',

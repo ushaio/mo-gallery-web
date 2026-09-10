@@ -8,6 +8,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useLocation } from 'react-router-dom'
+import { getEditorContent } from '@mo-gallery/api-client/editor-content'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useAdmin, AdminLogsProvider } from '@/pages/admin-logs/layout'
@@ -16,6 +17,7 @@ import { StoriesTab } from '@/pages/admin-logs/StoriesTab'
 import { BlogTab } from '@/pages/admin-logs/BlogTab'
 import { CollapsibleListPane, LIST_PANE_COLLAPSED_KEY } from '@/pages/admin-logs/shared/CollapsibleListPane'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SegmentedTabs } from '@/components/ui/SegmentedTabs'
 import { useCachedPageEffect } from '@/hooks/useCachedPageEffect'
 import { useDataRevision } from '@/hooks/useDataRevision'
 import {
@@ -141,7 +143,7 @@ function DraftSectionLabel({ icon: Icon, label, count }: { icon: LucideIcon; lab
 type JournalSubTab = 'blog' | 'stories' | 'drafts'
 
 /**
- * 左栏面板头内的子页签导航（叙事/博客/草稿），紧凑分段控件，双击刷新。
+ * 左栏面板头内的子页签导航（叙事/博客/草稿），双击刷新。
  */
 function JournalSubTabNav({
   activeSubTab,
@@ -155,53 +157,34 @@ function JournalSubTabNav({
   t: (key: string) => string
 }) {
   return (
-    <div
-      className="inline-flex min-w-0 flex-1 items-center gap-0.5 rounded-md border p-0.5"
-      style={{
-        borderColor: 'var(--border)',
-        backgroundColor: 'color-mix(in srgb, var(--muted) 45%, transparent)',
-      }}
-    >
-      {([
-        { key: 'stories' as const, icon: BookOpen, label: t('nav.story') },
-        { key: 'blog' as const, icon: BookText, label: t('admin.blog') },
-        { key: 'drafts' as const, icon: FileArchive, label: t('admin.drafts') },
-      ]).map(({ key, icon: Icon, label }) => {
-        const active = activeSubTab === key
-        return (
-          <button
-            key={key}
-            onClick={() => onTabClick(key)}
-            title={t('admin.double_click_refresh')}
-            className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded border px-1.5 py-1 text-[10px] transition-colors"
-            style={
-              active
-                ? {
-                    borderColor: 'var(--border)',
-                    backgroundColor: 'var(--card)',
-                    color: 'var(--foreground)',
-                    boxShadow: '0 1px 2px rgb(0 0 0 / 0.06)',
-                  }
-                : { borderColor: 'transparent', color: 'var(--muted-foreground)' }
-            }
-          >
-            <Icon size={12} className="shrink-0" />
-            <span className="truncate">{label}</span>
-            {key === 'drafts' && totalDrafts > 0 && (
-              <span
-                className="rounded-full px-1.5 py-0.5 text-[9px] leading-none"
-                style={{
-                  backgroundColor: active ? 'var(--primary)' : 'var(--accent)',
-                  color: active ? 'var(--primary-foreground)' : 'var(--accent-foreground)',
-                }}
-              >
-                {totalDrafts}
-              </span>
-            )}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedTabs
+      size="sm"
+      ariaLabel={t('admin.logs')}
+      className="min-w-0 flex-1"
+      value={activeSubTab}
+      onChange={onTabClick}
+      options={[
+        { value: 'stories', icon: BookOpen, label: t('nav.story'), title: t('admin.double_click_refresh') },
+        { value: 'blog', icon: BookText, label: t('admin.blog'), title: t('admin.double_click_refresh') },
+        {
+          value: 'drafts',
+          icon: FileArchive,
+          label: t('admin.drafts'),
+          title: t('admin.double_click_refresh'),
+          trailing: (active: boolean) => totalDrafts > 0 ? (
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[9px] leading-none"
+              style={{
+                backgroundColor: active ? 'var(--primary)' : 'var(--accent)',
+                color: active ? 'var(--primary-foreground)' : 'var(--accent-foreground)',
+              }}
+            >
+              {totalDrafts}
+            </span>
+          ) : null,
+        },
+      ]}
+    />
   )
 }
 
@@ -226,6 +209,11 @@ function PhotoJournalContent() {
     return documentId && (documentKind === 'story' || documentKind === 'blog')
       ? { documentId, documentKind, source }
       : null
+  }, [location.search])
+  // 首页照片流「写叙事」交接：带选中照片直接进入新建叙事
+  const newStoryPhotoIds = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return (params.get('newStoryPhotos') ?? '').split(',').map(id => id.trim()).filter(Boolean)
   }, [location.search])
   const [photos, setPhotos] = useState<PhotoDto[]>([])
 
@@ -435,7 +423,7 @@ function PhotoJournalContent() {
     if (!storyDraft) return null
     if (draftSearchQuery) {
       const query = draftSearchQuery.toLowerCase()
-      if (!storyDraft.title?.toLowerCase().includes(query) && !storyDraft.content?.toLowerCase().includes(query)) {
+      if (!storyDraft.title?.toLowerCase().includes(query) && !getEditorContent(storyDraft)?.toLowerCase().includes(query)) {
         return null
       }
     }
@@ -447,7 +435,7 @@ function PhotoJournalContent() {
     if (!draftSearchQuery) return storyEditorDrafts
     const query = draftSearchQuery.toLowerCase()
     return storyEditorDrafts.filter(
-      (d) => d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query),
+      (d) => d.title?.toLowerCase().includes(query) || getEditorContent(d)?.toLowerCase().includes(query),
     )
   }, [storyEditorDrafts, draftTypeFilter, draftSearchQuery])
 
@@ -455,7 +443,7 @@ function PhotoJournalContent() {
     if (draftTypeFilter === 'story') return []
     if (!draftSearchQuery) return blogDrafts
     const query = draftSearchQuery.toLowerCase()
-    return blogDrafts.filter((d) => d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query))
+    return blogDrafts.filter((d) => d.title?.toLowerCase().includes(query) || getEditorContent(d)?.toLowerCase().includes(query))
   }, [blogDrafts, draftTypeFilter, draftSearchQuery])
 
   function handleTabClick(tab: 'blog' | 'stories' | 'drafts') {
@@ -506,11 +494,12 @@ function PhotoJournalContent() {
             <AdminButton
               onClick={handleCreateArticle}
               adminVariant="primary"
-              className="flex h-8 w-8 items-center justify-center rounded-md p-0"
+              className="flex h-8 items-center gap-1.5 rounded-md px-3"
               title={activeSubTab === 'stories' ? t('ui.create_story') : t('ui.create_blog')}
               aria-label={activeSubTab === 'stories' ? t('ui.create_story') : t('ui.create_blog')}
             >
               <Plus className="h-4 w-4" />
+              <span>{activeSubTab === 'stories' ? t('ui.create_story') : t('ui.create_blog')}</span>
             </AdminButton>
           ) : undefined}
         />
@@ -547,6 +536,7 @@ function PhotoJournalContent() {
             editStoryId={automationRequest?.documentKind === 'story' ? automationRequest.documentId : undefined}
             editSource={automationRequest?.source}
             onDraftConsumed={() => setEditFromDraft(null)}
+            newStoryPhotoIds={newStoryPhotoIds.length > 0 ? newStoryPhotoIds : undefined}
             refreshKey={storiesRefreshKey}
             createRequestKey={storiesCreateRequestKey}
             listPaneCollapsed={listPaneCollapsed}
@@ -641,8 +631,8 @@ function PhotoJournalContent() {
                         tone="amber"
                         onOpen={() => setSelectedDraft(filteredStoryDraft)}
                         title={filteredStoryDraft.title || t('story.untitled')}
-                        snippet={`${filteredStoryDraft.content?.substring(0, 150) || t('admin.no_content')}${
-                          (filteredStoryDraft.content?.length || 0) > 150 ? '...' : ''
+                        snippet={`${getEditorContent(filteredStoryDraft)?.substring(0, 150) || t('admin.no_content')}${
+                          (getEditorContent(filteredStoryDraft)?.length || 0) > 150 ? '...' : ''
                         }`}
                         badge={
                           <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
@@ -714,8 +704,8 @@ function PhotoJournalContent() {
                           tone="primary"
                           onOpen={() => handleEditStoryFromDraft(draft)}
                           title={draft.title || t('story.untitled')}
-                          snippet={`${draft.content?.substring(0, 150) || t('admin.no_content')}${
-                            (draft.content?.length || 0) > 150 ? '...' : ''
+                          snippet={`${getEditorContent(draft)?.substring(0, 150) || t('admin.no_content')}${
+                            (getEditorContent(draft)?.length || 0) > 150 ? '...' : ''
                           }`}
                           badge={
                             draft.storyId ? (
@@ -734,9 +724,9 @@ function PhotoJournalContent() {
                                 <Clock className="h-3 w-3" />
                                 {formatRelativeTime(draft.savedAt)}
                               </span>
-                              {draft.content && (
+                              {getEditorContent(draft) && (
                                 <span>
-                                  {countStoryCharacters(draft.content)} {t('admin.characters')}
+                                  {countStoryCharacters(getEditorContent(draft))} {t('admin.characters')}
                                 </span>
                               )}
                               {draft.photoIds?.length > 0 && (
@@ -805,8 +795,8 @@ function PhotoJournalContent() {
                           icon={BookText}
                           onOpen={() => handleEditBlogFromDraft(draft)}
                           title={draft.title || t('admin.untitled')}
-                          snippet={`${draft.content?.substring(0, 150) || t('admin.no_content')}${
-                            (draft.content?.length || 0) > 150 ? '...' : ''
+                          snippet={`${getEditorContent(draft)?.substring(0, 150) || t('admin.no_content')}${
+                            (getEditorContent(draft)?.length || 0) > 150 ? '...' : ''
                           }`}
                           badge={
                             draft.blogId ? (
@@ -826,9 +816,9 @@ function PhotoJournalContent() {
                                 {formatRelativeTime(draft.savedAt)}
                               </span>
                               {draft.category && <span>{draft.category}</span>}
-                              {draft.content && (
+                              {getEditorContent(draft) && (
                                 <span>
-                                  {draft.content.length} {t('admin.characters')}
+                                  {getEditorContent(draft).length} {t('admin.characters')}
                                 </span>
                               )}
                             </>
@@ -959,7 +949,7 @@ function PhotoJournalContent() {
                   className="whitespace-pre-wrap rounded-lg bg-muted/40 p-4 font-mono text-sm leading-relaxed"
                   style={{ color: 'var(--foreground)' }}
                 >
-                  {selectedDraft.content || t('admin.no_content')}
+                  {getEditorContent(selectedDraft) || t('admin.no_content')}
                 </pre>
 
                 {/* 博客草稿元信息 */}

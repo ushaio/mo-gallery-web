@@ -3,9 +3,10 @@
 import { memo, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { MilkdownContent } from '@mo-gallery/milkdown/content'
 import { resolveAssetUrl } from '@/lib/api/core'
-import { resolveStoredMediaEmbedInfo } from '@mo-gallery/tiptap-editor'
-import type { PhotoDto } from '@/lib/api/types'
+import { resolveStoredMediaEmbedInfo } from '@mo-gallery/tiptap-editor/media-embed'
+import type { EditorType, PhotoDto } from '@/lib/api/types'
 import {
   buildStoryPhotoIndex,
   escapeHtmlAttribute,
@@ -14,7 +15,9 @@ import {
 import './story-rich-content.css'
 
 interface StoryRichContentProps {
+  editorType: EditorType
   content: string
+  milkContent?: string | null
   photos: PhotoDto[]
   cdnDomain?: string
   className?: string
@@ -291,7 +294,9 @@ function createMarkdownComponents(index: StoryPhotoIndex, cdnDomain?: string) {
 }
 
 export const StoryRichContent = memo(function StoryRichContent({
+  editorType,
   content,
+  milkContent,
   photos,
   cdnDomain,
   className = '',
@@ -337,6 +342,13 @@ export const StoryRichContent = memo(function StoryRichContent({
       onPhotoClick(matchedByUrl)
     }
   }, [onPhotoClick, photoIndex])
+
+  if (editorType === 'milkdown') {
+    return <MilkdownContent content={milkContent ?? ''} className={rootClassName}
+      resolveMediaUrl={(src, photoId) => resolveAssetUrl(photoIndex.findById(photoId)?.url || src, cdnDomain)}
+      onPhotoClick={onPhotoClick ? (photoId) => { const photo = photoIndex.findById(photoId); if (photo) onPhotoClick(photo) } : undefined}
+    />
+  }
 
   if (isHtmlContent) {
     return (

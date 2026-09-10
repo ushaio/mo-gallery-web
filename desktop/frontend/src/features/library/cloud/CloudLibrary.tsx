@@ -115,6 +115,26 @@ export function CloudLibrary({
     searchParams.get("tab") === "photos" ? "photos" : "overview";
   const showingAlbumBrowser =
     view === "albums" && !createMode && !managingAlbumId;
+  // 首页照片流「建相册」交接：选中照片随 URL 传入，CloudAlbums 消费后即清除参数
+  const handoffPhotoIds = createMode
+    ? (searchParams.get("photos") ?? "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+        .join(",")
+    : "";
+
+  useEffect(() => {
+    if (!createMode || !searchParams.has("photos")) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("photos");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [createMode, searchParams, setSearchParams]);
 
   const fetchAlbums = useCallback(
     async (force = false) => {
@@ -652,6 +672,7 @@ export function CloudLibrary({
             initialAlbumId={managingAlbumId}
             initialTab={managerTab}
             createMode={createMode}
+            handoffPhotoIds={handoffPhotoIds}
             onBackToBrowser={showAlbumBrowser}
             onAlbumsChanged={() => void fetchAlbums(true)}
           />

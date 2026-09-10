@@ -46,6 +46,17 @@ type OverviewDTO struct {
 
 	PhotosThisMonth int64 `json:"photosThisMonth"`
 	PhotosThisYear  int64 `json:"photosThisYear"`
+
+	MonthlyPhotos []int64 `json:"monthlyPhotos"`
+
+	PhotoActivityYear     int              `json:"photoActivityYear,omitempty"`
+	PhotoActivityTimeZone string           `json:"photoActivityTimeZone,omitempty"`
+	DailyPhotos           *[]DailyPhotoDTO `json:"dailyPhotos,omitempty"`
+}
+
+type DailyPhotoDTO struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
 }
 
 type RecentPhotoDTO struct {

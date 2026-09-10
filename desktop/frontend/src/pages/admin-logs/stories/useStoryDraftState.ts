@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
 import { STORY_EDITOR_DRAFT_PREFIX, type StoryEditorDraftData } from '@/lib/client-db'
-import { getStoryEditorDraftFromDB, markStoryEditorDraftSynced, saveStoryEditorDraftToDB } from '@/lib/client-db'
+import { getStoryEditorDraftFromDB, markStoryEditorDraftSynced, rekeyStoryEditorDraft, saveStoryEditorDraftToDB } from '@/lib/client-db'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import { AUTO_SAVE_DELAY } from './constants'
 import type { DraftRestoreDialogState, StorySnapshot } from './types'
@@ -29,19 +29,22 @@ interface UseStoryDraftStateParams {
 }
 
 interface UseStoryDraftStateResult {
+  editorSessionId: string
   draftSaved: boolean
   lastSavedAt: number | null
   initialStory: StorySnapshot | null
   isDirty: boolean
   draftRestoreDialog: DraftRestoreDialogState
   createStoryWithDraftCheck: () => Promise<void>
-  editStoryWithDraftCheck: (story: StoryDto) => Promise<void>
+  editStoryWithDraftCheck: (story: StoryDto, source?: 'prompt' | 'draft' | 'database') => Promise<void>
   handleDraftRestore: () => void
   handleDraftDiscard: () => void
   handleDraftCancel: () => void
-  markDraftSynced: (storyId?: string) => Promise<void>
+  markDraftSynced: (snapshot: StoryDto, storyId: string) => Promise<void>
+  rekeySavedDraft: (oldDraftId: string, storyId: string) => Promise<void>
   saveDraft: () => Promise<void>
   resetDraftState: () => void
+  acceptSavedStory: (story: StoryDto, sessionId: string) => boolean
 }
 
 function restorePendingImages(files?: StoryEditorDraftData['files']): PendingImage[] {
@@ -52,8 +55,11 @@ function restorePendingImages(files?: StoryEditorDraftData['files']): PendingIma
 function createSnapshot(story: StoryDto): StorySnapshot {
   return {
     title: story.title,
-    content: story.content,
-    contentJson: story.contentJson ?? null,
+    editorType: story.editorType,
+    contentEditorTypes: [...story.contentEditorTypes],
+    tiptapContent: story.tiptapContent,
+    tiptapContentJson: story.tiptapContentJson ?? null,
+    milkContent: story.milkContent ?? null,
     isPublished: story.isPublished,
     createdAt: story.createdAt,
     storyDate: story.storyDate,
@@ -89,10 +95,39 @@ export function useStoryDraftState({
   setPendingCoverId,
   setStoryEditMode,
 }: UseStoryDraftStateParams): UseStoryDraftStateResult {
+  const [editorSessionId, setEditorSessionId] = useState(() => crypto.randomUUID())
+  const editorSessionRef = useRef(editorSessionId)
+  const draftWritesRef = useRef<Promise<void>>(Promise.resolve())
+  const draftCloudIdsRef = useRef(new Map<string, string>())
   const [draftSaved, setDraftSaved] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [initialStory, setInitialStory] = useState<StorySnapshot | null>(null)
   const [draftRestoreDialog, setDraftRestoreDialog] = useState<DraftRestoreDialogState>({ isOpen: false, draft: null, story: null })
+
+  const enqueueDraftWrite = useCallback((operation: () => Promise<void>) => {
+    const write = draftWritesRef.current.then(operation)
+    draftWritesRef.current = write.catch(() => undefined)
+    return write
+  }, [])
+
+  const rekeySavedDraft = useCallback((oldDraftId: string, storyId: string) => {
+    // Resolve queued autosaves to the cloud ID before moving the latest old row.
+    draftCloudIdsRef.current.set(oldDraftId, storyId)
+    draftCloudIdsRef.current.set(storyId, storyId)
+    return enqueueDraftWrite(() => rekeyStoryEditorDraft(oldDraftId, storyId))
+  }, [enqueueDraftWrite])
+
+  const beginEditorSession = useCallback(() => {
+    const sessionId = crypto.randomUUID()
+    editorSessionRef.current = sessionId
+    setEditorSessionId(sessionId)
+  }, [])
+
+  const acceptSavedStory = useCallback((story: StoryDto, sessionId: string) => {
+    if (editorSessionRef.current !== sessionId) return false
+    setInitialStory(createSnapshot(story))
+    return true
+  }, [])
 
   const isDirty = !!(
     storyEditMode === 'editor' &&
@@ -100,8 +135,11 @@ export function useStoryDraftState({
     initialStory &&
     (
       currentStory.title !== initialStory.title ||
-      currentStory.content !== initialStory.content ||
-      JSON.stringify(currentStory.contentJson ?? null) !== JSON.stringify(initialStory.contentJson ?? null) ||
+      currentStory.editorType !== initialStory.editorType ||
+      JSON.stringify([...currentStory.contentEditorTypes].sort()) !== JSON.stringify([...initialStory.contentEditorTypes].sort()) ||
+      (currentStory.milkContent ?? null) !== initialStory.milkContent ||
+      currentStory.tiptapContent !== initialStory.tiptapContent ||
+      JSON.stringify(currentStory.tiptapContentJson ?? null) !== JSON.stringify(initialStory.tiptapContentJson ?? null) ||
       currentStory.isPublished !== initialStory.isPublished ||
       currentStory.storyDate !== initialStory.storyDate ||
       currentStory.coverPhotoId !== initialStory.coverPhotoId ||
@@ -113,10 +151,11 @@ export function useStoryDraftState({
   )
 
   const resetDraftState = useCallback(() => {
+    beginEditorSession()
     setInitialStory(null)
     setLastSavedAt(null)
     setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
-  }, [])
+  }, [beginEditorSession])
 
   const saveDraft = useCallback(async () => {
     if (!currentStory) return
@@ -124,19 +163,25 @@ export function useStoryDraftState({
     const existingStory = stories.find((story) => story.id === currentStory.id)
 
     try {
-      await saveStoryEditorDraftToDB({
-        storyId: existingStory ? currentStory.id : undefined,
-        draftId: existingStory ? undefined : currentStory.id,
-        title: currentStory.title,
-        content: currentStory.content,
-        contentJson: currentStory.contentJson ?? null,
-        isPublished: currentStory.isPublished,
-        createdAt: currentStory.createdAt,
-        coverPhotoId: currentStory.coverPhotoId,
-        coverCrop: currentStory.coverCrop ?? null,
-        pendingCoverId,
-        photoIds: currentStory.photos?.map((photo) => photo.id) || [],
-        files: pendingImages.map((image) => ({ id: image.id, file: image.file, takenAt: image.takenAt })),
+      await enqueueDraftWrite(async () => {
+        const cloudId = draftCloudIdsRef.current.get(currentStory.id)
+        await saveStoryEditorDraftToDB({
+          storyId: cloudId ?? (existingStory ? currentStory.id : undefined),
+          draftId: cloudId || existingStory ? undefined : currentStory.id,
+          title: currentStory.title,
+          editorType: currentStory.editorType,
+          contentEditorTypes: currentStory.contentEditorTypes,
+          tiptapContent: currentStory.tiptapContent,
+          tiptapContentJson: currentStory.tiptapContentJson ?? null,
+          milkContent: currentStory.milkContent ?? null,
+          isPublished: currentStory.isPublished,
+          createdAt: currentStory.createdAt,
+          coverPhotoId: currentStory.coverPhotoId,
+          coverCrop: currentStory.coverCrop ?? null,
+          pendingCoverId,
+          photoIds: currentStory.photos?.map((photo) => photo.id) || [],
+          files: pendingImages.map((image) => ({ id: image.id, file: image.file, takenAt: image.takenAt })),
+        })
       })
       setLastSavedAt(Date.now())
       setDraftSaved(true)
@@ -144,67 +189,89 @@ export function useStoryDraftState({
     } catch (error) {
       console.error('Failed to save draft:', error)
     }
-  }, [currentStory, pendingCoverId, pendingImages, stories])
+  }, [currentStory, enqueueDraftWrite, pendingCoverId, pendingImages, stories])
 
-  const markDraftSynced = useCallback(async (storyId?: string) => {
-    try {
-      await markStoryEditorDraftSynced(storyId)
-    } catch (error) {
-      console.error('Failed to mark story draft as cloud-synced:', error)
-    }
-  }, [])
+  const markDraftSynced = useCallback(async (snapshot: StoryDto, storyId: string) => {
+    await enqueueDraftWrite(async () => {
+      const draft = await getStoryEditorDraftFromDB(storyId)
+      if (!draft || draft.title !== snapshot.title || draft.editorType !== snapshot.editorType
+        || (draft.milkContent ?? null) !== (snapshot.milkContent ?? null)
+        || draft.tiptapContent !== snapshot.tiptapContent
+        || JSON.stringify(draft.tiptapContentJson ?? null) !== JSON.stringify(snapshot.tiptapContentJson ?? null)
+        || draft.isPublished !== snapshot.isPublished
+        || (draft.coverPhotoId ?? null) !== (snapshot.coverPhotoId ?? null)
+        || JSON.stringify(draft.coverCrop ?? null) !== JSON.stringify(snapshot.coverCrop ?? null)
+        || JSON.stringify(draft.photoIds) !== JSON.stringify(snapshot.photos.map((photo) => photo.id))
+        || (draft.files?.length ?? 0) > 0 || draft.pendingCoverId) return
+      await markStoryEditorDraftSynced(storyId, draft.savedAt)
+    })
+  }, [enqueueDraftWrite])
 
   const applyDraft = useCallback((draft: StoryEditorDraftData, baseStory: StoryDto) => {
+    beginEditorSession()
     const restoredPhotos = draft.photoIds
       .map((id) => allPhotos.find((photo) => photo.id === id) || baseStory.photos?.find((photo) => photo.id === id))
       .filter((photo): photo is PhotoDto => Boolean(photo))
 
-    setCurrentStory({
+    const restoredStory: StoryDto = {
       ...baseStory,
-      title: draft.title || baseStory.title,
-      content: draft.content || baseStory.content,
-      contentJson: draft.contentJson ?? baseStory.contentJson ?? null,
+      title: draft.title,
+      editorType: draft.editorType,
+      contentEditorTypes: [...draft.contentEditorTypes],
+      tiptapContent: draft.tiptapContent,
+      tiptapContentJson: draft.tiptapContentJson ?? null,
+      milkContent: draft.milkContent ?? null,
       isPublished: draft.isPublished,
       createdAt: draft.createdAt || baseStory.createdAt,
       storyDate: draft.createdAt || baseStory.storyDate,
       coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
       coverCrop: draft.coverCrop ?? baseStory.coverCrop ?? null,
       photos: restoredPhotos,
-    })
+    }
+    setCurrentStory(restoredStory)
     setPendingImages(restorePendingImages(draft.files))
     setPendingCoverId(draft.pendingCoverId || null)
     setLastSavedAt(draft.savedAt)
-    setInitialStory({
-      title: draft.title || baseStory.title,
-      content: draft.content || baseStory.content,
-      contentJson: draft.contentJson ?? baseStory.contentJson ?? null,
-      isPublished: draft.isPublished,
-      createdAt: draft.createdAt || baseStory.createdAt,
-      storyDate: draft.createdAt || baseStory.storyDate,
-      photoIds: draft.photoIds,
-      coverPhotoId: draft.coverPhotoId ?? baseStory.coverPhotoId,
-      coverCrop: draft.coverCrop ?? baseStory.coverCrop ?? null,
-    })
+    setInitialStory({ ...createSnapshot(restoredStory), photoIds: draft.photoIds })
     notify(t('admin.restored_from_draft'), 'info')
-  }, [allPhotos, notify, setCurrentStory, setPendingCoverId, setPendingImages, t])
+  }, [allPhotos, beginEditorSession, notify, setCurrentStory, setPendingCoverId, setPendingImages, t])
 
   const createStoryWithDraftCheck = useCallback(async () => {
+    beginEditorSession()
     const newStory = createEmptyStory()
     setInitialStory(createSnapshot(newStory))
     setPendingImages([])
     setPendingCoverId(null)
     setCurrentStory(newStory)
     setStoryEditMode('editor')
-  }, [setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode])
+  }, [beginEditorSession, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode])
 
-  const editStoryWithDraftCheck = useCallback(async (story: StoryDto) => {
-    setInitialStory(createSnapshot(story))
+  const editStoryWithDraftCheck = useCallback(async (
+    story: StoryDto,
+    source: 'prompt' | 'draft' | 'database' = 'prompt',
+  ) => {
+    beginEditorSession()
+    const editableStory = { ...story }
+    setInitialStory(createSnapshot(editableStory))
+
+    if (source === 'database') {
+      setPendingImages([])
+      setPendingCoverId(null)
+      setCurrentStory(editableStory)
+      setStoryEditMode('editor')
+      return
+    }
 
     try {
       const draft = await getStoryEditorDraftFromDB(story.id)
-      if (draft && !draft.cloudSynced && draft.savedAt && draft.savedAt > new Date(story.updatedAt).getTime()) {
-        setCurrentStory({ ...story })
-        setDraftRestoreDialog({ isOpen: true, draft, story })
+      if (source === 'draft' && draft) {
+        applyDraft(draft, story)
+        setStoryEditMode('editor')
+        return
+      }
+      if (source === 'prompt' && draft && !draft.cloudSynced && draft.savedAt && draft.savedAt > new Date(story.updatedAt).getTime()) {
+        setCurrentStory(editableStory)
+        setDraftRestoreDialog({ isOpen: true, draft, story: editableStory })
         return
       }
     } catch (error) {
@@ -213,9 +280,9 @@ export function useStoryDraftState({
 
     setPendingImages([])
     setPendingCoverId(null)
-    setCurrentStory({ ...story })
+    setCurrentStory(editableStory)
     setStoryEditMode('editor')
-  }, [setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode])
+  }, [applyDraft, beginEditorSession, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode])
 
   const handleDraftRestore = useCallback(() => {
     if (draftRestoreDialog.draft && draftRestoreDialog.story) {
@@ -227,7 +294,7 @@ export function useStoryDraftState({
 
   const handleDraftDiscard = useCallback(() => {
     if (draftRestoreDialog.story) {
-      setCurrentStory({ ...draftRestoreDialog.story })
+      setCurrentStory(draftRestoreDialog.story)
       setPendingImages([])
       setPendingCoverId(null)
     }
@@ -236,10 +303,11 @@ export function useStoryDraftState({
   }, [draftRestoreDialog.story, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode])
 
   const handleDraftCancel = useCallback(() => {
+    beginEditorSession()
     setDraftRestoreDialog({ isOpen: false, draft: null, story: null })
     setCurrentStory(null)
     setStoryEditMode('list')
-  }, [setCurrentStory, setStoryEditMode])
+  }, [beginEditorSession, setCurrentStory, setStoryEditMode])
 
   useEffect(() => {
     if (editFromDraft && allPhotos.length === 0) {
@@ -255,7 +323,6 @@ export function useStoryDraftState({
 
   useEffect(() => {
     if (storyEditMode !== 'editor' || !currentStory || !isDirty) return
-    if (!currentStory.title && !currentStory.content && pendingImages.length === 0) return
 
     const timer = window.setTimeout(() => {
       void saveDraft()
@@ -265,9 +332,11 @@ export function useStoryDraftState({
   }, [currentStory, isDirty, pendingImages.length, saveDraft, storyEditMode])
 
   useEffect(() => {
-    if (!editFromDraft || allPhotos.length === 0) return
+    if (!editFromDraft || (editFromDraft.photoIds.length > 0 && allPhotos.length === 0)) return
 
     queueMicrotask(() => {
+      beginEditorSession()
+      const milkContent = editFromDraft.milkContent ?? null
       const restoredPhotos = editFromDraft.photoIds
         .map((id) => allPhotos.find((photo) => photo.id === id))
         .filter((photo): photo is PhotoDto => Boolean(photo))
@@ -275,8 +344,11 @@ export function useStoryDraftState({
       setCurrentStory({
         id: getNewStoryIdFromDraft(editFromDraft),
         title: editFromDraft.title,
-        content: editFromDraft.content,
-        contentJson: editFromDraft.contentJson ?? null,
+        editorType: editFromDraft.editorType,
+        contentEditorTypes: [...editFromDraft.contentEditorTypes],
+        tiptapContent: editFromDraft.tiptapContent,
+        tiptapContentJson: editFromDraft.tiptapContentJson ?? null,
+        milkContent,
         isPublished: editFromDraft.isPublished,
         storyDate: editFromDraft.createdAt,
         createdAt: editFromDraft.createdAt,
@@ -290,8 +362,11 @@ export function useStoryDraftState({
       setLastSavedAt(editFromDraft.savedAt)
       setInitialStory({
         title: editFromDraft.title,
-        content: editFromDraft.content,
-        contentJson: editFromDraft.contentJson ?? null,
+        editorType: editFromDraft.editorType,
+        contentEditorTypes: [...editFromDraft.contentEditorTypes],
+        tiptapContent: editFromDraft.tiptapContent,
+        tiptapContentJson: editFromDraft.tiptapContentJson ?? null,
+        milkContent,
         isPublished: editFromDraft.isPublished,
         createdAt: editFromDraft.createdAt,
         storyDate: editFromDraft.createdAt,
@@ -303,9 +378,10 @@ export function useStoryDraftState({
       notify(t('admin.restored_from_draft'), 'info')
       onDraftConsumed?.()
     })
-  }, [allPhotos, editFromDraft, notify, onDraftConsumed, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode, t])
+  }, [allPhotos, beginEditorSession, editFromDraft, notify, onDraftConsumed, setCurrentStory, setPendingCoverId, setPendingImages, setStoryEditMode, t])
 
   return {
+    editorSessionId,
     draftSaved,
     lastSavedAt,
     initialStory,
@@ -317,7 +393,9 @@ export function useStoryDraftState({
     handleDraftDiscard,
     handleDraftCancel,
     markDraftSynced,
+    rekeySavedDraft,
     saveDraft,
     resetDraftState,
+    acceptSavedStory,
   }
 }

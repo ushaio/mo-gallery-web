@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import React, { useState } from 'react'
 import {
@@ -11,10 +11,10 @@ import {
   RefreshCw,
   MoreVertical,
 } from 'lucide-react'
-import { blockNarrativeAiInteraction } from '@mo-gallery/tiptap-editor'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
+import { getMilkdownPhotoIds } from '@mo-gallery/milkdown/media'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { cn } from '@/lib/utils'
 
@@ -79,7 +79,10 @@ function StoryPhotoPanelBoundary({
   children: React.ReactNode
 }) {
   const guardDisabledInteraction = (event: React.SyntheticEvent) => {
-    blockNarrativeAiInteraction(disabled, event)
+    if (disabled) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
   }
 
   return (
@@ -140,7 +143,7 @@ export function StoryPhotoPanel({
 }: StoryPhotoPanelProps) {
   const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
-  const referencedPhotoIds = getStoryReferencedPhotoIds(editorContent)
+  const referencedPhotoIds = new Set([...getStoryReferencedPhotoIds(editorContent), ...getMilkdownPhotoIds(editorContent)])
 
   const isPhotoInserted = (photo: PhotoDto) => {
     if (referencedPhotoIds.has(photo.id)) {
@@ -189,13 +192,12 @@ export function StoryPhotoPanel({
       className={cn(
         'flex h-full min-w-[320px] flex-col overflow-hidden border border-border bg-card',
         isDraggingOver ? 'border-primary bg-primary/5' : 'border-border',
-        isImmersiveMode && 'border-t-0'
       )}
       onDragOver={onPhotoPanelDragOver}
       onDragLeave={onPhotoPanelDragLeave}
       onDrop={onPhotoPanelDrop}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-card px-4 py-2.5">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-card px-3 py-1">
         <div className="flex items-center gap-2">
           <ImageIcon className="h-4 w-4 text-primary" />
           <span className="text-xs font-bold uppercase tracking-[0.24em] text-foreground">

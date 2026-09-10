@@ -12,7 +12,6 @@ export const editorMessages: LocaleDictionaryGroup = {
       create_story: '创建叙事',
       no_story: '暂无叙事',
       photos_count: '张照片',
-      markdown_placeholder: '使用 Markdown 格式编写叙事内容...\n\n支持：\n# 标题\n**粗体** *斜体*\n- 列表\n> 引用\n[链接](url)',
       create_blog: '创建新博客',
       no_blog: '暂无文章',
       category_filter: '分类',
@@ -21,6 +20,8 @@ export const editorMessages: LocaleDictionaryGroup = {
     },
     editor: {
       placeholder: '开始编写你的故事...',
+      characters: '个字符',
+      materials: '项素材',
       heading_level: '标题级别',
       heading_paragraph: '正文',
       heading_1: '标题 1',
@@ -161,7 +162,6 @@ export const editorMessages: LocaleDictionaryGroup = {
       create_story: 'Create Story',
       no_story: 'No stories',
       photos_count: 'photos',
-      markdown_placeholder: 'Write story content in Markdown...\n\nSupported:\n# Heading\n**bold** *italic*\n- List\n> Quote\n[Link](url)',
       create_blog: 'Create Blog',
       no_blog: 'No articles',
       category_filter: 'Category',
@@ -170,6 +170,8 @@ export const editorMessages: LocaleDictionaryGroup = {
     },
     editor: {
       placeholder: 'Start writing your story...',
+      characters: 'chars',
+      materials: 'assets',
       heading_level: 'Heading level',
       heading_paragraph: 'Paragraph',
       heading_1: 'Heading 1',

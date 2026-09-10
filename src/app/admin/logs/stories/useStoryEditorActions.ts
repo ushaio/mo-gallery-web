@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { DragEvent } from 'react'
 import ExifReader from 'exifreader'
+import { hasEditorContent } from '@mo-gallery/api-client/editor-content'
 import { resolveAssetUrl } from '@/lib/api/core'
 import {
   addPhotosToAlbum,
@@ -12,8 +13,8 @@ import {
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
-import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
+import { buildMediaMarkdown } from '@mo-gallery/milkdown/media'
+import type { NarrativeMilkdownEditorHandle } from '@/components/NarrativeMilkdownEditor'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { STORY_PASTE_UPLOAD_SETTINGS_KEY, STORY_UPLOAD_SETTINGS_KEY } from './constants'
@@ -40,7 +41,7 @@ interface UseStoryEditorActionsParams {
 }
 
 interface UseStoryEditorActionsResult {
-  editorRef: MutableRefObject<NarrativeTipTapEditorHandle | null>
+  editorRef: MutableRefObject<NarrativeMilkdownEditorHandle | null>
   showUploadSettings: boolean
   setShowUploadSettings: Dispatch<SetStateAction<boolean>>
   showPasteUploadSettings: boolean
@@ -96,7 +97,7 @@ export function useStoryEditorActions({
   t,
   onRequestSave,
 }: UseStoryEditorActionsParams): UseStoryEditorActionsResult {
-  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
+  const editorRef = useRef<NarrativeMilkdownEditorHandle>(null)
   const pendingPasteFilesRef = useRef<File[] | null>(null)
 
   const [showUploadSettings, setShowUploadSettings] = useState(false)
@@ -141,17 +142,17 @@ export function useStoryEditorActions({
   }, [])
 
   const insertDirective = useCallback((markdown: string) => {
-    editorRef.current?.insertValue(markdown)
-    const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
-    const nextJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
-    setCurrentStory((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
-  }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
+    if (!currentStory || currentStory.editorType !== 'milkdown' || !hasEditorContent(currentStory, 'milkdown') || !editorRef.current) return
+    editorRef.current.insertMarkdown(markdown)
+    const milkContent = editorRef.current.getValue()
+    setCurrentStory((prev) => (prev ? { ...prev, milkContent } : prev))
+  }, [currentStory, setCurrentStory])
 
   const syncEditorContent = useCallback(() => {
-    const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
-    const latestJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
-    setCurrentStory((prev) => (prev ? { ...prev, content: latestValue, contentJson: latestJsonValue } : prev))
-  }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
+    if (!editorRef.current) return
+    const milkContent = editorRef.current.getValue()
+    setCurrentStory((prev) => (prev ? { ...prev, milkContent } : prev))
+  }, [setCurrentStory])
 
   const insertUploadPlaceholder = useCallback((placeholder: {
     uploadId: string
@@ -378,7 +379,7 @@ export function useStoryEditorActions({
       notify('Photo URL is unavailable', 'error')
       return
     }
-    insertDirective(buildStoryMarkdownImage({ url: photo.url, alt: photo.title, photoId: photo.id }))
+    insertDirective(buildMediaMarkdown({ kind: 'image', src: photo.url, title: photo.title, photoId: photo.id }))
     notify('Inserted Markdown image', 'success')
   }, [insertDirective, notify])
 
@@ -399,7 +400,7 @@ export function useStoryEditorActions({
 
     const markdown = photosToInsert
       .filter((photo) => Boolean(photo.url))
-      .map((photo) => buildStoryMarkdownImage({ url: photo.url!, alt: photo.title, photoId: photo.id }).trim())
+      .map((photo) => buildMediaMarkdown({ kind: 'image', src: photo.url!, title: photo.title, photoId: photo.id }).trim())
       .join('\n\n')
     if (!markdown) {
       notify('Photo URL is unavailable', 'error')

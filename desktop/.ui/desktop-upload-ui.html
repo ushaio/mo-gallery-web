@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图片上传</title>
+<style>
+  :root{
+    --bg:#f6f7f9;--card:#fff;--line:#e5e7eb;--text:#111827;--muted:#6b7280;
+    --primary:#111827;--primary-fg:#fff;--accent:#2563eb;--danger:#dc2626;--ok:#16a34a;--radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:0 24px}
+  header h1{font-size:18px;margin:0;padding:18px 0 12px}
+  .tabs{display:flex;gap:8px}
+  .tab{padding:10px 14px;border:0;background:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-size:14px}
+  .tab.active{color:var(--text);border-color:var(--text);font-weight:600}
+  main{display:grid;grid-template-columns:400px 1fr;gap:24px;padding:24px;max-width:1400px;margin:0 auto;align-items:start}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
+  /* 左侧表单 */
+  .panel{position:sticky;top:16px}
+  details{border-bottom:1px solid var(--line)}
+  details:last-of-type{border-bottom:0}
+  summary{list-style:none;cursor:pointer;padding:14px 18px;font-weight:600;display:flex;align-items:center;justify-content:space-between;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary .hint{font-weight:400;color:var(--muted);font-size:12px}
+  summary::after{content:"⌄";color:var(--muted);transition:.2s}
+  details[open] summary::after{transform:rotate(180deg)}
+  .body{padding:0 18px 16px;display:flex;flex-direction:column;gap:14px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  label.field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#374151}
+  label.field .req::after{content:" *";color:var(--danger)}
+  input[type=text],select{height:38px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font-size:14px;width:100%;background:#fff;color:var(--text)}
+  input:focus,select:focus{outline:2px solid #bfdbfe;border-color:var(--accent)}
+  .invalid{border-color:var(--danger)!important}
+  .err{color:var(--danger);font-size:12px;display:none}
+  .invalid ~ .err{display:block}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 6px;min-height:38px;align-items:center;cursor:text}
+  .tags:focus-within{outline:2px solid #bfdbfe}
+  .chip{background:#eef2ff;color:#3730a3;border-radius:6px;padding:2px 8px;font-size:12px;display:flex;gap:4px;align-items:center}
+  .chip b{cursor:pointer;font-weight:400;opacity:.6}
+  .tags input{border:0;height:28px;flex:1;min-width:80px;outline:none;font-size:13px}
+  .path-preview{font-size:12px;color:var(--muted);background:#f9fafb;border-radius:6px;padding:6px 8px;font-family:ui-monospace,monospace;word-break:break-all}
+  .switch-row{display:flex;justify-content:space-between;align-items:center}
+  .switch-row small{display:block;color:var(--muted);font-size:12px}
+  .switch{width:40px;height:22px;background:#d1d5db;border-radius:999px;position:relative;cursor:pointer;transition:.2s;flex:none}
+  .switch::after{content:"";width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .switch.on{background:var(--primary)}.switch.on::after{left:20px}
+  .presets{display:flex;gap:6px}
+  .presets button{flex:1;border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 0;font-size:12px;cursor:pointer}
+  .presets button.active{border-color:var(--text);background:var(--text);color:#fff}
+  .slider-row{display:flex;gap:10px;align-items:center}
+  .slider-row input[type=range]{flex:1;accent-color:var(--primary)}
+  .slider-row input[type=number]{width:70px;height:32px;border:1px solid var(--line);border-radius:6px;padding:0 6px}
+  .estimate{font-size:12px;color:var(--muted)}
+  .footer{padding:14px 18px;border-top:1px solid var(--line);background:#fff;border-radius:0 0 var(--radius) var(--radius)}
+  .btn-primary{width:100%;height:46px;border:0;border-radius:10px;background:var(--primary);color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn-primary:disabled{background:#d1d5db;cursor:not-allowed}
+  .reason{text-align:center;font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
+  kbd{background:#f3f4f6;border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px;font-family:inherit}
+  /* 右侧 */
+  .dropzone{border:2px dashed #d1d5db;border-radius:var(--radius);padding:56px 24px;text-align:center;background:#fff;transition:.15s;cursor:pointer}
+  .dropzone.drag{border-color:var(--accent);background:#eff6ff}
+  .dropzone .icon{width:72px;height:72px;border-radius:16px;background:#f3f4f6;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:32px}
+  .dropzone p{margin:6px 0;color:var(--muted)}
+  .dropzone .btn{margin-top:14px;display:inline-block;padding:9px 18px;border:1px solid var(--line);border-radius:8px;background:#fff;font-weight:500}
+  .dropzone.compact{padding:18px;display:flex;align-items:center;gap:14px;text-align:left}
+  .dropzone.compact .icon{width:40px;height:40px;font-size:20px;margin:0;border-radius:10px}
+  .dropzone.compact p{margin:2px 0}
+  .dropzone.compact .btn{margin:0 0 0 auto}
+  .list-head{display:flex;justify-content:space-between;align-items:center;margin:18px 0 12px}
+  .list-head .actions button{background:none;border:0;color:var(--accent);cursor:pointer;font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+  .file{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+  .file .thumb{aspect-ratio:4/3;background:#f3f4f6 center/cover no-repeat}
+  .file .rm{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:0;cursor:pointer;display:none}
+  .file:hover .rm{display:block}
+  .file .meta{padding:8px 10px}
+  .file input{border:0;border-bottom:1px dashed transparent;width:100%;font-size:13px;padding:2px 0;outline:none;height:auto;border-radius:0}
+  .file input:hover,.file input:focus{border-color:var(--line)}
+  .file .sub{font-size:11px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .badge{border-radius:4px;padding:0 5px;background:#f3f4f6}
+  .badge.gps{background:#fef3c7;color:#92400e}
+  .badge.ok{background:#dcfce7;color:#166534}.badge.fail{background:#fee2e2;color:#991b1b}
+  .bar{height:3px;background:#e5e7eb}.bar i{display:block;height:100%;background:var(--accent);width:0;transition:.3s}
+  .overall{margin-top:16px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:none}
+  .overall .bar{height:6px;border-radius:3px;overflow:hidden;margin-top:8px}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:.3s;pointer-events:none}
+  .toast.show{opacity:1}
+  body.page-drag::after{content:"松开鼠标添加图片";position:fixed;inset:0;background:rgba(37,99,235,.08);border:3px dashed var(--accent);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--accent);pointer-events:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>图片上传</h1>
+  <div class="tabs">
+    <button class="tab active" data-tab="digital">📷 数码</button>
+    <button class="tab" data-tab="film">🎞 胶片</button>
+  </div>
+</header>
+
+<main>
+  <!-- 左侧：设置面板 -->
+  <aside class="card panel">
+    <details open>
+      <summary>基本信息</summary>
+      <div class="body">
+        <div class="switch-row">
+          <div>使用文件名作为标题<small>关闭后可统一填写标题，多文件自动加序号</small></div>
+          <div class="switch on" id="swFilename"></div>
+        </div>
+        <label class="field" id="titleField" style="display:none">
+          <span class="req">统一标题</span>
+          <input type="text" id="title" placeholder="例如：京都秋日">
+          <span class="err">请填写标题</span>
+        </label>
+        <label class="field">
+          <span>分类</span>
+          <div class="tags" id="tags" onclick="this.querySelector('input').focus()">
+            <span class="chip">风光<b>×</b></span>
+            <input type="text" id="tagInput" placeholder="输入后回车添加" list="tagList">
+          </div>
+          <datalist id="tagList"><option>风光</option><option>人像</option><option>街拍</option><option>旅行</option></datalist>
+        </label>
+        <div class="row">
+          <label class="field"><span>相册</span>
+            <select><option>不放入相册</option><option>2024 日本</option><option>家庭</option></select></label>
+          <label class="field"><span>故事</span>
+            <select><option>不关联</option><option>秋日京都</option></select></label>
+        </div>
+        <div class="row" id="filmFields" style="display:none">
+          <label class="field"><span>胶卷</span><input type="text" placeholder="Portra 400"></label>
+          <label class="field"><span>相机</span><input type="text" placeholder="Nikon FM2"></label>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>存储位置 <span class="hint" id="storageHint">上次：OSS 主存储</span></summary>
+      <div class="body">
+        <div class="row">
+          <label class="field"><span class="req">存储源</span>
+            <select id="storage">
+              <option value="">选择存储源</option>
+              <option selected>OSS 主存储</option><option>本地磁盘</option><option>S3 备份</option>
+            </select>
+            <span class="err">请选择存储源</span>
+          </label>
+          <label class="field"><span>路径前缀</span><input type="text" id="prefix" placeholder="photos/2024" value="photos/2024"></label>
+        </div>
+        <div class="path-preview" id="pathPreview"></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>高级选项 <span class="hint" id="advHint">WebP · 2.0 MB · 保留 GPS</span></summary>
+      <div class="body">
+        <div class="switch-row">
+          <div>压缩图片<small>输出格式与目标大小</small></div>
+          <select id="fmt" style="width:110px;height:32px"><option>WebP</option><option>AVIF</option><option>JPG</option><option>原格式</option></select>
+        </div>
+        <div class="presets" id="presets">
+          <button data-v="0">原图</button><button data-v="5">高质量</button><button class="active" data-v="2">平衡</button><button data-v="0.5">极限</button>
+        </div>
+        <div class="slider-row">
+          <input type="range" id="size" min="0.2" max="10" step="0.1" value="2">
+          <input type="number" id="sizeNum" min="0.2" max="10" step="0.1" value="2"> <span class="estimate">MB</span>
+        </div>
+        <div class="estimate" id="estimate">预估输出：—</div>
+        <div class="switch-row"><div>在画廊中显示</div><div class="switch on" id="swGallery"></div></div>
+        <div class="switch-row">
+          <div>移除 GPS 信息<small id="gpsTip">保护位置隐私，建议开启</small></div>
+          <div class="switch" id="swGps"></div>
+        </div>
+      </div>
+    </details>
+
+    <div class="footer">
+      <button class="btn-primary" id="uploadBtn" disabled>☁ 上传 0 个文件</button>
+      <div class="reason" id="reason">请先添加文件</div>
+      <div class="reason"><kbd>Ctrl</kbd>+<kbd>V</kbd> 粘贴图片 · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 上传</div>
+    </div>
+  </aside>
+
+  <!-- 右侧：文件区 -->
+  <section>
+    <div class="dropzone" id="dropzone">
+      <div class="icon">🖼</div>
+      <div>
+        <p style="color:var(--text);font-size:15px">拖拽、粘贴图片到此处，或点击选择文件</p>
+        <p>支持 JPG、PNG、WebP、AVIF、TIFF · 单个文件 ≤ 50 MB</p>
+      </div>
+      <span class="btn">选择文件</span>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    </div>
+
+    <div id="listWrap" style="display:none">
+      <div class="list-head">
+        <strong id="listTitle">已选择 0 个文件</strong>
+        <div class="actions">
+          <button id="sortBtn">按日期排序</button>
+          <button id="clearBtn">清空</button>
+        </div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="overall" id="overall">
+      <div style="display:flex;justify-content:space-between"><span id="overallText">上传中 0/0</span><span id="overallPct">0%</span></div>
+      <div class="bar"><i id="overallBar"></i></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let files = [];
+
+/* ---------- 工具 ---------- */
+const fmtSize = b => b > 1048576 ? (b/1048576).toFixed(1)+' MB' : (b/1024).toFixed(0)+' KB';
+const toast = m => { const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); };
+
+/* ---------- Tab ---------- */
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  $('#filmFields').style.display = t.dataset.tab==='film' ? 'grid' : 'none';
+});
+
+/* ---------- 开关 ---------- */
+document.querySelectorAll('.switch').forEach(s => s.onclick = () => { s.classList.toggle('on'); sync(); });
+$('#swFilename').addEventListener('click', () => $('#titleField').style.display = $('#swFilename').classList.contains('on') ? 'none' : 'flex');
+
+/* ---------- 分类 Tag ---------- */
+const tagInput = $('#tagInput');
+function addTag(v){
+  if(!v.trim()) return;
+  const c=document.createElement('span'); c.className='chip'; c.innerHTML=v+'<b>×</b>';
+  $('#tags').insertBefore(c, tagInput); tagInput.value='';
+}
+tagInput.addEventListener('keydown', e => {
+  if(e.key==='Enter'){ e.preventDefault(); addTag(tagInput.value); }
+  if(e.key==='Backspace' && !tagInput.value){ const last=tagInput.previousElementSibling; last && last.remove(); }
+});
+tagInput.addEventListener('change', () => addTag(tagInput.value));
+$('#tags').addEventListener('click', e => { if(e.target.tagName==='B') e.target.parentNode.remove(); });
+
+/* ---------- 压缩 ---------- */
+const size=$('#size'), sizeNum=$('#sizeNum');
+size.oninput = () => { sizeNum.value=size.value; presetSync(); sync(); };
+sizeNum.oninput = () => { size.value=sizeNum.value; presetSync(); sync(); };
+$('#presets').onclick = e => { if(e.target.dataset.v==null) return;
+  const v=+e.target.dataset.v; if(v===0){ $('#fmt').value='原格式'; size.value=sizeNum.value=10; } else size.value=sizeNum.value=v;
+  presetSync(); sync(); };
+function presetSync(){ document.querySelectorAll('#presets button').forEach(b=>b.classList.toggle('active', b.dataset.v==size.value)); }
+$('#fmt').onchange = sync; $('#storage').onchange = sync; $('#prefix').oninput = sync; $('#title').oninput = sync;
+
+/* ---------- 统一同步 ---------- */
+function sync(){
+  // 路径预览
+  const s=$('#storage').value, p=$('#prefix').value.replace(/^\/+|\/+$/g,'');
+  const ext = $('#fmt').value==='原格式' ? (files[0]?.name.split('.').pop()||'jpg') : $('#fmt').value.toLowerCase();
+  $('#pathPreview').textContent = s ? `${s} / ${p?p+'/':''}${files[0]? files[0].name.replace(/\.\w+$/,'') : 'IMG_0001'}.${ext}` : '请选择存储源后预览路径';
+  $('#storageHint').textContent = s ? '当前：'+s : '未选择';
+  // 高级摘要
+  const gps = $('#swGps').classList.contains('on');
+  $('#advHint').textContent = `${$('#fmt').value} · ${size.value} MB · ${gps?'移除 GPS':'保留 GPS'}`;
+  // 预估输出
+  if(files.length){
+    const total=files.reduce((a,f)=>a+f.size,0);
+    const est=files.reduce((a,f)=>a+Math.min(f.size, size.value*1048576),0);
+    $('#estimate').textContent = `预估输出：${fmtSize(est)}（原始 ${fmtSize(total)}，节省约 ${Math.max(0,Math.round((1-est/total)*100))}%）`;
+  } else $('#estimate').textContent='预估输出：—';
+  // 上传按钮 & 原因
+  const btn=$('#uploadBtn'), useName=$('#swFilename').classList.contains('on');
+  let reason='';
+  if(!files.length) reason='请先添加文件';
+  else if(!s) reason='请选择存储源';
+  else if(!useName && !$('#title').value.trim()) reason='请填写统一标题';
+  btn.disabled=!!reason; $('#reason').textContent=reason;
+  const total=files.reduce((a,f)=>a+f.size,0);
+  btn.textContent = files.length ? `☁ 上传 ${files.length} 个文件 · ${fmtSize(total)}` : '☁ 上传 0 个文件';
+  $('#storage').classList.toggle('invalid', files.length>0 && !s);
+  $('#title').classList.toggle('invalid', files.length>0 && !useName && !$('#title').value.trim());
+  // GPS 提示
+  const gpsCount=files.filter(f=>f.gps).length;
+  $('#gpsTip').textContent = gpsCount && !gps ? `⚠ 检测到 ${gpsCount} 张包含位置信息` : '保护位置隐私，建议开启';
+}
+
+/* ---------- 文件管理 ---------- */
+const dz=$('#dropzone'), input=$('#fileInput');
+dz.onclick = () => input.click();
+input.onchange = () => addFiles(input.files);
+['dragenter','dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); document.body.classList.add('page-drag'); dz.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if(ev==='drop'||!e.relatedTarget){ document.body.classList.remove('page-drag'); dz.classList.remove('drag'); } }));
+document.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+document.addEventListener('paste', e => { const imgs=[...e.clipboardData.files].filter(f=>f.type.startsWith('image/')); if(imgs.length){ addFiles(imgs); toast(`已粘贴 ${imgs.length} 张图片`); } });
+document.addEventListener('keydown', e => {
+  if((e.ctrlKey||e.metaKey) && e.key==='Enter' && !$('#uploadBtn').disabled) upload();
+  if(e.key==='Escape' && files.length && confirm('清空已选文件？')) clearAll();
+});
+
+function addFiles(list){
+  let rejected=0;
+  [...list].forEach(f => {
+    if(!f.type.startsWith('image/')) return rejected++;
+    if(f.size>50*1048576) return rejected++;
+    if(files.some(x=>x.name===f.name && x.size===f.size)) return;
+    f.id=Math.random().toString(36).slice(2); f.url=URL.createObjectURL(f); f.gps=Math.random()<0.4; f.status='待上传';
+    files.push(f);
+  });
+  if(rejected) toast(`${rejected} 个文件不支持或超过 50 MB，已跳过`);
+  render();
+}
+function render(){
+  const has=files.length>0;
+  dz.classList.toggle('compact', has);
+  $('#listWrap').style.display = has?'block':'none';
+  $('#listTitle').textContent = `已选择 ${files.length} 个文件`;
+  $('#grid').innerHTML = files.map(f => `
+    <div class="file" data-id="${f.id}">
+      <div class="thumb" style="background-image:url('${f.url}')"></div>
+      <button class="rm" title="移除">×</button>
+      <div class="meta">
+        <input type="text" value="${f.name.replace(/\.\w+$/,'')}" title="点击修改标题">
+        <div class="sub"><span class="badge">${fmtSize(f.size)}</span><span class="badge">${f.type.split('/')[1].toUpperCase()}</span>${f.gps?'<span class="badge gps">GPS</span>':''}<span class="badge st">${f.status}</span></div>
+      </div>
+      <div class="bar"><i style="width:${f.progress||0}%"></i></div>
+    </div>`).join('');
+  sync();
+}
+$('#grid').onclick = e => { if(e.target.classList.contains('rm')){ const id=e.target.closest('.file').dataset.id; files=files.filter(f=>f.id!==id); render(); } };
+function clearAll(){ files=[]; render(); }
+$('#clearBtn').onclick = clearAll;
+$('#sortBtn').onclick = () => { files.sort((a,b)=>a.lastModified-b.lastModified); render(); toast('已按拍摄日期排序'); };
+
+/* ---------- 模拟上传 ---------- */
+function upload(){
+  const btn=$('#uploadBtn'); btn.disabled=true; btn.textContent='上传中…';
+  $('#overall').style.display='block';
+  let done=0;
+  files.forEach((f,i) => {
+    const card=$(`.file[data-id="${f.id}"]`), bar=card.querySelector('.bar i'), st=card.querySelector('.st');
+    let p=0; st.textContent='上传中';
+    const timer=setInterval(()=>{
+      p+=Math.random()*25; bar.style.width=Math.min(p,100)+'%';
+      if(p>=100){ clearInterval(timer); done++;
+        const fail=Math.random()<0.1; st.textContent=fail?'失败 · 重试':'完成'; st.className='badge st '+(fail?'fail':'ok');
+        if(fail){ st.style.cursor='pointer'; st.onclick=()=>{ st.className='badge st'; st.textContent='完成'; st.className='badge st ok'; }; }
+        const pct=Math.round(done/files.length*100);
+        $('#overallText').textContent = done<files.length ? `上传中 ${done}/${files.length}` : `完成 ${files.length} 个文件`;
+        $('#overallPct').textContent=pct+'%'; $('#overallBar').style.width=pct+'%';
+        if(done===files.length){ btn.textContent='✓ 上传完成 · 继续上传'; btn.disabled=false; btn.onclick=()=>{ clearAll(); $('#overall').style.display='none'; btn.onclick=upload; }; toast('全部上传完成，可前往相册查看'); }
+      }
+    }, 200+i*60);
+  });
+}
+$('#uploadBtn').onclick = upload;
+sync();
+</script>
+</body>
+</html>

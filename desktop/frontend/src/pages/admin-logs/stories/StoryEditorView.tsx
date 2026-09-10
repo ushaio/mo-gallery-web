@@ -1,34 +1,35 @@
 'use client'
 
-import { useMemo } from 'react'
+import type { ReactNode } from 'react'
+import { hasEditorContent } from '@mo-gallery/api-client'
+import { EditorContentPrompt } from '@mo-gallery/milkdown/editor-content'
 import {
   Calendar,
   Check,
-  PanelRightClose,
-  PanelRightOpen,
-  FileText,
-  Image as ImageIcon,
 } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
+import type { NarrativeMilkdownEditorHandle } from '@/components/NarrativeMilkdownEditor'
 import type { PhotoDto, StoryDto } from '@/lib/api/types'
-import { countStoryCharacters, hydrateStoryContentImages, hydrateStoryContentJsonImages, normalizeStoryContentImages, normalizeStoryContentJsonImages } from '@/lib/story-rich-content'
 import { cn } from '@/lib/utils'
-import { NarrativeTipTapEditor } from './constants'
+import { usePreferences } from '@/store/preferences'
+import { NarrativeMilkdownEditor } from './constants'
 import type { UploadProgressState } from './types'
 import { EditorShell } from '../shared/EditorShell'
+import { isMilkdownStoryReady } from './utils'
 
 interface StoryEditorViewProps {
+  sidePanel?: ReactNode
   token: string | null
   currentStory: StoryDto
+  editorSessionId: string
   editorRevision?: number
   pendingImages: PendingImage[]
   pendingCoverId: string | null
   saving: boolean
   draftSaved: boolean
   lastSavedAt: number | null
-  editorRef: React.RefObject<NarrativeTipTapEditorHandle | null>
+  editorRef: React.RefObject<NarrativeMilkdownEditorHandle | null>
   isImmersiveMode: boolean
   setIsImmersiveMode: Dispatch<SetStateAction<boolean>>
   listPaneCollapsed?: boolean
@@ -53,6 +54,7 @@ interface StoryEditorViewProps {
 
   onClose: () => void
   onSave: () => void
+  onConvertToMilkdown: () => void
   onPasteFiles: (files: File[]) => void
   onOpenMaterialLibrary: () => void
   onInsertPhotoMarkdown: (photo: PhotoDto) => void
@@ -80,8 +82,10 @@ interface StoryEditorViewProps {
 }
 
 export function StoryEditorView({
+  sidePanel,
   token,
   currentStory,
+  editorSessionId,
   editorRevision,
   pendingImages,
   pendingCoverId,
@@ -111,6 +115,7 @@ export function StoryEditorView({
   showPreview,
   onClose,
   onSave,
+  onConvertToMilkdown,
   onPasteFiles,
   onOpenMaterialLibrary,
   onInsertPhotoMarkdown,
@@ -136,16 +141,9 @@ export function StoryEditorView({
   notify,
   setCurrentStory,
 }: StoryEditorViewProps) {
-  const editorCharacterCount = countStoryCharacters(currentStory.content)
   const materialCount = currentStory.photos?.length || 0
-  const hydratedEditorContent = useMemo(
-    () => hydrateStoryContentImages(currentStory.content, currentStory.photos || [], settingsCdnDomain),
-    [currentStory.content, currentStory.photos, settingsCdnDomain],
-  )
-  const hydratedEditorJsonContent = useMemo(
-    () => hydrateStoryContentJsonImages(currentStory.contentJson, currentStory.photos || [], settingsCdnDomain),
-    [currentStory.contentJson, currentStory.photos, settingsCdnDomain],
-  )
+  const language = usePreferences((state) => state.language)
+  const editorReady = isMilkdownStoryReady(currentStory)
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -163,7 +161,7 @@ export function StoryEditorView({
         publishedLabel={t('admin.published')}
         draftLabel={t('admin.draft')}
         onSave={onSave}
-        saveDisabled={saving || isUploading}
+        saveDisabled={saving || isUploading || !editorReady}
         saveLabel={saving ? t('ui.saving') : isUploading ? t('admin.uploading') : t('admin.save')}
         savingLabel={t('ui.saving')}
         onPreview={showPreview}
@@ -214,61 +212,47 @@ export function StoryEditorView({
           </div>
         }
         metaRight={null}
-        bottomBar={
-          <div className="flex w-full items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                <FileText className="h-3.5 w-3.5" />
-                {editorCharacterCount} {t('admin.characters')}
-              </span>
-              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                <ImageIcon className="h-3.5 w-3.5" />
-                {materialCount} {t('story.materials_suffix')}
-              </span>
-            </div>
-            <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-              {draftSaved ? (
-                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                  <Check className="h-3 w-3" />
-                  {t('story.draft_saved')}
-                </span>
-              ) : null}
-            </span>
-          </div>
-        }
         t={t}
       >
 <div className="relative flex min-h-0 flex-1 gap-0 overflow-hidden">
-          <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]', isImmersiveMode && 'border-y-0 border-l-0 shadow-none')}>
-            <div className={cn('relative min-h-0 flex-1 overflow-hidden bg-background', isImmersiveMode && 'border-r border-border/60')}>
-              <NarrativeTipTapEditor
-                contentVersion={`${currentStory.id}-${editorRevision ?? 0}`}
+          <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border/80 bg-card/50 shadow-[0_16px_40px_-28px_rgba(0,0,0,0.25)]', isImmersiveMode && 'shadow-none')}>
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+              {editorReady ? <NarrativeMilkdownEditor
+                contentVersion={`${editorSessionId}-${editorRevision ?? 0}`}
                 ref={editorRef}
-                value={hydratedEditorContent}
-                jsonValue={hydratedEditorJsonContent}
-                onChange={(content) => setCurrentStory((prev) => (prev ? { ...prev, content: normalizeStoryContentImages(content) } : prev))}
-                onJsonChange={(contentJson) => setCurrentStory((prev) => (prev ? { ...prev, contentJson: normalizeStoryContentJsonImages(contentJson) } : prev))}
+                value={currentStory.milkContent ?? ''}
+                onChange={(milkContent) => setCurrentStory((prev) => (prev?.id === currentStory.id && isMilkdownStoryReady(prev) ? { ...prev, milkContent } : prev))}
+                token={token}
+                photos={currentStory.photos}
+                cdnDomain={settingsCdnDomain}
+                onPhotoUploaded={(photo) => setCurrentStory((prev) => prev?.id === currentStory.id && !prev.photos.some((entry) => entry.id === photo.id) ? { ...prev, photos: [...prev.photos, photo] } : prev)}
                 onPasteFiles={onPasteFiles}
-                toolbarAfterRedoAction={{
-                  title: isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse'),
+                toolbarAction={{
+                  label: isPhotoPanelCollapsed ? t('common.expand') : t('common.collapse'),
                   onClick: togglePhotoPanelCollapse,
-                  icon: isPhotoPanelCollapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />,
-                  disabled: isAiTaskLocked,
                 }}
-                placeholder={t('ui.markdown_placeholder')}
                 className="overflow-hidden bg-background"
-                documentId={currentStory.id}
-                documentKind="story"
-                onAiTaskLockChange={onAiTaskLockChange}
-                aiOptions={{
-                  enabled: true,
-                  token,
-                  scopeId: currentStory.id,
-                  title: currentStory.title,
+                onBusyChange={onAiTaskLockChange}
+                onError={(error) => notify(error.message, 'error')}
+                statusBar={{
+                  materialCount,
+                  trailing: draftSaved ? (
+                    <span className="flex items-center gap-1 font-mono text-[10px] text-green-600 dark:text-green-400">
+                      <Check className="h-3 w-3" />
+                      {t('story.draft_saved')}
+                    </span>
+                  ) : null,
                 }}
-              />
+              /> : <EditorContentPrompt
+                language={language}
+                targetEditor="Milkdown"
+                sourceEditor="TipTap"
+                scenario={hasEditorContent(currentStory, 'milkdown') ? 'use-existing' : hasEditorContent(currentStory, 'tiptap') ? 'convert' : 'unavailable'}
+                onAction={onConvertToMilkdown}
+              />}
             </div>
           </div>
+          {sidePanel}
         </div>
       </EditorShell>
     </div>

@@ -1,24 +1,53 @@
-import type { TiptapJsonContent } from '@/lib/api/types';
+import type { ArticleContentDto, EditorType, TiptapJsonContent } from '@/lib/api/types';
+
+type StoredDraft<T extends ArticleContentDto> = Omit<T, keyof ArticleContentDto> & Partial<ArticleContentDto> & {
+  content?: string;
+  contentJson?: TiptapJsonContent | null;
+};
+
+// Accept legacy field names only at the storage boundary. Empty saved bodies
+// retain their editor identity and never restore a different source.
+function normalizeDraft<T extends ArticleContentDto>(draft: StoredDraft<T>): T {
+  const { content, contentJson, ...rest } = draft;
+  const editorType: EditorType = draft.editorType === 'milkdown' || draft.editorType === 'tiptap'
+    ? draft.editorType
+    : draft.milkContent != null ? 'milkdown' : 'tiptap';
+  const contentEditorTypes = Array.isArray(draft.contentEditorTypes)
+    ? draft.contentEditorTypes.filter((type): type is EditorType => type === 'tiptap' || type === 'milkdown')
+    : Array.from(new Set<EditorType>([
+      editorType,
+      ...(draft.milkContent != null ? ['milkdown' as const] : []),
+      ...(draft.tiptapContent !== undefined || content !== undefined || draft.tiptapContentJson != null || contentJson != null ? ['tiptap' as const] : []),
+    ]));
+
+  return {
+    ...rest,
+    editorType,
+    contentEditorTypes,
+    tiptapContent: draft.tiptapContent ?? content ?? '',
+    tiptapContentJson: draft.tiptapContentJson !== undefined ? draft.tiptapContentJson : contentJson ?? null,
+    milkContent: draft.milkContent ?? null,
+  } as T;
+}
 
 // ============ Story Draft Types ============
-export interface StoryDraftData {
+export interface StoryDraftData extends ArticleContentDto {
   id: string;
+  storyId?: string;
   title: string;
-  content: string;
   selectedAlbumIds: string[];
   savedAt: number;
   files: { id: string; file: File }[];
 }
 
 // ============ Story Editor Draft Types (for StoriesTab) ============
-export interface StoryEditorDraftData {
+export interface StoryEditorDraftData extends ArticleContentDto {
   id: string; // 'story_editor_<storyId>' for existing stories, or 'story_editor_<draftId>' for new stories
   storyId?: string;
   title: string;
-  content: string;
-  contentJson?: TiptapJsonContent | null;
   isPublished: boolean;
   createdAt: string;
+  storyDate?: string;
   coverPhotoId?: string | null;
   coverCrop?: { x: number; y: number; width: number; height: number } | null;
   pendingCoverId?: string | null; // Cover ID for pending (not yet uploaded) images
@@ -28,12 +57,10 @@ export interface StoryEditorDraftData {
 }
 
 // ============ Blog Draft Types ============
-export interface BlogDraftData {
+export interface BlogDraftData extends ArticleContentDto {
   id: string; // 'blog_draft_new' for new drafts, or 'blog_draft_<blogId>' for existing blogs
   blogId?: string; // Original blog ID if editing an existing blog
   title: string;
-  content: string;
-  contentJson?: TiptapJsonContent | null;
   category: string;
   tags: string;
   isPublished: boolean;
@@ -65,12 +92,7 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 // ============ Story Draft Functions ============
-export async function saveDraftToDB(data: {
-  title: string;
-  content: string;
-  selectedAlbumIds: string[];
-  files: { id: string; file: File }[];
-}): Promise<void> {
+export async function saveDraftToDB(data: Omit<StoryDraftData, 'id' | 'savedAt'>): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -102,7 +124,7 @@ export async function getDraftFromDB(): Promise<StoryDraftData | undefined> {
       const store = transaction.objectStore(STORE_NAME);
       const request = store.get(STORY_DRAFT_KEY);
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => resolve(request.result ? normalizeDraft<StoryDraftData>(request.result) : undefined);
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
@@ -140,15 +162,7 @@ function getBlogDraftKey(blogId?: string): string {
 /**
  * Save a blog draft to IndexedDB
  */
-export async function saveBlogDraftToDB(data: {
-  blogId?: string;
-  title: string;
-  content: string;
-  contentJson?: TiptapJsonContent | null;
-  category: string;
-  tags: string;
-  isPublished: boolean;
-}): Promise<void> {
+export async function saveBlogDraftToDB(data: Omit<BlogDraftData, 'id' | 'savedAt'>): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -156,14 +170,8 @@ export async function saveBlogDraftToDB(data: {
       const store = transaction.objectStore(STORE_NAME);
       
       const draftData: BlogDraftData = {
+        ...data,
         id: getBlogDraftKey(data.blogId),
-        blogId: data.blogId,
-        title: data.title,
-        content: data.content,
-        contentJson: data.contentJson,
-        category: data.category,
-        tags: data.tags,
-        isPublished: data.isPublished,
         savedAt: Date.now(),
       };
 
@@ -189,7 +197,7 @@ export async function getBlogDraftFromDB(blogId?: string): Promise<BlogDraftData
       const store = transaction.objectStore(STORE_NAME);
       const request = store.get(getBlogDraftKey(blogId));
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => resolve(request.result ? normalizeDraft<BlogDraftData>(request.result) : undefined);
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
@@ -210,11 +218,11 @@ export async function getAllBlogDraftsFromDB(): Promise<BlogDraftData[]> {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        const allDrafts = request.result as (StoryDraftData | BlogDraftData)[];
+        const allDrafts = request.result as StoredDraft<BlogDraftData>[];
         // Filter only blog drafts (those with id starting with BLOG_DRAFT_PREFIX)
         const blogDrafts = allDrafts.filter(
-          (d): d is BlogDraftData => d.id.startsWith(BLOG_DRAFT_PREFIX)
-        );
+          (d) => d.id.startsWith(BLOG_DRAFT_PREFIX)
+        ).map((draft) => normalizeDraft<BlogDraftData>(draft));
         resolve(blogDrafts);
       };
       request.onerror = () => reject(request.error);
@@ -268,19 +276,8 @@ function getStoryEditorDraftKey(storyIdOrDraftId?: string): string {
     : `${STORY_EDITOR_DRAFT_PREFIX}${storyIdOrDraftId}`;
 }
 
-export async function saveStoryEditorDraftToDB(data: {
-  storyId?: string;
+export async function saveStoryEditorDraftToDB(data: Omit<StoryEditorDraftData, 'id' | 'savedAt'> & {
   draftId?: string;
-  title: string;
-  content: string;
-  contentJson?: TiptapJsonContent | null;
-  isPublished: boolean;
-  createdAt: string;
-  coverPhotoId?: string | null;
-  coverCrop?: { x: number; y: number; width: number; height: number } | null;
-  pendingCoverId?: string | null;
-  photoIds: string[];
-  files: { id: string; file: File }[];
 }): Promise<void> {
   try {
     const db = await openDB();
@@ -289,19 +286,9 @@ export async function saveStoryEditorDraftToDB(data: {
       const store = transaction.objectStore(STORE_NAME);
       
       const draftData: StoryEditorDraftData = {
+        ...data,
         id: getStoryEditorDraftKey(data.storyId || data.draftId),
-        storyId: data.storyId,
-        title: data.title,
-        content: data.content,
-        contentJson: data.contentJson,
-        isPublished: data.isPublished,
-        createdAt: data.createdAt,
-        coverPhotoId: data.coverPhotoId,
-        coverCrop: data.coverCrop,
-        pendingCoverId: data.pendingCoverId,
-        photoIds: data.photoIds,
         savedAt: Date.now(),
-        files: data.files,
       };
 
       const request = store.put(draftData);
@@ -322,7 +309,7 @@ export async function getStoryEditorDraftFromDB(storyId?: string): Promise<Story
       const store = transaction.objectStore(STORE_NAME);
       const request = store.get(getStoryEditorDraftKey(storyId));
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => resolve(request.result ? normalizeDraft<StoryEditorDraftData>(request.result) : undefined);
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
@@ -359,10 +346,10 @@ export async function getAllStoryEditorDraftsFromDB(): Promise<StoryEditorDraftD
       const request = store.getAll();
 
       request.onsuccess = () => {
-        const allDrafts = request.result;
+        const allDrafts = request.result as StoredDraft<StoryEditorDraftData>[];
         const storyEditorDrafts = allDrafts.filter(
-          (d): d is StoryEditorDraftData => d.id?.startsWith(STORY_EDITOR_DRAFT_PREFIX)
-        );
+          (d) => d.id?.startsWith(STORY_EDITOR_DRAFT_PREFIX)
+        ).map((draft) => normalizeDraft<StoryEditorDraftData>(draft));
         resolve(storyEditorDrafts);
       };
       request.onerror = () => reject(request.error);

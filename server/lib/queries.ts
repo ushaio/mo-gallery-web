@@ -1,10 +1,31 @@
 import 'server-only'
 import { cache } from 'react'
+import { ARTICLE_CONTENT_INCLUDE, mapArticleContent } from './article-content'
 import { db } from './db'
 import { resolvePhotoUrls } from './photo-urls'
-import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, PhotoPaginationMeta, FilmRollDto } from '@/lib/api/types'
+import type { Prisma } from '@/generated/prisma/client'
+import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, StoryCoverCropValue, PhotoPaginationMeta, FilmRollDto } from '@/lib/api/types'
 
 const PHOTO_INCLUDE = { categories: true, camera: true, lens: true } as const
+const STORY_INCLUDE = {
+  ...ARTICLE_CONTENT_INCLUDE,
+  photos: { where: { showFlag: true }, include: PHOTO_INCLUDE },
+} as const
+const BLOG_LIST_SELECT = {
+  id: true,
+  title: true,
+  editorType: true,
+  category: true,
+  tags: true,
+  isPublished: true,
+  createdAt: true,
+  updatedAt: true,
+  contents: { select: { editorType: true, tiptapContent: true, milkContent: true } },
+} as const satisfies Prisma.BlogSelect
+type BlogWithContent = Prisma.BlogGetPayload<{ include: typeof ARTICLE_CONTENT_INCLUDE }>
+type BlogListRecord = Prisma.BlogGetPayload<{ select: typeof BLOG_LIST_SELECT }>
+type StoryWithContent = Prisma.StoryGetPayload<{ include: typeof STORY_INCLUDE }>
+
 const PHOTO_ORDER = [
   { takenAt: { sort: 'desc' as const, nulls: 'last' as const } },
   { createdAt: 'desc' as const },
@@ -36,10 +57,9 @@ async function mapPhotoToDto(p: any): Promise<PhotoDto> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapBlogToDto(b: any): BlogDto {
+function mapBlogToDto(b: BlogWithContent): BlogDto {
   return {
-    ...b,
+    ...mapArticleContent(b),
     createdAt: serializeDate(b.createdAt),
     updatedAt: serializeDate(b.updatedAt),
   }
@@ -47,13 +67,16 @@ function mapBlogToDto(b: any): BlogDto {
 
 const BLOG_PREVIEW_LENGTH = 160
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapBlogToListItemDto(b: any): BlogListItemDto {
-  const raw: string = b.content ?? ''
+function mapBlogToListItemDto(b: BlogListRecord): BlogListItemDto {
+  const selectedContent = b.contents.find((row) => row.editorType === b.editorType)
+  const raw = b.editorType === 'milkdown'
+    ? selectedContent?.milkContent ?? ''
+    : selectedContent?.tiptapContent ?? ''
   const previewText = raw.replace(/[#*`\[\]]/g, '').substring(0, BLOG_PREVIEW_LENGTH)
   return {
     id: b.id,
     title: b.title,
+    editorType: b.editorType,
     category: b.category,
     tags: b.tags,
     isPublished: b.isPublished,
@@ -63,10 +86,11 @@ function mapBlogToListItemDto(b: any): BlogListItemDto {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function mapStoryToDto(s: any): Promise<StoryDto> {
+async function mapStoryToDto(s: StoryWithContent): Promise<StoryDto> {
   return {
-    ...s,
+    ...mapArticleContent(s),
+    coverPhotoId: s.coverPhotoId ?? undefined,
+    coverCrop: s.coverCrop as StoryCoverCropValue | null,
     createdAt: serializeDate(s.createdAt),
     updatedAt: serializeDate(s.updatedAt),
     storyDate: serializeDate(s.storyDate ?? s.createdAt),
@@ -159,6 +183,7 @@ export async function queryBlogs(): Promise<BlogListItemDto[]> {
   const blogs = await db.blog.findMany({
     where: { isPublished: true },
     orderBy: { createdAt: 'desc' },
+    select: BLOG_LIST_SELECT,
   })
   return blogs.map(mapBlogToListItemDto)
 }
@@ -166,6 +191,7 @@ export async function queryBlogs(): Promise<BlogListItemDto[]> {
 export const queryBlog = cache(async (id: string): Promise<BlogDto | null> => {
   const blog = await db.blog.findFirst({
     where: { id, isPublished: true },
+    include: ARTICLE_CONTENT_INCLUDE,
   })
   return blog ? mapBlogToDto(blog) : null
 })
@@ -186,7 +212,7 @@ export async function queryBlogCategories(): Promise<string[]> {
 export async function queryStories(): Promise<StoryDto[]> {
   const stories = await db.story.findMany({
     where: { isPublished: true },
-    include: { photos: { where: { showFlag: true }, include: PHOTO_INCLUDE } },
+    include: STORY_INCLUDE,
     orderBy: { createdAt: 'desc' },
   })
   return Promise.all(stories.map(mapStoryToDto))
@@ -195,7 +221,7 @@ export async function queryStories(): Promise<StoryDto[]> {
 export const queryStory = cache(async (id: string): Promise<StoryDto | null> => {
   const story = await db.story.findFirst({
     where: { id, isPublished: true },
-    include: { photos: { where: { showFlag: true }, include: PHOTO_INCLUDE } },
+    include: STORY_INCLUDE,
   })
   return story ? await mapStoryToDto(story) : null
 })

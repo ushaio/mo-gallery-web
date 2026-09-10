@@ -22,7 +22,7 @@ import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { getStoryCoverImageStyle, getStoryCoverPhoto } from '@/lib/story-cover'
-import { buildStoryPreviewText, stripStoryContentToPlainText } from '@/lib/story-rich-content'
+import { getArticlePlainText } from '@/lib/article-content'
 
 interface StoryPreviewModalProps {
   story: StoryDto
@@ -67,8 +67,9 @@ export function StoryPreviewModal({
   const activePhoto = photos[activePhotoIndex] || null
   const activePhotoThumbnailUrl = activePhoto ? getPhotoUrl(activePhoto, true) : null
   const activePhotoFullUrl = activePhoto ? getPhotoUrl(activePhoto) : null
-  const previewText = story.content ? buildStoryPreviewText(story.content, 200) : ''
-  const readingMinutes = Math.max(1, Math.ceil((stripStoryContentToPlainText(story.content || '') || '').length / 500))
+  const plainText = getArticlePlainText(story)
+  const previewText = plainText.slice(0, 200)
+  const readingMinutes = Math.max(1, Math.ceil(plainText.length / 500))
   const storyDateLabel = new Date(story.createdAt).toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: 'long',
@@ -144,7 +145,7 @@ export function StoryPreviewModal({
               {story.title || t('story.untitled')}
             </h1>
 
-            {story.content ? (
+            {previewText ? (
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -203,7 +204,9 @@ export function StoryPreviewModal({
           <article className="mb-16">
             <div className="prose prose-lg prose-zinc max-w-none dark:prose-invert prose-headings:font-serif prose-headings:tracking-tight prose-p:leading-relaxed prose-a:text-zinc-900 prose-a:decoration-zinc-300 prose-a:underline-offset-4 hover:prose-a:text-zinc-600 dark:prose-a:text-zinc-100 dark:prose-a:decoration-zinc-600 dark:hover:prose-a:text-zinc-300">
               <StoryRichContent
-                content={story.content || ''}
+                editorType={story.editorType}
+                content={story.tiptapContent}
+                milkContent={story.milkContent}
                 photos={photos}
                 cdnDomain={cdnDomain}
                 onPhotoClick={(photo) => onPhotoClick(photos.findIndex((item) => item.id === photo.id))}

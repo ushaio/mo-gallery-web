@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import dynamic from 'next/dynamic'
+import { EditorContentPrompt } from '@mo-gallery/milkdown'
+import { getEditorContent, hasEditorContent } from '@mo-gallery/api-client/editor-content'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Loader2, Image as ImageIcon, Send, Sparkles, Check, FolderOpen, Minimize2, Save, Clock, Trash2 } from 'lucide-react'
 import { compressImage } from '@/lib/image-compress'
@@ -9,14 +12,17 @@ import { useAuth } from '@/contexts/AuthContext'
 import { resolveAssetUrl } from '@/lib/api/core'
 import { getAdminAlbums, addPhotosToAlbum } from '@/lib/api/albums'
 import { uploadPhotoWithProgress, checkDuplicatePhoto, getPhotos } from '@/lib/api/photos'
-import { createStory } from '@/lib/api/stories'
-import type { PhotoDto, AlbumDto } from '@/lib/api/types'
+import { addPhotosToStory, createStory, updateStory } from '@/lib/api/stories'
+import type { ArticleContentDto, PhotoDto, AlbumDto } from '@/lib/api/types'
 import { useSettings } from '@/contexts/SettingsContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useDropzone } from 'react-dropzone'
 import { saveDraftToDB, getDraftFromDB, clearDraftFromDB } from '@/lib/client-db'
 import { Toast, type Notification } from '@/components/Toast'
 import { formatRelativeTimeLabel } from '@/lib/utils'
+import { activateMilkdownContent, createMilkdownDraftContent } from '@/lib/article-editor'
+
+const NarrativeMilkdownEditor = dynamic(() => import('@/components/NarrativeMilkdownEditor'), { ssr: false })
 
 const AUTO_SAVE_DELAY = 2000 // 2 seconds debounce
 
@@ -27,7 +33,7 @@ interface QuickStoryEditorProps {
 export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
   const { user, token } = useAuth()
   const { settings } = useSettings()
-  const { t } = useLanguage()
+  const { t, locale } = useLanguage()
 
   // UI State
   const [isExpanded, setIsExpanded] = useState(false)
@@ -39,7 +45,12 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
 
   // Data State
   const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
+  const [body, setBody] = useState<ArticleContentDto>(createMilkdownDraftContent)
+  const [storyId, setStoryId] = useState<string>()
+  const hasSavedDraftRef = useRef(false)
+  const savingRef = useRef(false)
+  const content = getEditorContent(body)
+  const isMilkdownReady = body.editorType === 'milkdown' && hasEditorContent(body, 'milkdown')
   const [photos, setPhotos] = useState<PhotoDto[]>([])
   const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File; preview: string }[]>([])
   const [uploadQueue, setUploadQueue] = useState<{ id: string; progress: number }[]>([])
@@ -78,8 +89,10 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
       try {
         const draft = await getDraftFromDB()
         if (draft) {
+          hasSavedDraftRef.current = true
+          setStoryId(draft.storyId)
           setTitle(draft.title || '')
-          setContent(draft.content || '')
+          setBody(draft)
           setSelectedAlbumIds(draft.selectedAlbumIds || [])
           setLastSavedAt(draft.savedAt)
 
@@ -92,9 +105,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
             setPendingFiles(restoredFiles)
           }
 
-          if (draft.title || draft.content || (draft.files && draft.files.length > 0)) {
-            setIsExpanded(true)
-          }
+          setIsExpanded(true)
         }
       } catch (e) {
         console.error('Failed to load draft', e)
@@ -118,50 +129,40 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
     initData()
   }, [token, user?.isAdmin])
 
-  // Auto-save draft when title, content, albums or files change
-  useEffect(() => {
-    if (!title && !content && selectedAlbumIds.length === 0 && pendingFiles.length === 0) return
-
-    // Clear existing timer
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current)
-    }
-
-    // Set new timer for auto-save
-    autoSaveTimerRef.current = setTimeout(() => {
-      saveDraft()
-    }, AUTO_SAVE_DELAY)
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current)
-      }
-    }
-  }, [title, content, selectedAlbumIds, pendingFiles])
-
   // Save draft to IndexedDB
   const saveDraft = useCallback(async () => {
-    if (!title && !content && pendingFiles.length === 0) return
+    if (!title && !getEditorContent(body) && pendingFiles.length === 0 && selectedAlbumIds.length === 0 && !hasSavedDraftRef.current) return
 
     try {
       await saveDraftToDB({
+        ...body,
+        storyId,
         title,
-        content,
         selectedAlbumIds,
         files: pendingFiles.map(f => ({ id: f.id, file: f.file }))
       })
+      hasSavedDraftRef.current = true
       setLastSavedAt(Date.now())
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 2000)
     } catch (e) {
       console.error('Failed to save draft', e)
     }
-  }, [title, content, selectedAlbumIds, pendingFiles])
+  }, [title, body, selectedAlbumIds, pendingFiles, storyId])
+
+  useEffect(() => {
+    if (loading) return
+    autoSaveTimerRef.current = setTimeout(() => { void saveDraft() }, AUTO_SAVE_DELAY)
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [loading, saveDraft])
 
   // Clear draft from IndexedDB
   const clearDraft = useCallback(async () => {
     try {
       await clearDraftFromDB()
+      hasSavedDraftRef.current = false
       setLastSavedAt(null)
     } catch (e) {
       console.error('Failed to clear draft', e)
@@ -178,7 +179,8 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
 
     // Reset all form state
     setTitle('')
-    setContent('')
+    setStoryId(undefined)
+    setBody(createMilkdownDraftContent())
     setPhotos([])
     setPendingFiles([])
     setSelectedAlbumIds([])
@@ -301,10 +303,11 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
 
   // Submit Handler - Upload files first, then create story
   const handleSubmit = async () => {
-    if (!title.trim() && !content.trim()) return
-    if (!token) return
+    if (!title.trim() || !isMilkdownReady) return
+    if (!token || savingRef.current) return
 
     try {
+      savingRef.current = true
       setLoading(true)
       const uploadedPhotos: PhotoDto[] = [...photos]
 
@@ -388,28 +391,31 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
         }
       }
 
-      // Create the story with all uploaded photos
-      await createStory(token, {
+      const payload = {
         title,
-        content,
+        editorType: 'milkdown' as const,
+        milkContent: body.milkContent ?? '',
         isPublished: true,
         photoIds: uploadedPhotos.map(p => p.id),
         coverPhotoId: uploadedPhotos.length > 0 ? uploadedPhotos[0].id : undefined
-      })
+      }
+      if (storyId && uploadedPhotos.length > 0) await addPhotosToStory(token, storyId, payload.photoIds)
+      const saved = storyId ? await updateStory(token, storyId, {
+        title: payload.title,
+        editorType: payload.editorType,
+        milkContent: payload.milkContent,
+        isPublished: payload.isPublished,
+      }) : await createStory(token, payload)
+      setStoryId(saved.id)
 
       // Cleanup preview URLs
       pendingFiles.forEach(f => URL.revokeObjectURL(f.preview))
 
-      // Clear draft after successful publish
-      clearDraft()
-
-      // Reset Form
-      setTitle('')
-      setContent('')
-      setPhotos([])
-      setPendingFiles([])
+      await clearDraft()
+      setPhotos((previous) => [...previous, ...uploadedPhotos.filter((uploaded) => !previous.some((photo) => photo.id === uploaded.id))])
+      const submittedFileIds = new Set(pendingFiles.map((file) => file.id))
+      setPendingFiles((previous) => previous.filter((file) => !submittedFileIds.has(file.id)))
       setUploadQueue([])
-      setIsExpanded(false)
 
       // Show success toast
       notify(t('story.published'), 'success')
@@ -418,6 +424,7 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
     } catch (error) {
       console.error('Failed to publish story:', error)
     } finally {
+      savingRef.current = false
       setLoading(false)
     }
   }
@@ -540,12 +547,22 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
                       className="w-full bg-transparent text-3xl font-serif font-light placeholder:text-muted-foreground/30 focus:outline-none"
                       autoFocus
                     />
-                    <textarea
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      placeholder={t('story.quick_content_ph')}
-                      className="w-full min-h-[120px] bg-transparent text-sm leading-relaxed font-sans placeholder:text-muted-foreground/30 focus:outline-none resize-none"
-                    />
+                    {isMilkdownReady ? (
+                      <div className="h-[360px] overflow-hidden border border-border">
+                        <NarrativeMilkdownEditor
+                          value={body.milkContent ?? ''}
+                          onChange={(milkContent) => setBody((previous) => ({ ...previous, milkContent }))}
+                          token={token}
+                          photos={photos}
+                          cdnDomain={settings?.cdn_domain}
+                          onPhotoUploaded={(uploaded) => setPhotos((previous) => previous.some((photo) => photo.id === uploaded.id) ? previous : [...previous, uploaded])}
+                          placeholder={t('story.quick_content_ph')}
+                          onError={(error) => notify(error.message, 'error')}
+                        />
+                      </div>
+                    ) : (
+                      <EditorContentPrompt language={locale} targetEditor="Milkdown" sourceEditor="TipTap" scenario={hasEditorContent(body, 'milkdown') ? 'use-existing' : hasEditorContent(body, 'tiptap') ? 'convert' : 'unavailable'} onAction={() => setBody(activateMilkdownContent(body))} />
+                    )}
 
                     {/* Photo Grid - Shows pending files and already uploaded photos */}
                     {(photos.length > 0 || pendingFiles.length > 0 || uploadQueue.length > 0) && (
@@ -754,8 +771,8 @@ export function QuickStoryEditor({ onSuccess }: QuickStoryEditorProps) {
                         {/* Publish Button */}
                         <button
                           onClick={(e) => { e.stopPropagation(); handleSubmit() }}
-                          disabled={loading || (!title && !content)}
-                          className={`flex items-center gap-2 px-6 py-2 rounded-full font-bold text-xs uppercase tracking-widest transition-all ${loading || (!title && !content) ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5'}`}
+                          disabled={loading || !title.trim() || !isMilkdownReady}
+                          className={`flex items-center gap-2 px-6 py-2 rounded-full font-bold text-xs uppercase tracking-widest transition-all ${loading || !title.trim() || !isMilkdownReady ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5'}`}
                         >
                           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                           {t('story.quick_publish')}

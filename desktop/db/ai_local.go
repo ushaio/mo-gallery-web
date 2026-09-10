@@ -3,7 +3,6 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"gorm.io/driver/sqlite"
@@ -22,11 +21,11 @@ const localAIFileName = "editor-ai.db"
 var AiDB *gorm.DB
 
 func LocalAIPath(configDir string) string {
-	return filepath.Join(configDir, localAIFileName)
+	return localDBPath(configDir, localAIFileName)
 }
 
 func ConnectLocalAI(configDir string) error {
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
+	if err := ensureDBDir(configDir); err != nil {
 		return fmt.Errorf("create local AI database directory: %w", err)
 	}
 
@@ -102,6 +101,16 @@ func localAIMigrations() []migrate.Migration {
 					}
 				}
 				return nil
+			},
+		},
+		{
+			Version: 2,
+			Name:    "input_images",
+			Up: func(tx *gorm.DB) error {
+				if err := tx.AutoMigrate(&AiInputImage{}); err != nil {
+					return err
+				}
+				return tx.Exec(`CREATE INDEX IF NOT EXISTS "idx_ai_input_image_conversation" ON "AiInputImage" ("conversationId", "createdAt")`).Error
 			},
 		},
 	}

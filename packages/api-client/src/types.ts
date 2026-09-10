@@ -161,11 +161,20 @@ export interface StoryCoverCropValue {
   height: number
 }
 
-export interface StoryDto {
+export type EditorType = 'tiptap' | 'milkdown'
+
+export interface ArticleContentDto {
+  editorType: EditorType
+  /** Editor types with a stored body row, including rows with an empty body. */
+  contentEditorTypes: EditorType[]
+  tiptapContent: string
+  tiptapContentJson?: TiptapJsonContent | null
+  milkContent?: string | null
+}
+
+export interface StoryDto extends ArticleContentDto {
   id: string
   title: string
-  content: string
-  contentJson?: TiptapJsonContent | null
   coverPhotoId?: string
   coverCrop?: StoryCoverCropValue | null
   isPublished: boolean
@@ -186,6 +195,8 @@ export type StoryAiAction =
 export interface StoryAiGenerateInput {
   action?: StoryAiAction
   model?: string
+  /** Optional Agent profile; omitted uses the configured default Agent. */
+  agentId?: string
   reasoningEffort?: EditorAiReasoningEffort
   prompt?: string
   title?: string
@@ -348,11 +359,9 @@ export interface AiImageMetadata {
   source?: string
 }
 
-export interface BlogDto {
+export interface BlogDto extends ArticleContentDto {
   id: string
   title: string
-  content: string
-  contentJson?: TiptapJsonContent | null
   category: string
   tags: string
   isPublished: boolean
@@ -373,7 +382,7 @@ export interface TiptapJsonContent {
 }
 
 /** Lightweight DTO for blog lists — no full content, only preview text */
-export type BlogListItemDto = Omit<BlogDto, 'content'> & {
+export type BlogListItemDto = Omit<BlogDto, 'tiptapContent' | 'tiptapContentJson' | 'milkContent' | 'contentEditorTypes'> & {
   previewText: string
 }
 

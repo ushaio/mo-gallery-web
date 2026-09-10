@@ -10,12 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/image/font/sfnt"
 )
 
 const maxZineAiImageBytes = 25 * 1024 * 1024
@@ -104,45 +101,7 @@ func ListZineSystemFonts() []string {
 }
 
 func scanZineSystemFonts() []string {
-	paths := zineSystemFontPaths()
-	seen := make(map[string]struct{})
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		if collection, err := sfnt.ParseCollection(data); err == nil {
-			for index := 0; index < collection.NumFonts(); index++ {
-				font, err := collection.Font(index)
-				if err != nil {
-					continue
-				}
-				if family, err := font.Name(nil, sfnt.NameIDFamily); err == nil {
-					family = strings.TrimSpace(family)
-					if family != "" {
-						seen[family] = struct{}{}
-					}
-				}
-			}
-			continue
-		}
-		font, err := sfnt.Parse(data)
-		if err != nil {
-			continue
-		}
-		if family, err := font.Name(nil, sfnt.NameIDFamily); err == nil {
-			family = strings.TrimSpace(family)
-			if family != "" {
-				seen[family] = struct{}{}
-			}
-		}
-	}
-	fonts := make([]string, 0, len(seen))
-	for family := range seen {
-		fonts = append(fonts, family)
-	}
-	sort.Strings(fonts)
-	return fonts
+	return append([]string(nil), getZineFontCatalog().families...)
 }
 
 func zineSystemFontPaths() []string {
@@ -236,6 +195,7 @@ func NewZineAssetHandler(proxy *ProxyClient) http.Handler {
 	// 图片下载可能远超 ProxyClient 30s 的 API 超时，单独用长超时客户端。
 	imageClient := &http.Client{Timeout: 5 * time.Minute}
 	mux := http.NewServeMux()
+	registerZineFontRoutes(mux)
 
 	mux.HandleFunc("/__zine/cjk-font", func(w http.ResponseWriter, r *http.Request) {
 		info := ResolveZineCJKFont()

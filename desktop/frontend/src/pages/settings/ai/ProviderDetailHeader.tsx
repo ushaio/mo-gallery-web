@@ -3,8 +3,8 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Pencil, RefreshCw, Save, Trash2 } from 'lucide-react'
-import { STATUS_COLORS, btnOutline, btnPrimary, inputClass, inputStyle } from '../shared'
-import { isProviderConfigured, type AiProviderConfig } from './config'
+import { btnOutline, btnPrimary, inputClass, inputStyle } from '../shared'
+import type { AiProviderConfig } from './config'
 
 export function ProviderDetailHeader({
   providerId, provider, isDefault, dirty, saving, fetching, autoEdit = false,
@@ -27,7 +27,6 @@ export function ProviderDetailHeader({
   const [editing, setEditing] = useState(autoEdit)
   const [idDraft, setIdDraft] = useState(providerId)
   const cancelEditRef = useRef(false)
-  const configured = isProviderConfigured(provider)
 
   const startEditing = () => {
     cancelEditRef.current = false
@@ -81,17 +80,6 @@ export function ProviderDetailHeader({
             )}
           </div>
         )}
-        <p className="mt-0.5 flex items-center text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-          <span className="truncate">{provider.base_url || '未配置 API 地址'}</span>
-          <span className="mx-1.5">·</span>
-          <span className="shrink-0">{configured ? '已连接' : '未配置'}</span>
-          {dirty && (
-            <span className="ml-1.5 inline-flex shrink-0 items-center gap-1" style={{ color: STATUS_COLORS.amber.fg }}>
-              <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: '#f59e0b' }} />
-              未保存更改
-            </span>
-          )}
-        </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <button onClick={onFetchModels} disabled={fetching}

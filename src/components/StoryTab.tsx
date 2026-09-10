@@ -358,7 +358,9 @@ export function StoryTab({
           ) : null}
 
           <StoryRichContent
-            content={story.content}
+            editorType={story.editorType}
+            content={story.tiptapContent}
+            milkContent={story.milkContent}
             photos={story.photos || []}
             cdnDomain={settings?.cdn_domain}
             className="story-rich-content--compact"

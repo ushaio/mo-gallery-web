@@ -11,14 +11,15 @@ import {
   type PhotoDto,
   type StoryDto,
 } from '@/lib/api'
-import { buildStoryMarkdownImage } from '@/lib/story-rich-content'
-import type { NarrativeTipTapEditorHandle } from '@/components/NarrativeTipTapEditor'
+import { buildMediaMarkdown } from '@mo-gallery/milkdown/media'
+import type { NarrativeMilkdownEditorHandle } from '@/components/NarrativeMilkdownEditor'
 import type { PendingImage } from '@/components/admin/StoryPhotoPanel'
 import type { UploadSettings } from '@/components/admin/ImageUploadSettingsModal'
 import { STORY_PASTE_UPLOAD_SETTINGS_KEY, STORY_UPLOAD_SETTINGS_KEY } from './constants'
 import type { UploadProgressState } from './types'
 import { useStoryPasteUploads } from './useStoryPasteUploads'
 import { uploadStoryPhotoFile } from './uploadStoryPhotoFile'
+import { isMilkdownStoryReady } from './utils'
 import { GetAllPhotos } from '../../../../wailsjs/go/main/App'
 
 interface UseStoryEditorActionsParams {
@@ -40,7 +41,7 @@ interface UseStoryEditorActionsParams {
 }
 
 interface UseStoryEditorActionsResult {
-  editorRef: MutableRefObject<NarrativeTipTapEditorHandle | null>
+  editorRef: MutableRefObject<NarrativeMilkdownEditorHandle | null>
   showUploadSettings: boolean
   setShowUploadSettings: Dispatch<SetStateAction<boolean>>
   showPasteUploadSettings: boolean
@@ -96,7 +97,8 @@ export function useStoryEditorActions({
   t,
   onRequestSave,
 }: UseStoryEditorActionsParams): UseStoryEditorActionsResult {
-  const editorRef = useRef<NarrativeTipTapEditorHandle>(null)
+  const editorRef = useRef<NarrativeMilkdownEditorHandle>(null)
+  const editorReady = isMilkdownStoryReady(currentStory)
   const pendingPasteFilesRef = useRef<File[] | null>(null)
 
   const [showUploadSettings, setShowUploadSettings] = useState(false)
@@ -141,17 +143,18 @@ export function useStoryEditorActions({
   }, [])
 
   const insertDirective = useCallback((markdown: string) => {
-    editorRef.current?.insertValue(markdown)
-    const nextValue = editorRef.current?.getValue() || currentStory?.content || ''
-    const nextJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
-    setCurrentStory((prev) => (prev ? { ...prev, content: nextValue, contentJson: nextJsonValue } : prev))
-  }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
+    if (!editorReady || !editorRef.current) return false
+    editorRef.current.insertMarkdown(markdown)
+    const milkContent = editorRef.current.getValue()
+    setCurrentStory((prev) => (prev && prev.id === currentStory?.id && isMilkdownStoryReady(prev) ? { ...prev, milkContent } : prev))
+    return true
+  }, [currentStory?.id, editorReady, setCurrentStory])
 
   const syncEditorContent = useCallback(() => {
-    const latestValue = editorRef.current?.getValue() || currentStory?.content || ''
-    const latestJsonValue = editorRef.current?.getJsonValue() ?? currentStory?.contentJson ?? null
-    setCurrentStory((prev) => (prev ? { ...prev, content: latestValue, contentJson: latestJsonValue } : prev))
-  }, [currentStory?.content, currentStory?.contentJson, setCurrentStory])
+    if (!editorReady || !editorRef.current) return
+    const milkContent = editorRef.current.getValue()
+    setCurrentStory((prev) => (prev && prev.id === currentStory?.id && isMilkdownStoryReady(prev) ? { ...prev, milkContent } : prev))
+  }, [currentStory?.id, editorReady, setCurrentStory])
 
   const insertUploadPlaceholder = useCallback((placeholder: {
     uploadId: string
@@ -159,11 +162,13 @@ export function useStoryEditorActions({
     imageWidth: number
     imageHeight: number
   }) => {
+    if (!editorReady) return
     editorRef.current?.insertImageUploadPlaceholder(placeholder)
     syncEditorContent()
-  }, [syncEditorContent])
+  }, [editorReady, syncEditorContent])
 
   const resolveUploadPlaceholder = useCallback((uploadId: string, photo: PhotoDto) => {
+    if (!editorReady) return false
     const resolved = editorRef.current?.resolveImageUploadPlaceholder(uploadId, {
       src: resolveAssetUrl(photo.url, cdnDomain),
       alt: photo.title,
@@ -171,12 +176,13 @@ export function useStoryEditorActions({
     }) ?? false
     syncEditorContent()
     return resolved
-  }, [cdnDomain, syncEditorContent])
+  }, [cdnDomain, editorReady, syncEditorContent])
 
   const failUploadPlaceholder = useCallback((uploadId: string) => {
+    if (!editorReady) return
     editorRef.current?.failImageUploadPlaceholder(uploadId)
     syncEditorContent()
-  }, [syncEditorContent])
+  }, [editorReady, syncEditorContent])
 
   const addPhotoToCurrentStory = useCallback((photo: PhotoDto) => {
     setCurrentStory((prev) => {
@@ -221,6 +227,7 @@ export function useStoryEditorActions({
 
   const handlePhotoPanelDrop = useCallback(async (event: DragEvent) => {
     event.preventDefault()
+    if (!editorReady) return
     const files = Array.from(event.dataTransfer.files).filter((file) => file.type.startsWith('image/'))
     if (files.length === 0) return
 
@@ -234,7 +241,7 @@ export function useStoryEditorActions({
     })))
 
     setPendingImages((prev) => [...prev, ...newPending])
-  }, [setPendingImages])
+  }, [editorReady, setPendingImages])
 
   const handleRemovePendingImage = useCallback((id: string) => {
     setPendingImages((prev) => {
@@ -245,7 +252,7 @@ export function useStoryEditorActions({
   }, [setPendingImages])
 
   const handleConfirmUpload = useCallback(async (settings: UploadSettings) => {
-    if (!token || !currentStory) return
+    if (!token || !currentStory || !editorReady) return
 
     persistUploadSettings(settings)
     setShowUploadSettings(false)
@@ -342,15 +349,16 @@ export function useStoryEditorActions({
     }
 
     notify(`${failedCount} ${t('admin.upload_failed_count')}`, 'error')
-  }, [addPhotoToCache, currentStory, findExistingPhotoById, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
+  }, [addPhotoToCache, currentStory, editorReady, findExistingPhotoById, notify, onRequestSave, pendingImages, persistUploadSettings, setCurrentStory, setPendingImages, stories, t, token])
 
   const handleRetryFailedUploads = useCallback(() => {
+    if (!editorReady) return
     setPendingImages((prev) => prev.map((image) => image.status === 'failed' ? { ...image, status: 'pending' as const, error: undefined, progress: 0 } : image))
     setShowUploadSettings(true)
-  }, [setPendingImages])
+  }, [editorReady, setPendingImages])
 
   const handlePasteFiles = useCallback((files: File[]) => {
-    if (!token || !currentStory) return
+    if (!token || !currentStory || !editorReady) return
 
     if (!hasConfirmedPasteSettings) {
       pendingPasteFilesRef.current = files
@@ -359,9 +367,10 @@ export function useStoryEditorActions({
     }
 
     void uploadAndInsertFiles(files, pasteUploadSettings)
-  }, [currentStory, hasConfirmedPasteSettings, pasteUploadSettings, setShowPasteUploadSettings, token, uploadAndInsertFiles])
+  }, [currentStory, editorReady, hasConfirmedPasteSettings, pasteUploadSettings, setShowPasteUploadSettings, token, uploadAndInsertFiles])
 
   const handleConfirmPasteUpload = useCallback(async (settings: UploadSettings) => {
+    if (!editorReady) return
     persistPasteUploadSettings({ ...settings, category: settings.category?.trim() || '' })
 
     const files = pendingPasteFilesRef.current
@@ -371,19 +380,22 @@ export function useStoryEditorActions({
     }
 
     await uploadAndInsertFiles(files, settings)
-  }, [persistPasteUploadSettings, uploadAndInsertFiles])
+  }, [editorReady, persistPasteUploadSettings, uploadAndInsertFiles])
 
   const handleInsertPhotoMarkdown = useCallback((photo: PhotoDto) => {
+    if (!editorReady || !editorRef.current) return
     addPhotoToCurrentStory(photo)
     if (!photo.url) {
       notify('Photo URL is unavailable', 'error')
       return
     }
-    insertDirective(buildStoryMarkdownImage({ url: photo.url, alt: photo.title, photoId: photo.id }))
-    notify('Inserted Markdown image', 'success')
-  }, [addPhotoToCurrentStory, insertDirective, notify])
+    if (insertDirective(buildMediaMarkdown({ kind: 'image', src: photo.url, title: photo.title, photoId: photo.id }))) {
+      notify('Inserted Markdown image', 'success')
+    }
+  }, [addPhotoToCurrentStory, editorReady, insertDirective, notify])
 
   const handleInsertGalleryMarkdown = useCallback((photoIds: string[]) => {
+    if (!editorReady || !editorRef.current) return
     if (photoIds.length === 0) {
       notify('No photos available to insert', 'info')
       return
@@ -398,17 +410,17 @@ export function useStoryEditorActions({
       return
     }
 
-    const markdown = photosToInsert
+    const images = photosToInsert
       .filter((photo) => Boolean(photo.url))
-      .map((photo) => buildStoryMarkdownImage({ url: photo.url!, alt: photo.title, photoId: photo.id }).trim())
-      .join('\n\n')
-    if (!markdown) {
+      .map((photo) => ({ src: photo.url!, alt: photo.title, photoId: photo.id }))
+    if (!images.length) {
       notify('Photo URL is unavailable', 'error')
       return
     }
-    insertDirective(`\n${markdown}\n`)
-    notify('Inserted Markdown gallery', 'success')
-  }, [currentStory?.photos, insertDirective, notify])
+    if (insertDirective(buildMediaMarkdown({ kind: 'gallery', images }))) {
+      notify('Inserted Markdown gallery', 'success')
+    }
+  }, [currentStory?.photos, editorReady, insertDirective, notify])
 
   return {
     editorRef,

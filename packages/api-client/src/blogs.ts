@@ -1,5 +1,5 @@
 import { apiRequest, apiRequestData } from './core'
-import type { BlogDto, TiptapJsonContent } from './types'
+import type { BlogDto, EditorType, TiptapJsonContent } from './types'
 
 export async function getBlogs(limit?: number): Promise<BlogDto[]> {
   const query = limit ? `?limit=${limit}` : ''
@@ -18,9 +18,13 @@ export async function getAdminBlogs(token: string): Promise<BlogDto[]> {
   return apiRequestData<BlogDto[]>('/api/admin/blogs', {}, token)
 }
 
+export async function getAdminBlog(token: string, id: string): Promise<BlogDto> {
+  return apiRequestData<BlogDto>(`/api/admin/blogs/${encodeURIComponent(id)}`, {}, token)
+}
+
 export async function createBlog(
   token: string,
-  data: { title: string; content: string; contentJson?: TiptapJsonContent | null; category?: string; tags?: string; isPublished: boolean },
+  data: { title: string; editorType: EditorType; tiptapContent?: string; tiptapContentJson?: TiptapJsonContent | null; milkContent?: string | null; category?: string; tags?: string; isPublished: boolean },
 ): Promise<BlogDto> {
   return apiRequestData<BlogDto>(
     '/api/admin/blogs',
@@ -35,7 +39,7 @@ export async function createBlog(
 export async function updateBlog(
   token: string,
   id: string,
-  data: { title?: string; content?: string; contentJson?: TiptapJsonContent | null; category?: string; tags?: string; isPublished?: boolean },
+  data: { title?: string; editorType?: EditorType; tiptapContent?: string; tiptapContentJson?: TiptapJsonContent | null; milkContent?: string | null; category?: string; tags?: string; isPublished?: boolean },
 ): Promise<BlogDto> {
   return apiRequestData<BlogDto>(
     `/api/admin/blogs/${encodeURIComponent(id)}`,

@@ -20,6 +20,7 @@ import { useSettings } from '@/contexts/SettingsContext'
 import { useTheme } from '@/contexts/ThemeContext'
 import { buildApiUrl } from '@/lib/api/core'
 import { getAdminStory } from '@/lib/api/stories'
+import { getEditorContent } from '@mo-gallery/api-client/editor-content'
 import { copyStoryAsWechatArticle } from '@/lib/wechat-article'
 import {
   appendEditorAiMessage,
@@ -54,7 +55,7 @@ async function getEditorStory(token: string, storyId: string): Promise<EditorSto
   return {
     id: story.id,
     title: story.title,
-    content: story.content,
+    content: getEditorContent(story),
     coverPhotoId: story.coverPhotoId,
     isPublished: story.isPublished,
     storyDate: story.storyDate,

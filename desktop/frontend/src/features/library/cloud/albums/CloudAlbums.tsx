@@ -36,6 +36,8 @@ interface CloudAlbumsProps {
   initialAlbumId?: string | null
   initialTab?: DetailTab
   createMode?: boolean
+  /** 首页照片流「建相册」交接：逗号分隔的照片 id，相册保存后自动加入 */
+  handoffPhotoIds?: string
   onBackToBrowser?: () => void
   onAlbumsChanged?: () => void
 }
@@ -44,6 +46,7 @@ export function CloudAlbums({
   initialAlbumId = null,
   initialTab = 'photos',
   createMode = false,
+  handoffPhotoIds = '',
   onBackToBrowser,
   onAlbumsChanged,
 }: CloudAlbumsProps = {}) {
@@ -60,6 +63,22 @@ export function CloudAlbums({
   const [photoSelectorSearch, setPhotoSelectorSearch] = useState('')
   const currentAlbumRequestIdRef = useRef(0)
   const handledExternalIntentRef = useRef('')
+  const handoffConsumedKeyRef = useRef('')
+  const pendingHandoffPhotoIdsRef = useRef<string[] | null>(null)
+
+  // 记录交接照片，待相册创建成功后自动加入
+  useEffect(() => {
+    const ids = handoffPhotoIds ? handoffPhotoIds.split(',').filter(Boolean) : []
+    if (!createMode || ids.length === 0) {
+      handoffConsumedKeyRef.current = ''
+      pendingHandoffPhotoIdsRef.current = null
+      return
+    }
+    const key = ids.join(',')
+    if (handoffConsumedKeyRef.current === key) return
+    handoffConsumedKeyRef.current = key
+    pendingHandoffPhotoIdsRef.current = ids
+  }, [createMode, handoffPhotoIds])
 
   const fetchAlbums = useCallback(async (force = false) => {
     setLoading(true)
@@ -169,7 +188,20 @@ export function CloudAlbums({
       const saved = wasExisting
         ? await appApi().UpdateAlbum(currentAlbum.id, payload)
         : await appApi().CreateAlbum(payload)
-      const fullAlbum = normalizeAlbum(await appApi().GetAlbum(saved.id))
+      let fullAlbum = normalizeAlbum(await appApi().GetAlbum(saved.id))
+
+      // 首页「建相册」交接：新建成功后把选中照片自动加入
+      const handoffIds = pendingHandoffPhotoIdsRef.current
+      if (!wasExisting && handoffIds?.length) {
+        pendingHandoffPhotoIdsRef.current = null
+        try {
+          fullAlbum = normalizeAlbum(await appApi().AddPhotosToAlbum(fullAlbum.id, handoffIds))
+          invalidateDesktopCache(['photos'])
+          toast.success(t('admin.photos_added', language))
+        } catch (error) {
+          toast.error(errorMessage(error, t('common.error', language)))
+        }
+      }
 
       setCurrentAlbum(fullAlbum)
       setActiveTab('photos')

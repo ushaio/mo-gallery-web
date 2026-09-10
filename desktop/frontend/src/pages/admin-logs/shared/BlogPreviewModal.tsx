@@ -1,6 +1,8 @@
 'use client'
 
 import { BookText, Clock, FileText, Tag, X } from 'lucide-react'
+import { getEditorContent } from '@mo-gallery/api-client/editor-content'
+import type { EditorType } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
 import { StoryRichContent } from '@/components/StoryRichContent'
 import { formatRelativeTimeLabel } from '@/lib/utils'
@@ -8,7 +10,9 @@ import { formatRelativeTimeLabel } from '@/lib/utils'
 interface BlogPreviewModalProps {
   blog: {
     title: string
-    content: string
+    editorType: EditorType
+    tiptapContent: string
+    milkContent?: string | null
     category?: string
     tags?: string
   }
@@ -18,7 +22,7 @@ interface BlogPreviewModalProps {
 }
 
 /**
- * 博客预览弹窗：以只读方式渲染 TipTap HTML 内容，交互与叙事预览一致。
+ * 博客预览弹窗按文章选择的编辑器渲染正文。
  */
 export function BlogPreviewModal({ blog, updatedAt, t, onClose }: BlogPreviewModalProps) {
   const relativeTime = updatedAt ? formatRelativeTimeLabel(new Date(updatedAt).getTime(), t, 'datetime') : null
@@ -59,7 +63,7 @@ export function BlogPreviewModal({ blog, updatedAt, t, onClose }: BlogPreviewMod
               )}
               <span className="flex items-center gap-1.5">
                 <FileText className="h-3 w-3" />
-                {blog.content.length} {t('admin.characters')}
+                {getEditorContent(blog).length} {t('admin.characters')}
               </span>
             </div>
           </div>
@@ -70,8 +74,8 @@ export function BlogPreviewModal({ blog, updatedAt, t, onClose }: BlogPreviewMod
 
         {/* 正文 */}
         <div className="custom-scrollbar flex-1 overflow-y-auto p-6">
-          {blog.content ? (
-            <StoryRichContent content={blog.content} className="story-rich-content--article" />
+          {getEditorContent(blog) ? (
+            <StoryRichContent editorType={blog.editorType} tiptapContent={blog.tiptapContent} milkContent={blog.milkContent} className="story-rich-content--article" />
           ) : (
             <p className="text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>
               {t('admin.no_content')}
