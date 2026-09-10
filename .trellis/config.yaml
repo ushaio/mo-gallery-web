@@ -157,20 +157,27 @@ channel:
 # prompt_injection:
 #   skip_keyword: "no-trellis"   # "" disables the escape hatch entirely
 
-# Auto-detected monorepo packages
+# 多仓库布局：desktop / flutter / packages 是同级目录下的独立 checkout
+# （../desktop、../flutter、../packages），不再是本仓库内的子目录。
+# git: true 标记「该条目指向一个独立 git 仓库」，Trellis 会汇报它的分支与改动；
+# 同一个仓库只标一个条目，避免同一份状态被重复输出。
 packages:
   mo-gallery-desktop-frontend:
-    path: desktop/frontend
-  ai-agent:
-    path: packages/ai-agent
-  api-client:
-    path: packages/api-client
+    path: ../desktop/frontend
+    git: true
   desktop-plugin-sdk:
-    path: packages/desktop-plugin-sdk
+    path: ../desktop/packages/desktop-plugin-sdk
   emulsion-mcp:
-    path: packages/emulsion-mcp
+    path: ../desktop/packages/emulsion-mcp
+  ai-agent:
+    path: ../packages/packages/ai-agent
+    git: true
+  api-client:
+    path: ../packages/packages/api-client
+  milkdown:
+    path: ../packages/packages/milkdown
   mo-editor:
-    path: packages/mo-editor
+    path: ../packages/packages/mo-editor
   tiptap-editor:
-    path: packages/tiptap-editor
+    path: ../packages/packages/tiptap-editor
 default_package: mo-gallery-desktop-frontend

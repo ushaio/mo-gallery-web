@@ -20,6 +20,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Flutter 客户端是独立仓库（ushaio/emulsion-app），版本校验需要它的 pubspec
+      - uses: actions/checkout@v4
+        with:
+          repository: ushaio/emulsion-app
+          path: flutter
+          fetch-depth: 1
+
       - name: Extract latest version from RELEASE.md
         id: version
         run: |

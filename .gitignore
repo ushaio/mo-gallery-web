@@ -73,16 +73,12 @@ public/uploads
 # zcode tooling
 .zcode/
 
-# desktop client — now its own repository (github.com/ushaio/emulsion-desktop.git),
-# no longer tracked by this repo. The local folder stays as a nested checkout.
+# 多仓库布局：本仓库只负责 web。桌面端、Flutter 客户端、共享包分别是同级目录下的
+# 独立 checkout（../desktop、../flutter、../packages），各自对应独立 GitHub 仓库
+# （emulsion-desktop / emulsion-app / mo-gallery-shared），不再由本仓库跟踪。
+# 下面三条规则保留，用于兜底忽略历史遗留或工具在本仓库内再生成同名目录的情况。
 /desktop/
-
-# flutter mobile client — now its own repository (github.com/ushaio/emulsion-app.git),
-# no longer tracked by this repo.
 /flutter/
-
-# shared packages — now in github.com/ushaio/mo-gallery-shared, consumed via
-# pnpm git dependencies; local leftover folder (if any) is not tracked.
 /packages/
 
 # local temp artifacts
