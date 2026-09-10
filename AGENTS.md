@@ -18,8 +18,8 @@
 - `public/` and `weixin/`: static assets and exportable templates.
 - `tests/`: focused tests such as `media-embed.test.ts`.
 - Shared `@mo-gallery/*` packages come from [mo-gallery-shared](https://github.com/ushaio/mo-gallery-shared) as pnpm git dependencies (`#tag&path:`), not workspace members.
-- Polyrepo layout: this repository is only the web app. The desktop client ([emulsion-desktop](https://github.com/ushaio/emulsion-desktop)), the Flutter client ([emulsion-app](https://github.com/ushaio/emulsion-app)), and the shared packages ([mo-gallery-shared](https://github.com/ushaio/mo-gallery-shared)) are independent checkouts at the sibling folders `../desktop`, `../flutter`, and `../packages` — the individual shared packages live under `../packages/packages/*`. They are separate git repositories — commit inside the relevant folder, never from here.
-- Consuming shared packages locally: this repo pins them by git tag, so a change in `../packages` only reaches the web app after tagging and reinstalling. Do not add `file:`/`link:` dependencies.
+- Polyrepo layout: this repository is only the web app. The desktop client ([emulsion-desktop](https://github.com/ushaio/emulsion-desktop)), the Flutter client ([emulsion-app](https://github.com/ushaio/emulsion-app)), and the shared packages ([mo-gallery-shared](https://github.com/ushaio/mo-gallery-shared)) are independent checkouts at the sibling folders `../emulsion-desktop`, `../emulsion-app`, and `../mo-gallery-shared` — the individual shared packages live under `../mo-gallery-shared/packages/*`. They are separate git repositories — commit inside the relevant folder, never from here.
+- Consuming shared packages locally: this repo pins them by git tag, so a change in `../mo-gallery-shared` only reaches the web app after tagging and reinstalling. Do not add `file:`/`link:` dependencies.
 
 ## Build, Test, and Development Commands
 - `pnpm run dev`: start the Next.js web app at `http://localhost:3000`.

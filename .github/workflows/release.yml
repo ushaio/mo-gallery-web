@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ushaio/emulsion-app
-          path: flutter
+          path: emulsion-app
           fetch-depth: 1
 
       - name: Extract latest version from RELEASE.md
@@ -52,9 +52,9 @@ jobs:
           ]
 
           // Flutter pubspec uses `x.y.z+build`; compare the version part only.
-          const pubspec = fs.readFileSync('flutter/pubspec.yaml', 'utf8')
+          const pubspec = fs.readFileSync('emulsion-app/pubspec.yaml', 'utf8')
           const flutterVersion = pubspec.match(/^version:\s*(.+)\s*$/m)?.[1]?.trim()
-          checks.push(['flutter/pubspec.yaml', flutterVersion?.split('+')[0]])
+          checks.push(['emulsion-app/pubspec.yaml', flutterVersion?.split('+')[0]])
 
           const mismatches = checks.filter(([, actual]) => actual !== expected)
           if (mismatches.length > 0) {

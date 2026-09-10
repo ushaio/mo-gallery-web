@@ -74,7 +74,7 @@ public/uploads
 .zcode/
 
 # 多仓库布局：本仓库只负责 web。桌面端、Flutter 客户端、共享包分别是同级目录下的
-# 独立 checkout（../desktop、../flutter、../packages），各自对应独立 GitHub 仓库
+# 独立 checkout（../emulsion-desktop、../emulsion-app、../mo-gallery-shared），各自对应独立 GitHub 仓库
 # （emulsion-desktop / emulsion-app / mo-gallery-shared），不再由本仓库跟踪。
 # 下面三条规则保留，用于兜底忽略历史遗留或工具在本仓库内再生成同名目录的情况。
 /desktop/
