@@ -64,7 +64,7 @@ public/uploads
 /outputs/
 /_tmp_*
 /.aeroric/
-/.tmp-overview-*.tsx
+/.tmp-*
 
 # kilo / kilocode tooling
 .kilo
@@ -88,6 +88,7 @@ public/uploads
 # local temp artifacts
 /tmp/
 temp_screenshot.png
+/.eslint-current.json
 
 .pnpm-store/
 .pencil-ui/
