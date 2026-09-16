@@ -104,7 +104,7 @@ function rejectDesktopPluginMutation(c: { json: (body: unknown, status?: number)
 
 async function mapPhotoDto(
   photo: {
-    categories: { name: string }[]
+    tags: { name: string }[]
     dominantColors: string | null
     path?: string | null
     thumbPath?: string | null
@@ -119,7 +119,7 @@ async function mapPhotoDto(
     ...photo,
     url,
     thumbnailUrl,
-    category: photo.categories.map((c) => c.name).join(','),
+    tags: photo.tags.map((c) => c.name).join(','),
     dominantColors: photo.dominantColors ? JSON.parse(photo.dominantColors) : null,
     photoType: photo.filmPhoto ? 'film' : 'digital',
     filmRollId: photo.filmPhoto?.filmRollId ?? null,
@@ -221,15 +221,15 @@ async function createDisplayImage(
 // Public endpoints
 photos.get('/photos', async (c) => {
   try {
-    const category = c.req.query('category')
+    const tag = c.req.query('tag')
     const limitStr = c.req.query('limit')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
     const allStr = c.req.query('all') // If 'true', return all photos without pagination
     
     const where =
-      category && category !== '全部'
-        ? { categories: { some: { name: category } } }
+      tag && tag !== '全部'
+        ? { tags: { some: { name: tag } } }
         : {}
 
     // If 'all=true', return all photos without pagination (for admin use)
@@ -237,7 +237,7 @@ photos.get('/photos', async (c) => {
       const photosList = await db.photo.findMany({
         where,
         include: {
-          categories: true,
+          tags: true,
           camera: true,
           lens: true,
           filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -269,7 +269,7 @@ photos.get('/photos', async (c) => {
         where: publicWhere,
         omit: { exifRaw: true },
         include: {
-          categories: true,
+          tags: true,
           camera: true,
           lens: true,
           filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -305,7 +305,7 @@ photos.get('/photos', async (c) => {
 // ─── 管理端照片列表（不过滤 showFlag，支持分页） ──────
 photos.get('/admin/photos', authMiddleware, async (c) => {
   try {
-    const category = c.req.query('category')
+    const tag = c.req.query('tag')
     const search = c.req.query('search')
     const photoType = c.req.query('photoType')
     const formats = c.req.query('formats')
@@ -321,8 +321,8 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
 
     // 构造查询条件（不过滤 showFlag）
     const where: Prisma.PhotoWhereInput = {}
-    if (category && category !== '全部') {
-      where.categories = { some: { name: category } }
+    if (tag && tag !== '全部') {
+      where.tags = { some: { name: tag } }
     }
     if (search) {
       where.title = { contains: search, mode: 'insensitive' }
@@ -371,7 +371,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
         where,
         omit: { exifRaw: true },
         include: {
-          categories: true,
+          tags: true,
           camera: true,
           lens: true,
           filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -408,7 +408,7 @@ photos.get('/admin/photos/:id', authMiddleware, async (c) => {
     const photo = await db.photo.findUnique({
       where: { id },
       include: {
-        categories: true,
+        tags: true,
         camera: true,
         lens: true,
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -430,7 +430,7 @@ photos.get('/photos/featured', async (c) => {
       where: { isFeatured: true, showFlag: true },
       omit: { exifRaw: true },
       include: {
-        categories: true,
+        tags: true,
         camera: true,
         lens: true,
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -508,20 +508,20 @@ photos.get('/photos/:id/display', async (c) => {
   }
 })
 
-photos.get('/categories', async (c) => {
+photos.get('/tags', async (c) => {
   try {
-    const categories = await db.category.findMany({
+    const tags = await db.tag.findMany({
       select: { name: true },
     })
 
-    const data = categories.map((c) => c.name)
+    const data = tags.map((c) => c.name)
 
     return c.json({
       success: true,
       data: ['全部', ...data],
     })
   } catch (error) {
-    console.error('Get categories error:', error)
+    console.error('Get tags error:', error)
     return c.json({ error: 'Internal server error' }, 500)
   }
 })
@@ -651,7 +651,7 @@ photos.post('/admin/photos/register', async (c) => {
       fileHash,
       showFlag = true,
       originFlag = 'web',
-      category,
+      tags,
       filmRollId,
       // EXIF 数据
       exif,
@@ -740,8 +740,8 @@ photos.post('/admin/photos/register', async (c) => {
     }
 
     // 分类
-    const categoriesArray = category
-      ? category.split(',').map((c: string) => c.trim()).filter((c: string) => c.length > 0)
+    const tagsArray = tags
+      ? tags.split(',').map((c: string) => c.trim()).filter((c: string) => c.length > 0)
       : []
 
     // 创建照片记录（fileHash 唯一索引兜底并发注册竞态）
@@ -778,15 +778,15 @@ photos.post('/admin/photos/register', async (c) => {
         orientation: exif?.orientation || null,
         software: exif?.software || null,
         exifRaw: sanitizeJsonString(exif?.raw) || null,
-        categories: {
-          connectOrCreate: categoriesArray.map((name: string) => ({
+        tags: {
+          connectOrCreate: tagsArray.map((name: string) => ({
             where: { name },
             create: { name },
           })),
         },
       },
       include: {
-        categories: true,
+        tags: true,
         camera: true,
         lens: true,
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -816,7 +816,7 @@ photos.post('/admin/photos/register', async (c) => {
       const withFilmRoll = await db.photo.findUnique({
         where: { id: photo.id },
         include: {
-          categories: true,
+          tags: true,
           camera: true,
           lens: true,
           filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -843,7 +843,7 @@ photos.post('/admin/photos', async (c) => {
     const file = formData.get('file') as File
     const titleRaw = formData.get('title') as string
     const title = titleRaw?.trim() || 'Untitled'
-    const category = formData.get('category') as string
+    const tags = formData.get('tags') as string
     const storageSourceId = formData.get('storage_source_id') as string | null
     const storageProvider = formData.get('storage_provider') as string
     const storagePath = formData.get('storage_path') as string
@@ -1028,9 +1028,9 @@ photos.post('/admin/photos', async (c) => {
     const filename = `${randomName}${ext}`
     const thumbnailFilename = buildThumbnailFilename(filename)
 
-    // Split categories by comma and trim
-    const categoriesArray = category
-      ? category
+    // Split tags by comma and trim
+    const tagsArray = tags
+      ? tags
           .split(',')
           .map((c) => c.trim())
           .filter((c) => c.length > 0)
@@ -1156,15 +1156,15 @@ photos.post('/admin/photos', async (c) => {
         orientation: exifData.orientation,
         software: exifData.software,
         exifRaw: exifData.exifRaw,
-        categories: {
-          connectOrCreate: categoriesArray.map((name: string) => ({
+        tags: {
+          connectOrCreate: tagsArray.map((name: string) => ({
             where: { name },
             create: { name },
           })),
         },
       },
       include: {
-        categories: true,
+        tags: true,
         camera: true,
         lens: true,
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -1202,7 +1202,7 @@ photos.post('/admin/photos', async (c) => {
       const photoWithFilmRoll = await db.photo.findUnique({
         where: { id: photo.id },
         include: {
-          categories: true,
+          tags: true,
           camera: true,
           lens: true,
           filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -1714,29 +1714,29 @@ photos.patch('/admin/photos/:id', async (c) => {
       }
     }
 
-    // Handle category update
-    if (body.category !== undefined) {
-      const categoriesArray = body.category
-        ? body.category
+    // Handle tag update
+    if (body.tags !== undefined) {
+      const tagsArray = body.tags
+        ? body.tags
             .split(',')
             .map((c: string) => c.trim())
             .filter((c: string) => c.length > 0)
         : []
 
-      // First disconnect all existing categories
+      // First disconnect all existing tags
       await db.photo.update({
         where: { id },
         data: {
-          categories: {
+          tags: {
             set: [], // Clear existing
           },
         },
       })
 
       // Then connect or create new ones
-      if (categoriesArray.length > 0) {
-        updateData.categories = {
-          connectOrCreate: categoriesArray.map((name: string) => ({
+      if (tagsArray.length > 0) {
+        updateData.tags = {
+          connectOrCreate: tagsArray.map((name: string) => ({
             where: { name },
             create: { name },
           })),
@@ -1766,7 +1766,7 @@ photos.patch('/admin/photos/:id', async (c) => {
       where: { id },
       data: updateData,
       include: {
-        categories: true,
+        tags: true,
         camera: true,
         lens: true,
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },
@@ -1924,14 +1924,14 @@ photos.post('/admin/photos/:id/reanalyze-colors', async (c) => {
       data: {
         dominantColors: dominantColors.length > 0 ? JSON.stringify(dominantColors) : null,
       },
-      include: { categories: true, camera: true, lens: true },
+      include: { tags: true, camera: true, lens: true },
     })
 
     return c.json({
       success: true,
       data: {
         ...updated,
-        category: updated.categories.map((c) => c.name).join(','),
+        tags: updated.tags.map((c) => c.name).join(','),
         dominantColors,
       },
     })
@@ -1949,7 +1949,7 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
 
     const photo = await db.photo.findUnique({
       where: { id },
-      include: { categories: true },
+      include: { tags: true },
     })
     if (!photo) {
       return c.json({ error: 'Photo not found' }, 404)
@@ -2074,14 +2074,14 @@ photos.post('/admin/photos/:id/reupload', async (c) => {
     const updated = await db.photo.update({
       where: { id },
       data: updateData,
-      include: { categories: true, camera: true, lens: true },
+      include: { tags: true, camera: true, lens: true },
     })
 
     return c.json({
       success: true,
       data: {
         ...updated,
-        category: updated.categories.map((c) => c.name).join(','),
+        tags: updated.tags.map((c) => c.name).join(','),
         dominantColors: updated.dominantColors ? JSON.parse(updated.dominantColors) : null,
       },
     })
@@ -2130,7 +2130,7 @@ photos.post('/admin/photos/:id/generate-thumbnail', async (c) => {
       where: { id },
       data: { thumbPath: uploadResult.key },
       include: {
-        categories: true,
+        tags: true,
         camera: true,
         lens: true,
         filmPhoto: { include: { filmRoll: { select: { name: true } } } },

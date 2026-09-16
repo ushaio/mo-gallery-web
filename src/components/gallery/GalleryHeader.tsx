@@ -7,9 +7,9 @@ import { ViewModeToggle, ViewMode } from './ViewModeToggle'
 export type GalleryView = 'photos' | 'albums'
 
 interface GalleryHeaderProps {
-  activeCategory: string
-  categories: string[]
-  onCategoryChange: (category: string) => void
+  activeTag: string
+  tags: string[]
+  onTagChange: (tag: string) => void
   photoCount: number
   albumCount?: number
   view: GalleryView
@@ -18,9 +18,9 @@ interface GalleryHeaderProps {
 }
 
 export function GalleryHeader({
-  activeCategory,
-  categories,
-  onCategoryChange,
+  activeTag,
+  tags,
+  onTagChange,
   photoCount,
   albumCount,
   view,
@@ -43,7 +43,7 @@ export function GalleryHeader({
               </span>
             </motion.div>
             <motion.h1
-              key={view === 'albums' ? 'albums' : activeCategory}
+              key={view === 'albums' ? 'albums' : activeTag}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -51,9 +51,9 @@ export function GalleryHeader({
             >
               {view === 'albums'
                 ? t('gallery.albums')
-                : activeCategory === 'all'
+                : activeTag === 'all'
                   ? t('gallery.title')
-                  : activeCategory}
+                  : activeTag}
             </motion.h1>
           </div>
 
@@ -110,20 +110,20 @@ export function GalleryHeader({
 
           {view === 'photos' ? (
             <div className="mask-gradient-x scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4 pb-2 md:mx-0 md:flex-wrap md:gap-1 md:px-0 md:pb-0 md:mask-none">
-              {categories.map((category) => (
+              {tags.map((tag) => (
                 <button
-                  key={category}
-                  onClick={() => onCategoryChange(category)}
+                  key={tag}
+                  onClick={() => onTagChange(tag)}
                   className={`relative flex-shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-all ${
-                    activeCategory === category
+                    activeTag === tag
                       ? 'bg-primary/8 text-primary'
                       : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   }`}
                 >
-                  {category === 'all' ? t('gallery.all') : category}
-                  {activeCategory === category ? (
+                  {tag === 'all' ? t('gallery.all') : tag}
+                  {activeTag === tag ? (
                     <motion.div
-                      layoutId="activeCategory"
+                      layoutId="activeTag"
                       className="absolute bottom-0 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary"
                     />
                   ) : null}

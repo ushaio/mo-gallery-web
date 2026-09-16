@@ -87,7 +87,7 @@ stories.get('/stories', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -97,7 +97,7 @@ stories.get('/stories', async (c) => {
       ...mapArticleContent(story),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
         dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : [],
       }))),
     })))
@@ -121,7 +121,7 @@ stories.get('/stories/:id', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -134,7 +134,7 @@ stories.get('/stories/:id', async (c) => {
       ...mapArticleContent(story),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
         dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : [],
       }))),
     }
@@ -212,7 +212,7 @@ stories.get('/photos/:photoId/story', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -225,7 +225,7 @@ stories.get('/photos/:photoId/story', async (c) => {
       ...mapArticleContent(story),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -256,7 +256,7 @@ stories.get('/admin/photos/:photoId/story', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -269,7 +269,7 @@ stories.get('/admin/photos/:photoId/story', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -289,7 +289,7 @@ stories.get('/admin/stories', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -299,7 +299,7 @@ stories.get('/admin/stories', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     })))
 
@@ -322,7 +322,7 @@ stories.get('/admin/stories/:id', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -335,7 +335,7 @@ stories.get('/admin/stories/:id', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -377,7 +377,7 @@ stories.post('/admin/stories', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -386,7 +386,7 @@ stories.post('/admin/stories', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -452,7 +452,7 @@ stories.patch('/admin/stories/:id', async (c) => {
         data: updateData,
         include: {
           ...ARTICLE_CONTENT_INCLUDE,
-          photos: { include: { categories: true } },
+          photos: { include: { tags: true } },
         },
       })
     }, ARTICLE_SAVE_TRANSACTION_OPTIONS)
@@ -461,7 +461,7 @@ stories.patch('/admin/stories/:id', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -519,7 +519,7 @@ stories.post('/admin/stories/:id/photos', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -528,7 +528,7 @@ stories.post('/admin/stories/:id/photos', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -561,7 +561,7 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -570,7 +570,7 @@ stories.delete('/admin/stories/:storyId/photos/:photoId', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -603,7 +603,7 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
       include: {
         ...ARTICLE_CONTENT_INCLUDE,
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
       },
     })
@@ -612,7 +612,7 @@ stories.patch('/admin/stories/:id/photos/reorder', async (c) => {
       ...mapArticleContent(story, true),
       photos: await Promise.all(story.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 

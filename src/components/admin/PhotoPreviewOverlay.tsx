@@ -53,7 +53,7 @@ export function PhotoPreviewOverlay({
 
   const source = resolveAssetUrl(showOriginal ? photo.url : photo.thumbnailUrl || photo.url, cdnDomain)
   const meta = [
-    photo.category,
+    photo.tags,
     photo.photoType === 'film' ? t('admin.upload_type_film') : t('admin.upload_type_digital'),
     photo.takenAt ? new Date(photo.takenAt).toLocaleDateString() : '',
   ].filter(Boolean)

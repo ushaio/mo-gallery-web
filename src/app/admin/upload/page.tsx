@@ -6,7 +6,7 @@ import { UploadTab } from '@/app/admin/upload/UploadTab'
 export default function UploadPage() {
   const {
     token,
-    categories,
+    tags,
     settings,
     t,
     notify,
@@ -17,7 +17,7 @@ export default function UploadPage() {
     <div className="space-y-8">
       <UploadTab
         token={token}
-        categories={categories}
+        tags={tags}
         settings={settings}
         t={t}
         notify={notify}

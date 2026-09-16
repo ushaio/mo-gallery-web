@@ -34,7 +34,7 @@ const GridItem = memo(function GridItem({
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
   )
-  const primaryCategory = useMemo(() => photo.category.split(',')[0], [photo.category])
+  const primaryTag = useMemo(() => photo.tags.split(',')[0], [photo.tags])
 
   return (
     <div
@@ -62,7 +62,7 @@ const GridItem = memo(function GridItem({
               {photo.title}
             </h3>
             <p className="text-ui-xs font-mono text-muted-foreground uppercase tracking-widest">
-              {primaryCategory}
+              {primaryTag}
             </p>
           </div>
           <span className="text-ui-micro font-mono text-muted-foreground/60">

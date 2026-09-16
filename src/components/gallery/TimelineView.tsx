@@ -51,7 +51,7 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
   )
-  const primaryCategory = useMemo(() => photo.category.split(',')[0], [photo.category])
+  const primaryTag = useMemo(() => photo.tags.split(',')[0], [photo.tags])
   const takenTimeLabel = useMemo(() => {
     if (!photo.takenAt) return null
     return new Date(photo.takenAt).toLocaleTimeString('en-US', {
@@ -78,7 +78,7 @@ const TimelinePhotoItem = memo(function TimelinePhotoItem({
 
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
         <p className="text-ui-xs font-black text-primary uppercase tracking-[0.2em] mb-0.5">
-          {primaryCategory}
+          {primaryTag}
         </p>
         <h3 className="text-lg font-serif text-white leading-tight line-clamp-1">
           {photo.title}

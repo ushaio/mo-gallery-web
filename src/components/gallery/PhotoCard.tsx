@@ -38,7 +38,7 @@ export const PhotoCard = memo(function PhotoCard({
     () => resolveAssetUrl(photo.thumbnailUrl || photo.url, settings?.cdn_domain),
     [photo.thumbnailUrl, photo.url, settings?.cdn_domain],
   )
-  const primaryCategory = useMemo(() => photo.category.split(',')[0], [photo.category])
+  const primaryTag = useMemo(() => photo.tags.split(',')[0], [photo.tags])
   const createdYear = useMemo(() => new Date(photo.createdAt).getFullYear(), [photo.createdAt])
   const imageHeight = masonryImageHeight(width, photoAspectRatio(photo))
   const [revealed, setRevealed] = useState(() => loadedImageUrls.has(coverUrl))
@@ -110,7 +110,7 @@ export const PhotoCard = memo(function PhotoCard({
               {photo.title}
             </h3>
             <p className="text-label font-bold uppercase tracking-[0.2em] text-muted-foreground truncate">
-              {primaryCategory}
+              {primaryTag}
             </p>
           </div>
 

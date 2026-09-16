@@ -52,7 +52,7 @@ const MASONRY_CARD_MARGIN = 6
 const PHOTO_FORMATS = ['jpg', 'png', 'webp', 'avif', 'gif', 'tiff', 'heic'] as const
 
 export interface LibraryPhotoFilters {
-  categoryFilter?: string
+  tagFilter?: string
   photoTypeFilter?: string
   fileFormats?: string[]
   albumFilter?: string
@@ -61,7 +61,7 @@ export interface LibraryPhotoFilters {
 
 interface LibraryPhotoWorkspaceProps {
   token: string | null
-  categories: string[]
+  tags: string[]
   albums: AlbumDto[]
   settings: AdminSettingsDto | null
   initialFilters?: LibraryPhotoFilters
@@ -84,20 +84,20 @@ function getPhotoFileFormat(photo: Pick<PhotoDto, 'path' | 'url'>) {
   return extension === 'jpeg' ? 'jpg' : extension
 }
 
-function PhotoFiltersPopover({ categories, category, photoType, fileFormats, t, onCategoryChange, onPhotoTypeChange, onFileFormatsChange }: {
-  categories: string[]
-  category: string
+function PhotoFiltersPopover({ tags, tag, photoType, fileFormats, t, onTagChange, onPhotoTypeChange, onFileFormatsChange }: {
+  tags: string[]
+  tag: string
   photoType: string
   fileFormats: string[]
   t: (key: string) => string
-  onCategoryChange: (value: string) => void
+  onTagChange: (value: string) => void
   onPhotoTypeChange: (value: string) => void
   onFileFormatsChange: (value: string[]) => void
 }) {
   const [open, setOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const activeCount = (category !== 'all' ? 1 : 0) + (photoType !== 'all' ? 1 : 0) + (fileFormats.length ? 1 : 0)
+  const activeCount = (tag !== 'all' ? 1 : 0) + (photoType !== 'all' ? 1 : 0) + (fileFormats.length ? 1 : 0)
 
   useEffect(() => {
     if (!open) return
@@ -150,16 +150,16 @@ function PhotoFiltersPopover({ categories, category, photoType, fileFormats, t, 
             </section>
 
             <section>
-              <h3 className="mb-2 text-[11px] font-semibold">{t('admin.category')}</h3>
+              <h3 className="mb-2 text-[11px] font-semibold">{t('admin.tag')}</h3>
               <div className="flex max-h-28 flex-wrap gap-1.5 overflow-auto pr-1">
-                <button type="button" onClick={() => onCategoryChange('all')} className={optionClass(category === 'all')}>{t('common.all')}</button>
-                {categories.filter((item) => item !== 'all' && item !== '全部').map((item) => <button key={item} type="button" onClick={() => onCategoryChange(item)} className={optionClass(category === item)}>{item}</button>)}
+                <button type="button" onClick={() => onTagChange('all')} className={optionClass(tag === 'all')}>{t('common.all')}</button>
+                {tags.filter((item) => item !== 'all' && item !== '全部').map((item) => <button key={item} type="button" onClick={() => onTagChange(item)} className={optionClass(tag === item)}>{item}</button>)}
               </div>
             </section>
           </div>
 
           <div className="mt-5 flex items-center justify-between border-t border-border pt-3">
-            <button type="button" disabled={activeCount === 0} onClick={() => { onCategoryChange('all'); onPhotoTypeChange('all'); onFileFormatsChange([]) }} className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-[10px] hover:bg-muted disabled:opacity-40"><X size={11} />{t('admin.clear_all_filters')}</button>
+            <button type="button" disabled={activeCount === 0} onClick={() => { onTagChange('all'); onPhotoTypeChange('all'); onFileFormatsChange([]) }} className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-[10px] hover:bg-muted disabled:opacity-40"><X size={11} />{t('admin.clear_all_filters')}</button>
             <button type="button" onClick={() => setOpen(false)} className="rounded-md bg-primary px-4 py-1.5 text-[10px] font-medium text-primary-foreground hover:bg-primary/90">{t('admin.filter_done')}</button>
           </div>
         </div>
@@ -305,7 +305,7 @@ const PhotoCard = memo(function PhotoCard({
   )
 })
 
-export function LibraryPhotoWorkspace({ token, categories, albums, settings, initialFilters = {}, t, notify, onUnauthorized }: LibraryPhotoWorkspaceProps) {
+export function LibraryPhotoWorkspace({ token, tags, albums, settings, initialFilters = {}, t, notify, onUnauthorized }: LibraryPhotoWorkspaceProps) {
   const viewMode = useAdminPreferenceStore((state) => state.resourceLibraryPhotoViewMode)
   const setViewMode = useAdminPreferenceStore((state) => state.setResourceLibraryPhotoViewMode)
   const gridSize = useAdminPreferenceStore((state) => state.resourceLibraryPhotoSize)
@@ -319,7 +319,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
   const [error, setError] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [category, setCategory] = useState(initialFilters.categoryFilter || 'all')
+  const [tag, setTag] = useState(initialFilters.tagFilter || 'all')
   const [photoType, setPhotoType] = useState(initialFilters.photoTypeFilter || 'all')
   const [fileFormats, setFileFormats] = useState<string[]>(initialFilters.fileFormats || [])
   const [featured, setFeatured] = useState(initialFilters.onlyFeatured === true)
@@ -347,7 +347,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
   const sentinelRef = useRef<HTMLDivElement>(null)
   const anchorIdRef = useRef<string | null>(null)
 
-  const filterKey = JSON.stringify([albumId, category, featured, photoType, fileFormats, search, sortBy, sortOrder])
+  const filterKey = JSON.stringify([albumId, tag, featured, photoType, fileFormats, search, sortBy, sortOrder])
   const cdnDomain = settings?.cdn_domain?.trim() || undefined
   const masonryColumnCount = Math.max(1, Math.floor((photoGridWidth + MASONRY_COLUMN_GAP) / (gridSize + MASONRY_COLUMN_GAP)))
   const masonryColumnWidth = Math.max(
@@ -397,7 +397,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         const album = await getAdminAlbum(token, albumId)
         const query = search.toLocaleLowerCase()
         nextPhotos = (album.photos || [])
-          .filter((photo) => category === 'all' || photo.category?.split(',').includes(category))
+          .filter((photo) => tag === 'all' || photo.tags?.split(',').includes(tag))
           .filter((photo) => photoType === 'all' || (photo.photoType || 'digital') === photoType)
           .filter((photo) => fileFormats.length === 0 || fileFormats.includes(getPhotoFileFormat(photo) || ''))
           .filter((photo) => !featured || photo.isFeatured)
@@ -411,7 +411,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         nextHasMore = false
       } else {
         const result = await getAdminPhotos(token, {
-          category,
+          tag,
           search,
           photoType: photoType === 'digital' || photoType === 'film' ? photoType : undefined,
           formats: fileFormats,
@@ -442,7 +442,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
         setLoadingMore(false)
       }
     }
-  }, [albumId, category, featured, fileFormats, hasMore, onUnauthorized, photoType, search, sortBy, sortOrder, t, token])
+  }, [albumId, tag, featured, fileFormats, hasMore, onUnauthorized, photoType, search, sortBy, sortOrder, t, token])
 
   useEffect(() => {
     pageRef.current = 1
@@ -641,8 +641,8 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
     ? t('admin.featured')
     : albumId
       ? albums.find((album) => album.id === albumId)?.name || t('admin.albums')
-      : category !== 'all'
-        ? category
+      : tag !== 'all'
+        ? tag
         : photoType === 'digital'
           ? t('admin.upload_type_digital')
           : photoType === 'film'
@@ -658,7 +658,7 @@ export function LibraryPhotoWorkspace({ token, categories, albums, settings, ini
             <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('common.search')} className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-xs outline-none focus:border-primary" />
             {searchInput && <button type="button" onClick={() => setSearchInput('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted"><X size={13} /></button>}
           </div>
-          <PhotoFiltersPopover categories={categories} category={category} photoType={photoType} fileFormats={fileFormats} t={t} onCategoryChange={setCategory} onPhotoTypeChange={setPhotoType} onFileFormatsChange={setFileFormats} />
+          <PhotoFiltersPopover tags={tags} tag={tag} photoType={photoType} fileFormats={fileFormats} t={t} onTagChange={setTag} onPhotoTypeChange={setPhotoType} onFileFormatsChange={setFileFormats} />
           <div className="flex h-8 items-center rounded-md border border-border bg-background p-0.5">
             <ViewButton active={viewMode === 'crop'} icon={LayoutGrid} label={t('admin.resource_library_crop_view')} onClick={() => setViewMode('crop')} />
             <ViewButton active={viewMode === 'fit'} icon={Maximize2} label={t('admin.resource_library_fit_view')} onClick={() => setViewMode('fit')} />

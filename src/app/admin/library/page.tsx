@@ -34,7 +34,7 @@ import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
 import { cn } from '@/lib/utils'
 
 type LibraryView = 'photos' | 'albums' | 'film-rolls'
-type SectionKey = 'photoType' | 'categories' | 'albums'
+type SectionKey = 'photoType' | 'tags' | 'albums'
 type AlbumWorkspaceTab = 'overview' | 'photos'
 
 interface AlbumWorkspaceRequest {
@@ -51,7 +51,7 @@ interface AlbumContextMenuState {
 
 const SECTION_STORAGE_KEY = 'admin-resource-library-sections'
 
-const DEFAULT_SECTIONS: Record<SectionKey, boolean> = { photoType: true, categories: true, albums: true }
+const DEFAULT_SECTIONS: Record<SectionKey, boolean> = { photoType: true, tags: true, albums: true }
 
 function readSections(): Record<SectionKey, boolean> {
   try {
@@ -66,7 +66,7 @@ export default function LibraryPage() {
   const {
     token,
     photos,
-    categories,
+    tags,
     settings,
     t,
     notify,
@@ -191,7 +191,7 @@ export default function LibraryPage() {
     <div className="flex h-full min-h-0 overflow-hidden">
       <aside className="flex w-[238px] shrink-0 flex-col overflow-hidden border-r border-border bg-background">
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <NavButton active={view === 'photos' && !photoFilters.categoryFilter && !photoFilters.photoTypeFilter && !photoFilters.albumFilter && !photoFilters.onlyFeatured} icon={Images} label={t('admin.resource_library_all_photos')} onClick={() => showPhotos()} />
+          <NavButton active={view === 'photos' && !photoFilters.tagFilter && !photoFilters.photoTypeFilter && !photoFilters.albumFilter && !photoFilters.onlyFeatured} icon={Images} label={t('admin.resource_library_all_photos')} onClick={() => showPhotos()} />
           <NavButton active={view === 'photos' && photoFilters.onlyFeatured === true} icon={Star} label={t('admin.featured')} onClick={() => showPhotos({ onlyFeatured: true })} />
           <NavButton active={view === 'film-rolls'} icon={Film} label={t('admin.film_rolls')} onClick={() => updateView('film-rolls')} />
 
@@ -201,10 +201,10 @@ export default function LibraryPage() {
             <NavButton active={view === 'photos' && photoFilters.photoTypeFilter === 'film'} icon={Film} label={t('admin.upload_type_film')} onClick={() => showPhotos({ photoTypeFilter: 'film' })} />
           </div>}
 
-          <SectionHeader open={sections.categories} label={t('ui.category_filter')} onToggle={() => toggleSection('categories')} />
-          {sections.categories && <div className="space-y-0.5">
-            {categories.filter((category) => category !== 'all' && category !== '全部').map((category) => (
-              <NavButton key={category} active={view === 'photos' && photoFilters.categoryFilter === category} icon={Tag} label={category} onClick={() => showPhotos({ categoryFilter: category })} />
+          <SectionHeader open={sections.tags} label={t('ui.tag_filter')} onToggle={() => toggleSection('tags')} />
+          {sections.tags && <div className="space-y-0.5">
+            {tags.filter((tag) => tag !== 'all' && tag !== '全部').map((tag) => (
+              <NavButton key={tag} active={view === 'photos' && photoFilters.tagFilter === tag} icon={Tag} label={tag} onClick={() => showPhotos({ tagFilter: tag })} />
             ))}
           </div>}
 
@@ -241,7 +241,7 @@ export default function LibraryPage() {
           <LibraryPhotoWorkspace
             key={JSON.stringify(photoFilters)}
             token={token}
-            categories={categories}
+            tags={tags}
             albums={albums}
             settings={settings}
             initialFilters={photoFilters}

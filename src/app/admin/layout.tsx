@@ -20,7 +20,7 @@ import {
   addPhotosToStory,
   batchUpdatePhotoUrls,
   getAdminSettings,
-  getCategories,
+  getTags,
   getPhotos,
   updateAdminSettings,
   type AdminSettingsDto,
@@ -39,7 +39,7 @@ import { isAuthFailurePending, reportAuthFailure } from '@/lib/auth-failure'
 interface AdminContextType {
   token: string | null
   photos: PhotoDto[]
-  categories: string[]
+  tags: string[]
   settings: AdminSettingsDto | null
   setSettings: (settings: AdminSettingsDto) => void
   settingsLoading: boolean
@@ -117,7 +117,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, [])
 
   // Photos State
-  const [categories, setCategories] = useState<string[]>([])
+  const [tags, setTags] = useState<string[]>([])
   const [photos, setPhotos] = useState<PhotoDto[]>([])
 
   // Logout Confirmation State
@@ -152,10 +152,10 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, [])
 
   // --- Data Fetching ---
-  const refreshCategories = useCallback(async () => {
+  const refreshTags = useCallback(async () => {
     try {
-      const data = await getCategories()
-      setCategories(data)
+      const data = await getTags()
+      setTags(data)
     } catch { }
   }, [])
 
@@ -193,7 +193,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   }, [token, handleUnauthorized, t])
 
   useEffect(() => {
-    refreshCategories()
+    refreshTags()
     refreshPhotos()
     refreshSettings()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -296,7 +296,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const contextValue: AdminContextType = {
     token,
     photos,
-    categories,
+    tags,
     settings,
     setSettings,
     settingsLoading,

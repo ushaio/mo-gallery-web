@@ -59,7 +59,7 @@ albums.get('/albums', async (c) => {
       include: {
         photos: {
           where: { showFlag: true },
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: { where: { showFlag: true } } },
@@ -73,7 +73,7 @@ albums.get('/albums', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     })))
 
@@ -96,7 +96,7 @@ albums.get('/albums/:id', async (c) => {
       include: {
         photos: {
           where: { showFlag: true },
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: { where: { showFlag: true } } },
@@ -113,7 +113,7 @@ albums.get('/albums/:id', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -166,7 +166,7 @@ albums.get('/admin/albums', async (c) => {
         photos: {
           orderBy: { createdAt: 'asc' },
           take: 1,
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -180,7 +180,7 @@ albums.get('/admin/albums', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     })))
 
@@ -202,7 +202,7 @@ albums.get('/admin/albums/:id', async (c) => {
       where: { id },
       include: {
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -219,7 +219,7 @@ albums.get('/admin/albums/:id', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -253,7 +253,7 @@ albums.post('/admin/albums', async (c) => {
       },
       include: {
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -266,7 +266,7 @@ albums.post('/admin/albums', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -290,7 +290,7 @@ albums.patch('/admin/albums/:id', async (c) => {
       data: validated,
       include: {
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -303,7 +303,7 @@ albums.patch('/admin/albums/:id', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -349,7 +349,7 @@ albums.post('/admin/albums/:id/photos', async (c) => {
       },
       include: {
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -362,7 +362,7 @@ albums.post('/admin/albums/:id/photos', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -390,7 +390,7 @@ albums.delete('/admin/albums/:albumId/photos/:photoId', async (c) => {
       },
       include: {
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -403,7 +403,7 @@ albums.delete('/admin/albums/:albumId/photos/:photoId', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 
@@ -448,7 +448,7 @@ albums.patch('/admin/albums/:id/cover', async (c) => {
       },
       include: {
         photos: {
-          include: { categories: true },
+          include: { tags: true },
         },
         _count: {
           select: { photos: true },
@@ -461,7 +461,7 @@ albums.patch('/admin/albums/:id/cover', async (c) => {
       photoCount: album._count.photos,
       photos: await Promise.all(album.photos.map(async (p) => ({
         ...(await resolvePhotoUrlsInto(p)),
-        category: p.categories.map((c) => c.name).join(','),
+        tags: p.tags.map((c) => c.name).join(','),
       }))),
     }
 

@@ -198,7 +198,7 @@ export function LibraryFilmRollWorkspace({
     return photos.filter((photo) => {
       if (used.has(photo.id) || (photo.filmRollId && photo.filmRollId !== currentRoll?.id)) return false
       const type = photo.photoType ?? (photo.filmRollId ? 'film' : 'digital')
-      return (photoFilter === 'all' || type === photoFilter) && (!query || photo.title.toLowerCase().includes(query) || photo.category.toLowerCase().includes(query))
+      return (photoFilter === 'all' || type === photoFilter) && (!query || photo.title.toLowerCase().includes(query) || photo.tags.toLowerCase().includes(query))
     })
   }, [currentRoll?.filmPhotos, currentRoll?.id, photoFilter, photoSearch, photos])
 

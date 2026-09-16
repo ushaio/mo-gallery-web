@@ -77,7 +77,7 @@ export default function AlbumDetailPage() {
     const normalizedSearch = search.toLowerCase()
     return album.photos.filter((photo) =>
       photo.title.toLowerCase().includes(normalizedSearch) ||
-      photo.category.toLowerCase().includes(normalizedSearch),
+      photo.tags.toLowerCase().includes(normalizedSearch),
     )
   }, [album, search])
 

@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { getAlbums } from '@/lib/api/albums'
-import { getCategories, getPhotosWithMeta } from '@/lib/api/photos'
+import { getTags, getPhotosWithMeta } from '@/lib/api/photos'
 import { setAlbumPreview } from '@/lib/gallery-session'
 import type { AlbumDto, PhotoDto, PhotoPaginationMeta } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
@@ -26,13 +26,13 @@ const PAGE_SIZE = 40
 // Masonry can outrun sequential page loads on fast scrolls, so a single
 // loadMore call may fetch a few pages in parallel to catch up faster.
 const MAX_LOAD_MORE_PAGES = 3
-const ALL_CATEGORY_KEY = 'all'
-const LEGACY_ALL_CATEGORIES = new Set(['all', '全部'])
+const ALL_TAG_KEY = 'all'
+const LEGACY_ALL_TAGS = new Set(['all', '全部'])
 
 interface GalleryContentProps {
   initialPhotos: PhotoDto[]
   initialMeta: PhotoPaginationMeta | null
-  initialCategories: string[]
+  initialTags: string[]
   initialView: GalleryView
   initialPhotoId?: string
 }
@@ -40,7 +40,7 @@ interface GalleryContentProps {
 export function GalleryContent({
   initialPhotos,
   initialMeta,
-  initialCategories,
+  initialTags,
   initialView,
   initialPhotoId,
 }: GalleryContentProps) {
@@ -50,11 +50,11 @@ export function GalleryContent({
 
   const [view, setView] = useState<GalleryView>(initialView)
   const [photos, setPhotos] = useState<PhotoDto[]>(initialPhotos)
-  const [categories, setCategories] = useState<string[]>(() => [
-    ALL_CATEGORY_KEY,
-    ...initialCategories.filter((c) => !LEGACY_ALL_CATEGORIES.has(c)),
+  const [tags, setTags] = useState<string[]>(() => [
+    ALL_TAG_KEY,
+    ...initialTags.filter((c) => !LEGACY_ALL_TAGS.has(c)),
   ])
-  const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY_KEY)
+  const [activeTag, setActiveTag] = useState(ALL_TAG_KEY)
   const [search, setSearch] = useState('')
   const [isFilterPending, startFilterTransition] = useTransition()
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoDto | null>(() => {
@@ -95,7 +95,7 @@ export function GalleryContent({
   }, [])
 
   const deferredSearch = useDeferredValue(search)
-  const currentCategory = activeCategory !== ALL_CATEGORY_KEY ? activeCategory : undefined
+  const currentTag = activeTag !== ALL_TAG_KEY ? activeTag : undefined
   const hasSearch = deferredSearch.trim().length > 0
 
   const handleViewChange = useCallback((nextView: GalleryView) => {
@@ -124,7 +124,7 @@ export function GalleryContent({
     void fetchAlbums()
   }, [view])
 
-  // Refetch photos only when category changes (skip initial load since we have server data)
+  // Refetch photos only when tag changes (skip initial load since we have server data)
   const isInitialLoad = useRef(initialView === 'photos')
   useEffect(() => {
     if (view !== 'photos') return
@@ -145,18 +145,18 @@ export function GalleryContent({
         setPhotos([])
         setMeta(null)
 
-        const [photosResult, categoriesData] = await Promise.all([
-          getPhotosWithMeta({ category: currentCategory, page: 1, pageSize: PAGE_SIZE }),
-          getCategories(),
+        const [photosResult, tagsData] = await Promise.all([
+          getPhotosWithMeta({ tag: currentTag, page: 1, pageSize: PAGE_SIZE }),
+          getTags(),
         ])
 
         if (stale || requestVersion !== requestVersionRef.current) return
 
         setPhotos(photosResult.data)
         setMeta(photosResult.meta)
-        setCategories([
-          ALL_CATEGORY_KEY,
-          ...categoriesData.filter((category) => !LEGACY_ALL_CATEGORIES.has(category)),
+        setTags([
+          ALL_TAG_KEY,
+          ...tagsData.filter((tag) => !LEGACY_ALL_TAGS.has(tag)),
         ])
       } catch (error) {
         if (!stale && requestVersion === requestVersionRef.current) {
@@ -171,7 +171,7 @@ export function GalleryContent({
 
     void fetchPhotos()
     return () => { stale = true }
-  }, [currentCategory, view])
+  }, [currentTag, view])
 
   const loadMore = useCallback(async (targetIndex?: number): Promise<void> => {
     if (isLoadingRef.current || !meta?.hasMore) return
@@ -195,7 +195,7 @@ export function GalleryContent({
 
       const results = await Promise.allSettled(
         Array.from({ length: pageCount }, (_, offset) => getPhotosWithMeta({
-          category: currentCategory,
+          tag: currentTag,
           page: firstPage + offset,
           pageSize: PAGE_SIZE,
         })),
@@ -242,7 +242,7 @@ export function GalleryContent({
         isLoadingRef.current = false
       }
     }
-  }, [currentCategory, meta])
+  }, [currentTag, meta])
 
   // Infinite scroll observer
   useEffect(() => {
@@ -296,7 +296,7 @@ export function GalleryContent({
     const normalizedSearch = deferredSearch.toLowerCase()
     return photos.filter((photo) => (
       photo.title.toLowerCase().includes(normalizedSearch) ||
-      photo.category.toLowerCase().includes(normalizedSearch)
+      photo.tags.toLowerCase().includes(normalizedSearch)
     ))
   }, [hasSearch, photos, deferredSearch])
 
@@ -310,9 +310,9 @@ export function GalleryContent({
     router.push(`/gallery/albums/${albumId}`)
   }, [albums, router])
 
-  const handleCategoryChange = useCallback((category: string) => {
+  const handleTagChange = useCallback((tag: string) => {
     startFilterTransition(() => {
-      setActiveCategory(category)
+      setActiveTag(tag)
       setSearch('')
     })
   }, [startFilterTransition])
@@ -328,9 +328,9 @@ export function GalleryContent({
       <div className="px-4 md:px-8 lg:px-12">
         <div className="max-w-screen-2xl mx-auto">
           <GalleryHeader
-            activeCategory={activeCategory}
-            categories={categories}
-            onCategoryChange={handleCategoryChange}
+            activeTag={activeTag}
+            tags={tags}
+            onTagChange={handleTagChange}
             photoCount={displayCount}
             albumCount={albums.length}
             view={view}
@@ -380,7 +380,7 @@ export function GalleryContent({
                   className={selectedPhoto ? 'pointer-events-none select-none' : undefined}
                 >
                   <PhotoGrid
-                    key={`${currentCategory ?? ALL_CATEGORY_KEY}:${deferredSearch}:${viewMode}:${immersive}`}
+                    key={`${currentTag ?? ALL_TAG_KEY}:${deferredSearch}:${viewMode}:${immersive}`}
                     loading={loading}
                     photos={filteredPhotos}
                     settings={settings}

@@ -26,7 +26,7 @@ export interface UploadTask {
   retryCount?: number
   // Upload params
   title: string
-  categories: string[]
+  tags: string[]
   storageProvider?: string
   storageSourceId?: string
   storagePath?: string
@@ -55,7 +55,7 @@ interface UploadQueueContextType {
   addTasks: (params: {
     files: { id: string; file: File; fileHash?: string }[]
     title: string
-    categories: string[]
+    tags: string[]
     storageProvider?: string
     storageSourceId?: string
     storagePath?: string
@@ -355,7 +355,7 @@ export function UploadQueueProvider({
         token: tokenRef.current,
         file: fileToUpload,
         title: task.title,
-        category: task.categories,
+        tags: task.tags,
         storage_provider: task.storageProvider,
         storage_source_id: task.storageSourceId,
         storage_path: task.storagePath,
@@ -475,7 +475,7 @@ export function UploadQueueProvider({
     async (params: {
       files: { id: string; file: File; fileHash?: string }[]
       title: string
-      categories: string[]
+      tags: string[]
       storageProvider?: string
       storageSourceId?: string
       storagePath?: string
@@ -515,7 +515,7 @@ export function UploadQueueProvider({
               params.files.length === 1
                 ? normalizedTitle
                 : fallbackTitle,
-            categories: params.categories,
+            tags: params.tags,
             storageProvider: params.storageProvider,
             storageSourceId: params.storageSourceId,
             storagePath: params.storagePath,

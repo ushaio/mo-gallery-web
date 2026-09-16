@@ -436,9 +436,9 @@ function Lightbox({
             <p className="truncate font-serif text-sm text-[#e6dcc8]">
               {photo.title || t('gallery.film_untitled_frame')}
             </p>
-            {photo.category ? (
+            {photo.tags ? (
               <p className="mt-1 truncate font-mono text-[8px] uppercase tracking-[0.28em] text-[#8f7a51]">
-                {photo.category.split(',')[0]}
+                {photo.tags.split(',')[0]}
               </p>
             ) : null}
           </div>

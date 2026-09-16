@@ -363,7 +363,7 @@ export function useStoryEditorActions({
   }, [currentStory, hasConfirmedPasteSettings, pasteUploadSettings, setShowPasteUploadSettings, token, uploadAndInsertFiles])
 
   const handleConfirmPasteUpload = useCallback(async (settings: UploadSettings) => {
-    persistPasteUploadSettings({ ...settings, category: settings.category?.trim() || '' })
+    persistPasteUploadSettings({ ...settings, tags: settings.tags ?? [] })
 
     const files = pendingPasteFilesRef.current
     if (!files?.length) {

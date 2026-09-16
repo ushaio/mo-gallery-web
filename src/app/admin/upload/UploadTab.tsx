@@ -32,7 +32,7 @@ import { PhotoUploadParams, type PhotoUploadSettings } from '@/components/admin/
 
 interface UploadTabProps {
   token: string | null
-  categories: string[]
+  tags: string[]
   settings: AdminSettingsDto | null
   t: (key: string) => string
   notify: (message: string, type?: 'success' | 'error' | 'info') => void
@@ -52,7 +52,7 @@ function ConfirmModal({
   onClose,
   onConfirm,
   fileCount,
-  categories,
+  tags,
   albumNames,
   storyName,
   storageProvider,
@@ -66,7 +66,7 @@ function ConfirmModal({
   onClose: () => void
   onConfirm: () => void
   fileCount: number
-  categories: string[]
+  tags: string[]
   albumNames: string[]
   storyName?: string
   storageProvider: string
@@ -89,10 +89,10 @@ function ConfirmModal({
             <span className="text-muted-foreground text-sm">{t('admin.files')}</span>
             <span className="font-medium">{fileCount}</span>
           </div>
-          {categories.length > 0 && (
+          {tags.length > 0 && (
             <div className="flex justify-between py-3 border-b border-border/50">
-              <span className="text-muted-foreground text-sm">{t('admin.categories')}</span>
-              <span className="font-medium">{categories.join(', ')}</span>
+              <span className="text-muted-foreground text-sm">{t('admin.tags')}</span>
+              <span className="font-medium">{tags.join(', ')}</span>
             </div>
           )}
           {albumNames.length > 0 && (
@@ -463,7 +463,7 @@ function TestCompressionModal({
 
 export function UploadTab({
   token,
-  categories,
+  tags,
   settings,
   t,
   notify,
@@ -484,7 +484,7 @@ export function UploadTab({
   // Settings from child component
   const [uploadSettings, setUploadSettings] = useState<PhotoUploadSettings>({
     title: '',
-    categories: [],
+    tags: [],
     compressionEnabled: false,
     compressionFormat: 'avif',
     maxSizeMB: 0,
@@ -791,7 +791,7 @@ export function UploadTab({
         fileHash: hashMap.get(f.id),
       })),
       title: currentSettings.title.trim(),
-      categories: currentSettings.categories,
+      tags: currentSettings.tags,
       storageProvider: currentSettings.storageSourceId ? undefined : 'local',
       storageSourceId: currentSettings.storageSourceId,
       storagePath: currentSettings.storagePath,
@@ -889,7 +889,7 @@ export function UploadTab({
           <PhotoUploadParams
             mode={uploadType}
             token={token}
-            categories={categories}
+            tags={tags}
             t={t}
             fileCount={uploadFiles.length}
             totalOriginalSize={totalOriginalSize}
@@ -1043,7 +1043,7 @@ export function UploadTab({
         onClose={() => setShowConfirm(false)}
         onConfirm={handleConfirmUpload}
         fileCount={uploadFiles.length}
-        categories={currentSettings.categories}
+        tags={currentSettings.tags}
         albumNames={currentSettings.albumIds?.map(id => albumNameMap.get(id) || id) || []}
         storyName={currentSettings.storyId}
         storageProvider={currentSettings.storageSourceId || 'local'}

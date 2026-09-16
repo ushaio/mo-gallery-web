@@ -50,7 +50,7 @@ interface SettingsTabProps {
   token: string | null
   settings: AdminSettingsDto | null
   setSettings: (settings: AdminSettingsDto) => void
-  categories: string[]
+  tags: string[]
   loading: boolean
   saving: boolean
   error: string
@@ -64,7 +64,7 @@ export function SettingsTab({
   token,
   settings,
   setSettings,
-  categories,
+  tags,
   loading,
   saving,
   error,
@@ -340,7 +340,7 @@ export function SettingsTab({
         <aside className="w-full md:w-48 space-y-1 md:sticky md:top-0 md:h-fit">
           {[
             { id: 'site', label: t('admin.general') },
-            { id: 'categories', label: t('admin.taxonomy') },
+            { id: 'tags', label: t('admin.taxonomy') },
             { id: 'storage', label: t('admin.engine') },
             { id: 'comments', label: t('admin.comments') },
             { id: 'account', label: t('admin.account') },
@@ -411,13 +411,13 @@ export function SettingsTab({
               </div>
             )}
 
-            {settingsTab === 'categories' && (
+            {settingsTab === 'tags' && (
               <div className="space-y-8">
                 <div className="pb-4 border-b border-border">
                   <h3 className="font-serif text-2xl">{t('admin.taxonomy')}</h3>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {categories.map((cat) => (
+                  {tags.map((cat) => (
                     <div
                       key={cat}
                       className="flex items-center space-x-2 px-4 py-2 bg-muted border border-border text-xs font-bold uppercase tracking-widest"
@@ -427,7 +427,7 @@ export function SettingsTab({
                   ))}
                 </div>
                 <p className="text-[10px] text-muted-foreground font-mono">
-                  Categories are automatically managed based on photo metadata.
+                  Tags are automatically managed based on photo metadata.
                 </p>
               </div>
             )}

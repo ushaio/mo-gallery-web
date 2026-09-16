@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useCallback } from 'react'
 import { addPhotosToAlbum, type PhotoDto } from '@/lib/api'
@@ -68,7 +68,7 @@ export function useStoryPasteUploads({
 
     const nextSettings: UploadSettings = {
       ...settings,
-      categories: settings.categories || [],
+      tags: settings.tags || [],
     }
 
     const placeholders = await Promise.all(files.map(async (file) => {

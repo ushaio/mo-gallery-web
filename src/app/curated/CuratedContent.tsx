@@ -48,7 +48,7 @@ export function CuratedContent({ photos }: CuratedContentProps) {
 
   // 单张照片的策展署名行：题材 · 画幅 · 年份
   const photoByline = (p: PhotoDto) => {
-    const subject = p.category?.split(',')[0]?.trim() || t('curated.subject_photo')
+    const subject = p.tags?.split(',')[0]?.trim() || t('curated.subject_photo')
     const format = p.photoType === 'film' ? t('curated.format_film') : t('curated.format_digital')
     return `${subject}  ·  ${format}  ·  ${photoYear(p)}`
   }
@@ -286,7 +286,7 @@ export function CuratedContent({ photos }: CuratedContentProps) {
                   <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 md:gap-8 [column-fill:_balance]">
                     {masonryPhotos.map((photo, index) => {
                       const aspectClass = MASONRY_ASPECTS[index % MASONRY_ASPECTS.length]
-                      const category = photo.category?.split(',')[0]?.trim() || t('curated.subject_photo')
+                      const tag = photo.tags?.split(',')[0]?.trim() || t('curated.subject_photo')
                       const format =
                         photo.photoType === 'film' ? t('curated.format_film') : t('curated.format_digital')
                       return (
@@ -323,7 +323,7 @@ export function CuratedContent({ photos }: CuratedContentProps) {
                             </div>
                             <div className="mt-3 flex items-baseline justify-between gap-2">
                               <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground truncate">
-                                {num(index + 3)}  —  {category}
+                                {num(index + 3)}  —  {tag}
                               </span>
                               <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 shrink-0">
                                 {format}  ·  {photoYear(photo)}

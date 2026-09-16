@@ -137,7 +137,7 @@ model Photo {
   gps          String?  // JSON: tags.gps raw data { latitude, longitude, altitude, dateStamp }
   updatedAt    DateTime @updatedAt
 
-  categories Category[]
+  tags       Tag[]
   stories    Story[]    @relation("PhotoStories")
   comments   Comment[]
   albums     Album[]    @relation("AlbumPhotos")
@@ -215,7 +215,7 @@ model Album {
   @@index([createdAt])
 }
 
-model Category {
+model Tag {
   id     String  @id @default(uuid())
   name   String  @unique
   photos Photo[]

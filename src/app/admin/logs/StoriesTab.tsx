@@ -51,7 +51,7 @@ const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   compressionFormat: 'avif',
   showFlag: true,
   storageProvider: 'local',
-  categories: [],
+  tags: [],
   albumIds: [],
   stripGps: false,
 }
@@ -62,7 +62,7 @@ const DEFAULT_PASTE_UPLOAD_SETTINGS: UploadSettings = {
   compressionFormat: 'avif',
   showFlag: true,
   storageProvider: 'local',
-  categories: [],
+  tags: [],
   albumIds: [],
   stripGps: false,
 }
@@ -73,7 +73,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
   const router = useRouter()
   const {
     settings,
-    categories,
+    tags,
     handleUnauthorized,
     isImmersiveMode,
     setIsImmersiveMode,
@@ -709,7 +709,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
       )}
 
       <PhotoLibraryDialog isOpen={showMaterialLibrary} onClose={() => setShowMaterialLibrary(false)} onConfirm={handleUpdatePhotos} initialSelectedPhotoIds={currentPhotoIds} t={t} title={t('story.material_library')} />
-      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} categories={categories} currentStoryId={currentStory?.id} />
+      <ImageUploadSettingsModal isOpen={showUploadSettings} onClose={() => setShowUploadSettings(false)} onConfirm={handleConfirmUpload} pendingCount={pendingImages.filter((image) => image.status === 'pending' || image.status === 'failed').length} t={t} token={token} initialSettings={uploadSettings} settings={settings} tags={tags} currentStoryId={currentStory?.id} />
       <ImageUploadSettingsModal
         isOpen={showPasteUploadSettings}
         onClose={() => {
@@ -722,7 +722,7 @@ export function StoriesTab({ token, t, notify, editStoryId, editFromDraft, onDra
         token={token}
         initialSettings={pasteUploadSettings}
         settings={settings}
-        categories={categories}
+        tags={tags}
         confirmLabel={t('admin.save_and_process_pasted_images')}
         currentStoryId={currentStory?.id}
       />

@@ -6,7 +6,7 @@ import { resolvePhotoUrls } from './photo-urls'
 import type { Prisma } from '@/generated/prisma/client'
 import type { PhotoDto, BlogDto, BlogListItemDto, StoryDto, StoryCoverCropValue, PhotoPaginationMeta, FilmRollDto } from '@/lib/api/types'
 
-const PHOTO_INCLUDE = { categories: true, camera: true, lens: true } as const
+const PHOTO_INCLUDE = { tags: true, camera: true, lens: true } as const
 const STORY_INCLUDE = {
   ...ARTICLE_CONTENT_INCLUDE,
   photos: { where: { showFlag: true }, include: PHOTO_INCLUDE },
@@ -48,12 +48,11 @@ async function mapPhotoToDto(p: any): Promise<PhotoDto> {
     ...p,
     url,
     thumbnailUrl,
-    category: p.categories?.map((c: { name: string }) => c.name).join(',') ?? '',
+    tags: p.tags?.map((c: { name: string }) => c.name).join(',') ?? '',
     dominantColors: p.dominantColors ? JSON.parse(p.dominantColors) : null,
     createdAt: serializeDate(p.createdAt),
     takenAt: p.takenAt ? serializeDate(p.takenAt) : undefined,
     updatedAt: undefined,
-    categories: undefined,
   }
 }
 
@@ -113,7 +112,7 @@ export async function queryFeaturedPhotos(): Promise<PhotoDto[]> {
 }
 
 export async function queryPhotosWithMeta(params?: {
-  category?: string
+  tag?: string
   page?: number
   pageSize?: number
 }): Promise<{ data: PhotoDto[]; meta: PhotoPaginationMeta }> {
@@ -122,8 +121,8 @@ export async function queryPhotosWithMeta(params?: {
   const skip = (page - 1) * pageSize
 
   const where =
-    params?.category && params.category !== '全部'
-      ? { categories: { some: { name: params.category } }, showFlag: true }
+    params?.tag && params.tag !== '全部'
+      ? { tags: { some: { name: params.tag } }, showFlag: true }
       : { showFlag: true }
 
   const [total, photos] = await Promise.all([
@@ -149,9 +148,9 @@ export async function queryPhotosWithMeta(params?: {
   }
 }
 
-export async function queryCategories(): Promise<string[]> {
-  const categories = await db.category.findMany({ select: { name: true } })
-  return categories.map((c) => c.name)
+export async function queryTags(): Promise<string[]> {
+  const tags = await db.tag.findMany({ select: { name: true } })
+  return tags.map((tag) => tag.name)
 }
 
 export const queryAlbumMetadata = cache(async (id: string) => {

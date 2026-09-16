@@ -849,9 +849,9 @@ export function PhotoDetailModal({
                                 {t('gallery.featured')}
                               </span>
                             )}
-                            {photo.category && photo.category.split(',').filter(cat => cat.trim()).map(cat => (
-                              <span key={cat} className="px-3 py-1 bg-primary/5 text-primary text-ui-micro font-bold uppercase tracking-widest border border-primary/20">
-                                {cat}
+                            {photo.tags && photo.tags.split(',').filter(tag => tag.trim()).map(tag => (
+                              <span key={tag} className="px-3 py-1 bg-primary/5 text-primary text-ui-micro font-bold uppercase tracking-widest border border-primary/20">
+                                {tag}
                               </span>
                             ))}
                           </div>

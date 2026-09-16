@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
-import { queryPhotosWithMeta, queryCategories } from '~/server/lib/queries'
+import { queryPhotosWithMeta, queryTags } from '~/server/lib/queries'
 import { GalleryContent } from './GalleryContent'
 import type { GalleryView } from '@/components/gallery/GalleryHeader'
 
 const PAGE_SIZE = 40
 
-const description = 'Explore original photography organized by category, album, and visual theme.'
+const description = 'Explore original photography organized by tag, album, and visual theme.'
 
 export const metadata: Metadata = {
   title: 'Photography Gallery',
@@ -29,18 +29,18 @@ export default async function GalleryPage({ searchParams }: GalleryPageProps) {
 
   const resolvedView: GalleryView = isAlbumView ? 'albums' : 'photos'
 
-  const [photosResult, categories] = isAlbumView
+  const [photosResult, tags] = isAlbumView
     ? [null, []]
     : await Promise.all([
         queryPhotosWithMeta({ page: 1, pageSize: PAGE_SIZE }),
-        queryCategories(),
+        queryTags(),
       ])
 
   return (
     <GalleryContent
       initialPhotos={photosResult?.data ?? []}
       initialMeta={photosResult?.meta ?? null}
-      initialCategories={categories}
+      initialTags={tags}
       initialView={resolvedView}
       initialPhotoId={photoId}
     />

@@ -3,7 +3,7 @@ import type { PhotoDto } from '@/lib/api/types'
 /**
  * Height of the caption block under a non-immersive masonry card:
  * 16px image margin + 20px title line (text-body * leading-tight) + 6px gap +
- * 18px category line (text-label * inherited 1.5). Title and category are
+ * 18px tag line (text-label * inherited 1.5). Title and tag are
  * single-line truncated so this stays exact — the pre-seeded positioner cell
  * heights in MasonryView depend on it matching the rendered offsetHeight.
  */

@@ -24,7 +24,7 @@ const UpdateFilmRollSchema = FilmRollSchema.partial()
 const filmRollPhotoInclude = {
   filmPhotos: {
     orderBy: { frameNumber: 'asc' as const },
-    include: { photo: { include: { categories: true, camera: true, lens: true } } },
+    include: { photo: { include: { tags: true, camera: true, lens: true } } },
   },
 }
 
@@ -38,7 +38,7 @@ async function mapFilmRollWithPhotos(roll: NonNullable<Awaited<ReturnType<typeof
         storageSourceId?: string | null
         storageProvider?: string | null
         storageUrlType?: string | null
-        categories: { name: string }[]
+        tags: { name: string }[]
         dominantColors: string | null
         createdAt: Date
         takenAt: Date | null
@@ -58,11 +58,10 @@ async function mapFilmRollWithPhotos(roll: NonNullable<Awaited<ReturnType<typeof
       createdAt: fp.createdAt.toISOString(),
       photo: {
         ...(await resolvePhotoUrlsInto(fp.photo)),
-        category: fp.photo.categories.map((c) => c.name).join(','),
+        tags: fp.photo.tags.map((c) => c.name).join(','),
         dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
         createdAt: fp.photo.createdAt.toISOString(),
         takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
-        categories: undefined,
       },
     }))),
   }
@@ -119,7 +118,7 @@ filmRolls.get('/film-rolls/:id', async (c) => {
           orderBy: { frameNumber: 'asc' },
           include: {
             photo: {
-              include: { categories: true, camera: true, lens: true },
+              include: { tags: true, camera: true, lens: true },
             },
           },
         },
@@ -141,11 +140,10 @@ filmRolls.get('/film-rolls/:id', async (c) => {
         createdAt: fp.createdAt.toISOString(),
         photo: {
           ...(await resolvePhotoUrlsInto(fp.photo)),
-          category: fp.photo.categories.map((c) => c.name).join(','),
+          tags: fp.photo.tags.map((c) => c.name).join(','),
           dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
           createdAt: fp.photo.createdAt.toISOString(),
           takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
-          categories: undefined,
         },
       }))),
     }
@@ -315,7 +313,7 @@ filmRolls.post('/admin/film-rolls/:id/photos', async (c) => {
       include: {
         filmPhotos: {
           orderBy: { frameNumber: 'asc' },
-          include: { photo: { include: { categories: true, camera: true, lens: true } } },
+          include: { photo: { include: { tags: true, camera: true, lens: true } } },
         },
       },
     })
@@ -332,11 +330,10 @@ filmRolls.post('/admin/film-rolls/:id/photos', async (c) => {
         createdAt: fp.createdAt.toISOString(),
         photo: {
           ...(await resolvePhotoUrlsInto(fp.photo)),
-          category: fp.photo.categories.map((c) => c.name).join(','),
+          tags: fp.photo.tags.map((c) => c.name).join(','),
           dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
           createdAt: fp.photo.createdAt.toISOString(),
           takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
-          categories: undefined,
         },
       }))),
     }
@@ -481,7 +478,7 @@ filmRolls.delete('/admin/film-rolls/:id/photos/:photoId', async (c) => {
       include: {
         filmPhotos: {
           orderBy: { frameNumber: 'asc' },
-          include: { photo: { include: { categories: true, camera: true, lens: true } } },
+          include: { photo: { include: { tags: true, camera: true, lens: true } } },
         },
       },
     })
@@ -498,11 +495,10 @@ filmRolls.delete('/admin/film-rolls/:id/photos/:photoId', async (c) => {
         createdAt: fp.createdAt.toISOString(),
         photo: {
           ...(await resolvePhotoUrlsInto(fp.photo)),
-          category: fp.photo.categories.map((c) => c.name).join(','),
+          tags: fp.photo.tags.map((c) => c.name).join(','),
           dominantColors: fp.photo.dominantColors ? JSON.parse(fp.photo.dominantColors) : null,
           createdAt: fp.photo.createdAt.toISOString(),
           takenAt: fp.photo.takenAt?.toISOString() ?? undefined,
-          categories: undefined,
         },
       }))),
     }

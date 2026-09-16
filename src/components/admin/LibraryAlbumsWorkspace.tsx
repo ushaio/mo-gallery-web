@@ -135,7 +135,7 @@ export function LibraryAlbumsWorkspace({
     const query = photoSearch.trim().toLowerCase()
     return photos.filter((photo) => {
       if (usedIds.has(photo.id)) return false
-      return !query || photo.title.toLowerCase().includes(query) || photo.category.toLowerCase().includes(query)
+      return !query || photo.title.toLowerCase().includes(query) || photo.tags.toLowerCase().includes(query)
     })
   }, [currentAlbum?.photos, photoSearch, photos])
 

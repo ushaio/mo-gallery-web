@@ -8,7 +8,7 @@ export default function SettingsPage() {
     token,
     settings,
     setSettings,
-    categories,
+    tags,
     settingsLoading,
     settingsSaving,
     settingsError,
@@ -23,7 +23,7 @@ export default function SettingsPage() {
       token={token}
       settings={settings}
       setSettings={setSettings}
-      categories={categories}
+      tags={tags}
       loading={settingsLoading}
       saving={settingsSaving}
       error={settingsError}

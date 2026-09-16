@@ -216,10 +216,10 @@ export function LibraryPhotoInfoSidebar({
             </div>
 
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {photo.category && (
+              {photo.tags && (
                 <span className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px]">
                   <Tag className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{photo.category}</span>
+                  <span className="truncate">{photo.tags}</span>
                 </span>
               )}
               {photo.filmRollName && (

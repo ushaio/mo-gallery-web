@@ -306,10 +306,10 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
                     className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08]"
                   />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  {image.category && (
+                  {image.tags && (
                     <div className="absolute inset-0 flex flex-col justify-end p-6 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0">
                       <span className="text-white/80 text-xs uppercase">
-                        {image.category}
+                        {image.tags}
                       </span>
                     </div>
                   )}
@@ -317,10 +317,10 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
                   <div className="absolute bottom-4 left-4 size-8 border-b-2 border-l-2 border-white/0 group-hover:border-white/60 transition-all duration-500 rounded-bl-lg" />
                 </div>
               </Link>
-              {image.category && (
+              {image.tags && (
                 <div className="flex flex-col items-center text-center md:hidden">
                   <span className="mt-2 text-[10px] text-muted-foreground uppercase">
-                    {image.category}
+                    {image.tags}
                   </span>
                 </div>
               )}

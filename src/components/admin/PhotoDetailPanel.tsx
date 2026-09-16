@@ -53,7 +53,7 @@ const createStoryForm = (): StoryFormData => ({ ...createMilkdownDraftContent(),
 interface PhotoDetailPanelProps {
   photo: PhotoDto | null
   isOpen: boolean
-  categories: string[]
+  tags: string[]
   allPhotos: PhotoDto[]
   cdnDomain?: string
   token: string | null
@@ -68,7 +68,7 @@ interface PhotoDetailPanelProps {
 export function PhotoDetailPanel({
   photo,
   isOpen,
-  categories,
+  tags,
   allPhotos,
   cdnDomain,
   token,
@@ -82,7 +82,7 @@ export function PhotoDetailPanel({
   const { locale } = useLanguage()
   const [editData, setEditData] = useState({
     title: '',
-    category: '',
+    tags: '',
     isFeatured: false,
     showFlag: true,
     storagePath: '',
@@ -122,7 +122,7 @@ export function PhotoDetailPanel({
       
       setEditData({
         title: photo.title || '',
-        category: photo.category || '',
+        tags: photo.tags || '',
         isFeatured: photo.isFeatured || false,
         showFlag: photo.showFlag ?? true,
         storagePath,
@@ -227,7 +227,7 @@ export function PhotoDetailPanel({
         id: photo.id,
         patch: {
           title: editData.title,
-          category: editData.category,
+          tags: editData.tags,
           isFeatured: editData.isFeatured,
           showFlag: editData.showFlag,
           photoType: editData.photoType,
@@ -442,7 +442,7 @@ export function PhotoDetailPanel({
                           id: photo.id,
                           patch: {
                             title: editData.title,
-                            category: editData.category,
+                            tags: editData.tags,
                             isFeatured: newFeatured,
                             showFlag: editData.showFlag,
                             photoType: editData.photoType,
@@ -522,12 +522,12 @@ export function PhotoDetailPanel({
                         <div className="space-y-3">
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                             <Tag className="w-4 h-4" />
-                            {t('admin.categories')}
+                            {t('admin.tags')}
                           </label>
                           <AdminSelect
-                            value={editData.category}
-                            onChange={(val: string) => setEditData({ ...editData, category: val })}
-                            options={categories.filter(c => c !== '全部').map(c => ({ value: c, label: c }))}
+                            value={editData.tags}
+                            onChange={(val: string) => setEditData({ ...editData, tags: val })}
+                            options={tags.filter(c => c !== '全部').map(c => ({ value: c, label: c }))}
                           />
                         </div>
                         <div className="space-y-3">

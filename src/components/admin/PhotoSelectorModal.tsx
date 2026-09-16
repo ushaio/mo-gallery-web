@@ -28,7 +28,7 @@ interface PhotoSelectorModalProps {
   title?: string
   confirmText?: string
   multiple?: boolean
-  categories?: string[]
+  tags?: string[]
 }
 
 type SortOption = 'upload-desc' | 'upload-asc' | 'taken-desc' | 'taken-asc'
@@ -43,7 +43,7 @@ export function PhotoSelectorModal({
   title,
   confirmText,
   multiple = true,
-  categories = [],
+  tags = [],
 }: PhotoSelectorModalProps) {
   const { settings } = useSettings()
   const [allPhotos, setAllPhotos] = useState<PhotoDto[]>([])
@@ -53,7 +53,7 @@ export function PhotoSelectorModal({
 
   // Filter states
   const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [tagFilter, setTagFilter] = useState('all')
   const [channelFilter, setChannelFilter] = useState('all')
   const [albumFilter, setAlbumFilter] = useState('all')
   const [onlyFeatured, setOnlyFeatured] = useState(false)
@@ -76,7 +76,7 @@ export function PhotoSelectorModal({
       setSelectedPhotoIds([])
       // Reset filters when modal closes
       setSearch('')
-      setCategoryFilter('all')
+      setTagFilter('all')
       setChannelFilter('all')
       setAlbumFilter('all')
       setOnlyFeatured(false)
@@ -109,19 +109,19 @@ export function PhotoSelectorModal({
   // Count active filters
   const activeFilterCount = useMemo(() => {
     let count = 0
-    if (categoryFilter !== 'all') count++
+    if (tagFilter !== 'all') count++
     if (channelFilter !== 'all') count++
     if (albumFilter !== 'all') count++
     if (onlyFeatured) count++
     return count
-  }, [categoryFilter, channelFilter, albumFilter, onlyFeatured])
+  }, [tagFilter, channelFilter, albumFilter, onlyFeatured])
 
-  // Get unique categories from photos
-  const photoCategories = useMemo(() => {
-    if (categories.length > 0) return categories
+  // Get unique tags from photos
+  const photoTags = useMemo(() => {
+    if (tags.length > 0) return tags
     const cats = new Set<string>()
     allPhotos.forEach(p => {
-      p.category.split(',').forEach(c => {
+      p.tags.split(',').forEach(c => {
         const trimmed = c.trim()
         if (trimmed && trimmed !== 'all' && trimmed !== '全部') {
           cats.add(trimmed)
@@ -129,7 +129,7 @@ export function PhotoSelectorModal({
       })
     })
     return Array.from(cats).toSorted()
-  }, [allPhotos, categories])
+  }, [allPhotos, tags])
 
   // Get album photo IDs for filtering
   const albumPhotoIds = useMemo(() => {
@@ -144,10 +144,10 @@ export function PhotoSelectorModal({
     const filtered = allPhotos.filter((p) => {
       const matchesSearch =
         p.title.toLowerCase().includes(search.toLowerCase()) ||
-        p.category.toLowerCase().includes(search.toLowerCase())
+        p.tags.toLowerCase().includes(search.toLowerCase())
 
-      const matchesCategory =
-        categoryFilter === 'all' || p.category.includes(categoryFilter)
+      const matchesTag =
+        tagFilter === 'all' || p.tags.includes(tagFilter)
 
       const matchesChannel =
         channelFilter === 'all' || p.storageProvider === channelFilter
@@ -157,7 +157,7 @@ export function PhotoSelectorModal({
 
       const matchesFeatured = !onlyFeatured || p.isFeatured
 
-      return matchesSearch && matchesCategory && matchesChannel && matchesAlbum && matchesFeatured
+      return matchesSearch && matchesTag && matchesChannel && matchesAlbum && matchesFeatured
     })
 
     // Apply sorting
@@ -181,10 +181,10 @@ export function PhotoSelectorModal({
           return 0
       }
     })
-  }, [allPhotos, search, categoryFilter, channelFilter, albumPhotoIds, onlyFeatured, sortBy])
+  }, [allPhotos, search, tagFilter, channelFilter, albumPhotoIds, onlyFeatured, sortBy])
 
   const clearAllFilters = () => {
-    setCategoryFilter('all')
+    setTagFilter('all')
     setChannelFilter('all')
     setAlbumFilter('all')
     setOnlyFeatured(false)
@@ -382,21 +382,21 @@ export function PhotoSelectorModal({
 
                 <div className="h-5 w-px bg-border hidden sm:block" />
 
-                {/* Category Filter */}
+                {/* Tag Filter */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.category_filter')}:</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{t('ui.tag_filter')}:</span>
                   <div className="relative">
                     <select
-                      value={categoryFilter}
-                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      value={tagFilter}
+                      onChange={(e) => setTagFilter(e.target.value)}
                       className={`appearance-none h-8 pl-3 pr-8 border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer ${
-                        categoryFilter !== 'all' 
+                        tagFilter !== 'all' 
                           ? 'bg-primary/10 border-primary/30 text-primary' 
                           : 'bg-background border-border'
                       }`}
                     >
                       <option value="all">{t('gallery.all')}</option>
-                      {photoCategories.map((cat) => (
+                      {photoTags.map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
@@ -487,10 +487,10 @@ export function PhotoSelectorModal({
           {activeFilterCount > 0 && !showFilters && (
             <div className="mt-3 pt-3 border-t border-border flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground">{t('admin.active_filters')}:</span>
-              {categoryFilter !== 'all' && (
+              {tagFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-md">
-                  {categoryFilter}
-                  <AdminButton onClick={() => setCategoryFilter('all')} adminVariant="icon" className="hover:text-primary/70">
+                  {tagFilter}
+                  <AdminButton onClick={() => setTagFilter('all')} adminVariant="icon" className="hover:text-primary/70">
                     <X className="w-3 h-3" />
                   </AdminButton>
                 </span>
@@ -610,7 +610,7 @@ export function PhotoSelectorModal({
                         {photo.title}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {photo.category}
+                        {photo.tags}
                       </p>
                     </div>
                     {/* Meta */}
