@@ -33,17 +33,17 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1
       '@mo-gallery/ai-agent':
-        specifier: github:ushaio/mo-gallery-shared#v0.1.1&path:packages/ai-agent
-        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/ai-agent
+        specifier: github:ushaio/mo-gallery-shared#v0.1.2&path:packages/ai-agent
+        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/ai-agent
       '@mo-gallery/api-client':
-        specifier: github:ushaio/mo-gallery-shared#v0.1.1&path:packages/api-client
-        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/api-client
+        specifier: github:ushaio/mo-gallery-shared#v0.1.2&path:packages/api-client
+        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/api-client
       '@mo-gallery/milkdown':
-        specifier: github:ushaio/mo-gallery-shared#v0.1.1&path:packages/milkdown
-        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/milkdown(@codemirror/language@6.12.4)(@codemirror/state@6.7.4)(@codemirror/view@6.43.11)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@7.2.0)(typescript@5.9.3)
+        specifier: github:ushaio/mo-gallery-shared#v0.1.2&path:packages/milkdown
+        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/milkdown(@codemirror/language@6.12.4)(@codemirror/state@6.7.4)(@codemirror/view@6.43.11)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@7.2.0)(typescript@5.9.3)
       '@mo-gallery/tiptap-editor':
-        specifier: github:ushaio/mo-gallery-shared#v0.1.1&path:packages/tiptap-editor
-        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.562.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        specifier: github:ushaio/mo-gallery-shared#v0.1.2&path:packages/tiptap-editor
+        version: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.562.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
@@ -1485,35 +1485,23 @@ packages:
   '@milkdown/utils@7.22.1':
     resolution: {integrity: sha512-ye0LGy/Ez8fjtcYyYj93wp4XfH00JYpCiy1IDHYB+9HVIpnbr3ed7PvY4s2000xmDWe0Vlx07TOyv96yvFrnjQ==}
 
-  '@mo-gallery/ai-agent@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/ai-agent':
-    resolution: {gitHosted: true, integrity: sha512-4UD58aIsy9cVT7aJ0/fD+BDdoBiE34mzMi67Yszu9KJ5hqqWepMKqQ1WHpDlRJuV8G8Mo1Yl0yW7nlnXfjG2Xg==, path: packages/ai-agent, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f}
+  '@mo-gallery/ai-agent@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/ai-agent':
+    resolution: {gitHosted: true, integrity: sha512-xYm0DAkg+LvBcUV0xhMarY3N6wlJqILozGJO1nhkAdzGRVrXHQgR+j3vy7cIrjUMWwLA2PZGGMNs3g/jkrgKsQ==, path: packages/ai-agent, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6}
     version: 0.1.0
 
-  '@mo-gallery/ai-agent@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/ai-agent':
-    resolution: {gitHosted: true, integrity: sha512-/Z0oSvffOP1PY0jNuw0td4c1ZifaYuk9v88IxHYe8DQa52FlPGZes4SeHMP7zx17/UVmjET2klbFlq47VlGP4g==, path: packages/ai-agent, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1}
+  '@mo-gallery/api-client@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/api-client':
+    resolution: {gitHosted: true, integrity: sha512-xYm0DAkg+LvBcUV0xhMarY3N6wlJqILozGJO1nhkAdzGRVrXHQgR+j3vy7cIrjUMWwLA2PZGGMNs3g/jkrgKsQ==, path: packages/api-client, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6}
     version: 0.1.0
 
-  '@mo-gallery/api-client@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/api-client':
-    resolution: {gitHosted: true, integrity: sha512-/Z0oSvffOP1PY0jNuw0td4c1ZifaYuk9v88IxHYe8DQa52FlPGZes4SeHMP7zx17/UVmjET2klbFlq47VlGP4g==, path: packages/api-client, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1}
-    version: 0.1.0
-
-  '@mo-gallery/milkdown@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/milkdown':
-    resolution: {gitHosted: true, integrity: sha512-/Z0oSvffOP1PY0jNuw0td4c1ZifaYuk9v88IxHYe8DQa52FlPGZes4SeHMP7zx17/UVmjET2klbFlq47VlGP4g==, path: packages/milkdown, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1}
+  '@mo-gallery/milkdown@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/milkdown':
+    resolution: {gitHosted: true, integrity: sha512-xYm0DAkg+LvBcUV0xhMarY3N6wlJqILozGJO1nhkAdzGRVrXHQgR+j3vy7cIrjUMWwLA2PZGGMNs3g/jkrgKsQ==, path: packages/milkdown, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6}
     version: 0.1.0
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
-  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/tiptap-editor':
-    resolution: {gitHosted: true, integrity: sha512-4UD58aIsy9cVT7aJ0/fD+BDdoBiE34mzMi67Yszu9KJ5hqqWepMKqQ1WHpDlRJuV8G8Mo1Yl0yW7nlnXfjG2Xg==, path: packages/tiptap-editor, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f}
-    version: 0.1.0
-    peerDependencies:
-      lucide-react: '>=0.400.0'
-      react: ^19.0.0
-      react-dom: ^19.0.0
-
-  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/tiptap-editor':
-    resolution: {gitHosted: true, integrity: sha512-/Z0oSvffOP1PY0jNuw0td4c1ZifaYuk9v88IxHYe8DQa52FlPGZes4SeHMP7zx17/UVmjET2klbFlq47VlGP4g==, path: packages/tiptap-editor, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1}
+  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/tiptap-editor':
+    resolution: {gitHosted: true, integrity: sha512-xYm0DAkg+LvBcUV0xhMarY3N6wlJqILozGJO1nhkAdzGRVrXHQgR+j3vy7cIrjUMWwLA2PZGGMNs3g/jkrgKsQ==, path: packages/tiptap-editor, tarball: https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6}
     version: 0.1.0
     peerDependencies:
       lucide-react: '>=0.400.0'
@@ -8013,29 +8001,23 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@mo-gallery/ai-agent@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/ai-agent':
+  '@mo-gallery/ai-agent@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/ai-agent':
     dependencies:
       '@ai-sdk/openai-compatible': 3.0.7(zod@4.3.5)
       ai: 7.0.19(zod@4.3.5)
       zod: 4.3.5
 
-  '@mo-gallery/ai-agent@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/ai-agent':
+  '@mo-gallery/api-client@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/api-client':
     dependencies:
-      '@ai-sdk/openai-compatible': 3.0.7(zod@4.3.5)
-      ai: 7.0.19(zod@4.3.5)
-      zod: 4.3.5
+      '@mo-gallery/ai-agent': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/ai-agent
 
-  '@mo-gallery/api-client@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/api-client':
-    dependencies:
-      '@mo-gallery/ai-agent': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/ai-agent
-
-  ? '@mo-gallery/milkdown@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/milkdown(@codemirror/language@6.12.4)(@codemirror/state@6.7.4)(@codemirror/view@6.43.11)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@7.2.0)(typescript@5.9.3)'
+  ? '@mo-gallery/milkdown@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/milkdown(@codemirror/language@6.12.4)(@codemirror/state@6.7.4)(@codemirror/view@6.43.11)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@7.2.0)(typescript@5.9.3)'
   : dependencies:
       '@floating-ui/dom': 1.8.0
       '@milkdown/crepe': 7.22.1(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(supports-color@7.2.0)(typescript@5.9.3)
       '@milkdown/kit': 7.22.1(@codemirror/language@6.12.4)(@codemirror/state@6.7.4)(@codemirror/view@6.43.11)(supports-color@7.2.0)(typescript@5.9.3)
       '@milkdown/react': 7.22.1(@codemirror/language@6.12.4)(@codemirror/state@6.7.4)(@codemirror/view@6.43.11)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@7.2.0)(typescript@5.9.3)
-      '@mo-gallery/tiptap-editor': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.469.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@mo-gallery/tiptap-editor': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.469.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       hast-util-from-html: 2.0.3
       lucide-react: 0.469.0(react@19.2.3)
       react: 19.2.3
@@ -8059,9 +8041,9 @@ snapshots:
       - supports-color
       - typescript
 
-  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.469.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.469.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@mo-gallery/ai-agent': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/ai-agent
+      '@mo-gallery/ai-agent': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/ai-agent
       '@tiptap/core': 3.30.6(@tiptap/pm@3.30.6)
       '@tiptap/extension-drag-handle-react': 3.30.6(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@tiptap/pm@3.30.6)(@tiptap/react@3.30.6(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@tiptap/extension-horizontal-rule': 3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)
@@ -8088,9 +8070,9 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/c620ac82b69b6c6f39e0dde56ffcd61ad41b35d1#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.562.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+  '@mo-gallery/tiptap-editor@https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/tiptap-editor(@floating-ui/dom@1.8.0)(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(lucide-react@0.562.0(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@mo-gallery/ai-agent': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/5976884ffacfc563322642d39a539d52859bce5f#path:packages/ai-agent
+      '@mo-gallery/ai-agent': https://codeload.github.com/ushaio/mo-gallery-shared/tar.gz/ed182cc998f9711c954383e12a4623db710c07b6#path:packages/ai-agent
       '@tiptap/core': 3.30.6(@tiptap/pm@3.30.6)
       '@tiptap/extension-drag-handle-react': 3.30.6(@tiptap/extension-drag-handle@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/extension-collaboration@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@tiptap/y-tiptap@3.0.8(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.41.9)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)))(@tiptap/pm@3.30.6)(@tiptap/react@3.30.6(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@tiptap/extension-horizontal-rule': 3.30.6(@tiptap/core@3.30.6(@tiptap/pm@3.30.6))(@tiptap/pm@3.30.6)
