@@ -32,6 +32,9 @@ const eslintConfig = defineConfig([
     ".kilocode/**",
     "outputs/**",
     "_tmp_*",
+    // 共享包镜像（mo-gallery-shared 单向同步生成，见根目录 AGENTS.md）。
+    // 它不是本仓库的代码，在本地改会触发同步器的漂移保护；上游源码由 shared 自己负责。
+    "packages/**",
   ]),
 ]);
 

@@ -1,0 +1,527 @@
+import type {
+  AiChangeSetState,
+  EditorAiMessageMetadata,
+  EditorAiReasoningEffort,
+} from '@mo-gallery/ai-agent'
+
+export interface FilmRollDto {
+  id: string
+  name: string
+  brand: string
+  format?: '135' | '120'
+  iso: number
+  frameCount: number
+  notes: string | null
+  shootDate: string | null
+  endDate: string | null
+  createdAt: string
+  updatedAt: string
+  photoCount?: number
+  filmPhotos?: FilmPhotoDto[]
+}
+
+export interface FilmPhotoDto {
+  id: string
+  filmRollId: string
+  photoId: string
+  frameNumber: number
+  createdAt: string
+  photo?: PhotoDto
+}
+
+export interface CameraDto {
+  id: string
+  name: string
+  displayName: string
+}
+
+export interface LensDto {
+  id: string
+  name: string
+  displayName: string
+}
+
+export interface PhotoDto {
+  id: string
+  title: string
+  tags: string
+  photoType?: 'digital' | 'film'
+  filmRollId?: string | null
+  filmRollName?: string | null
+  url: string | null
+  thumbnailUrl?: string | null
+  originFlag?: 'web' | 'mobile' | 'desktop'
+  width: number
+  height: number
+  size?: number
+  isFeatured: boolean
+  showFlag?: boolean
+  createdAt: string
+  updatedAt?: string
+  storageProvider?: string
+  storageRuntime?: 'web' | 'desktop-plugin'
+  storagePluginId?: string | null
+  storageSourceId?: string | null
+  /** Relative storage path of the original image (authoritative). */
+  path?: string
+  /** Relative storage path of the thumbnail (authoritative). */
+  thumbPath?: string | null
+  storageUrlType?: string
+  storageUrlExpiresAt?: string | null
+  dominantColors?: string[]
+  // Equipment relations
+  cameraId?: string
+  lensId?: string
+  camera?: CameraDto | null
+  lens?: LensDto | null
+  // EXIF raw data
+  cameraMake?: string
+  cameraModel?: string
+  lensModel?: string
+  focalLength?: string
+  aperture?: string
+  shutterSpeed?: string
+  iso?: number
+  takenAt?: string
+  gps?: string
+  orientation?: number
+  software?: string
+  exifRaw?: string
+}
+
+export interface AdminSettingsDto {
+  site_title: string
+  storage_provider: string
+  cdn_domain: string
+  s3_access_key_id?: string
+  s3_secret_access_key?: string
+  s3_bucket?: string
+  s3_endpoint?: string
+  s3_public_url?: string
+  s3_path?: string
+  github_token?: string
+  github_repo?: string
+  github_path?: string
+  github_branch?: string
+  github_access_method?: string
+  github_pages_url?: string
+  comment_moderation?: boolean
+  blocked_keywords?: string
+  comment_provider?: string
+  comment_api_key?: string
+  comment_api_endpoint?: string
+  comment_model?: string
+}
+
+export interface StorageSourceDto {
+  id: string
+  name: string
+  type: 'local' | 'github' | 's3'
+  /**
+   * Concrete storage product behind this source, e.g. 'cloudflare-r2',
+   * 'qiniu-kodo', 'aliyun-oss', 'tencent-cos', 'aws-s3', 'minio', 'github',
+   * 'local'. `type` only names the protocol family, so every S3-compatible
+   * provider collapses to 's3'; vendor is what tells them apart and is shared
+   * with the Desktop client. Free-form: unknown providers are stored as given.
+   */
+  vendor?: string | null
+  accessKey?: string | null
+  secretKey?: string | null
+  bucket?: string | null
+  region?: string | null
+  endpoint?: string | null
+  publicUrl?: string | null
+  basePath?: string | null
+  branch?: string | null
+  accessMethod?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type StorageSourceCreateDto = Omit<StorageSourceDto, 'id' | 'createdAt' | 'updatedAt'>
+export type StorageSourceUpdateDto = Partial<Omit<StorageSourceDto, 'id' | 'type' | 'createdAt' | 'updatedAt'>>
+
+export interface CommentDto {
+  id: string
+  photoId: string
+  author: string
+  content: string
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: string
+  ip?: string
+  email?: string
+  avatarUrl?: string
+}
+
+export interface PublicCommentDto {
+  id: string
+  author: string
+  avatarUrl?: string
+  content: string
+  createdAt: string
+  photoId?: string
+}
+
+export interface StoryCoverCropValue {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type EditorType = 'tiptap' | 'milkdown'
+
+export interface ArticleContentDto {
+  editorType: EditorType
+  /** Editor types with a stored body row, including rows with an empty body. */
+  contentEditorTypes: EditorType[]
+  tiptapContent: string
+  tiptapContentJson?: TiptapJsonContent | null
+  milkContent?: string | null
+}
+
+export interface StoryDto extends ArticleContentDto {
+  id: string
+  title: string
+  coverPhotoId?: string
+  coverCrop?: StoryCoverCropValue | null
+  isPublished: boolean
+  storyDate: string
+  createdAt: string
+  updatedAt: string
+  photos: PhotoDto[]
+}
+
+export type StoryAiAction =
+  | 'rewrite'
+  | 'expand'
+  | 'shorten'
+  | 'continue'
+  | 'summarize'
+  | 'custom'
+
+export interface StoryAiGenerateInput {
+  action?: StoryAiAction
+  model?: string
+  /** Optional Agent profile; omitted uses the configured default Agent. */
+  agentId?: string
+  reasoningEffort?: EditorAiReasoningEffort
+  prompt?: string
+  title?: string
+  selectedText?: string
+  currentParagraph?: string
+  contextBefore?: string
+  contextAfter?: string
+  images?: string[]
+  imageKeys?: string[]
+  useAgentExtensions?: boolean
+  selectedAgentSkillIds?: string[]
+  disabledAgentSkillIds?: string[]
+  useAgentMcpTools?: boolean
+  enabledAgentMcpServerIds?: string[]
+}
+
+export interface AiImageUploadResult {
+  url: string
+  key: string
+}
+
+export interface EditorAiImageSaveResult {
+  photoId: string
+  url?: string
+  thumbnailUrl?: string | null
+  alreadySaved: boolean
+}
+
+export interface StoryAiModelOption {
+  id: string
+  label: string
+  provider?: string
+  model?: string
+  capabilities?: Array<'chat' | 'image'>
+  vision: boolean
+  tools: boolean
+  structuredOutput: boolean
+  contextWindow: number
+}
+
+export interface StoryAiModelsResponse {
+  defaultModel: string
+  defaultImageModel?: string
+  models: StoryAiModelOption[]
+}
+
+export interface EditorAiConversationDto {
+  id: string
+  scopeId: string
+  title?: string
+  summary?: string
+  lastModel?: string
+  systemPrompt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EditorAiConversationWithMessagesDto extends EditorAiConversationDto {
+  messages: EditorAiMessageDto[]
+}
+
+export type EditorAiMessageRole = 'system' | 'user' | 'assistant'
+export type EditorAiMessageStatus = 'pending' | 'streaming' | 'completed' | 'failed' | 'stopped'
+
+export interface EditorAiMessageDto {
+  id: string
+  conversationId: string
+  role: EditorAiMessageRole
+  content: string
+  status: EditorAiMessageStatus
+  model?: string
+  action?: string
+  metadata?: EditorAiMessageMetadata
+  error?: string
+  createdAt: string
+}
+
+export interface EditorAiMessageAppendInput {
+  role: EditorAiMessageRole
+  content: string
+  status?: EditorAiMessageStatus
+  model?: string
+  action?: string
+  metadata?: EditorAiMessageMetadata
+  error?: string
+}
+
+export type EditorAiMessageFinishInput =
+  | {
+    status: 'completed'
+    content: string
+    model?: string
+    metadata?: EditorAiMessageMetadata
+  }
+
+  | {
+    status: 'failed' | 'stopped'
+    content?: string
+    model?: string
+    metadata?: EditorAiMessageMetadata
+    error: string
+  }
+
+export interface EditorAiTaskStateUpdateInput {
+  messageId: string
+  state: AiChangeSetState
+}
+
+export interface EditorAiConversationInput {
+  scopeId: string
+  title?: string
+  systemPrompt?: string
+}
+
+export interface EditorAiConversationCreateInput {
+  scopeId: string
+  title?: string
+  systemPrompt?: string
+}
+
+export interface EditorAiConversationUpdateInput {
+  title?: string
+  systemPrompt?: string | null
+}
+
+export interface EditorAiConversationsQuery {
+  scopeId: string
+}
+
+export type EditorAiGenerateInput = StoryAiGenerateInput & {
+  conversationId: string
+  generateImage?: boolean
+  imageModel?: string
+  imageSize?: string
+}
+
+export interface EditorAiImageGenerateInput {
+  conversationId: string
+  prompt: string
+  title?: string
+  imageModel?: string
+  imageSize?: string
+  images?: string[]
+  imageKeys?: string[]
+}
+
+export interface AiImageMetadata {
+  type: 'image'
+  localPath?: string
+  uploadedUrl?: string | null
+  storageKey?: string | null
+  photoId?: string | null
+  prompt: string
+  provider?: string
+  model?: string
+  size?: string
+  mimeType?: string
+  revisedPrompt?: string
+  generatedAt?: string
+  source?: string
+}
+
+export interface BlogDto extends ArticleContentDto {
+  id: string
+  title: string
+  category: string
+  tags: string
+  isPublished: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TiptapJsonContent {
+  type?: string
+  attrs?: Record<string, unknown>
+  content?: TiptapJsonContent[]
+  marks?: Array<{
+    type: string
+    attrs?: Record<string, unknown>
+  }>
+  text?: string
+  [key: string]: unknown
+}
+
+/** Lightweight DTO for blog lists — no full content, only preview text */
+export type BlogListItemDto = Omit<BlogDto, 'tiptapContent' | 'tiptapContentJson' | 'milkContent' | 'contentEditorTypes'> & {
+  previewText: string
+}
+
+export interface AlbumDto {
+  id: string
+  name: string
+  description?: string
+  coverUrl?: string
+  location?: string
+  isPublished: boolean
+  sortOrder: number
+  photoCount: number
+  photos: PhotoDto[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FriendLinkDto {
+  id: string
+  name: string
+  url: string
+  description?: string
+  avatar?: string
+  featured: boolean
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PublicSettingsDto {
+  site_title: string
+  cdn_domain: string
+  linuxdo_only: boolean
+  comments_storage?: string
+  waline_server_url?: string
+}
+
+export interface LoginRequest {
+  username: string
+  password: string
+  loginSlug?: string
+}
+
+export interface LoginResponse {
+  token: string
+  user: {
+    id?: string
+    username: string
+    avatarUrl?: string
+    isAdmin?: boolean
+    oauthProvider?: string
+    trustLevel?: number
+  }
+}
+
+export interface LinuxDoBinding {
+  username: string | null
+  avatarUrl: string | null
+  trustLevel: number | null
+}
+
+export interface PhotoPaginationMeta {
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+  hasMore: boolean
+}
+
+export interface PhotoDeleteError {
+  error: 'PHOTO_HAS_STORIES'
+  message: string
+  stories: { id: string; title: string }[]
+}
+
+export interface PhotoWithStories {
+  photoId: string
+  photoTitle: string
+  stories: { id: string; title: string }[]
+}
+
+export interface PaginationMeta {
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export interface AlbumDto {
+  id: string
+  name: string
+  description?: string
+  coverUrl?: string
+  isPublished: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+  photos: PhotoDto[]
+  photoCount: number
+}
+
+export type FileStatus =
+  | 'linked'
+  | 'orphan'
+  | 'missing'
+  | 'missing_original'
+  | 'missing_thumbnail'
+
+export interface StorageFile {
+  key: string
+  url: string
+  size: number
+  lastModified: string
+  status: FileStatus
+  photoId?: string
+  photoTitle?: string
+  missingType?: 'original' | 'thumbnail' | 'both'
+  hasThumb?: boolean
+}
+
+export interface StorageScanStats {
+  total: number
+  linked: number
+  orphan: number
+  missing: number
+  missingOriginal: number
+  missingThumbnail: number
+}
+
+export interface StorageScanResult {
+  files: StorageFile[]
+  stats: StorageScanStats
+}

@@ -165,8 +165,8 @@ packages:
   mo-gallery-desktop-frontend:
     path: ../emulsion-desktop/frontend
     git: true
-  desktop-plugin-sdk:
-    path: ../emulsion-desktop/packages/desktop-plugin-sdk
+  plugin-sdk:
+    path: ../emulsion-desktop/packages/plugin-sdk
   emulsion-mcp:
     path: ../emulsion-desktop/packages/emulsion-mcp
   ai-agent:

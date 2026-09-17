@@ -1,0 +1,32 @@
+{
+  "generator": "mo-gallery-shared/scripts/sync-packages.mjs",
+  "note": "本文件由 mo-gallery-shared 的 pnpm sync 生成，请勿手工编辑。source.commit 是最近一次内容变更时执行同步的 shared HEAD；source.dirty 为 true 表示当时该改动尚未提交。",
+  "source": {
+    "repo": "github.com/ushaio/mo-gallery-shared",
+    "commit": "ed182cc998f9711c954383e12a4623db710c07b6",
+    "dirty": true
+  },
+  "syncedAt": "2026-09-17T07:48:11.717Z",
+  "packages": {
+    "ai-agent": {
+      "hash": "sha256:498321dbd188b1076cab576e02fa3d9dbc59ad33688804447371b6515117fab0",
+      "files": 28
+    },
+    "api-client": {
+      "hash": "sha256:f7804bb0defb2dac4f35652e90e8dfd562e63b26667296a7a9166702e0cefe44",
+      "files": 19
+    },
+    "milkdown": {
+      "hash": "sha256:3b2716a0d765c089c1d3eacaab85ae9072a647032aeb29d3b70d5e8d095ab406",
+      "files": 23
+    },
+    "mo-editor": {
+      "hash": "sha256:f6830c74c8b60c808745e086a793b630ffd3df3f686c910968dc60bfcc8b7a97",
+      "files": 6
+    },
+    "tiptap-editor": {
+      "hash": "sha256:b99acb64b1cbfab916383998b4fb46801b8f9f1c48eb0b863981be0c02d44abc",
+      "files": 49
+    }
+  }
+}

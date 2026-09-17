@@ -1,0 +1,1492 @@
+'use client'
+
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Check, ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Square, Trash2, Wand2 } from 'lucide-react'
+import {
+  readEditorAiTaskMessageMetadata,
+  type AiChangeSetState,
+} from '@mo-gallery/ai-agent'
+import type {
+  EditorAiApi,
+  EditorAiConversationDto,
+  EditorAiMessageDto,
+  StoryAiAction,
+  StoryAiModelOption,
+} from './runtime'
+import {
+  useNarrativeAiTaskLock,
+  type NarrativeAiTaskLock,
+} from './tiptap-editor/ai-task-lock'
+import { createNarrativeAiTaskSessionLifecycle } from './tiptap-editor/narrative-ai-task-session-lifecycle'
+import { AiChangeSetCard } from './tiptap-editor/AiChangeSetCard'
+import {
+  runPersistedNarrativeDirectEdit,
+  runPersistedTaskHistoryAction,
+  type NarrativeDirectEditRunner,
+} from './tiptap-editor/narrative-direct-edit-conversation'
+import type {
+  NarrativeAiTaskHistoryState,
+} from './tiptap-editor/narrative-direct-edit-host'
+
+export interface TipTapAiAssistantOptions {
+  enabled: boolean
+  token?: string | null
+  scopeId?: string
+  title?: string
+}
+
+export interface TipTapAiAssistantContext {
+  selectionRange: { from: number; to: number } | null
+  hasSelection: boolean
+  selectedText: string
+  currentParagraph: string
+  contextBefore: string
+  contextAfter: string
+}
+
+export type TipTapAiApplyMode = 'replace' | 'insert' | 'append'
+
+/** Agent 模式执行器（由 NarrativeTipTapEditor 注入：文档桥接 + 提案审阅） */
+export type TipTapAiAgentRunner = NarrativeDirectEditRunner
+
+interface NarrativeTaskHistoryController {
+  getTaskHistoryState(taskId: string): NarrativeAiTaskHistoryState | null
+  undoTask(taskId: string): boolean
+  redoTask(taskId: string): boolean
+}
+
+interface TipTapAiAssistantProps {
+  /** 宿主应用注入的 i18n 翻译函数 */
+  t: (key: string) => string
+  /** 宿主应用注入的 AI 后端接口 */
+  api: EditorAiApi
+  /** 提供时启用 /agent 指令 */
+  agentRunner?: TipTapAiAgentRunner
+  options?: TipTapAiAssistantOptions
+  context: TipTapAiAssistantContext
+  onApplyResult: (
+    mode: TipTapAiApplyMode,
+    preview: string,
+    selectionRange: TipTapAiAssistantContext['selectionRange'],
+  ) => void
+  documentId?: string
+  documentKind?: 'story' | 'blog'
+  aiTaskLock: NarrativeAiTaskLock
+  taskHistory?: NarrativeTaskHistoryController
+}
+
+type AssistantMessageStatus = 'streaming' | 'done' | 'error'
+
+interface AiSessionMessage {
+  id: string
+  role: 'user' | 'assistant'
+  action?: StoryAiAction
+  prompt: string
+  content: string
+  hasSelection: boolean
+  selectionPreview: string
+  paragraphPreview: string
+  selectionRange: TipTapAiAssistantContext['selectionRange']
+  status?: AssistantMessageStatus
+  error?: string
+  appliedModes?: TipTapAiApplyMode[]
+  metadata?: unknown
+}
+
+interface AiSlashCommand {
+  command: string
+  description: string
+}
+
+const VALID_STORY_AI_ACTIONS: StoryAiAction[] = ['rewrite', 'expand', 'shorten', 'continue', 'summarize', 'custom']
+
+const AI_SELECTION_PREVIEW_LIMIT = 28
+const AI_PARAGRAPH_PREVIEW_LIMIT = 72
+const AI_MODELS_STORAGE_KEY = 'tiptap-editor-ai-models'
+const AI_SELECTED_MODEL_STORAGE_KEY = 'tiptap-editor-ai-selected-model'
+
+const AI_PRESET_ACTIONS: Array<{ action: StoryAiAction; key: string }> = [
+  { action: 'rewrite', key: 'rewrite' },
+  { action: 'expand', key: 'expand' },
+  { action: 'shorten', key: 'shorten' },
+  { action: 'continue', key: 'continue' },
+  { action: 'summarize', key: 'summarize' },
+]
+
+const AI_SLASH_CLEAR_COMMAND = '/clear'
+const AI_SLASH_AGENT_COMMAND = '/agent'
+
+function compactTextPreview(input: string, limit: number) {
+  const normalized = input.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= limit) return normalized
+  const headLength = Math.ceil((limit - 3) / 2)
+  const tailLength = Math.floor((limit - 3) / 2)
+  return `${normalized.slice(0, headLength)}...${normalized.slice(normalized.length - tailLength)}`
+}
+
+function buildMessageId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function resolveActionLabel(action: StoryAiAction | undefined, t: (key: string) => string) {
+  if (!action) return ''
+  if (action === 'custom') return t('editor.ai_action_chat')
+  const preset = AI_PRESET_ACTIONS.find((item) => item.action === action)
+  return preset ? t(`editor.ai_action_${preset.key}`) : action
+}
+
+function isStoryAiAction(value: unknown): value is StoryAiAction {
+  return typeof value === 'string' && VALID_STORY_AI_ACTIONS.includes(value as StoryAiAction)
+}
+
+function toSessionMessage(
+  message: EditorAiMessageDto,
+  t: (key: string) => string,
+): AiSessionMessage | null {
+  if (message.role !== 'user' && message.role !== 'assistant') return null
+
+  const metadata = message.metadata && typeof message.metadata === 'object'
+    ? message.metadata as Record<string, unknown>
+    : {}
+  const action = isStoryAiAction(message.action) ? message.action : 'custom'
+  const selectedText = typeof metadata.selectedText === 'string' ? metadata.selectedText : ''
+  const currentParagraph = typeof metadata.currentParagraph === 'string' ? metadata.currentParagraph : ''
+  const prompt = typeof metadata.prompt === 'string'
+    ? metadata.prompt
+    : (message.role === 'user' ? message.content : '')
+  const selectionPreview = selectedText ? compactTextPreview(selectedText, AI_SELECTION_PREVIEW_LIMIT) : ''
+  const paragraphPreview = currentParagraph ? compactTextPreview(currentParagraph, AI_PARAGRAPH_PREVIEW_LIMIT) : ''
+  const hasSelection = Boolean(selectedText)
+
+  return {
+    id: message.id,
+    role: message.role,
+    action,
+    prompt,
+    content: message.role === 'user'
+      ? (prompt || message.content || t('editor.ai_prompt_empty'))
+      : message.content,
+    hasSelection,
+    selectionPreview,
+    paragraphPreview,
+    selectionRange: null,
+    status: message.status === 'streaming'
+      ? 'streaming'
+      : message.status === 'failed'
+        ? 'error'
+        : 'done',
+    error: message.error,
+    appliedModes: [],
+    metadata: message.metadata,
+  }
+}
+
+export function TipTapAiAssistant({
+  t,
+  api,
+  agentRunner,
+  options,
+  context,
+  onApplyResult,
+  documentId,
+  documentKind,
+  aiTaskLock,
+  taskHistory,
+}: TipTapAiAssistantProps) {
+  const isAiTaskLocked = useNarrativeAiTaskLock(aiTaskLock)
+  const aiTaskSessionLifecycleRef = useRef<ReturnType<typeof createNarrativeAiTaskSessionLifecycle> | null>(null)
+  if (aiTaskSessionLifecycleRef.current === null) {
+    aiTaskSessionLifecycleRef.current = createNarrativeAiTaskSessionLifecycle()
+  }
+  const aiTaskSessionLifecycle = aiTaskSessionLifecycleRef.current
+  // 注入的后端接口在组件顶部解构，函数体内调用点与原实现保持一致
+  const {
+    appendEditorAiMessage,
+    clearEditorAiConversation,
+    createEditorAiConversation,
+    deleteEditorAiConversation,
+    getEditorAiConversation,
+    getEditorAiConversations,
+    getStoryAiModels,
+    finishEditorAiMessage,
+    polishStoryAiPrompt,
+    streamStoryAiGenerate,
+    updateEditorAiTaskState,
+  } = api
+  const aiModelButtonRef = useRef<HTMLDivElement | null>(null)
+  const aiModelMenuRef = useRef<HTMLDivElement | null>(null)
+  const aiModelListRef = useRef<HTMLDivElement | null>(null)
+  const conversationMenuButtonRef = useRef<HTMLDivElement | null>(null)
+  const conversationMenuRef = useRef<HTMLDivElement | null>(null)
+  const conversationViewportRef = useRef<HTMLDivElement | null>(null)
+  const activeStreamMessageRef = useRef<string | null>(null)
+  const mountedRef = useRef(false)
+
+  const [showAiModelMenu, setShowAiModelMenu] = useState(false)
+  const [showConversationMenu, setShowConversationMenu] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiError, setAiError] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiPromptPolishing, setAiPromptPolishing] = useState(false)
+  const [conversationLoading, setConversationLoading] = useState(false)
+  const [conversationSaving, setConversationSaving] = useState(false)
+  const [conversationDeleting, setConversationDeleting] = useState(false)
+  const [conversationClearing, setConversationClearing] = useState(false)
+  const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState<string | null>(null)
+  const [aiMode, setAiMode] = useState<StoryAiAction | null>(null)
+  const [aiModelsLoading, setAiModelsLoading] = useState(false)
+  const [aiModelOptions, setAiModelOptions] = useState<StoryAiModelOption[]>([])
+  const [aiSelectedModel, setAiSelectedModel] = useState('')
+  const [aiModelQuery, setAiModelQuery] = useState('')
+  const [conversations, setConversations] = useState<EditorAiConversationDto[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [sessionMessages, setSessionMessages] = useState<AiSessionMessage[]>([])
+
+  const aiModelMenuId = useId()
+  const conversationMenuId = useId()
+  const isEnabled = options?.enabled === true
+
+  useEffect(() => {
+    const sessionSetup = aiTaskSessionLifecycle.setup(aiTaskLock)
+    mountedRef.current = true
+
+    return () => {
+      const wasCurrentSetup = sessionSetup.isCurrent()
+      sessionSetup.cleanup()
+      if (wasCurrentSetup) {
+        mountedRef.current = false
+        activeStreamMessageRef.current = null
+      }
+    }
+  }, [aiTaskLock, aiTaskSessionLifecycle])
+
+  const aiSelectionPreview = useMemo(() => {
+    if (!context.hasSelection || !context.selectedText) return ''
+    return compactTextPreview(context.selectedText, AI_SELECTION_PREVIEW_LIMIT)
+  }, [context.hasSelection, context.selectedText])
+
+  const paragraphPreview = useMemo(() => {
+    if (!context.currentParagraph) return ''
+    return compactTextPreview(context.currentParagraph, AI_PARAGRAPH_PREVIEW_LIMIT)
+  }, [context.currentParagraph])
+
+  const selectedAiModelLabel = useMemo(
+    () => aiModelOptions.find((option) => option.id === aiSelectedModel)?.label ?? t('editor.ai_model_current_default'),
+    [aiModelOptions, aiSelectedModel, t],
+  )
+
+  const filteredAiModelOptions = useMemo(() => {
+    const query = aiModelQuery.trim().toLowerCase()
+    if (!query) return aiModelOptions
+    return aiModelOptions.filter((option) => option.label.toLowerCase().includes(query))
+  }, [aiModelOptions, aiModelQuery])
+
+  const slashCommands = useMemo<AiSlashCommand[]>(() => ([
+    {
+      command: AI_SLASH_CLEAR_COMMAND,
+      description: t('editor.ai_slash_clear_description'),
+    },
+    ...(agentRunner ? [{
+      command: AI_SLASH_AGENT_COMMAND,
+      description: t('editor.ai_slash_agent_description'),
+    }] : []),
+  ]), [t, agentRunner])
+
+  const aiPromptTrimmed = aiPrompt.trim()
+
+  const matchedSlashCommands = useMemo(() => {
+    if (!aiPromptTrimmed.startsWith('/')) return []
+    const normalized = aiPromptTrimmed.toLowerCase()
+    return slashCommands.filter((item) => item.command.startsWith(normalized))
+  }, [aiPromptTrimmed, slashCommands])
+
+  const showSlashCommandMenu = aiPromptTrimmed.startsWith('/') && matchedSlashCommands.length > 0
+
+  const composerPlaceholder = useMemo(() => {
+    return t('editor.ai_composer_chat_placeholder')
+  }, [t])
+
+  const composerHint = useMemo(() => {
+    if (aiPromptTrimmed === AI_SLASH_CLEAR_COMMAND) {
+      return t('editor.ai_slash_clear_hint')
+    }
+
+    return ''
+  }, [aiPromptTrimmed, t])
+
+  const activeConversation = useMemo(
+    () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
+    [activeConversationId, conversations],
+  )
+
+  const isAiGenerating = useMemo(
+    () => aiLoading || sessionMessages.some((message) => message.role === 'assistant' && message.status === 'streaming'),
+    [aiLoading, sessionMessages],
+  )
+
+  const activeConversationLabel = useMemo(() => {
+    if (!activeConversation) return t('editor.ai_conversation_new')
+    return activeConversation.title?.trim()
+      || activeConversation.summary?.trim()
+      || `${t('editor.ai_conversation_label')} ${activeConversation.createdAt.slice(0, 10)}`
+  }, [activeConversation, t])
+
+  const updateSessionMessage = useCallback((id: string, updater: (message: AiSessionMessage) => AiSessionMessage) => {
+    if (!mountedRef.current) return
+    setSessionMessages((current) => current.map((message) => (message.id === id ? updater(message) : message)))
+  }, [])
+
+  const loadConversationDetail = useCallback(async (conversationId: string) => {
+    if (isAiTaskLocked || !options?.token) return
+
+    setConversationLoading(true)
+    setAiError('')
+
+    try {
+      const conversation = await getEditorAiConversation(options.token, conversationId)
+      setActiveConversationId(conversation.id)
+      setConversations((current) => {
+        const next = current.some((item) => item.id === conversation.id)
+          ? current.map((item) => (item.id === conversation.id ? conversation : item))
+          : [conversation, ...current]
+        return next.toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      })
+      setSessionMessages(
+        conversation.messages
+          .map((message) => toSessionMessage(message, t))
+          .filter((message): message is AiSessionMessage => Boolean(message)),
+      )
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationLoading(false)
+    }
+  }, [getEditorAiConversation, isAiTaskLocked, options?.token, t])
+
+  const refreshConversations = useCallback(async () => {
+    if (!isEnabled || !options?.token || !options?.scopeId) return
+
+    setConversationLoading(true)
+    setAiError('')
+
+    try {
+      const items = await getEditorAiConversations(options.token, options.scopeId)
+      setConversations(items)
+
+      if (items.length === 0) {
+        setActiveConversationId(null)
+        setSessionMessages([])
+        return
+      }
+
+      if (activeConversationId && items.some((item) => item.id === activeConversationId)) {
+        await loadConversationDetail(activeConversationId)
+        return
+      }
+
+      setActiveConversationId(null)
+      setSessionMessages([])
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationLoading(false)
+    }
+  }, [getEditorAiConversations, activeConversationId, isEnabled, loadConversationDetail, options?.scopeId, options?.token, t])
+
+  const handleCreateConversation = useCallback(async () => {
+    if (isAiTaskLocked) return
+    setAiError('')
+    setActiveConversationId(null)
+    setPendingDeleteConversationId(null)
+    setSessionMessages([])
+    setAiPrompt('')
+    setShowConversationMenu(false)
+  }, [isAiTaskLocked])
+
+  const handleDeleteConversation = useCallback(async (conversationId?: string) => {
+    if (isAiTaskLocked) return
+    const targetConversationId = conversationId ?? activeConversationId
+    if (!options?.token || !targetConversationId) return
+
+    setConversationDeleting(true)
+    setAiError('')
+    setPendingDeleteConversationId(null)
+
+    try {
+      await deleteEditorAiConversation(options.token, targetConversationId)
+      const remaining = conversations.filter((item) => item.id !== targetConversationId)
+      setConversations(remaining)
+      setShowConversationMenu(false)
+
+      if (activeConversationId === targetConversationId) {
+        setActiveConversationId(null)
+        setSessionMessages([])
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationDeleting(false)
+    }
+  }, [deleteEditorAiConversation, activeConversationId, conversations, isAiTaskLocked, options?.token, t])
+
+  const handleClearConversation = useCallback(async () => {
+    if (isAiTaskLocked) return
+    setAiError('')
+    setPendingDeleteConversationId(null)
+
+    if (!activeConversationId) {
+      setSessionMessages([])
+      setAiPrompt('')
+      return
+    }
+
+    if (!options?.token) {
+      setAiError(t('editor.ai_missing_token'))
+      return
+    }
+
+    setConversationClearing(true)
+
+    try {
+      const conversation = await clearEditorAiConversation(options.token, activeConversationId)
+      setConversations((current) => current.map((item) => (
+        item.id === conversation.id ? conversation : item
+      )))
+      setSessionMessages([])
+      setAiPrompt('')
+      setActiveConversationId(conversation.id)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setConversationClearing(false)
+    }
+  }, [clearEditorAiConversation, activeConversationId, isAiTaskLocked, options?.token, t])
+
+  const stopAiGeneration = useCallback(() => {
+    aiTaskSessionLifecycle.current?.stop()
+    const targetMessageId = activeStreamMessageRef.current
+    if (targetMessageId) {
+      updateSessionMessage(targetMessageId, (currentMessage) => ({
+        ...currentMessage,
+        status: currentMessage.content.trim() ? 'done' : 'error',
+        error: currentMessage.content.trim() ? undefined : t('editor.ai_generation_stopped'),
+      }))
+    }
+    activeStreamMessageRef.current = null
+  }, [aiTaskSessionLifecycle, t, updateSessionMessage])
+
+  const refreshAiModels = useCallback(async () => {
+    if (!isEnabled || !options?.token) {
+      setAiError(t('editor.ai_missing_token'))
+      return
+    }
+
+    setAiModelsLoading(true)
+    setAiError('')
+
+    try {
+      const response = await getStoryAiModels(options.token)
+      setAiModelOptions(response.models)
+      setAiSelectedModel((current) => {
+        const nextModel = current || response.defaultModel
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(AI_SELECTED_MODEL_STORAGE_KEY, nextModel)
+          window.localStorage.setItem(AI_MODELS_STORAGE_KEY, JSON.stringify(response.models))
+        }
+        return nextModel
+      })
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setAiModelsLoading(false)
+    }
+  }, [getStoryAiModels, isEnabled, options?.token, t])
+
+  const handleAiModelInputFocus = useCallback(() => {
+    if (isAiTaskLocked) return
+    setAiModelQuery('')
+    setShowAiModelMenu(true)
+  }, [isAiTaskLocked])
+
+  const handleApplyResult = useCallback((message: AiSessionMessage, mode: TipTapAiApplyMode) => {
+    if (!mountedRef.current) return
+    if (isAiTaskLocked) return
+    if (!message.content.trim()) return
+
+    onApplyResult(mode, message.content, message.selectionRange)
+    setAiError('')
+    updateSessionMessage(message.id, (currentMessage) => {
+      const appliedModes = currentMessage.appliedModes ?? []
+      return {
+        ...currentMessage,
+        appliedModes: appliedModes.includes(mode) ? appliedModes : [...appliedModes, mode],
+      }
+    })
+  }, [isAiTaskLocked, onApplyResult, updateSessionMessage])
+
+  // Direct-edit：持久化消息后由共享 agent 自动模拟并原子提交。
+  const runAgentCommand = useCallback(async (instruction: string) => {
+    if (!agentRunner || !options?.token || !options.scopeId) return
+
+    try {
+      const aiTaskSession = aiTaskSessionLifecycle.requireCurrent()
+      const isCurrentSession = () => (
+        mountedRef.current && aiTaskSessionLifecycle.current === aiTaskSession
+      )
+      await aiTaskSession.start('direct-edit-agent', async ({ signal }) => {
+        let conversationId = activeConversationId
+        if (!conversationId) {
+          const conversation = await createEditorAiConversation(options.token as string, {
+            scopeId: options.scopeId as string,
+            title: options.title,
+          })
+          if (!isCurrentSession()) return
+          conversationId = conversation.id
+          setConversations((current) => [conversation, ...current])
+          setActiveConversationId(conversation.id)
+        }
+
+        let assistantMessageId = ''
+        setAiLoading(true)
+        setAiError('')
+        try {
+          await runPersistedNarrativeDirectEdit({
+            api: { appendEditorAiMessage, finishEditorAiMessage },
+            token: options.token as string,
+            conversationId,
+            instruction,
+            model: aiSelectedModel || undefined,
+            signal,
+            runner: agentRunner,
+            onPending: (userMessage, assistantMessage) => {
+              if (!isCurrentSession()) return
+              assistantMessageId = assistantMessage.id
+              activeStreamMessageRef.current = assistantMessage.id
+              const nextMessages = [toSessionMessage(userMessage, t), toSessionMessage(assistantMessage, t)]
+                .filter((message): message is AiSessionMessage => message !== null)
+              setSessionMessages((current) => [...current, ...nextMessages])
+            },
+            onExecutionCompleted: (assistantMessage) => {
+              if (!isCurrentSession()) return
+              const completed = toSessionMessage(assistantMessage, t)
+              if (completed) updateSessionMessage(assistantMessage.id, () => completed)
+            },
+            onTerminal: (assistantMessage) => {
+              if (!isCurrentSession()) return
+              const terminal = toSessionMessage(assistantMessage, t)
+              if (terminal) updateSessionMessage(assistantMessage.id, () => terminal)
+            },
+            onEvent: (event) => {
+              if (!isCurrentSession() || !assistantMessageId || event.type !== 'text_delta') return
+              updateSessionMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: message.content + event.text,
+              }))
+            },
+          })
+          if (isCurrentSession()) setAiPrompt('')
+        } finally {
+          if (isCurrentSession()) {
+            activeStreamMessageRef.current = null
+            setAiLoading(false)
+          }
+        }
+      }, { manageLock: false })
+    } catch (error) {
+      if (mountedRef.current) {
+        if (!(error instanceof Error && error.name === 'AbortError')) {
+          setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+        }
+      }
+    }
+  }, [
+    activeConversationId,
+    agentRunner,
+    aiSelectedModel,
+    aiTaskSessionLifecycle,
+    appendEditorAiMessage,
+    createEditorAiConversation,
+    finishEditorAiMessage,
+    options?.scopeId,
+    options?.title,
+    options?.token,
+    t,
+    updateSessionMessage,
+  ])
+
+  const handleTaskHistoryAction = useCallback(async (
+    messageId: string,
+    taskId: string,
+    state: Extract<AiChangeSetState, 'undone' | 'redone'>,
+  ) => {
+    if (!taskHistory || !options?.token) return
+    try {
+      const persisted = await runPersistedTaskHistoryAction({
+        api: { updateEditorAiTaskState },
+        history: taskHistory,
+        token: options.token,
+        messageId,
+        taskId,
+        state,
+      })
+      if (!persisted) return
+      const nextMessage = toSessionMessage(persisted, t)
+      if (nextMessage) updateSessionMessage(messageId, () => nextMessage)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+      setSessionMessages((current) => [...current])
+    }
+  }, [options?.token, t, taskHistory, updateEditorAiTaskState, updateSessionMessage])
+
+  const runAiAction = useCallback(async (action?: StoryAiAction, promptOverride?: string) => {
+    if (!isEnabled) return
+    if (!options?.token) {
+      setAiError(t('editor.ai_missing_token'))
+      return
+    }
+    if (!options?.scopeId) {
+      setAiError(t('editor.ai_missing_scope'))
+      return
+    }
+    const token = options.token
+    const scopeId = options.scopeId
+
+    const prompt = (promptOverride ?? aiPrompt).trim()
+
+    if (prompt === AI_SLASH_CLEAR_COMMAND) {
+      await handleClearConversation()
+      return
+    }
+
+    if (agentRunner && (prompt === AI_SLASH_AGENT_COMMAND || prompt.startsWith(`${AI_SLASH_AGENT_COMMAND} `))) {
+      const instruction = prompt.slice(AI_SLASH_AGENT_COMMAND.length).trim()
+      if (!instruction) {
+        setAiError(t('editor.ai_agent_instruction_required'))
+        return
+      }
+      await runAgentCommand(instruction)
+      return
+    }
+
+    try {
+      const aiTaskSession = aiTaskSessionLifecycle.requireCurrent()
+      const isCurrentSession = () => (
+        mountedRef.current && aiTaskSessionLifecycle.current === aiTaskSession
+      )
+      await aiTaskSession.start('stream-generation', async ({ signal }) => {
+
+        const effectiveAction = action ?? (prompt ? 'custom' : undefined)
+    const hasSelection = context.hasSelection && Boolean(context.selectedText.trim())
+    const editorContextPayload = hasSelection
+      ? {
+          title: options.title,
+          selectedText: context.selectedText || undefined,
+          currentParagraph: context.currentParagraph || undefined,
+          contextBefore: context.contextBefore || undefined,
+          contextAfter: context.contextAfter || undefined,
+        }
+      : {
+          title: undefined,
+          selectedText: undefined,
+          currentParagraph: undefined,
+          contextBefore: undefined,
+          contextAfter: undefined,
+        }
+
+    let conversationId = activeConversationId
+    if (!conversationId) {
+      setConversationSaving(true)
+      try {
+        const conversation = await createEditorAiConversation(token, {
+          scopeId,
+          title: options.title,
+        })
+        if (!isCurrentSession()) return
+        setConversations((current) => [conversation, ...current])
+        setActiveConversationId(conversation.id)
+        conversationId = conversation.id
+      } catch (error) {
+        if (!isCurrentSession()) return
+        setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+        setConversationSaving(false)
+        return
+      } finally {
+        if (isCurrentSession()) setConversationSaving(false)
+      }
+    }
+
+    const userMessageId = buildMessageId('user')
+    const assistantMessageId = buildMessageId('assistant')
+    const userMessage: AiSessionMessage = {
+      id: userMessageId,
+      role: 'user',
+      action: effectiveAction,
+      prompt,
+      content: prompt || resolveActionLabel(effectiveAction, t),
+      hasSelection,
+      selectionPreview: aiSelectionPreview,
+      paragraphPreview,
+      selectionRange: context.selectionRange,
+    }
+    const assistantMessage: AiSessionMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      action: effectiveAction,
+      prompt,
+      content: '',
+      hasSelection,
+      selectionPreview: aiSelectionPreview,
+      paragraphPreview,
+      selectionRange: context.selectionRange,
+      status: 'streaming',
+      appliedModes: [],
+    }
+
+    activeStreamMessageRef.current = assistantMessageId
+    setAiLoading(true)
+    setAiError('')
+    setSessionMessages((current) => [...current, userMessage, assistantMessage])
+
+    try {
+      await streamStoryAiGenerate(token, {
+        conversationId,
+        action: effectiveAction,
+        model: aiSelectedModel || undefined,
+        prompt: prompt || undefined,
+        ...editorContextPayload,
+      }, {
+        onChunk: (chunk) => {
+          if (!isCurrentSession()) return
+          updateSessionMessage(assistantMessageId, (message) => ({
+            ...message,
+            content: message.content + chunk,
+          }))
+        },
+        signal,
+      })
+
+      if (!isCurrentSession()) return
+      activeStreamMessageRef.current = null
+      updateSessionMessage(assistantMessageId, (currentMessage) => ({
+        ...currentMessage,
+        status: 'done',
+      }))
+      setConversations((current) => current.map((item) => (
+        item.id === conversationId
+          ? {
+              ...item,
+              title: options.title ?? item.title,
+              lastModel: aiSelectedModel || item.lastModel,
+              updatedAt: new Date().toISOString(),
+            }
+          : item
+      )))
+      setAiPrompt('')
+    } catch (error) {
+      if (!isCurrentSession()) return
+      activeStreamMessageRef.current = null
+      if (error instanceof Error && error.name === 'AbortError') {
+        updateSessionMessage(assistantMessageId, (currentMessage) => ({
+          ...currentMessage,
+          status: currentMessage.content.trim() ? 'done' : 'error',
+          error: currentMessage.content.trim() ? undefined : t('editor.ai_generation_stopped'),
+        }))
+        return
+      }
+      const message = error instanceof Error ? error.message : t('editor.ai_failed')
+      setAiError(message)
+      updateSessionMessage(assistantMessageId, (currentMessage) => ({
+        ...currentMessage,
+        status: 'error',
+        error: message,
+        }))
+        } finally {
+          if (isCurrentSession()) setAiLoading(false)
+        }
+      })
+    } catch (error) {
+      if (mountedRef.current) {
+        setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+      }
+    }
+  }, [
+    createEditorAiConversation,
+    streamStoryAiGenerate,
+    activeConversationId,
+    aiPrompt,
+    aiSelectedModel,
+    aiSelectionPreview,
+    context.contextAfter,
+    context.contextBefore,
+    context.currentParagraph,
+    context.hasSelection,
+    context.selectedText,
+    context.selectionRange,
+    isEnabled,
+    options?.scopeId,
+    options?.title,
+    options?.token,
+    paragraphPreview,
+    t,
+    handleClearConversation,
+    updateSessionMessage,
+    agentRunner,
+    aiTaskSessionLifecycle,
+    runAgentCommand,
+  ])
+
+  const handlePolishPrompt = useCallback(async () => {
+    const prompt = aiPrompt.trim()
+    if (!prompt) return
+    if (!options?.token) {
+      setAiError(t('editor.ai_missing_token'))
+      return
+    }
+
+    setAiPromptPolishing(true)
+    setAiError('')
+
+    try {
+      const response = await polishStoryAiPrompt(options.token, {
+        text: prompt,
+        action: aiMode ?? undefined,
+        hasSelection: context.hasSelection,
+        model: aiSelectedModel || undefined,
+      })
+      setAiPrompt(response.text)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t('editor.ai_failed'))
+    } finally {
+      setAiPromptPolishing(false)
+    }
+  }, [polishStoryAiPrompt, aiMode, aiPrompt, aiSelectedModel, context.hasSelection, options?.token, t])
+
+  const handleSelectSlashCommand = useCallback((command: string) => {
+    setAiPrompt(`${command} `)
+    setAiError('')
+  }, [])
+
+  const handleComposerKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || !event.ctrlKey) return
+    event.preventDefault()
+
+    if (isAiGenerating || aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing) {
+      return
+    }
+
+    void runAiAction(aiMode ?? undefined)
+  }, [
+    isAiGenerating,
+    aiMode,
+    aiPromptPolishing,
+    conversationClearing,
+    conversationDeleting,
+    conversationLoading,
+    runAiAction,
+  ])
+
+  const handlePrimaryAiButtonAction = useCallback(() => {
+    if (isAiGenerating) {
+      stopAiGeneration()
+      return
+    }
+
+    void runAiAction(aiMode ?? undefined)
+  }, [aiMode, isAiGenerating, runAiAction, stopAiGeneration])
+
+  useEffect(() => {
+    if (!isEnabled || typeof window === 'undefined') return
+
+    try {
+      const cachedModels = window.localStorage.getItem(AI_MODELS_STORAGE_KEY)
+      const cachedSelectedModel = window.localStorage.getItem(AI_SELECTED_MODEL_STORAGE_KEY)
+      const parsed = cachedModels ? JSON.parse(cachedModels) as StoryAiModelOption[] : []
+      setAiModelOptions(Array.isArray(parsed) ? parsed : [])
+      setAiSelectedModel(cachedSelectedModel || '')
+    } catch {
+      setAiModelOptions([])
+      setAiSelectedModel('')
+    }
+  }, [isEnabled])
+
+  useEffect(() => {
+    if (!aiSelectedModel || typeof window === 'undefined') return
+    window.localStorage.setItem(AI_SELECTED_MODEL_STORAGE_KEY, aiSelectedModel)
+  }, [aiSelectedModel])
+
+  useEffect(() => {
+    if (!isEnabled || !options?.token || !options?.scopeId) return
+    void refreshConversations()
+  }, [isEnabled, options?.scopeId, options?.token, refreshConversations])
+
+  useEffect(() => {
+    if (!showAiModelMenu) {
+      setAiModelQuery('')
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (aiModelMenuRef.current?.contains(target) || aiModelButtonRef.current?.contains(target)) return
+      setShowAiModelMenu(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowAiModelMenu(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showAiModelMenu])
+
+  useEffect(() => {
+    if (!showAiModelMenu || aiModelQuery.trim()) return
+    requestAnimationFrame(() => {
+      const selectedOption = aiModelListRef.current?.querySelector<HTMLElement>('[data-ai-model-selected="true"]')
+      selectedOption?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [aiModelQuery, aiSelectedModel, showAiModelMenu])
+
+  useEffect(() => {
+    if (!showConversationMenu) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (conversationMenuRef.current?.contains(target) || conversationMenuButtonRef.current?.contains(target)) return
+      setShowConversationMenu(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowConversationMenu(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showConversationMenu])
+
+  useEffect(() => {
+    setShowConversationMenu(false)
+    setPendingDeleteConversationId(null)
+  }, [activeConversationId])
+
+  useEffect(() => {
+    if (!showConversationMenu) {
+      setPendingDeleteConversationId(null)
+    }
+  }, [showConversationMenu])
+
+  useEffect(() => {
+    if (!conversationViewportRef.current) return
+    conversationViewportRef.current.scrollTop = conversationViewportRef.current.scrollHeight
+  }, [sessionMessages])
+
+  if (!isEnabled) {
+    return null
+  }
+
+  return (
+    <div
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background/96"
+      aria-busy={isAiTaskLocked}
+      data-document-id={documentId}
+      data-document-kind={documentKind}
+    >
+          <div className="border-b border-border/60 px-4 pb-4 pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <div
+                      ref={conversationMenuButtonRef}
+                      className={`flex h-9 min-w-0 items-center justify-between gap-2 rounded-md border px-3 text-left text-xs transition-[border-color,background-color] ${
+                        showConversationMenu
+                          ? 'border-primary/60 bg-background'
+                          : 'border-border/80 bg-background/90 hover:border-primary/30'
+                      } ${conversationSaving || conversationLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                      role="button"
+                      tabIndex={isAiTaskLocked ? -1 : 0}
+                      aria-disabled={isAiTaskLocked}
+                      aria-expanded={showConversationMenu}
+                      aria-haspopup="listbox"
+                      aria-controls={conversationMenuId}
+                      onClick={() => {
+                        if (isAiTaskLocked || conversationSaving || conversationLoading) return
+                        setShowConversationMenu((current) => !current)
+                      }}
+                      onKeyDown={(event) => {
+                        if (isAiTaskLocked || conversationSaving || conversationLoading) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          setShowConversationMenu((current) => !current)
+                        }
+                      }}
+                    >
+                      <span className="flex min-w-0 items-center gap-2 truncate font-medium text-foreground">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Wand2 className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="truncate">
+                          {conversationLoading ? t('editor.ai_conversation_loading') : activeConversationLabel}
+                        </span>
+                      </span>
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${showConversationMenu ? 'rotate-180' : ''}`} />
+                    </div>
+                    {showConversationMenu ? (
+                      <div
+                        ref={conversationMenuRef}
+                        id={conversationMenuId}
+                        className="absolute left-0 top-[calc(100%+8px)] z-30 w-full overflow-hidden rounded-lg border border-border/80 bg-background shadow-[0_16px_32px_-24px_rgba(15,23,42,0.18)]"
+                        role="listbox"
+                      >
+                        <div className="border-b border-border/60 p-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateConversation()}
+                            disabled={isAiTaskLocked || conversationSaving}
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Plus className="h-4 w-4" />
+                            {t('editor.ai_conversation_new')}
+                          </button>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto p-2">
+                          {conversations.length === 0 ? (
+                            <div className="rounded-md px-3 py-2 text-sm text-muted-foreground">
+                              {t('editor.ai_conversation_empty')}
+                            </div>
+                          ) : (
+                            conversations.map((conversation) => {
+                              const isSelected = conversation.id === activeConversationId
+                              const isPendingDelete = pendingDeleteConversationId === conversation.id
+                              const label = conversation.title?.trim()
+                                || conversation.summary?.trim()
+                                || `${t('editor.ai_conversation_label')} ${conversation.createdAt.slice(0, 10)}`
+                              return (
+                                <div
+                                  key={conversation.id}
+                                  className={`flex items-center gap-2 rounded-md px-3 py-2 transition-colors ${
+                                    isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void loadConversationDetail(conversation.id)
+                                      setShowConversationMenu(false)
+                                    }}
+                                    className="min-w-0 flex-1 text-left"
+                                  >
+                                    <div className="truncate text-sm font-medium">{label}</div>
+                                    <div className="truncate text-xs text-muted-foreground">{new Date(conversation.updatedAt).toLocaleString()}</div>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isPendingDelete) {
+                                        void handleDeleteConversation(conversation.id)
+                                        return
+                                      }
+                                      setPendingDeleteConversationId(conversation.id)
+                                    }}
+                                    disabled={isAiTaskLocked || conversationDeleting}
+                                    className={`flex h-8 shrink-0 items-center justify-center rounded-md px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      isPendingDelete
+                                        ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                                        : 'w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                                    }`}
+                                    title={isPendingDelete ? t('common.confirm') : t('editor.ai_conversation_delete')}
+                                    aria-label={isPendingDelete ? t('common.confirm') : t('editor.ai_conversation_delete')}
+                                  >
+                                    {isPendingDelete ? (
+                                      <>
+                                        <Check className="mr-1 h-3.5 w-3.5" />
+                                        {t('common.confirm')}
+                                      </>
+                                    ) : (
+                                      <Trash2 className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div ref={conversationViewportRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            {conversationLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('editor.ai_conversation_loading')}
+              </div>
+            ) : sessionMessages.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+                <div className="flex items-center gap-3 text-foreground">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Wand2 className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="font-medium">{t('editor.ai_panel_title')}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{t('editor.ai_chat_subtitle')}</div>
+                  </div>
+                </div>
+                <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <span className="truncate">
+                    {context.hasSelection && aiSelectionPreview
+                      ? `${t('editor.ai_context_selection')}: ${aiSelectionPreview}`
+                      : `${t('editor.ai_context_paragraph')}: ${paragraphPreview || t('editor.ai_scope_paragraph')}`}
+                  </span>
+                </div>
+                <div className="mt-4 font-medium text-foreground">{t('editor.ai_chat_empty_title')}</div>
+                <div className="mt-2 leading-6">{t('editor.ai_chat_empty_description')}</div>
+              </div>
+            ) : (
+              sessionMessages.map((message) => {
+                const actionLabel = resolveActionLabel(message.action, t)
+                const appliedModes = message.appliedModes ?? []
+                const taskMessage = readEditorAiTaskMessageMetadata(message.metadata)
+                const completedTask = taskMessage?.task.status === 'completed'
+                  ? taskMessage.task
+                  : null
+                const canReplace = !completedTask && Boolean(message.content.trim()) && Boolean(message.selectionRange)
+                const canApply = !completedTask && Boolean(message.content.trim())
+
+                if (message.role === 'user') {
+                  return (
+                    <div key={message.id} className="ml-8 rounded-lg border border-border/60 bg-muted/25 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[10px] font-mono font-medium uppercase tracking-wide text-muted-foreground">
+                          {t('editor.ai_chat_you')}
+                        </div>
+                        {actionLabel ? (
+                          <div className="rounded-md border border-border/50 bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {actionLabel}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                        {message.prompt || t('editor.ai_prompt_empty')}
+                      </div>
+                      <div className="mt-3 text-xs text-muted-foreground">
+                        {message.hasSelection && message.selectionPreview
+                          ? `${t('editor.ai_context_selection')}: ${message.selectionPreview}`
+                          : `${t('editor.ai_context_paragraph')}: ${message.paragraphPreview || t('editor.ai_scope_paragraph')}`}
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div key={message.id} className="mr-8 rounded-lg border border-border/70 bg-card px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-[10px] font-mono font-medium uppercase tracking-wide text-muted-foreground">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <Sparkles className="h-3.5 w-3.5" />
+                        </span>
+                        {t('editor.ai_panel_title')}
+                        {message.status === 'streaming' ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                      </div>
+                      {actionLabel ? (
+                        <div className="text-xs text-muted-foreground">{actionLabel}</div>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                      {message.content || (message.status === 'streaming' ? t('editor.ai_generating') : t('editor.ai_preview_placeholder'))}
+                    </div>
+
+                    {completedTask ? (
+                      <AiChangeSetCard
+                        task={completedTask}
+                        historyState={taskHistory?.getTaskHistoryState(completedTask.taskId) ?? null}
+                        disabled={isAiTaskLocked}
+                        onUndo={() => void handleTaskHistoryAction(message.id, completedTask.taskId, 'undone')}
+                        onRedo={() => void handleTaskHistoryAction(message.id, completedTask.taskId, 'redone')}
+                        t={t}
+                      />
+                    ) : null}
+
+                    {message.status === 'error' && message.error ? (
+                      <div className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                        {message.error}
+                      </div>
+                    ) : null}
+
+                    {!completedTask ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isAiTaskLocked || !canReplace || message.status === 'streaming'}
+                        onClick={() => handleApplyResult(message, 'replace')}
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                          appliedModes.includes('replace')
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : 'border-border text-foreground hover:border-foreground/20'
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        {appliedModes.includes('replace') ? t('editor.ai_applied') : t('editor.ai_apply_replace')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isAiTaskLocked || !canApply || message.status === 'streaming'}
+                        onClick={() => handleApplyResult(message, 'insert')}
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                          appliedModes.includes('insert')
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : 'border-border text-foreground hover:border-foreground/20'
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        {appliedModes.includes('insert') ? t('editor.ai_applied') : t('editor.ai_apply_insert')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isAiTaskLocked || !canApply || message.status === 'streaming'}
+                        onClick={() => handleApplyResult(message, 'append')}
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                          appliedModes.includes('append')
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : 'border-border text-foreground hover:border-foreground/20'
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        {appliedModes.includes('append') ? t('editor.ai_applied') : t('editor.ai_apply_append')}
+                      </button>
+                      {message.status === 'error' ? (
+                        <button
+                          type="button"
+                          disabled={isAiTaskLocked || isAiGenerating}
+                          onClick={() => void runAiAction(message.action === 'custom' ? 'custom' : message.action, message.prompt)}
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:border-foreground/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          {t('common.retry')}
+                        </button>
+                      ) : null}
+                    </div>
+                    ) : null}
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          <div className="border-t border-border/60 bg-background/90 px-4 pb-4 pt-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {AI_PRESET_ACTIONS.map((item) => (
+                  <button
+                    key={item.action}
+                    type="button"
+                    onClick={() => setAiMode((current) => (current === item.action ? null : item.action))}
+                    disabled={isAiTaskLocked || isAiGenerating}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                      aiMode === item.action
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {t(`editor.ai_action_${item.key}`)}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative">
+              {showSlashCommandMenu ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+10px)] z-20">
+                  <div className="pointer-events-auto rounded-lg border border-border/70 bg-background p-2 shadow-[0_16px_32px_-24px_rgba(15,23,42,0.18)]">
+                    <div className="px-2 pb-2 text-[10px] font-mono font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('editor.ai_commands')}
+                    </div>
+                    <div className="space-y-1">
+                      {matchedSlashCommands.map((item) => (
+                        <button
+                          key={item.command}
+                          type="button"
+                          onClick={() => handleSelectSlashCommand(item.command)}
+                          className="flex w-full items-start justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted"
+                        >
+                          <span className="text-sm font-medium text-foreground">{item.command}</span>
+                          <span className="text-xs leading-5 text-muted-foreground">{item.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+              <textarea
+                value={aiPrompt}
+                onChange={(event) => setAiPrompt(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+                disabled={isAiTaskLocked}
+                placeholder={composerPlaceholder}
+                className="h-24 w-full resize-none bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+              />
+              {composerHint ? (
+                <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {composerHint}
+                </div>
+              ) : null}
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="relative min-w-0">
+                    <div
+                      ref={aiModelButtonRef}
+                      className={`flex h-9 w-[156px] items-center justify-between gap-2 rounded-md border px-3 text-left outline-none transition-[border-color,background-color] ${
+                        showAiModelMenu
+                          ? 'border-primary/60 bg-background'
+                          : 'border-border/80 bg-background/90 hover:border-primary/30'
+                      } ${aiModelsLoading || isAiGenerating ? 'cursor-not-allowed opacity-60' : ''}`}
+                      role="combobox"
+                      aria-expanded={showAiModelMenu}
+                      aria-haspopup="listbox"
+                      aria-controls={aiModelMenuId}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <input
+                          type="text"
+                          value={showAiModelMenu ? aiModelQuery : selectedAiModelLabel}
+                          onFocus={handleAiModelInputFocus}
+                          onChange={(event) => {
+                            setAiModelQuery(event.target.value)
+                            setShowAiModelMenu(true)
+                          }}
+                          onClick={() => setShowAiModelMenu(true)}
+                          disabled={isAiTaskLocked || aiModelsLoading || isAiGenerating}
+                          placeholder={aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_model_search_placeholder')}
+                          className="block h-5 w-full truncate bg-transparent text-xs font-medium text-foreground outline-none placeholder:text-muted-foreground/70"
+                        />
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAiModelMenu((current) => !current)}
+                        disabled={isAiTaskLocked || aiModelsLoading || isAiGenerating}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
+                        tabIndex={-1}
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAiModelMenu ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+
+                    {showAiModelMenu ? (
+                      <div
+                        ref={aiModelMenuRef}
+                        id={aiModelMenuId}
+                        className="absolute bottom-[calc(100%+8px)] left-0 z-20 max-h-56 w-[208px] overflow-hidden rounded-lg border border-border/80 bg-background shadow-[0_16px_32px_-24px_rgba(15,23,42,0.18)]"
+                        role="listbox"
+                      >
+                        <div ref={aiModelListRef} className="max-h-56 overflow-y-auto p-2">
+                          {filteredAiModelOptions.length === 0 ? (
+                            <div className="rounded-md px-3 py-2 text-sm text-muted-foreground">
+                              {aiModelsLoading ? t('editor.ai_models_loading') : t('editor.ai_models_empty')}
+                            </div>
+                          ) : (
+                            filteredAiModelOptions.map((option) => {
+                              const isSelected = option.id === aiSelectedModel
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  disabled={isAiTaskLocked}
+                                  data-ai-model-selected={isSelected ? 'true' : undefined}
+                                  onClick={() => {
+                                    setAiSelectedModel(option.id)
+                                    setShowAiModelMenu(false)
+                                  }}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors ${
+                                    isSelected ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'
+                                  }`}
+                                  title={option.label}
+                                >
+                                  <span className="min-w-0 flex-1 truncate text-sm">{option.label}</span>
+                                  {isSelected ? <Check className="h-4 w-4 shrink-0" /> : null}
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void refreshAiModels()}
+                    disabled={isAiTaskLocked || aiModelsLoading || isAiGenerating || conversationLoading}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    title={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
+                    aria-label={aiModelsLoading ? t('editor.ai_models_refreshing') : t('editor.ai_models_refresh')}
+                  >
+                    <RotateCcw className={`h-4 w-4 ${aiModelsLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handlePolishPrompt()}
+                    disabled={isAiTaskLocked || !aiPrompt.trim() || isAiGenerating || aiPromptPolishing || conversationClearing}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background text-foreground transition-[border-color,background-color,color,transform] hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    title={t('editor.ai_polish_prompt')}
+                    aria-label={t('editor.ai_polish_prompt')}
+                  >
+                    {aiPromptPolishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      if (!isAiGenerating) return
+                      event.preventDefault()
+                      stopAiGeneration()
+                    }}
+                    onClick={handlePrimaryAiButtonAction}
+                    disabled={isAiGenerating ? false : (isAiTaskLocked || aiPromptPolishing || conversationLoading || conversationDeleting || conversationClearing)}
+                    className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={isAiGenerating ? t('editor.ai_stop_generating') : t('editor.ai_generate')}
+                  >
+                    {isAiGenerating
+                      ? <Square className="h-4 w-4 fill-current" />
+                      : conversationClearing
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Sparkles className="h-4 w-4" />}
+                    {isAiGenerating
+                      ? t('editor.ai_stop')
+                      : aiPromptTrimmed === AI_SLASH_CLEAR_COMMAND
+                      ? t('editor.ai_clear_context')
+                      : t('editor.ai_generate')}
+                  </button>
+                </div>
+              </div>
+              {aiError ? (
+                <div className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  {aiError}
+                </div>
+              ) : null}
+            </div>
+            </div>
+          </div>
+    </div>
+  )
+}
+
+export default TipTapAiAssistant

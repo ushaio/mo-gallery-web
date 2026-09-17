@@ -1,0 +1,99 @@
+@import '@milkdown/crepe/theme/common/style.css';
+@import '@milkdown/crepe/theme/frame.css';
+@import './content.css';
+
+.milkdown-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; width: 100%; max-width: 100%; background: var(--background, #fff); color: var(--foreground, #262626); }
+.milkdown-editor-scroll { flex: 1; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.milkdown-editor [data-milkdown-root] { min-width: 0; min-height: 100%; }
+.milkdown-editor .milkdown {
+  min-width: 0;
+  min-height: 100%;
+  --crepe-color-background: var(--background, #fff);
+  --crepe-color-on-background: var(--foreground, #262626);
+  --crepe-color-surface: var(--card, #fafafa);
+  --crepe-color-surface-low: var(--muted, #f3f4f6);
+  --crepe-color-on-surface: var(--foreground, #262626);
+  --crepe-color-on-surface-variant: var(--muted-foreground, #666);
+  --crepe-color-outline: var(--muted-foreground, #777);
+  --crepe-color-primary: var(--primary, #475569);
+  --crepe-color-secondary: var(--muted, #e5e7eb);
+  --crepe-color-on-secondary: var(--foreground, #262626);
+  --crepe-color-inverse: var(--foreground, #262626);
+  --crepe-color-on-inverse: var(--background, #fff);
+  --crepe-color-hover: var(--muted, #f3f4f6);
+  --crepe-color-selected: color-mix(in srgb, var(--primary, #475569) 15%, transparent);
+  --crepe-color-inline-area: var(--muted, #e5e7eb);
+  --crepe-font-default: inherit;
+  --crepe-font-title: inherit;
+  --crepe-font-code: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+/* Reserve the 66px block handle plus its 8px gap inside the scroll container. */
+.milkdown-editor .milkdown > .ProseMirror { width: 100%; max-width: 960px; min-height: 360px; margin: 0 auto; padding: 32px clamp(24px, 5vw, 64px) 96px 88px; font-size: var(--crepe-base-font-size, 16px); line-height: 1.8; overflow-wrap: anywhere; outline: none; }
+/* Match the desktop material header's h-10. */
+.milkdown-editor .milkdown .milkdown-top-bar { min-width: 0; height: 2.5rem; min-height: 2.5rem; flex-wrap: nowrap; border-bottom: 1px solid var(--border, #e5e7eb); padding: 0 8px; }
+.milkdown-editor .milkdown .top-bar-inner {
+  min-width: 0;
+  height: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.milkdown-editor .milkdown .top-bar-inner::-webkit-scrollbar { display: none; }
+.milkdown-editor .milkdown .top-bar-item { margin: 1px; width: 28px; height: 28px; }
+.milkdown-editor .milkdown .top-bar-item span { display: flex; }
+.milkdown-editor .milkdown .top-bar-item svg { width: 18px; height: 18px; }
+.milkdown-editor .milkdown .top-bar-item svg[stroke] { fill: none; }
+.milkdown-editor .milkdown .top-bar-divider { margin: 5px; height: 18px; }
+/* Anchor menus to the sticky bar, outside the inner row's overflow clip. */
+/* Selector buttons share the compact geometry of the icon items: 28px tall, 1px spacing, 4px radius. */
+.milkdown-editor .milkdown .top-bar-heading-selector { position: static; padding: 1px; }
+.milkdown-editor .milkdown .top-bar-heading-button { height: 28px; padding: 3px 5px; border-radius: 4px; }
+.milkdown-editor .milkdown .top-bar-heading-button:active { background: var(--crepe-color-selected); }
+.milkdown-editor .milkdown .top-bar-heading-button .top-bar-heading-label { min-width: 0; font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.milkdown-editor .milkdown .top-bar-heading-selector .top-bar-chevron { width: 16px; height: 16px; }
+.milkdown-editor .milkdown .top-bar-heading-selector .top-bar-chevron svg { width: 13px; height: 13px; }
+.milkdown-editor .milkdown .top-bar-heading-dropdown { left: auto; max-height: min(320px, 50vh); overflow-y: auto; }
+/* Each selector is tagged by a marker span inside its chevron (see features.ts). */
+.milkdown-editor .milkdown [data-mo-toolbar-mark] { display: none; }
+/* Pin the material library button to the toolbar's right edge by floating it
+   outside the inner row's horizontal scroll flow; the scroll row reserves
+   trailing space so items never slide under the floating button at rest. */
+.milkdown-editor .milkdown .milkdown-top-bar:has([data-mo-toolbar-mark='library']) .top-bar-inner { padding-right: 40px; }
+.milkdown-editor .milkdown .top-bar-item:has([data-mo-toolbar-mark='library']) {
+  position: absolute;
+  right: 9px;
+  top: 6px;
+  margin: 0;
+  z-index: 1;
+  background: var(--crepe-color-surface, var(--card, #fafafa));
+  box-shadow: -16px 0 12px -12px var(--crepe-color-surface, var(--card, #fafafa));
+}
+.milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='heading']) .top-bar-heading-label { min-width: 3em; }
+.milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='heading']) .top-bar-heading-dropdown { min-width: 112px; }
+.milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='font']) .top-bar-heading-label { min-width: 4em; }
+.milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='font']) .top-bar-heading-dropdown { min-width: 96px; }
+.milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='size']) .top-bar-heading-label { min-width: 30px; }
+.milkdown-editor .milkdown .top-bar-heading-selector:has([data-mo-toolbar-mark='size']) .top-bar-heading-dropdown { min-width: 64px; }
+.milkdown-editor .milkdown .top-bar-size-input { width: 44px; height: 22px; margin: 0 2px; padding: 0 2px; border: 1px solid var(--crepe-color-outline); border-radius: 4px; background: var(--crepe-color-background); color: var(--crepe-color-on-surface); font-size: 12px; line-height: 20px; text-align: center; box-sizing: border-box; outline: none; }
+.milkdown-editor .milkdown .top-bar-size-input:focus { border-color: var(--crepe-color-primary); }
+.milkdown-editor .milkdown-media-node { min-width: 0; max-width: 100%; border-radius: 12px; }
+.milkdown-editor .milkdown-media-node.ProseMirror-selectednode { outline: 2px solid var(--primary, #475569); outline-offset: 2px; }
+.milkdown-editor .milkdown-media { margin: 16px 0; }
+.milkdown-editor-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 12px; font-size: 11px; line-height: 1.4; color: var(--muted-foreground, #777); border-top: 1px solid var(--border, #e5e7eb); }
+.milkdown-editor-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--destructive, #b91c1c); background: color-mix(in srgb, var(--destructive, #b91c1c) 7%, transparent); padding: 10px 14px; font-size: 13px; }
+.milkdown-editor-error button { cursor: pointer; border: 0; padding: 2px 5px; background: transparent; color: inherit; }
+.milkdown-media-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; margin: auto; border: 1px solid var(--border, #ddd); border-radius: 16px; padding: 24px; color: var(--foreground, #262626); background: var(--card, #fff); box-shadow: 0 24px 80px #0003; }
+.milkdown-media-dialog::backdrop { background: #0006; backdrop-filter: blur(3px); }
+.milkdown-media-dialog header, .milkdown-media-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.milkdown-media-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.milkdown-media-dialog label { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; font-size: 13px; }
+.milkdown-media-dialog input, .milkdown-media-dialog textarea, .milkdown-media-dialog select { width: 100%; border: 1px solid var(--border, #ddd); border-radius: 7px; padding: 9px 11px; color: inherit; background: var(--background, #fff); font: inherit; box-sizing: border-box; }
+.milkdown-media-dialog input:focus, .milkdown-media-dialog textarea:focus, .milkdown-media-dialog select:focus { outline: 2px solid var(--primary, #475569); outline-offset: 1px; }
+.milkdown-media-dialog button { display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; padding: 8px 12px; background: var(--muted, #f3f4f6); border: 0; cursor: pointer; font-size: 13px; }
+.milkdown-media-dialog footer { justify-content: flex-end; margin-top: 24px; }
+.milkdown-media-dialog .milkdown-dialog-submit { background: var(--primary, #475569); color: var(--primary-foreground, #fff); }
+.milkdown-dialog-hint { font-size: 12px; line-height: 1.5; color: var(--muted-foreground, #777); margin: 8px 0 0; }
+.milkdown-media-detected { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--foreground, #262626); font-size: 12px; }
+.milkdown-media-dialog textarea { resize: vertical; }

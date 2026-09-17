@@ -1,0 +1,345 @@
+/**
+ * Hook for creating and configuring TipTap editor instance
+ */
+'use client'
+
+import { useCallback, useEffect, useRef } from 'react'
+import { useEditor } from '@tiptap/react'
+import type { JSONContent } from '@tiptap/core'
+import { Markdown } from '@tiptap/markdown'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import { CharacterCount } from '@tiptap/extensions'
+import Link from '@tiptap/extension-link'
+import Underline from '@tiptap/extension-underline'
+import TextAlign from '@tiptap/extension-text-align'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { ResizableImage } from '../tiptap-extensions/ResizableImage'
+import { ListMarkerFontSize } from '../tiptap-extensions/ListMarkerFontSize'
+import { PastedStyleMark } from '../tiptap-extensions/PastedStyleMark'
+import { ContinuePastedStyle } from '../tiptap-extensions/ContinuePastedStyle'
+import { PastedBlockStyle } from '../tiptap-extensions/PastedBlockStyle'
+import { StyledHorizontalRule } from '../tiptap-extensions/StyledHorizontalRule'
+import { MediaEmbed } from '../tiptap-extensions/MediaEmbed'
+import { StoryLinkCard } from '../tiptap-extensions/StoryLinkCard'
+import { ImageUploadPlaceholder } from '../tiptap-extensions/ImageUploadPlaceholder'
+import type { EditorView } from '@tiptap/pm/view'
+import type { NarrativeEditorRuntime } from '../runtime'
+import { parseMediaEmbedInfo } from '../lib/media-embed'
+import { buildStoryLinkCardAttrs, parseStoryLink } from '../lib/story-link-card'
+import { isMarkdownContent } from './markdown-converter'
+import {
+  MarkerHiddenListItem,
+  MergeAdjacentLists,
+  createListEditorHandlers,
+} from './narrative-list'
+import { TyporaInputRules } from './typora-input-rules'
+import { TyporaKeymap } from './typora-keymap'
+
+// 纯文本粘贴的图片直链（可选查询参数），识别后直接插入图片节点而非纯文本
+const IMAGE_URL_PATTERN = /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif|svg)(?:\?\S*)?$/i
+
+function updateStoryLinkCardNode(
+  view: EditorView,
+  storyId: string,
+  attrs: object,
+) {
+  const storyLinkCardType = view.state.schema.nodes.storyLinkCard
+  if (!storyLinkCardType) return
+
+  let targetPos: number | null = null
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name === 'storyLinkCard' && node.attrs.storyId === storyId) {
+      targetPos = pos
+      return false
+    }
+    return true
+  })
+
+  if (targetPos === null) return
+  view.dispatch(view.state.tr.setNodeMarkup(targetPos, storyLinkCardType, attrs))
+}
+
+interface UseNarrativeEditorOptions {
+  value: string
+  jsonValue?: JSONContent | null
+  onChange: (value: string) => void
+  onJsonChange?: (value: JSONContent) => void
+  placeholder?: string
+  onPasteFiles?: (files: File[]) => void | Promise<void>
+  token?: string | null
+  t: (key: string) => string
+  getAdminStory: NarrativeEditorRuntime['getAdminStory']
+  isAiTaskLocked: boolean
+  /** 文档内容版本号：宿主在「整篇内容替换」（切换文章 / 草稿恢复）时递增，
+   *  驱动编辑器原地重置内容，避免通过 key 重挂载造成占位闪烁（沉浸模式下表现像页面刷新） */
+  contentVersion?: string | number
+}
+
+export function useNarrativeEditor({
+  value,
+  jsonValue,
+  onChange,
+  onJsonChange,
+  placeholder,
+  onPasteFiles,
+  token,
+  t,
+  getAdminStory,
+  isAiTaskLocked,
+  contentVersion,
+}: UseNarrativeEditorOptions) {
+  const currentValueRef = useRef(value)
+  const onPasteFilesRef = useRef(onPasteFiles)
+  const tokenRef = useRef(token)
+  // 编辑器实例只创建一次，粘贴回调经 ref 取最新实现
+  const getAdminStoryRef = useRef(getAdminStory)
+  const isAiTaskLockedRef = useRef(isAiTaskLocked)
+
+  useEffect(() => {
+    currentValueRef.current = value
+  }, [value])
+
+  useEffect(() => {
+    onPasteFilesRef.current = onPasteFiles
+  }, [onPasteFiles])
+
+  useEffect(() => {
+    tokenRef.current = token
+  }, [token])
+
+  useEffect(() => {
+    getAdminStoryRef.current = getAdminStory
+  }, [getAdminStory])
+
+  useEffect(() => {
+    isAiTaskLockedRef.current = isAiTaskLocked
+  }, [isAiTaskLocked])
+
+  // 记录最近一次已应用的内容版本，仅在版本号变化时原地替换文档
+  const lastContentVersionRef = useRef<string | number | undefined>(contentVersion)
+
+  const processedContent = useCallback(() => {
+    if (jsonValue) return { content: jsonValue, contentType: 'json' as const }
+    if (!value) return { content: '', contentType: 'html' as const }
+    if (isMarkdownContent(value)) return { content: value, contentType: 'markdown' as const }
+    return { content: value, contentType: 'html' as const }
+  }, [jsonValue, value])
+
+  const editor = useEditor({
+    extensions: [
+      PastedBlockStyle,
+      CharacterCount,
+      Markdown.configure({ indentation: { style: 'space', size: 2 } }),
+      StarterKit.configure({
+        horizontalRule: false,
+        listItem: false,
+        heading: {
+          levels: [1, 2, 3, 4, 5, 6],
+        },
+      }),
+      MarkerHiddenListItem,
+      MergeAdjacentLists,
+      TyporaInputRules,
+      TyporaKeymap,
+      ContinuePastedStyle,
+      ListMarkerFontSize,
+      StyledHorizontalRule,
+      Placeholder.configure({
+        placeholder: placeholder || t('editor.placeholder'),
+        emptyEditorClass: 'is-editor-empty',
+      }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'text-primary underline',
+        },
+      }),
+      ResizableImage.configure({
+        resize: {
+          enabled: true,
+          directions: ['bottom-left', 'bottom-right', 'top-left', 'top-right'],
+          minWidth: 100,
+          minHeight: 100,
+          alwaysPreserveAspectRatio: true,
+        },
+      }),
+      MediaEmbed,
+      StoryLinkCard,
+      ImageUploadPlaceholder,
+      Underline,
+      PastedStyleMark,
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+      }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: 'border-collapse table-auto w-full',
+        },
+      }),
+      TableRow,
+      TableCell.configure({
+        HTMLAttributes: {
+          class: 'border border-border p-2',
+        },
+      }),
+      TableHeader.configure({
+        HTMLAttributes: {
+          class: 'border border-border bg-muted p-2 font-bold',
+        },
+      }),
+    ],
+    content: processedContent().content || '',
+    contentType: processedContent().contentType,
+    immediatelyRender: false,
+    shouldRerenderOnTransaction: true,
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML()
+      // 内容未变化时（例如扩展合成的空事务）不向上游广播，避免宿主误判为「已修改」。
+      if (html === currentValueRef.current) return
+      currentValueRef.current = html
+      onChange(html)
+      onJsonChange?.(editor.getJSON())
+    },
+    editorProps: {
+      attributes: {
+        class: 'tiptap focus:outline-none',
+        autocapitalize: 'off',
+      },
+      handlePaste: (view, event) => {
+        if (isAiTaskLockedRef.current) return true
+
+        const files = Array.from(event.clipboardData?.files || []).filter((file) =>
+          file.type.startsWith('image/')
+        )
+        if (files.length > 0) {
+          event.preventDefault()
+          void onPasteFilesRef.current?.(files)
+          return true
+        }
+
+        const plainText = event.clipboardData?.getData('text/plain')?.trim() || ''
+        const htmlText = event.clipboardData?.getData('text/html')?.trim() || ''
+        const storyLink = parseStoryLink(plainText)
+        const storyLinkCardType = view.state.schema.nodes.storyLinkCard
+
+        if (storyLink && storyLinkCardType) {
+          const authToken = tokenRef.current
+          if (!authToken) return false
+
+          event.preventDefault()
+          const { state } = view
+          view.dispatch(
+            state.tr
+              .replaceSelectionWith(storyLinkCardType.create({
+                storyId: storyLink.storyId,
+                url: storyLink.url,
+                title: t('common.loading'),
+              }))
+              .scrollIntoView()
+          )
+
+          void getAdminStoryRef.current(authToken, storyLink.storyId)
+            .then((story) => {
+              const attrs = buildStoryLinkCardAttrs(story, storyLink.url)
+              updateStoryLinkCardNode(view, storyLink.storyId, attrs)
+            })
+            .catch(() => {
+              updateStoryLinkCardNode(view, storyLink.storyId, {
+                storyId: storyLink.storyId,
+                url: storyLink.url,
+                title: 'Story not found',
+                summary: storyLink.url,
+                isPublished: false,
+              })
+            })
+
+          return true
+        }
+
+        const embedInfo = parseMediaEmbedInfo(plainText) || parseMediaEmbedInfo(htmlText)
+        const mediaEmbedType = view.state.schema.nodes.mediaEmbed
+
+        if (embedInfo && mediaEmbedType) {
+          event.preventDefault()
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(
+                mediaEmbedType.create({
+                  provider: embedInfo.provider,
+                  url: embedInfo.url,
+                  src: embedInfo.src,
+                  title: embedInfo.title,
+                  height: embedInfo.height,
+                  allow: embedInfo.allow,
+                  allowFullScreen: embedInfo.allowFullScreen,
+                  frameBorder: embedInfo.frameBorder,
+                  marginWidth: embedInfo.marginWidth,
+                  marginHeight: embedInfo.marginHeight,
+                  scrolling: embedInfo.scrolling,
+                  border: embedInfo.border,
+                  frameSpacing: embedInfo.frameSpacing,
+                })
+              )
+              .scrollIntoView()
+          )
+          return true
+        }
+
+        const isImageUrl = IMAGE_URL_PATTERN.test(plainText)
+        const imageType = view.state.schema.nodes.image
+
+        if (isImageUrl && imageType) {
+          event.preventDefault()
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(imageType.create({ src: plainText, alt: '' }))
+              .scrollIntoView()
+          )
+          return true
+        }
+
+        return false
+      },
+      // The handler runs from ProseMirror event hooks, after render; the ref
+      // keeps the lock state current without rebuilding editor props.
+      // eslint-disable-next-line react-hooks/refs
+      ...createListEditorHandlers({ isAiTaskLocked: () => isAiTaskLockedRef.current }),
+    },
+  })
+
+  useEffect(() => {
+    // emitUpdate=false：setEditable 默认会合成一个空事务的 update 事件，
+    // 会让宿主在「未修改内容」时也收到 onChange/onJsonChange，从而误触发自动保存。
+    editor?.setEditable(!isAiTaskLocked, false)
+  }, [editor, isAiTaskLocked])
+
+  useEffect(() => {
+    if (!editor) return
+    if (lastContentVersionRef.current === contentVersion) return
+    lastContentVersionRef.current = contentVersion
+
+    const next = processedContent()
+    try {
+      // emitUpdate:false —— 重置是「切换到另一篇文档」而非用户编辑，
+      // 不向上游广播，避免宿主误判当前文档已被修改。
+      editor.commands.setContent(next.content || '', { emitUpdate: false, contentType: next.contentType })
+    } catch (error) {
+      console.error('Failed to reset editor content:', error)
+    }
+    currentValueRef.current = editor.getHTML()
+    // 新文档从顶部开始
+    editor.commands.setTextSelection(1)
+    editor.commands.scrollIntoView()
+  }, [contentVersion, editor, processedContent])
+
+
+  return {
+    editor,
+    currentValueRef,
+  }
+}
