@@ -231,6 +231,12 @@ model StorageSource {
   id           String   @id @default(cuid())
   name         String
   type         String   // 'local' | 'github' | 's3'
+  // Concrete storage product behind this source (cloudflare-r2, qiniu-kodo,
+  // aliyun-oss, tencent-cos, aws-s3, minio, github, local). `type` only names
+  // the protocol family, so every S3-compatible provider collapses to 's3';
+  // vendor is the cross-platform label both ends agree on. Desktop plugin
+  // sources mirror theirs on create/update.
+  vendor       String?  // vendor id, lowercase-kebab
   accessKey    String?  // GitHub: token, S3: accessKeyId
   secretKey    String?  // S3: secretAccessKey
   bucket       String?  // GitHub: owner/repo, S3: bucket

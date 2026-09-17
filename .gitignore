@@ -99,6 +99,9 @@ docs/
 *.orig
 *.rej
 
+# local dev logs
+*.log
+
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*

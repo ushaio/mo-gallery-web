@@ -36,10 +36,19 @@ storageSources.get('/admin/storage-sources/:id', async (c) => {
   return c.json({ success: true, data: serializeSource(source) })
 })
 
+// Normalize an incoming vendor id. Kept free-form (rather than a closed enum)
+// because new providers appear faster than we can fingerprint them, and the
+// Desktop may explicitly name one we do not know yet.
+function normalizeVendor(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().toLowerCase()
+  return trimmed || null
+}
+
 // Create a storage source
 storageSources.post('/admin/storage-sources', async (c) => {
   const body = await c.req.json()
-  const { id, name, type, accessKey, secretKey, bucket, region, endpoint, publicUrl, basePath, branch, accessMethod } = body
+  const { id, name, type, vendor, accessKey, secretKey, bucket, region, endpoint, publicUrl, basePath, branch, accessMethod } = body
 
   if (!name || !type) {
     return c.json({ error: 'name and type are required' }, 400)
@@ -67,6 +76,7 @@ storageSources.post('/admin/storage-sources', async (c) => {
       ...(id ? { id } : {}),
       name,
       type,
+      vendor: normalizeVendor(vendor),
       accessKey: encryptStoredSecret(accessKey),
       secretKey: encryptStoredSecret(secretKey),
       bucket: bucket || null,
@@ -95,12 +105,13 @@ storageSources.patch('/admin/storage-sources/:id', async (c) => {
   const source = await db.storageSource.findUnique({ where: { id } })
   if (!source) return c.json({ error: 'Not found' }, 404)
 
-  const { name, accessKey, secretKey, bucket, region, endpoint, publicUrl, basePath, branch, accessMethod } = body
+  const { name, vendor, accessKey, secretKey, bucket, region, endpoint, publicUrl, basePath, branch, accessMethod } = body
 
   const updated = await db.storageSource.update({
     where: { id },
     data: {
       ...(name !== undefined && { name }),
+      ...(vendor !== undefined && { vendor: normalizeVendor(vendor) }),
       ...(accessKey !== undefined && accessKey !== REDACTED_SECRET
         && { accessKey: encryptStoredSecret(accessKey) }),
       ...(secretKey !== undefined && secretKey !== REDACTED_SECRET

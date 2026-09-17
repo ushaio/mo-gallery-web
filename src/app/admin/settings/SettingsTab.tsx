@@ -168,6 +168,7 @@ export function SettingsTab({
     setAddingSourceType(null)
     setSourceForm({
       name: source.name,
+      vendor: source.vendor ?? '',
       accessKey: source.accessKey ?? '',
       secretKey: source.secretKey ?? '',
       bucket: source.bucket ?? '',
@@ -183,7 +184,7 @@ export function SettingsTab({
   const openAdd = (type: 'github' | 's3') => {
     setAddingSourceType(type)
     setEditingSource(null)
-    setSourceForm({ name: '', accessKey: '', secretKey: '', bucket: '', region: '', endpoint: '', publicUrl: '', basePath: '', branch: type === 'github' ? 'main' : '', accessMethod: type === 'github' ? 'jsdelivr' : '' })
+    setSourceForm({ name: '', vendor: type === 's3' ? 'cloudflare-r2' : '', accessKey: '', secretKey: '', bucket: '', region: '', endpoint: '', publicUrl: '', basePath: '', branch: type === 'github' ? 'main' : '', accessMethod: type === 'github' ? 'jsdelivr' : '' })
   }
 
   const cancelSourceForm = () => {
@@ -1159,6 +1160,20 @@ function StorageSourceForm({
         <div className="md:col-span-2 space-y-1.5">
           <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Endpoint</label>
           <AdminInput variant="config" value={form.endpoint ?? ''} onChange={e => f('endpoint', e.target.value)} placeholder="https://<account-id>.r2.cloudflarestorage.com  |  https://s3.amazonaws.com" />
+        </div>
+        <div className="md:col-span-2 space-y-1.5">
+          <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Vendor</label>
+          <AdminSelect value={form.vendor || 'cloudflare-r2'} onChange={v => f('vendor', v)} options={[
+            { value: 'cloudflare-r2', label: 'Cloudflare R2' },
+            { value: 'qiniu-kodo', label: '七牛云 Kodo' },
+            { value: 'aliyun-oss', label: '阿里云 OSS' },
+            { value: 'tencent-cos', label: '腾讯云 COS' },
+            { value: 'aws-s3', label: 'AWS S3' },
+            { value: 'minio', label: 'MinIO / 自建 S3' },
+          ]} />
+          <p className="text-[10px] text-muted-foreground font-mono">
+            Identifies the concrete product. Needed because every S3-compatible provider shares the same protocol type; the Desktop client matches on this value.
+          </p>
         </div>
         <div className="space-y-1.5">
           <label className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Access Key ID</label>
