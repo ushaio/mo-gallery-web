@@ -73,6 +73,13 @@ button.milkdown-media-photo { cursor: zoom-in; }
 .milkdown-media-resource-arrow { color: var(--muted-foreground, #777); }
 .milkdown-media .milkdown-media-thumbnail { display: block; flex: 0 0 64px; width: 64px; height: 64px; margin: 0; border-radius: 6px; object-fit: cover; }
 .milkdown-media-empty, .milkdown-media-upload { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--muted-foreground, #777); font-size: 13px; }
+/* 有本地预览的占位卡：文案区压扁，把版面让给图片（否则整卡过高、正文滚动跳变） */
+.milkdown-media-upload-compact { gap: 4px; padding: 10px 12px; }
+.milkdown-media-upload-preview { position: relative; background: var(--muted, #f3f4f6); }
+.milkdown-media-upload-preview img { display: block; width: 100%; max-height: 480px; object-fit: contain; margin: 0; }
+/* 角标压在图左上：右上留给卡片操作簇（.milkdown-media-overlay），两者不可重叠 */
+.milkdown-media-upload-badge { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 11px; font-weight: 600; line-height: 1.6; letter-spacing: .02em; }
+.milkdown-media-upload-badge.is-failed { background: #dc2626d9; }
 .milkdown-media-empty a { display: inline-flex; align-items: center; gap: 6px; text-decoration: underline; text-underline-offset: 3px; }
 .milkdown-media-controls, .milkdown-media-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .milkdown-media-actions button, .milkdown-media .milkdown-media-open { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }

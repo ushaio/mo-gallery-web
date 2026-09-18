@@ -45,6 +45,17 @@ function normalizeVendor(value: unknown): string | null {
   return trimmed || null
 }
 
+// Types that are already unambiguous get their vendor derived, so both ends
+// store the same string: the Desktop labels a GitHub source 'github' via
+// InferVendor, and a source left vendor-less here would disagree with it.
+// S3-compatible products cannot be told apart without the endpoint (which the
+// Desktop fingerprints), so s3 is left to the explicit value rather than guessed.
+function defaultVendorForType(type: string): string | null {
+  if (type === 'github') return 'github'
+  if (type === 'local') return 'local'
+  return null
+}
+
 // Create a storage source
 storageSources.post('/admin/storage-sources', async (c) => {
   const body = await c.req.json()
@@ -76,7 +87,7 @@ storageSources.post('/admin/storage-sources', async (c) => {
       ...(id ? { id } : {}),
       name,
       type,
-      vendor: normalizeVendor(vendor),
+      vendor: normalizeVendor(vendor) ?? defaultVendorForType(type),
       accessKey: encryptStoredSecret(accessKey),
       secretKey: encryptStoredSecret(secretKey),
       bucket: bucket || null,

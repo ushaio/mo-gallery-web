@@ -27,7 +27,13 @@ export interface MediaCardData {
   width?: number
   thumbnail?: string
   uploadId?: string
-  status?: 'uploading' | 'failed'
+  /**
+   * 占位卡状态（仅 kind='upload' 有意义）：
+   * - `pending`  素材库里选好但还没开始上传（编辑器素材库的待传项插入的占位）
+   * - `uploading` 上传进行中
+   * - `failed`   上传失败，需移除卡片重来
+   */
+  status?: 'pending' | 'uploading' | 'failed'
 }
 
 export type MediaUrlResolver = (src: string, photoId?: string) => string
@@ -83,7 +89,9 @@ export function normalizeMedia(value: unknown): MediaCardData {
     } : {}),
     ...(kind === 'upload' ? {
       uploadId: text(input.uploadId),
-      status: input.status === 'failed' ? 'failed' : 'uploading',
+      // 三态都要保留：历史上只区分 failed / 其余（当作 uploading），
+      // 把 pending 也归成 uploading 会让「还没开始上传」显示成「正在上传」。
+      status: input.status === 'failed' ? 'failed' : input.status === 'pending' ? 'pending' : 'uploading',
     } : {}),
   }
 }
@@ -142,6 +150,23 @@ export function getMilkdownPhotoIds(markdown: string): Set<string> {
 
 export function hasPendingMilkdownUploads(markdown: string): boolean {
   return getMilkdownMedia(markdown).some((media) => media.kind === 'upload')
+}
+
+/**
+ * 正文里所有占位卡的 uploadId（**含已失败/上传中的**）。
+ *
+ * 编辑器素材库用它把「已排进正文」的待传项标成已使用：待传项的 id 就是插卡时的 uploadId，
+ * 所以 `ids.has(pending.id)` 即「这张待传图已在正文里占位」。
+ *
+ * 不能改用 getMilkdownPhotoIds：占位卡没有 photoId（上传成功后才写进去），
+ * 靠它判断会在上传完成前后给出相反结论。
+ */
+export function getMilkdownUploadIds(markdown: string): Set<string> {
+  const ids = new Set<string>()
+  for (const media of getMilkdownMedia(markdown)) {
+    if (media.kind === 'upload' && media.uploadId) ids.add(media.uploadId)
+  }
+  return ids
 }
 
 export function getMilkdownText(markdown: string): string {

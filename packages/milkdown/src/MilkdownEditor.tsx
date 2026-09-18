@@ -27,9 +27,19 @@ export interface MilkdownEditorHandle {
   insertMarkdown: (markdown: string) => void
   insertMedia: (media: MediaCardData) => void
   focus: () => void
-  insertImageUploadPlaceholder: (image: { uploadId: string; fileName: string; imageWidth?: number; imageHeight?: number }) => void
+  /**
+   * 插入一张图片上传占位卡。
+   * `status` 缺省为 uploading（粘贴/拖入时上传已经开始）；
+   * 编辑器素材库把「还没开始上传」的待传项插进来时传 'pending'。
+   */
+  insertImageUploadPlaceholder: (image: { uploadId: string; fileName: string; imageWidth?: number; imageHeight?: number; status?: 'pending' | 'uploading' }) => void
   resolveImageUploadPlaceholder: (uploadId: string, image: { src: string; alt?: string; photoId?: string }) => boolean
   failImageUploadPlaceholder: (uploadId: string) => void
+  /**
+   * 重新渲染所有媒体卡（不修改文档）。
+   * 宿主在待传项预览图变化时调用，让占位卡按 uploadId 重新取一次预览。
+   */
+  refreshUploadPreviews: () => void
 }
 
 export interface MilkdownEditorProps {
@@ -43,6 +53,13 @@ export interface MilkdownEditorProps {
   onPasteFiles?: (files: File[]) => void
   onUpload?: (file: File) => Promise<string>
   resolveMediaUrl?: MediaUrlResolver
+  /**
+   * 按 uploadId 取占位卡的本地预览图（blob: / 本地资源库缩略图）。
+   *
+   * 只在渲染时调用，**结果不进文档**：这类 URL 都是会话级的，落盘后跨重启必然裂图。
+   * 宿主应在待传项集合变化时通过 `refreshUploadPreviews()` 主动通知重渲染。
+   */
+  resolveUploadPreview?: (uploadId: string) => string | undefined
   toolbarAction?: { label: string; onClick: () => void }
   statusBar?: { materialCount?: number; trailing?: ReactNode }
   aiProvider?: AIProvider
@@ -143,6 +160,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
       .use(createMediaView(() => ({
         language: options.current.language,
         resolveUrl: options.current.resolveMediaUrl,
+        resolveUploadPreview: options.current.resolveUploadPreview,
         onEdit: (media, getPos) => {
           if (alive.current) setMediaRequest({ initial: media, getPos, bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark() })
         },
@@ -200,7 +218,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     if (loading || editor?.status !== EditorStatus.Created) return
     editor.ctx.get(editorViewCtx).setProps({ editable: () => !options.current.readOnly })
     refreshers.current.forEach((render) => render())
-  }, [get, loading, props.readOnly, props.resolveMediaUrl, props.language])
+  }, [get, loading, props.readOnly, props.resolveUploadPreview, props.resolveMediaUrl, props.language])
 
   const insertMarkdown = useCallback((markdown: string) => {
     const editor = get()
@@ -234,9 +252,10 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     insertMarkdown,
     insertMedia: (media) => insertMarkdown(buildMediaMarkdown(media)),
     focus: () => { const editor = get(); if (editor?.status === EditorStatus.Created) editor.ctx.get(editorViewCtx).focus() },
-    insertImageUploadPlaceholder: ({ uploadId, fileName }) => insertMarkdown(buildMediaMarkdown({ kind: 'upload', uploadId, title: fileName, status: 'uploading' })),
+    insertImageUploadPlaceholder: ({ uploadId, fileName, status }) => insertMarkdown(buildMediaMarkdown({ kind: 'upload', uploadId, title: fileName, status: status ?? 'uploading' })),
     resolveImageUploadPlaceholder: (uploadId, image) => updateUpload(uploadId, { kind: 'image', src: image.src, title: image.alt, photoId: image.photoId }),
     failImageUploadPlaceholder: (uploadId) => { updateUpload(uploadId) },
+    refreshUploadPreviews: () => { refreshers.current.forEach((render) => render()) },
   }), [get, insertMarkdown, updateUpload])
 
   const closeMedia = () => {

@@ -40,6 +40,13 @@ export const mediaSchema = $node('media_card', () => ({
 
 interface MediaViewOptions {
   resolveUrl?: MediaUrlResolver
+  /**
+   * 按 uploadId 现取占位卡的本地预览图（blob: / 本地资源库缩略图）。
+   *
+   * **刻意不落进文档**：这两类 URL 都是会话级的（blob 跨重启失效，资源库缩略图带 session 与缓存键），
+   * 存进正文会在下次打开时裂图，所以只在渲染时查一次。
+   */
+  resolveUploadPreview?: (uploadId: string) => string | undefined
   language?: 'zh' | 'en'
   onEdit: (media: MediaCardData, getPos: () => number | undefined) => void
 }
@@ -61,11 +68,16 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
 
     const render = () => {
       const options = getOptions()
+      const media = normalizeMedia(node.attrs.media)
       root.render(<MediaCard
-        media={normalizeMedia(node.attrs.media)}
+        media={media}
         language={options.language}
         resolveUrl={options.resolveUrl}
-        onEdit={view.editable ? () => options.onEdit(normalizeMedia(node.attrs.media), getPos) : undefined}
+        // 占位卡（kind='upload'）没有 src，靠 uploadId 现取本地预览图
+        uploadPreviewUrl={media.kind === 'upload' && media.uploadId
+          ? options.resolveUploadPreview?.(media.uploadId)
+          : undefined}
+        onEdit={view.editable ? () => options.onEdit(media, getPos) : undefined}
         onRemove={view.editable ? remove : undefined}
       />)
     }

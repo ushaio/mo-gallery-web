@@ -133,7 +133,6 @@ export function StoryPhotoPanel({
   const onOpenMenuPhoto = guardMutation(onOpenMenuPhotoProp)
   const onOpenMenuPending = guardMutation(onOpenMenuPendingProp)
   const onOpenPasteUploadSettings = guardMutation(onOpenPasteUploadSettingsProp)
-  const totalPhotos = (currentStory?.photos?.length || 0) + pendingImages.length
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
   const referencedPhotoIds = currentStory?.editorType === 'milkdown' ? getMilkdownPhotoIds(editorContent) : getStoryReferencedPhotoIds(editorContent)
 
@@ -179,9 +178,6 @@ export function StoryPhotoPanel({
           <ImageIcon className="h-4 w-4 text-primary" />
           <span className="text-xs font-bold uppercase tracking-[0.24em] text-foreground">
             {t('story.material_library')}
-          </span>
-          <span className="border border-border/70 bg-background/80 px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-            {totalPhotos}
           </span>
           {pendingImages.length > 0 ? (
             <span className="border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">
