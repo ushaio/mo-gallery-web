@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, Video } from 'lucide-react'
+import { ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, TriangleAlert, Video } from 'lucide-react'
 import { mediaProviderLabel } from './media-embed'
 import { normalizeMedia, safeMediaUrl } from './media'
 import type { MediaCardData, MediaImage, MediaUrlResolver } from './media'
@@ -82,28 +82,29 @@ export function MediaCard({ media: value, resolveUrl, uploadPreviewUrl, language
       {media.kind === 'upload' && (uploadPreviewUrl ? (
         /* 有本地预览（blob: / 资源库缩略图）就直接回显图片，让用户插入后立刻看到是什么图。
            预览 URL 只来自渲染时的查表，不落进文档 —— 它跨重启必然失效。
-           角标与下方文案保留，避免用户误以为这张图已经上传完成。 */
-        <>
-          <div className="milkdown-media-upload-preview">
-            <img src={uploadPreviewUrl} alt={media.title} loading="lazy" />
-            <span className={`milkdown-media-upload-badge${media.status === 'failed' ? ' is-failed' : ''}`}>
-              {media.status === 'failed'
-                ? (zh ? '上传失败' : 'Upload failed')
-                : media.status === 'pending'
-                  ? (zh ? '待上传' : 'Pending')
-                  : (zh ? '上传中' : 'Uploading')}
-            </span>
-          </div>
-          <div className="milkdown-media-upload milkdown-media-upload-compact" role="status">
-            <strong>{media.title}</strong>
-            <span>{media.status === 'failed'
-              ? (zh ? '上传未完成，请移除此卡片后重新上传' : 'Upload incomplete. Remove this card and upload again.')
+
+           **图片容器刻意复用 .milkdown-media-photo**：与正式图片卡由同一段 CSS 决定尺寸，
+           卡片高度与将来上传成功后的真实排版一致 —— 两处各写一份数值必然会漂移。
+           状态只用图上的悬浮元素表达（左上 tag + 居中说明），都是绝对定位，不占布局高度。 */
+        <div className="milkdown-media-photo milkdown-media-photo-upload">
+          <img src={uploadPreviewUrl} alt={media.title} loading="lazy" />
+          <span className={`milkdown-media-upload-tag${media.status === 'failed' ? ' is-failed' : ''}`} role="status">
+            {media.status === 'failed'
+              ? (zh ? '上传失败' : 'Upload failed')
               : media.status === 'pending'
-                ? (zh ? '待上传，保存时会一并上传' : 'Pending upload, sent when you save')
-                : (zh ? '正在上传…' : 'Uploading…')}</span>
-          </div>
-        </>
+                ? (zh ? '待上传' : 'Pending')
+                : (zh ? '上传中' : 'Uploading')}
+          </span>
+          {/* 正在上传不必再解释；待传/失败各给一句「下一步会怎样 / 该怎么做」 */}
+          {media.status !== 'uploading' && <span className={`milkdown-media-upload-note${media.status === 'failed' ? ' is-failed' : ''}`}>
+            <TriangleAlert size={13} aria-hidden />
+            {media.status === 'failed'
+              ? (zh ? '移除卡片后重新上传' : 'Remove this card and upload again')
+              : (zh ? '保存时一并上传' : 'Sent when you save')}
+          </span>}
+        </div>
       ) : (
+        /* 没有本地预览就没有可压浮层的图，只能留文字占位（此处状态用文字表达，不再叠 tag） */
         <div className="milkdown-media-upload" role="status">
           {media.status === 'failed'
             ? <ImageOff size={24} />

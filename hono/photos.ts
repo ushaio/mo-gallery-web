@@ -305,7 +305,12 @@ photos.get('/photos', async (c) => {
 // ─── 管理端照片列表（不过滤 showFlag，支持分页） ──────
 photos.get('/admin/photos', authMiddleware, async (c) => {
   try {
-    const tag = c.req.query('tag')
+    // 标签有两种写法：`tags=a,b`（桌面端多选标签按数组发出）与旧的单个 `tag=a`，
+    // 合并去重。`全部` 是界面上的「不限」哨兵值，不是真实标签名。
+    const tagNames = [...new Set([
+      ...(c.req.query('tags') ?? '').split(','),
+      ...(c.req.query('tag') ?? '').split(','),
+    ].map((value) => value.trim()).filter((value) => value.length > 0 && value !== '全部'))]
     const search = c.req.query('search')
     const photoType = c.req.query('photoType')
     const formats = c.req.query('formats')
@@ -321,9 +326,8 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
 
     // 构造查询条件（不过滤 showFlag）
     const where: Prisma.PhotoWhereInput = {}
-    if (tag && tag !== '全部') {
-      where.tags = { some: { name: tag } }
-    }
+    // 多标签之间是「并且」：一枚标签一个 some，塞进同一个 some 就变成「任一命中」了。
+    const andFilters: Prisma.PhotoWhereInput[] = tagNames.map((name) => ({ tags: { some: { name } } }))
     if (search) {
       where.title = { contains: search, mode: 'insensitive' }
     }
@@ -346,11 +350,11 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
               : [`.${format}`]))]
 
       if (formatSuffixes.length > 0) {
-        where.AND = [{
+        andFilters.push({
           OR: formatSuffixes.flatMap((suffix) => [
             { path: { endsWith: suffix, mode: 'insensitive' as const } },
           ]),
-        }]
+        })
       }
     }
     if (featured === 'true') {
@@ -358,6 +362,7 @@ photos.get('/admin/photos', authMiddleware, async (c) => {
     } else if (featured === 'false') {
       where.isFeatured = false
     }
+    if (andFilters.length > 0) where.AND = andFilters
 
     // 排序
     const sortDirection: Prisma.SortOrder = sortOrder === 'asc' ? 'asc' : 'desc'

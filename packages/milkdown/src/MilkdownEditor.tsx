@@ -14,7 +14,8 @@ import { $prose, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils'
 import { createFeatures } from './features'
 import { attachFontSizeEdit } from './font-size-edit'
 import { createMediaView, mediaDirective, mediaSchema } from './media-plugin'
-import { textStyleSchema } from './text-style-plugin'
+import { createTextStyleInheritancePlugin, textStyleSchema } from './text-style-plugin'
+import { ColorPalette } from './color-palette'
 import { blockStyleSchema } from './block-style-plugin'
 import { MediaDialog } from './MediaDialog'
 import { buildMediaMarkdown, normalizeMedia, safeMediaUrl } from './media'
@@ -82,6 +83,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
   const refreshers = useRef(new Set<() => void>())
   const [error, setError] = useState('')
   const [characters, setCharacters] = useState(0)
+  const [colorRequest, setColorRequest] = useState<{ field: 'color' | 'background'; view: import('@milkdown/kit/prose/view').EditorView; anchor: { top: number; left: number; bottom: number; right: number } } | null>(null)
   const [mediaRequest, setMediaRequest] = useState<MediaRequest | null>(null)
   const hasAI = Boolean(props.aiProvider)
 
@@ -120,13 +122,17 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
         openMedia: (kind) => {
           if (alive.current) setMediaRequest({ initial: { kind }, bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark() })
         },
+        openColor: (field, view) => {
+          const trigger = root.querySelector<HTMLElement>(`[data-mo-color-trigger="${field}"]`)?.closest('.top-bar-item')
+          const rect = trigger?.getBoundingClientRect()
+          if (alive.current) setColorRequest({ field, view, anchor: rect ? { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right } : { top: 0, left: 16, bottom: 40, right: 48 } })
+        },
         toolbarAction: current.toolbarAction ? { label: current.toolbarAction.label, onClick: () => options.current.toolbarAction?.onClick() } : undefined,
         aiProvider: current.aiProvider ? (context, signal) => options.current.aiProvider!(context, signal) : undefined,
         onError: reportError,
       }),
     })
     attachFontSizeEdit(root, () => crepe.editor.ctx)
-
     // A synchronous host notification avoids losing the final keystroke when
     // saving/switching documents before the official listener's debounce fires.
     const host = $prose((ctx) => new Plugin({
@@ -156,6 +162,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
       .use(mediaDirective)
       .use(mediaSchema)
       .use(textStyleSchema)
+      .use($prose(() => createTextStyleInheritancePlugin()))
       .use(blockStyleSchema)
       .use(createMediaView(() => ({
         language: options.current.language,
@@ -268,6 +275,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
   return <div className={`milkdown-editor ${props.className ?? ''}`} data-editor="milkdown" aria-busy={loading}>
     {error && <div className="milkdown-editor-error" role="alert">{error}<button type="button" aria-label={zh ? '关闭错误提示' : 'Dismiss error'} onClick={() => setError('')}>×</button></div>}
     <div className="milkdown-editor-scroll"><Milkdown /></div>
+    {colorRequest && <ColorPalette field={colorRequest.field} view={colorRequest.view} language={props.language ?? 'zh'} anchor={colorRequest.anchor} onClose={() => { setColorRequest(null); colorRequest.view.focus() }} />}
     <div className="milkdown-editor-status"><span>{loading ? (zh ? '正在加载编辑器…' : 'Loading editor…') : `${characters} ${zh ? '字' : 'characters'}`}{props.statusBar?.materialCount !== undefined && ` · ${props.statusBar.materialCount} ${zh ? '张素材' : 'photos'}`}</span><span>{props.statusBar?.trailing}</span></div>
     {mediaRequest && <MediaDialog initial={mediaRequest.initial} language={props.language ?? 'zh'} onClose={closeMedia} onSubmit={(media) => {
       const editor = get()

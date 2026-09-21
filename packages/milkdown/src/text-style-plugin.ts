@@ -1,5 +1,6 @@
 import { $mark } from '@milkdown/kit/utils'
 import type { Mark } from '@milkdown/kit/prose/model'
+import { Plugin } from '@milkdown/kit/prose/state'
 import type { Command, EditorState } from '@milkdown/kit/prose/state'
 import type { MarkSchema } from '@milkdown/kit/transformer'
 import { normalizeTextStyle, textStyleDomAttributes, textStyleToAttributes, TEXT_STYLE_FIELDS } from './text-style'
@@ -40,8 +41,30 @@ function styleFromMarks(marks: readonly Mark[]): TextStyleAttributes {
   return normalizeTextStyle(marks.find((mark) => mark.type.name === 'text_style')?.attrs)
 }
 
+/** Preserve the inline text style when Enter creates a new block. */
+export function createTextStyleInheritancePlugin() {
+  return new Plugin({
+    appendTransaction: (transactions, oldState, newState) => {
+      const oldSelection = oldState.selection
+      const newSelection = newState.selection
+      if (!transactions.some((transaction) => transaction.docChanged)
+        || !oldSelection.empty || !newSelection.empty
+        || oldSelection.$from.parent === newSelection.$from.parent
+        || newSelection.$from.parentOffset !== 0) return null
+
+      const type = newState.schema.marks.text_style
+      if (!type || !newSelection.$from.parent.type.allowsMarkType(type)) return null
+      const style = styleFromMarks(oldSelection.$from.marks())
+      const marks = (newState.storedMarks ?? newSelection.$from.marks()).filter((mark) => mark.type !== type)
+      if (Object.values(style).some(Boolean)) marks.push(type.create(style))
+      return newState.tr.setStoredMarks(marks)
+    },
+  })
+}
+
+export type TextStyleField = 'font' | 'size' | 'color' | 'background'
 /** Undefined means a mixed selection; null means the document's default. */
-export function getSelectedTextStyle(state: EditorState): { font: string | null | undefined; size: string | null | undefined } {
+export function getSelectedTextStyle(state: EditorState): { font: string | null | undefined; size: string | null | undefined; color?: string; background?: string } {
   const { selection } = state
   if (selection.empty) return styleFromMarks(state.storedMarks ?? selection.$from.marks())
   let selected: ReturnType<typeof getSelectedTextStyle> | undefined
@@ -53,6 +76,8 @@ export function getSelectedTextStyle(state: EditorState): { font: string | null 
       else {
         if (selected.font !== attrs.font) selected.font = undefined
         if (selected.size !== attrs.size) selected.size = undefined
+        if (selected.color !== attrs.color) selected.color = undefined
+        if (selected.background !== attrs.background) selected.background = undefined
       }
     })
   }
@@ -60,7 +85,7 @@ export function getSelectedTextStyle(state: EditorState): { font: string | null 
 }
 
 /** Changing one field preserves the other field and all unrelated marks. */
-export function setTextStyle(field: 'font' | 'size', value: string | null): Command {
+export function setTextStyle(field: TextStyleField, value: string | null): Command {
   return (state, dispatch, view) => {
     const type = state.schema.marks.text_style
     const normalized = normalizeTextStyle({ [field]: value })[field]

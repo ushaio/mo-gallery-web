@@ -8,6 +8,7 @@
 export * from './types'
 export * from './prompt'
 export * from './direct-edit-prompt'
+export * from './zine-compose'
 export * from './stream'
 export * from './domain/agent'
 export * from './domain/approvals'

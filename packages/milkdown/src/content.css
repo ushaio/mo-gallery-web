@@ -72,14 +72,20 @@ button.milkdown-media-photo { cursor: zoom-in; }
 .milkdown-media-resource-link:hover { background: var(--muted, #f3f4f6); }
 .milkdown-media-resource-arrow { color: var(--muted-foreground, #777); }
 .milkdown-media .milkdown-media-thumbnail { display: block; flex: 0 0 64px; width: 64px; height: 64px; margin: 0; border-radius: 6px; object-fit: cover; }
-.milkdown-media-empty, .milkdown-media-upload { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--muted-foreground, #777); font-size: 13px; }
-/* 有本地预览的占位卡：文案区压扁，把版面让给图片（否则整卡过高、正文滚动跳变） */
-.milkdown-media-upload-compact { gap: 4px; padding: 10px 12px; }
-.milkdown-media-upload-preview { position: relative; background: var(--muted, #f3f4f6); }
-.milkdown-media-upload-preview img { display: block; width: 100%; max-height: 480px; object-fit: contain; margin: 0; }
-/* 角标压在图左上：右上留给卡片操作簇（.milkdown-media-overlay），两者不可重叠 */
-.milkdown-media-upload-badge { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 11px; font-weight: 600; line-height: 1.6; letter-spacing: .02em; }
-.milkdown-media-upload-badge.is-failed { background: #dc2626d9; }
+/* 文字占位（无本地预览时）：**必须限定为卡片本体的直接子元素**。
+   卡片本体的类名是 .milkdown-media.milkdown-media-upload，裸写 .milkdown-media-upload
+   会连卡片本体一起命中，给整张卡套上 padding:32px + flex ⇒ 占位卡比正式图片卡窄 64px、
+   高 74px，看起来就是「两套版式」。加一层 > 后只作用于内部占位块。 */
+.milkdown-media-empty, .milkdown-media > .milkdown-media-upload { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--muted-foreground, #777); font-size: 13px; }
+/* 占位卡：图片区复用 .milkdown-media-photo（尺寸与正式图片卡同源），状态改为图上浮层。
+   浮层一律绝对定位 ⇒ 卡片高度只由图片决定，与上传成功后的真实排版一致。 */
+.milkdown-media-photo-upload { position: relative; min-height: 96px; }
+/* 「待上传 / 上传中 / 上传失败」tag：压在左上，右上留给卡片操作簇（.milkdown-media-overlay） */
+.milkdown-media-upload-tag { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 8px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 11px; font-weight: 600; line-height: 1.6; letter-spacing: .02em; }
+.milkdown-media-upload-tag.is-failed { background: #dc2626d9; }
+/* 居中说明：只在「待传 / 失败」时出现，回答「接下来会怎样 / 我该做什么」；正在上传不必解释 */
+.milkdown-media-upload-note { position: absolute; top: 50%; left: 50%; z-index: 2; display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 24px); padding: 5px 10px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 12px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: translate(-50%, -50%); }
+.milkdown-media-upload-note.is-failed { background: #dc2626d9; }
 .milkdown-media-empty a { display: inline-flex; align-items: center; gap: 6px; text-decoration: underline; text-underline-offset: 3px; }
 .milkdown-media-controls, .milkdown-media-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .milkdown-media-actions button, .milkdown-media .milkdown-media-open { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }

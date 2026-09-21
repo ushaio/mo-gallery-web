@@ -3,10 +3,12 @@ import { Crepe } from '@milkdown/crepe'
 import type { CrepeConfig } from '@milkdown/crepe'
 import { editorViewCtx } from '@milkdown/kit/core'
 import type { Ctx } from '@milkdown/kit/ctx'
+import type { EditorView } from '@milkdown/kit/prose/view'
 import { undo, redo } from '@milkdown/kit/prose/history'
 import type { AIProvider } from '@milkdown/crepe/feature/ai'
 import { mediaLabels } from './MediaDialog'
 import type { MediaKind } from './media'
+import type { ColorField } from './color-palette'
 import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, FONT_FAMILIES, FONT_SIZES, MAX_FONT_SIZE, MIN_FONT_SIZE } from './text-style'
 import { getSelectedTextStyle, setTextStyle } from './text-style-plugin'
 
@@ -16,6 +18,7 @@ interface FeatureOptions {
   upload: (file: File) => Promise<string>
   resolveUrl: (url: string) => string
   openMedia: (kind: MediaKind) => void
+  openColor: (field: ColorField, view: EditorView) => void
   toolbarAction?: { label: string; onClick: () => void }
   aiProvider?: AIProvider
   onError: (error: unknown) => void
@@ -33,7 +36,9 @@ const plusIcon = svg('<path d="M12 5v14M5 12h14"/>')
 // Crepe renders every selector with the same class, so an invisible marker in
 // the chevron HTML tags each one for CSS sizing and the double-click size edit.
 const markedChevron = (mark: string) => `<span data-mo-toolbar-mark="${mark}"></span>${chevronIcon}`
-
+const textColorIcon = svg('<path d="M7 17 12 4l5 13M9 12h6"/><path d="M4 21h16" stroke-width="3"/>')
+const textBackgroundIcon = svg('<rect x="2" y="2" width="20" height="20" rx="2" fill="currentColor" stroke="none"/><path d="m7 18 5-12 5 12m-8-5h6" class="mo-color-inverse"/>')
+const colorTrigger = (field: ColorField, icon: string) => `<span data-mo-color-trigger="${field}">${icon}</span>`
 function namedIcon(icon: string, label: string) {
   const safeLabel = label.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
   return `<span role="img" aria-label="${safeLabel}" title="${safeLabel}">${icon}</span>`
@@ -45,11 +50,13 @@ export function createFeatures(options: FeatureOptions): NonNullable<CrepeConfig
     bold: '加粗', italic: '斜体', strikethrough: '删除线', code: '行内代码', link: '链接', image: '图片', table: '表格',
     'bullet-list': '无序列表', 'ordered-list': '有序列表', 'task-list': '任务列表', 'code-block': '代码块', math: '公式', quote: '引用', hr: '分隔线',
     undo: '撤销', redo: '重做', media: '媒体卡片', library: options.toolbarAction?.label ?? '素材库',
+    'font-color': '字体颜色', 'font-background': '字体背景',
     'font-size-dec': '减小字号', 'font-size-inc': '增大字号',
   } : {
     bold: 'Bold', italic: 'Italic', strikethrough: 'Strikethrough', code: 'Inline code', link: 'Link', image: 'Image', table: 'Table',
     'bullet-list': 'Bullet list', 'ordered-list': 'Ordered list', 'task-list': 'Task list', 'code-block': 'Code block', math: 'Math', quote: 'Quote', hr: 'Divider',
     undo: 'Undo', redo: 'Redo', media: 'Media card', library: options.toolbarAction?.label ?? 'Media library',
+    'font-color': 'Text color', 'font-background': 'Text background',
     'font-size-dec': 'Decrease font size', 'font-size-inc': 'Increase font size',
   }
   return {
@@ -86,6 +93,14 @@ export function createFeatures(options: FeatureOptions): NonNullable<CrepeConfig
               ],
             },
           })
+          .addItem('font-color', {
+            icon: colorTrigger('color', textColorIcon), active: () => false,
+            onRun: (ctx: Ctx) => options.openColor('color', ctx.get(editorViewCtx)),
+          })
+          .addItem('font-background', {
+            icon: colorTrigger('background', textBackgroundIcon), active: () => false,
+            onRun: (ctx: Ctx) => options.openColor('background', ctx.get(editorViewCtx)),
+          })
           .addItem('font-size-dec', {
             icon: minusIcon, active: () => false,
             onRun: (ctx: Ctx) => stepSize(ctx, -1),
@@ -100,7 +115,6 @@ export function createFeatures(options: FeatureOptions): NonNullable<CrepeConfig
                 return `${size ?? DEFAULT_FONT_SIZE}px`
               },
               options: [
-                { label: zh ? '默认字号' : 'Default size', onSelect: (ctx: Ctx) => applyStyle(ctx, 'size', null) },
                 ...FONT_SIZES.map((size) => ({ label: `${size}px`, onSelect: (ctx: Ctx) => applyStyle(ctx, 'size', String(size)) })),
               ],
             },
