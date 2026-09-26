@@ -15,5 +15,8 @@
   },
   "dependencies": {
     "@mo-gallery/ai-agent": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
   }
 }

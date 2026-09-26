@@ -3,16 +3,20 @@ import { Hono } from 'hono'
 import { Prisma } from '@/generated/prisma/client'
 import { db } from '~/server/lib/db'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { extractExifData, parseExifJson, sanitizeJsonString } from '~/server/lib/exif'
-import { extractDominantColors } from '~/server/lib/colors'
+import { extractExifData } from '@mo-gallery/image-pipeline/node'
 import {
   compressToTargetSize,
   enforceDimensionLimit,
+  extractDominantColors,
   generateThumbnailBuffer,
   getMetadataAndThumbnail,
   withSharpTimeout,
+} from '@mo-gallery/image-pipeline/node'
+import {
+  parseExifJson,
+  sanitizeJsonString,
   type CompressionOutputFormat,
-} from '~/server/lib/image-processing'
+} from '@mo-gallery/image-pipeline'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
 import { resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
 import { invalidatePhotoUrlCache, resolvePhotoUrls } from '~/server/lib/photo-urls'

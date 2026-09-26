@@ -38,9 +38,18 @@ importers:
       '@mo-gallery/api-client':
         specifier: workspace:*
         version: link:packages/api-client
+      '@mo-gallery/content-core':
+        specifier: workspace:*
+        version: link:packages/content-core
+      '@mo-gallery/image-pipeline':
+        specifier: workspace:*
+        version: link:packages/image-pipeline
       '@mo-gallery/milkdown':
         specifier: workspace:*
         version: link:packages/milkdown
+      '@mo-gallery/public-site':
+        specifier: workspace:*
+        version: link:packages/public-site
       '@mo-gallery/tiptap-editor':
         specifier: workspace:*
         version: link:packages/tiptap-editor
@@ -186,12 +195,42 @@ importers:
       zod:
         specifier: ^4.3.5
         version: 4.3.5
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/api-client:
     dependencies:
       '@mo-gallery/ai-agent':
         specifier: workspace:*
         version: link:../ai-agent
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/content-core:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/image-pipeline:
+    dependencies:
+      exifreader:
+        specifier: ^4.33.1
+        version: 4.36.0
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.4
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/milkdown:
     dependencies:
@@ -265,6 +304,28 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
+
+  packages/public-site:
+    dependencies:
+      '@mo-gallery/content-core':
+        specifier: workspace:*
+        version: link:../content-core
+      '@mo-gallery/milkdown':
+        specifier: workspace:*
+        version: link:../milkdown
+      '@mo-gallery/tiptap-editor':
+        specifier: workspace:*
+        version: link:../tiptap-editor
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.2.3
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.8
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/tiptap-editor:
     dependencies:
@@ -2437,6 +2498,9 @@ packages:
 
   '@types/node@20.19.30':
     resolution: {integrity: sha512-WJtwWJu7UdlvzEAUm484QNg5eAoq5QR08KDNx7g45Usrs2NtOPiX8ugDqmKdXkyL03rBqU5dYNYVQetEpBHq2g==}
+
+  '@types/node@22.20.4':
+    resolution: {integrity: sha512-zJRE40jpHtKqE/C4fgHrAKQLJuSpzEnP9ff9Y7YtoR3Wd2pwqzlekDeEuUQXjRd+QCYnVnNwuJYmhdk9XV8gvA==}
 
   '@types/pg@8.20.0':
     resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
@@ -8972,6 +9036,10 @@ snapshots:
   '@types/ms@2.1.0': {}
 
   '@types/node@20.19.30':
+    dependencies:
+      undici-types: 6.21.0
+
+  '@types/node@22.20.4':
     dependencies:
       undici-types: 6.21.0
 

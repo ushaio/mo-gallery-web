@@ -1,0 +1,875 @@
+/**
+ * @mo-gallery/public-site — web 主题层（Gallery Wall / Midnight Vernissage）。
+ *
+ * scope 设计：
+ * - 全部规则收拢在 `.psw` 根类之下。消费方（mo-gallery-offical 的
+ *   /user/<username> 访客子树）只需在最外层包一层 `<div class="psw">`，
+ *   即可让本包组件达到 mo-gallery-web 的观感，且不污染宿主其他页面。
+ * - 暗色变体支持两种挂法：宿主在祖先挂 `.dark`（`.dark .psw`），或直接在
+ *   `.psw` 元素上挂 `.dark`（`.psw.dark`）。
+ * - 设计令牌取自 mo-gallery-web `src/app/globals.css` 的快照（2026-09-26）：
+ *   亮色 "Gallery Wall"（纯白底 / 近黑 primary / --radius: 0 直角美学），
+ *   暗色 "Midnight Vernissage"（#050505 底 / 金色 primary #D4AF37）。
+ * - Tailwind v4 工具类（bg-background、text-muted-foreground、font-serif、
+ *   rounded-sm 等）在 web 端经 `@theme inline` 生成，直接引用同名 CSS 变量
+ *   （--background、--muted-foreground、--font-serif、--radius-* …）。因此在
+ *   `.psw` 子树重定义这些变量即可让宿主已生成的工具类拿到 web 值。同时
+ *   定义了 `--color-*` 桥接变量，兼容宿主使用非 inline `@theme` 的情形
+ *   （非 inline 时工具类引用 `--color-*`，其值在 :root 已定，必须在子树覆盖）。
+ * - 字体：web 经 next/font 注入 Cormorant Garamond（serif）与 Montserrat
+ *   （sans）。本层提供同名 font-family 栈；宿主如需精确观感请自行加载这两
+ *   个字体（next/font 或自托管），未加载时按栈内后备字体渲染。
+ * - web 独有且共享组件会用到的工具类（text-ui-* 语义字号、film 胶片滤镜、
+ *   scrollbar-hide/custom-scrollbar、prose 正文层、story-rich-content 排版）
+ *   以普通 CSS 在 `.psw` 作用域内落地，类名与 web 保持一致。
+ */
+
+/* ============================================================
+   1. 语义令牌（取自 mo-gallery-web src/app/globals.css 快照）
+   ============================================================ */
+
+.psw {
+  /* ---- 亮色 "Gallery Wall" ---- */
+  --background: #ffffff;
+  --foreground: #0f0f0f;
+  --card: #f9f9f9;
+  --card-foreground: #0f0f0f;
+  --popover: #ffffff;
+  --popover-foreground: #0f0f0f;
+  --primary: #111111;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f4;
+  --secondary-foreground: #111111;
+  --muted: #f5f5f5;
+  --muted-foreground: #666666;
+  --accent: #e0e0e0;
+  --accent-foreground: #111111;
+  --destructive: #cc0000;
+  --destructive-foreground: #ffffff;
+  --border: #e5e5e5;
+  --input: #ffffff;
+  --ring: #111111;
+
+  /* --radius: 0 —— web 的直角美学；rounded-sm/md/lg 全部归零，
+     rounded-full / rounded-2xl 等软圆角（评论区软面板）保留 web 默认值 */
+  --radius: 0rem;
+  --radius-sm: 0rem;
+  --radius-md: 0rem;
+  --radius-lg: 0rem;
+
+  /* 字体栈：宿主加载了 Cormorant Garamond / Montserrat 时精确对齐 web */
+  --font-serif: "Cormorant Garamond", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+
+  /* ---- Tailwind v4 @theme（非 inline 情形）的工具类桥接 ----
+     inline 模式下工具类直接引用上面的原始变量，此组不生效也无副作用。 */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* ---- 语义字号系统（web globals.css :root 快照） ---- */
+  --text-body: 1rem;
+  --text-body-sm: 0.9375rem;
+  --text-ui: 0.875rem;
+  --text-ui-sm: 0.8125rem;
+  --text-label: 0.75rem;
+  --text-label-sm: 0.6875rem;
+  --text-caption: 0.625rem;
+  --text-xs: 0.8125rem;
+  --text-xxs: 0.75rem;
+  --text-micro: 0.6875rem;
+  --text-nano: 0.625rem;
+
+  /* 子树基础观感 */
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- 暗色 "Midnight Vernissage"（#050505 底 + 金色 primary） ---- */
+.dark .psw,
+.psw.dark {
+  --background: #050505;
+  --foreground: #e0e0e0;
+  --card: #0f0f0f;
+  --card-foreground: #e0e0e0;
+  --popover: #0f0f0f;
+  --popover-foreground: #e0e0e0;
+  --primary: #d4af37;
+  --primary-foreground: #000000;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #d4af37;
+  --muted: #141414;
+  --muted-foreground: #888888;
+  --accent: #1f1f1f;
+  --accent-foreground: #d4af37;
+  --destructive: #cf6679;
+  --destructive-foreground: #000000;
+  --border: #222222;
+  --input: #141414;
+  --ring: #d4af37;
+}
+
+/* 文本选区（web @layer base 同款） */
+.psw ::selection {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--primary-foreground);
+}
+
+/* 子树内滚动条：web 全局细滚动条的 scope 版 */
+.psw {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.psw ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.psw ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.psw ::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.psw ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}
+
+/* ============================================================
+   2. 语义字号工具类（类名与 web globals.css 保持一致）
+   ============================================================ */
+
+.psw .text-body {
+  font-size: var(--text-body);
+  line-height: 1.6;
+}
+.psw .text-body-sm {
+  font-size: var(--text-body-sm);
+  line-height: 1.6;
+}
+.psw .text-ui {
+  font-size: var(--text-ui);
+  line-height: 1.5;
+}
+.psw .text-ui-sm {
+  font-size: var(--text-ui-sm);
+  line-height: 1.5;
+}
+.psw .text-label {
+  font-size: var(--text-label);
+  line-height: 1.5;
+}
+.psw .text-label-sm {
+  font-size: var(--text-label-sm);
+  line-height: 1.5;
+}
+.psw .text-caption {
+  font-size: var(--text-caption);
+  line-height: 1.4;
+}
+/* 兼容旧类名（web Legacy Support 同名） */
+.psw .text-ui-xs {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.psw .text-ui-xxs {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.psw .text-ui-micro {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.psw .text-ui-nano {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   3. 胶片质感滤镜（web globals.css @layer utilities 快照）
+   ============================================================ */
+
+.psw .film-grain-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+  mix-blend-mode: soft-light;
+  animation: psw-film-grain-shift 0.12s steps(1) infinite;
+  pointer-events: none;
+}
+
+@keyframes psw-film-grain-shift {
+  0%   { background-position: 0 0; }
+  25%  { background-position: -40px -20px; }
+  50%  { background-position: 20px -40px; }
+  75%  { background-position: -20px 20px; }
+  100% { background-position: 40px 10px; }
+}
+
+.psw .film-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  pointer-events: none;
+}
+
+.psw .film-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .psw .film-grain-overlay {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   4. 滚动条工具类（web 同名）
+   ============================================================ */
+
+.psw .scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.psw .scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.psw .custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.psw .custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.psw .custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.psw .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 3px;
+}
+.psw .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+}
+
+/* ============================================================
+   5. 入场动效（CSS-only stagger；替代 web 的 framer-motion
+      whileInView——不进依赖，见包 README 的消费说明）
+   ============================================================ */
+
+@keyframes psw-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.psw .psw-enter {
+  opacity: 0;
+  animation: psw-fade-up 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .psw .psw-enter {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   6. prose 正文层（web globals.css @layer components 快照，
+      @apply 翻译为普通 CSS；not-prose 逃逸守卫保持一致）
+   ============================================================ */
+
+.psw .prose {
+  color: var(--foreground);
+  max-width: 65ch;
+}
+.psw .prose :where(p):not(:where([class~="not-prose"] *)) {
+  margin: 1.25rem 0;
+  line-height: 1.75;
+}
+.psw .prose :where(h1):not(:where([class~="not-prose"] *)) {
+  font-size: 2.25rem;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  margin: 2rem 0 1rem;
+}
+.psw .prose :where(h2):not(:where([class~="not-prose"] *)) {
+  font-size: 1.875rem;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  margin: 2rem 0 1rem;
+}
+.psw .prose :where(h3):not(:where([class~="not-prose"] *)) {
+  font-size: 1.5rem;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  margin: 1.5rem 0 0.75rem;
+}
+.psw .prose :where(h4):not(:where([class~="not-prose"] *)) {
+  font-size: 1.25rem;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  margin: 1.5rem 0 0.75rem;
+}
+.psw .prose :where(h5):not(:where([class~="not-prose"] *)) {
+  font-size: 1.125rem;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  margin: 1rem 0 0.5rem;
+}
+.psw .prose :where(h6):not(:where([class~="not-prose"] *)) {
+  font-size: 1rem;
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  margin: 1rem 0 0.5rem;
+}
+.psw .prose :where(a):not(:where([class~="not-prose"] *)) {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  transition: text-decoration-color 0.2s ease;
+}
+.psw .prose :where(a:hover):not(:where([class~="not-prose"] *)) {
+  text-decoration-color: var(--primary);
+}
+.psw .prose :where(strong):not(:where([class~="not-prose"] *)) {
+  font-weight: 700;
+  color: var(--foreground);
+}
+.psw .prose :where(em):not(:where([class~="not-prose"] *)) {
+  font-style: italic;
+}
+.psw .prose :where(code):not(:where([class~="not-prose"] *)) {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.125rem 0.375rem;
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  border: 1px solid var(--border);
+}
+.psw .prose :where(pre):not(:where([class~="not-prose"] *)) {
+  background: var(--muted);
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+}
+.psw .prose :where(pre code):not(:where([class~="not-prose"] *)) {
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+.psw .prose :where(blockquote):not(:where([class~="not-prose"] *)) {
+  border-left: 4px solid var(--primary);
+  padding-left: 1rem;
+  font-style: italic;
+  margin: 1.5rem 0;
+  color: var(--muted-foreground);
+}
+.psw .prose :where(ul):not(:where([class~="not-prose"] *)) {
+  list-style: disc outside;
+  margin-left: 1.5rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.psw .prose :where(ol):not(:where([class~="not-prose"] *)) {
+  list-style: decimal outside;
+  margin-left: 1.5rem;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.psw .prose :where(li + li):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.5rem;
+}
+.psw .prose :where(li):not(:where([class~="not-prose"] *)) {
+  line-height: 1.75;
+}
+.psw .prose :where(img):not(:where([class~="not-prose"] *)) {
+  margin: 2rem 0;
+  width: 100%;
+  border: 1px solid var(--border);
+}
+.psw .prose :where(hr):not(:where([class~="not-prose"] *)) {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.psw .prose :where(table):not(:where([class~="not-prose"] *)) {
+  width: 100%;
+  margin: 1.5rem 0;
+  border-collapse: collapse;
+}
+.psw .prose :where(thead):not(:where([class~="not-prose"] *)) {
+  border-bottom: 1px solid var(--border);
+}
+.psw .prose :where(th):not(:where([class~="not-prose"] *)) {
+  padding: 0.5rem 1rem;
+  text-align: left;
+  font-weight: 700;
+}
+.psw .prose :where(td):not(:where([class~="not-prose"] *)) {
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border);
+}
+/* 尺寸/宽度变体（web 同名） */
+.psw .prose-lg {
+  font-size: 1.125rem;
+}
+.psw .prose-lg :where(p):not(:where([class~="not-prose"] *)) {
+  margin: 1.5rem 0;
+  line-height: 2;
+}
+.psw .prose.max-w-none {
+  max-width: none;
+}
+
+/* ============================================================
+   7. story-rich-content 正文排版（web src/components/story-rich-content.css
+      快照，前缀改为 .psw；类名与 web 保持一致——消费方给正文容器挂
+      `story-rich-content` 类即可命中）
+   ============================================================ */
+
+.psw .story-rich-content {
+  color: var(--foreground);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.95;
+}
+
+.psw .story-rich-content,
+.psw .story-rich-content .story-rich-html {
+  max-width: 100%;
+}
+
+.psw .story-rich-content > :first-child,
+.psw .story-rich-content .story-rich-html > :first-child {
+  margin-top: 0;
+}
+
+.psw .story-rich-content p,
+.psw .story-rich-content .story-rich-html p {
+  margin: 1.2rem 0;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
+
+.psw .story-rich-content p:empty,
+.psw .story-rich-content .story-rich-html p:empty {
+  min-height: 1em;
+}
+
+.psw .story-rich-content h1,
+.psw .story-rich-content h2,
+.psw .story-rich-content h3,
+.psw .story-rich-content h4,
+.psw .story-rich-content h5,
+.psw .story-rich-content h6,
+.psw .story-rich-content .story-rich-html h1,
+.psw .story-rich-content .story-rich-html h2,
+.psw .story-rich-content .story-rich-html h3,
+.psw .story-rich-content .story-rich-html h4,
+.psw .story-rich-content .story-rich-html h5,
+.psw .story-rich-content .story-rich-html h6 {
+  color: var(--foreground);
+  line-height: 1.1;
+  text-wrap: pretty;
+}
+
+.psw .story-rich-content h1,
+.psw .story-rich-content .story-rich-html h1 {
+  margin: 3.5rem 0 1.75rem;
+  font-size: clamp(2.5rem, 4vw, 4.5rem);
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+}
+
+.psw .story-rich-content h2,
+.psw .story-rich-content .story-rich-html h2 {
+  margin: 3.5rem 0 1.5rem;
+  font-size: clamp(1.65rem, 2vw, 2.3rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.psw .story-rich-content h3,
+.psw .story-rich-content .story-rich-html h3 {
+  margin: 2.5rem 0 1rem;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.psw .story-rich-content h4,
+.psw .story-rich-content h5,
+.psw .story-rich-content h6,
+.psw .story-rich-content .story-rich-html h4,
+.psw .story-rich-content .story-rich-html h5,
+.psw .story-rich-content .story-rich-html h6 {
+  margin: 2rem 0 0.8rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.psw .story-rich-content ul,
+.psw .story-rich-content ol,
+.psw .story-rich-content .story-rich-html ul,
+.psw .story-rich-content .story-rich-html ol {
+  margin: 1.25rem 1rem 1.25rem 0.4rem;
+  padding: 0 1rem;
+}
+
+.psw .story-rich-content ul,
+.psw .story-rich-content .story-rich-html ul {
+  list-style: disc;
+}
+
+.psw .story-rich-content ol,
+.psw .story-rich-content .story-rich-html ol {
+  list-style: decimal;
+}
+
+.psw .story-rich-content li,
+.psw .story-rich-content .story-rich-html li {
+  margin: 0.25rem 0;
+}
+
+.psw .story-rich-content li p,
+.psw .story-rich-content .story-rich-html li p {
+  margin: 0.25em 0;
+}
+
+.psw .story-rich-content blockquote,
+.psw .story-rich-content .story-rich-html blockquote {
+  margin: 2.5rem 0;
+  border-left: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  padding: 0.25rem 0 0.25rem 1.5rem;
+  font-size: 1.35rem;
+  font-style: italic;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--foreground) 74%, transparent);
+}
+
+.psw .story-rich-content blockquote p,
+.psw .story-rich-content .story-rich-html blockquote p {
+  margin: 0;
+}
+
+.psw .story-rich-content a,
+.psw .story-rich-content .story-rich-html a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  text-underline-offset: 0.18em;
+  transition: color 200ms ease, text-decoration-color 200ms ease;
+}
+
+.psw .story-rich-content a:hover,
+.psw .story-rich-content .story-rich-html a:hover {
+  color: var(--primary);
+  text-decoration-color: var(--primary);
+}
+
+.psw .story-rich-content code,
+.psw .story-rich-content .story-rich-html code {
+  background-color: color-mix(in srgb, var(--muted) 88%, transparent);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  padding: 0.25em 0.3em;
+}
+
+.psw .story-rich-content pre,
+.psw .story-rich-content .story-rich-html pre {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--foreground) 94%, transparent);
+  color: var(--background);
+}
+
+.psw .story-rich-content pre code,
+.psw .story-rich-content .story-rich-html pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.psw .story-rich-content hr,
+.psw .story-rich-content .story-rich-html hr {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid var(--foreground);
+}
+
+.psw .story-rich-content img,
+.psw .story-rich-content .story-rich-html img {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 0.75rem 0.75rem 0;
+  height: auto;
+  max-width: 100%;
+}
+
+.psw .story-rich-content--interactive img[data-photo-id],
+.psw .story-rich-content--interactive .story-rich-html img[data-photo-id] {
+  cursor: zoom-in;
+}
+
+.psw .story-rich-content img[width],
+.psw .story-rich-content .story-rich-html img[width] {
+  max-width: 100%;
+}
+
+.psw .story-rich-content [data-type='image-group'],
+.psw .story-rich-content .story-rich-html [data-type='image-group'] {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 100%;
+  margin: 2rem 0;
+}
+
+.psw .story-rich-content [data-type='image-group'][data-align='center'],
+.psw .story-rich-content .story-rich-html [data-type='image-group'][data-align='center'] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.psw .story-rich-content [data-type='image-group'][data-align='right'],
+.psw .story-rich-content .story-rich-html [data-type='image-group'][data-align='right'] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.psw .story-rich-content [data-type='image-group'] > *,
+.psw .story-rich-content .story-rich-html [data-type='image-group'] > * {
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.psw .story-rich-content [data-type='image-group'] img,
+.psw .story-rich-content .story-rich-html [data-type='image-group'] img {
+  margin: 0;
+  width: 100% !important;
+  border-radius: 0;
+}
+
+.psw .story-rich-content table,
+.psw .story-rich-content .story-rich-html table {
+  width: 100%;
+  margin: 1.75rem 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.psw .story-rich-content .story-media-card,
+.psw .story-rich-content .story-rich-html .story-media-card {
+  margin: 2rem 0;
+  border-radius: 1rem;
+}
+
+.psw .story-rich-content .story-media-card iframe,
+.psw .story-rich-content .story-rich-html .story-media-card iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
+}
+
+.psw .story-rich-content th,
+.psw .story-rich-content td,
+.psw .story-rich-content .story-rich-html th,
+.psw .story-rich-content .story-rich-html td {
+  border: 1px solid color-mix(in srgb, var(--border) 100%, transparent);
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.psw .story-rich-content th,
+.psw .story-rich-content .story-rich-html th {
+  background-color: color-mix(in srgb, var(--muted) 78%, transparent);
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .psw .story-rich-content {
+    font-size: 1rem;
+    line-height: 1.85;
+  }
+
+  .psw .story-rich-content [data-type='image-group'],
+  .psw .story-rich-content .story-rich-html [data-type='image-group'] {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+.psw .story-rich-content--article {
+  font-size: 1.125rem;
+  line-height: 1.95;
+}
+
+.psw .story-rich-content--compact {
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.psw .story-rich-content .story-link-card,
+.psw .story-rich-content .story-rich-html .story-link-card {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.34fr) 1fr;
+  gap: 1rem;
+  margin: 2rem 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--background) 94%, var(--muted));
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--foreground) 8%, transparent);
+  text-decoration: none;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.psw .story-rich-content .story-link-card:hover,
+.psw .story-rich-content .story-rich-html .story-link-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--foreground) 12%, transparent);
+  transform: translateY(-1px);
+}
+
+.psw .story-rich-content .story-link-card__cover,
+.psw .story-rich-content .story-rich-html .story-link-card__cover {
+  width: 100%;
+  height: 100%;
+  min-height: 9rem;
+  object-fit: cover;
+}
+
+.psw .story-rich-content .story-link-card__body,
+.psw .story-rich-content .story-rich-html .story-link-card__body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem 1.1rem 1rem 0;
+}
+
+.psw .story-rich-content .story-link-card__eyebrow,
+.psw .story-rich-content .story-rich-html .story-link-card__eyebrow,
+.psw .story-rich-content .story-link-card__meta,
+.psw .story-rich-content .story-rich-html .story-link-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.psw .story-rich-content .story-link-card__title,
+.psw .story-rich-content .story-rich-html .story-link-card__title {
+  color: var(--foreground);
+  font-family: var(--font-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.psw .story-rich-content .story-link-card__summary,
+.psw .story-rich-content .story-rich-html .story-link-card__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 640px) {
+  .psw .story-rich-content .story-link-card,
+  .psw .story-rich-content .story-rich-html .story-link-card {
+    grid-template-columns: 1fr;
+  }
+
+  .psw .story-rich-content .story-link-card__body,
+  .psw .story-rich-content .story-rich-html .story-link-card__body {
+    padding: 0 1rem 1rem;
+  }
+}
+
+/* ============================================================
+   8. 组件级辅助类（SiteHeader 下划线动画 / 软面板阴影等
+      在组件内以 Tailwind 类表达，此处只放无法用工具类表达的）
+   ============================================================ */
+
+/* SiteHeader：导航链接下划线动画（web Navbar 的 motion.span 的 CSS 等价）。
+   结构：<a class="psw-nav-link">…<span class="psw-nav-link__bar" /></a>，
+   aria-current="page" 或 hover 时宽度展开。 */
+.psw .psw-nav-link {
+  position: relative;
+}
+.psw .psw-nav-link__bar {
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  height: 1px;
+  width: 0;
+  background: var(--primary);
+  transition: width 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  opacity: 0;
+}
+.psw .psw-nav-link[aria-current='page'] .psw-nav-link__bar {
+  width: 100%;
+  opacity: 1;
+}
+.psw .psw-nav-link:hover .psw-nav-link__bar {
+  width: 100%;
+  opacity: 1;
+}

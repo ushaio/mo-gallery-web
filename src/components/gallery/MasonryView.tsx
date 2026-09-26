@@ -10,9 +10,11 @@ import {
   type RenderComponentProps,
 } from 'masonic'
 
-import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
+import type { PhotoSiteMetadata } from '@mo-gallery/content-core'
+import { PhotoCard } from '@mo-gallery/public-site'
+import type { MediaUrlResolver } from '@mo-gallery/public-site'
+
 import { masonryImageHeight } from './masonry-metrics'
-import { PhotoCard } from './PhotoCard'
 import { useResponsiveColumnCount } from './useResponsiveColumnCount'
 
 const MASONRY_COLUMN_RULES = [
@@ -29,15 +31,16 @@ const OVERSCAN_BY = 4
 const EMPTY_ITEMS: MasonryItem[] = []
 
 interface MasonryViewProps {
-  photos: PhotoDto[]
-  settings: PublicSettingsDto | null
+  /** 已映射的访客领域模型（见 @/lib/public-site 的 toSitePhoto）。 */
+  sitePhotos: PhotoSiteMetadata[]
+  resolver: MediaUrlResolver
   grayscale: boolean
   immersive?: boolean
   loadingMore: boolean
   hasMore: boolean
   totalItems: number
   onLoadMore: (targetIndex?: number) => Promise<void>
-  onPhotoClick: (photo: PhotoDto) => void
+  onPhotoClick: (photo: PhotoSiteMetadata) => void
 }
 
 interface LoadingMasonryItem {
@@ -46,7 +49,7 @@ interface LoadingMasonryItem {
   aspectRatio: number
 }
 
-type MasonryItem = PhotoDto | LoadingMasonryItem
+type MasonryItem = PhotoSiteMetadata | LoadingMasonryItem
 
 function isLoadingItem(item: MasonryItem): item is LoadingMasonryItem {
   return 'kind' in item && item.kind === 'loading'
@@ -98,7 +101,7 @@ function LoadingMasonryCard({
         style={{ height: masonryImageHeight(width, item.aspectRatio) }}
       />
       {!immersive ? (
-        // Mirrors PhotoCard's caption block: 16 + 20 + 6 + 18 = MASONRY_CAPTION_HEIGHT,
+        // Mirrors the shared PhotoCard's caption block (meta under the image)
         // so swapping in the real card never shifts the caption area.
         <div className="mt-4 flex items-start justify-between gap-4">
           <div className="w-3/5">
@@ -112,9 +115,14 @@ function LoadingMasonryCard({
   )
 }
 
+/**
+ * 宿主侧虚拟化 masonry（masonic）——替代共享包零依赖 CSS columns 版本的
+ * 大图库优化实现（见 @mo-gallery/public-site PhotoGrid 的宿主替换说明）。
+ * 卡片渲染本体走共享 PhotoCard，经注入的 MediaUrlResolver 解析地址。
+ */
 export function MasonryView({
-  photos,
-  settings,
+  sitePhotos,
+  resolver,
   grayscale,
   immersive = false,
   loadingMore,
@@ -133,16 +141,16 @@ export function MasonryView({
   const { scrollTop, isScrolling } = useScroller(offset, SCROLL_FPS)
 
   const items = useMemo<MasonryItem[]>(() => {
-    const itemCount = Math.max(photos.length, totalItems)
+    const itemCount = Math.max(sitePhotos.length, totalItems)
 
     return Array.from({ length: itemCount }, (_, index) => (
-      photos[index] ?? {
+      sitePhotos[index] ?? {
         kind: 'loading',
         id: getLoadingItemKey(index),
         aspectRatio: LOADING_ASPECT_RATIOS[index % LOADING_ASPECT_RATIOS.length],
       }
     ))
-  }, [photos, totalItems])
+  }, [sitePhotos, totalItems])
 
   const columnWidth = Math.max(
     1,
@@ -159,33 +167,33 @@ export function MasonryView({
 
   const resizeObserver = useResizeObserver(positioner)
 
-  const renderItem = useCallback(({ data, index, width: cellWidth }: RenderComponentProps<MasonryItem>) => {
+  const renderItem = useCallback(({ data, index }: RenderComponentProps<MasonryItem>) => {
     if (isLoadingItem(data)) {
-      return <LoadingMasonryCard item={data} width={cellWidth} immersive={immersive} />
+      return <LoadingMasonryCard item={data} width={columnWidth} immersive={immersive} />
     }
 
     return (
       <PhotoCard
         photo={data}
         index={index}
-        width={cellWidth}
-        settings={settings}
         grayscale={grayscale}
-        immersive={immersive}
+        showMeta={!immersive}
+        loading={index < 6 ? 'eager' : 'lazy'}
+        resolver={resolver}
         onPhotoClick={onPhotoClick}
       />
     )
-  }, [grayscale, immersive, onPhotoClick, settings])
+  }, [columnWidth, grayscale, immersive, onPhotoClick, resolver])
 
   const handleRender = useCallback((_startIndex: number, stopIndex: number) => {
     if (!hasMore || loadingMore) return
 
     // Keep roughly two viewports of loaded photos ahead of the render window.
     const lookahead = Math.max(16, columnCount * 8)
-    if (stopIndex + lookahead >= photos.length) {
+    if (stopIndex + lookahead >= sitePhotos.length) {
       void onLoadMore(stopIndex)
     }
-  }, [columnCount, hasMore, loadingMore, onLoadMore, photos.length])
+  }, [columnCount, hasMore, loadingMore, onLoadMore, sitePhotos.length])
 
   return useMasonry<MasonryItem>({
     positioner,

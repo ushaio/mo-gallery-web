@@ -1,10 +1,13 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 
+import type { PhotoSiteMetadata } from '@mo-gallery/content-core'
+import { GridView } from '@mo-gallery/public-site'
+
+import { createWebMediaUrlResolver, toSitePhoto } from '@/lib/public-site'
 import type { PhotoDto, PublicSettingsDto } from '@/lib/api/types'
-import { GridView } from './GridView'
 import { TimelineView } from './TimelineView'
 import type { ViewMode } from './ViewModeToggle'
 
@@ -68,6 +71,23 @@ export const PhotoGrid = memo(function PhotoGrid({
   onPhotoClick,
   t,
 }: PhotoGridProps) {
+  // W1（mo-cloud-parity-plan）：访客渲染组件下沉 @mo-gallery/public-site，
+  // web 经适配器（数据映射 / 媒体 URL / 站内路由）消费共享组件；
+  // 虚拟化 masonry（masonic）与时间线导航属宿主增强实现，保留在本仓库。
+  const resolver = useMemo(() => createWebMediaUrlResolver(settings), [settings])
+  const sitePhotos = useMemo(() => photos.map(toSitePhoto), [photos])
+  const photoDtoById = useMemo(
+    () => new Map(photos.map((photo) => [photo.id, photo])),
+    [photos],
+  )
+
+  const handleSitePhotoClick = useCallback((sitePhoto: PhotoSiteMetadata) => {
+    const photo = photoDtoById.get(sitePhoto.id)
+    if (photo) {
+      onPhotoClick(photo)
+    }
+  }, [photoDtoById, onPhotoClick])
+
   if (loading) {
     return <PhotoGridSkeleton />
   }
@@ -80,24 +100,24 @@ export const PhotoGrid = memo(function PhotoGrid({
     <div className="max-w-screen-2xl mx-auto">
       {viewMode === 'grid' ? (
         <GridView
-          photos={photos}
-          settings={settings}
+          photos={sitePhotos}
           grayscale={grayscale}
           immersive={immersive}
-          onPhotoClick={onPhotoClick}
+          resolver={resolver}
+          onPhotoClick={handleSitePhotoClick}
         />
       ) : null}
       {viewMode === 'masonry' ? (
         <MasonryView
-          photos={photos}
-          settings={settings}
+          sitePhotos={sitePhotos}
+          resolver={resolver}
           grayscale={grayscale}
           immersive={immersive}
           loadingMore={loadingMore}
           hasMore={hasMore}
           totalItems={totalItems}
           onLoadMore={onLoadMore}
-          onPhotoClick={onPhotoClick}
+          onPhotoClick={handleSitePhotoClick}
         />
       ) : null}
       {viewMode === 'timeline' ? (

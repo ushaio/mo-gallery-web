@@ -5,7 +5,7 @@ import { Calendar, ArrowLeft, BookText } from 'lucide-react'
 import Link from 'next/link'
 import type { BlogDto } from '@/lib/api/types'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { StoryRichContent } from '@/components/StoryRichContent'
+import { PublicArticleBody } from '@/components/PublicArticleBody'
 
 interface BlogDetailContentProps {
   blog: BlogDto
@@ -70,7 +70,15 @@ export function BlogDetailContent({ blog }: BlogDetailContentProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <StoryRichContent editorType={blog.editorType} content={blog.tiptapContent} milkContent={blog.milkContent} photos={[]} className="story-rich-content--article" />
+          <PublicArticleBody
+            articleId={blog.id}
+            editorType={blog.editorType}
+            tiptapContent={blog.tiptapContent}
+            tiptapContentJson={blog.tiptapContentJson}
+            milkContent={blog.milkContent}
+            photos={[]}
+            className="story-rich-content--article"
+          />
         </motion.article>
 
         <motion.footer

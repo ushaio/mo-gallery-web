@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 
 import { db } from '~/server/lib/db'
 import { EditorAiNotFoundError } from '~/server/lib/editor-ai-repository'
-import { getMetadataAndThumbnail } from '~/server/lib/image-processing'
+import { getMetadataAndThumbnail } from '@mo-gallery/image-pipeline/node'
 import { loadSafeRemoteImage } from '~/server/lib/safe-remote-image'
 import { StorageProviderFactory, getStorageConfig } from '~/server/lib/storage'
 import type { StorageProvider, UploadFileInput, UploadResult } from '~/server/lib/storage'

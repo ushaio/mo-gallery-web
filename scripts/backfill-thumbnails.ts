@@ -6,7 +6,7 @@
  *
  * For every photo with thumbPath missing:
  *   download original -> 800px AVIF q72 (same recipe as
- *   server/lib/image-processing.ts generateThumbnailBuffer) -> upload as
+ *   @mo-gallery/image-pipeline/node generateThumbnailBuffer) -> upload as
  *   thumb-<name>.avif next to the original -> update Photo.thumbPath.
  *
  * Originals are never modified. Rollback: clear thumbPath and delete the

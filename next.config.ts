@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["sharp", "@waline/vercel"],
   // 共享包以 TS 源码直出（mo-gallery-shared git 依赖），由 Next 编译
-  transpilePackages: ["@mo-gallery/tiptap-editor", "@mo-gallery/milkdown", "@mo-gallery/ai-agent", "@mo-gallery/api-client"],
+  transpilePackages: ["@mo-gallery/tiptap-editor", "@mo-gallery/milkdown", "@mo-gallery/ai-agent", "@mo-gallery/api-client", "@mo-gallery/content-core", "@mo-gallery/public-site", "@mo-gallery/image-pipeline"],
   images: {
     unoptimized: true,
     remotePatterns: [

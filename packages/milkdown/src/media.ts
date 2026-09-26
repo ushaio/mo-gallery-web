@@ -40,7 +40,8 @@ export type MediaUrlResolver = (src: string, photoId?: string) => string
 
 export interface MarkdownTree {
   type: string
-  name?: string
+  // mdast/mdx 的 JSX 节点 name 为 string | null，这里必须放宽才能整体结构兼容
+  name?: string | null
   value?: string
   alt?: string | null
   attributes?: Record<string, string | null | undefined> | null
