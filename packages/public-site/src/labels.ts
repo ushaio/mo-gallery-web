@@ -4,13 +4,18 @@
  */
 export interface PublicSiteLabels {
   /** 导航 */
+  navHome: string
   navGallery: string
+  navAbout: string
   navAlbums: string
   navBlog: string
   navStory: string
   navFilm: string
   navFriends: string
   navGear: string
+  /** 主题/语言切换 */
+  toggleTheme: string
+  toggleLanguage: string
   /** 空态 */
   emptyPhotos: string
   emptyAlbums: string
@@ -45,13 +50,18 @@ export interface PublicSiteLabels {
 }
 
 export const DEFAULT_PUBLIC_SITE_LABELS: PublicSiteLabels = {
-  navGallery: '图库',
+  // 导航文案对齐 web Navbar（画廊/胶片/叙事/他们）
+  navHome: '首页',
+  navGallery: '画廊',
+  navAbout: '关于',
   navAlbums: '相册',
   navBlog: '博客',
-  navStory: '故事',
-  navFilm: '胶卷',
-  navFriends: '友链',
+  navStory: '叙事',
+  navFilm: '胶片',
+  navFriends: '他们',
   navGear: '器材',
+  toggleTheme: '切换主题',
+  toggleLanguage: '切换语言',
   emptyPhotos: '还没有照片',
   emptyAlbums: '还没有相册',
   emptyArticles: '暂无内容',

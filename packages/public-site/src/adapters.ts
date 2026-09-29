@@ -95,6 +95,8 @@ export interface LinkAdapter {
   filmRoll?(username: string, rollId: string): string
   /** 友情链接页（they）。 */
   friends?(username: string): string
+  /** 关于页（web /about 对位）。 */
+  about?(username: string): string
   /** 器材页（cameras/lenses 聚合展示）。 */
   gear?(username: string): string
 }

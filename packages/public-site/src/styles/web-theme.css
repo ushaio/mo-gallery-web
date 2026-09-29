@@ -97,9 +97,65 @@
   --text-micro: 0.6875rem;
   --text-nano: 0.625rem;
 
-  /* 子树基础观感 */
+  /* 子树基础观感（对齐 web globals base）：官网 reset 的 body 字体（EMULSION
+     规格 17px / -0.374px 字距）会经继承漏入子树，这里整体重置为 web 规格
+     （font-sans / 16px / 1.5 / 无负字距）；宿主 layout 内联的 --font-sans
+     优先于下面的字面量栈。 */
   color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  letter-spacing: normal;
+  /* 中和官网 body 的 SF Pro 独有 OpenType 特性（ss03 对 Montserrat 无意义） */
+  font-feature-settings: normal;
   -webkit-font-smoothing: antialiased;
+
+  /* story 列表年/月吸顶标签的让位偏移（web :root 同名变量快照；
+     官方头部无 data-navbar-hidden 联动，隐藏态不归零可接受） */
+  --navbar-sticky-offset: 4rem;
+}
+@media (min-width: 48rem) {
+  .psw {
+    --navbar-sticky-offset: 5rem;
+  }
+}
+
+/* web globals @layer base 同款规则的 scope 版：必须放 base 层，让 Tailwind
+   utilities（font-bold、border-white/10 等）按层序正常覆盖。 */
+@layer base {
+  /* 默认标题排版（web `h1..h6 { @apply font-serif font-medium tracking-tight }`）；
+     prose/story 富文本内的标题规则特异性更高，不受影响。 */
+  .psw :is(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    letter-spacing: -0.025em;
+  }
+
+  /* 默认边框色（web `* { @apply border-border }`；官网 preflight 默认
+     currentColor，子树内裸 border 类需落到 web 的 --border）。 */
+  .psw * {
+    border-color: var(--border);
+  }
+
+/* 键盘焦点：官网 reset 的 Action Blue（--primary-focus）焦点框对子树可见，
+   中和为 web 令牌（亮 #111 / 暗 金）。 */
+.psw :focus-visible {
+  outline-color: var(--ring);
+}
+
+/* 锚点跳转让位：官网 reset 给 html 设的 scroll-padding-top 按官网导航规格
+   （--nav-height + 大间距）计算，对子树的固定头部（h-16/md:h-20）不准。
+   html 是 .psw 的祖先、无法从子树选择器覆盖，用 :has 条件改写——仅当页面
+   存在 .psw 子树时生效，官网其余页面不受影响（web 无全局 scroll-padding，
+   这里取头部等高值作为子树锚点的合理让位）。 */
+html:has(.psw) {
+  scroll-padding-top: 4rem;
+}
+@media (min-width: 48rem) {
+  html:has(.psw) {
+    scroll-padding-top: 5rem;
+  }
+}
 }
 
 /* ---- 暗色 "Midnight Vernissage"（#050505 底 + 金色 primary） ---- */
@@ -868,6 +924,23 @@
 .psw .psw-nav-link[aria-current='page'] .psw-nav-link__bar {
   width: 100%;
   opacity: 1;
+}
+
+/* SiteHeader：主题切换按钮的图标显隐——跟随 html.dark（宿主官方站的主题
+   类挂在 documentElement 上），无 JS 状态、无水合不匹配；web Navbar 主题键
+   的 Sun/Moon 切换等价物。 */
+.psw .psw-theme-icon {
+  display: none;
+  line-height: 0;
+}
+.psw .psw-theme-icon--moon {
+  display: block;
+}
+.dark .psw .psw-theme-icon--sun {
+  display: block;
+}
+.dark .psw .psw-theme-icon--moon {
+  display: none;
 }
 .psw .psw-nav-link:hover .psw-nav-link__bar {
   width: 100%;

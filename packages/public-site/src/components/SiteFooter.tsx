@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { memo } from 'react'
 
 import type { SiteFriendLink, SiteSettings } from '@mo-gallery/content-core'
@@ -114,9 +115,9 @@ export const SiteFooter = memo(function SiteFooter({
         <div className="mx-auto max-w-[1920px] px-4 py-6 md:px-12">
           <p className="text-center font-sans text-xs text-muted-foreground md:text-left">
             © {new Date().getFullYear()} {siteTitle} ·{' '}
-            <a href={links.home(username)} className="transition-colors duration-300 hover:text-foreground">
+            <Link href={links.home(username)} className="transition-colors duration-300 hover:text-foreground">
               {links.home(username)}
-            </a>
+            </Link>
           </p>
         </div>
       </div>
