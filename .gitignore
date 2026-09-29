@@ -107,3 +107,6 @@ docs/
 /.comet/*
 !/.comet/config.yaml
 # <<< Comet managed project state <<<
+
+# 共享包镜像内的依赖与生成物：由 pnpm 在镜像目录内生成，内容随机器（git-bash/WSL）变化，不纳入版本控制
+packages/*/node_modules/
