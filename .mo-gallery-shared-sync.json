@@ -4,13 +4,13 @@
   "source": {
     "repo": "github.com/ushaio/mo-gallery-shared",
     "commit": "4a9c55ea5787b0f604ecc40c260f71a996a71455",
-    "dirty": false
+    "dirty": true
   },
-  "syncedAt": "2026-09-29T13:09:33.717Z",
+  "syncedAt": "2026-09-29T13:53:28.528Z",
   "packages": {
     "admin-console": {
-      "hash": "sha256:bc1dc05fa83fa3be3f2dc1430f793c6384eb54c7d980102d015ffed912b220d4",
-      "files": 16
+      "hash": "sha256:f5e6cce0b773113730fd36681de4fbbef6437caf9b7c20f02b05c35d2bbb7e51",
+      "files": 17
     },
     "ai-agent": {
       "hash": "sha256:153b0dd2c9e40ad1c146e5cef4c90eb475319959aff958842805f2bb563aef1a",

@@ -29,6 +29,9 @@
   --mgac-accent-glow: rgba(0, 113, 227, 0.22);
   --mgac-danger: #d92c20;
   --mgac-danger-dim: rgba(217, 44, 32, 0.1);
+  --mgac-warn: #b26a00;
+  --mgac-warn-dim: rgba(255, 149, 0, 0.1);
+  --mgac-warn-border: rgba(255, 149, 0, 0.28);
   --mgac-radius: 14px;
   --mgac-radius-sm: 9px;
   --mgac-rail-width: 248px;
@@ -69,6 +72,9 @@
   --mgac-accent-glow: rgba(74, 163, 255, 0.26);
   --mgac-danger: #ff6b60;
   --mgac-danger-dim: rgba(255, 107, 96, 0.16);
+  --mgac-warn: #ffb340;
+  --mgac-warn-dim: rgba(255, 179, 64, 0.14);
+  --mgac-warn-border: rgba(255, 179, 64, 0.3);
   --mgac-scrim: rgba(0, 0, 0, 0.55);
 }
 
@@ -880,4 +886,219 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 18px;
+}
+
+/* ------------------------------------------ 弹窗图标气泡 / 小字帽 / 宽度档 */
+
+.mgac-modal.is-sm {
+  width: min(92vw, 460px);
+}
+
+.mgac-modal.is-lg {
+  width: min(94vw, 680px);
+}
+
+.mgac-modal-head.has-icon {
+  align-items: flex-start;
+}
+
+.mgac-modal-head-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mgac-modal-icon,
+.mgac-confirm-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--mgac-text-dim);
+  background: var(--mgac-surface-hover);
+  border-radius: 10px;
+}
+
+.mgac-modal-icon.is-info,
+.mgac-confirm-icon.is-info {
+  color: var(--mgac-accent);
+  background: var(--mgac-accent-dim);
+}
+
+.mgac-modal-icon.is-danger {
+  color: var(--mgac-danger);
+  background: var(--mgac-danger-dim);
+}
+
+.mgac-modal-icon.is-warn,
+.mgac-confirm-icon.is-warn {
+  color: var(--mgac-warn);
+  background: var(--mgac-warn-dim);
+}
+
+.mgac-modal-eyebrow,
+.mgac-confirm-eyebrow {
+  margin: 4px 0 0;
+  color: var(--mgac-text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mgac-confirm-eyebrow {
+  margin: 0 0 5px;
+}
+
+/* ---------------------------------------------------------- 表单与内容块 */
+
+.mgac-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mgac-field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mgac-field-hint {
+  color: var(--mgac-text-dim);
+  font-size: 11.5px;
+  font-style: normal;
+}
+
+.mgac-field-hint.is-error {
+  color: var(--mgac-danger);
+}
+
+.mgac-input,
+.mgac-select,
+.mgac-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--mgac-text);
+  font: inherit;
+  font-size: 13px;
+  background: var(--mgac-surface-solid);
+  border: 1px solid var(--mgac-border-strong);
+  border-radius: var(--mgac-radius-sm);
+}
+
+.mgac-input:focus-visible,
+.mgac-select:focus-visible,
+.mgac-textarea:focus-visible {
+  border-color: var(--mgac-accent);
+  outline: 2px solid var(--mgac-accent-glow);
+  outline-offset: 0;
+}
+
+.mgac-textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.mgac-form-error {
+  color: var(--mgac-danger);
+  font-size: 12.5px;
+}
+
+.mgac-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--mgac-text-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--mgac-surface-hover);
+  border: 1px solid var(--mgac-border);
+  border-radius: var(--mgac-radius-sm);
+}
+
+.mgac-notice.is-info {
+  color: var(--mgac-accent);
+  background: var(--mgac-accent-dim);
+  border-color: var(--mgac-accent-dim);
+}
+
+.mgac-notice.is-warn {
+  color: var(--mgac-warn);
+  background: var(--mgac-warn-dim);
+  border-color: var(--mgac-warn-border);
+}
+
+.mgac-notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* 需要「说明 + 列表」竖排时用：`mgac-notice is-column`（不必宿主内联覆盖） */
+.mgac-notice.is-column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.mgac-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mgac-chip-list code {
+  padding: 3px 8px;
+  color: var(--mgac-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--mgac-surface-hover);
+  border: 1px solid var(--mgac-border);
+  border-radius: 999px;
+}
+
+.mgac-kv {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  background: var(--mgac-surface-hover);
+  border-radius: var(--mgac-radius-sm);
+}
+
+.mgac-kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mgac-kv span {
+  color: var(--mgac-text-dim);
+}
+
+.mgac-kv strong {
+  font-weight: 600;
+  text-align: right;
+}
+
+.mgac-code-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--mgac-surface-hover);
+  border: 1px solid var(--mgac-border);
+  border-radius: var(--mgac-radius-sm);
+}
+
+.mgac-code-box code {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  /* 点击即全选：密码/密钥这类一次性可见的值（对齐官网旧的 .mg-pwd-code） */
+  user-select: all;
 }

@@ -48,6 +48,14 @@
 | `AdminButton` | 确认弹窗动作区使用；宿主可逐步替换自己的按钮件 | 变体 `default/primary/danger/outline/ghost/icon`、尺寸 `sm/md/lg` |
 | `AdminPortalLayer`（浮层挂载层） | Modal/Drawer/ConfirmDialog 共用，portal 到 `body` 并带上 `.mgac-portal` 令牌作用域 | 遮罩点击/Esc 由 `dismissible` + `busy` 控制 |
 
+### 已下沉件（阶段 2）
+
+| 组件 | 两端接入方式 | 差异如何表达 |
+|---|---|---|
+| `AdminModal`（补齐 `icon`/`tone`/`eyebrow`/`size`/`busy`） | official：`password-result-modal`（通知态）与 `ip-ban-modal`（表单态）改由它承载，两个文件里的 `mg-modal-*` 内联结构删除 | 图标与色调走 props；表单字段走 `children`；动作走 `footer`（`AdminButton`） |
+| `AdminField` | official `ip-ban-modal` 的「封禁原因 / 时长 / 到期日期」用它包住原生控件 | 字段名、说明与错误全部由宿主传；控件本身不锁定表单库 |
+| 弹窗体排版类（宿主直接用类名） | `.mgac-notice(.is-info/.is-warn)`、`.mgac-code-box`、`.mgac-chip-list`、`.mgac-kv`、`.mgac-form-error`、`.mgac-input`/`.mgac-select`/`.mgac-textarea`、`.mgac-spinner`、`.mgac-modal.is-sm/.is-lg` | 同一套观感跨端复用；宿主也可用自己的类名覆盖 |
+
 ## 接入（宿主侧机械步骤）
 
 ```bash

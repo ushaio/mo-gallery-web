@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useId, type ReactNode } from 'react'
 
 import { AdminButton } from './AdminButton'
 import { AdminPortalLayer, useEscapeToDismiss } from './portal'
@@ -31,6 +31,8 @@ export interface AdminConfirmOptionsGroup {
 export interface AdminConfirmDialogProps {
   open: boolean
   title: ReactNode
+  /** 标题下方的小字帽（如「3 张照片」这类影响面说明） */
+  eyebrow?: ReactNode
   description?: ReactNode
   tone?: AdminConfirmTone
   /** 图标由宿主传（共享包不锁死图标库） */
@@ -73,6 +75,7 @@ const INTERACTIVE_SELECTOR = 'input, textarea, select, button, a[href], [content
 export function AdminConfirmDialog({
   open,
   title,
+  eyebrow,
   description,
   tone = 'danger',
   icon,
@@ -89,6 +92,7 @@ export function AdminConfirmDialog({
   onCancel,
   onConfirm,
 }: AdminConfirmDialogProps) {
+  const titleId = useId()
   const dismissible = closeOnBackdrop && !busy
   useEscapeToDismiss(open && dismissible, onCancel)
 
@@ -113,14 +117,16 @@ export function AdminConfirmDialog({
 
   return (
     <AdminPortalLayer onDismiss={onCancel} dismissible={dismissible}>
-      <div className="mgac-confirm" role="alertdialog" aria-modal="true">
+      <div className="mgac-confirm" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="mgac-confirm-head">
           {icon ? <span className={iconClass}>{icon}</span> : null}
-          <h3 className="mgac-confirm-title">{title}</h3>
+          <h3 className="mgac-confirm-title" id={titleId}>
+            {title}
+          </h3>
         </div>
 
+        {eyebrow ? <p className="mgac-confirm-eyebrow">{eyebrow}</p> : null}
         {description ? <p className="mgac-confirm-desc">{description}</p> : null}
-
         {options && options.items.length > 0 ? (
           <div className="mgac-confirm-options" role="group" aria-label={options.ariaLabel}>
             {options.legend ? <span className="mgac-confirm-legend">{options.legend}</span> : null}
