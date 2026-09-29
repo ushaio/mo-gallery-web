@@ -1,14 +1,20 @@
 'use client'
 
-import React, { useEffect, useState, createContext, useContext, useCallback } from 'react'
+import React, { useEffect, useState, createContext, useContext, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ExternalLink, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import {
-  ChevronLeft,
-  ChevronRight,
-  Menu,
-  ExternalLink,
-  LogOut,
-} from 'lucide-react'
+  AdminRuntimeProvider,
+  AdminShell,
+  type AdminHostAdapter,
+  type AdminLinkRenderer,
+  type AdminNavItem,
+} from '@mo-gallery/admin-console'
+
+import '@mo-gallery/admin-console/theme.css'
+import './admin-shell-host.css'
+
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
 import { useSettings } from '@/contexts/SettingsContext'
@@ -31,9 +37,9 @@ import { UrlUpdateConfirmDialog } from '@/components/admin/UrlUpdateConfirmDialo
 import { UploadQueueProvider, useUploadQueue } from '@/contexts/UploadQueueContext'
 import { UploadProgressPopup } from '@/components/admin/UploadProgressPopup'
 import { AdminButton } from '@/components/admin/AdminButton'
-import { AdminSidebar } from '@/components/admin/AdminSidebar'
 import { getActiveAdminSidebarItem, getAdminSidebarItems } from '@/components/admin/admin-sidebar-config'
 import { isAuthFailurePending, reportAuthFailure } from '@/lib/auth-failure'
+import { cn } from '@/lib/utils'
 
 // Admin Context for shared state
 interface AdminContextType {
@@ -328,181 +334,272 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [token, refreshPhotos, notify, t])
 
+  // --- 共享后台外壳接线（@mo-gallery/admin-console）---
+  const languageToggleLabel = 'Toggle language'
+
+  const adminNavItems: AdminNavItem[] = sidebarItems.map(({ id, href, label, icon: Icon }) => ({
+    id,
+    href,
+    label,
+    icon: <Icon className="h-4 w-4" />,
+  }))
+
+  const renderAdminLink = useCallback<AdminLinkRenderer>(
+    ({ href, className, title, children, 'aria-current': ariaCurrent, onClick }) => (
+      <Link
+        href={href}
+        className={className}
+        title={title}
+        aria-current={ariaCurrent}
+        onClick={onClick}
+      >
+        {children}
+      </Link>
+    ),
+    []
+  )
+
+  const adminAdapter = useMemo<AdminHostAdapter>(
+    () => ({
+      user: user ? { username: user.username, displayName: user.username } : null,
+      renderLink: renderAdminLink,
+      labels: {
+        currentUser: t('admin.super_user'),
+        toggleRail: isSidebarCollapsed ? t('admin.sidebar_expand') : t('admin.sidebar_collapse'),
+        closeRail: t('admin.sidebar_collapse'),
+      },
+    }),
+    [user, renderAdminLink, t, isSidebarCollapsed]
+  )
+
+  const railHeader = (
+    <h2
+      className={cn(
+        'truncate whitespace-nowrap font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 motion-reduce:transition-none',
+        globalSettingsLoading ? 'opacity-0' : 'opacity-100'
+      )}
+    >
+      {siteTitle || '\u00A0'}
+    </h2>
+  )
+
+  const railFooter = (
+    <div className={cn('w-full space-y-3', isSidebarCollapsed && 'space-y-2')}>
+      <div className={cn('flex items-center gap-2', isSidebarCollapsed && 'flex-col')}>
+        <AdminButton
+          onClick={toggleTheme}
+          adminVariant="outline"
+          size="sm"
+          className="flex flex-1 items-center gap-2 rounded-sm px-3 py-2 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          title={t('nav.toggle_theme')}
+          aria-label={t('nav.toggle_theme')}
+        >
+          {!mounted ? (
+            <Monitor className="w-4 h-4" />
+          ) : theme === 'system' ? (
+            <Monitor className="w-4 h-4" />
+          ) : theme === 'light' ? (
+            <Sun className="w-4 h-4" />
+          ) : (
+            <Moon className="w-4 h-4" />
+          )}
+          <span className="truncate text-[10px] font-bold uppercase tracking-widest mgac-rail-foot-text">
+            {theme === 'system' ? t('nav.system') : theme === 'light' ? t('nav.light') : t('nav.dark')}
+          </span>
+        </AdminButton>
+
+        <AdminButton
+          onClick={toggleLanguage}
+          adminVariant="outline"
+          size="sm"
+          className="flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          title={languageToggleLabel}
+          aria-label={languageToggleLabel}
+        >
+          <span className="mgac-rail-foot-text">{locale === 'zh' ? 'EN' : 'ZH'}</span>
+        </AdminButton>
+      </div>
+
+      <div className="border-t border-border" />
+
+      <div className={cn('flex items-center gap-3 px-2', isSidebarCollapsed && 'justify-center px-0')}>
+        <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-primary text-xs font-bold text-primary-foreground">
+          {user?.username?.substring(0, 1).toUpperCase() || 'A'}
+        </div>
+        <div className="min-w-0 flex-1 overflow-hidden mgac-rail-foot-text">
+          <p className="truncate whitespace-nowrap text-xs font-bold uppercase tracking-wider">
+            {user?.username || 'ADMIN'}
+          </p>
+          <p className="truncate whitespace-nowrap text-[10px] uppercase tracking-widest text-muted-foreground">
+            {t('admin.super_user')}
+          </p>
+        </div>
+      </div>
+
+      <AdminButton
+        onClick={() => setShowLogoutConfirm(true)}
+        adminVariant="destructiveOutline"
+        size="lg"
+        className={cn(
+          'flex w-full items-center justify-center space-x-2 rounded-sm px-4 py-2.5 text-xs font-bold uppercase tracking-widest',
+          isSidebarCollapsed && 'px-1'
+        )}
+        aria-label={t('nav.logout')}
+      >
+        <LogOut className="w-4 h-4" />
+        <span className="truncate mgac-rail-foot-text">{t('nav.logout')}</span>
+      </AdminButton>
+    </div>
+  )
+
+  const topbarActions = (
+    <>
+      <a
+        href="/gallery"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 px-3 py-1.5 border border-border hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all text-xs font-bold uppercase tracking-widest"
+      >
+        <span>{t('admin.view_site')}</span>
+        <ExternalLink className="w-3 h-3" />
+      </a>
+    </>
+  )
+
+  const adminOverlays = (
+    <>
+      <UrlUpdateConfirmDialog
+        isOpen={showUrlUpdateDialog}
+        oldUrl={urlUpdateParams?.oldPublicUrl || ''}
+        newUrl={urlUpdateParams?.newPublicUrl || ''}
+        onConfirm={handleConfirmUrlUpdate}
+        onCancel={() => {
+          setShowUrlUpdateDialog(false)
+          setUrlUpdateParams(null)
+        }}
+        t={t}
+      />
+
+      {/* Logout Confirmation Dialog */}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowLogoutConfirm(false)}
+            />
+
+            {/* Dialog */}
+            <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="bg-background border border-border p-8 max-w-md w-full shadow-2xl pointer-events-auto"
+              >
+                {/* Header with Icon */}
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-destructive/10 flex items-center justify-center">
+                    <LogOut className="w-6 h-6 text-destructive" />
+                  </div>
+                  <div>
+                    <h3 className="font-serif text-xl font-light uppercase tracking-tight">
+                      {t('nav.logout')}
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
+                      {t('common.confirm')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <p className="text-sm text-foreground leading-relaxed">
+                    {t('admin.logout_confirm')}
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <AdminButton
+                    onClick={() => setShowLogoutConfirm(false)}
+                    adminVariant="outline"
+                    size="xl"
+                    className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest"
+                  >
+                    {t('common.cancel')}
+                  </AdminButton>
+                  <AdminButton
+                    onClick={() => {
+                      setShowLogoutConfirm(false)
+                      logout()
+                    }}
+                    adminVariant="destructive"
+                    size="xl"
+                    className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>{t('nav.logout')}</span>
+                  </AdminButton>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <UploadProgressPopupWrapper t={t} token={token} />
+    </>
+  )
+
   return (
     <UploadQueueProvider onUploadComplete={handleUploadComplete}>
       <AdminContext.Provider value={contextValue}>
-        <div className="flex h-screen overflow-hidden bg-background text-foreground">
-          <Toast
-            notifications={notifications}
-            remove={(id) =>
-              setNotifications((prev) => prev.filter((n) => n.id !== id))
-            }
-          />
-
-          {!isImmersiveMode ? (
-            <AdminSidebar
-              siteTitle={siteTitle}
-              isSiteTitleLoading={globalSettingsLoading}
-              isMobileMenuOpen={isMobileMenuOpen}
-              isCollapsed={isSidebarCollapsed}
-              activeItemId={activeSidebarItem.id}
-              user={user}
-              locale={locale}
-              mounted={mounted}
-              theme={theme}
-              onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
-              onToggleTheme={toggleTheme}
-              onToggleLanguage={toggleLanguage}
-              onLogout={() => setShowLogoutConfirm(true)}
-              t={t}
-              items={sidebarItems}
-            />
-          ) : null}
-
-          {!isImmersiveMode ? (
-          <button
-            type="button"
-            onClick={toggleSidebarCollapse}
-            className={`fixed top-1/2 z-50 hidden h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none md:flex ${
-              isSidebarCollapsed ? 'left-20' : 'left-64'
-            }`}
-            aria-label={isSidebarCollapsed ? t('admin.sidebar_expand') : t('admin.sidebar_collapse')}
-            aria-pressed={isSidebarCollapsed}
-          >
-            <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
-              {isSidebarCollapsed ? (
-                <ChevronRight className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronLeft className="h-3.5 w-3.5" />
-              )}
-            </div>
-          </button>
-          ) : null}
-
-          {/* Main Content */}
-          <main className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${
-            isImmersiveMode ? 'md:ml-0' : isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'
-          }`}>
-            {!isImmersiveMode ? (
-            <header className="flex-shrink-0 flex h-20 items-center justify-between px-8 bg-background/95 backdrop-blur-xl border-b border-border">
-            <div className="flex items-center">
-              <AdminButton
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                adminVariant="icon"
-                size="sm"
-                className="p-2 mr-4 md:hidden hover:bg-muted"
-              >
-                <Menu className="w-5 h-5" />
-              </AdminButton>
-              <h1 className="font-serif text-2xl font-light tracking-tight uppercase">
-                {pageTitle}
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <a
-                href="/gallery"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-1.5 border border-border hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all text-xs font-bold uppercase tracking-widest"
-              >
-                <span>{t('admin.view_site')}</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-          </header>
-            ) : null}
-
-           <div className={isImmersiveMode || isLibraryWorkspace ? 'flex-1 overflow-hidden' : 'p-8 flex-1 overflow-y-auto'}>
-            {children}
-          </div>
-        </main>
-
-        <UrlUpdateConfirmDialog
-          isOpen={showUrlUpdateDialog}
-          oldUrl={urlUpdateParams?.oldPublicUrl || ''}
-          newUrl={urlUpdateParams?.newPublicUrl || ''}
-          onConfirm={handleConfirmUrlUpdate}
-          onCancel={() => {
-            setShowUrlUpdateDialog(false)
-            setUrlUpdateParams(null)
-          }}
-          t={t}
+        <Toast
+          notifications={notifications}
+          remove={(id) =>
+            setNotifications((prev) => prev.filter((n) => n.id !== id))
+          }
         />
 
-        {/* Logout Confirmation Dialog */}
-        <AnimatePresence>
-          {showLogoutConfirm && (
-            <>
-              {/* Backdrop */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
-                onClick={() => setShowLogoutConfirm(false)}
-              />
-
-              {/* Dialog */}
-              <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="bg-background border border-border p-8 max-w-md w-full shadow-2xl pointer-events-auto"
-                >
-                  {/* Header with Icon */}
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 bg-destructive/10 flex items-center justify-center">
-                      <LogOut className="w-6 h-6 text-destructive" />
-                    </div>
-                    <div>
-                      <h3 className="font-serif text-xl font-light uppercase tracking-tight">
-                        {t('nav.logout')}
-                      </h3>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                        {t('common.confirm')}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mb-6">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {t('admin.logout_confirm')}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <AdminButton
-                      onClick={() => setShowLogoutConfirm(false)}
-                      adminVariant="outline"
-                      size="xl"
-                      className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest"
-                    >
-                      {t('common.cancel')}
-                    </AdminButton>
-                    <AdminButton
-                      onClick={() => {
-                        setShowLogoutConfirm(false)
-                        logout()
-                      }}
-                      adminVariant="destructive"
-                      size="xl"
-                      className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>{t('nav.logout')}</span>
-                    </AdminButton>
-                  </div>
-                </motion.div>
-              </div>
-            </>
-          )}
-        </AnimatePresence>
-
-        <UploadProgressPopupWrapper t={t} token={token} />
-        </div>
+        {isImmersiveMode ? (
+          /* 日志沉浸模式：整个外壳让位给面板（与原行为一致） */
+          <div className="flex h-screen overflow-hidden bg-background text-foreground">
+            <div className="flex-1 overflow-hidden">{children}</div>
+            {adminOverlays}
+          </div>
+        ) : (
+          <AdminRuntimeProvider adapter={adminAdapter}>
+            <AdminShell
+              className="admin-shell-host"
+              contentClassName={isLibraryWorkspace ? 'is-panel-flush' : undefined}
+              nav={adminNavItems}
+              activeId={activeSidebarItem.id}
+              collapsed={isSidebarCollapsed}
+              onToggleCollapse={toggleSidebarCollapse}
+              mobileOpen={isMobileMenuOpen}
+              onOpenMobile={() => setIsMobileMenuOpen(true)}
+              onCloseMobile={() => setIsMobileMenuOpen(false)}
+              railLabel={t('admin.console')}
+              brand={
+                <h1 className="font-serif text-2xl font-light tracking-tight uppercase">
+                  {pageTitle}
+                </h1>
+              }
+              brandHref={null}
+              railHeader={railHeader}
+              railFooter={railFooter}
+              topbarActions={topbarActions}
+              overlay={adminOverlays}
+            >
+              {children}
+            </AdminShell>
+          </AdminRuntimeProvider>
+        )}
       </AdminContext.Provider>
     </UploadQueueProvider>
   )

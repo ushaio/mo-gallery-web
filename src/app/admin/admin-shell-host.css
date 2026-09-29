@@ -1,0 +1,41 @@
+/* ============================================================================
+   web 宿主对 @mo-gallery/admin-console 外壳的局部适配
+
+   共享包样式（`@mo-gallery/admin-console/theme.css`）不写在任何 @layer 里，
+   本文件同样不写 @layer，靠选择器权重覆盖，只处理外壳自己管不到的两件事：
+
+   1) 固定视口高度：图库 / 存储整理 / 日志面板内部依赖 h-full + overflow-hidden，
+      必须先让 .mgac-content 拿到确定高度（外壳默认是 min-height:100vh 的文档流滚动）；
+   2) 全出血面板：图库与存储整理自带分栏与滚动，不要 .mgac-content 的内边距。
+
+   窄屏抽屉的开/关入口、折叠态侧栏底部区、导航 aria-label 都由共享外壳自身提供
+   （`onOpenMobile` / `onCloseMobile` / `railLabel` / `.mgac-rail-foot-text`），
+   宿主不再自己补按钮或隐藏外壳按钮。
+   ========================================================================== */
+
+.admin-shell-host {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.admin-shell-host .mgac-main {
+  min-height: 0;
+}
+
+.admin-shell-host .mgac-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 面板自带滚动与内边距（图库 / 存储整理）：全出血交给面板 */
+.admin-shell-host .mgac-content.is-panel-flush {
+  padding: 0;
+  overflow-y: hidden;
+}
+
+/* 折叠时隐藏站点标题（与旧侧栏一致，只在桌面端） */
+@media (min-width: 901px) {
+  .admin-shell-host.is-collapsed .mgac-rail-head {
+    opacity: 0;
+  }
+}
