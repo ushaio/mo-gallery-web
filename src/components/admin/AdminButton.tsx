@@ -41,8 +41,6 @@ const adminButtonVariants = cva(
         iconAccent: 'p-1.5 rounded bg-amber-500 text-white hover:bg-amber-600',
         switch:
           'relative inline-flex h-5 w-10 items-center rounded-full transition-colors data-[state=on]:bg-primary data-[state=off]:bg-muted',
-        plain: 'text-sm font-medium',
-        subtle: 'text-xs font-medium text-muted-foreground hover:text-foreground',
       },
       size: {
         none: '',
