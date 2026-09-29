@@ -26,6 +26,7 @@
 7. 故事 / 博客详情页正文渲染接入共享包 `@mo-gallery/public-site`（mo-cloud-parity-plan W1）：milkdown 正文与携带 `tiptapContentJson` 的 TipTap 正文改由共享 `ArticleBody`（`TiptapJsonView` 结构化渲染，不注入 HTML 字符串）渲染，正文内嵌照片点击、媒体 embed 卡（Spotify / 网易云）与故事引用卡在访客侧保留；仅存量无 JSON 的 TipTap 正文回落本地既有富文本管线，页面框架（封面、地图、照片画廊、评论）不变（仅前端渲染层，对 Desktop / App 无影响）
 8. 同步共享包镜像：`@mo-gallery/public-site` 新增 `./theme.css` 主题层导出（`.psw` 作用域令牌与访客侧观感）与导航组合能力（`LinkAdapter` 可选 `about`、`SiteHeader` 新增 `showHomeNav`/`currentPath`/`transparentAtTop`），`@mo-gallery/api-client` 新增 `mo-cloud` 子模块；本仓库暂未消费新增能力，现有页面行为不变（镜像同步，对 Desktop / App 无影响）
 9. 后台 `/admin` 外壳接入共享包 `@mo-gallery/admin-console`：侧栏（导航项、站点标题、主题/语言切换、退出登录）与顶栏（当前页面标题、返回站点、移动端抽屉）改由共享 `AdminShell` 渲染，菜单项与图库 / 上传 / 日志 / AI 助手 / 存储整理 / 设置 / 友链各面板的数据与交互不变（仅前端外壳层，对 Desktop / App 无影响）
+10. 后台的单条删除确认弹窗改由共享包 `@mo-gallery/admin-console` 的 `AdminConfirmDialog` 渲染（`SimpleDeleteDialog` 变薄包装，对外 props 不变，22 处调用点零改动）：删除确认的观感与交互（Esc/Enter、遮罩、提交中禁用与 spinner、portal 挂载）两端统一，文案与删除动作仍由本仓库提供（对 Desktop / App 无影响）
 
 ### fix
 1. 暂无
