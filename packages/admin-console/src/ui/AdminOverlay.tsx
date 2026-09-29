@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 import { useAdminRuntime } from '../runtime/AdminRuntimeProvider'
+import { AdminPortalLayer, useEscapeToDismiss } from './portal'
 
 export interface AdminModalProps {
   open: boolean
   title?: ReactNode
   description?: ReactNode
   children?: ReactNode
-  /** 底部动作区（按钮组由宿主传，共享包不含按钮语义） */
+  /** 底部动作区（按钮用 AdminButton，共享包不含业务语义） */
   footer?: ReactNode
   onClose?: () => void
   /** 是否允许 Esc / 遮罩点击关闭，默认 true */
@@ -29,25 +30,13 @@ export function AdminModal({
   className,
 }: AdminModalProps) {
   const { labels } = useAdminRuntime()
-
-  useEffect(() => {
-    if (!open || !dismissible || !onClose) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, dismissible, onClose])
+  const canDismiss = dismissible && Boolean(onClose)
+  useEscapeToDismiss(open && canDismiss, onClose)
 
   if (!open) return null
 
   return (
-    <div className="mgac-portal" role="presentation">
-      <div
-        className="mgac-portal-scrim"
-        role="presentation"
-        onClick={dismissible ? onClose : undefined}
-      />
+    <AdminPortalLayer onDismiss={onClose} dismissible={canDismiss}>
       <div
         className={['mgac-modal', className ?? ''].filter(Boolean).join(' ')}
         role="dialog"
@@ -55,8 +44,10 @@ export function AdminModal({
       >
         {title || description ? (
           <div className="mgac-modal-head">
-            {title ? <h2 className="mgac-modal-title">{title}</h2> : null}
-            {description ? <p className="mgac-modal-desc">{description}</p> : null}
+            <div>
+              {title ? <h2 className="mgac-modal-title">{title}</h2> : null}
+              {description ? <p className="mgac-modal-desc">{description}</p> : null}
+            </div>
             {onClose ? (
               <button
                 type="button"
@@ -73,7 +64,7 @@ export function AdminModal({
         <div className="mgac-modal-body">{children}</div>
         {footer ? <div className="mgac-modal-foot">{footer}</div> : null}
       </div>
-    </div>
+    </AdminPortalLayer>
   )
 }
 
@@ -103,25 +94,13 @@ export function AdminDrawer({
   className,
 }: AdminDrawerProps) {
   const { labels } = useAdminRuntime()
-
-  useEffect(() => {
-    if (!open || !dismissible || !onClose) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, dismissible, onClose])
+  const canDismiss = dismissible && Boolean(onClose)
+  useEscapeToDismiss(open && canDismiss, onClose)
 
   if (!open) return null
 
   return (
-    <div className="mgac-portal" role="presentation">
-      <div
-        className="mgac-portal-scrim"
-        role="presentation"
-        onClick={dismissible ? onClose : undefined}
-      />
+    <AdminPortalLayer onDismiss={onClose} dismissible={canDismiss}>
       <aside
         className={['mgac-drawer', `is-${size}`, className ?? ''].filter(Boolean).join(' ')}
         role="dialog"
@@ -147,6 +126,6 @@ export function AdminDrawer({
         <div className="mgac-modal-body">{children}</div>
         {footer ? <div className="mgac-modal-foot">{footer}</div> : null}
       </aside>
-    </div>
+    </AdminPortalLayer>
   )
 }

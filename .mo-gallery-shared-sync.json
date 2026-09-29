@@ -3,14 +3,14 @@
   "note": "本文件由 mo-gallery-shared 的 pnpm sync 生成，请勿手工编辑。source.commit 是最近一次内容变更时执行同步的 shared HEAD；source.dirty 为 true 表示当时该改动尚未提交。",
   "source": {
     "repo": "github.com/ushaio/mo-gallery-shared",
-    "commit": "7c0a4a1c6af482b96452654fd7628c2c705760e0",
-    "dirty": true
+    "commit": "4a9c55ea5787b0f604ecc40c260f71a996a71455",
+    "dirty": false
   },
-  "syncedAt": "2026-09-29T10:14:01.035Z",
+  "syncedAt": "2026-09-29T13:09:33.717Z",
   "packages": {
     "admin-console": {
-      "hash": "sha256:752dad8414365e82c41cc7909486fc1c7acf491c01029f3c11f2deb88319a90b",
-      "files": 13
+      "hash": "sha256:bc1dc05fa83fa3be3f2dc1430f793c6384eb54c7d980102d015ffed912b220d4",
+      "files": 16
     },
     "ai-agent": {
       "hash": "sha256:153b0dd2c9e40ad1c146e5cef4c90eb475319959aff958842805f2bb563aef1a",

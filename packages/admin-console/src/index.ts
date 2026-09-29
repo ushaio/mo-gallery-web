@@ -37,6 +37,17 @@ export type { AdminTopbarProps } from './shell/AdminTopbar'
 
 export { AdminModal, AdminDrawer } from './ui/AdminOverlay'
 export type { AdminModalProps, AdminDrawerProps } from './ui/AdminOverlay'
+export { AdminPortalLayer, useEscapeToDismiss } from './ui/portal'
+export type { AdminPortalLayerProps } from './ui/portal'
+export { AdminButton } from './ui/AdminButton'
+export type { AdminButtonProps, AdminButtonSize, AdminButtonVariant } from './ui/AdminButton'
+export { AdminConfirmDialog } from './ui/AdminConfirmDialog'
+export type {
+  AdminConfirmDialogProps,
+  AdminConfirmOption,
+  AdminConfirmOptionsGroup,
+  AdminConfirmTone,
+} from './ui/AdminConfirmDialog'
 export { AdminSwitch } from './ui/AdminSwitch'
 export type { AdminSwitchProps } from './ui/AdminSwitch'
 export { AdminSkeleton } from './ui/AdminSkeleton'

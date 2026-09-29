@@ -10,7 +10,11 @@
    2) 只有一端需要的外观差异 → 宿主在自己的全局样式里覆盖 `--mgac-*` 或加类名
    ========================================================================== */
 
-.mgac {
+/* 令牌 + 排版层：外壳根与浮层根都要带上。
+   浮层（Modal/Drawer/ConfirmDialog）经 portal 挂到 body 之外，拿不到 `.mgac`
+   的继承，所以令牌同时声明在 `.mgac-portal` 上——两处共用同一份定义。 */
+.mgac,
+.mgac-portal {
   --mgac-bg: #f2f3f5;
   --mgac-surface: rgba(255, 255, 255, 0.72);
   --mgac-surface-solid: #ffffff;
@@ -24,6 +28,7 @@
   --mgac-accent-dim: rgba(0, 113, 227, 0.08);
   --mgac-accent-glow: rgba(0, 113, 227, 0.22);
   --mgac-danger: #d92c20;
+  --mgac-danger-dim: rgba(217, 44, 32, 0.1);
   --mgac-radius: 14px;
   --mgac-radius-sm: 9px;
   --mgac-rail-width: 248px;
@@ -31,9 +36,6 @@
   --mgac-topbar-height: 52px;
   --mgac-scrim: rgba(0, 0, 0, 0.32);
 
-  display: flex;
-  min-height: 100vh;
-  background: var(--mgac-bg);
   color: var(--mgac-text);
   font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);
   font-size: 14px;
@@ -42,8 +44,16 @@
   text-align: left;
 }
 
-/* 暗色：宿主挂 `.dark`（Next 主题约定）或直接给 `.mgac.is-dark` */
+.mgac {
+  display: flex;
+  min-height: 100vh;
+  background: var(--mgac-bg);
+}
+
+/* 暗色：宿主挂 `.dark`（Next 主题约定）或直接给 `.mgac.is-dark`；
+   浮层根同样跟随（它挂在 body 下，`.dark` 通常也在 html/body 上）。 */
 .dark .mgac,
+.dark .mgac-portal,
 .mgac.is-dark {
   --mgac-bg: #0b0b0c;
   --mgac-surface: rgba(28, 28, 30, 0.72);
@@ -58,6 +68,7 @@
   --mgac-accent-dim: rgba(74, 163, 255, 0.14);
   --mgac-accent-glow: rgba(74, 163, 255, 0.26);
   --mgac-danger: #ff6b60;
+  --mgac-danger-dim: rgba(255, 107, 96, 0.16);
   --mgac-scrim: rgba(0, 0, 0, 0.55);
 }
 
@@ -644,4 +655,229 @@
   .mgac-content {
     padding: 16px;
   }
+}
+
+/* ------------------------------------------------------------------ 按钮 */
+
+.mgac-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  color: var(--mgac-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--mgac-surface-solid);
+  border: 1px solid var(--mgac-border-strong);
+  border-radius: var(--mgac-radius-sm);
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.mgac-btn:hover:not(:disabled) {
+  background: var(--mgac-surface-hover);
+}
+
+.mgac-btn:focus-visible {
+  outline: 2px solid var(--mgac-accent);
+  outline-offset: 1px;
+}
+
+.mgac-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mgac-btn.is-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.mgac-btn.is-lg {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 13.5px;
+}
+
+.mgac-btn.is-primary {
+  color: #fff;
+  background: var(--mgac-accent);
+  border-color: transparent;
+  box-shadow: 0 3px 10px var(--mgac-accent-glow);
+}
+
+.mgac-btn.is-primary:hover:not(:disabled) {
+  background: var(--mgac-accent-hover);
+}
+
+.mgac-btn.is-danger {
+  color: #fff;
+  background: var(--mgac-danger);
+  border-color: transparent;
+}
+
+.mgac-btn.is-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.mgac-btn.is-outline {
+  background: transparent;
+}
+
+.mgac-btn.is-ghost {
+  color: var(--mgac-text-dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.mgac-btn.is-ghost:hover:not(:disabled) {
+  color: var(--mgac-accent);
+  background: var(--mgac-accent-dim);
+}
+
+.mgac-btn.is-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+}
+
+.mgac-btn.is-busy {
+  cursor: progress;
+}
+
+.mgac-btn.is-block {
+  width: 100%;
+}
+
+.mgac-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: mgac-spin 0.7s linear infinite;
+}
+
+@keyframes mgac-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* -------------------------------------------------------- 确认/警示弹窗 */
+
+.mgac-confirm {
+  position: relative;
+  width: min(92vw, 460px);
+  padding: 20px;
+  color: var(--mgac-text);
+  background: var(--mgac-surface-solid);
+  border: 1px solid var(--mgac-border);
+  border-radius: var(--mgac-radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  animation: mgac-pop 0.18s ease;
+}
+
+.mgac-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mgac-confirm-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--mgac-danger);
+  background: var(--mgac-danger-dim);
+  border-radius: 10px;
+}
+
+.mgac-confirm-icon.is-info {
+  color: var(--mgac-accent);
+  background: var(--mgac-accent-dim);
+}
+
+.mgac-confirm-icon.is-plain {
+  color: var(--mgac-text-dim);
+  background: var(--mgac-surface-hover);
+}
+
+.mgac-confirm-title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.mgac-confirm-desc {
+  margin: 0 0 4px;
+  color: var(--mgac-text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mgac-confirm-body {
+  margin-top: 12px;
+}
+
+.mgac-confirm-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  margin-top: 14px;
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--mgac-surface-hover);
+  border: 1px solid var(--mgac-border);
+  border-radius: var(--mgac-radius-sm);
+}
+
+.mgac-confirm-legend {
+  color: var(--mgac-text-dim);
+  font-size: 12px;
+}
+
+.mgac-confirm-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mgac-confirm-option input {
+  margin-top: 2px;
+  accent-color: var(--mgac-accent);
+}
+
+.mgac-confirm-option strong {
+  display: block;
+  font-weight: 600;
+}
+
+.mgac-confirm-option-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--mgac-text-dim);
+  font-size: 12px;
+}
+
+.mgac-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
 }

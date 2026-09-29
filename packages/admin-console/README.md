@@ -37,6 +37,16 @@
 | 删除等操作的副作用不同（本地库 vs 写 `OperationLog` 审计） | 宿主回调 | 共享组件只发事件，实现由宿主给 | 收敛后提为 capability |
 | web 面板用 Tailwind/CVA，official 用自有 CSS | 宿主区 | 外壳统一走 `.mgac`，面板内部各写各的 | 面板按复用度逐个迁移 |
 | 色彩/圆角/密度差异 | 宿主全局样式 | 覆盖 `--mgac-*` 令牌 | 若两端收敛 → 改本包默认值 |
+| 确认弹窗的场景文案与色调（web：删除/批量；official：删除用户/改角色/封禁/重置密码/切换身份/退出） | 宿主映射 + `AdminConfirmDialog` 的 props | 宿主保留 `目标对象 → {title, description, tone, 按钮文案}` 映射，弹窗本体走共享件 | 映射若两端收敛 → 提为共享的 `confirmCopy` |
+| 确认弹窗的附加字段（official：删除用户时「一并清除的数据」多选；web：无） | `options` 组（受控） | 宿主传 `items/selected/onToggle`，共享件只渲染 | 别的宿主也要同一组字段 → 直接复用该 schema |
+
+### 已下沉件（阶段 1）
+
+| 组件 | 两端接入方式 | 差异如何表达 |
+|---|---|---|
+| `AdminConfirmDialog` | web：`SimpleDeleteDialog`（22 处调用）改为薄包装，props 不变；official：`confirm-modal.tsx` 保留 `ConfirmTarget` 映射，弹窗本体换共享件 | 文案/色调/图标走 props；勾选项组走 `options`；执行动作走 `onConfirm` 回调 |
+| `AdminButton` | 确认弹窗动作区使用；宿主可逐步替换自己的按钮件 | 变体 `default/primary/danger/outline/ghost/icon`、尺寸 `sm/md/lg` |
+| `AdminPortalLayer`（浮层挂载层） | Modal/Drawer/ConfirmDialog 共用，portal 到 `body` 并带上 `.mgac-portal` 令牌作用域 | 遮罩点击/Esc 由 `dismissible` + `busy` 控制 |
 
 ## 接入（宿主侧机械步骤）
 
