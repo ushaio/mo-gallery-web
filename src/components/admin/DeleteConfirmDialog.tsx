@@ -2,11 +2,22 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, AlertTriangle, Loader2, BookOpen, X, ImageIcon, Image, ExternalLink } from 'lucide-react'
+import { AlertTriangle, BookOpen, ExternalLink } from 'lucide-react'
+import { AdminButton, AdminConfirmDialog, AdminModal } from '@mo-gallery/admin-console'
 import type { PhotoWithStories } from '@/lib/api/types'
-import { AdminButton } from '@/components/admin/AdminButton'
 
+/**
+ * 照片删除确认弹窗（三态）。
+ *
+ * 阶段 2 起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、忙碌态屏蔽、勾选框样式、
+ * Enter 确认）由共享包 `@mo-gallery/admin-console` 承担；本文件只保留 web 后台的
+ * **差异部分**（差异登记点③：文案键、图标、勾选字段、阻断态的关联故事清单）：
+ * - 加载态：`AdminModal`（居中 spinner，文案 `common.loading`）
+ * - 阻断态（照片已挂叙事）：`AdminModal` tone="warn" + `.mgac-notice.is-warn` 列表
+ * - 普通删除态：`AdminConfirmDialog` + `options`（original / thumbnail 两个受控勾选）
+ *
+ * 对外 props 与改造前一字不差，调用点零改动。
+ */
 interface DeleteConfirmDialogProps {
   isOpen: boolean
   isBulk: boolean
@@ -37,7 +48,7 @@ export function DeleteConfirmDialog({
   isLoading = false,
   photosWithStories = [],
 }: DeleteConfirmDialogProps) {
-  const router = useRouter();
+  const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
 
   const hasBlockingStories = photosWithStories.length > 0
@@ -66,225 +77,108 @@ export function DeleteConfirmDialog({
     return acc
   }, [] as { id: string; title: string }[])
 
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
-            onClick={handleCancel}
-          />
+  // 勾选状态由宿主的两个布尔 props 推导；共享包不持有状态
+  const selected: string[] = []
+  if (deleteOriginal) selected.push('original')
+  if (deleteThumbnail) selected.push('thumbnail')
 
-          {/* Dialog */}
-          <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="bg-background border border-border p-8 max-w-md w-full shadow-2xl pointer-events-auto"
-            >
-              {isLoading ? (
-                // Loading state
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mb-4" />
-                  <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
-                </div>
-              ) : hasBlockingStories ? (
-                // Blocking state - photos have associated stories
-                <>
-                  {/* Header with Icon */}
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 bg-amber-500/10 flex items-center justify-center">
-                      <BookOpen className="w-6 h-6 text-amber-500" />
-                    </div>
-                    <div>
-                      <h3 className="font-serif text-xl font-light uppercase tracking-tight">
-                        {t('admin.photo_has_stories')}
-                      </h3>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                        {t('admin.cannot_delete')}
-                      </p>
-                    </div>
-                  </div>
+  const handleToggle = (id: string, checked: boolean) => {
+    if (id === 'original') setDeleteOriginal(checked)
+    else if (id === 'thumbnail') setDeleteThumbnail(checked)
+  }
 
-                  <div className="mb-6 space-y-4">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {isBulk
-                        ? t('admin.photos_have_stories_desc')
-                        : t('admin.photo_has_stories_desc')}
-                    </p>
+  if (isLoading) {
+    return (
+      <AdminModal open={isOpen} size="sm" onClose={handleCancel}>
+        <div className="flex flex-col items-center justify-center gap-3 py-8 text-muted-foreground">
+          <span className="mgac-spinner" aria-hidden="true" />
+          <p className="text-sm">{t('common.loading')}</p>
+        </div>
+      </AdminModal>
+    )
+  }
 
-                    {/* List of associated stories */}
-                    <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                      <p className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-3">
-                        {t('admin.associated_stories')} ({uniqueStories.length})
-                      </p>
-                      <ul className="space-y-2 max-h-32 overflow-y-auto">
-                          {uniqueStories.map(story => (
-                            <li key={story.id}>
-                              <AdminButton
-                                onClick={() => {
-                                  router.push(`/admin/logs?editStory=${story.id}`)
-                                }}
-                                adminVariant="link"
-                                size="sm"
-                                className="w-full justify-start gap-2 text-sm text-left hover:text-primary transition-colors group"
-                              >
-                                <BookOpen className="w-3.5 h-3.5 text-amber-500 shrink-0 group-hover:text-primary transition-colors" />
-                                <span className="truncate flex-1">{story.title || t('story.untitled')}</span>
-                                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
-                              </AdminButton>
-                            </li>
-                          ))}
-                        </ul>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {t('admin.remove_from_stories_first')}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <AdminButton
-                      onClick={handleCancel}
-                      adminVariant="outlineMuted"
-                      size="lg"
-                      className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      <X className="w-4 h-4" />
-                      <span>{t('common.cancel')}</span>
-                    </AdminButton>
-                  </div>
-                </>
-              ) : (
-                // Normal delete confirmation
-                <>
-                  {/* Header with Icon */}
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 bg-destructive/10 flex items-center justify-center">
-                      <AlertTriangle className="w-6 h-6 text-destructive" />
-                    </div>
-                    <div>
-                      <h3 className="font-serif text-xl font-light uppercase tracking-tight">
-                        {t('common.confirm')}
-                      </h3>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                        {isBulk ? `${count} ${t('admin.photos')}` : '1 ' + t('admin.photos').replace(/s$/, '')}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mb-6 space-y-4">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {isBulk
-                        ? `${t('admin.confirm_delete_multiple')} ${count} ${t('admin.photos')}?`
-                        : `${t('admin.confirm_delete_single')}?`}
-                    </p>
-
-                    <div className="p-4 bg-muted/30 border border-border space-y-3">
-                      {/* Delete Original Option */}
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <div className="relative mt-0.5">
-                          <input
-                            type="checkbox"
-                            checked={deleteOriginal}
-                            onChange={(e) => setDeleteOriginal(e.target.checked)}
-                            className="sr-only peer"
-                            disabled={isDeleting}
-                          />
-                          <div className="w-5 h-5 border-2 border-border peer-checked:border-destructive peer-checked:bg-destructive transition-all flex items-center justify-center">
-                            {deleteOriginal && (
-                              <svg className="w-3 h-3 text-destructive-foreground" viewBox="0 0 12 12" fill="none">
-                                <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <span className="text-sm font-bold uppercase tracking-wider text-foreground group-hover:text-destructive transition-colors flex items-center gap-2">
-                            <ImageIcon className="w-4 h-4" />
-                            {t('admin.delete_original')}
-                          </span>
-                          <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                            {t('admin.delete_original_hint')}
-                          </p>
-                        </div>
-                      </label>
-
-                      {/* Delete Thumbnail Option */}
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <div className="relative mt-0.5">
-                          <input
-                            type="checkbox"
-                            checked={deleteThumbnail}
-                            onChange={(e) => setDeleteThumbnail(e.target.checked)}
-                            className="sr-only peer"
-                            disabled={isDeleting}
-                          />
-                          <div className="w-5 h-5 border-2 border-border peer-checked:border-destructive peer-checked:bg-destructive transition-all flex items-center justify-center">
-                            {deleteThumbnail && (
-                              <svg className="w-3 h-3 text-destructive-foreground" viewBox="0 0 12 12" fill="none">
-                                <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <span className="text-sm font-bold uppercase tracking-wider text-foreground group-hover:text-destructive transition-colors flex items-center gap-2">
-                            <Image className="w-4 h-4" />
-                            {t('admin.delete_thumbnail')}
-                          </span>
-                          <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                            {t('admin.delete_thumbnail_hint')}
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <AdminButton
-                      onClick={handleCancel}
-                      disabled={isDeleting}
-                      adminVariant="outline"
-                      size="lg"
-                      className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest"
-                    >
-                      {t('common.cancel')}
-                    </AdminButton>
-                    <AdminButton
-                      onClick={handleConfirm}
-                      disabled={isDeleting}
-                      adminVariant="destructive"
-                      size="lg"
-                      className="flex-1 px-6 py-3 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      {isDeleting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>{t('common.delete')}...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 className="w-4 h-4" />
-                          <span>{t('common.delete')}</span>
-                        </>
-                      )}
-                    </AdminButton>
-                  </div>
-                </>
-              )}
-            </motion.div>
+  if (hasBlockingStories) {
+    return (
+      <AdminModal
+        open={isOpen}
+        size="sm"
+        tone="warn"
+        icon={<BookOpen className="h-4 w-4" />}
+        title={t('admin.photo_has_stories')}
+        eyebrow={t('admin.cannot_delete')}
+        description={
+          isBulk ? t('admin.photos_have_stories_desc') : t('admin.photo_has_stories_desc')
+        }
+        footer={
+          <AdminButton variant="outline" onClick={handleCancel}>
+            {t('common.cancel')}
+          </AdminButton>
+        }
+        onClose={handleCancel}
+      >
+        <div className="space-y-3">
+          <div className="mgac-notice is-warn is-column">
+            <p className="text-xs font-bold uppercase tracking-wider">
+              {t('admin.associated_stories')} ({uniqueStories.length})
+            </p>
+            <ul className="w-full space-y-1" style={{ maxHeight: 128, overflowY: 'auto' }}>
+              {uniqueStories.map(story => (
+                <li key={story.id}>
+                  <AdminButton
+                    variant="ghost"
+                    size="sm"
+                    fullWidth
+                    onClick={() => {
+                      router.push(`/admin/logs?editStory=${story.id}`)
+                    }}
+                  >
+                    <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {story.title || t('story.untitled')}
+                    </span>
+                    <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
+                  </AdminButton>
+                </li>
+              ))}
+            </ul>
           </div>
-        </>
-      )}
-    </AnimatePresence>
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {t('admin.remove_from_stories_first')}
+          </p>
+        </div>
+      </AdminModal>
+    )
+  }
+
+  return (
+    <AdminConfirmDialog
+      open={isOpen}
+      tone="danger"
+      icon={<AlertTriangle className="h-4 w-4" />}
+      title={t('common.confirm')}
+      eyebrow={isBulk ? `${count} ${t('admin.photos')}` : `1 ${t('admin.photos').replace(/s$/, '')}`}
+      description={
+        isBulk
+          ? `${t('admin.confirm_delete_multiple')} ${count} ${t('admin.photos')}?`
+          : `${t('admin.confirm_delete_single')}?`
+      }
+      options={{
+        items: [
+          { id: 'original', label: t('admin.delete_original'), hint: t('admin.delete_original_hint') },
+          { id: 'thumbnail', label: t('admin.delete_thumbnail'), hint: t('admin.delete_thumbnail_hint') },
+        ],
+        selected,
+        onToggle: handleToggle,
+      }}
+      cancelLabel={t('common.cancel')}
+      confirmLabel={t('common.delete')}
+      confirmVariant="danger"
+      busy={isDeleting}
+      confirmOnEnter
+      onCancel={handleCancel}
+      onConfirm={handleConfirm}
+    />
   )
 }
-
