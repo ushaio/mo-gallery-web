@@ -5,11 +5,11 @@ import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ExternalLink, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import {
-  AdminRuntimeProvider,
-  AdminShell,
-  type AdminHostAdapter,
-  type AdminLinkRenderer,
-  type AdminNavItem,
+  ConsoleRuntimeProvider,
+  ConsoleShell,
+  type ConsoleHostAdapter,
+  type ConsoleLinkRenderer,
+  type ConsoleNavItem,
 } from '@mo-gallery/admin-console'
 
 import '@mo-gallery/admin-console/theme.css'
@@ -337,14 +337,14 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   // --- 共享后台外壳接线（@mo-gallery/admin-console）---
   const languageToggleLabel = 'Toggle language'
 
-  const adminNavItems: AdminNavItem[] = sidebarItems.map(({ id, href, label, icon: Icon }) => ({
+  const adminNavItems: ConsoleNavItem[] = sidebarItems.map(({ id, href, label, icon: Icon }) => ({
     id,
     href,
     label,
     icon: <Icon className="h-4 w-4" />,
   }))
 
-  const renderAdminLink = useCallback<AdminLinkRenderer>(
+  const renderAdminLink = useCallback<ConsoleLinkRenderer>(
     ({ href, className, title, children, 'aria-current': ariaCurrent, onClick }) => (
       <Link
         href={href}
@@ -359,7 +359,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     []
   )
 
-  const adminAdapter = useMemo<AdminHostAdapter>(
+  const adminAdapter = useMemo<ConsoleHostAdapter>(
     () => ({
       user: user ? { username: user.username, displayName: user.username } : null,
       renderLink: renderAdminLink,
@@ -573,8 +573,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             {adminOverlays}
           </div>
         ) : (
-          <AdminRuntimeProvider adapter={adminAdapter}>
-            <AdminShell
+          <ConsoleRuntimeProvider adapter={adminAdapter}>
+            <ConsoleShell
               className="admin-shell-host"
               contentClassName={isLibraryWorkspace ? 'is-panel-flush' : undefined}
               nav={adminNavItems}
@@ -597,8 +597,8 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
               overlay={adminOverlays}
             >
               {children}
-            </AdminShell>
-          </AdminRuntimeProvider>
+            </ConsoleShell>
+          </ConsoleRuntimeProvider>
         )}
       </AdminContext.Provider>
     </UploadQueueProvider>

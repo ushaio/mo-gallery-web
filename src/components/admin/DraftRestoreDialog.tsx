@@ -1,13 +1,13 @@
 'use client'
 
 import { Clock, FileArchive } from 'lucide-react'
-import { AdminButton, AdminModal } from '@mo-gallery/admin-console'
+import { ConsoleButton, ConsoleModal } from '@mo-gallery/admin-console'
 
 /**
  * 本地草稿恢复弹窗。
  *
  * 本阶段起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、右上角 ✕、内容区与动作区
- * 布局）由共享包 `@mo-gallery/admin-console` 的 `AdminModal` 承担；本文件只保留
+ * 布局）由共享包 `@mo-gallery/admin-console` 的 `ConsoleModal` 承担；本文件只保留
  * web 后台自己的**差异部分**（差异登记点③）：
  * - 文案键：`admin.draft_found` / `admin.draft_found_message` / `admin.draft_time`
  *   / `admin.draft_restore` / `admin.draft_discard` / `common.cancel`
@@ -43,7 +43,7 @@ export function DraftRestoreDialog({
   }
 
   return (
-    <AdminModal
+    <ConsoleModal
       open={isOpen}
       tone="info"
       size="sm"
@@ -53,15 +53,15 @@ export function DraftRestoreDialog({
       onClose={onCancel}
       footer={
         <>
-          <AdminButton variant="ghost" onClick={onCancel}>
+          <ConsoleButton variant="ghost" onClick={onCancel}>
             {t('common.cancel')}
-          </AdminButton>
-          <AdminButton variant="danger" onClick={onDiscard}>
+          </ConsoleButton>
+          <ConsoleButton variant="danger" onClick={onDiscard}>
             {t('admin.draft_discard')}
-          </AdminButton>
-          <AdminButton variant="primary" onClick={onRestore}>
+          </ConsoleButton>
+          <ConsoleButton variant="primary" onClick={onRestore}>
             {t('admin.draft_restore')}
-          </AdminButton>
+          </ConsoleButton>
         </>
       }
     >
@@ -71,6 +71,6 @@ export function DraftRestoreDialog({
           {t('admin.draft_time')}: {formatTime(draftTime)}
         </span>
       </div>
-    </AdminModal>
+    </ConsoleModal>
   )
 }

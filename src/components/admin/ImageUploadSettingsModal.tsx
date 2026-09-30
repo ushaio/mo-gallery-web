@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Settings2 } from 'lucide-react'
-import { AdminButton, AdminModal } from '@mo-gallery/admin-console'
+import { ConsoleButton, ConsoleModal } from '@mo-gallery/admin-console'
 import type { AdminSettingsDto } from '@/lib/api/types'
 import type { CompressionMode, CompressionFormat } from '@/lib/image-compress'
 import { normalizeCompressionMode, normalizeCompressionFormat } from '@/lib/image-compress'
@@ -73,7 +73,7 @@ function getInitialUploadSettings(initialSettings?: UploadSettings): PhotoUpload
  * 上传参数设置弹窗。
  *
  * 阶段 3 起，弹窗外壳（portal、遮罩、面板、头部、动作区、Esc/遮罩关闭）由共享包
- * `@mo-gallery/admin-console` 的 `AdminModal` 承担；本文件只保留 web 后台上传流程的
+ * `@mo-gallery/admin-console` 的 `ConsoleModal` 承担；本文件只保留 web 后台上传流程的
  * 表单内容（`PhotoUploadParams`）与设置聚合逻辑（`UploadSettings` 组装、仅在有值时
  * 回填压缩/存储字段、按 `storageSourceId` 决定确认可用）。对外 props 与改造前一字
  * 不差，调用点零改动。
@@ -137,7 +137,7 @@ function ImageUploadSettingsModalContent({
   }
 
   return (
-    <AdminModal
+    <ConsoleModal
       open={isOpen}
       size="lg"
       title={t('admin.upload_settings')}
@@ -147,10 +147,10 @@ function ImageUploadSettingsModalContent({
       onClose={onClose}
       footer={
         <>
-          <AdminButton variant="outline" size="lg" className="min-w-28" onClick={onClose}>
+          <ConsoleButton variant="outline" size="lg" className="min-w-28" onClick={onClose}>
             {t('common.cancel')}
-          </AdminButton>
-          <AdminButton
+          </ConsoleButton>
+          <ConsoleButton
             variant="primary"
             size="lg"
             className="min-w-36"
@@ -158,7 +158,7 @@ function ImageUploadSettingsModalContent({
             onClick={handleConfirm}
           >
             {confirmLabel || t('admin.confirm_upload')}
-          </AdminButton>
+          </ConsoleButton>
         </>
       }
     >
@@ -181,6 +181,6 @@ function ImageUploadSettingsModalContent({
         initialSettings={getInitialUploadSettings(initialSettings)}
         embedded
       />
-    </AdminModal>
+    </ConsoleModal>
   )
 }

@@ -2,13 +2,13 @@
 
 import { useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { AdminConfirmDialog } from '@mo-gallery/admin-console'
+import { ConsoleConfirmDialog } from '@mo-gallery/admin-console'
 
 /**
  * 单条删除确认弹窗。
  *
  * 阶段 1 起，弹窗本体（结构、观感、Esc/Enter/遮罩交互、忙碌态）由共享包
- * `@mo-gallery/admin-console` 的 `AdminConfirmDialog` 承担；本文件只保留 web 后台
+ * `@mo-gallery/admin-console` 的 `ConsoleConfirmDialog` 承担；本文件只保留 web 后台
  * 自己的**差异部分**（差异登记点③）：
  * - 文案键：`common.confirm` / `admin.confirm_delete_single` / `common.cancel` / `common.delete`
  * - 图标：Trash2
@@ -49,7 +49,7 @@ export function SimpleDeleteDialog({
   }
 
   return (
-    <AdminConfirmDialog
+    <ConsoleConfirmDialog
       open={isOpen}
       tone="danger"
       icon={<Trash2 className="h-4 w-4" />}

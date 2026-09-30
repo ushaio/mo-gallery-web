@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, SlidersHorizontal } from 'lucide-react'
-import { AdminButton as SharedAdminButton, AdminModal } from '@mo-gallery/admin-console'
+import { ConsoleButton, ConsoleModal } from '@mo-gallery/admin-console'
 import { getFilmRolls } from '@/lib/api/film-rolls'
 import type { FilmRollDto } from '@/lib/api/types'
 import { AdminButton } from '@/components/admin/AdminButton'
@@ -34,7 +34,7 @@ interface BatchPhotoActionDialogProps {
  * 批量整理弹窗。
  *
  * 阶段 3 起，弹窗外壳（portal、遮罩、面板、头部、动作区、Esc/遮罩关闭、提交中屏蔽
- * 关闭）由共享包 `@mo-gallery/admin-console` 的 `AdminModal` 承担；本文件只保留 web
+ * 关闭）由共享包 `@mo-gallery/admin-console` 的 `ConsoleModal` 承担；本文件只保留 web
  * 后台的批量表单内容（动作选择、类型/拍摄时间/可见性表单、影片胶卷下拉）与异步
  * 提交语义（`onConfirm` 的 await、`notify` 报错、`isSubmitting` 忙碌/禁用态）。
  * 动作选择列表与表单件仍用 web 本地的 `AdminButton`/`AdminFormControls`（
@@ -142,7 +142,7 @@ function BatchPhotoActionDialogContent({
   }
 
   return (
-    <AdminModal
+    <ConsoleModal
       open={isOpen}
       size="md"
       tone="info"
@@ -153,17 +153,17 @@ function BatchPhotoActionDialogContent({
       busy={isSubmitting}
       footer={
         <>
-          <SharedAdminButton variant="outline" onClick={handleCancel} disabled={isSubmitting}>
+          <ConsoleButton variant="outline" onClick={handleCancel} disabled={isSubmitting}>
             {t('common.cancel')}
-          </SharedAdminButton>
-          <SharedAdminButton
+          </ConsoleButton>
+          <ConsoleButton
             variant="primary"
             busy={isSubmitting}
             disabled={!canConfirm}
             onClick={handleConfirm}
           >
             {t('common.confirm')}
-          </SharedAdminButton>
+          </ConsoleButton>
         </>
       }
     >
@@ -268,6 +268,6 @@ function BatchPhotoActionDialogContent({
           )}
         </div>
       </div>
-    </AdminModal>
+    </ConsoleModal>
   )
 }

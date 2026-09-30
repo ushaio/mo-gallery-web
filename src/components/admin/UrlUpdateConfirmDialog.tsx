@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import { AlertCircle } from 'lucide-react'
-import { AdminConfirmDialog } from '@mo-gallery/admin-console'
+import { ConsoleConfirmDialog } from '@mo-gallery/admin-console'
 
 /**
  * 存储切换后的 URL 变更确认弹窗。
  *
  * 本阶段起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、勾选框样式、动作区）
- * 由共享包 `@mo-gallery/admin-console` 的 `AdminConfirmDialog` 承担；本文件只保留
+ * 由共享包 `@mo-gallery/admin-console` 的 `ConsoleConfirmDialog` 承担；本文件只保留
  * web 后台自己的**差异部分**（差异登记点③）：
  * - 文案键：`admin.url_change_detected` / `admin.storage_configuration` /
  *   `admin.url_change_message` / `admin.old_url` / `admin.new_url` / `admin.not_set` /
@@ -48,7 +48,7 @@ function UrlUpdateConfirmDialogContent({
   const [updateUrls, setUpdateUrls] = useState(true)
 
   return (
-    <AdminConfirmDialog
+    <ConsoleConfirmDialog
       open
       tone="info"
       icon={<AlertCircle className="h-4 w-4" />}
@@ -84,6 +84,6 @@ function UrlUpdateConfirmDialogContent({
           </p>
         </div>
       </div>
-    </AdminConfirmDialog>
+    </ConsoleConfirmDialog>
   )
 }

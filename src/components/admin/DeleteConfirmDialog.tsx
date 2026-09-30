@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, BookOpen, ExternalLink } from 'lucide-react'
-import { AdminButton, AdminConfirmDialog, AdminModal } from '@mo-gallery/admin-console'
+import { ConsoleButton, ConsoleConfirmDialog, ConsoleModal } from '@mo-gallery/admin-console'
 import type { PhotoWithStories } from '@/lib/api/types'
 
 /**
@@ -12,9 +12,9 @@ import type { PhotoWithStories } from '@/lib/api/types'
  * 阶段 2 起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、忙碌态屏蔽、勾选框样式、
  * Enter 确认）由共享包 `@mo-gallery/admin-console` 承担；本文件只保留 web 后台的
  * **差异部分**（差异登记点③：文案键、图标、勾选字段、阻断态的关联故事清单）：
- * - 加载态：`AdminModal`（居中 spinner，文案 `common.loading`）
- * - 阻断态（照片已挂叙事）：`AdminModal` tone="warn" + `.mgac-notice.is-warn` 列表
- * - 普通删除态：`AdminConfirmDialog` + `options`（original / thumbnail 两个受控勾选）
+ * - 加载态：`ConsoleModal`（居中 spinner，文案 `common.loading`）
+ * - 阻断态（照片已挂叙事）：`ConsoleModal` tone="warn" + `.mgac-notice.is-warn` 列表
+ * - 普通删除态：`ConsoleConfirmDialog` + `options`（original / thumbnail 两个受控勾选）
  *
  * 对外 props 与改造前一字不差，调用点零改动。
  */
@@ -89,18 +89,18 @@ export function DeleteConfirmDialog({
 
   if (isLoading) {
     return (
-      <AdminModal open={isOpen} size="sm" onClose={handleCancel}>
+      <ConsoleModal open={isOpen} size="sm" onClose={handleCancel}>
         <div className="flex flex-col items-center justify-center gap-3 py-8 text-muted-foreground">
           <span className="mgac-spinner" aria-hidden="true" />
           <p className="text-sm">{t('common.loading')}</p>
         </div>
-      </AdminModal>
+      </ConsoleModal>
     )
   }
 
   if (hasBlockingStories) {
     return (
-      <AdminModal
+      <ConsoleModal
         open={isOpen}
         size="sm"
         tone="warn"
@@ -111,9 +111,9 @@ export function DeleteConfirmDialog({
           isBulk ? t('admin.photos_have_stories_desc') : t('admin.photo_has_stories_desc')
         }
         footer={
-          <AdminButton variant="outline" onClick={handleCancel}>
+          <ConsoleButton variant="outline" onClick={handleCancel}>
             {t('common.cancel')}
-          </AdminButton>
+          </ConsoleButton>
         }
         onClose={handleCancel}
       >
@@ -125,7 +125,7 @@ export function DeleteConfirmDialog({
             <ul className="w-full space-y-1" style={{ maxHeight: 128, overflowY: 'auto' }}>
               {uniqueStories.map(story => (
                 <li key={story.id}>
-                  <AdminButton
+                  <ConsoleButton
                     variant="ghost"
                     size="sm"
                     fullWidth
@@ -138,7 +138,7 @@ export function DeleteConfirmDialog({
                       {story.title || t('story.untitled')}
                     </span>
                     <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
-                  </AdminButton>
+                  </ConsoleButton>
                 </li>
               ))}
             </ul>
@@ -148,12 +148,12 @@ export function DeleteConfirmDialog({
             {t('admin.remove_from_stories_first')}
           </p>
         </div>
-      </AdminModal>
+      </ConsoleModal>
     )
   }
 
   return (
-    <AdminConfirmDialog
+    <ConsoleConfirmDialog
       open={isOpen}
       tone="danger"
       icon={<AlertTriangle className="h-4 w-4" />}

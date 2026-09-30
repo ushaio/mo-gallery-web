@@ -1,13 +1,13 @@
 'use client'
 
 import { AlertTriangle, ExternalLink } from 'lucide-react'
-import { AdminButton, AdminModal } from '@mo-gallery/admin-console'
+import { ConsoleButton, ConsoleModal } from '@mo-gallery/admin-console'
 
 /**
  * 上传前的重复照片处置弹窗。
  *
  * 本阶段起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、右上角 ✕、滚动内容区与
- * 动作区布局）由共享包 `@mo-gallery/admin-console` 的 `AdminModal` 承担；本文件只
+ * 动作区布局）由共享包 `@mo-gallery/admin-console` 的 `ConsoleModal` 承担；本文件只
  * 保留 web 后台自己的**差异部分**（差异登记点③）：
  * - 文案键：`admin.duplicate_photos_found` / `admin.duplicate_photos_desc`（含
  *   `{count}` 占位）/ `admin.matches_existing` / `admin.view_original` /
@@ -52,7 +52,7 @@ export function DuplicatePhotosDialog({
   const desc = t('admin.duplicate_photos_desc').replace('{count}', String(duplicates.length))
 
   return (
-    <AdminModal
+    <ConsoleModal
       open
       tone="warn"
       icon={<AlertTriangle className="h-4 w-4" />}
@@ -61,15 +61,15 @@ export function DuplicatePhotosDialog({
       onClose={onClose}
       footer={
         <>
-          <AdminButton variant="outline" onClick={onClose}>
+          <ConsoleButton variant="outline" onClick={onClose}>
             {t('common.cancel')}
-          </AdminButton>
-          <AdminButton variant="outline" onClick={onSkipDuplicates}>
+          </ConsoleButton>
+          <ConsoleButton variant="outline" onClick={onSkipDuplicates}>
             {t('admin.skip_duplicates')}
-          </AdminButton>
-          <AdminButton variant="primary" onClick={onUploadAnyway}>
+          </ConsoleButton>
+          <ConsoleButton variant="primary" onClick={onUploadAnyway}>
             {t('admin.upload_anyway')}
-          </AdminButton>
+          </ConsoleButton>
         </>
       }
     >
@@ -121,6 +121,6 @@ export function DuplicatePhotosDialog({
           </div>
         ))}
       </div>
-    </AdminModal>
+    </ConsoleModal>
   )
 }
