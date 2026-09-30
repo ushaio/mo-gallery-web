@@ -28,6 +28,7 @@
 9. 后台 `/admin` 外壳接入共享包 `@mo-gallery/admin-console`：侧栏（导航项、站点标题、主题/语言切换、退出登录）与顶栏（当前页面标题、返回站点、移动端抽屉）改由共享 `AdminShell` 渲染，菜单项与图库 / 上传 / 日志 / AI 助手 / 存储整理 / 设置 / 友链各面板的数据与交互不变（仅前端外壳层，对 Desktop / App 无影响）
 10. 后台的单条删除确认弹窗改由共享包 `@mo-gallery/admin-console` 的 `AdminConfirmDialog` 渲染（`SimpleDeleteDialog` 变薄包装，对外 props 不变，22 处调用点零改动）：删除确认的观感与交互（Esc/Enter、遮罩、提交中禁用与 spinner、portal 挂载）两端统一，文案与删除动作仍由本仓库提供（对 Desktop / App 无影响）
 11. 后台的多选/批量删除确认弹窗（`DeleteConfirmDialog`）与「照片已挂叙事」阻断态改用共享包 `@mo-gallery/admin-console` 的 `AdminConfirmDialog` / `AdminModal` 渲染：加载态、阻断态（关联故事清单仍可点进编辑器）、普通删除态（删除原图/缩略图两个选项继续生效）三态语义与对外 props 不变，自绘勾选动画与 framer-motion 依赖移除，观感与两端统一（对 Desktop / App 无影响）
+12. 后台其余 5 个弹窗外壳统一到共享包 `@mo-gallery/admin-console`：URL 更新确认（`AdminConfirmDialog`，「更新照片地址 / 仅保存配置」合并为受控勾选 + 动态按钮文案）、重复照片提示、草稿恢复、上传设置、批量整理（后四者用 `AdminModal`，表单与业务逻辑原样保留）；这 5 个文件里的自绘遮罩/面板/头部、`createPortal` 与 framer-motion 全部移除，提交中三处关闭入口（✕/Esc/遮罩）统一被 `busy` 屏蔽（对 Desktop / App 无影响）
 
 ### fix
 1. 暂无

@@ -1,9 +1,25 @@
 'use client'
 
-import { motion, AnimatePresence } from 'framer-motion'
-import { FileArchive, Clock, X } from 'lucide-react'
-import { AdminButton } from '@/components/admin/AdminButton'
+import { Clock, FileArchive } from 'lucide-react'
+import { AdminButton, AdminModal } from '@mo-gallery/admin-console'
 
+/**
+ * 本地草稿恢复弹窗。
+ *
+ * 本阶段起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、右上角 ✕、内容区与动作区
+ * 布局）由共享包 `@mo-gallery/admin-console` 的 `AdminModal` 承担；本文件只保留
+ * web 后台自己的**差异部分**（差异登记点③）：
+ * - 文案键：`admin.draft_found` / `admin.draft_found_message` / `admin.draft_time`
+ *   / `admin.draft_restore` / `admin.draft_discard` / `common.cancel`
+ * - 图标：FileArchive（`tone="info"`）
+ * - 内容插槽：草稿保存时间
+ * - 三个动作：取消（原 ✕ 与遮罩点击）、丢弃草稿（使用数据库版本）、恢复草稿
+ *
+ * 关闭语义与改造前一致：`onClose`（✕ / 遮罩 / Esc）与 `onCancel` 都走宿主的
+ * `onCancel` —— 即「关闭弹窗、不恢复也不丢弃」。
+ *
+ * 对外 props 与改造前一致，调用点零改动。
+ */
 interface DraftRestoreDialogProps {
   isOpen: boolean
   draftTime: number
@@ -27,73 +43,34 @@ export function DraftRestoreDialog({
   }
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
-          onClick={onCancel}
-        >
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-background border border-border shadow-2xl rounded-lg overflow-hidden"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-border">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <FileArchive className="w-5 h-5 text-primary" />
-                </div>
-                <h3 className="font-serif text-xl">
-                  {t('admin.draft_found')}
-                </h3>
-              </div>
-              <AdminButton
-                onClick={onCancel}
-                adminVariant="icon"
-                className="p-2 hover:bg-muted"
-              >
-                <X className="w-4 h-4" />
-              </AdminButton>
-            </div>
-
-            {/* Content */}
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-muted-foreground">
-                {t('admin.draft_found_message')}
-              </p>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
-                <Clock className="w-4 h-4" />
-                <span>{t('admin.draft_time')}: {formatTime(draftTime)}</span>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-border bg-muted/20">
-              <AdminButton
-                onClick={onDiscard}
-                adminVariant="link"
-                className="px-4 py-2 text-muted-foreground hover:text-foreground"
-              >
-                {t('admin.draft_discard')}
-              </AdminButton>
-              <AdminButton
-                onClick={onRestore}
-                adminVariant="primary"
-                size="md"
-                className="rounded-md"
-              >
-                {t('admin.draft_restore')}
-              </AdminButton>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <AdminModal
+      open={isOpen}
+      tone="info"
+      size="sm"
+      icon={<FileArchive className="h-4 w-4" />}
+      title={t('admin.draft_found')}
+      description={t('admin.draft_found_message')}
+      onClose={onCancel}
+      footer={
+        <>
+          <AdminButton variant="ghost" onClick={onCancel}>
+            {t('common.cancel')}
+          </AdminButton>
+          <AdminButton variant="danger" onClick={onDiscard}>
+            {t('admin.draft_discard')}
+          </AdminButton>
+          <AdminButton variant="primary" onClick={onRestore}>
+            {t('admin.draft_restore')}
+          </AdminButton>
+        </>
+      }
+    >
+      <div className="mgac-notice is-info">
+        <Clock className="h-4 w-4" />
+        <span>
+          {t('admin.draft_time')}: {formatTime(draftTime)}
+        </span>
+      </div>
+    </AdminModal>
   )
 }

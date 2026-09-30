@@ -1,13 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import { Settings2, X } from 'lucide-react'
+import { useState } from 'react'
+import { Settings2 } from 'lucide-react'
+import { AdminButton, AdminModal } from '@mo-gallery/admin-console'
 import type { AdminSettingsDto } from '@/lib/api/types'
 import type { CompressionMode, CompressionFormat } from '@/lib/image-compress'
 import { normalizeCompressionMode, normalizeCompressionFormat } from '@/lib/image-compress'
-import { AdminButton } from '@/components/admin/AdminButton'
 import { PhotoUploadParams, type PhotoUploadSettings } from '@/components/admin/PhotoUploadParams'
 
 export interface UploadSettings {
@@ -71,66 +69,29 @@ function getInitialUploadSettings(initialSettings?: UploadSettings): PhotoUpload
   }
 }
 
-export function ImageUploadSettingsModal({
-  ...props
-}: ImageUploadSettingsModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
-  const onCloseRef = useRef(props.onClose)
-
-  useEffect(() => {
-    onCloseRef.current = props.onClose
-  }, [props.onClose])
-
-  useEffect(() => {
-    if (!props.isOpen) return
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onCloseRef.current()
-        return
-      }
-      if (event.key !== 'Tab') return
-      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])
-      if (!focusable.length) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      previousFocusRef.current?.focus()
-      previousFocusRef.current = null
-    }
-  }, [props.isOpen])
-
-  if (typeof document === 'undefined') return null
-  return createPortal(
-    <AnimatePresence>
-      {props.isOpen && (
-        <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm" onClick={props.onClose} />
-          <div className="pointer-events-none fixed inset-0 z-[121] flex items-center justify-center p-4">
-            <motion.div ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1} initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 8 }} className="pointer-events-auto flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border border-border bg-background shadow-2xl outline-none">
-              <ImageUploadSettingsModalContent key={JSON.stringify(props.initialSettings ?? {})} {...props} />
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body,
+/**
+ * 上传参数设置弹窗。
+ *
+ * 阶段 3 起，弹窗外壳（portal、遮罩、面板、头部、动作区、Esc/遮罩关闭）由共享包
+ * `@mo-gallery/admin-console` 的 `AdminModal` 承担；本文件只保留 web 后台上传流程的
+ * 表单内容（`PhotoUploadParams`）与设置聚合逻辑（`UploadSettings` 组装、仅在有值时
+ * 回填压缩/存储字段、按 `storageSourceId` 决定确认可用）。对外 props 与改造前一字
+ * 不差，调用点零改动。
+ */
+export function ImageUploadSettingsModal({ isOpen, ...props }: ImageUploadSettingsModalProps) {
+  // 关闭即卸载：保持改造前「每次打开都用最新的 initialSettings 重建表单」的语义
+  if (!isOpen) return null
+  return (
+    <ImageUploadSettingsModalContent
+      key={JSON.stringify(props.initialSettings ?? {})}
+      isOpen={isOpen}
+      {...props}
+    />
   )
 }
 
 function ImageUploadSettingsModalContent({
+  isOpen,
   onClose,
   onConfirm,
   pendingCount,
@@ -176,58 +137,50 @@ function ImageUploadSettingsModalContent({
   }
 
   return (
-    <>
-      <div className="flex items-start gap-3 border-b border-border p-5">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary"><Settings2 className="h-4 w-4" /></span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">{t('admin.upload_settings')}</h2>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t('admin.upload_settings_hint')}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-medium tabular-nums text-muted-foreground">{pendingCount} {t('admin.files')}</span>
-          <button type="button" onClick={onClose} aria-label={t('common.close')} className="rounded-md p-1.5 hover:bg-secondary"><X className="h-4 w-4" /></button>
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            <PhotoUploadParams
-              mode="digital"
-              token={token}
-              tags={tags}
-              t={t}
-              fileCount={pendingCount}
-              totalOriginalSize={0}
-              estimatedTotalSize={0}
-              savingsPercent={0}
-              compressionSuggestion={null}
-              onSettingsChange={setUploadSettings}
-              onUploadClick={handleConfirm}
-              uploading={false}
-              uploadError=""
-              hideStorySelector={!!currentStoryId}
-              initialStoryId={currentStoryId}
-              initialSettings={getInitialUploadSettings(initialSettings)}
-              embedded
-            />
-      </div>
-      <div className="flex justify-end gap-2 border-t border-border bg-background px-5 py-4">
-          <AdminButton
-            onClick={onClose}
-            adminVariant="outline"
-            size="lg"
-            className="min-w-28 rounded-md"
-          >
+    <AdminModal
+      open={isOpen}
+      size="lg"
+      title={t('admin.upload_settings')}
+      eyebrow={`${pendingCount} ${t('admin.files')}`}
+      description={t('admin.upload_settings_hint')}
+      icon={<Settings2 className="h-4 w-4" />}
+      onClose={onClose}
+      footer={
+        <>
+          <AdminButton variant="outline" size="lg" className="min-w-28" onClick={onClose}>
             {t('common.cancel')}
           </AdminButton>
           <AdminButton
-            onClick={handleConfirm}
-            adminVariant="primary"
+            variant="primary"
             size="lg"
-            className="min-w-36 rounded-md"
+            className="min-w-36"
             disabled={!uploadSettings.storageSourceId}
+            onClick={handleConfirm}
           >
             {confirmLabel || t('admin.confirm_upload')}
           </AdminButton>
-      </div>
-    </>
+        </>
+      }
+    >
+      <PhotoUploadParams
+        mode="digital"
+        token={token}
+        tags={tags}
+        t={t}
+        fileCount={pendingCount}
+        totalOriginalSize={0}
+        estimatedTotalSize={0}
+        savingsPercent={0}
+        compressionSuggestion={null}
+        onSettingsChange={setUploadSettings}
+        onUploadClick={handleConfirm}
+        uploading={false}
+        uploadError=""
+        hideStorySelector={!!currentStoryId}
+        initialStoryId={currentStoryId}
+        initialSettings={getInitialUploadSettings(initialSettings)}
+        embedded
+      />
+    </AdminModal>
   )
 }

@@ -1,9 +1,26 @@
 'use client'
 
-import { motion, AnimatePresence } from 'framer-motion'
-import { RefreshCw, AlertCircle } from 'lucide-react'
-import { AdminButton } from '@/components/admin/AdminButton'
+import { useState } from 'react'
+import { AlertCircle } from 'lucide-react'
+import { AdminConfirmDialog } from '@mo-gallery/admin-console'
 
+/**
+ * 存储切换后的 URL 变更确认弹窗。
+ *
+ * 本阶段起，弹窗本体（结构、观感、portal、Esc/遮罩关闭、勾选框样式、动作区）
+ * 由共享包 `@mo-gallery/admin-console` 的 `AdminConfirmDialog` 承担；本文件只保留
+ * web 后台自己的**差异部分**（差异登记点③）：
+ * - 文案键：`admin.url_change_detected` / `admin.storage_configuration` /
+ *   `admin.url_change_message` / `admin.old_url` / `admin.new_url` / `admin.not_set` /
+ *   `admin.note` / `admin.url_update_note` / `admin.update_photo_urls` /
+ *   `admin.save_without_updating` / `common.cancel`
+ * - 图标：AlertCircle
+ * - 勾选字段：改造前是「更新照片地址 / 仅保存配置」两个动作按钮，共享确认件只有
+ *   「取消 + 确认」两个出口，因此把「是否同步更新照片 URL」显式化为受控勾选
+ *   （`options`），`onConfirm(updateUrls)` 的布尔由 `selected` 推导。
+ *
+ * 对外 props 与改造前一致，调用点零改动。
+ */
 interface UrlUpdateConfirmDialogProps {
   isOpen: boolean
   oldUrl: string
@@ -13,116 +30,60 @@ interface UrlUpdateConfirmDialogProps {
   t: (key: string) => string
 }
 
-export function UrlUpdateConfirmDialog({
-  isOpen,
+export function UrlUpdateConfirmDialog(props: UrlUpdateConfirmDialogProps) {
+  // 关闭时直接卸载，让「是否同步更新 URL」每次打开都回到默认勾选（改造前每次打开
+  // 都是未决状态，不存在跨次残留的选择）。
+  if (!props.isOpen) return null
+  return <UrlUpdateConfirmDialogContent {...props} />
+}
+
+function UrlUpdateConfirmDialogContent({
   oldUrl,
   newUrl,
   onConfirm,
   onCancel,
   t,
 }: UrlUpdateConfirmDialogProps) {
+  // 默认勾选：改造前主按钮就是「更新照片地址」。
+  const [updateUrls, setUpdateUrls] = useState(true)
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm"
-            onClick={onCancel}
-          />
-
-          {/* Dialog */}
-          <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="bg-background border border-border p-8 max-w-lg w-full shadow-2xl pointer-events-auto"
-            >
-              {/* Header with Icon */}
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 bg-primary/10 flex items-center justify-center">
-                  <AlertCircle className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-serif text-xl font-light uppercase tracking-tight">
-                    {t('admin.url_change_detected')}
-                  </h3>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                    {t('admin.storage_configuration')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mb-6 space-y-4">
-                <p className="text-sm text-foreground leading-relaxed">
-                  {t('admin.url_change_message')}
-                </p>
-
-                <div className="p-4 bg-muted/30 border border-border space-y-3">
-                  <div>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
-                      {t('admin.old_url')}
-                    </p>
-                    <p className="text-xs font-mono text-foreground break-all">
-                      {oldUrl || t('admin.not_set')}
-                    </p>
-                  </div>
-                  <div className="h-px bg-border" />
-                  <div>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
-                      {t('admin.new_url')}
-                    </p>
-                    <p className="text-xs font-mono text-primary break-all">
-                      {newUrl || t('admin.not_set')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-amber-500/10 border border-amber-500/30">
-                  <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
-                    <span className="font-bold">{t('admin.note')}:</span> {t('admin.url_update_note')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <AdminButton
-                  onClick={() => onConfirm(true)}
-                  adminVariant="primary"
-                  size="xl"
-                  className="w-full flex items-center justify-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>{t('admin.update_photo_urls')}</span>
-                </AdminButton>
-                <AdminButton
-                  onClick={() => onConfirm(false)}
-                  adminVariant="outline"
-                  size="xl"
-                  className="w-full"
-                >
-                  {t('admin.save_without_updating')}
-                </AdminButton>
-                <AdminButton
-                  onClick={onCancel}
-                  adminVariant="link"
-                  size="xl"
-                  className="w-full"
-                >
-                  {t('common.cancel')}
-                </AdminButton>
-              </div>
-            </motion.div>
+    <AdminConfirmDialog
+      open
+      tone="info"
+      icon={<AlertCircle className="h-4 w-4" />}
+      title={t('admin.url_change_detected')}
+      eyebrow={t('admin.storage_configuration')}
+      description={t('admin.url_change_message')}
+      options={{
+        items: [{ id: 'update_urls', label: t('admin.update_photo_urls') }],
+        selected: updateUrls ? ['update_urls'] : [],
+        onToggle: (_id, checked) => setUpdateUrls(checked),
+      }}
+      cancelLabel={t('common.cancel')}
+      confirmLabel={updateUrls ? t('admin.update_photo_urls') : t('admin.save_without_updating')}
+      confirmVariant="primary"
+      onCancel={onCancel}
+      onConfirm={() => onConfirm(updateUrls)}
+    >
+      <div className="space-y-2">
+        <div className="mgac-kv">
+          <div>
+            <span>{t('admin.old_url')}</span>
+            <strong className="font-mono break-all">{oldUrl || t('admin.not_set')}</strong>
           </div>
-        </>
-      )}
-    </AnimatePresence>
+          <div>
+            <span>{t('admin.new_url')}</span>
+            <strong className="font-mono break-all text-primary">{newUrl || t('admin.not_set')}</strong>
+          </div>
+        </div>
+
+        <div className="mgac-notice is-warn">
+          <p>
+            <strong>{t('admin.note')}:</strong> {t('admin.url_update_note')}
+          </p>
+        </div>
+      </div>
+    </AdminConfirmDialog>
   )
 }
-
