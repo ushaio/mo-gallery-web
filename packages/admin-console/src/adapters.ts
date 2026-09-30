@@ -101,6 +101,11 @@ export interface AdminHostAdapter {
   navigate?: (href: string) => void
   /** 链接渲染器；缺失时回落原生 `<a>` */
   renderLink?: AdminLinkRenderer
+  /**
+   * 鉴权取流实现（`AdminAuthImage` 用）：把受保护资源路径换成 `blob:` 对象 URL，
+   * 失败返回 `null`。宿主已有 session 模块时在这里接上（也可按组件传 `fetcher`）。
+   */
+  fetchAssetBlobUrl?: (assetPath: string) => Promise<string | null>
   /** 文案覆盖 */
   labels?: Partial<AdminLabels>
 }

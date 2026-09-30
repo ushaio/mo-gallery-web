@@ -64,6 +64,16 @@
 | `AdminConfirmDialog`（复用既有 `options`） | web：URL 更新确认弹窗用受控勾选 + 动态 `confirmLabel` 表达「更新地址 / 仅保存配置」两个出口 | 两个动作合并为「勾选状态 → confirmLabel」，`onConfirm(boolean)` 语义留在宿主 |
 | 浮层脱离宿主作用域的处置范式 | official 云图详情：`portal` 到 `body` 后 `--ac-*` 令牌失效，宿主在容器选择器里就地补齐令牌 + 用 0,3,0 特异性压过共享宽度档 | 这是"共享外壳 + 宿主自有设计令牌"共存时的标准做法，其它宿主照此办理 |
 
+### 已下沉件（阶段 4）
+
+| 组件 | 接入方式 | 差异如何表达 |
+|---|---|---|
+| `AdminAuthImage` / `useAdminAssetUrl` / `isDirectAssetUrl` | **第一个带数据依赖的共享原子**：official console 的 `ConsoleImage`（19 个调用方）改为薄包装，其 222 行自建缓存删除；取流实现经 `fetcher` prop 或 `adapter.fetchAssetBlobUrl` 注入 | 宿主只提供「路径 → `blob:` 对象 URL」这一件事；缓存/引用计数/直链透传/`useSyncExternalStore` 的 SSR 快照/`forwardRef` 全在共享层。`scope` 用于会话切换后让旧 blob 失效 |
+| `AdminConfirmDialog`（复用） | official console 的 `ConsoleDeleteDialog`（6 个调用方，原是 web 旧 `SimpleDeleteDialog` 的逐行拷贝）改为薄包装，framer-motion + `createPortal` 自绘外壳删除 | 与 web 的 `SimpleDeleteDialog` 现在是同一份实现、同一套观感；文案键与调用点零改动 |
+
+**什么叫「带数据依赖的原子」**：组件需要宿主提供*能力*（取流、上传、查询），而不只是数据。此时把能力收敛成**一个最小函数签名**注入，不要注入整个 API 客户端——这样共享层仍不知道任何端点形状，宿主的差异也就只需要接线一次。
+
+
 ## 接入（宿主侧机械步骤）
 
 ```bash
