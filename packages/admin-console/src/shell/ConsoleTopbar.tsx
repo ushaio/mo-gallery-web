@@ -2,9 +2,9 @@
 
 import type { ReactNode } from 'react'
 
-import { useAdminRuntime } from '../runtime/AdminRuntimeProvider'
+import { useConsoleRuntime } from '../runtime/ConsoleRuntimeProvider'
 
-export interface AdminTopbarProps {
+export interface ConsoleTopbarProps {
   /** 左侧品牌区；不传则用内置品牌（含 ADMIN 标签） */
   brand?: ReactNode
   /** 品牌区目标地址；传 `null` 表示品牌不可点（例如它就是当前页面标题） */
@@ -20,7 +20,7 @@ export interface AdminTopbarProps {
   mobileOpen?: boolean
 }
 
-export function AdminTopbar({
+export function ConsoleTopbar({
   brand,
   brandHref = '/',
   actions,
@@ -29,8 +29,8 @@ export function AdminTopbar({
   onOpenMobile,
   onCloseMobile,
   mobileOpen = false,
-}: AdminTopbarProps) {
-  const { adapter, labels } = useAdminRuntime()
+}: ConsoleTopbarProps) {
+  const { adapter, labels } = useConsoleRuntime()
   const user = adapter.user
   const brandNode = brand ?? (
     <span className="mgac-brand">

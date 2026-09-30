@@ -2,12 +2,12 @@
 
 import type { ReactNode } from 'react'
 
-import type { AdminNavItem } from '../adapters'
-import { useAdminRuntime } from '../runtime/AdminRuntimeProvider'
+import type { ConsoleNavItem } from '../adapters'
+import { useConsoleRuntime } from '../runtime/ConsoleRuntimeProvider'
 
 /** 能力判定：宿主未实现（键不存在/null/false/空对象）即视为缺席。 */
 export function isCapabilityAvailable(
-  item: AdminNavItem,
+  item: ConsoleNavItem,
   capabilities?: Record<string, unknown>,
 ): boolean {
   if (!item.capability) return true
@@ -19,8 +19,8 @@ export function isCapabilityAvailable(
   return true
 }
 
-export interface AdminRailProps {
-  items: AdminNavItem[]
+export interface ConsoleRailProps {
+  items: ConsoleNavItem[]
   activeId?: string
   onSelectNav?: (id: string) => void
   onNavigate?: () => void
@@ -29,7 +29,7 @@ export interface AdminRailProps {
   ariaLabel?: string
 }
 
-export function AdminRail({
+export function ConsoleRail({
   items,
   activeId,
   onSelectNav,
@@ -37,8 +37,8 @@ export function AdminRail({
   header,
   footer,
   ariaLabel = '后台导航',
-}: AdminRailProps) {
-  const { adapter, labels } = useAdminRuntime()
+}: ConsoleRailProps) {
+  const { adapter, labels } = useConsoleRuntime()
 
   return (
     <aside className="mgac-rail">

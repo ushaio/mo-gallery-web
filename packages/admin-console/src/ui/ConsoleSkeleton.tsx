@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react'
 
-export interface AdminSkeletonProps {
+export interface ConsoleSkeletonProps {
   /** 形状：文本行 / 卡片 / 表格行 / 照片方块 */
   variant?: 'line' | 'card' | 'row' | 'tile'
   /** 重复条数（line/row）或网格列数（tile） */
@@ -14,14 +14,14 @@ export interface AdminSkeletonProps {
 }
 
 /** 加载骨架（纯展示，无宿主依赖）。 */
-export function AdminSkeleton({
+export function ConsoleSkeleton({
   variant = 'line',
   count = 1,
   width,
   height,
   className,
   style,
-}: AdminSkeletonProps) {
+}: ConsoleSkeletonProps) {
   const items = Array.from({ length: Math.max(1, count) }, (_, index) => index)
   const mergedStyle: CSSProperties = { ...style }
   if (width !== undefined) mergedStyle.width = typeof width === 'number' ? `${width}px` : width

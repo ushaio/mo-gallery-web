@@ -3,17 +3,17 @@
 import * as React from 'react'
 import { useCallback, useSyncExternalStore } from 'react'
 
-import { useAdminRuntime } from '../runtime/AdminRuntimeProvider'
+import { useConsoleRuntime } from '../runtime/ConsoleRuntimeProvider'
 
 /**
- * 鉴权取流图片（`AdminAuthImage` / `useAdminAssetUrl`）。
+ * 鉴权取流图片（`ConsoleAuthImage` / `useConsoleAssetUrl`）。
  *
  * 场景：资源地址是受保护端点（例如官网 `/api/cloud/images/<id>/content`，
  * `requiresAuth: true`），`<img>` 带不了 Bearer 头，必须先取流转 `blob:` URL。
  *
  * 取流实现由宿主注入（差异登记点②）：
  * - 首选 `fetcher` prop（组件/hook 级注入，适合宿主已有 session 模块的场景）；
- * - 否则回落 `AdminRuntimeProvider` 的 `adapter.fetchAssetBlobUrl`；
+ * - 否则回落 `ConsoleRuntimeProvider` 的 `adapter.fetchAssetBlobUrl`；
  * - 两者都没有时，非直链资源一律渲染 `fallback`（不抛错，便于渐进接入）。
  *
  * 缓存：模块级 `Map` + 引用计数，同一资源在多处渲染只取一次流；卸载即 revoke。
@@ -22,7 +22,7 @@ import { useAdminRuntime } from '../runtime/AdminRuntimeProvider'
  */
 
 /** 取流实现：返回对象 URL（`blob:`），失败返回 `null`。 */
-export type AdminAssetFetcher = (assetPath: string) => Promise<string | null>
+export type ConsoleAssetFetcher = (assetPath: string) => Promise<string | null>
 
 /** `http(s)://` / `data:` / `blob:` 视为「不需要鉴权」的直链，原样渲染。 */
 export function isDirectAssetUrl(assetPath: string | null | undefined): boolean {
@@ -55,7 +55,7 @@ function cacheKey(scope: string | undefined, path: string): string {
   return `${scope ?? ''}\u0000${path}`
 }
 
-function acquire(key: string, path: string, fetcher: AdminAssetFetcher): AssetEntry {
+function acquire(key: string, path: string, fetcher: ConsoleAssetFetcher): AssetEntry {
   let entry = cache.get(key)
   if (!entry) {
     entry = {
@@ -109,12 +109,12 @@ function release(key: string) {
  * 取 `assetPath` 对应的 blob 地址；`null` 表示「取流中」或「取流失败」，
  * 两种情况下调用方都渲染 fallback。
  */
-export function useAdminAssetUrl(
+export function useConsoleAssetUrl(
   assetPath: string | null | undefined,
-  fetcher?: AdminAssetFetcher,
+  fetcher?: ConsoleAssetFetcher,
   scope?: string,
 ): string | null {
-  const { adapter } = useAdminRuntime()
+  const { adapter } = useConsoleRuntime()
   const path = normalizePath(assetPath)
   const direct = isDirectAssetUrl(path)
   const effectiveFetcher = fetcher ?? adapter.fetchAssetBlobUrl
@@ -144,12 +144,12 @@ export function useAdminAssetUrl(
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
-export interface AdminAuthImageProps
+export interface ConsoleAuthImageProps
   extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   /** 资源路径；`null`/`''` → 渲染 `fallback`。直链（http(s)/data:/blob:）原样渲染。 */
   assetPath: string | null | undefined
   /** 取流实现；不传则用 `adapter.fetchAssetBlobUrl` */
-  fetcher?: AdminAssetFetcher
+  fetcher?: ConsoleAssetFetcher
   /** 会话/账号指纹，用于让旧 blob 缓存失效 */
   scope?: string
   /** 无资源、取流中或取流失败时渲染的内容 */
@@ -162,12 +162,12 @@ export interface AdminAuthImageProps
  * 其余 `<img>` 属性原样透传（缩放/拖拽用的 `style`、`onPointerDown`，以及
  * 「已缓存即视为加载完成」的 ref 回调等宿主用法都能保留）。
  */
-export const AdminAuthImage = React.forwardRef<HTMLImageElement, AdminAuthImageProps>(
-  function AdminAuthImage(
+export const ConsoleAuthImage = React.forwardRef<HTMLImageElement, ConsoleAuthImageProps>(
+  function ConsoleAuthImage(
     { assetPath, fetcher, scope, fallback = null, alt = '', ...imgProps },
     ref,
   ) {
-    const resolved = useAdminAssetUrl(assetPath, fetcher, scope)
+    const resolved = useConsoleAssetUrl(assetPath, fetcher, scope)
     const direct = isDirectAssetUrl(assetPath)
 
     if (!assetPath) return <>{fallback}</>

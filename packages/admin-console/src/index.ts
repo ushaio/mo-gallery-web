@@ -2,8 +2,8 @@
  * @mo-gallery/admin-console — 后台管理台共享外壳与设计系统。
  *
  * 架构约束（与 `@mo-gallery/public-site` 同款，改代码前先读 README）：
- * 1. 共享包只提供**结构 + 观感**：导航配置（`AdminNavItem[]`）、能力表
- *    （`AdminCapabilities`）、用户身份、链接渲染与文案全部由宿主注入；
+ * 1. 共享包只提供**结构 + 观感**：导航配置（`ConsoleNavItem[]`）、能力表
+ *    （`ConsoleCapabilities`）、用户身份、链接渲染与文案全部由宿主注入；
  * 2. 共享包内部**禁止**出现宿主判断（`if (official)`）、`@/` 别名、直接
  *    `next/navigation` 与 `next/link`、`server-only`；
  * 3. 端特有 UI 走插槽（`brand`/`topbar`/`topbarActions`/`railHeader`/
@@ -16,43 +16,43 @@
  */
 
 export type {
-  AdminCapabilities,
-  AdminHostAdapter,
-  AdminLabels,
-  AdminLinkRenderer,
-  AdminNavItem,
-  AdminUser,
+  ConsoleCapabilities,
+  ConsoleHostAdapter,
+  ConsoleLabels,
+  ConsoleLinkRenderer,
+  ConsoleNavItem,
+  ConsoleUser,
 } from './adapters'
-export { DEFAULT_ADMIN_LABELS, resolveAdminLabels } from './adapters'
+export { DEFAULT_CONSOLE_LABELS, resolveConsoleLabels } from './adapters'
 
-export { AdminRuntimeProvider, useAdminRuntime } from './runtime/AdminRuntimeProvider'
-export type { AdminRuntime, AdminRuntimeProviderProps } from './runtime/AdminRuntimeProvider'
+export { ConsoleRuntimeProvider, useConsoleRuntime } from './runtime/ConsoleRuntimeProvider'
+export type { ConsoleRuntime, ConsoleRuntimeProviderProps } from './runtime/ConsoleRuntimeProvider'
 
-export { AdminShell } from './shell/AdminShell'
-export type { AdminShellProps } from './shell/AdminShell'
-export { AdminRail, isCapabilityAvailable } from './shell/AdminRail'
-export type { AdminRailProps } from './shell/AdminRail'
-export { AdminTopbar } from './shell/AdminTopbar'
-export type { AdminTopbarProps } from './shell/AdminTopbar'
+export { ConsoleShell } from './shell/ConsoleShell'
+export type { ConsoleShellProps } from './shell/ConsoleShell'
+export { ConsoleRail, isCapabilityAvailable } from './shell/ConsoleRail'
+export type { ConsoleRailProps } from './shell/ConsoleRail'
+export { ConsoleTopbar } from './shell/ConsoleTopbar'
+export type { ConsoleTopbarProps } from './shell/ConsoleTopbar'
 
-export { AdminModal, AdminDrawer } from './ui/AdminOverlay'
-export type { AdminModalProps, AdminDrawerProps, AdminModalTone } from './ui/AdminOverlay'
-export { AdminPortalLayer, useEscapeToDismiss } from './ui/portal'
-export type { AdminPortalLayerProps } from './ui/portal'
-export { AdminField } from './ui/AdminField'
-export type { AdminFieldProps } from './ui/AdminField'
-export { AdminButton } from './ui/AdminButton'
-export type { AdminButtonProps, AdminButtonSize, AdminButtonVariant } from './ui/AdminButton'
-export { AdminConfirmDialog } from './ui/AdminConfirmDialog'
+export { ConsoleModal, ConsoleDrawer } from './ui/ConsoleOverlay'
+export type { ConsoleModalProps, ConsoleDrawerProps, ConsoleModalTone } from './ui/ConsoleOverlay'
+export { ConsolePortalLayer, useEscapeToDismiss } from './ui/portal'
+export type { ConsolePortalLayerProps } from './ui/portal'
+export { ConsoleField } from './ui/ConsoleField'
+export type { ConsoleFieldProps } from './ui/ConsoleField'
+export { ConsoleButton } from './ui/ConsoleButton'
+export type { ConsoleButtonProps, ConsoleButtonSize, ConsoleButtonVariant } from './ui/ConsoleButton'
+export { ConsoleConfirmDialog } from './ui/ConsoleConfirmDialog'
 export type {
-  AdminConfirmDialogProps,
-  AdminConfirmOption,
-  AdminConfirmOptionsGroup,
-  AdminConfirmTone,
-} from './ui/AdminConfirmDialog'
-export { AdminSwitch } from './ui/AdminSwitch'
-export type { AdminSwitchProps } from './ui/AdminSwitch'
-export { AdminSkeleton } from './ui/AdminSkeleton'
-export type { AdminSkeletonProps } from './ui/AdminSkeleton'
-export { AdminAuthImage, useAdminAssetUrl, isDirectAssetUrl } from './ui/AdminAuthImage'
-export type { AdminAssetFetcher, AdminAuthImageProps } from './ui/AdminAuthImage'
+  ConsoleConfirmDialogProps,
+  ConsoleConfirmOption,
+  ConsoleConfirmOptionsGroup,
+  ConsoleConfirmTone,
+} from './ui/ConsoleConfirmDialog'
+export { ConsoleSwitch } from './ui/ConsoleSwitch'
+export type { ConsoleSwitchProps } from './ui/ConsoleSwitch'
+export { ConsoleSkeleton } from './ui/ConsoleSkeleton'
+export type { ConsoleSkeletonProps } from './ui/ConsoleSkeleton'
+export { ConsoleAuthImage, useConsoleAssetUrl, isDirectAssetUrl } from './ui/ConsoleAuthImage'
+export type { ConsoleAssetFetcher, ConsoleAuthImageProps } from './ui/ConsoleAuthImage'

@@ -2,13 +2,13 @@
 
 import { useId, type ReactNode } from 'react'
 
-import { useAdminRuntime } from '../runtime/AdminRuntimeProvider'
-import { AdminPortalLayer, useEscapeToDismiss } from './portal'
+import { useConsoleRuntime } from '../runtime/ConsoleRuntimeProvider'
+import { ConsolePortalLayer, useEscapeToDismiss } from './portal'
 
 /** 语义色调：决定图标气泡配色（危险 / 警示 / 信息 / 中性） */
-export type AdminModalTone = 'danger' | 'warn' | 'info' | 'plain'
+export type ConsoleModalTone = 'danger' | 'warn' | 'info' | 'plain'
 
-export interface AdminModalProps {
+export interface ConsoleModalProps {
   open: boolean
   title?: ReactNode
   /** 标题下方的小字帽（计数、类别、「无法删除」这类状态说明） */
@@ -16,11 +16,11 @@ export interface AdminModalProps {
   description?: ReactNode
   /** 标题左侧图标气泡（不传则无气泡；图标由宿主传） */
   icon?: ReactNode
-  tone?: AdminModalTone
+  tone?: ConsoleModalTone
   /** 面板宽度档位：sm 460 / md 520（默认） / lg 680 */
   size?: 'sm' | 'md' | 'lg'
   children?: ReactNode
-  /** 底部动作区（按钮用 AdminButton，共享包不含业务语义） */
+  /** 底部动作区（按钮用 ConsoleButton，共享包不含业务语义） */
   footer?: ReactNode
   onClose?: () => void
   /** 是否允许 Esc / 遮罩点击关闭，默认 true */
@@ -33,7 +33,7 @@ export interface AdminModalProps {
 }
 
 /** 居中模态：结构 + 观感由 shared 提供，内容与动作全部由宿主传。 */
-export function AdminModal({
+export function ConsoleModal({
   open,
   title,
   eyebrow,
@@ -48,8 +48,8 @@ export function AdminModal({
   busy = false,
   className,
   bodyClassName,
-}: AdminModalProps) {
-  const { labels } = useAdminRuntime()
+}: ConsoleModalProps) {
+  const { labels } = useConsoleRuntime()
   const titleId = useId()
   const canDismiss = dismissible && !busy && Boolean(onClose)
   useEscapeToDismiss(open && canDismiss, onClose)
@@ -57,7 +57,7 @@ export function AdminModal({
   if (!open) return null
 
   return (
-    <AdminPortalLayer onDismiss={onClose} dismissible={canDismiss}>
+    <ConsolePortalLayer onDismiss={onClose} dismissible={canDismiss}>
       <div
         className={['mgac-modal', size === 'md' ? '' : `is-${size}`, className ?? '']
           .filter(Boolean)
@@ -97,11 +97,11 @@ export function AdminModal({
         </div>
         {footer ? <div className="mgac-modal-foot">{footer}</div> : null}
       </div>
-    </AdminPortalLayer>
+    </ConsolePortalLayer>
   )
 }
 
-export interface AdminDrawerProps {
+export interface ConsoleDrawerProps {
   open: boolean
   title?: ReactNode
   description?: ReactNode
@@ -119,7 +119,7 @@ export interface AdminDrawerProps {
 }
 
 /** 右侧滑入抽屉（编辑详情、下钻面板等）。 */
-export function AdminDrawer({
+export function ConsoleDrawer({
   open,
   title,
   description,
@@ -131,15 +131,15 @@ export function AdminDrawer({
   className,
   bodyClassName,
   busy = false,
-}: AdminDrawerProps) {
-  const { labels } = useAdminRuntime()
+}: ConsoleDrawerProps) {
+  const { labels } = useConsoleRuntime()
   const canDismiss = dismissible && !busy && Boolean(onClose)
   useEscapeToDismiss(open && canDismiss, onClose)
 
   if (!open) return null
 
   return (
-    <AdminPortalLayer onDismiss={onClose} dismissible={canDismiss}>
+    <ConsolePortalLayer onDismiss={onClose} dismissible={canDismiss}>
       <aside
         className={['mgac-drawer', `is-${size}`, className ?? ''].filter(Boolean).join(' ')}
         role="dialog"
@@ -168,6 +168,6 @@ export function AdminDrawer({
         </div>
         {footer ? <div className="mgac-modal-foot">{footer}</div> : null}
       </aside>
-    </AdminPortalLayer>
+    </ConsolePortalLayer>
   )
 }

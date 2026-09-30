@@ -2,19 +2,19 @@
 
 import type { ReactNode } from 'react'
 
-import type { AdminCapabilities, AdminNavItem } from '../adapters'
-import { AdminRail, isCapabilityAvailable } from './AdminRail'
-import { AdminTopbar } from './AdminTopbar'
+import type { ConsoleCapabilities, ConsoleNavItem } from '../adapters'
+import { ConsoleRail, isCapabilityAvailable } from './ConsoleRail'
+import { ConsoleTopbar } from './ConsoleTopbar'
 
-export interface AdminShellProps {
+export interface ConsoleShellProps {
   /** 导航配置由宿主提供：菜单差异（web 有存储整理、official 没有）就落在这一处。 */
-  nav: AdminNavItem[]
+  nav: ConsoleNavItem[]
   /** 当前选中项 id（链接模式可传当前路由推导出的 id） */
   activeId?: string
-  /** 单页 tab 模式：选中回调；不给则按 `AdminNavItem.href` 渲染链接 */
+  /** 单页 tab 模式：选中回调；不给则按 `ConsoleNavItem.href` 渲染链接 */
   onSelectNav?: (id: string) => void
-  /** 端能力表：`AdminNavItem.capability` 命中的能力缺席时该项自动隐藏 */
-  capabilities?: AdminCapabilities
+  /** 端能力表：`ConsoleNavItem.capability` 命中的能力缺席时该项自动隐藏 */
+  capabilities?: ConsoleCapabilities
 
   /* ---- 结构状态（由宿主持有，便于持久化到 localStorage / 路由） ---- */
   collapsed?: boolean
@@ -58,7 +58,7 @@ export interface AdminShellProps {
  * 放在 shared，改一次 `pnpm sync` 后 web 与 official 同时生效；端特有的菜单、
  * 面板、取数与全局状态分别落在 `nav` / `children` / 插槽 / 宿主自身，不受同步影响。
  */
-export function AdminShell({
+export function ConsoleShell({
   nav,
   activeId,
   onSelectNav,
@@ -81,7 +81,7 @@ export function AdminShell({
   className,
   contentClassName,
   children,
-}: AdminShellProps) {
+}: ConsoleShellProps) {
   const visibleNav = nav.filter((item) => isCapabilityAvailable(item, capabilities))
   const rootClassName = [
     'mgac',
@@ -94,7 +94,7 @@ export function AdminShell({
 
   return (
     <div className={rootClassName}>
-      <AdminRail
+      <ConsoleRail
         items={visibleNav}
         activeId={activeId}
         onSelectNav={onSelectNav}
@@ -117,7 +117,7 @@ export function AdminShell({
 
       <div className="mgac-main">
         {topbar ?? (
-          <AdminTopbar
+          <ConsoleTopbar
             brand={brand}
             brandHref={brandHref}
             actions={topbarActions}

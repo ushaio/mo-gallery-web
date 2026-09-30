@@ -5,15 +5,15 @@ import type { ReactNode } from 'react'
  *
  * 设计原则（与 `@mo-gallery/public-site` 同款）：
  * 1. 共享包只提供**结构 + 观感**，不内嵌任何宿主的取数、路由、鉴权与 i18n；
- * 2. 端与端之间的差异只能落在四处登记点——① `AdminNavItem[]` 导航配置
- *    ② `AdminCapabilities` 能力实现 ③ 组件 props（含 className/schema）
- *    ④ `AdminShell` 插槽；共享包内部**禁止**出现 `if (host === '...')` 分支；
+ * 2. 端与端之间的差异只能落在四处登记点——① `ConsoleNavItem[]` 导航配置
+ *    ② `ConsoleCapabilities` 能力实现 ③ 组件 props（含 className/schema）
+ *    ④ `ConsoleShell` 插槽；共享包内部**禁止**出现 `if (host === '...')` 分支；
  * 3. 契约只做加法：新增能力一律以**可选成员**追加，缺席即降级（导航项隐藏 /
  *    整块 UI 不渲染）。
  */
 
 /** 当前登录管理员的最小形状；宿主从自己的会话里取。 */
-export interface AdminUser {
+export interface ConsoleUser {
   username?: string
   role?: string
   displayName?: string
@@ -24,7 +24,7 @@ export interface AdminUser {
  * - 宿主传 `href`（web 的 `/admin/library` 这类路由）→ 外壳渲染链接；
  * - 宿主传 `onSelectNav`（official 的单页 tab 模式）→ 外壳渲染按钮并回调 id。
  */
-export interface AdminNavItem {
+export interface ConsoleNavItem {
   id: string
   label: string
   description?: string
@@ -37,7 +37,7 @@ export interface AdminNavItem {
   /** 链接模式的目标地址 */
   href?: string
   /**
-   * 能力开关：取值必须是 `AdminCapabilities` 的键，宿主**没有**实现该能力时
+   * 能力开关：取值必须是 `ConsoleCapabilities` 的键，宿主**没有**实现该能力时
    * 该项自动隐藏——"official 没有存储整理菜单"就是靠这条表达的。
    */
   capability?: string
@@ -46,16 +46,16 @@ export interface AdminNavItem {
 /**
  * 端能力表：宿主实现了某项能力就点亮对应 UI，缺席即降级。
  *
- * 现阶段（阶段 0）外壳不消费任何具体能力，只按 `AdminNavItem.capability`
+ * 现阶段（阶段 0）外壳不消费任何具体能力，只按 `ConsoleNavItem.capability`
  * 判定导航项显隐；后续下沉面板时在这里以**可选**字段追加数据通道，
  * 例如 `storage?: { listSources(): Promise<StorageSource[]> }`。
  */
-export interface AdminCapabilities {
+export interface ConsoleCapabilities {
   [capability: string]: unknown
 }
 
 /** 共享外壳内置文案；宿主可整份或逐条覆盖（web 有 zh/en，official 目前只有中文）。 */
-export interface AdminLabels {
+export interface ConsoleLabels {
   online: string
   admin: string
   currentUser: string
@@ -67,7 +67,7 @@ export interface AdminLabels {
   loading: string
 }
 
-export const DEFAULT_ADMIN_LABELS: AdminLabels = {
+export const DEFAULT_CONSOLE_LABELS: ConsoleLabels = {
   online: '在线',
   admin: 'ADMIN',
   currentUser: '当前登录',
@@ -79,12 +79,12 @@ export const DEFAULT_ADMIN_LABELS: AdminLabels = {
   loading: '加载中',
 }
 
-export function resolveAdminLabels(labels?: Partial<AdminLabels>): AdminLabels {
-  return { ...DEFAULT_ADMIN_LABELS, ...(labels ?? {}) }
+export function resolveConsoleLabels(labels?: Partial<ConsoleLabels>): ConsoleLabels {
+  return { ...DEFAULT_CONSOLE_LABELS, ...(labels ?? {}) }
 }
 
 /** 宿主链接渲染器：共享包不直接依赖 `next/link`，由宿主注入实现。 */
-export type AdminLinkRenderer = (props: {
+export type ConsoleLinkRenderer = (props: {
   href: string
   className?: string
   title?: string
@@ -94,18 +94,18 @@ export type AdminLinkRenderer = (props: {
 }) => ReactNode
 
 /** 宿主注入的运行期上下文。全部成员可选，缺失时共享组件走最保守的分支。 */
-export interface AdminHostAdapter {
+export interface ConsoleHostAdapter {
   /** 当前登录管理员；缺失则顶栏不渲染身份胶囊 */
-  user?: AdminUser | null
+  user?: ConsoleUser | null
   /** 站内跳转（抽屉/弹窗内导航用）；缺失时只渲染链接 */
   navigate?: (href: string) => void
   /** 链接渲染器；缺失时回落原生 `<a>` */
-  renderLink?: AdminLinkRenderer
+  renderLink?: ConsoleLinkRenderer
   /**
-   * 鉴权取流实现（`AdminAuthImage` 用）：把受保护资源路径换成 `blob:` 对象 URL，
+   * 鉴权取流实现（`ConsoleAuthImage` 用）：把受保护资源路径换成 `blob:` 对象 URL，
    * 失败返回 `null`。宿主已有 session 模块时在这里接上（也可按组件传 `fetcher`）。
    */
   fetchAssetBlobUrl?: (assetPath: string) => Promise<string | null>
   /** 文案覆盖 */
-  labels?: Partial<AdminLabels>
+  labels?: Partial<ConsoleLabels>
 }

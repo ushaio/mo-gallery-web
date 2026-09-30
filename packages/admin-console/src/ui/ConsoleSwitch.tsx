@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 
-export interface AdminSwitchProps {
+export interface ConsoleSwitchProps {
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   label?: ReactNode
@@ -15,7 +15,7 @@ export interface AdminSwitchProps {
 }
 
 /** iOS 风格开关（结构 + 观感在 shared，状态与持久化由宿主负责）。 */
-export function AdminSwitch({
+export function ConsoleSwitch({
   checked,
   onCheckedChange,
   label,
@@ -24,7 +24,7 @@ export function AdminSwitch({
   busy = false,
   id,
   className,
-}: AdminSwitchProps) {
+}: ConsoleSwitchProps) {
   const isDisabled = disabled || busy
   const control = (
     <button

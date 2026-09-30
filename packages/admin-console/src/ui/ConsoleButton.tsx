@@ -2,13 +2,13 @@
 
 import type { ReactNode } from 'react'
 
-export type AdminButtonVariant = 'default' | 'primary' | 'danger' | 'outline' | 'ghost' | 'icon'
-export type AdminButtonSize = 'sm' | 'md' | 'lg'
+export type ConsoleButtonVariant = 'default' | 'primary' | 'danger' | 'outline' | 'ghost' | 'icon'
+export type ConsoleButtonSize = 'sm' | 'md' | 'lg'
 
-export interface AdminButtonProps {
+export interface ConsoleButtonProps {
   children?: ReactNode
-  variant?: AdminButtonVariant
-  size?: AdminButtonSize
+  variant?: ConsoleButtonVariant
+  size?: ConsoleButtonSize
   /** 忙碌态：显示 spinner 并禁用点击 */
   busy?: boolean
   disabled?: boolean
@@ -26,7 +26,7 @@ export interface AdminButtonProps {
  * 后台按钮原子件：变体与尺寸落在这里，颜色全部走 `--mgac-*` 令牌，
  * 宿主可用 `className` 追加自己的布局类（避让 Tailwind：本包样式不在 `@layer` 里）。
  */
-export function AdminButton({
+export function ConsoleButton({
   children,
   variant = 'default',
   size = 'md',
@@ -39,7 +39,7 @@ export function AdminButton({
   fullWidth,
   className,
   onClick,
-}: AdminButtonProps) {
+}: ConsoleButtonProps) {
   const classes = [
     'mgac-btn',
     `is-${variant}`,

@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-export interface AdminPortalLayerProps {
+export interface ConsolePortalLayerProps {
   children: ReactNode
   /** 点击遮罩 / 按 Esc 时的回调 */
   onDismiss?: () => void
@@ -20,12 +20,12 @@ export interface AdminPortalLayerProps {
  * 注意：portal 出来的节点在 `.mgac` 根之外，因此设计令牌同时声明在 `.mgac-portal`
  * 上（见 admin-theme.css 的令牌层），这里必须带上 `mgac-portal` 类。
  */
-export function AdminPortalLayer({
+export function ConsolePortalLayer({
   children,
   onDismiss,
   dismissible = true,
   scrimClassName,
-}: AdminPortalLayerProps) {
+}: ConsolePortalLayerProps) {
   const [host, setHost] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
