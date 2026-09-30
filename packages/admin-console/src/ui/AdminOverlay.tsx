@@ -28,6 +28,8 @@ export interface AdminModalProps {
   /** 提交中：屏蔽 Esc 与遮罩关闭（按钮禁用由宿主负责） */
   busy?: boolean
   className?: string
+  /** 内容区类名（宽表单/表格需要贴边或自定义内边距时用） */
+  bodyClassName?: string
 }
 
 /** 居中模态：结构 + 观感由 shared 提供，内容与动作全部由宿主传。 */
@@ -45,6 +47,7 @@ export function AdminModal({
   dismissible = true,
   busy = false,
   className,
+  bodyClassName,
 }: AdminModalProps) {
   const { labels } = useAdminRuntime()
   const titleId = useId()
@@ -80,6 +83,7 @@ export function AdminModal({
                 type="button"
                 className="mgac-icon-btn"
                 onClick={onClose}
+                disabled={busy}
                 aria-label={labels.closeDialog}
                 title={labels.closeDialog}
               >
@@ -88,7 +92,9 @@ export function AdminModal({
             ) : null}
           </div>
         ) : null}
-        <div className="mgac-modal-body">{children}</div>
+        <div className={['mgac-modal-body', bodyClassName ?? ''].filter(Boolean).join(' ')}>
+          {children}
+        </div>
         {footer ? <div className="mgac-modal-foot">{footer}</div> : null}
       </div>
     </AdminPortalLayer>
@@ -106,6 +112,10 @@ export interface AdminDrawerProps {
   /** 宽度档位：md（默认 520px）/ lg（720px） */
   size?: 'md' | 'lg'
   className?: string
+  /** 内容区类名（宽表单/表格需要贴边或自定义内边距时用） */
+  bodyClassName?: string
+  /** 提交中：屏蔽 Esc、遮罩与 ✕ 关闭（按钮禁用由宿主负责） */
+  busy?: boolean
 }
 
 /** 右侧滑入抽屉（编辑详情、下钻面板等）。 */
@@ -119,9 +129,11 @@ export function AdminDrawer({
   dismissible = true,
   size = 'md',
   className,
+  bodyClassName,
+  busy = false,
 }: AdminDrawerProps) {
   const { labels } = useAdminRuntime()
-  const canDismiss = dismissible && Boolean(onClose)
+  const canDismiss = dismissible && !busy && Boolean(onClose)
   useEscapeToDismiss(open && canDismiss, onClose)
 
   if (!open) return null
@@ -143,6 +155,7 @@ export function AdminDrawer({
               type="button"
               className="mgac-icon-btn"
               onClick={onClose}
+              disabled={busy}
               aria-label={labels.closeDialog}
               title={labels.closeDialog}
             >
@@ -150,7 +163,9 @@ export function AdminDrawer({
             </button>
           ) : null}
         </div>
-        <div className="mgac-modal-body">{children}</div>
+        <div className={['mgac-modal-body', bodyClassName ?? ''].filter(Boolean).join(' ')}>
+          {children}
+        </div>
         {footer ? <div className="mgac-modal-foot">{footer}</div> : null}
       </aside>
     </AdminPortalLayer>

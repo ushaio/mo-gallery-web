@@ -362,6 +362,11 @@
   background: var(--mgac-accent-dim);
 }
 
+.mgac-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .mgac-content {
   flex: 1 1 auto;
   min-width: 0;

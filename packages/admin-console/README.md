@@ -54,7 +54,15 @@
 |---|---|---|
 | `AdminModal`（补齐 `icon`/`tone`/`eyebrow`/`size`/`busy`） | official：`password-result-modal`（通知态）与 `ip-ban-modal`（表单态）改由它承载，两个文件里的 `mg-modal-*` 内联结构删除 | 图标与色调走 props；表单字段走 `children`；动作走 `footer`（`AdminButton`） |
 | `AdminField` | official `ip-ban-modal` 的「封禁原因 / 时长 / 到期日期」用它包住原生控件 | 字段名、说明与错误全部由宿主传；控件本身不锁定表单库 |
-| 弹窗体排版类（宿主直接用类名） | `.mgac-notice(.is-info/.is-warn)`、`.mgac-code-box`、`.mgac-chip-list`、`.mgac-kv`、`.mgac-form-error`、`.mgac-input`/`.mgac-select`/`.mgac-textarea`、`.mgac-spinner`、`.mgac-modal.is-sm/.is-lg` | 同一套观感跨端复用；宿主也可用自己的类名覆盖 |
+| 弹窗体排版类（宿主直接用类名） | `.mgac-notice(.is-info/.is-warn/.is-column)`、`.mgac-code-box`、`.mgac-chip-list`、`.mgac-kv`、`.mgac-form-error`、`.mgac-input`/`.mgac-select`/`.mgac-textarea`、`.mgac-spinner`、`.mgac-modal.is-sm/.is-lg` | 同一套观感跨端复用；宿主也可用自己的类名覆盖 |
+
+### 已下沉件（阶段 3）
+
+| 组件 | 两端接入方式 | 差异如何表达 |
+|---|---|---|
+| `AdminModal`（`bodyClassName` + `busy` 收紧） | official：云图详情弹窗（`cloud-panel`）；web：重复照片、草稿恢复、上传设置、批量整理 4 个弹窗只换外壳，表单内容原样放 `children` | 标题/图标/色调/宽度档走 props；正文与动作走 `children`/`footer`；**`busy` 现在同时禁用 ✕、Esc 与遮罩关闭** |
+| `AdminConfirmDialog`（复用既有 `options`） | web：URL 更新确认弹窗用受控勾选 + 动态 `confirmLabel` 表达「更新地址 / 仅保存配置」两个出口 | 两个动作合并为「勾选状态 → confirmLabel」，`onConfirm(boolean)` 语义留在宿主 |
+| 浮层脱离宿主作用域的处置范式 | official 云图详情：`portal` 到 `body` 后 `--ac-*` 令牌失效，宿主在容器选择器里就地补齐令牌 + 用 0,3,0 特异性压过共享宽度档 | 这是"共享外壳 + 宿主自有设计令牌"共存时的标准做法，其它宿主照此办理 |
 
 ## 接入（宿主侧机械步骤）
 
