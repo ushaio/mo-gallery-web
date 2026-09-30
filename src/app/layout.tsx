@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import Footer from "@/components/Footer";
+import DevAgentation from "@/components/DevAgentation";
 
 const cormorant = Cormorant_Garamond({
   variable: "--font-serif",
@@ -142,6 +143,7 @@ export default function RootLayout({
             </LanguageProvider>
           </SettingsProvider>
         </ThemeProvider>
+        <DevAgentation />
       </body>
     </html>
   );
