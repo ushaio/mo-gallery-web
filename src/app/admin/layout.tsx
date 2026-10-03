@@ -3,7 +3,7 @@
 import React, { useEffect, useState, createContext, useContext, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ExternalLink, LogOut, Monitor, Moon, Sun } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import {
   ConsoleRuntimeProvider,
   ConsoleShell,
@@ -292,7 +292,15 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   const sidebarItems = getAdminSidebarItems(t)
   const activeSidebarItem = getActiveAdminSidebarItem(pathname)
-  const isLibraryWorkspace = pathname === '/admin/library' || pathname === '/admin/storage'
+  // 日志页（叙事/博客编辑）、上传页与 AI 对话页都自带页头与内部滚动，内容区不要
+  // 外壳内边距，面板才能像 `/admin/logs` 那样贴顶栏 / 贴左栏、满宽分隔线（与图库 /
+  // 存储整理同口径）。
+  const isFullBleedWorkspace =
+    pathname === '/admin/library' ||
+    pathname === '/admin/storage' ||
+    pathname === '/admin/logs' ||
+    pathname === '/admin/upload' ||
+    pathname === '/admin/ai-assistant'
   const pageTitle = t(activeSidebarItem.labelKey)
 
   useEffect(() => {
@@ -361,36 +369,62 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   const adminAdapter = useMemo<ConsoleHostAdapter>(
     () => ({
-      user: user ? { username: user.username, displayName: user.username } : null,
+      // 不传 `user`：顶栏不再渲染右侧身份胶囊（原 web 顶栏只有页面标题 + 查看站点，
+      // 官网 `/console` 也没有；账号信息在左栏底部那一块）。
       renderLink: renderAdminLink,
       labels: {
-        currentUser: t('admin.super_user'),
-        toggleRail: isSidebarCollapsed ? t('admin.sidebar_expand') : t('admin.sidebar_collapse'),
         closeRail: t('admin.sidebar_collapse'),
       },
     }),
-    [user, renderAdminLink, t, isSidebarCollapsed]
+    [renderAdminLink, t]
   )
 
+  // 折叠态：整行标题淡出，顶块中央只留站点名首字母（MO GALLERY → M，中文站名取首字），
+  // 与底栏用户头像同口径（username.substring(0,1)）。用容器而非 `isSidebarCollapsed`
+  // 直接换内容：窄屏抽屉虽然也带 `is-collapsed`，但那里侧栏是全宽的，必须仍显示完整标题。
+  const siteMonogram = (siteTitle.trim().charAt(0) || 'M').toUpperCase()
+
   const railHeader = (
-    <h2
+    <div
       className={cn(
-        'truncate whitespace-nowrap font-serif text-2xl font-bold tracking-tight transition-opacity duration-300 motion-reduce:transition-none',
+        'flex w-full min-w-0 items-center transition-opacity duration-300 motion-reduce:transition-none',
         globalSettingsLoading ? 'opacity-0' : 'opacity-100'
       )}
     >
-      {siteTitle || '\u00A0'}
-    </h2>
+      <h2 className="admin-rail-title truncate whitespace-nowrap font-serif text-2xl font-bold tracking-tight">
+        {siteTitle || '\u00A0'}
+      </h2>
+      <span
+        className="admin-rail-monogram font-serif text-[22px] font-bold tracking-[0.02em]"
+        aria-hidden="true"
+        title={siteTitle || undefined}
+      >
+        {siteMonogram}
+      </span>
+    </div>
   )
 
+  /* 底栏（主题 / 语言 / 账号 / 退出）逐字对齐官网 `/console` 的 ConsoleSidebar：
+     折叠态一律走 `md:` 前缀的 Tailwind 变体（与 `/console`、与 web 迁移共享外壳前的
+     自建 AdminSidebar 完全同款）。这里不能用无前缀的 `px-0` / `gap-0` / `space-y-2`：
+     同权重工具类的胜负只由 Tailwind 的生成顺序决定，实测 `px-0` 压不过同一元素上的
+     `px-3` / `px-4`（退出按钮还带 `size="lg"` 的 `px-6`），于是折叠后按钮仍留着 24px
+     横向内边距，55px 宽的栏里只剩 6px 内容宽 —— 16px 的退出图标被 flex 压成 0 宽，
+     按钮看起来是空的；账号行同理（`gap-3` + `px-2` 把 32px 头像挤成 27.43px）。
+     `md:` 变体在生成顺序上晚于基础工具类，所以稳定生效。
+     另：语言标签在 `/console` 里是裸文本（不是 `.mgac-rail-foot-text`），折叠后仍显示
+     EN / ZH，这里保持一致。 */
   const railFooter = (
-    <div className={cn('w-full space-y-3', isSidebarCollapsed && 'space-y-2')}>
-      <div className={cn('flex items-center gap-2', isSidebarCollapsed && 'flex-col')}>
+    <div className="w-full space-y-3">
+      <div className={cn('flex items-center gap-2', isSidebarCollapsed && 'md:flex-col')}>
         <AdminButton
           onClick={toggleTheme}
           adminVariant="outline"
           size="sm"
-          className="flex flex-1 items-center gap-2 rounded-sm px-3 py-2 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          className={cn(
+            'flex flex-1 items-center gap-2 rounded-sm px-3 py-2 text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+            isSidebarCollapsed && 'md:w-full md:justify-center md:px-0'
+          )}
           title={t('nav.toggle_theme')}
           aria-label={t('nav.toggle_theme')}
         >
@@ -412,17 +446,20 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           onClick={toggleLanguage}
           adminVariant="outline"
           size="sm"
-          className="flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          className={cn(
+            'flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+            isSidebarCollapsed && 'md:w-full md:px-0'
+          )}
           title={languageToggleLabel}
           aria-label={languageToggleLabel}
         >
-          <span className="mgac-rail-foot-text">{locale === 'zh' ? 'EN' : 'ZH'}</span>
+          {locale === 'zh' ? 'EN' : 'ZH'}
         </AdminButton>
       </div>
 
-      <div className="border-t border-border" />
+      <div className="-mx-4 border-t border-border" />
 
-      <div className={cn('flex items-center gap-3 px-2', isSidebarCollapsed && 'justify-center px-0')}>
+      <div className={cn('flex items-center px-2', isSidebarCollapsed ? 'md:justify-center md:px-0' : 'gap-3')}>
         <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-primary text-xs font-bold text-primary-foreground">
           {user?.username?.substring(0, 1).toUpperCase() || 'A'}
         </div>
@@ -442,8 +479,9 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         size="lg"
         className={cn(
           'flex w-full items-center justify-center space-x-2 rounded-sm px-4 py-2.5 text-xs font-bold uppercase tracking-widest',
-          isSidebarCollapsed && 'px-1'
+          isSidebarCollapsed && 'md:px-0'
         )}
+        title={isSidebarCollapsed ? t('nav.logout') : undefined}
         aria-label={t('nav.logout')}
       >
         <LogOut className="w-4 h-4" />
@@ -574,13 +612,33 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
           </div>
         ) : (
           <ConsoleRuntimeProvider adapter={adminAdapter}>
+            {/* 左栏折叠入口：与官网 `/console` 同款 —— 左栏右缘垂直居中的浮动胶囊，
+                随折叠态在 left-64 / left-20 之间移动（外壳顶栏那个桌面 ☰ 因此不传
+                `onToggleCollapse` 关掉；窄屏抽屉的 ☰ / ✕ 仍由外壳按 mobileOpen 渲染）。 */}
+            <button
+              type="button"
+              onClick={toggleSidebarCollapse}
+              className={`admin-rail-toggle fixed top-1/2 z-50 h-14 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur transition-all duration-300 ease-out hover:h-16 hover:w-8 hover:border-primary/40 hover:text-foreground hover:shadow-[0_16px_40px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none ${
+                isSidebarCollapsed ? 'left-20' : 'left-64'
+              }`}
+              aria-label={isSidebarCollapsed ? t('admin.sidebar_expand') : t('admin.sidebar_collapse')}
+              aria-pressed={isSidebarCollapsed}
+            >
+              <div className="flex h-9 w-4 items-center justify-center rounded-full border border-border/70 bg-muted/50">
+                {isSidebarCollapsed ? (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </button>
+
             <ConsoleShell
               className="admin-shell-host"
-              contentClassName={isLibraryWorkspace ? 'is-panel-flush' : undefined}
+              contentClassName={isFullBleedWorkspace ? 'is-panel-flush' : undefined}
               nav={adminNavItems}
               activeId={activeSidebarItem.id}
               collapsed={isSidebarCollapsed}
-              onToggleCollapse={toggleSidebarCollapse}
               mobileOpen={isMobileMenuOpen}
               onOpenMobile={() => setIsMobileMenuOpen(true)}
               onCloseMobile={() => setIsMobileMenuOpen(false)}

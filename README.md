@@ -391,7 +391,7 @@ Portable 版本不会把配置保存在 EXE 旁边。删除或替换 EXE 后，�
 | `AI_VISION_MODELS` | 允许图片输入的模型 ID，逗号分隔 |
 | `AI_TOOL_MODELS` | 允许工具调用的模型 ID，逗号分隔 |
 | `AI_STRUCTURED_OUTPUT_MODELS` | 允许结构化输出的模型 ID，逗号分隔 |
-| `AI_MODEL_CONTEXT_WINDOWS` | 模型上下文窗口配置，JSON 对象 |
+| `AI_MODEL_CONTEXT_WINDOWS` | 模型上下文窗口配置，**单行** JSON 对象（`{"模型ID": token 数}`），键须与 `${AI_BASE_URL}/models` 返回的 id 完全一致，未命中的模型回退 8192 |
 
 ### 评论与 Linux DO OAuth
 

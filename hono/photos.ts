@@ -19,6 +19,7 @@ import {
 } from '@mo-gallery/image-pipeline'
 import { normalizeMake, extractLensMakeFromModel, makeBrandKey } from '~/server/lib/equipment'
 import { resolvePhotoUploadAssets } from '~/server/lib/photo-upload-assets'
+import { loadSafeRemoteImage } from '~/server/lib/safe-remote-image'
 import { invalidatePhotoUrlCache, resolvePhotoUrls } from '~/server/lib/photo-urls'
 import { StorageProviderFactory, StorageError, getStorageConfig, getStorageConfigBySourceId } from '~/server/lib/storage'
 import sharp from 'sharp'
@@ -203,9 +204,8 @@ async function createDisplayImage(
   let sourceBuffer: Buffer
   if (isDesktopPluginPhoto(photo)) {
     if (!photo.url) throw new Error(`Missing public URL for desktop plugin photo ${photo.id}`)
-    const response = await fetch(photo.url)
-    if (!response.ok) throw new Error(`Unable to fetch desktop plugin object (${response.status})`)
-    sourceBuffer = Buffer.from(await response.arrayBuffer())
+    const downloaded = await loadSafeRemoteImage(photo.url, { maxBytes: 50 * 1024 * 1024, signal: AbortSignal.timeout(30_000) })
+    sourceBuffer = downloaded.buffer
   } else {
     const storageConfig = await resolveStorageConfig(photo)
     const storage = StorageProviderFactory.create(storageConfig)

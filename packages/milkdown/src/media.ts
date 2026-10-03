@@ -134,7 +134,7 @@ export function buildMediaMarkdown(media: MediaCardData): string {
 
 export function getMilkdownMedia(markdown: string): MediaCardData[] {
   const media: MediaCardData[] = []
-  walkMarkdown(parser.parse(markdown), (node) => {
+  walkMarkdown(parser.parse(markdown) as unknown as MarkdownTree, (node) => {
     if (node.type === 'leafDirective' && node.name === 'media') media.push(mediaFromAttributes(node.attributes))
   })
   return media
@@ -172,7 +172,7 @@ export function getMilkdownUploadIds(markdown: string): Set<string> {
 
 export function getMilkdownText(markdown: string): string {
   const parts: string[] = []
-  walkMarkdown(parser.parse(markdown), (node) => {
+  walkMarkdown(parser.parse(markdown) as unknown as MarkdownTree, (node) => {
     if (node.type === 'text' || node.type === 'code' || node.type === 'inlineCode') parts.push(node.value ?? '')
     if (node.type === 'image') parts.push(node.alt ?? '')
     if (node.type === 'leafDirective' && node.name === 'media') {

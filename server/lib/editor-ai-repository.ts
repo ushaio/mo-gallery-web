@@ -89,6 +89,18 @@ export interface EditorAiRepository {
   ): Promise<EditorAiConversationWithMessagesDto | null>
   deleteConversation(userId: string, conversationId: string): Promise<void>
   clearConversation(userId: string, conversationId: string): Promise<EditorAiConversationDto>
+  /** Rolls the conversation back: deletes the target message and every message after it. */
+  deleteMessagesFrom(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<number>
+  /** Branches a conversation: the new one copies messages up to (and including) the target. */
+  forkConversation(
+    userId: string,
+    conversationId: string,
+    input: { messageId: string; title?: string },
+  ): Promise<EditorAiConversationWithMessagesDto>
   listMessages(userId: string, conversationId: string, limit?: number): Promise<EditorAiMessageDto[]>
   buildHistory(userId: string, conversationId: string, limit?: number): Promise<EditorAiHistoryMessage[]>
   hasMessage(userId: string, messageId: string): Promise<boolean>
@@ -356,6 +368,89 @@ export function createEditorAiRepository(store: EditorAiStore): EditorAiReposito
         if (!conversation) throw new EditorAiNotFoundError('conversation')
         return toEditorAiConversationDto(conversation)
       }, { isolationLevel: 'Serializable' })
+    },
+
+    async deleteMessagesFrom(userId, conversationId, messageId) {
+      return store.$transaction(async (transaction) => {
+        const conversation = await transaction.aiConversation.findFirst({
+          where: ownedConversationWhere(userId, conversationId),
+        })
+        if (!conversation) throw new EditorAiNotFoundError('conversation')
+        const messages = await store.aiMessage.findMany({
+          where: { conversationId: conversation.id, conversation: { userId } },
+          orderBy: { createdAt: 'asc' },
+        })
+        const targetIndex = messages.findIndex((message) => message.id === messageId)
+        if (targetIndex === -1) throw new EditorAiNotFoundError('message')
+        // Delete one by one: the store exposes only exact-id deletes, which keeps the
+        // same code path for Prisma and the in-memory test store.
+        const removable = messages.slice(targetIndex)
+        for (const message of removable) {
+          const result = await transaction.aiMessage.deleteMany({
+            where: { id: message.id, conversation: { userId } },
+          })
+          if (result.count !== 1) throw new EditorAiNotFoundError('message')
+        }
+        await transaction.aiConversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: new Date() },
+        })
+        return removable.length
+      }, { isolationLevel: 'Serializable' })
+    },
+
+    async forkConversation(userId, conversationId, input) {
+      const source = await store.aiConversation.findFirst({
+        where: ownedConversationWhere(userId, conversationId),
+      })
+      if (!source) throw new EditorAiNotFoundError('conversation')
+      const messages = await store.aiMessage.findMany({
+        where: { conversationId: source.id, conversation: { userId } },
+        orderBy: { createdAt: 'asc' },
+      })
+      const targetIndex = messages.findIndex((message) => message.id === input.messageId)
+      if (targetIndex === -1) throw new EditorAiNotFoundError('message')
+      const forked = messages.slice(0, targetIndex + 1)
+
+      const conversation = await store.aiConversation.create({
+        data: {
+          userId,
+          scopeId: source.scopeId,
+          title: input.title ?? source.title ?? undefined,
+          systemPrompt: source.systemPrompt ?? undefined,
+        },
+      })
+
+      await store.$transaction(async (transaction) => {
+        for (const message of forked) {
+          await transaction.aiMessage.create({
+            data: {
+              conversationId: conversation.id,
+              role: message.role,
+              content: message.content,
+              // An unfinished turn would otherwise stay "thinking" forever in the branch.
+              status: message.status === 'streaming' || message.status === 'pending'
+                ? 'stopped'
+                : message.status,
+              model: message.model,
+              action: message.action ?? undefined,
+              metadata: message.metadata === null || message.metadata === undefined
+                ? undefined
+                : parseMetadata(message.metadata),
+              error: message.error,
+            },
+          })
+        }
+      }, { isolationLevel: 'Serializable' })
+
+      const created = await store.aiMessage.findMany({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: 'asc' },
+      })
+      return {
+        ...toEditorAiConversationDto(conversation),
+        messages: created.map(toEditorAiMessageDto),
+      }
     },
 
     async listMessages(userId, conversationId, limit = 50) {

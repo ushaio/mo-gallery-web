@@ -339,6 +339,15 @@ export type EditorAiGenerateInput = StoryAiGenerateInput & {
   generateImage?: boolean
   imageModel?: string
   imageSize?: string
+  /** Roll the conversation back on the server before appending the new turn:
+   * the referenced message and every message after it are deleted first. */
+  truncateFromMessageId?: string
+}
+
+export interface EditorAiForkConversationInput {
+  /** Last message of the new conversation (inclusive). */
+  messageId: string
+  title?: string
 }
 
 export interface EditorAiImageGenerateInput {
@@ -349,6 +358,8 @@ export interface EditorAiImageGenerateInput {
   imageSize?: string
   images?: string[]
   imageKeys?: string[]
+  /** Roll the conversation back on the server before appending the new turn. */
+  truncateFromMessageId?: string
 }
 
 export interface AiImageMetadata {

@@ -10,7 +10,7 @@ import {
   normalizeConversationTitle,
 } from '@mo-gallery/ai-agent'
 import { authMiddleware, AuthVariables } from './middleware/auth'
-import { createEditorAiStream, fetchStoryAiModels, generateStoryAiImage, generateStoryAiText, getStoryAiEnvConfig } from '~/server/lib/story-ai'
+import { createEditorAiStream, fetchStoryAiModels, generateStoryAiImage, generateStoryAiText, getStoryAiEnvConfig, serializeStoryAiUsage } from '~/server/lib/story-ai'
 import { StorageProviderFactory, getStorageConfig } from '~/server/lib/storage'
 import type { StorageProvider } from '~/server/lib/storage'
 import {
@@ -18,8 +18,10 @@ import {
   clearEditorAiConversationMessages,
   createEditorAiMessage,
   deleteEditorAiConversation,
+  deleteEditorAiMessagesFrom,
   ensureEditorAiConversation,
   finishEditorAiMessage,
+  forkEditorAiConversation,
   getEditorAiConversation,
   getEditorAiConversationWithMessages,
   hasEditorAiMessage,
@@ -66,6 +68,8 @@ const defaultRepository: EditorAiRepository = {
   getConversationWithMessages: getEditorAiConversationWithMessages,
   deleteConversation: deleteEditorAiConversation,
   clearConversation: clearEditorAiConversationMessages,
+  deleteMessagesFrom: deleteEditorAiMessagesFrom,
+  forkConversation: forkEditorAiConversation,
   listMessages: listEditorAiMessages,
   buildHistory: buildEditorAiHistoryMessages,
   hasMessage: hasEditorAiMessage,
@@ -118,7 +122,13 @@ const GenerateEditorAiSchema = z.object({
   contextAfter: z.string().max(4000).optional(),
   images: z.array(z.string()).max(10).optional(),
   imageKeys: z.array(z.string()).max(10).optional(),
+  truncateFromMessageId: z.string().min(1).optional(),
 })
+
+const ForkEditorAiConversationSchema = z.object({
+  messageId: z.string().min(1),
+  title: z.string().max(200).optional(),
+}).strict()
 
 const SaveEditorAiImageSchema = z.object({
   imageUrl: z.string().min(1),
@@ -158,6 +168,7 @@ const GenerateEditorAiImageSchema = z.object({
   imageSize: z.string().max(40).optional(),
   images: z.array(z.string().min(1)).max(16).optional(),
   imageKeys: z.array(z.string().min(1)).max(16).optional(),
+  truncateFromMessageId: z.string().min(1).optional(),
 })
 
 const MAX_REFERENCE_IMAGE_BYTES = 50 * 1024 * 1024
@@ -177,6 +188,39 @@ function extensionForImageType(contentType: string): string {
 
 function isImageDataUrl(value: string): boolean {
   return /^\s*data:image\//i.test(value)
+}
+
+/**
+ * Sends one SSE frame before the provider stream starts, so the client learns the
+ * persisted message ids without a second round trip.
+ */
+function prependStreamEvent(
+  event: string,
+  data: unknown,
+  stream: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  const prefix = encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  const reader = stream.getReader()
+  let preambleSent = false
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (!preambleSent) {
+        preambleSent = true
+        controller.enqueue(prefix)
+        return
+      }
+      const { done, value } = await reader.read()
+      if (done) {
+        controller.close()
+        return
+      }
+      controller.enqueue(value)
+    },
+    cancel(reason) {
+      return reader.cancel(reason)
+    },
+  })
 }
 
 export function createEditorAiRouter(dependencies: EditorAiRouteDependencies) {
@@ -428,6 +472,28 @@ editorAi.post('/admin/editor-ai/conversations/:id/clear', async (c) => {
   }
 })
 
+editorAi.post('/admin/editor-ai/conversations/:id/fork', async (c) => {
+  try {
+    const userId = c.get('user').sub
+    const conversationId = c.req.param('id')
+    const validated = ForkEditorAiConversationSchema.parse(await c.req.json())
+    const conversation = await dependencies.repository.forkConversation(userId, conversationId, validated)
+
+    return c.json({
+      success: true,
+      data: conversation,
+    })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: 'Validation error', details: error.issues }, 400)
+    }
+    const notFound = editorAiNotFound(c, error)
+    if (notFound) return notFound
+    console.error('Fork editor AI conversation error:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
 editorAi.post('/admin/editor-ai/upload', async (c) => {
   try {
     const formData = await c.req.formData()
@@ -508,6 +574,13 @@ editorAi.post('/admin/editor-ai/generate-image', async (c) => {
     const validated = GenerateEditorAiImageSchema.parse(await c.req.json())
     const conversation = await dependencies.repository.getConversation(userId, validated.conversationId)
     if (!conversation) return c.json({ error: 'Conversation not found' }, 404)
+    if (validated.truncateFromMessageId) {
+      await dependencies.repository.deleteMessagesFrom(
+        userId,
+        validated.conversationId,
+        validated.truncateFromMessageId,
+      )
+    }
 
     let storagePromise: Promise<StorageProvider> | undefined
     const getStorage = () => {
@@ -586,6 +659,7 @@ editorAi.post('/admin/editor-ai/generate-image', async (c) => {
       contentType: generated.contentType,
     })
     const content = '\u5df2\u751f\u6210\u56fe\u7247'
+    const imageUsage = generated.usage ? serializeStoryAiUsage(generated.usage) : null
     await dependencies.repository.finishMessage(userId, assistantMessage.id, {
       status: 'completed',
       content,
@@ -602,6 +676,7 @@ editorAi.post('/admin/editor-ai/generate-image', async (c) => {
         generatedAt: new Date().toISOString(),
         source: 'web-ai',
         userMessageId: userMessage.id,
+        ...(imageUsage ? { usage: imageUsage } : {}),
       },
     })
     await dependencies.repository.updateConversation(userId, validated.conversationId, {
@@ -641,6 +716,15 @@ editorAi.post('/admin/editor-ai/generate', async (c) => {
 
     const conversation = await dependencies.repository.getConversation(userId, validated.conversationId)
     if (!conversation) return c.json({ error: 'Conversation not found' }, 404)
+    // Roll back before building history so the edited turn replaces the old one
+    // instead of being appended after it.
+    if (validated.truncateFromMessageId) {
+      await dependencies.repository.deleteMessagesFrom(
+        userId,
+        validated.conversationId,
+        validated.truncateFromMessageId,
+      )
+    }
     const historyMessages = await dependencies.repository.buildHistory(userId, validated.conversationId)
     const persistedImages = validated.images?.flatMap((url, index) => (
       isImageDataUrl(url)
@@ -691,13 +775,15 @@ editorAi.post('/admin/editor-ai/generate', async (c) => {
       systemPrompt: conversation?.systemPrompt || undefined,
       images: validated.images,
       historyMessages,
-      onComplete: async (content, activeModel) => {
+      onComplete: async (content, activeModel, usage) => {
+        const usageMetadata = usage ? serializeStoryAiUsage(usage) : null
         await dependencies.repository.finishMessage(userId, assistantMessage.id, {
           status: 'completed',
           content,
           model: activeModel,
           metadata: {
             userMessageId: userMessage.id,
+            ...(usageMetadata ? { usage: usageMetadata } : {}),
           },
         })
         await dependencies.repository.updateConversation(userId, validated.conversationId, {
@@ -716,7 +802,10 @@ editorAi.post('/admin/editor-ai/generate', async (c) => {
       },
     })
 
-    return new Response(stream, {
+    return new Response(prependStreamEvent('persisted', {
+      userMessageId: userMessage.id,
+      assistantMessageId: assistantMessage.id,
+    }, stream), {
       headers: {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',

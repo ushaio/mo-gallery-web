@@ -260,8 +260,9 @@ export default function LogsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 子标签页导航 */}
-      <div className={`${(isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'} space-x-1 border-b border-border px-8 flex-shrink-0`}>
+      {/* 子标签页导航：与下方内容区之间不画满宽分隔线（整条线去掉，页面更一体化；
+          `/admin/upload` 与官网 `/console` 同步）。 */}
+      <div className={`${(isStoriesEditing && activeSubTab === 'stories') || isImmersiveMode ? 'hidden' : 'flex'} space-x-1 px-8 flex-shrink-0`}>
         <AdminButton
           onClick={() => handleTabClick('stories')}
           adminVariant="tab"

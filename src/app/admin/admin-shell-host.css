@@ -2,13 +2,14 @@
    web 宿主对 @mo-gallery/admin-console 外壳的局部适配
 
    共享包样式（`@mo-gallery/admin-console/theme.css`）不写在任何 @layer 里，
-   本文件同样不写 @layer，靠选择器权重覆盖，只处理外壳自己管不到的两件事：
+   本文件同样不写 @layer，靠选择器权重覆盖，只处理外壳自己管不到的事：
 
    1) 固定视口高度：图库 / 存储整理 / 日志面板内部依赖 h-full + overflow-hidden，
       必须先让 .mgac-content 拿到确定高度（外壳默认是 min-height:100vh 的文档流滚动）；
-   2) 全出血面板：图库与存储整理自带分栏与滚动，不要 .mgac-content 的内边距。
+   2) 全出血面板：图库与存储整理自带分栏与滚动，不要 .mgac-content 的内边距；
+   3) 左栏观感与官网 `/console` 的自建 ConsoleSidebar 对齐（见下一节）。
 
-   窄屏抽屉的开/关入口、折叠态侧栏底部区、导航 aria-label 都由共享外壳自身提供
+   窄屏抽屉的开 / 关入口、折叠态侧栏底部区、导航 aria-label 都由共享外壳自身提供
    （`onOpenMobile` / `onCloseMobile` / `railLabel` / `.mgac-rail-foot-text`），
    宿主不再自己补按钮或隐藏外壳按钮。
    ========================================================================== */
@@ -16,14 +17,45 @@
 .admin-shell-host {
   height: 100vh;
   overflow: hidden;
+
+  /* ---------------------------------------------------------------------
+     以下三项是 web 后台在迁移共享外壳前的原值（= 官网 `/console` 的值），
+     共享包的默认值是给平台后台（offical `/admin`）定的另一档：
+       --mgac-bg      #f2f3f5 灰画布  → web 原是 `bg-background` 实白
+       font-size      14px            → web 原继承 body 的 16px
+       .mgac-content  22px 内边距      → web 原是 `p-8`（32px）
+     不对齐这三项，两端后台的页面底色 / 正文基准字号 / 内容区留白都会不一样。
+     --------------------------------------------------------------------- */
+  --mgac-bg: var(--background);
+  font-size: 16px;
+  /* 正文/继承色与边框色也回到 web 自己的令牌（原 `.mgac` 是 #1d1d1f / rgba(17,17,17,.08)，
+     web 前台与官网 `/console` 用的是 #0F0F0F / #E5E5E5）。 */
+  --mgac-text: var(--foreground);
+  --mgac-border: var(--border);
+  --mgac-text-dim: var(--muted-foreground);
+
+  /* 顶栏与左栏顶部标题块同一档高度：`/console` 的主区页头与侧栏品牌块都是 h-14（56px）。 */
+  --mgac-topbar-height: 56px;
+  /* 栏宽 / 折叠宽：`/console` 的 md:w-64 / md:w-20 */
+  --mgac-rail-width: 256px;
+  --mgac-rail-width-collapsed: 80px;
+  /* 外壳面（左栏 + 顶栏）走 web 自己的 `--background`：`/console` 的侧栏与页头
+     都是 bg-background（实白），共享包默认的 rgba 玻璃面会比 offical 灰一点。 */
+  --mgac-surface: var(--background);
 }
 
 .admin-shell-host .mgac-main {
   min-height: 0;
 }
 
+/* 顶栏左右内边距：`/console` 页头 px-6（横向 24px），页面标题与右侧动作同缩进 */
+.admin-shell-host .mgac-top {
+  padding-inline: 24px;
+}
+
 .admin-shell-host .mgac-content {
   min-height: 0;
+  padding: 32px; /* 原 `p-8`（= `/console` 的内容区留白），共享默认 22px */
   overflow-y: auto;
 }
 
@@ -33,9 +65,145 @@
   overflow-y: hidden;
 }
 
-/* 折叠时隐藏站点标题（与旧侧栏一致，只在桌面端） */
+/* 折叠时隐藏站点标题、改为在顶块中央显示站点名首字母（与旧侧栏一致，只在桌面端）：
+     注意只淡出标题本身，顶块那条与顶栏对齐的分隔线留着 —— 与官网 /console 一致。
+     `.admin-rail-monogram` 常驻 DOM（默认 opacity:0 + 绝对定位），窄屏抽屉虽然也带
+     `is-collapsed` 但侧栏是全宽的，那条 media query 让它继续显示完整标题。
+     本文件不经 Tailwind 处理，`theme()` 无效：字体/字号在 layout.tsx 的类上给，
+     这里只负责定位与显隐。 */
+.admin-rail-monogram {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
 @media (min-width: 901px) {
-  .admin-shell-host.is-collapsed .mgac-rail-head {
+  .admin-shell-host .mgac-rail-head {
+    position: relative;
+  }
+
+  .admin-shell-host.is-collapsed .admin-rail-title {
     opacity: 0;
+  }
+
+  .admin-shell-host.is-collapsed .admin-rail-monogram {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-rail-monogram {
+    transition: none;
+  }
+}
+
+/* ============================================================================
+   左栏对齐官网 `/console` 的自建 ConsoleSidebar（= web 迁移共享外壳前的侧栏）
+
+   共享外壳 rail 的默认观感（玻璃栏 + 13.5px 标签 + 淡蓝激活胶囊 + 顶块 44px）
+   是给平台后台 offical `/admin` 定的；web 是个人内容后台，形态与官网 `/console`
+   完全一致（站点标题 + 导航 + 主题 / 语言 / 账号 / 退出 + 折叠），因此逐项对齐：
+   栏宽、顶部标题块高度、导航项排版与激活态、底栏内边距、折叠入口与折叠态几何。
+
+   全部选择器都带 `.admin-shell-host` 前缀（权重 0,2,0 起），折叠态用
+   `.admin-shell-host.is-collapsed`（0,3,0）与包内 `.mgac.is-collapsed` 同权重、
+   靠引入顺序（本文件在 `theme.css` 之后）取胜。
+   ========================================================================== */
+
+/* 栏内不留内边距：缩进全部由导航区 p-4 与导航项 px-4 提供（与 `/console` 同几何；
+   底栏自带 p-4，栏自己不再垫底，底栏分隔线才会落在视口底边） */
+.admin-shell-host .mgac-rail {
+  padding: 0;
+}
+
+.admin-shell-host .mgac-rail-head {
+  margin-inline: 0;
+  padding-inline: 20px; /* /console 品牌块 px-5 */
+}
+
+.admin-shell-host .mgac-rail-nav {
+  gap: 4px; /* /console space-y-1 */
+  padding: 16px; /* /console p-4 */
+}
+
+.admin-shell-host .mgac-rail-item {
+  gap: 12px; /* gap-3 */
+  padding: 12px 16px; /* px-4 py-3 */
+  /* `text-xs` 的字号/行高是一对：`/console` 的项高是 12+17.33+12 = 41.33px
+     （13px × 1.3333），包内 `.mgac` 把行高定为 1.5 会变成 43.5px。 */
+  font-size: 13px;
+  line-height: calc(1 / 0.75);
+  color: var(--muted-foreground);
+  border-radius: 0; /* `/console` 的 rounded-sm 在 web 令牌下就是直角 */
+}
+
+.admin-shell-host .mgac-rail-item:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.admin-shell-host .mgac-rail-item.is-active {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+/* 图标跟着文字色走（包内给图标单独的 dim / accent 色） */
+.admin-shell-host .mgac-rail-item .mgac-rail-icon,
+.admin-shell-host .mgac-rail-item:hover .mgac-rail-icon,
+.admin-shell-host .mgac-rail-item.is-active .mgac-rail-icon {
+  color: currentColor;
+}
+
+/* 包内图标槽是 22px 见方，`/console` 直接以 16px 图标排布 → 标签左边界差 6px */
+.admin-shell-host .mgac-rail-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-shell-host .mgac-rail-label strong {
+  font-size: 13px; /* web 的 text-xs（--text-xs: 0.8125rem），与 `/console` 一致 */
+  font-weight: 700; /* font-bold */
+  letter-spacing: 0.1em; /* tracking-widest */
+  line-height: inherit; /* 跟随项的 text-xs 行高（1.3333），不回到 `.mgac` 的 1.5 */
+  text-transform: uppercase;
+}
+
+.admin-shell-host .mgac-rail-foot {
+  margin-top: 0; /* `/console` 底栏直接接在导航区之后 */
+  padding: 16px; /* /console 底栏 p-4 */
+  /* 包内底栏把文字色定成 `--mgac-text-dim`，而账号那一行（`/console` 里没有显式颜色）
+     应继承外壳正文色 —— 不覆盖的话 web 的用户名比 /console 灰一档。 */
+  color: inherit;
+}
+
+/* 折叠态：`/console` 的导航项保持 px-4 + 左对齐（标签淡出后图标自然落在栏心），
+   底栏为 md:px-3；包内默认把项整块居中、底栏 padding-inline 收到 2px，这里对齐 `/console`。 */
+.admin-shell-host.is-collapsed .mgac-rail {
+  padding-inline: 0;
+}
+
+.admin-shell-host.is-collapsed .mgac-rail-item {
+  justify-content: flex-start;
+}
+
+.admin-shell-host.is-collapsed .mgac-rail-foot {
+  padding-inline: 12px;
+}
+
+/* 左栏折叠入口：`/console` 同款的左缘垂直居中浮动胶囊（桌面上才出现；
+   `.mgac-only-desktop` 那个顶栏 ☰ 由宿主不再传 `onToggleCollapse` 关掉）。 */
+.admin-rail-toggle {
+  display: none;
+}
+
+@media (min-width: 901px) {
+  .admin-rail-toggle {
+    display: flex;
   }
 }

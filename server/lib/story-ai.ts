@@ -7,6 +7,7 @@ import {
   toOpenAiChatMessages,
   type EditorAiAction,
   type EditorAiChatMessage,
+  type EditorAiUsage,
   type OpenAiContentPart,
   type OpenAiImagePart,
   type OpenAiTextPart,
@@ -33,8 +34,69 @@ export interface StoryAiGeneratePayload {
     role: 'user' | 'assistant'
     content: string
   }>
-  onComplete?: (content: string, activeModel: string) => Promise<void> | void
+  onComplete?: (content: string, activeModel: string, usage?: EditorAiUsage) => Promise<void> | void
   onError?: (message: string) => Promise<void> | void
+}
+
+function readNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+/**
+ * Normalizes the usage payload of OpenAI-compatible providers. Vendors disagree on
+ * the shape: OpenAI nests cache/reasoning counters under `*_tokens_details`, DeepSeek
+ * reports `prompt_cache_hit_tokens`, and some proxies answer in `input_tokens` /
+ * `output_tokens` form.
+ */
+export function normalizeStoryAiUsage(value: unknown): EditorAiUsage | null {
+  const usage = readRecord(value)
+  if (!usage) return null
+
+  const promptDetails = readRecord(usage.prompt_tokens_details)
+  const completionDetails = readRecord(usage.completion_tokens_details)
+
+  const inputTokens = readNonNegativeInteger(usage.prompt_tokens)
+    ?? readNonNegativeInteger(usage.input_tokens)
+  const outputTokens = readNonNegativeInteger(usage.completion_tokens)
+    ?? readNonNegativeInteger(usage.output_tokens)
+  const reasoningTokens = readNonNegativeInteger(completionDetails?.reasoning_tokens)
+    ?? readNonNegativeInteger(usage.reasoning_tokens)
+  const cacheReadTokens = readNonNegativeInteger(promptDetails?.cached_tokens)
+    ?? readNonNegativeInteger(usage.prompt_cache_hit_tokens)
+    ?? readNonNegativeInteger(usage.cache_read_input_tokens)
+
+  if (
+    inputTokens === undefined
+    && outputTokens === undefined
+    && reasoningTokens === undefined
+    && cacheReadTokens === undefined
+  ) {
+    return null
+  }
+
+  return {
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+  }
+}
+
+/**
+ * Message metadata only accepts inert JSON, which has no place for `undefined` values,
+ * so usage is projected into a plain number map before being persisted.
+ */
+export function serializeStoryAiUsage(usage: EditorAiUsage): Record<string, number> | null {
+  const entries = Object.entries(usage).filter((entry): entry is [string, number] => (
+    typeof entry[1] === 'number' && Number.isFinite(entry[1])
+  ))
+  return entries.length > 0 ? Object.fromEntries(entries) : null
 }
 
 interface StoryAiConfig extends StoryAiModelCapabilityConfig {
@@ -147,6 +209,7 @@ export interface StoryAiGeneratedImage {
   contentType: string
   model: string
   revisedPrompt?: string
+  usage?: EditorAiUsage
 }
 
 function getStoryAiConfig(): StoryAiConfig {
@@ -230,23 +293,42 @@ export async function createEditorAiStream(payload: StoryAiGeneratePayload): Pro
   const config = getStoryAiConfig()
   const activeModel = payload.model?.trim() || config.model
 
-  const upstreamResponse = await fetch(`${config.baseUrl}/chat/completions`, {
+  // Ask the provider to report token usage on the final chunk. Most OpenAI-compatible
+  // gateways support `stream_options`, but a few reject unknown fields outright, so a
+  // rejection that mentions the field is retried once without it (usage is optional).
+  const requestBody = {
+    model: activeModel,
+    stream: true,
+    temperature: 0.7,
+    messages: toOpenAiChatMessages(buildEditorAiMessages(payload)),
+    stream_options: { include_usage: true },
+  }
+  const sendUpstreamRequest = (includeUsage: boolean) => fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify({
-      model: activeModel,
-      stream: true,
-      temperature: 0.7,
-      messages: toOpenAiChatMessages(buildEditorAiMessages(payload)),
-    }),
+    body: JSON.stringify(includeUsage
+      ? requestBody
+      : { ...requestBody, stream_options: undefined }),
   })
 
-  if (!upstreamResponse.ok || !upstreamResponse.body) {
+  let upstreamResponse = await sendUpstreamRequest(true)
+  if (!upstreamResponse.ok) {
     const errorText = await upstreamResponse.text().catch(() => '')
-    throw new Error(errorText || 'AI provider request failed')
+    if (!/stream_options|include_usage/i.test(errorText)) {
+      throw new Error(errorText || 'AI provider request failed')
+    }
+    upstreamResponse = await sendUpstreamRequest(false)
+    if (!upstreamResponse.ok) {
+      const retryErrorText = await upstreamResponse.text().catch(() => '')
+      throw new Error(retryErrorText || 'AI provider request failed')
+    }
+  }
+
+  if (!upstreamResponse.body) {
+    throw new Error('AI provider request failed')
   }
 
   const upstreamReader = upstreamResponse.body.getReader()
@@ -254,6 +336,7 @@ export async function createEditorAiStream(payload: StoryAiGeneratePayload): Pro
   const encoder = new TextEncoder()
   let buffer = ''
   let fullContent = ''
+  let usage: EditorAiUsage | null = null
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -262,7 +345,7 @@ export async function createEditorAiStream(payload: StoryAiGeneratePayload): Pro
           const { done, value } = await upstreamReader.read()
 
           if (done) {
-            await payload.onComplete?.(fullContent, activeModel)
+            await payload.onComplete?.(fullContent, activeModel, usage ?? undefined)
             controller.enqueue(encoder.encode('event: done\ndata: [DONE]\n\n'))
             controller.close()
             return
@@ -286,6 +369,13 @@ export async function createEditorAiStream(payload: StoryAiGeneratePayload): Pro
             try {
               const json = JSON.parse(data) as {
                 choices?: Array<{ delta?: { content?: string } }>
+                usage?: unknown
+              }
+              // The usage chunk carries no choices, so read it before the content guard.
+              const nextUsage = normalizeStoryAiUsage(json.usage)
+              if (nextUsage) {
+                usage = nextUsage
+                controller.enqueue(encoder.encode(`event: usage\ndata: ${JSON.stringify(nextUsage)}\n\n`))
               }
               const content = json.choices?.[0]?.delta?.content
               if (!content) {
@@ -344,9 +434,11 @@ async function parseGeneratedImageResponse(response: Response, model: string): P
   }
   const payload = await response.json() as {
     data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>
+    usage?: unknown
   }
   const item = payload.data?.[0]
   if (!item) throw new Error('Image generation response is empty')
+  const usage = normalizeStoryAiUsage(payload.usage) ?? undefined
 
   if (item.b64_json) {
     const buffer = decodeGeneratedImageBase64(item.b64_json)
@@ -355,7 +447,7 @@ async function parseGeneratedImageResponse(response: Response, model: string): P
     }
     const contentType = detectGeneratedImageContentType(buffer)
     if (!contentType) throw new Error('Generated image has an unsupported format')
-    return { buffer, contentType, model, revisedPrompt: item.revised_prompt }
+    return { buffer, contentType, model, revisedPrompt: item.revised_prompt, ...(usage ? { usage } : {}) }
   }
   if (!item.url) throw new Error('Image generation response is missing image data')
 
@@ -367,7 +459,7 @@ async function parseGeneratedImageResponse(response: Response, model: string): P
   }
   const contentType = detectGeneratedImageContentType(buffer)
   if (!contentType) throw new Error('Generated image has an unsupported format')
-  return { buffer, contentType, model, revisedPrompt: item.revised_prompt }
+  return { buffer, contentType, model, revisedPrompt: item.revised_prompt, ...(usage ? { usage } : {}) }
 }
 
 export async function generateStoryAiImage(input: {

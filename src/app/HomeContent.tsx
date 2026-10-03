@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { ArrowRight, Aperture, Camera } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { resolveAssetUrl } from '@/lib/api/core'
@@ -122,7 +122,7 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
               transition={{ duration: 0.2, delay: 0.1, ease: "easeOut" }}
               className="mb-4"
             >
-              <Sparkles className="size-8 text-white/60" />
+              <Aperture className="size-9 text-white/60" strokeWidth={1.25} />
             </motion.div>
 
             <motion.h1
@@ -343,7 +343,7 @@ export function HomeContent({ initialPhotos }: HomeContentProps) {
             transition={{ duration: 0.8 }}
           >
             <div className="inline-flex items-center justify-center size-16 rounded-full bg-primary/10 mb-8">
-              <Sparkles className="size-6 text-primary" />
+              <Camera className="size-6 text-primary" />
             </div>
             <span className="block font-sans text-xs text-primary mb-6 uppercase">
               {t('home.artist')}

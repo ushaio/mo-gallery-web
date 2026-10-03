@@ -860,6 +860,30 @@ export function PhotoDetailModal({
 
                         <div className="w-10 h-px bg-border mx-auto" />
 
+                        {/* Colors：紧贴预览图（信息列第一块，原标题/标签之后立即展示） */}
+                        {dominantColors.length > 0 && (
+                          <div className="space-y-4">
+                            <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-muted-foreground/60 text-center">
+                              {t('gallery.palette')}
+                            </h3>
+                            <div className="flex justify-center flex-wrap gap-3">
+                              {dominantColors.map((color, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => handleCopyColor(color)}
+                                  className="group relative w-9 h-9 rounded-full border border-border/30 shadow-sm transition-all duration-200 hover:scale-125 hover:shadow-md"
+                                  style={{ backgroundColor: color }}
+                                  title={color}
+                                >
+                                  <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background px-1.5 py-0.5 border border-border/50 shadow-sm">
+                                    {color}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Technical Grid */}
                         {exifItems.length > 0 && (
                           <div className="space-y-4">
@@ -898,29 +922,6 @@ export function PhotoDetailModal({
                           </div>
                         </div>
 
-                        {/* Colors */}
-                        {dominantColors.length > 0 && (
-                          <div className="space-y-4">
-                            <h3 className="text-ui-micro font-bold uppercase tracking-[0.2em] text-muted-foreground/60 text-center">
-                              {t('gallery.palette')}
-                            </h3>
-                            <div className="flex justify-center flex-wrap gap-3">
-                              {dominantColors.map((color, i) => (
-                                <button
-                                  key={i}
-                                  onClick={() => handleCopyColor(color)}
-                                  className="group relative w-9 h-9 rounded-full border border-border/30 shadow-sm transition-all duration-200 hover:scale-125 hover:shadow-md"
-                                  style={{ backgroundColor: color }}
-                                  title={color}
-                                >
-                                  <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-ui-micro font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-background px-1.5 py-0.5 border border-border/50 shadow-sm">
-                                    {color}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </motion.div>
                   )}

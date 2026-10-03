@@ -104,9 +104,101 @@ export function StoryListView({
 
   const hasActiveFilters = !!statusFilter || !!searchQuery.trim()
 
+  const sortedStories = useMemo(
+    () =>
+      [...filteredStories].sort(
+        (left, right) =>
+          new Date(right.updatedAt || right.createdAt).getTime() -
+          new Date(left.updatedAt || left.createdAt).getTime(),
+      ),
+    [filteredStories],
+  )
+
+  // 列表按「今天 / 本周 / 本月 / 更早」分段（参考桌面端叙事列表）
+  const timeGroups = useMemo(() => {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startOfWeek = new Date(startOfToday)
+    startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay())
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const groups: { today: StoryDto[]; week: StoryDto[]; month: StoryDto[]; earlier: StoryDto[] } = {
+      today: [],
+      week: [],
+      month: [],
+      earlier: [],
+    }
+    for (const story of sortedStories) {
+      const date = new Date(story.updatedAt || story.createdAt)
+      const day = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      if (day >= startOfToday) groups.today.push(story)
+      else if (day >= startOfWeek) groups.week.push(story)
+      else if (day >= startOfMonth) groups.month.push(story)
+      else groups.earlier.push(story)
+    }
+    return groups
+  }, [sortedStories])
+
+  const timeSectionLabels = [
+    { key: 'today' as const, label: t('story.today') },
+    { key: 'week' as const, label: t('story.this_week') },
+    { key: 'month' as const, label: t('story.this_month') },
+    { key: 'earlier' as const, label: t('story.earlier') },
+  ]
+
+  const renderStoryRow = (story: StoryDto) => {
+    const coverPhoto = story.coverPhotoId
+      ? story.photos.find((photo) => photo.id === story.coverPhotoId) || story.photos[0]
+      : story.photos[0]
+    const isSelected = selectedStoryId === story.id
+    return (
+      <div
+        key={story.id}
+        className={`group relative flex items-center transition-colors hover:border-primary/50 ${compact ? 'gap-2.5 rounded-md px-2 py-2' : 'gap-5 border px-5 py-5 sm:gap-6'} ${isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border bg-card'}`}
+      >
+        <div className={`${compact ? 'h-11 w-14 rounded-md' : 'hidden h-16 w-24 sm:block'} shrink-0 cursor-pointer overflow-hidden border border-border/70 bg-muted`} onClick={() => onEditStory(story)}>
+          {coverPhoto ? (
+            <img src={resolveAssetUrl(coverPhoto.thumbnailUrl || coverPhoto.url, cdnDomain)} alt="" className="h-full w-full object-cover" loading="lazy" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center"><BookOpen className={compact ? 'h-4 w-4 text-muted-foreground/60' : 'h-5 w-5 text-muted-foreground/60'} /></div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1 cursor-pointer pr-1" onClick={() => onEditStory(story)}>
+          <div className={`flex items-center gap-2 ${compact ? 'mb-1' : 'mb-2'}`}>
+            <h4 className={`${compact ? 'pr-10 text-sm' : 'pr-12 text-lg'} truncate font-serif transition-colors group-hover:text-primary`}>
+              {story.title || t('story.untitled')}
+            </h4>
+          </div>
+          <div className={`flex flex-wrap items-center gap-y-1 text-[10px] uppercase tracking-wide text-muted-foreground ${compact ? 'gap-x-3' : 'gap-x-6 text-xs'}`}>
+            <span className="flex items-center gap-1.5" title="Created At"><Calendar className="h-3 w-3" />{new Date(story.createdAt).toLocaleDateString()}</span>
+            <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title="Updated At"><History className="h-3 w-3" />{new Date(story.updatedAt).toLocaleString()}</span>
+            <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title={t('admin.characters')}><FileText className="h-3 w-3" />{getArticlePlainText(story).length} {t('admin.characters')}</span>
+            {story.photos && story.photos.length > 0 ? <span className="flex items-center gap-1.5" title={t('story.material_library')}><ImageIcon className="h-3 w-3" />{story.photos.length}</span> : null}
+          </div>
+        </div>
+
+        <span className={`absolute right-2 top-1.5 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ${story.isPublished ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}`}>
+          {story.isPublished ? t('admin.published') : t('admin.draft')}
+        </span>
+
+        <div className={`${compact ? 'absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100' : 'ml-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100'} flex shrink-0 items-center gap-0.5 transition-opacity`}>
+          <AdminButton onClick={(event) => { event.stopPropagation(); onTogglePublish(story) }} adminVariant="iconPrimary" className={compact ? 'p-1' : undefined} title={story.isPublished ? t('story.unpublish') : t('story.publish')}>
+            {story.isPublished ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </AdminButton>
+          <AdminButton onClick={(event) => { event.stopPropagation(); onEditStory(story) }} adminVariant="iconPrimary" className={compact ? 'p-1' : undefined} title={t('common.edit')}><Edit3 className="h-3.5 w-3.5" /></AdminButton>
+          <AdminButton onClick={(event) => { event.stopPropagation(); onRequestDelete(story.id) }} adminVariant="iconDestructive" className={compact ? 'p-1' : undefined} title={t('common.delete')}><Trash2 className="h-3.5 w-3.5" /></AdminButton>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className={`flex flex-1 flex-col overflow-hidden ${compact ? 'gap-2' : 'space-y-8'}`}>
-      <div className={`flex shrink-0 items-center border-b border-border ${compact ? 'gap-1.5 px-1 pb-3' : 'justify-between pb-4'}`}>
+    <div className={`flex flex-1 flex-col overflow-hidden ${compact ? 'gap-2' : 'gap-6'}`}>
+      {/* 工具栏与下方列表之间不再画满宽分隔线（与子标签栏同一口径，页面更一体化）：
+          间距统一取子标签栏到内容区的 24px（`pt-6`），因此非紧凑态工具栏不再留 `pb-4`，
+          否则「搜索框那一栏 → 列表」会明显大过「子标签栏 → 内容区」。
+          官网 `/console` 的 `StoryListView` 同步。 */}
+      <div className={`flex shrink-0 items-center ${compact ? 'gap-1.5 px-1 pb-3' : 'justify-between'}`}>
         {compact ? (
           <>
             <div className="relative min-w-0 flex-1">
@@ -155,101 +247,66 @@ export function StoryListView({
       <div className={`custom-scrollbar flex-1 overflow-y-auto ${compact ? 'px-1' : ''}`}>
         {loading ? (
           <StoryListSkeleton compact={compact} />
-        ) : (
-          <div className={`grid grid-cols-1 ${compact ? 'gap-1.5' : 'gap-4'}`}>
-            {filteredStories.map((story) => {
-              const coverPhoto = story.coverPhotoId
-                ? story.photos.find((photo) => photo.id === story.coverPhotoId) || story.photos[0]
-                : story.photos[0]
-              const isSelected = selectedStoryId === story.id
-              return (
-                <div
-                  key={story.id}
-                  className={`group relative flex items-center transition-colors hover:border-primary/50 ${compact ? 'gap-2.5 rounded-md px-2 py-2' : 'gap-5 border px-5 py-5 sm:gap-6'} ${isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-border bg-card'}`}
-                >
-                  <div className={`${compact ? 'h-11 w-14 rounded-md' : 'hidden h-16 w-24 sm:block'} shrink-0 cursor-pointer overflow-hidden border border-border/70 bg-muted`} onClick={() => onEditStory(story)}>
-                    {coverPhoto ? (
-                      <img src={resolveAssetUrl(coverPhoto.thumbnailUrl || coverPhoto.url, cdnDomain)} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center"><BookOpen className={compact ? 'h-4 w-4 text-muted-foreground/60' : 'h-5 w-5 text-muted-foreground/60'} /></div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1 cursor-pointer pr-1" onClick={() => onEditStory(story)}>
-                    <div className={`flex items-center gap-2 ${compact ? 'mb-1' : 'mb-2'}`}>
-                      <h4 className={`${compact ? 'pr-10 text-sm' : 'pr-12 text-lg'} truncate font-serif transition-colors group-hover:text-primary`}>
-                        {story.title || t('story.untitled')}
-                      </h4>
-                    </div>
-                    <div className={`flex flex-wrap items-center gap-y-1 text-[10px] uppercase tracking-wide text-muted-foreground ${compact ? 'gap-x-3' : 'gap-x-6 text-xs'}`}>
-                      <span className="flex items-center gap-1.5" title="Created At"><Calendar className="h-3 w-3" />{new Date(story.createdAt).toLocaleDateString()}</span>
-                      <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title="Updated At"><History className="h-3 w-3" />{new Date(story.updatedAt).toLocaleString()}</span>
-                      <span className={`${compact ? 'hidden' : 'flex'} items-center gap-1.5`} title={t('admin.characters')}><FileText className="h-3 w-3" />{getArticlePlainText(story).length} {t('admin.characters')}</span>
-                      {story.photos && story.photos.length > 0 ? <span className="flex items-center gap-1.5" title={t('story.material_library')}><ImageIcon className="h-3 w-3" />{story.photos.length}</span> : null}
-                    </div>
-                  </div>
-
-                  <span className={`absolute right-2 top-1.5 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ${story.isPublished ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}`}>
-                    {story.isPublished ? t('admin.published') : t('admin.draft')}
-                  </span>
-
-                  <div className={`${compact ? 'absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100' : 'ml-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100'} flex shrink-0 items-center gap-0.5 transition-opacity`}>
-                    <AdminButton onClick={(event) => { event.stopPropagation(); onTogglePublish(story) }} adminVariant="iconPrimary" className={compact ? 'p-1' : undefined} title={story.isPublished ? t('story.unpublish') : t('story.publish')}>
-                      {story.isPublished ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </AdminButton>
-                    <AdminButton onClick={(event) => { event.stopPropagation(); onEditStory(story) }} adminVariant="iconPrimary" className={compact ? 'p-1' : undefined} title={t('common.edit')}><Edit3 className="h-3.5 w-3.5" /></AdminButton>
-                    <AdminButton onClick={(event) => { event.stopPropagation(); onRequestDelete(story.id) }} adminVariant="iconDestructive" className={compact ? 'p-1' : undefined} title={t('common.delete')}><Trash2 className="h-3.5 w-3.5" /></AdminButton>
-                  </div>
-                </div>
-              )
-            })}
-
-            {stories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 px-4 py-20 text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
-                  <BookOpen className="h-8 w-8 text-muted-foreground/50" />
-                </div>
-                <h3 className="mb-1 text-sm font-semibold text-foreground">{t('ui.no_story')}</h3>
-              </div>
-            ) : filteredStories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 px-4 py-20 text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
-                  <BookOpen className="h-8 w-8 text-muted-foreground/50" />
-                </div>
-                <h3 className="mb-2 text-sm font-semibold text-foreground">
-                  {t('common.search')}
-                </h3>
-                <p className="mb-4 text-xs text-muted-foreground">
-                  {t('admin.no_albums_match_filters') || 'No stories match the current filters'}
-                </p>
-                {hasActiveFilters && (
-                  <div className="flex items-center gap-2">
-                    {!!searchQuery.trim() && (
-                      <AdminButton
-                        onClick={() => setSearchQuery('')}
-                        adminVariant="outline"
-                        size="sm"
-                        className="flex items-center gap-1.5"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        {t('common.search')}
-                      </AdminButton>
-                    )}
-                    {!!statusFilter && (
-                      <AdminButton
-                        onClick={() => onStatusFilterChange('')}
-                        adminVariant="outline"
-                        size="sm"
-                        className="flex items-center gap-1.5"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        {t('admin.filter') || 'Filter'}
-                      </AdminButton>
-                    )}
-                  </div>
+        ) : stories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 px-4 py-20 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
+              <BookOpen className="h-8 w-8 text-muted-foreground/50" />
+            </div>
+            <h3 className="mb-1 text-sm font-semibold text-foreground">{t('ui.no_story')}</h3>
+          </div>
+        ) : filteredStories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center border border-dashed border-border bg-card/50 px-4 py-20 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center border border-border bg-muted">
+              <Search className="h-8 w-8 text-muted-foreground/50" />
+            </div>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">
+              {t('admin.no_albums_match_filters') || 'No stories match the current filters'}
+            </h3>
+            {hasActiveFilters && (
+              <div className="flex items-center gap-2">
+                {!!searchQuery.trim() && (
+                  <AdminButton
+                    onClick={() => setSearchQuery('')}
+                    adminVariant="outline"
+                    size="sm"
+                    className="flex items-center gap-1.5"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    {t('admin.clear_filters')}
+                  </AdminButton>
+                )}
+                {!!statusFilter && (
+                  <AdminButton
+                    onClick={() => onStatusFilterChange('')}
+                    adminVariant="outline"
+                    size="sm"
+                    className="flex items-center gap-1.5"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    {t('admin.clear_filters')}
+                  </AdminButton>
                 )}
               </div>
-            ) : null}
+            )}
+          </div>
+        ) : (
+          <div className={`flex flex-col ${compact ? 'gap-4 pb-2' : 'gap-6 pb-2'}`}>
+            {timeSectionLabels.map(({ key, label }) => {
+              const items = timeGroups[key]
+              if (items.length === 0) return null
+              return (
+                <section key={key}>
+                  <div className="mb-2 flex items-center gap-2 px-1">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">{label}</span>
+                    <div className="h-px flex-1 bg-border/50" />
+                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50">{items.length}</span>
+                  </div>
+                  <div className={`grid grid-cols-1 ${compact ? 'gap-1.5' : 'gap-3'}`}>
+                    {items.map(renderStoryRow)}
+                  </div>
+                </section>
+              )
+            })}
           </div>
         )}
       </div>

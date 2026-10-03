@@ -6,7 +6,6 @@ import {
   FolderOpen,
   MapPinOff,
   Minimize2,
-  Settings2,
   Upload,
   Loader2,
   ChevronDown,
@@ -302,12 +301,13 @@ export function PhotoUploadParams({
 
   return (
     <>
-      <div className={embedded ? 'space-y-4' : 'sticky top-6'}>
-        <div className="flex items-center gap-3 mb-4">
-          <Settings2 className="w-4 h-4 text-muted-foreground" />
-          <h2 className="text-xs font-medium tracking-wide uppercase text-muted-foreground">{t('admin.upload_params')}</h2>
-        </div>
-
+      {/* 吸顶偏移必须为 0：吸顶的约束矩形是滚动容器的 content box（content box 顶 = 网格
+          的 24px `pt-6` 之下），若这里再写 `top-6` 就是「网格 pt-6 + 吸顶 top-6」双重下沉，
+          面板比右栏（网格自然留白 24px）低 24px；且面板一高过本列（胶片 Tab 多一个胶卷字段）
+          就顶满列高而无法下沉，于是同一页面两个 Tab 的顶部间距不一致（48px vs 24px）。
+          改 `top-0` 后两个 Tab 都与右栏对齐在「Tab 栏下方 24px」，与 Desktop 上传页
+          （`sticky top-0` + 网格 `p-6`）同口径。 */}
+      <div className={embedded ? 'space-y-4' : 'sticky top-0'}>
         <div className="space-y-4">
           {/* Title */}
           <div>
@@ -370,26 +370,27 @@ export function PhotoUploadParams({
             </div>
           )}
 
-          {/* Film Roll - enabled only for film photos */}
-          <div>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <Film className="w-3 h-3" />
-              {t('admin.film_roll_select')}
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowFilmRollSelector(true)}
-              disabled={mode !== 'film' || loadingFilmRolls}
-              className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <span className={uploadFilmRollName && mode === 'film' ? 'text-foreground' : 'text-muted-foreground'}>
-                {mode === 'film'
-                  ? uploadFilmRollName || t('admin.no_film_roll')
-                  : t('admin.film_roll_requires_film')}
-              </span>
-              <Film className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          </div>
+          {/* Film Roll - 胶片 Tab 专属参数：数码 Tab 下整块不出现，与 Desktop 版
+              `PhotoUploadParams.tsx` 的 `{mode === 'film' && …}` 同口径 */}
+          {mode === 'film' && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Film className="w-3 h-3" />
+                {t('admin.film_roll_select')}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowFilmRollSelector(true)}
+                disabled={loadingFilmRolls}
+                className="w-full flex items-center justify-between px-3 py-2 bg-background border border-border text-sm text-left hover:border-primary/50 transition-colors disabled:opacity-50"
+              >
+                <span className={uploadFilmRollName ? 'text-foreground' : 'text-muted-foreground'}>
+                  {uploadFilmRollName || t('admin.no_film_roll')}
+                </span>
+                <Film className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </div>
+          )}
 
           {/* Storage - compact layout */}
           <div className="pt-3 border-t border-border/50">

@@ -183,6 +183,24 @@ class RecordingRepository implements EditorAiRepository {
     return conversation(id)
   }
 
+  async deleteMessagesFrom(userId: string, id: string, messageId: string) {
+    this.calls.push({ method: 'deleteMessagesFrom', userId, id, args: [messageId] })
+    if (!this.canAccess(userId, id)) throw new EditorAiNotFoundError('conversation')
+    if (this.messageOwners.get(messageId) !== userId) throw new EditorAiNotFoundError('message')
+    return 1
+  }
+
+  async forkConversation(
+    userId: string,
+    id: string,
+    input: Parameters<EditorAiRepository['forkConversation']>[2],
+  ) {
+    this.calls.push({ method: 'forkConversation', userId, id, args: [input] })
+    if (!this.canAccess(userId, id)) throw new EditorAiNotFoundError('conversation')
+    if (this.messageOwners.get(input.messageId) !== userId) throw new EditorAiNotFoundError('message')
+    return { ...conversation('forked'), messages: [] }
+  }
+
   async listMessages(userId: string, id: string) {
     this.calls.push({ method: 'listMessages', userId, id, args: [id] })
     return this.messagesByConversation.get(id) ?? []

@@ -1,18 +1,20 @@
-﻿'use client'
+'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Plus,
   Image as ImageIcon,
-  X,
   Loader2,
   Calendar,
   Upload,
   RefreshCw,
   MoreVertical,
+  Star,
+  ImagePlus,
+  Trash2,
 } from 'lucide-react'
 import { guardNarrativeAiMutation } from '@mo-gallery/tiptap-editor'
-import { getMilkdownPhotoIds } from '@mo-gallery/milkdown/media'
+import { getMilkdownPhotoIds, getMilkdownUploadIds } from '@mo-gallery/milkdown/media'
 import { resolveAssetUrl } from '@/lib/api/core'
 import type { StoryDto, PhotoDto } from '@/lib/api/types'
 import { getStoryImageMatchCandidates, getStoryMarkdownImageUrls, getStoryReferencedPhotoIds } from '@/lib/story-rich-content'
@@ -28,6 +30,32 @@ export interface PendingImage {
   error?: string
   photoId?: string
   takenAt?: string
+}
+
+/**
+ * 素材瓦片角标：与资源库瓦片、文章列表卡片同一枚胶囊。
+ * 默认深色半透明底 + 白字；传 background/color 可覆盖（如封面用主题色）。
+ */
+function MaterialBadge({
+  children,
+  background,
+  color,
+}: {
+  children: React.ReactNode
+  background?: string
+  color?: string
+}) {
+  return (
+    <span
+      className="inline-flex h-5 min-w-5 items-center justify-center gap-[3px] rounded-full px-[7px] text-[10px] font-semibold leading-none shadow-[0_1px_3px_rgba(0,0,0,0.2)] backdrop-blur-md"
+      style={{
+        backgroundColor: background ?? 'rgba(9,9,11,0.62)',
+        color: color ?? '#ffffff',
+      }}
+    >
+      {children}
+    </span>
+  )
 }
 
 interface StoryPhotoPanelProps {
@@ -136,6 +164,12 @@ export function StoryPhotoPanel({
   const insertedImageUrls = getStoryMarkdownImageUrls(editorContent)
   const referencedPhotoIds = currentStory?.editorType === 'milkdown' ? getMilkdownPhotoIds(editorContent) : getStoryReferencedPhotoIds(editorContent)
 
+  /**
+   * 正文里占位卡的 uploadId 集合。待传项的 `id` 就是插卡时的 uploadId，
+   * 所以「待传项已排入正文」＝ ids 里含该项 id（与已上传照片的 isPhotoInserted 同一口径）。
+   */
+  const insertedUploadIds = getMilkdownUploadIds(editorContent)
+
   const isPhotoInserted = (photo: PhotoDto) => {
     if (referencedPhotoIds.has(photo.id)) {
       return true
@@ -150,11 +184,35 @@ export function StoryPhotoPanel({
     return Array.from(candidates).some((candidate) => insertedImageUrls.has(candidate))
   }
 
+  const isPendingInserted = (pending: PendingImage) => insertedUploadIds.has(pending.id)
+
   const getCombinedItems = () => {
     const photoItems = (currentStory?.photos || []).map((photo) => ({ id: photo.id, type: 'photo' as const }))
     const pendingItems = pendingImages.map((image) => ({ id: image.id, type: 'pending' as const }))
     return [...photoItems, ...pendingItems]
   }
+
+  const [filterTab, setFilterTab] = useState<'all' | 'used' | 'unused'>('all')
+
+  const filteredItems = getCombinedItems().filter((item) => {
+    if (filterTab === 'all') return true
+    if (item.type === 'pending') {
+      const pending = pendingImages.find((image) => image.id === item.id)
+      if (!pending) return false
+      const inserted = isPendingInserted(pending)
+      return filterTab === 'used' ? inserted : !inserted
+    }
+    const photo = currentStory?.photos?.find((p) => p.id === item.id)
+    if (!photo) return false
+    const inserted = isPhotoInserted(photo)
+    return filterTab === 'used' ? inserted : !inserted
+  })
+
+  const filterTabs = [
+    { key: 'all' as const, label: t('story.material_all') },
+    { key: 'used' as const, label: t('story.material_used') },
+    { key: 'unused' as const, label: t('story.material_unused') },
+  ]
 
   if (isCollapsed) {
     return null
@@ -173,19 +231,20 @@ export function StoryPhotoPanel({
       onDragLeave={onPhotoPanelDragLeave}
       onDrop={onPhotoPanelDrop}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-gradient-to-r from-muted/15 via-background to-muted/10 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <ImageIcon className="h-4 w-4 text-primary" />
-          <span className="text-xs font-bold uppercase tracking-[0.24em] text-foreground">
+      {/* 标题栏高度 h-10，与左侧编辑器工具栏（milkdown top-bar 2.5rem）严格对齐 */}
+      <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-card px-3 py-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <ImageIcon className="h-4 w-4 shrink-0 text-primary" />
+          <span className="truncate text-xs font-bold uppercase tracking-[0.24em] text-foreground">
             {t('story.material_library')}
           </span>
           {pendingImages.length > 0 ? (
-            <span className="border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">
+            <span className="shrink-0 border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
               {pendingImages.length} {t('admin.pending_uploads')}
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <AdminButton
             type="button"
             onClick={onOpenPasteUploadSettings}
@@ -205,6 +264,23 @@ export function StoryPhotoPanel({
             <span>{t('admin.add_photos')}</span>
           </AdminButton>
         </div>
+      </div>
+
+      {/* 素材筛选：全部 / 已使用 / 未使用 */}
+      <div className="flex shrink-0 gap-0.5 border-b border-border/50 bg-card px-4 py-1.5">
+        {filterTabs.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setFilterTab(key)}
+            className={cn(
+              'rounded-md px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors',
+              filterTab === key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {isUploading ? (
@@ -243,9 +319,10 @@ export function StoryPhotoPanel({
       ) : null}
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-        {(currentStory?.photos && currentStory.photos.length > 0) || pendingImages.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3">
-            {getCombinedItems().map((item, idx) => {
+        {filteredItems.length > 0 ? (
+          /* 一行 3 张：面板 340px（宽屏 390px）时瓦片约 97–114px。 */
+          <div className="grid grid-cols-3 gap-2">
+            {filteredItems.map((item, idx) => {
               if (item.type === 'photo') {
                 const photo = currentStory?.photos?.find((current) => current.id === item.id)
                 if (!photo) return null
@@ -259,32 +336,22 @@ export function StoryPhotoPanel({
                       onDragOver={(event) => onItemDragOver(event, photo.id)}
                       onDragLeave={onItemDragLeave}
                       onDrop={(event) => onItemDrop(event, photo.id, 'photo')}
-                      className={`relative group aspect-[4/5] cursor-grab overflow-hidden border transition-all duration-200 active:cursor-grabbing ${
-                        dragOverItemId === photo.id
-                          ? 'scale-[1.02] border-primary border-dashed shadow-lg'
-                          : currentStory?.coverPhotoId === photo.id
-                            ? 'border-primary shadow-[0_0_0_1px_rgba(0,0,0,0.02)]'
-                            : 'border-border/60 hover:border-border'
-                      } ${draggedItemId === photo.id && draggedItemType === 'photo' ? 'opacity-50' : ''}`}
+                      className={cn(
+                        'group relative aspect-[4/5] cursor-grab overflow-hidden rounded-md bg-muted transition-opacity active:cursor-grabbing',
+                        draggedItemId === photo.id && draggedItemType === 'photo' && 'opacity-50'
+                      )}
                     >
+                      {/* 更多操作（左上）：EXIF 时间等次要动作 */}
                       <AdminButton
                         onClick={(event) => {
                           event.stopPropagation()
                           onOpenMenuPhoto(openMenuPhotoId === photo.id ? null : photo.id)
                         }}
-                        adminVariant="icon"
-                        className="absolute right-1 top-1 z-20 border border-white/20 bg-black/45 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+                        adminVariant="iconOnDark"
+                        className="absolute left-1.5 top-1.5 z-20 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                       >
                         <MoreVertical className="h-3 w-3" />
                       </AdminButton>
-
-                      <div className="absolute bottom-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center border border-white/15 bg-black/60 px-1">
-                        <span className="text-[10px] font-bold text-white">{idx + 1}</span>
-                      </div>
-
-                      <div className="absolute left-1 top-1 z-10 border border-black/10 bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-black/75 backdrop-blur-sm dark:border-white/10 dark:bg-black/50 dark:text-white/80">
-                        {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
-                      </div>
 
                       <img
                         src={resolveAssetUrl(photo.thumbnailUrl || photo.url, cdnDomain)}
@@ -292,36 +359,47 @@ export function StoryPhotoPanel({
                         className="h-full w-full object-cover pointer-events-none"
                       />
 
-                      {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
-                        <div className="absolute left-1 top-1 bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
-                          {t('admin.cover')}
-                        </div>
-                      ) : null}
-
                       {isPhotoInserted(photo) ? (
-                        <div className="absolute inset-0 z-10 bg-black/40" />
+                        <div aria-hidden className="absolute inset-0 z-10 bg-black/40" />
                       ) : null}
 
-                      <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      {/* 状态角标（左下）：封面 */}
+                      {currentStory?.coverPhotoId === photo.id && !pendingCoverId ? (
+                        <span className="absolute bottom-2 left-2 z-20">
+                          <MaterialBadge background="var(--primary)" color="var(--primary-foreground)">
+                            {t('admin.cover')}
+                          </MaterialBadge>
+                        </span>
+                      ) : null}
+
+                      {/* 顺序角标（右下）：与文章列表卡片的「照片数」同位同形 */}
+                      <span className="absolute bottom-2 right-2 z-20">
+                        <MaterialBadge>
+                          <span className="font-mono">{idx + 1}</span>
+                        </MaterialBadge>
+                      </span>
+
+                      {/* 悬停操作（右上）：图标簇，不铺满遮罩、不挡图 */}
+                      <div className="absolute right-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()
                             onSetCover(photo.id)
                           }}
-                          adminVariant="ghost"
-                          className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
+                          adminVariant="iconOnDark"
+                          title={t('admin.cover')}
                         >
-                          {t('admin.cover')}
+                          <Star className="h-3 w-3" />
                         </AdminButton>
                         <AdminButton
                           onClick={(event) => {
                             event.stopPropagation()
                             onInsertPhotoMarkdown(photo)
                           }}
-                          adminVariant="ghost"
-                          className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
+                          adminVariant="iconOnDark"
+                          title={t('admin.insert_photo')}
                         >
-                          {t('admin.insert_photo')}
+                          <ImagePlus className="h-3 w-3" />
                         </AdminButton>
                         <AdminButton
                           onClick={(event) => {
@@ -332,16 +410,18 @@ export function StoryPhotoPanel({
                             }
                             onRemovePhoto(photo.id)
                           }}
-                          adminVariant="ghost"
-                          className={cn(
-                            'border border-white/20 bg-white/15 p-1.5 text-white',
-                            isPhotoInserted(photo) ? 'cursor-not-allowed opacity-50' : 'hover:bg-destructive',
-                          )}
-                          title={isPhotoInserted(photo) ? t('story.material_in_use') : undefined}
+                          adminVariant="iconOnDarkDanger"
+                          className={isPhotoInserted(photo) ? 'cursor-not-allowed opacity-50' : undefined}
+                          title={isPhotoInserted(photo) ? t('story.material_in_use') : t('common.delete')}
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3 w-3" />
                         </AdminButton>
                       </div>
+
+                      {/* 投放高亮：画在缩略图之上、瓦片边界之内的内圈描边 */}
+                      {dragOverItemId === photo.id ? (
+                        <span aria-hidden className="pointer-events-none absolute inset-0 z-30 rounded-md border-2" style={{ borderColor: 'var(--primary)' }} />
+                      ) : null}
                     </div>
 
                     {openMenuPhotoId === photo.id ? (
@@ -395,17 +475,11 @@ export function StoryPhotoPanel({
                     onDragOver={(event) => onItemDragOver(event, pending.id)}
                     onDragLeave={onItemDragLeave}
                     onDrop={(event) => onItemDrop(event, pending.id, 'pending')}
-                      className={`relative group aspect-[4/5] overflow-hidden border transition-all duration-200 ${
-                        pending.status === 'uploading'
-                          ? 'border-primary'
-                          : pending.status === 'failed'
-                            ? 'border-destructive border-dashed'
-                          : isPendingCover
-                            ? 'border-primary'
-                            : 'border-amber-500/60 border-dashed'
-                    } ${dragOverItemId === pending.id ? 'scale-[1.02] shadow-lg' : ''} ${
-                      draggedItemId === pending.id && draggedItemType === 'pending' ? 'opacity-50' : ''
-                    } ${pending.status !== 'uploading' ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    className={cn(
+                      'group relative aspect-[4/5] overflow-hidden rounded-md bg-muted transition-opacity',
+                      draggedItemId === pending.id && draggedItemType === 'pending' && 'opacity-50',
+                      pending.status !== 'uploading' && 'cursor-grab active:cursor-grabbing'
+                    )}
                   >
                     {pending.status !== 'uploading' ? (
                       <AdminButton
@@ -413,60 +487,63 @@ export function StoryPhotoPanel({
                           event.stopPropagation()
                           onOpenMenuPending(openMenuPendingId === pending.id ? null : pending.id)
                         }}
-                        adminVariant="icon"
-                        className="absolute right-1 top-1 z-20 border border-white/20 bg-black/45 p-1 text-white opacity-0 transition-opacity hover:bg-black/60 group-hover:opacity-100"
+                        adminVariant="iconOnDark"
+                        className="absolute left-1.5 top-1.5 z-20 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                       >
                         <MoreVertical className="h-3 w-3" />
                       </AdminButton>
                     ) : null}
 
-                    <div className="absolute bottom-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center border border-white/15 bg-black/60 px-1">
-                      <span className="text-[10px] font-bold text-white">{idx + 1}</span>
-                    </div>
-
-                    <div className="absolute left-1 top-1 z-10 border border-black/10 bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-black/75 backdrop-blur-sm dark:border-white/10 dark:bg-black/50 dark:text-white/80">
-                      {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
-                    </div>
-
                     <img src={pending.previewUrl} alt="" className="h-full w-full object-cover pointer-events-none" />
 
-                    {isPendingCover ? (
-                      <div className="absolute left-1 top-1 bg-primary px-1.5 py-0.5 text-[8px] font-bold uppercase text-primary-foreground">
-                        {t('admin.cover')}
-                      </div>
-                    ) : null}
+                    {/* 状态角标（左下）：待传 / 失败 / 封面 —— 状态用胶囊表达，不再借虚线边框 */}
+                    <span className="absolute bottom-2 left-2 z-20 flex flex-wrap items-center gap-1">
+                      {isPendingCover ? (
+                        <MaterialBadge background="var(--primary)" color="var(--primary-foreground)">
+                          {t('admin.cover')}
+                        </MaterialBadge>
+                      ) : null}
+                      {pending.status === 'pending' ? (
+                        <MaterialBadge background="var(--primary)" color="var(--primary-foreground)">
+                          {t('admin.pending_uploads')}
+                        </MaterialBadge>
+                      ) : null}
+                      {pending.status === 'failed' ? (
+                        <MaterialBadge background="#f87171">
+                          {t('admin.failed')}
+                        </MaterialBadge>
+                      ) : null}
+                    </span>
 
-                    <div
-                      className={`absolute inset-0 flex items-center justify-center transition-opacity ${
-                        pending.status === 'uploading'
-                          ? 'bg-black/40 opacity-100'
-                          : pending.status === 'failed'
-                            ? 'bg-destructive/30 opacity-100'
-                            : 'bg-amber-500/20 opacity-100 group-hover:opacity-0'
-                      }`}
-                    >
-                      {pending.status === 'uploading' ? (
+                    {/* 顺序角标（右下） */}
+                    <span className="absolute bottom-2 right-2 z-20">
+                      <MaterialBadge>
+                        <span className="font-mono">{idx + 1}</span>
+                      </MaterialBadge>
+                    </span>
+
+                    {/* 上传中：只有进度值得铺满遮罩 */}
+                    {pending.status === 'uploading' ? (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
                         <div className="flex flex-col items-center">
                           <Loader2 className="h-5 w-5 animate-spin text-white" />
                           <span className="mt-1 text-[10px] text-white">{pending.progress}%</span>
                         </div>
-                      ) : null}
-                      {pending.status === 'pending' ? <Upload className="h-5 w-5 text-amber-600" /> : null}
-                      {pending.status === 'failed' ? <X className="h-5 w-5 text-destructive" /> : null}
-                    </div>
+                      </div>
+                    ) : null}
 
                     {pending.status !== 'uploading' ? (
-                      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <div className="absolute right-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         {!isPendingCover ? (
                           <AdminButton
                             onClick={(event) => {
                               event.stopPropagation()
                               onSetPendingCover(pending.id)
                             }}
-                            adminVariant="ghost"
-                            className="border border-white/20 bg-white/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-white hover:bg-white/30"
+                            adminVariant="iconOnDark"
+                            title={t('admin.cover')}
                           >
-                            {t('admin.cover')}
+                            <Star className="h-3 w-3" />
                           </AdminButton>
                         ) : null}
                         <AdminButton
@@ -474,12 +551,16 @@ export function StoryPhotoPanel({
                             event.stopPropagation()
                             onRemovePendingImage(pending.id)
                           }}
-                          adminVariant="ghost"
-                          className="border border-white/20 bg-white/15 p-1.5 text-white hover:bg-destructive"
+                          adminVariant="iconOnDarkDanger"
+                          title={t('common.delete')}
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3 w-3" />
                         </AdminButton>
                       </div>
+                    ) : null}
+
+                    {dragOverItemId === pending.id ? (
+                      <span aria-hidden className="pointer-events-none absolute inset-0 z-30 rounded-md border-2" style={{ borderColor: 'var(--primary)' }} />
                     ) : null}
                   </div>
 
@@ -522,12 +603,20 @@ export function StoryPhotoPanel({
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-            <Upload className="mb-3 h-12 w-12 opacity-20" />
-            <p className="mb-1 text-center text-xs">{t('admin.drag_images_here')}</p>
-            <p className="mb-3 text-center text-[10px] opacity-60">{t('admin.drag_images_insert_hint')}</p>
-            <AdminButton onClick={onAddPhotos} adminVariant="link" className="text-xs text-primary">
-              {t('admin.select_from_library')}
-            </AdminButton>
+            {filterTab === 'used' ? (
+              <p className="mb-1 text-center text-xs">{t('story.material_no_used')}</p>
+            ) : filterTab === 'unused' ? (
+              <p className="mb-1 text-center text-xs">{t('story.material_no_unused')}</p>
+            ) : (
+              <>
+                <Upload className="mb-3 h-12 w-12 opacity-20" />
+                <p className="mb-1 text-center text-xs">{t('admin.drag_images_here')}</p>
+                <p className="mb-3 text-center text-[10px] opacity-60">{t('admin.drag_images_insert_hint')}</p>
+                <AdminButton onClick={onAddPhotos} adminVariant="link" className="text-xs text-primary">
+                  {t('admin.select_from_library')}
+                </AdminButton>
+              </>
+            )}
           </div>
         )}
       </div>
