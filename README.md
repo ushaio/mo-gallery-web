@@ -60,13 +60,13 @@ MO Gallery 由两部分组成，共用一套 API 与数据层：
 - **胶卷管理** —— 支持 `135` 与 `120` 画幅、胶片预设、胶卷元数据、帧数与帧排序。
 - **批量上传** —— 数码/胶片两种上传模式，拖拽导入、压缩、进度展示、失败重试与目标选择。
 - **重复检测** —— 基于文件哈希识别重复照片。
-- **上传管线** —— EXIF 提取、主色、缩略图与目标体积压缩由共享包 `@mo-gallery/image-pipeline` 统一提供。
+- **上传管线** —— 上传时统一完成 EXIF 提取、主色提取、缩略图生成与目标体积压缩。
 
 ### ✍️ 故事、博客与编辑器
 
 - **照片叙事** —— 把多张照片与长文叙事组合成一篇故事，支持故事地图、封面裁切与故事内照片排序。
 - **博客** —— 与故事共用编辑器与渲染器，支持草稿/已发布状态与图库插图。
-- **Milkdown 编辑器** —— 正文编辑器与只读渲染走共享包 `@mo-gallery/milkdown`，支持图片卡、拼图与媒体嵌入。
+- **Milkdown 编辑器** —— 正文编辑器与只读渲染支持图片卡、拼图与媒体嵌入。
 - **TipTap 编辑器** —— 结构化 JSON 内容，支持标题、列表、引用、代码、表格、图片组、颜色与字号等。
 - **AI 辅助** —— 编辑器内直接调用 AI 进行续写、改写与受控直接编辑。
 - **本地草稿** —— 通过 IndexedDB 保存草稿，降低意外退出造成的内容丢失。
@@ -129,10 +129,6 @@ MO Gallery 由两部分组成，共用一套 API 与数据层：
                             │
                             ▼
         Local / S3 兼容 / Cloudflare R2 / GitHub 存储
-
-共享包（packages/*，由 mo-gallery-shared 同步）
-  api-client · ai-agent · milkdown · tiptap-editor · mo-editor
-  content-core · image-pipeline · public-site · admin-console
 ```
 
 ### 数据边界
@@ -150,29 +146,11 @@ MO Gallery 由两部分组成，共用一套 API 与数据层：
 | 数据库 | PostgreSQL 16、Prisma 7（`@prisma/adapter-pg`） |
 | 样式与动效 | Tailwind CSS 4、Framer Motion、Lucide / Iconify |
 | 富文本 | Milkdown、TipTap 3、React Markdown、Shiki |
-| 图片处理 | Sharp、ExifReader、`@jsquash/*`（JS/WASM 压缩）、`@mo-gallery/image-pipeline` |
+| 图片处理 | Sharp、ExifReader、`@jsquash/*`（JS/WASM 压缩） |
 | 地图 | MapLibre GL、react-map-gl（可切换高德） |
 | 认证 | JWT（HS256）、bcrypt、Linux DO OAuth |
 | 状态与草稿 | React Context、Zustand、IndexedDB |
 | 存储 | Local、S3 兼容、Cloudflare R2、GitHub |
-
----
-
-## 📦 共享包
-
-`packages/*` 是 **`mo-gallery-shared` 仓库的镜像**，不是本仓库的编辑源：源在 `../mo-gallery-shared`，由该仓库的 `pnpm sync` 单向同步过来，**请勿直接编辑镜像文件**。包间以 `workspace:*` 引用，全部为 TypeScript 源码直出（`main` 指向 `src/index.ts`，无构建产物）。
-
-| 包 | 说明 |
-|----|------|
-| `@mo-gallery/api-client` | API 客户端、DTO 与端点契约（含 `mo-cloud` 子模块） |
-| `@mo-gallery/ai-agent` | 编辑器 AI 领域协议与 Vercel AI SDK 运行时 |
-| `@mo-gallery/milkdown` | Milkdown 富文本编辑器封装 |
-| `@mo-gallery/tiptap-editor` | TipTap 富文本编辑器 |
-| `@mo-gallery/mo-editor` | 编辑器共享组件 |
-| `@mo-gallery/content-core` | 个人站内容领域：发布状态机与内容规则（纯 TS，无 Prisma/Next 依赖） |
-| `@mo-gallery/image-pipeline` | 服务端图片处理管线：EXIF、主色、缩略图与目标体积压缩 |
-| `@mo-gallery/public-site` | 访客站点组件集（网格、灯箱、相册、胶卷、正文、评论），宿主无关 |
-| `@mo-gallery/admin-console` | 后台外壳与设计系统（侧栏、顶栏、模态、确认弹窗），导航与路由由宿主注入 |
 
 ---
 
@@ -194,7 +172,7 @@ cd mo-gallery-web
 pnpm install
 ```
 
-`pnpm-workspace.yaml` 只把 `packages/*` 纳入工作区。
+安装依赖：
 
 ### 2. 配置环境变量
 
@@ -400,7 +378,7 @@ mo-gallery-web/
 ├── hono/                       # Hono 路由与认证中间件（photos / stories / blogs / albums / film-rolls / wechat …）
 ├── server/lib/                 # 查询、存储、EXIF、AI 等基础能力
 ├── prisma/                     # Prisma Schema、迁移与种子脚本
-├── packages/                   # @mo-gallery/* 共享包镜像（源在 mo-gallery-shared，勿直接编辑）
+├── packages/                   # @mo-gallery/* 内部公共模块
 ├── docs/                       # 设计文档、需求规格与验证矩阵
 ├── tests/                      # 聚焦测试
 ├── scripts/                    # 数据修复与回归脚本
@@ -432,13 +410,6 @@ mo-gallery-web/
 <summary><strong>为什么仓库里没有 desktop / flutter 目录？</strong></summary>
 
 自 `v0.8.3` 起，Wails 桌面客户端迁到 [`ushaio/emulsion-desktop-v3`](https://github.com/ushaio/emulsion-desktop-v3) 独立发版，Flutter 移动客户端在私有仓库 `ushaio/emulsion-app` 维护。本仓库只保留 Web 站点与 Web 后台；仓库里的 `flutter/` 仅剩构建缓存，已被 `.gitignore` 忽略。
-
-</details>
-
-<details>
-<summary><strong>packages/ 里的代码能直接改吗？</strong></summary>
-
-不能。`packages/*` 是 `mo-gallery-shared` 仓库的镜像，改动会在下次 `pnpm sync` 时被覆盖。请到 `mo-gallery-shared` 修改源文件，再同步到本仓库。
 
 </details>
 

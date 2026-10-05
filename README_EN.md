@@ -60,13 +60,13 @@ Photos, albums, and film rolls live in a single workspace, so you stop bouncing 
 - **Film roll management** — `135` and `120` formats, film presets, roll metadata, frame count, and frame ordering.
 - **Batch uploads** — Digital and film upload modes with drag-and-drop, compression, progress, retries, and target selection.
 - **Duplicate detection** — Identifies duplicates by file hash.
-- **Upload pipeline** — EXIF, dominant colors, thumbnails, and target-size compression are provided by the shared `@mo-gallery/image-pipeline` package.
+- **Upload pipeline** — EXIF extraction, dominant colors, thumbnails, and target-size compression are all handled during upload.
 
 ### ✍️ Stories, Blogs, and Editors
 
 - **Photo narratives** — Combine multiple photos with long-form writing, plus story maps, cover cropping, and in-story photo ordering.
 - **Blog** — Shares the editor and renderer with stories, with draft/published states and gallery photo insertion.
-- **Milkdown editor** — The body editor and read-only renderer come from the shared `@mo-gallery/milkdown` package, supporting image cards, galleries, and embedded media.
+- **Milkdown editor** — The body editor and read-only renderer support image cards, galleries, and embedded media.
 - **TipTap editor** — Structured JSON content with headings, lists, quotes, code, tables, image groups, colors, and font sizes.
 - **AI assistance** — Continue, rewrite, and apply controlled direct edits from inside the editor.
 - **Local drafts** — Drafts are kept in IndexedDB to reduce loss on unexpected exits.
@@ -129,10 +129,6 @@ These are off by default; enable them as needed:
                             │
                             ▼
         Local / S3-compatible / Cloudflare R2 / GitHub
-
-Shared packages (packages/*, synced from mo-gallery-shared)
-  api-client · ai-agent · milkdown · tiptap-editor · mo-editor
-  content-core · image-pipeline · public-site · admin-console
 ```
 
 ### Data Boundaries
@@ -150,29 +146,11 @@ Shared packages (packages/*, synced from mo-gallery-shared)
 | Database | PostgreSQL 16, Prisma 7 (`@prisma/adapter-pg`) |
 | Styling and animation | Tailwind CSS 4, Framer Motion, Lucide / Iconify |
 | Rich text | Milkdown, TipTap 3, React Markdown, Shiki |
-| Image processing | Sharp, ExifReader, `@jsquash/*` (JS/WASM compression), `@mo-gallery/image-pipeline` |
+| Image processing | Sharp, ExifReader, `@jsquash/*` (JS/WASM compression) |
 | Maps | MapLibre GL, react-map-gl (AMap switchable) |
 | Authentication | JWT (HS256), bcrypt, Linux DO OAuth |
 | State and drafts | React Context, Zustand, IndexedDB |
 | Storage | Local, S3-compatible, Cloudflare R2, GitHub |
-
----
-
-## 📦 Shared Packages
-
-`packages/*` are **mirrors of the `mo-gallery-shared` repository**, not an editing source: the source lives in `../mo-gallery-shared` and is synced one-way by that repository's `pnpm sync`. **Do not edit the mirrored files directly.** Packages reference each other with `workspace:*` and ship TypeScript sources directly (`main` points at `src/index.ts`, no build output).
-
-| Package | Description |
-|---------|-------------|
-| `@mo-gallery/api-client` | API client, DTOs, and endpoint contracts (including the `mo-cloud` submodule) |
-| `@mo-gallery/ai-agent` | Editor AI domain protocol and Vercel AI SDK runtime |
-| `@mo-gallery/milkdown` | Milkdown rich-text editor wrapper |
-| `@mo-gallery/tiptap-editor` | TipTap rich-text editor |
-| `@mo-gallery/mo-editor` | Shared editor components |
-| `@mo-gallery/content-core` | Personal-site content domain: publication state machine and rules (pure TS, no Prisma/Next) |
-| `@mo-gallery/image-pipeline` | Server-side image pipeline: EXIF, dominant colors, thumbnails, target-size compression |
-| `@mo-gallery/public-site` | Visitor-site components (grid, lightbox, album, film roll, article, comments), host-agnostic |
-| `@mo-gallery/admin-console` | Admin shell and design system (rail, top bar, modal, confirm dialog) with host-injected navigation and routing |
 
 ---
 
@@ -194,7 +172,7 @@ cd mo-gallery-web
 pnpm install
 ```
 
-`pnpm-workspace.yaml` includes only `packages/*`.
+Install dependencies:
 
 ### 2. Configure Environment Variables
 
@@ -400,7 +378,7 @@ mo-gallery-web/
 ├── hono/                       # Hono routes and auth middleware (photos / stories / blogs / albums / film-rolls / wechat …)
 ├── server/lib/                 # Query, storage, EXIF, and AI building blocks
 ├── prisma/                     # Prisma schema, migrations, and seed script
-├── packages/                   # @mo-gallery/* mirrored shared packages (source in mo-gallery-shared; do not edit)
+├── packages/                   # Internal shared modules (@mo-gallery/*)
 ├── docs/                       # Design docs, requirement specs, and verification matrices
 ├── tests/                      # Focused tests
 ├── scripts/                    # Data repair and regression scripts
@@ -432,13 +410,6 @@ mo-gallery-web/
 <summary><strong>Why are there no desktop / flutter directories?</strong></summary>
 
 Since `v0.8.3` the Wails desktop client is released independently from [`ushaio/emulsion-desktop-v3`](https://github.com/ushaio/emulsion-desktop-v3), and the Flutter mobile client lives in the private `ushaio/emulsion-app` repository. This repository keeps the web site and web admin only; the leftover `flutter/` directory holds build cache and is `.gitignore`d.
-
-</details>
-
-<details>
-<summary><strong>Can I edit the code under packages/ directly?</strong></summary>
-
-No. `packages/*` are mirrors of the `mo-gallery-shared` repository; changes are overwritten by the next `pnpm sync`. Edit the source in `mo-gallery-shared` and sync it here.
 
 </details>
 
