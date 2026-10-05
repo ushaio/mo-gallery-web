@@ -2,15 +2,17 @@
 
 # 📸 MO Gallery
 
-**An integrated platform for photography publishing, visual storytelling, and gallery management**
+**A self-hosted photography site and content platform — Next.js front end + browser admin**
 
-MO Gallery combines a **Next.js web application** with a **Wails desktop administration client** for photos, albums, film rolls, stories, blogs, AI-assisted creation, comments, and multiple storage backends.
+MO Gallery is a ready-to-run personal photography site: the **public front end** publishes photos and long-form stories, while the **web admin** manages photos, albums, film rolls, stories, blogs, and storage right in the browser. The same Hono API and data layer can be reused by other clients such as the desktop and mobile apps.
 
-[![Version](https://img.shields.io/badge/version-0.7.0--beta-2563eb?style=flat-square)](RELEASE.md)
+<a href="https://linux.do/"><img src="https://img.shields.io/badge/Linux.do-Community-2b6de8?style=flat-square" alt="Linux.do"></a>
+[![Version](https://img.shields.io/badge/version-0.8.4-2563eb?style=flat-square)](RELEASE.md)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-149eca?style=flat-square&logo=react)](https://react.dev/)
-[![Wails](https://img.shields.io/badge/Wails-2-cb2d3e?style=flat-square)](https://wails.io/)
+[![Hono](https://img.shields.io/badge/Hono-4-e36002?style=flat-square&logo=hono)](https://hono.dev/)
 [![Prisma](https://img.shields.io/badge/Prisma-7-2d3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169e1?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](#-license)
 
 [English](README_EN.md) · [中文](README.md) · [Changelog](RELEASE.md) · [Releases](https://github.com/ushaio/mo-gallery-web/releases)
@@ -21,154 +23,156 @@ MO Gallery combines a **Next.js web application** with a **Wails desktop adminis
 
 ## 📌 Overview
 
-MO Gallery brings the public photography site, browser-based administration, and a native desktop workspace into one repository:
+MO Gallery has two parts that share one API and data layer:
 
 | Module | Purpose | Main capabilities |
 |--------|---------|-------------------|
-| **Public Web App** | Publish photography and written content | Gallery, curated photos, albums, film rolls, stories, blogs, friend links, comments, i18n, and themes |
-| **Web Admin** | Manage content in the browser | Uploads, album and film-roll management, story editing, storage maintenance, comment moderation, settings, and activity logs |
-| **Desktop Admin** | Native desktop workflows | Wails + Go + React, with gallery management, batch uploads, photo journals, Zine, AI assistance, and local file processing |
-| **API and Data** | Shared business and data access | Hono API, Prisma/GORM, PostgreSQL, JWT, and Linux DO OAuth |
-| **Storage** | Pluggable media storage | Local filesystem, S3-compatible storage, Cloudflare R2, and GitHub repositories |
+| **Public site** | Publish photography and written content | Home, gallery, curated, albums, film rolls, stories, blogs, friend links, comments, bilingual UI, light/dark themes |
+| **Web admin** | Manage content in the browser | Library, uploads, story and blog editing, AI assistant, storage maintenance, settings, friend links |
+| **API and data** | Business API shared by both | Hono routes, Prisma, PostgreSQL, JWT, Linux DO OAuth |
+| **Media storage** | Pluggable cloud storage backends | Local filesystem, S3-compatible storage, Cloudflare R2, GitHub repositories |
 
-> The current version is `v0.7.0-beta`. The web application supports Vercel, Docker, and self-hosted Node.js deployments. The current Desktop release workflow builds Windows artifacts.
+> [!NOTE]
+> The current version is `v0.8.4` (Beta). The web app supports **Vercel**, **Docker Compose**, and **self-hosted Node.js**.
 
----
-
-## 🖼️ Screenshots
-
-### Web
-
-> Web screenshots will be added later.
-
-### Desktop
-
-| Sign in | Overview |
-|:-------:|:--------:|
-| <img src="./README.assets/image-20260706144644323.png" alt="Sign in" width="100%" /> | <img src="./README.assets/image-20260706144716752.png" alt="Overview" width="100%" /> |
-
-| Photo Library | Album Management |
-|:-------------:|:----------------:|
-| <img src="./README.assets/image-20260706144824799.png" alt="Photo Library" width="100%" /> | <img src="./README.assets/image-20260706144840239.png" alt="Album Management" width="100%" /> |
-
-| Film Roll Management | Image Upload |
-|:--------------------:|:------------:|
-| <img src="./README.assets/image-20260706144908173.png" alt="Film Roll Management" width="100%" /> | <img src="./README.assets/image-20260706144919453.png" alt="Image Upload" width="100%" /> |
-
-| Photo Journal | Zine |
-|:-------------:|:----:|
-| <img src="./README.assets/image-20260706144944795.png" alt="Photo Journal" width="100%" /> | <img src="./README.assets/image-20260706144953907.png" alt="Zine" width="100%" /> |
-
-| Zine | AI Chat |
-|:----:|:-------:|
-| <img src="./README.assets/image-20260706145001773.png" alt="Zine" width="100%" /> | <img src="./README.assets/image-20260706145011594.png" alt="AI Chat" width="100%" /> |
-
-| Storage Maintenance | System Settings |
-|:-------------------:|:---------------:|
-| <img src="./README.assets/image-20260706145024281.png" alt="Storage Maintenance" width="100%" /> | <img src="./README.assets/image-20260706145052073.png" alt="System Settings" width="100%" /> |
-
-<p align="center"><strong>Friend Link Management</strong></p>
-<p align="center"><img src="./README.assets/image-20260706145108246.png" alt="Friend Link Management" width="72%" /></p>
+> [!IMPORTANT]
+> **The desktop and mobile clients have moved out of this repository.** Since `v0.8.3`, the Wails desktop client is released independently from [`ushaio/emulsion-desktop-v3`](https://github.com/ushaio/emulsion-desktop-v3) (previously `ushaio/emulsion-desktop`); the Flutter mobile client lives in the private `ushaio/emulsion-app` repository. **This repository contains the web site and web admin only**, and its releases no longer bundle desktop or mobile installers.
 
 ---
 
 ## ✨ Core Features
 
+### 🗂 Unified Library
+
+Photos, albums, and film rolls live in a single workspace, so you stop bouncing between modules:
+
+- Manage photos, albums, and film rolls in one place; legacy photo/album/film-roll routes redirect to the matching library view.
+- Browse with grid, masonry, or timeline layouts; grids virtualize by row/column to handle large libraries.
+- Search by keyword and filter by tag, type, visibility, featured status, and storage source.
+- Inspect and edit title, description, tags, EXIF, location, and related info in the detail sidebar; the color palette sits directly under the preview and copies a color on click.
+- Batch selection and batch actions, plus a dedicated large preview with zoom and previous/next navigation.
+
 ### 📷 Photos, Albums, and Film Rolls
 
-- **Multiple gallery views** — Grid, Masonry, and Timeline layouts with smooth transitions.
-- **EXIF extraction** — Automatically reads camera, lens, aperture, shutter speed, ISO, capture time, GPS, and other metadata.
-- **Dominant color extraction** — Generates natural-looking loading placeholders from image colors.
-- **Album management** — Organize photos into albums with covers, detail pages, and ordering.
-- **Film roll management** — Present photos as film rolls with covers, metadata, frame ordering, and batch photo assignment.
-- **Batch uploads** — Drag and drop multiple files, compress images, track progress, and select a target album or film roll.
-- **Duplicate detection** — Client-side deduplication with SHA-256 hashes.
-- **Pagination and visibility** — Efficient large-gallery pagination, filtering, curation, and public visibility controls.
-- **Responsive presentation** — Optimized for desktop, tablet, and mobile screens.
+- **EXIF extraction** — Reads camera, lens, aperture, shutter speed, ISO, capture time, and GPS automatically.
+- **Dominant color extraction** — Powers loading placeholders and visual feedback.
+- **Album management** — Covers, photo association, ordering, and public visibility.
+- **Film roll management** — `135` and `120` formats, film presets, roll metadata, frame count, and frame ordering.
+- **Batch uploads** — Digital and film upload modes with drag-and-drop, compression, progress, retries, and target selection.
+- **Duplicate detection** — Identifies duplicates by file hash.
+- **Upload pipeline** — EXIF, dominant colors, thumbnails, and target-size compression are provided by the shared `@mo-gallery/image-pipeline` package.
 
-### 📖 Stories, Blogs, Photo Journals, and Zine
+### ✍️ Stories, Blogs, and Editors
 
-- **Stories / narratives** — Combine multiple photos with long-form rich-text narratives.
-- **TipTap rich-text editor** — WYSIWYG editing with image resizing, tables, alignment, and structured JSON content.
-- **Story maps** — Display geotagged story photos with MapLibre GL.
-- **Immersive writing** — Long-form editing mode, cover selection, and in-story photo add/remove/reorder workflows.
-- **Local drafts** — Automatically preserve story and blog drafts in IndexedDB.
-- **Blog system** — Shares the story editor and renderer, with gallery photo insertion and draft/published states.
-- **Photo Journal** — Quickly organize everyday photography notes from the Desktop client.
-- **Zine** — Compose photography publications in Desktop with preview and export workflows.
+- **Photo narratives** — Combine multiple photos with long-form writing, plus story maps, cover cropping, and in-story photo ordering.
+- **Blog** — Shares the editor and renderer with stories, with draft/published states and gallery photo insertion.
+- **Milkdown editor** — The body editor and read-only renderer come from the shared `@mo-gallery/milkdown` package, supporting image cards, galleries, and embedded media.
+- **TipTap editor** — Structured JSON content with headings, lists, quotes, code, tables, image groups, colors, and font sizes.
+- **AI assistance** — Continue, rewrite, and apply controlled direct edits from inside the editor.
+- **Local drafts** — Drafts are kept in IndexedDB to reduce loss on unexpected exits.
+- **Copy for WeChat Official Account** — Converts the body into `text/html` with inline styles (and table-based galleries) so pasting preserves the layout.
 
-### 🤖 AI-Assisted Creation
+### 💬 Comments, Authentication, and Social
 
-- Integrated AI chat and editing assistance with multi-turn conversations and context management.
-- OpenAI-compatible API support for OpenAI, DeepSeek, and other compatible providers.
-- Configurable endpoint, API key, model, and system prompt.
-- Multimodal image input, editor AI actions, and image-generation workflows.
-- Shared Web and Desktop capabilities through `packages/ai-agent` and `packages/tiptap-editor`.
+- **Switchable comment backends** — Local PostgreSQL comments, or Waline with LeanCloud.
+- **Linux DO OAuth** — Linux DO sign-in with user info display, and an option to restrict commenting to Linux DO users.
+- **Admin authentication** — Username/password (bcrypt verified in the database), JWT (HS256), login rate limiting, and a configurable hidden login path.
+- **Friend links** — Public showcase plus admin add/edit/reorder.
 
-### 🔐 Web Admin and Desktop Workspace
+### ⚙️ Web Admin
 
-- **Overview dashboard** — Summarizes content, gallery, and system status.
-- **Photo management** — Filtering, pagination, batch actions, visibility, and featured-photo controls.
-- **Album and film-roll management** — Create, edit, organize, and reorder related photos.
-- **Upload center** — Digital/film upload modes, compression, retries, and progress tracking.
-- **Storage maintenance** — Scan storage, detect orphaned or missing files, and manage storage sources.
-- **System settings** — Configure site metadata, social links, storage backends, AI services, and Desktop connections.
-- **Friend links** — Add, edit, remove, and reorder friend links.
-- **Comment moderation** — Manage pending, approved, and rejected comments.
-- **Activity logs** — Review important administration actions.
+The sidebar has seven modules: **Library · Upload · Stories · AI Assistant · Storage · Settings · Friend Links**.
 
-### 💬 Comments, Authentication, and Social Features
+- **Library** — Unified photo/album/film-roll management and batch actions.
+- **Upload** — Digital and film tabs with progress and results.
+- **Stories** — Story and blog lists, draft recovery, asset panel, and full-screen asset preview.
+- **AI Assistant** — Multi-turn chat, message edit-and-resend, fork from message, token usage display, and a system-prompt drawer.
+- **Storage** — Scan storage, detect orphaned or missing files, and manage storage sources.
+- **Settings** — Site info, social links, storage backends, AI services, WeChat binding, and account configuration.
+- **Friend Links** — Add, edit, remove, and reorder friend links.
 
-- **Dual comment backends** — Local PostgreSQL comments or Waline with LeanCloud.
-- **Linux DO OAuth** — Linux DO authentication with username and trust-level display.
-- **Comment access control** — Optionally restrict commenting to Linux DO users.
-- **Administrator authentication** — Username/password login, JWT, and a configurable hidden login path.
-- **Friend links page** — Showcase people and their websites with avatars, descriptions, and cards.
+---
 
-### 🎨 Presentation and Infrastructure
+## 🔧 Optional Capabilities
 
-- **Dynamic homepage** — Random hero images, particle effects, an automatic carousel, and scroll-triggered animation.
-- **Internationalization** — Built-in Chinese and English interfaces using client-side dictionaries.
-- **Theme switching** — Dark, light, and system modes with consistent component styling.
-- **Multiple storage backends** — Local, S3-compatible, Cloudflare R2, and GitHub storage with admin-managed storage sources.
+These are off by default; enable them as needed:
+
+> [!TIP]
+> "WeChat Official Account articles (draft box / published records)" is implemented but **not enabled yet** — it needs a certified official account to be connected. **WeChat material management is unaffected and remains available.**
+
+| Capability | How to enable | Notes |
+|------------|---------------|-------|
+| WeChat material management | Enter AppID / AppSecret under **Settings → Account** | The server proxies WeChat APIs; binding requires whitelisting the server's public egress IP on WeChat's side |
+| WeChat article list | `WECHAT_ARTICLES_ENABLED=1` | Off by default (returns 403); the UI entry is not mounted yet |
+| AI editor | Configure `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | Other features work without it |
+| Linux DO sign-in | Configure `LINUXDO_CLIENT_ID` etc. | Falls back to username/password login |
+| AMap tiles | `NEXT_PUBLIC_MAP_PROVIDER=amap` + `NEXT_AMAP_KEY` | Carto is the default |
 
 ---
 
 ## 🧱 Architecture
 
 ```text
-┌──────────────────────────────┐       ┌──────────────────────────────┐
-│ Web: Next.js + React         │       │ Desktop: Wails + Go + React │
-│ Public site / Web admin      │       │ Native UI / Local workflows │
-└──────────────┬───────────────┘       └──────────────┬───────────────┘
-               │                                      │
-               ▼                                      ├── GORM → PostgreSQL
-        Hono API / JWT                                └── HTTP → Web API
-               │
-               ▼
-       Prisma 7 / PostgreSQL
-               │
-               ▼
-   Local / S3 / R2 / GitHub Storage
+┌────────────────────────────────────────────────────────┐
+│  Public site / Web admin                               │
+│  Next.js 16 App Router · React 19 · Tailwind CSS 4     │
+└───────────────────────────┬────────────────────────────┘
+                            │  fetch
+                            ▼
+                 src/app/api/[[...route]]/route.ts
+                            │
+                            ▼
+              Hono routes  hono/*  ·  JWT middleware
+                            │
+                            ▼
+                Prisma 7  +  PostgreSQL 16
+                            │
+                            ▼
+        Local / S3-compatible / Cloudflare R2 / GitHub
 
-Shared packages: packages/tiptap-editor · packages/ai-agent
+Shared packages (packages/*, synced from mo-gallery-shared)
+  api-client · ai-agent · milkdown · tiptap-editor · mo-editor
+  content-core · image-pipeline · public-site · admin-console
 ```
+
+### Data Boundaries
+
+- **Cloud business data** — Photos, albums, film rolls, stories, blogs, comments, and settings live in PostgreSQL.
+- **Cloud media files** — Stored in the configured Local, S3-compatible, R2, or GitHub storage source.
+- **Client-local data** — Desktop/mobile local libraries and upload queues are managed by those clients and are out of scope for this repository.
 
 ### Technology Stack
 
 | Category | Technology |
 |----------|------------|
-| Web | Next.js 16, React 19, App Router, React Compiler |
-| Desktop | Wails 2, Go 1.24, React 19, Vite 6, GORM |
-| API | Hono.js embedded in a Next.js Route Handler |
-| Database | PostgreSQL 16, Prisma 7 |
-| Styling and animation | Tailwind CSS 4, Framer Motion |
-| Editor | TipTap 3 and a shared editor package |
-| Image processing | Sharp, ExifReader, JS/WASM image compression |
-| Maps | MapLibre GL, react-map-gl |
-| Authentication | JWT, Linux DO OAuth |
+| Framework | Next.js 16 (App Router), React 19, React Compiler |
+| API | Hono 4, Next.js Route Handler, Zod |
+| Database | PostgreSQL 16, Prisma 7 (`@prisma/adapter-pg`) |
+| Styling and animation | Tailwind CSS 4, Framer Motion, Lucide / Iconify |
+| Rich text | Milkdown, TipTap 3, React Markdown, Shiki |
+| Image processing | Sharp, ExifReader, `@jsquash/*` (JS/WASM compression), `@mo-gallery/image-pipeline` |
+| Maps | MapLibre GL, react-map-gl (AMap switchable) |
+| Authentication | JWT (HS256), bcrypt, Linux DO OAuth |
 | State and drafts | React Context, Zustand, IndexedDB |
-| Storage | Local, S3, Cloudflare R2, GitHub |
+| Storage | Local, S3-compatible, Cloudflare R2, GitHub |
+
+---
+
+## 📦 Shared Packages
+
+`packages/*` are **mirrors of the `mo-gallery-shared` repository**, not an editing source: the source lives in `../mo-gallery-shared` and is synced one-way by that repository's `pnpm sync`. **Do not edit the mirrored files directly.** Packages reference each other with `workspace:*` and ship TypeScript sources directly (`main` points at `src/index.ts`, no build output).
+
+| Package | Description |
+|---------|-------------|
+| `@mo-gallery/api-client` | API client, DTOs, and endpoint contracts (including the `mo-cloud` submodule) |
+| `@mo-gallery/ai-agent` | Editor AI domain protocol and Vercel AI SDK runtime |
+| `@mo-gallery/milkdown` | Milkdown rich-text editor wrapper |
+| `@mo-gallery/tiptap-editor` | TipTap rich-text editor |
+| `@mo-gallery/mo-editor` | Shared editor components |
+| `@mo-gallery/content-core` | Personal-site content domain: publication state machine and rules (pure TS, no Prisma/Next) |
+| `@mo-gallery/image-pipeline` | Server-side image pipeline: EXIF, dominant colors, thumbnails, target-size compression |
+| `@mo-gallery/public-site` | Visitor-site components (grid, lightbox, album, film roll, article, comments), host-agnostic |
+| `@mo-gallery/admin-console` | Admin shell and design system (rail, top bar, modal, confirm dialog) with host-injected navigation and routing |
 
 ---
 
@@ -178,11 +182,9 @@ Shared packages: packages/tiptap-editor · packages/ai-agent
 
 | Tool | Recommended version | Purpose |
 |------|---------------------|---------|
-| Node.js | 24.x | Matches the CI build environment |
-| pnpm | 10.x | Monorepo dependency management |
-| PostgreSQL | 16.x | Web and Desktop database |
-| Go | 1.24.x | Required for Desktop development only |
-| Wails CLI | 2.12.0 | Required for Desktop development and builds only |
+| Node.js | `>=20.9.0` (24.x recommended) | Running and building the app |
+| pnpm | 10.x | Dependency management |
+| PostgreSQL | 16.x | Business database |
 
 ### 1. Clone and Install
 
@@ -191,6 +193,8 @@ git clone https://github.com/ushaio/mo-gallery-web.git
 cd mo-gallery-web
 pnpm install
 ```
+
+`pnpm-workspace.yaml` includes only `packages/*`.
 
 ### 2. Configure Environment Variables
 
@@ -204,17 +208,20 @@ Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-At minimum, configure the database, administrator credentials, and JWT secret:
+At minimum, configure the database, admin credentials, JWT secret, and secrets encryption key:
 
 ```env
 DATABASE_URL="postgresql://postgres:password@localhost:5432/mo_gallery"
 DIRECT_URL="postgresql://postgres:password@localhost:5432/mo_gallery"
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="replace-with-a-strong-password"
+ADMIN_USERNAME="replace-with-a-non-default-admin-name"
+ADMIN_PASSWORD="replace-with-a-long-unique-password"
 JWT_SECRET="replace-with-a-long-random-secret"
+SECRETS_ENCRYPTION_KEY="replace-with-an-independent-long-random-secret"
 ```
 
-### 3. Initialize the Database and Start Web
+See [`.env.example`](.env.example) for the complete template.
+
+### 3. Initialize the Database and Start
 
 ```bash
 pnpm run prisma:generate
@@ -226,75 +233,15 @@ pnpm run dev
 Open:
 
 - Public site: `http://localhost:3000`
-- Administrator login without a security suffix: `http://localhost:3000/login`
-- Administrator login with a security suffix: `http://localhost:3000/login/{ADMIN_LOGIN_URL}`
+- Admin login (no security suffix): `http://localhost:3000/login`
+- Admin login (with security suffix): `http://localhost:3000/login/{ADMIN_LOGIN_URL}`
 
-Desktop and Flutter enforce the same administrator gate. When a security suffix is configured, clients must use the complete `/login/{ADMIN_LOGIN_URL}` URL; the site root alone is rejected. Changing the suffix immediately invalidates existing administrator sessions.
-
-### 4. Start Desktop Development
-
-```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-cd desktop
-wails dev
-```
-
-Database, Web API, JWT, storage, and AI settings can be managed from the Desktop settings screen. When Desktop and Web share authentication, Desktop's `api.jwt_secret` must match the Web application's `JWT_SECRET`.
-
----
-
-## 🖥️ Desktop Builds and Distribution
-
-### Local Builds
-
-```bash
-cd desktop
-
-# Portable build for the current host platform
-wails build
-
-# Windows NSIS installer (Windows only)
-wails build -nsis
-
-# Build a specific Wails target
-wails build -platform windows/amd64
-wails build -platform darwin/arm64
-wails build -platform linux/amd64 -tags webkit2_41
-```
-
-Artifacts are written to `desktop/build/bin/`. The React/Vite frontend is bundled into the executable with Go `embed`, so no separate static asset directory is required.
-
-### Release Artifacts
-
-GitHub Releases use native runners to build the Wails desktop targets:
-
-- Windows AMD64/ARM64: Portable EXE and NSIS Setup installers
-- macOS AMD64/ARM64/Universal: `.app` ZIP archives
-- Linux AMD64/ARM64: `.tar.gz` executable archives
-
-NSIS is a Windows-only installer format; macOS and Linux use their standard distributable archives. Linux users still need GTK3/WebKitGTK runtime libraries supplied by their distribution.
-
-| Distribution | Recommended for | Characteristics |
-|--------------|-----------------|-----------------|
-| **Portable** | Beta testing, internal or temporary use, and environments without administrator access | Runs immediately after download; updates require replacing the executable manually |
-| **Setup** | Stable Windows releases, general users, frequent updates, and system integration | Supports an installation directory, shortcuts, an uninstall entry, and WebView2 dependency handling |
-| **macOS/Linux archive** | macOS/Linux users | Extract and run the platform-specific `.app` or executable |
-
-### Desktop Configuration Locations
-
-| Platform | Default path |
-|----------|--------------|
-| Windows | `%APPDATA%\mo-gallery-desktop\config.json` |
-| macOS | `~/Library/Application Support/mo-gallery-desktop/config.json` |
-| Linux | `~/.config/mo-gallery-desktop/config.json` |
-
-The current Portable build is installation-free, but it is not a completely zero-trace portable application: settings remain after moving or replacing the EXE, and deleting the EXE does not remove the configuration directory. Portable builds are recommended during Beta. For stable releases, use Setup as the default download while continuing to offer Portable for advanced users.
+> [!CAUTION]
+> Changing the admin login suffix immediately invalidates existing admin sessions. Other clients (desktop/mobile) must connect with the full `/login/{ADMIN_LOGIN_URL}` URL; the site root alone is rejected.
 
 ---
 
 ## ⚙️ Configuration
-
-See [`.env.example`](.env.example) for the complete template.
 
 ### Required
 
@@ -302,32 +249,56 @@ See [`.env.example`](.env.example) for the complete template.
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL runtime connection URL |
 | `DIRECT_URL` | Direct PostgreSQL URL used by Prisma migrations |
-| `ADMIN_USERNAME` | Default administrator username |
-| `ADMIN_PASSWORD` | Default administrator password; change it in production |
-| `JWT_SECRET` | JWT signing secret; use a strong random value in production |
+| `ADMIN_USERNAME` | Admin username; **do not keep the default** |
+| `ADMIN_PASSWORD` | Admin password; **do not keep the default** |
+| `JWT_SECRET` | JWT signing secret (HS256, at least 32 random bytes in production) |
+| `SECRETS_ENCRYPTION_KEY` | AES-256-GCM key for secrets stored in the database (e.g. storage credentials). Derived from `JWT_SECRET` when empty; configure independently in production |
+
+Generate a random key:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
 
 ### Site and Security
 
 | Variable | Description | Default/example |
 |----------|-------------|-----------------|
-| `ADMIN_LOGIN_URL` | Server-side administrator login suffix; leave empty to use `/login` | Empty |
-| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | Legacy compatibility fallback used when `ADMIN_LOGIN_URL` is not set | Empty |
+| `ADMIN_LOGIN_URL` | Admin login security suffix; empty uses `/login` | Empty |
+| `NEXT_PUBLIC_ADMIN_LOGIN_URL` | Legacy fallback used when `ADMIN_LOGIN_URL` is unset | Empty |
 | `SITE_TITLE` | Site title | `MO GALLERY` |
 | `SITE_URL` | Public site URL used by the server | `https://your-domain.com` |
 | `NEXT_PUBLIC_SITE_URL` | Public site URL exposed to the browser | `https://your-domain.com` |
-| `SITE_AUTHOR` | Author name displayed on the homepage | `MO` |
+| `SITE_AUTHOR` | Author name shown on the homepage | `MO` |
 | `CDN_DOMAIN` | Media CDN domain | Empty |
+| `TRUSTED_PROXY_MODE` | Trusted reverse proxy: `cloudflare` / `vercel` / `forwarded`; client-supplied `X-Forwarded-For` is ignored when unset | `forwarded` |
 | `API_ORIGIN_CHECK` | Restrict API request origins | `false` |
+| `SOCIAL_LINKS` | Footer social links, JSON array; `icon` is an Iconify name | See `.env.example` |
 
-### AI Editor
+### Maps
+
+| Variable | Description | Default/example |
+|----------|-------------|-----------------|
+| `NEXT_PUBLIC_MAP_PROVIDER` | Story map provider: `carto` or `amap` | `carto` |
+| `NEXT_AMAP_KEY` | Web (JS API) key when using `amap` | Empty |
+| `NEXT_AMAP_SECURITY_JS_CODE` | AMap security code (recommended for JS API 2.0) | Empty |
+
+### AI Editor (optional)
 
 | Variable | Description |
 |----------|-------------|
-| `AI_BASE_URL` | OpenAI-compatible API root, such as `https://api.openai.com/v1` |
+| `AI_BASE_URL` | OpenAI-compatible API root, e.g. `https://api.openai.com/v1` |
 | `AI_API_KEY` | AI provider key |
-| `AI_MODEL` | Default chat or editing model |
+| `AI_MODEL` | Default model |
+| `AI_VISION_MODELS` | Comma-separated model IDs allowed to accept images |
+| `AI_TOOL_MODELS` | Comma-separated model IDs allowed to call tools |
+| `AI_STRUCTURED_OUTPUT_MODELS` | Comma-separated model IDs allowed to return structured output |
+| `AI_MODEL_CONTEXT_WINDOWS` | Context windows as a **single-line** JSON object (`{"model-id": tokens}`); keys must match the ids returned by `${AI_BASE_URL}/models`, unknown ids fall back to 8192 |
 
-### Comments and Linux DO OAuth
+> [!WARNING]
+> Writing `AI_MODEL_CONTEXT_WINDOWS` across multiple lines makes dotenv parse it as `{"`, which breaks the AI editor entirely. See [`.env.example`](.env.example).
+
+### Comments and Linux DO OAuth (optional)
 
 | Variable | Description |
 |----------|-------------|
@@ -335,9 +306,18 @@ See [`.env.example`](.env.example) for the complete template.
 | `WALINE_SERVER_URL` | Waline service URL |
 | `LEAN_ID` / `LEAN_KEY` / `LEAN_MASTER_KEY` | LeanCloud credentials |
 | `LINUXDO_CLIENT_ID` / `LINUXDO_CLIENT_SECRET` | Linux DO OAuth credentials |
-| `LINUXDO_REDIRECT_URI` | OAuth callback URL |
-| `LINUXDO_ADMIN_USERNAMES` | Comma-separated Linux DO users allowed to become administrators |
+| `LINUXDO_REDIRECT_URI` | OAuth callback URL, e.g. `https://your-domain.com/login/callback` |
+| `LINUXDO_ADMIN_USERNAMES` | Comma-separated Linux DO users allowed to become admins |
 | `LINUXDO_COMMENTS_ONLY` | Restrict comments to Linux DO users |
+
+### WeChat Official Account (optional)
+
+| Variable | Description |
+|----------|-------------|
+| `WECHAT_EGRESS_IP` | Fallback for the server's self-checked egress IP; the authoritative IP comes from WeChat's `40164` error |
+| `WECHAT_ARTICLES_ENABLED` | Set to `1` to enable the article list API (off by default) |
+
+Binding and material management are proxied by the server. AppID / AppSecret are entered under **Settings → Account**, stored as AES-256-GCM ciphertext, and never echoed back.
 
 ---
 
@@ -345,11 +325,11 @@ See [`.env.example`](.env.example) for the complete template.
 
 ### Docker Compose
 
-Docker Compose starts PostgreSQL and MO Gallery, with persistent volumes for the database and local uploads.
+Docker Compose starts PostgreSQL and MO Gallery with persistent volumes for the database and local uploads.
 
 ```bash
 cp .env.example .env
-# Set POSTGRES_PASSWORD, ADMIN_PASSWORD, JWT_SECRET, and other production values
+# Set POSTGRES_PASSWORD, ADMIN_PASSWORD, JWT_SECRET, SECRETS_ENCRYPTION_KEY, and other production values
 
 docker compose up -d --build
 docker compose logs -f
@@ -367,10 +347,11 @@ Change the exposed ports through `APP_PORT` and `DB_PORT` in `.env`.
 1. Fork this repository and import it into Vercel.
 2. Configure the required values from `.env.example`.
 3. Use Neon, Supabase, or another hosted PostgreSQL provider.
-4. Store media in S3/R2 or GitHub.
+4. Store media in S3, R2, or GitHub.
 5. `vercel.json` runs Prisma deployment, client generation, and the Next.js build.
 
-> Vercel's runtime filesystem is not suitable for persistent user uploads. Do not use the Local storage backend in production on Vercel.
+> [!IMPORTANT]
+> Vercel's runtime filesystem is not suitable for persistent user uploads. Do **not** use the Local storage backend in production on Vercel.
 
 ### Node.js / Self-Hosted
 
@@ -379,7 +360,7 @@ pnpm run build:node
 pnpm run start
 ```
 
-Configure a reverse proxy, HTTPS, process supervision, and backups according to your environment.
+Configure a reverse proxy, HTTPS, process supervision, database backups, and media storage backups for production.
 
 ---
 
@@ -388,29 +369,24 @@ Configure a reverse proxy, HTTPS, process supervision, and backups according to 
 | Command | Description |
 |---------|-------------|
 | `pnpm run dev` | Start the Next.js development server |
-| `pnpm run build` | Build the Web production bundle |
-| `pnpm run build:vercel` | Deploy/generate/seed Prisma and build for Vercel |
-| `pnpm run build:node` | Deploy/generate Prisma and build for self-hosting |
-| `pnpm run start` | Start the Web production server |
+| `pnpm run build` | Build the production bundle |
+| `pnpm run start` | Start the production server |
 | `pnpm run lint` | Run ESLint |
+| `pnpm run build:vercel` | Prisma deploy + generate + seed + Vercel build |
+| `pnpm run build:node` | Prisma deploy + generate + self-hosted build |
 | `pnpm run prisma:generate` | Generate Prisma Client |
 | `pnpm run prisma:dev` | Create and apply development migrations |
 | `pnpm run prisma:deploy` | Apply production migrations |
 | `pnpm run prisma:seed` | Seed the database |
-| `cd desktop && wails dev` | Start Desktop development mode |
-| `cd desktop && wails build` | Build the Desktop package for the current host platform |
-| `cd desktop && wails build -nsis` | Build the Windows Desktop NSIS installer |
-| `cd desktop && wails build -platform <os>/<arch>` | Build a specific Wails platform/architecture |
-| `cd desktop && wails build -platform linux/amd64 -tags webkit2_41` | Build the Linux AMD64 package |
-| `cd desktop/frontend && pnpm build` | Validate the Desktop frontend build |
 
-Baseline verification:
+Focused tests (run directly with `node --import tsx`, no extra test framework):
 
-```bash
-pnpm run lint
-pnpm run build
-cd desktop/frontend && pnpm build
-```
+| Command | Description |
+|---------|-------------|
+| `pnpm run test:editor-ai-routes` | Editor AI API routes |
+| `pnpm run test:editor-ai-images` | Editor AI image handling |
+| `pnpm run test:story-ai-images` | Story AI image handling |
+| `pnpm run test:security` | Secret encryption (OAuth state, field encryption and masking) |
 
 ---
 
@@ -418,57 +394,51 @@ cd desktop/frontend && pnpm build
 
 ```text
 mo-gallery-web/
-├── src/app/                   # Next.js App Router, public pages, and Web admin
-├── src/components/            # Shared Web UI, gallery, editor, and admin components
-├── src/lib/                   # API clients, i18n dictionaries, and content helpers
-├── hono/                      # Hono API routes and middleware
-├── server/                    # Database, storage, EXIF, and server infrastructure
-├── prisma/                    # Prisma schema, migrations, and seed script
-├── packages/
-│   ├── ai-agent/              # Shared Web/Desktop AI agent
-│   └── tiptap-editor/         # Shared Web/Desktop TipTap editor
-├── desktop/                   # Go + Wails Desktop client
-│   ├── frontend/              # React/Vite frontend
-│   ├── config/                # Desktop configuration management
-│   ├── db/                    # GORM data access and models
-│   ├── services/              # Photo, upload, AI, storage, and export services
-│   ├── build/                 # Icons, Windows manifests, and build artifacts
-│   ├── main.go                # Wails entry point and embedded frontend assets
-│   └── wails.json             # Wails build configuration
-├── public/                    # Web static assets and local uploads
-├── README.assets/             # README screenshots
-├── tests/                     # Focused feature tests
-├── docker-compose.yml         # Web + PostgreSQL orchestration
-├── Dockerfile                 # Web container image
-└── RELEASE.md                 # Release notes
+├── src/app/                    # Next.js App Router: public pages (gallery / story / blog / curated / they …) and /admin
+├── src/components/             # Front-end and admin components (gallery, story, comments, editors, admin/*)
+├── src/lib/                    # API clients, i18n dictionaries, draft and content helpers
+├── hono/                       # Hono routes and auth middleware (photos / stories / blogs / albums / film-rolls / wechat …)
+├── server/lib/                 # Query, storage, EXIF, and AI building blocks
+├── prisma/                     # Prisma schema, migrations, and seed script
+├── packages/                   # @mo-gallery/* mirrored shared packages (source in mo-gallery-shared; do not edit)
+├── docs/                       # Design docs, requirement specs, and verification matrices
+├── tests/                      # Focused tests
+├── scripts/                    # Data repair and regression scripts
+├── public/                     # Static assets and local uploads
+├── README.assets/              # README screenshots
+├── docker-compose.yml          # Web + PostgreSQL orchestration
+├── Dockerfile                  # Web container image
+├── vercel.json                 # Vercel build configuration
+├── .env.example                # Environment variable template
+└── RELEASE.md                  # User-facing release notes
 ```
 
 ---
 
 ## 🔒 Security Notes
 
-- Never commit `.env`, database passwords, JWT secrets, AI keys, or object storage credentials.
-- Change the default administrator password and use a strong `JWT_SECRET` in production.
-- Keep Desktop and Web JWT configuration aligned when they share authentication.
-- Enable HTTPS for public deployments and consider enabling `API_ORIGIN_CHECK`.
-- Back up PostgreSQL, media objects, and storage source configuration regularly.
-- Code-sign production Windows Desktop releases to reduce SmartScreen warnings.
+- Never commit `.env`, database passwords, JWT secrets, `SECRETS_ENCRYPTION_KEY`, AI keys, or object storage credentials.
+- Change the default admin credentials and use a strong random `JWT_SECRET` in production.
+- Configure `SECRETS_ENCRYPTION_KEY` independently; previously unencrypted storage/setting secrets are converted to ciphertext when saved again.
+- Enable HTTPS for public deployments and set `TRUSTED_PROXY_MODE` correctly for your environment (a wrong value causes spoofed client IP headers to be trusted).
+- Consider enabling `API_ORIGIN_CHECK` to restrict API access to the site's own front end.
+- Back up PostgreSQL, media files, and storage source configuration regularly.
 
 ---
 
 ## ❓ FAQ
 
 <details>
-<summary><strong>Why does the Desktop app run immediately after download?</strong></summary>
+<summary><strong>Why are there no desktop / flutter directories?</strong></summary>
 
-`wails build` produces an installation-free EXE by default. The React/Vite frontend is embedded with Go `embed`, and modern Windows installations generally already include the WebView2 Runtime.
+Since `v0.8.3` the Wails desktop client is released independently from [`ushaio/emulsion-desktop-v3`](https://github.com/ushaio/emulsion-desktop-v3), and the Flutter mobile client lives in the private `ushaio/emulsion-app` repository. This repository keeps the web site and web admin only; the leftover `flutter/` directory holds build cache and is `.gitignore`d.
 
 </details>
 
 <details>
-<summary><strong>Should I choose Portable or Setup?</strong></summary>
+<summary><strong>Can I edit the code under packages/ directly?</strong></summary>
 
-Choose Portable for Beta testing, internal use, and systems without installation privileges. Choose Setup for stable releases aimed at general users. A production release can offer both.
+No. `packages/*` are mirrors of the `mo-gallery-shared` repository; changes are overwritten by the next `pnpm sync`. Edit the source in `mo-gallery-shared` and sync it here.
 
 </details>
 
@@ -479,6 +449,48 @@ Vercel function filesystems are not designed to persist user uploads. Use S3, Cl
 
 </details>
 
+<details>
+<summary><strong>Why does the AI editor throw <code>AI_MODEL_CONTEXT_WINDOWS must be a valid JSON object</code>?</strong></summary>
+
+The variable must be a **single-line** JSON object. Writing it across multiple lines in `.env` makes dotenv parse only `{`, which fails and disables the AI editor. Correct form:
+
+```env
+AI_MODEL_CONTEXT_WINDOWS={"deepseek/deepseek-v4-flash-vision-exp": 1000000, "gpt-5.2": 128000}
+```
+
+</details>
+
+<details>
+<summary><strong>Why don't the WeChat features work?</strong></summary>
+
+- **Material management**: bind an AppID / AppSecret under **Settings → Account** first, and whitelist the server's public egress IP on WeChat's side. `48001` typically means the account lacks the API permission (common for unverified subscription accounts).
+- **Article list (draft box / published records)**: implemented but not enabled yet; it needs `WECHAT_ARTICLES_ENABLED=1` and the UI entry mounted.
+
+</details>
+
+<details>
+<summary><strong>Why can't the admin area open after configuring a login suffix?</strong></summary>
+
+Once `ADMIN_LOGIN_URL` is set, you must sign in from `/login/{ADMIN_LOGIN_URL}`; the site root is rejected. Changing the suffix immediately invalidates all existing sessions.
+
+</details>
+
+---
+
+## ❤️ Support
+
+If MO Gallery helps you, consider supporting its continued development.
+
+<p align="center">
+  <img src="public/donate_weixin.png" alt="Donate" width="280" />
+</p>
+
+---
+
+## 🔗 Friend Links
+
+- [LINUX DO](https://linux.do) — A new idealistic community
+
 ---
 
 ## 📜 License
@@ -487,7 +499,7 @@ Released under the **MIT License**.
 
 ---
 
-## Star History
+## ⭐ Star History
 
 <a href="https://www.star-history.com/?repos=ushaio%2Fmo-gallery-web&type=date&legend=top-left">
  <picture>
