@@ -9,11 +9,19 @@ import { authMiddleware, type AuthVariables } from './middleware/auth'
 
 const overview = new Hono<{ Variables: AuthVariables }>()
 
+/** 概览活动图（?year=）接受的最小年份，早于建库年代的请求无意义。 */
+const ACTIVITY_MIN_YEAR = 2000
+
 overview.get('/admin/overview', authMiddleware, async (c) => {
   try {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const photoActivityYear = now.getUTCFullYear()
+    // 活动图年份：桌面首页可按 ?year=YYYY 查看往年逐日统计；
+    // 非法或未来年份回退当年（与旧客户端缺省行为一致）。
+    const requestedYear = Number(c.req.query('year'))
+    const photoActivityYear = Number.isInteger(requestedYear) && requestedYear >= ACTIVITY_MIN_YEAR && requestedYear <= now.getUTCFullYear()
+      ? requestedYear
+      : now.getUTCFullYear()
     const yearStart = new Date(Date.UTC(photoActivityYear, 0, 1))
     const yearEnd = new Date(Date.UTC(photoActivityYear + 1, 0, 1))
 

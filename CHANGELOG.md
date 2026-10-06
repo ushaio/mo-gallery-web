@@ -27,6 +27,15 @@
 
 8. 后台资源库右侧信息栏与照片详情面板的色卡改为紧贴预览图展示：资源库侧栏把色卡行紧贴预览图下方（原先在信息区末尾、「拍摄信息」之后），后台照片详情面板把色卡移到预览图带正下方、不再随信息区滚动（原先埋在详情列表末尾，且空色卡时也保留重新分析入口），前台照片详情弹窗的色卡同时提到信息列最前（原在文件信息之后）。资源库侧栏的色卡改为等分矩形色条：去掉色号文本、无圆角、铺满整行（不再左对齐，高度增至 32px）；每块色块可点击复制色值（复用信息栏既有的复制反馈）、鼠标悬浮时以浮标显示该色值（复制后短暂显示「已复制」）；三处都保留「点击色块复制色值」；「重新分析」入口暂时隐藏（服务端能力保留，前端开关 `SHOW_REANALYZE_COLORS` 置 true 即恢复）（仅前端展示层，对 Desktop / App 无影响）
 
+9. 后台「照片叙事」素材库支持点击缩略图看大图：单击素材即全屏预览，可在当前筛选出的素材间左右翻页（← / → 键或按钮），保留原图 / 适配切换与 25%–500% 缩放；预览顶栏新增删除按钮（也可按 Del 键），删除即把该素材从本文素材列表移除并自动切到相邻素材；已在正文使用的素材仍先提示「请先从正文中移除」、不直接删除（仅前端展示层，对 Desktop / App 无影响）
+
+10. 新增微信公众号绑定接口 `GET/POST/DELETE /api/wechat/binding`（仅站点管理员可用，普通用户一律拒绝）：提交公众号 AppID / AppSecret 后由服务端调用微信 `stable_token` 校验凭据，校验失败区分为「AppID 或 AppSecret 不正确」与「调用来源 IP 未加入公众号 IP 白名单」（后者把服务端当前出口 IP 一并回传，供用户复制进公众平台白名单）；**校验通过才落库**，绑定记录以 AES-256-GCM `enc:v1:` 密文写入 `Setting` 表 `wechat_binding`（AppSecret 永不回显、不写日志），同时尽力读取公众号名称与头像（未认证订阅号等无该接口权限时降级为「仅绑定」）；支持解绑。**出口 IP 以微信实际看到的为准**：微信在 40164（来源 IP 未加白）里会回带真实来源 IP，服务端把它连同观测时间记进 `Setting` 表内部键 `wechat_egress_observed`，GET 接口返回的绑定视图随之新增 `egressIpObserved` / `egressIpObservedAt` 并优先展示这一实测值；`WECHAT_EGRESS_IP` 降级为「还没被微信拒过一次时的自检兜底值」，未配置时查 ipify 并缓存 1 小时（失败缓存 5 分钟），页面上明确标注「仅供参考」。`wechat_binding` / `wechat_egress_observed` 两个内部键都不会经由通用设置接口透出。配套：后台「系统设置 → 账号」新增公众号绑定卡片（录入 / 展示 / 解绑 + 出口 IP 复制与白名单提示），桌面端「系统设置 → 账户」只展示绑定状态并可解绑（需 Desktop 重新生成 bindings 后可用），对 App 无影响。
+
+11. 公众号绑定支持手动填写显示名称：新增 `PATCH /api/wechat/binding`（仅站点管理员可用），把管理员填写的名称写进 `wechat_binding` 同一条加密记录（不新增表 / 字段，传空串即清除手填名称）。原因是**个人主体**的公众号无法开通微信认证，微信 `cgi-bin/account/getaccountbasicinfo` 恒返回 48001，名称与头像在服务端永远取不到；后台卡片的名称随之改为可编辑，未填写名称时以脱敏 AppID 兜底显示为「公众号（wxab****cd12）」（桌面端展示层同步采用该兜底，无接口变更、不需要重新生成 bindings），对 App 无影响。
+
+12. 新增微信公众号素材管理接口（仅站点管理员可用，全部由服务端代理，桌面端不再直连微信）：`GET /api/wechat/materials`（永久/临时素材列表，永久素材走 `batchget_material` 并支持 image / voice / video 分页）、`POST /api/wechat/materials`（multipart 上传，按类型校验扩展名与体积：图片 10MB、语音 2MB、视频 10MB）、`GET /api/wechat/materials/content`（取素材字节，以字节流回传并带 `Content-Disposition`，供预览与下载）、`DELETE /api/wechat/materials/:mediaId`（永久素材调 `del_material`）与 `GET /api/wechat/materials/capability`（调用 `get_materialcount` 做能力自检）。**临时素材没有列表接口**（官方文档在「获取永久素材列表」中明确临时素材取不到），且只有 3 天寿命，因此临时素材列表由服务端自建上传索引（`Setting` 表内部键 `wechat_temporary_materials`，过期后保留 7 天用于展示「已过期」），上传临时素材即入索引、删除仅移除索引记录（微信侧无法删除）；索引与绑定密文一样不经通用设置接口透出。能力自检不会因微信明确拒绝（如未认证订阅号常见的 48001）而报错，而是把 errcode 原样交给界面，便于区分「没有权限」与「网络不通」。对 App 无影响；桌面端资源库「公众号」来源由后续改动接入。
+13. 公众号图文（草稿箱 / 发表记录）能力已就位，但**暂不启用**：后台「文章创作」的公众号页签暂未挂载，`GET /api/wechat/articles` 也默认关闭（`WECHAT_ARTICLES_ENABLED=1` 才开放），等有可联调的认证公众号再一起恢复；公众号素材管理不受影响，照旧可用。能力本身：草稿走 `cgi-bin/draft/batchget`、已发布走 `cgi-bin/freepublish/batchget`（单页上限 20 条、最多 3 页、`no_content=1`），拉回来的条目**下载进云端数据库**（新表 `WeChatArticle`，迁移 `20261005120000_wechat_articles`，按 `(appId, kind, itemId, position)` 唯一，一篇图文的多条 news_item 各占一行）。列表读这张表，只有首次进入、点同步或双击页签才访问微信；同步按行 upsert，只在这一轮确实取全时（含微信侧总数）才清理已不存在的条目（否则「没看到」只代表「还没翻到」），失败保留旧行不清空；分键带公众号 AppID，换绑后不串数据；缺少接口权限（未认证公众号常见的 48001）返回可照做的文案。界面组件（`WeChatArticleTab`，含「草稿 / 已发布」下拉筛选，与相邻子页签同一套写法）与客户端（`src/lib/wechat-articles.ts`）都保留在仓库里、标注了「暂未挂载」。**恢复步骤**：把门控 + 页签按钮 + 内容区加回 `/admin/logs/page.tsx`（改动形态即本条最初的实现），并在环境变量里设 `WECHAT_ARTICLES_ENABLED=1`；表与迁移无需改动。对 App 无影响。
+
 ### fix
 
 1. 安全修复：访客故事/博客旧 HTML 回退渲染增加严格 allowlist 净化，阻断持久化 XSS；登录限速、评论与媒体来源 IP 统一仅信任配置的反向代理 Header；远程图片读取统一阻断内网目标、DNS rebinding 和不受限重定向；升级 Next.js/Hono/Sharp 及 Prisma 相关传递依赖（仅 Web/API 行为增强，对 Desktop / App 接口契约无破坏性变更）
@@ -71,6 +80,17 @@
    - 「语言切换」按钮折叠后不再变成空框：标签由 `.mgac-rail-foot-text`（折叠即收宽透明）改回裸文本，与 `/console` 一致（折叠态显示 EN / ZH）；
    - 账号行折叠时去掉 `gap-3` 与 `px-2`，头像回到 32×32 正方形（原先被挤成 27.43×32 的长方形）；
    - 折叠态类名统一改回 `md:` 变体（`md:w-full md:justify-center md:px-0` / `md:flex-col`），与 `/console`、与迁移共享外壳前的自建 `AdminSidebar` 逐字同款；退出按钮补上折叠态的 `title` 提示（原先只有 `aria-label`，鼠标悬浮无提示）；顺带删掉折叠态下永远被 `space-y-3` 压过的 `space-y-2`。仅前端外壳展示层，折叠 / 展开与展开态的底栏观感不变，对 Desktop / App 无影响
+
+19. 后台资源库（`/admin/library`）左栏的「标签」筛选由「一条标签独占一行」改为桌面端同款的密集胶囊云：原先每条标签都是整行项（`px-2.5 py-2` + 15px 标签图标，约 330px / 10 条），标签一多就占满 238px 左栏的高度、要看下方「相册」分组必须先滚动；现改为 `flex-wrap` 自动换行的圆角胶囊（`rounded-full` + `px-2 py-0.5` + 11px 字号，去掉条目标图标），选中项为主色淡底 + 主色描边 + 主色文字，未选中项为浅底细描边并在悬停时提亮，长标签仍省略号截断（`title` 悬浮看全名，`aria-pressed` 保留给读屏），同样 10 条标签现在只占三行左右（仅前端展示层，标签数据与筛选交互不变）。官网 `/console/library` 同步（仅展示层，对 Desktop / App 无影响）
+
+20. 同步共享包镜像 `@mo-gallery/milkdown`：正文（叙事 / 博客的编辑器与只读渲染）里的图片卡宽度改为贴住图片自身 —— 窄图 / 竖图不再被拉满整栏、在两侧留出一块空的卡片容器，小图也不再被放大，拼图列宽与 4:3 裁切、链接 / 文件 / 播放器卡、带显式 `width` 属性的图片一律不变；选中节点不再由 Crepe 主题给整栏铺一层选中底色，选中反馈只留卡片本体那圈描边（由 mo-gallery-shared `pnpm sync` 生成，接口与数据不变，对 Desktop / App 无影响）。
+
+21. 修正微信公众号绑定在「调用来源 IP 未加白」（微信 40164）时的报错文案：此前回显的是本服务端自检得到的出口 IP（`WECHAT_EGRESS_IP` 或 ipify 查询结果），一旦服务端存在国内外分流 / 代理 / 多出口 NAT，自检 IP 与微信实际看到的来源 IP 不一致，用户照文案把错的 IP 加进白名单后会反复失败而看不出原因；现改为解析微信 `errmsg` 中的 `invalid ip <IP>`（兼容 `invalid ip 1.2.3.4, not in whitelist` 与 `invalid ip 8.149.x.x ipv6 ::ffff:8.149.x.x, not in whitelist rid: …` 两种格式，会自动剥掉 IPv4-mapped 前缀）并**回显微信实际看到的 IP**，两者不一致时另加一句「以微信返回的 IP 为准，并核对 `WECHAT_EGRESS_IP` 是否配错」；同时把公众平台菜单路径更正为「设置与开发 → 基本配置 → IP白名单」，并在 `stable_token` 返回错误时把原始 errcode / errmsg 记入服务端日志便于排查（仅报错文案与日志，绑定流程、接口契约与数据不变，对 Desktop / App 无影响）
+
+22. 修复微信公众号素材的图片缩略图取不出来：微信下载素材时可能**完全不返回 `Content-Type`**（实测永久图片 `material/get_material` 只回 `Content-Disposition` 与 `Content-Length`，字节本身是标准 JPEG），服务端此前一律兜成 `application/octet-stream` 透传，桌面端要 `image/*` 才肯转 data URL，于是所有图片素材都被画成了类型图标。现在响应头给不出具体类型时按字节魔数（JPEG / PNG / GIF / BMP / WEBP）或素材类型兜底 MIME，文件名继续沿用微信 `Content-Disposition` 给的名字（服务端 `decorateContent` 同时收敛 MIME 与扩展名）。仅 MIME 判定，素材列表 / 上传 / 删除行为与接口契约不变，对 App 无影响
+23. 同步共享包镜像 `@mo-gallery/milkdown`：图片卡的节点外层也收窄到图片宽度——上一条只收了卡片本体，外层仍占满整栏，整栏都是一个「看不见的媒体块」，按元素框量出来（选中、悬浮层、视觉标注工具）都对不上图片；现在有真实图片的图片卡与待上传预览卡连外层一起跟着图片走。拼图、播放器、链接 / 文件卡、无图占位卡与带显式 `width` 属性的图片不变；窄图右侧那片空白不再属于卡片的框（点选命中范围＝卡片本体；拖拽合并的落点按「行带」放宽，卡片本体与同一行右侧那片空白都算落在这张卡上）（由 mo-gallery-shared `pnpm sync` 生成，接口与数据不变，对 Desktop / App 无影响）。
+24. 同步共享包镜像 `@mo-gallery/milkdown`：正文里的 `<br>` 词元按硬换行 / 空段落渲染 —— 后台预览、故事与博客详情页此前把它显示成字面文本「<br />」（它是 Milkdown 的空段落方言：编辑器把空行存成独占一行的 `<br />`、解析回来又是空段落，编辑器因而看着正常，只读渲染器不开 rehype-raw 就按原文输出）；现在独占一行的渲染成空段落，混在段落里的行内 `<br />` 与被转义过的 `&lt;br /&gt;` 也一并认，代码块与行内代码里的 `<br />` 不动（由 mo-gallery-shared `pnpm sync` 生成，接口与数据不变，对 Desktop / App 无影响）。
+25. 同步共享包镜像 `@mo-gallery/milkdown` / `@mo-gallery/tiptap-editor`：「复制为公众号文章」现在能保住拼图（并排图片）的排版 —— 公众号编辑器会丢掉 class 与外部 CSS，此前几格粘过去各自成行；只把排版折算成内联样式仍不够（编辑器还会吞掉外层 `div` 上的 `display:grid`），因此拼图改为**表格**结构（列数沿用 `galleryColumns`、格宽用 `td` 百分比、间隙用 `td` 的 `padding`、多出来的另起一行），`src/lib/wechat-article.ts` 的格式化选项带上这个收尾钩子（故事详情页与叙事编辑器的复制入口都走它）。公众号里不保留页面上的 4:3 铺满裁切（编辑器不支持 `aspect-ratio` / `object-fit`），图片按原图比例、同一行顶端对齐（由 mo-gallery-shared `pnpm sync` 生成，接口与数据不变，对 Desktop / App 无影响）。
 
 ## [0.8.4] - 2026-09-30
 

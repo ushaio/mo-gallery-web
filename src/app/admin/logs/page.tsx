@@ -245,7 +245,7 @@ export default function LogsPage() {
   function handleTabClick(tab: 'blog' | 'stories' | 'drafts') {
     const now = Date.now()
     if (lastClickRef.current.tab === tab && now - lastClickRef.current.time < 300) {
-      // 双击 - 刷新对应标签页
+      // 双击 - 刷新对应标签页（公众号页签＝强制与微信同步一次）
       if (tab === 'drafts') {
         loadDrafts()
       } else if (tab === 'stories') {
@@ -298,6 +298,8 @@ export default function LogsPage() {
             </span>
           )}
         </AdminButton>
+        {/* 公众号页签（公众号图文：草稿/已发布）暂时隐藏：接口与页面组件都留着，
+            恢复时按 CHANGELOG 第 13 条的说明把门控 + 按钮 + 内容区加回即可 */}
       </div>
 
       {/* 子标签页内容 */}

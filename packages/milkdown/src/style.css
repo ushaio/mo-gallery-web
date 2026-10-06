@@ -146,7 +146,25 @@
 .milkdown-editor .milkdown .top-bar-size-input { width: 44px; height: 22px; margin: 0 2px; padding: 0 2px; border: 1px solid var(--crepe-color-outline); border-radius: 4px; background: var(--crepe-color-background); color: var(--crepe-color-on-surface); font-size: 12px; line-height: 20px; text-align: center; box-sizing: border-box; outline: none; }
 .milkdown-editor .milkdown .top-bar-size-input:focus { border-color: var(--crepe-color-primary); }
 .milkdown-editor .milkdown-media-node { min-width: 0; max-width: 100%; border-radius: 12px; }
-.milkdown-editor .milkdown-media-node.ProseMirror-selectednode { outline: 2px solid var(--primary, #475569); outline-offset: 2px; }
+/* 有真实图片的图片族卡片（图片卡 / 待上传预览卡）：NodeView 外层也跟着卡片收窄到图片宽度。
+   卡片本体那层收窄见 content.css（figure:has(img) 那两条）；外层不跟着收，整栏就仍算一个
+   「看不见的媒体块」——按元素框量出来是满栏宽（点选、悬浮层、任何按框对齐的东西都对不上图片），
+   而里面实际可见的内容只有图片那么宽。图片本身才是内容，块也要贴着它。
+   拼图、播放器、链接/文件卡，以及拿不到图的占位卡保持满栏：它们要么本来就是满栏排版（拼图按网格
+   分格），要么没有可贴的图片（收窄会变成一条「图片暂不可用」的窄条）。
+   内联 width（媒体设置里给定的像素宽度）仍优先：外层 fit-content 会让位给卡片的显式宽度。
+   ⚠️ 不能写成嵌套 :has()（外层 :has(> figure…:has(img))）——规范禁止 :has() 里再嵌 :has()，
+   整条规则会被静默丢弃；这里改为问「外层直接包含的 image / upload 卡里有没有 img」，与 content.css
+   的门禁同义（拼图卡是 .milkdown-media-gallery，不会被这两条命中）。 */
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-image img),
+.milkdown-editor .milkdown .milkdown-media-node:has(> figure.milkdown-media-upload img) { width: fit-content; }
+/* 选中描边画在卡片本体上（figure），不画在 NodeView 外层：外层对有图的图片卡已收窄（见上一条），
+   但拼图 / 播放器 / 链接卡仍是满栏 —— 描边始终画在「这张卡」自己的框上，才对得上它的范围。 */
+.milkdown-editor .milkdown-media-node.ProseMirror-selectednode .milkdown-media { outline: 2px solid var(--primary, #475569); outline-offset: 2px; }
+/* Crepe 主题会给选中的节点层整栏铺一层选中底色（`.milkdown .ProseMirror .ProseMirror-selectednode`），
+   媒体节点这层同样被铺满 —— 窄图被选中时右侧就露出一块补充背景。这一层保持透明，选中反馈
+   只留上面那圈画在卡片本体上的描边；选择器比主题多一层（.ProseMirror）以稳定压过主题底色。 */
+.milkdown-editor .ProseMirror .milkdown-media-node.ProseMirror-selectednode { background: transparent; }
 .milkdown-editor .milkdown-media { margin: 16px 0; }
 .milkdown-editor-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 12px; font-size: 11px; line-height: 1.4; color: var(--muted-foreground, #777); border-top: 1px solid var(--border, #e5e7eb); }
 .milkdown-editor-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--destructive, #b91c1c); background: color-mix(in srgb, var(--destructive, #b91c1c) 7%, transparent); padding: 10px 14px; font-size: 13px; }

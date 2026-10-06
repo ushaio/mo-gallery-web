@@ -73,10 +73,9 @@ export function createMediaView(getOptions: () => MediaViewOptions, refreshers: 
         media={media}
         language={options.language}
         resolveUrl={options.resolveUrl}
-        // 占位卡（kind='upload'）没有 src，靠 uploadId 现取本地预览图
-        uploadPreviewUrl={media.kind === 'upload' && media.uploadId
-          ? options.resolveUploadPreview?.(media.uploadId)
-          : undefined}
+        // 占位卡（kind='upload'）与拼图里的待传格都没有 src，靠 uploadId 现取本地预览图。
+        // 编辑器要看到上传状态，故不传 showUploadStatus（默认 true）。
+        resolveUploadPreview={options.resolveUploadPreview}
         onEdit={view.editable ? () => options.onEdit(media, getPos) : undefined}
         onRemove={view.editable ? remove : undefined}
       />)

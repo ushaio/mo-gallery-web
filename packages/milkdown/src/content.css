@@ -47,15 +47,41 @@
   line-height: 1.5;
   text-align: left;
 }
+/* 图片族卡片（图片 / 拼图 / 待上传）去掉卡片本体：边框、底色、圆角全部清零。
+   宽度没占满时，卡片本体那层填充会变成图片旁边的一块空白色块 —— 图片本身才是内容。
+   链接、文件、播放器卡仍保留卡片本体（它们有头部、图标与打开入口，需要一层框）。
+   圆角改由裁剪提供：外层 .milkdown-media 的 overflow+radius 与 .milkdown-content img 同口径。 */
+.milkdown-media-image, .milkdown-media-gallery, .milkdown-media-upload { border: 0; background: transparent; border-radius: 8px; }
+/* 拿不到本地预览的待上传占位卡（只有编辑器里会出现）：虚线框表示「这里将来是一张图」 */
+.milkdown-media-placeholder { border: 1px dashed var(--border, #ddd); background: var(--muted, #f3f4f6); border-radius: 12px; }
 .milkdown-media svg { flex-shrink: 0; fill: none; }
 .milkdown-media a { color: inherit; text-decoration: none; }
 .milkdown-media figcaption { margin: 0; padding: 10px 16px; border-top: 1px solid var(--border, #ddd); font-size: 13px; line-height: 1.6; color: var(--muted-foreground, #777); white-space: pre-wrap; overflow-wrap: anywhere; }
-.milkdown-media-photo { display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; background: var(--muted, #f3f4f6); border: 0; padding: 0; }
+.milkdown-media-photo { display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; background: transparent; border: 0; padding: 0; }
 button.milkdown-media-photo { cursor: zoom-in; }
-.milkdown-media .milkdown-media-photo img { display: block; max-width: 100%; width: 100%; height: auto; max-height: 640px; object-fit: contain; margin: 0; border-radius: 0; }
+/* 图片按自身尺寸渲染，不再拉满正文栏：以前 width:100% 会把窄图与竖图撑成满栏宽的箱子，
+   再用 object-fit: contain 在箱子里居中 —— 箱子两侧就留出一圈空边（图片有多窄，空边就有多宽），
+   点选时看到的就是一个「没有内容的空容器」。图片本身才是内容，容器要贴着它。 */
+.milkdown-media .milkdown-media-photo img { display: block; max-width: 100%; height: auto; max-height: 640px; object-fit: contain; margin: 0; border-radius: 0; }
+/* 单图卡（图片 / 待上传预览）的宽度跟着图片走：卡片收回图片大小，悬浮操作簇、图注与选中描边
+   都贴在图片上，图片右侧不再是一块空的卡片区。内联 width（媒体设置里给定的像素宽度）优先级
+   更高，显式宽度照旧生效；拼图在网格轨道里排版，不受这条影响。
+   门禁用 :has(img)：只有卡片里真的渲染出一张图才收窄。虚线占位卡（「这里将来是一张图」）、
+   以及拿不到图只显示中性缺图位的卡片（src 解析不出来，或预览/发布侧取不到上传预览）都保持
+   满栏宽 —— 它们没有可贴的图片，收窄会变成一条「图片暂不可用」的窄条。 */
+figure.milkdown-media-image:has(.milkdown-media-photo img),
+figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-media-photo img) { width: fit-content; }
+figure.milkdown-media-image:has(.milkdown-media-photo img) > .milkdown-media-photo,
+figure.milkdown-media-upload:not(.milkdown-media-placeholder):has(.milkdown-media-photo img) > .milkdown-media-photo { width: fit-content; }
+/* 拼图：列数由 MediaCard 按张数内联给出（2 张双列 / 3 张三列 / 4 张 2×2 / 5-6 张三列…），
+   这里的 2 列只是兜底。gap 收紧到 4px，几格才像「拼」成的一整张图。 */
 .milkdown-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
-.milkdown-media-grid .milkdown-media-photo img { aspect-ratio: 4/3; height: 100%; object-fit: cover; }
+.milkdown-media-grid .milkdown-media-photo img { width: 100%; aspect-ratio: 4/3; height: 100%; object-fit: cover; }
 .milkdown-media-grid .milkdown-media-photo:only-child { grid-column: 1 / -1; }
+/* 拼图里还没上传的那一格：格子小，tag 压到角落并缩一号 */
+.milkdown-media-grid .milkdown-media-upload-tag { top: 4px; left: 4px; padding: 1px 6px; font-size: 10px; }
+/* 拼图格里的中性缺图位：不要 32px 的大内边距，否则格子被撑成方块 */
+.milkdown-media-grid .milkdown-media-empty { padding: 16px; }
 .milkdown-media-header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 12px; border-bottom: 1px solid var(--border, #ddd); }
 .milkdown-media-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 8px; background: var(--muted, #f3f4f6); color: var(--muted-foreground, #777); }
 .milkdown-media-info { flex: 1; min-width: 0; }

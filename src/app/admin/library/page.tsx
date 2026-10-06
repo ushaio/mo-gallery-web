@@ -18,7 +18,6 @@ import {
   Plus,
   RefreshCw,
   Star,
-  Tag,
   Trash2,
 } from 'lucide-react'
 import { useAdmin } from '../layout'
@@ -202,10 +201,25 @@ export default function LibraryPage() {
           </div>}
 
           <SectionHeader open={sections.tags} label={t('ui.tag_filter')} onToggle={() => toggleSection('tags')} />
-          {sections.tags && <div className="space-y-0.5">
-            {tags.filter((tag) => tag !== 'all' && tag !== '全部').map((tag) => (
-              <NavButton key={tag} active={view === 'photos' && photoFilters.tagFilter === tag} icon={Tag} label={tag} onClick={() => showPhotos({ tagFilter: tag })} />
-            ))}
+          {sections.tags && <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
+            {tags.filter((tag) => tag !== 'all' && tag !== '全部').map((tag) => {
+              const tagActive = view === 'photos' && photoFilters.tagFilter === tag
+              return <button
+                key={tag}
+                type="button"
+                onClick={() => showPhotos({ tagFilter: tag })}
+                title={tag}
+                aria-pressed={tagActive}
+                className={cn(
+                  'inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                  tagActive
+                    ? 'border-primary/80 bg-primary/15 font-medium text-primary'
+                    : 'border-border/70 bg-card/60 text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <span className="min-w-0 truncate">{tag}</span>
+              </button>
+            })}
           </div>}
 
           <div className="mb-2 mt-5 flex items-center gap-1 px-1">

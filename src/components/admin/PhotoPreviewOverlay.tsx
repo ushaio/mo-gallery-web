@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { resolveAssetUrl } from '@/lib/api'
 import type { PhotoDto } from '@/lib/api/types'
 
@@ -14,6 +14,15 @@ interface PhotoPreviewOverlayProps {
   onNext?: () => void
   hasPrevious?: boolean
   hasNext?: boolean
+  /**
+   * 大图浏览里的删除入口。调用方负责真正的删除语义（素材库＝从素材列表移除），
+   * 不传则不显示删除按钮、也不监听 Delete 键。
+   */
+  onDelete?: () => void
+  /** 禁止删除时按钮置灰不可点（素材库：已排入正文的素材）。 */
+  deleteDisabled?: boolean
+  /** 删除按钮的提示文案，缺省用 `common.delete`。 */
+  deleteTitle?: string
 }
 
 export function PhotoPreviewOverlay({
@@ -25,6 +34,9 @@ export function PhotoPreviewOverlay({
   onNext,
   hasPrevious = false,
   hasNext = false,
+  onDelete,
+  deleteDisabled = false,
+  deleteTitle,
 }: PhotoPreviewOverlayProps) {
   const [showOriginal, setShowOriginal] = useState(true)
   const [zoom, setZoom] = useState(1)
@@ -46,10 +58,11 @@ export function PhotoPreviewOverlay({
       if (event.key === 'Escape') onClose()
       if (event.key === 'ArrowLeft' && hasPrevious) onPrevious?.()
       if (event.key === 'ArrowRight' && hasNext) onNext?.()
+      if (event.key === 'Delete' && onDelete && !deleteDisabled) onDelete()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [hasNext, hasPrevious, onClose, onNext, onPrevious])
+  }, [deleteDisabled, hasNext, hasPrevious, onClose, onDelete, onNext, onPrevious])
 
   const source = resolveAssetUrl(showOriginal ? photo.url : photo.thumbnailUrl || photo.url, cdnDomain)
   const meta = [
@@ -73,6 +86,18 @@ export function PhotoPreviewOverlay({
           <button type="button" onClick={() => setZoom((value) => Math.max(0.25, value - 0.25))} className="flex size-9 items-center justify-center rounded-md hover:bg-white/10" aria-label={t('admin.zine_zoom_out')}><ZoomOut size={17} /></button>
           <span className="w-12 text-center text-[10px] text-white/60">{Math.round(zoom * 100)}%</span>
           <button type="button" onClick={() => setZoom((value) => Math.min(5, value + 0.25))} className="flex size-9 items-center justify-center rounded-md hover:bg-white/10" aria-label={t('admin.zine_zoom_in')}><ZoomIn size={17} /></button>
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleteDisabled}
+              className={`flex size-9 items-center justify-center rounded-md ${deleteDisabled ? 'cursor-not-allowed text-white/30' : 'text-red-300 hover:bg-red-500/20'}`}
+              title={deleteTitle ?? t('common.delete')}
+              aria-label={deleteTitle ?? t('common.delete')}
+            >
+              <Trash2 size={17} />
+            </button>
+          ) : null}
           <button type="button" onClick={onClose} className="flex size-9 items-center justify-center rounded-md hover:bg-white/10" aria-label={t('common.close')}><X size={19} /></button>
         </div>
       </header>

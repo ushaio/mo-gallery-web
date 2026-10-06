@@ -357,3 +357,38 @@ model FriendLink {
   @@index([sortOrder])
   @@index([featured])
 }
+/// 公众号图文（草稿箱 / 发表记录）在本站库里的一份投影。
+///
+/// 列表来自微信的 `draft/batchget` / `freepublish/batchget`，只在首次进入页签、点「同步」
+/// 或双击页签时拉一次（微信单页上限 20 条、最多拉 3 页），之后一直读这张表，避免列表页
+/// 反复打开时逐页请求与限流。站点级绑定 ⇒ 按 appId 区分：换绑到另一个公众号后，旧公众号的
+/// 行不会再被读出来；同步失败保留旧数据，不清空。
+model WeChatArticle {
+  id         String    @id @default(uuid())
+  /// 归属公众号 AppID（非密；读取接口只回当前绑定的公众号）
+  appId      String
+  /// 'draft' | 'published'
+  kind       String
+  /// 草稿是 media_id，发表记录是 article_id
+  itemId     String
+  /// 同一篇图文里的第几条 news_item（一篇图文可以带多篇）
+  position   Int       @default(0)
+  title      String    @default("")
+  author     String    @default("")
+  digest     String    @default("")
+  /// 封面图地址（微信给的临时链接，约 3 天失效；失效由界面兜底成占位图标）
+  coverUrl   String    @default("")
+  /// 已发表文章的公网链接；草稿为空
+  articleUrl String    @default("")
+  /// 作者填的原文链接
+  sourceUrl  String    @default("")
+  /// 微信侧的更新时间
+  updateTime DateTime?
+  /// 微信侧标记已删除（如草稿被删）
+  isDeleted  Boolean   @default(false)
+  /// 这一行最后一次与微信同步的时间
+  syncedAt   DateTime  @default(now())
+
+  @@unique([appId, kind, itemId, position])
+  @@index([appId, kind, updateTime])
+}

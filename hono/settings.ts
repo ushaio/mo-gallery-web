@@ -8,10 +8,18 @@ import {
   encryptStoredSecret,
   REDACTED_SECRET,
 } from '~/server/lib/stored-secrets'
+import { WECHAT_BINDING_SETTING_KEY, WECHAT_EGRESS_OBSERVED_SETTING_KEY } from '~/server/lib/wechat'
+import { WECHAT_TEMPORARY_MATERIALS_SETTING_KEY } from '~/server/lib/wechat-materials'
 
 const settings = new Hono<{ Variables: AuthVariables }>()
 
 const ENV_SETTINGS = new Set(['site_title', 'cdn_domain'])
+// 由专用接口读写的内部设置，不通过通用设置接口暴露（值是含密文的 blob / 素材索引）
+const INTERNAL_SETTINGS = new Set([
+  WECHAT_BINDING_SETTING_KEY,
+  WECHAT_EGRESS_OBSERVED_SETTING_KEY,
+  WECHAT_TEMPORARY_MATERIALS_SETTING_KEY,
+])
 const SENSITIVE_SETTINGS = new Set([
   'github_token',
   's3_access_key_id',
@@ -60,7 +68,7 @@ function serializeSettings(settingsList: Array<{ key: string; value: string }>) 
   }
 
   for (const setting of settingsList) {
-    if (ENV_SETTINGS.has(setting.key)) continue
+    if (ENV_SETTINGS.has(setting.key) || INTERNAL_SETTINGS.has(setting.key)) continue
     config[setting.key] = SENSITIVE_SETTINGS.has(setting.key) && setting.value
       ? REDACTED_SECRET
       : setting.value

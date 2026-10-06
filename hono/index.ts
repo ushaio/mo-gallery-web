@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception'
 import auth from './auth'
 import photos from './photos'
 import settings from './settings'
+import wechat from './wechat'
 import stories from './stories'
 import comments from './comments'
 import blogs from './blogs'
@@ -59,6 +60,7 @@ route.route('/', overview)
 route.route('/', photoChanges)
 route.route('/settings', settings)
 route.route('/admin/settings', settings)
+route.route('/wechat', wechat)
 
 // Waline comments API - only register if local Waline is needed
 // (when COMMENTS_STORAGE=LEANCLOUD and no external WALINE_SERVER_URL)

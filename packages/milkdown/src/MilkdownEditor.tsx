@@ -14,6 +14,7 @@ import { $prose, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils'
 import { createFeatures } from './features'
 import { attachFontSizeEdit } from './font-size-edit'
 import { createMediaView, mediaDirective, mediaSchema } from './media-plugin'
+import { createMediaMergePlugin } from './media-merge'
 import { createTextStyleInheritancePlugin, textStyleSchema } from './text-style-plugin'
 import { ColorPalette } from './color-palette'
 import { blockStyleSchema } from './block-style-plugin'
@@ -172,6 +173,7 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
           if (alive.current) setMediaRequest({ initial: media, getPos, bookmark: crepe.editor.ctx.get(editorViewCtx).state.selection.getBookmark() })
         },
       }), refreshers.current))
+      .use($prose(() => createMediaMergePlugin()))
       .use(host)
       .config((ctx) => {
         ctx.update(editorViewOptionsCtx, (previous) => ({
@@ -241,10 +243,20 @@ const EditorInstance = forwardRef<MilkdownEditorHandle, MilkdownEditorProps>(fun
     let found = false
     const transaction = view.state.tr
     view.state.doc.descendants((node, pos) => {
-      const media = node.type.name === 'media_card' ? normalizeMedia(node.attrs.media) : null
-      if (media?.kind === 'upload' && media.uploadId === uploadId) {
+      if (node.type.name !== 'media_card') return
+      const media = normalizeMedia(node.attrs.media)
+      if (media.kind === 'upload' && media.uploadId === uploadId) {
         found = true
         transaction.setNodeMarkup(pos, undefined, { media: replacement ?? { ...media, status: 'failed' } })
+        return
+      }
+      // 并进拼图的待传格：上传完成后同样原地换成正式图片（否则拼图里会永远留一格占位）
+      if (media.kind === 'gallery' && media.images?.some((image) => image.uploadId === uploadId)) {
+        found = true
+        const images = media.images.map((image) => image.uploadId !== uploadId ? image : replacement
+          ? { src: replacement.src ?? '', alt: replacement.title ?? image.alt, photoId: replacement.photoId }
+          : { ...image, status: 'failed' as const })
+        transaction.setNodeMarkup(pos, undefined, { media: { ...media, images } })
       }
     })
     if (found) view.dispatch(transaction)
