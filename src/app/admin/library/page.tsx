@@ -30,6 +30,7 @@ import { LibraryFilmRollWorkspace } from '@/components/admin/LibraryFilmRollWork
 import { LibraryPhotoWorkspace, type LibraryPhotoFilters } from '@/components/admin/LibraryPhotoWorkspace'
 import { PhotoPreviewOverlay } from '@/components/admin/PhotoPreviewOverlay'
 import { SimpleDeleteDialog } from '@/components/admin/SimpleDeleteDialog'
+import { placeContextMenu } from '@/lib/context-menu'
 import { cn } from '@/lib/utils'
 
 type LibraryView = 'photos' | 'albums' | 'film-rolls'
@@ -139,8 +140,7 @@ export default function LibraryPage() {
     const menuHeight = 236
     setAlbumContextMenu({
       album,
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+      ...placeContextMenu(event.clientX, event.clientY, menuWidth, menuHeight),
     })
   }
 

@@ -44,6 +44,7 @@ import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog'
 import { LibraryPhotoInfoSidebar } from '@/components/admin/LibraryPhotoInfoSidebar'
 import { PhotoPreviewOverlay } from '@/components/admin/PhotoPreviewOverlay'
 import { useAdminPreferenceStore, type ResourceLibraryPhotoViewMode } from '@/lib/admin-preferences'
+import { placeContextMenu } from '@/lib/context-menu'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 100
@@ -669,8 +670,8 @@ export function LibraryPhotoWorkspace({ token, tags, albums, settings, initialFi
         event.preventDefault()
         setContextMenu({
           photo: item,
-          x: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
-          y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)),
+          // 224 / 330 是菜单的最大宽高，用于把菜单夹取到视口内。
+          ...placeContextMenu(event.clientX, event.clientY, 224, 330),
         })
       }}
       onToggleSelect={toggleSelect}

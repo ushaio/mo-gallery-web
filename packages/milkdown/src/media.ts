@@ -105,7 +105,7 @@ export interface MediaCardData {
    * 占位卡状态（仅 kind='upload' 有意义）：
    * - `pending`  素材库里选好但还没开始上传（编辑器素材库的待传项插入的占位）
    * - `uploading` 上传进行中
-   * - `failed`   上传失败，需移除卡片重来
+   * - `failed`   上传失败；仍留在待传集合里、保存时照常重传，卡片按 `pending` 同一套呈现
    */
   status?: 'pending' | 'uploading' | 'failed'
 }

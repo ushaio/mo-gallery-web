@@ -179,6 +179,31 @@ export function useStoryEditorActions({
     syncEditorContent()
   }, [syncEditorContent])
 
+  /**
+   * 粘贴上传失败：把这份文件补登记成素材面板里的一条失败态待传项。
+   *
+   * 粘贴链路不经过素材面板（文件从未进过 pendingImages），失败后正文里只留一张
+   * 带 uploadId 的卡；不补登记的话面板里看不到它、也没有「重试」可按，用户只能
+   * 删掉卡片重新粘一次。id 直接用卡片的 uploadId：面板「重试」重新上传成功后，
+   * 按同一个 id 就能把正文里那张卡原位换成真图。
+   */
+  const registerFailedPasteUpload = useCallback(async (input: { uploadId: string; file: File; error?: string }) => {
+    const takenAt = await readTakenAt(input.file)
+    setPendingImages((prev) => {
+      // 同一个 uploadId 只登记一次（面板项 id 与卡片 uploadId 一一对应）。
+      if (prev.some((image) => image.id === input.uploadId)) return prev
+      return [...prev, {
+        id: input.uploadId,
+        file: input.file,
+        previewUrl: URL.createObjectURL(input.file),
+        status: 'failed' as const,
+        progress: 0,
+        error: input.error,
+        takenAt,
+      }]
+    })
+  }, [setPendingImages])
+
   const addPhotoToCurrentStory = useCallback((photo: PhotoDto) => {
     setCurrentStory((prev) => {
       if (!prev) return prev
@@ -211,6 +236,7 @@ export function useStoryEditorActions({
     insertUploadPlaceholder,
     resolveUploadPlaceholder,
     failUploadPlaceholder,
+    registerFailedPasteUpload,
     findExistingPhotoById,
     addPhotoToCache,
     addPhotoToCurrentStory,

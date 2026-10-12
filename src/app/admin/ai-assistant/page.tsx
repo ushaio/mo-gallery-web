@@ -30,6 +30,7 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
 import { ApiUnauthorizedError } from '@/lib/api/core'
+import { placeContextMenu } from '@/lib/context-menu'
 import {
   getEditorAiConversations,
   createEditorAiConversation,
@@ -262,10 +263,7 @@ function MessageImage({
     event.preventDefault()
     const menuWidth = 176
     const menuHeight = 84
-    setContextMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
-    })
+    setContextMenu(placeContextMenu(event.clientX, event.clientY, menuWidth, menuHeight))
   }
 
   const handleSave = async () => {
@@ -1415,8 +1413,7 @@ export default function AiAssistantPage() {
                           const menuHeight = 82
                           setConversationMenu({
                             id: convo.id,
-                            x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-                            y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+                            ...placeContextMenu(event.clientX, event.clientY, menuWidth, menuHeight),
                           })
                         }}
                         className={`group relative flex cursor-pointer items-start gap-2 border-l-2 py-2 pl-2.5 pr-1 transition-colors ${

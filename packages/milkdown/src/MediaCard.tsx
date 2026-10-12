@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react'
 import type { FocusEvent } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, TriangleAlert, Video } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ExternalLink, File, ImageOff, ImagePlus, Link, LoaderCircle, Music2, Pencil, Trash2, Video } from 'lucide-react'
 import { mediaProviderLabel } from './media-embed'
 import { MEDIA_ALIGNS, mediaAlign, normalizeMedia, normalizeMediaAlign, safeMediaUrl } from './media'
 import { galleryGridStyle, galleryTileStyle } from './gallery-layout'
@@ -18,7 +18,7 @@ interface MediaCardProps {
    */
   resolveUploadPreview?: (uploadId: string) => string | undefined
   /**
-   * 是否显示上传状态浮层（待上传 / 上传中 / 上传失败）。
+   * 是否显示上传状态浮层（待上传 / 上传中）——上传失败沿用待上传那一套，不再单说。
    * 预览与发布侧传 false：待上传项按正式图片渲染 —— 读者与作者在预览里
    * 只该看到「文章长什么样」，不该看到「这张还没上传」这类内部状态。
    */
@@ -46,10 +46,14 @@ function sourceLabel(src: string): string {
   catch { return src.split('/').pop()?.split('?')[0] ?? '' }
 }
 
+/**
+ * 左上角那枚状态 tag 的文字。`failed` 与 `pending` 说同一句话：
+ * 失败项仍留在待传集合里、保存时照常重传（见 handleConfirmUpload），
+ * 卡片另说一套「上传失败」只会让人以为这张卡废了、要拆掉重来。
+ */
 function uploadStatusLabel(status: MediaCardData['status'], zh: boolean): string {
-  if (status === 'failed') return zh ? '上传失败' : 'Upload failed'
-  if (status === 'pending') return zh ? '待上传' : 'Pending'
-  return zh ? '上传中' : 'Uploading'
+  if (status === 'uploading') return zh ? '上传中' : 'Uploading'
+  return zh ? '待上传' : 'Pending'
 }
 
 export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, showUploadStatus = true, language = 'zh', onEdit, onRemove, onPhotoClick, onAlignChange, draggableTiles = false }: MediaCardProps) {
@@ -158,7 +162,7 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, show
     const tileStyle = media.kind === 'gallery' ? galleryTileStyle(index, media.images?.length ?? 0, media.layout) : undefined
     const body = <>
       {picture}
-      {tagged && <span className={`milkdown-media-upload-tag${image.status === 'failed' ? ' is-failed' : ''}`} role="status">{uploadStatusLabel(image.status, zh)}</span>}
+      {tagged && <span className="milkdown-media-upload-tag" role="status">{uploadStatusLabel(image.status, zh)}</span>}
     </>
     return onPhotoClick && image.photoId ? (
       <button type="button" key={`${image.photoId}-${index}`} className={tileClass} style={tileStyle} draggable={draggable || undefined} onClick={() => onPhotoClick(image.photoId!)} aria-label={image.alt || (zh ? '查看图片' : 'View image')}>{body}</button>
@@ -205,38 +209,23 @@ export function MediaCard({ media: value, resolveUrl, resolveUploadPreview, show
 
            **图片容器刻意复用 .milkdown-media-photo**：与正式图片卡由同一段 CSS 决定尺寸，
            卡片高度与将来上传成功后的真实排版一致 —— 两处各写一份数值必然会漂移。
-           状态只用图上的悬浮元素表达（左上 tag + 居中说明），都是绝对定位，不占布局高度；
+           状态只用图上的左上角 tag 表达（绝对定位，不占布局高度）；
            预览/发布侧（showUploadStatus=false）连浮层都不渲染，与上传完成后的效果完全一致。 */
         <div className="milkdown-media-photo milkdown-media-photo-upload">
           <img src={uploadPreviewUrl} alt={media.title} loading="lazy" draggable={false} />
-          {showUploadStatus && <>
-            <span className={`milkdown-media-upload-tag${media.status === 'failed' ? ' is-failed' : ''}`} role="status">
-              {uploadStatusLabel(media.status, zh)}
-            </span>
-            {/* 正在上传不必再解释；待传/失败各给一句「下一步会怎样 / 该怎么做」 */}
-            {media.status !== 'uploading' && <span className={`milkdown-media-upload-note${media.status === 'failed' ? ' is-failed' : ''}`}>
-              <TriangleAlert size={13} aria-hidden />
-              {media.status === 'failed'
-                ? (zh ? '移除卡片后重新上传' : 'Remove this card and upload again')
-                : (zh ? '保存时一并上传' : 'Sent when you save')}
-            </span>}
-          </>}
+          {showUploadStatus && <span className="milkdown-media-upload-tag" role="status">{uploadStatusLabel(media.status, zh)}</span>}
         </div>
       ) : showUploadStatus ? (
         /* 没有本地预览就没有可压浮层的图，只能留文字占位（此处状态用文字表达，不再叠 tag） */
         <div className="milkdown-media-upload" role="status">
-          {media.status === 'failed'
-            ? <ImageOff size={24} />
-            : media.status === 'pending'
-              /* 待上传：还没开始传，用静态图标而不是转圈 —— 转圈会让用户以为正在跑 */
-              ? <ImagePlus size={24} />
-              : <LoaderCircle size={24} className="milkdown-spin" />}
+          {media.status === 'uploading'
+            ? <LoaderCircle size={24} className="milkdown-spin" />
+            /* 待传（含上传失败待重传）：还没开始传，用静态图标而不是转圈 —— 转圈会让用户以为正在跑 */
+            : <ImagePlus size={24} />}
           <strong>{media.title}</strong>
-          <span>{media.status === 'failed'
-            ? (zh ? '上传未完成，请移除此卡片后重新上传' : 'Upload incomplete. Remove this card and upload again.')
-            : media.status === 'pending'
-              ? (zh ? '待上传，保存时会一并上传' : 'Pending upload, sent when you save')
-              : (zh ? '正在上传…' : 'Uploading…')}</span>
+          <span>{media.status === 'uploading'
+            ? (zh ? '正在上传…' : 'Uploading…')
+            : (zh ? '待上传' : 'Pending')}</span>
         </div>
       ) : (
         /* 预览/发布侧：连本地预览都拿不到（会话已过期等），也不能暴露上传状态，只留中性缺图位 */

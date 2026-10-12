@@ -127,12 +127,8 @@ figure.milkdown-media.milkdown-media-image[data-media-align="right"] { margin-le
 /* 占位卡：图片区复用 .milkdown-media-photo（尺寸与正式图片卡同源），状态改为图上浮层。
    浮层一律绝对定位 ⇒ 卡片高度只由图片决定，与上传成功后的真实排版一致。 */
 .milkdown-media-photo-upload { position: relative; min-height: 96px; }
-/* 「待上传 / 上传中 / 上传失败」tag：压在左上，右上留给卡片操作簇（.milkdown-media-overlay） */
+/* 「待上传 / 上传中」tag：压在左上，右上留给卡片操作簇（.milkdown-media-overlay） */
 .milkdown-media-upload-tag { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 2px 8px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 11px; font-weight: 600; line-height: 1.6; letter-spacing: .02em; }
-.milkdown-media-upload-tag.is-failed { background: #dc2626d9; }
-/* 居中说明：只在「待传 / 失败」时出现，回答「接下来会怎样 / 我该做什么」；正在上传不必解释 */
-.milkdown-media-upload-note { position: absolute; top: 50%; left: 50%; z-index: 2; display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 24px); padding: 5px 10px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 12px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: translate(-50%, -50%); }
-.milkdown-media-upload-note.is-failed { background: #dc2626d9; }
 .milkdown-media-empty a { display: inline-flex; align-items: center; gap: 6px; text-decoration: underline; text-underline-offset: 3px; }
 .milkdown-media-controls, .milkdown-media-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .milkdown-media-actions button, .milkdown-media .milkdown-media-open { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--muted-foreground, #777); background: transparent; cursor: pointer; }

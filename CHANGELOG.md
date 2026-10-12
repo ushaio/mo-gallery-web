@@ -16,6 +16,7 @@
 ## [Unreleased]
 
 ### feat
+16. 后台右键菜单不再紧贴指针弹出：此前各处的菜单都把指针坐标直接当菜单左上角，指针正好压在第一项上、每次右击都像「黏」在指针旁边；现在统一落在指针右下方（右移 8px、下移 6px）并继续夹取在视口内，偏移量集中在 `src/lib/context-menu.ts` 一处定义、与桌面端同一套数值。涉及后台 AI 对话页的图片菜单与会话菜单、资源库相册菜单、资源库照片菜单（仅前端展示层，对 Desktop / App 无影响）
 15. 同步共享包镜像 `@mo-gallery/milkdown`：媒体卡片编辑弹窗的「拼图样式」由下拉框改为线框缩略图选择器——六种布局各画一张格子排布示意图并配一行小字标签，选中项主色描边；缩略图与正文共用同一份几何，示意图与实际排布一致（共享实现同步，Desktop 同步获得；对 App 无影响）
 14. 同步共享包镜像 `@mo-gallery/milkdown`：媒体卡片编辑弹窗改为横向左右两栏——左侧参数（类型 / 拼图样式 / 裁切 / 添加图片 / 标题 / 说明）、右侧实时预览，改一个参数右侧立刻兑现，不必先「应用」再回正文里看效果；弹窗由 528px 放宽到 960px，两栏各自滚动、标题与底部操作栏钉在两头，窗口窄于 780px 时自动回落为上下排列（预览置于参数上方）。预览渲染的就是正文那套 `MediaCard` 与 `content.css`，图片 / 视频 / 音频 / 链接 / 文件卡按读者看到的样子呈现（共享实现同步，Desktop 同步获得；对 App 无影响）
 8. 同步共享包镜像 `@mo-gallery/milkdown`：拼图卡新增上下 / 左右 / 主图等布局模板及每格裁切焦点与缩放设置，编辑预览与正文渲染一致（共享实现同步，Desktop 同步获得）
@@ -40,6 +41,8 @@
 13. 公众号图文（草稿箱 / 发表记录）能力已就位，但**暂不启用**：后台「文章创作」的公众号页签暂未挂载，`GET /api/wechat/articles` 也默认关闭（`WECHAT_ARTICLES_ENABLED=1` 才开放），等有可联调的认证公众号再一起恢复；公众号素材管理不受影响，照旧可用。能力本身：草稿走 `cgi-bin/draft/batchget`、已发布走 `cgi-bin/freepublish/batchget`（单页上限 20 条、最多 3 页、`no_content=1`），拉回来的条目**下载进云端数据库**（新表 `WeChatArticle`，迁移 `20261005120000_wechat_articles`，按 `(appId, kind, itemId, position)` 唯一，一篇图文的多条 news_item 各占一行）。列表读这张表，只有首次进入、点同步或双击页签才访问微信；同步按行 upsert，只在这一轮确实取全时（含微信侧总数）才清理已不存在的条目（否则「没看到」只代表「还没翻到」），失败保留旧行不清空；分键带公众号 AppID，换绑后不串数据；缺少接口权限（未认证公众号常见的 48001）返回可照做的文案。界面组件（`WeChatArticleTab`，含「草稿 / 已发布」下拉筛选，与相邻子页签同一套写法）与客户端（`src/lib/wechat-articles.ts`）都保留在仓库里、标注了「暂未挂载」。**恢复步骤**：把门控 + 页签按钮 + 内容区加回 `/admin/logs/page.tsx`（改动形态即本条最初的实现），并在环境变量里设 `WECHAT_ARTICLES_ENABLED=1`；表与迁移无需改动。对 App 无影响。
 
 ### fix
+
+32. 同步共享包镜像 `@mo-gallery/milkdown`：上传失败的媒体卡片不再显示「移除卡片后重新上传」——失败态改为与上传前的待上传卡片完全一致（卡片上只剩左上角「待上传」标签，居中的「保存时一并上传」说明条已整条删除），数据层 `failed` 不变，素材面板的重试与保存 / 发布时的补传照旧；同时后台文章创作页（`/admin/logs`）把**粘贴进来的图片**补登记进素材面板：粘贴上传不经过素材面板、文件从未进入 `pendingImages`，此前失败后正文里只留一张卡，面板里看不到也没有「重试」，只能删卡重新粘贴；现在 `src/app/admin/logs/stories/useStoryPasteUploads.ts` 的失败分支会调用新增的 `registerFailedPasteUpload`（实现在同目录 `useStoryEditorActions.ts`），以卡片自己的 uploadId 登记成失败态待传项（带本地预览与拍摄时间），「重试」可直接重传并原位替换正文卡片（共享实现同步，Desktop / Official 同步获得；仅前端展示与恢复路径，`/api/*` 契约不变，对 App 无影响）
 
 31. 统一后台与官网控制台的**确认弹窗外观**：删除 / 阻断 / URL 变更等确认弹窗此前复用共享包 `@mo-gallery/admin-console` 的 `ConsoleConfirmDialog`，外观仍是后台管理区那一套（圆角面板、20px 内边距、无衬线 15.5px 小标题、右对齐小按钮），与页面里「退出登录」弹窗的站点设计语言（直角面板、48px 色块图标、serif 大写标题 + 小字帽、两个等宽大写 xl 按钮）明显不是一套。现新增站点语言的确认件 `src/components/admin/AdminConfirmDialog.tsx`（与官网 console 的同名件逐行同构），`SimpleDeleteDialog`（22 处调用点）、`DeleteConfirmDialog`（照片删除的加载 / 阻断 / 普通三态）、`UrlUpdateConfirmDialog` 全部改用它，后台外壳的**退出登录弹窗**也改为复用同一组件（不再手写一份）。行为口径不变：Esc 关闭、遮罩点击关闭、`confirmOnEnter` 回车确认、提交中屏蔽关闭并把确认按钮换成 spinner；props 与共享件同名同义，调用点只换 import。仅展示层，数据、交互与 `/api/*` 接口不变，对 Desktop / App 无影响
 
